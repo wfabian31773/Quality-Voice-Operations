@@ -2,9 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantId } from '../../platform/core/types';
 
 const customersRetrieve = vi.fn();
+const subscriptionsRetrieve = vi.fn();
+const promotionCodesRetrieve = vi.fn();
 const portalSessionsCreate = vi.fn();
 const portalConfigurationsList = vi.fn();
 const portalConfigurationsCreate = vi.fn();
+
+let mockSubscriptionRow: {
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+} = {
+  stripe_customer_id: 'cus_portal_123',
+  stripe_subscription_id: 'sub_portal_123',
+};
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({
@@ -18,7 +28,7 @@ vi.mock('../../platform/db', () => ({
         ) {
           return { rows: [] };
         }
-        return { rows: [{ stripe_customer_id: 'cus_portal_123' }] };
+        return { rows: [mockSubscriptionRow] };
       }),
       release: vi.fn(),
     }),
@@ -42,6 +52,8 @@ vi.mock('../../platform/billing/stripe/plans', () => ({
 vi.mock('../../platform/billing/stripe/client', () => ({
   getStripeClient: () => ({
     customers: { retrieve: customersRetrieve },
+    subscriptions: { retrieve: subscriptionsRetrieve },
+    promotionCodes: { retrieve: promotionCodesRetrieve },
     billingPortal: {
       sessions: { create: portalSessionsCreate },
       configurations: {
@@ -91,10 +103,23 @@ const DEFAULT_PORTAL_CONFIG = {
 
 beforeEach(() => {
   customersRetrieve.mockReset();
+  subscriptionsRetrieve.mockReset();
+  promotionCodesRetrieve.mockReset();
   portalSessionsCreate.mockReset();
   portalConfigurationsList.mockReset();
   portalConfigurationsCreate.mockReset();
   __resetPortalConfigCacheForTests();
+  // Default: subscription has no discounts so the customer-level path
+  // remains the only one that surfaces a headline unless a test
+  // explicitly overrides this mock to seed `subscription.discounts[]`.
+  subscriptionsRetrieve.mockResolvedValue({ discounts: [] });
+  // Default: subscription row carries both ids so the production code
+  // exercises the same SELECT shape it would in real life. Tests that
+  // need to drop the subscription id reset this in their own body.
+  mockSubscriptionRow = {
+    stripe_customer_id: 'cus_portal_123',
+    stripe_subscription_id: 'sub_portal_123',
+  };
   portalSessionsCreate.mockResolvedValue({
     id: 'bps_test_123',
     url: 'https://billing.stripe.com/p/session/bps_test_123',
@@ -478,6 +503,174 @@ describe('createPortalSession discount headline', () => {
       returnUrl: 'https://example.test/dashboard',
     });
 
+    const args = portalSessionsCreate.mock.calls[0][0];
+    expect('configuration' in args).toBe(false);
+  });
+
+  it('falls back to a subscription-level discount when the customer record has none', async () => {
+    // Customer has no coupon attached — modern tenants typically only
+    // carry their coupon on `subscription.discounts[]`.
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: null,
+    });
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_annual20',
+            name: 'Annual Loyalty',
+            percent_off: 20,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_annual', code: 'ANNUAL20' },
+        },
+      ],
+    });
+    portalConfigurationsList.mockResolvedValue({ data: [DEFAULT_PORTAL_CONFIG] });
+    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_with_sub_headline' });
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    expect(subscriptionsRetrieve).toHaveBeenCalledWith('sub_portal_123', {
+      expand: ['discounts.promotion_code', 'discounts.source.coupon'],
+    });
+    expect(portalConfigurationsCreate).toHaveBeenCalledTimes(1);
+    const createArgs = portalConfigurationsCreate.mock.calls[0][0];
+    expect(createArgs.business_profile.headline).toBe(
+      'Active discount: 20% off — ANNUAL20',
+    );
+    expect(createArgs.metadata).toMatchObject({
+      purpose: 'discount_headline',
+      headline: 'Active discount: 20% off — ANNUAL20',
+      couponId: 'coupon_annual20',
+      promotionCodeId: 'promo_annual',
+    });
+    expect(portalSessionsCreate).toHaveBeenCalledWith({
+      customer: 'cus_portal_123',
+      return_url: 'https://example.test/dashboard',
+      configuration: 'bpc_with_sub_headline',
+    });
+  });
+
+  it('uses the first usable subscription-level discount when several are stacked', async () => {
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: null,
+    });
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_first',
+            percent_off: 15,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_first', code: 'FIRST15' },
+        },
+        {
+          coupon: {
+            id: 'coupon_second',
+            percent_off: 5,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_second', code: 'SECOND5' },
+        },
+      ],
+    });
+    portalConfigurationsList.mockResolvedValue({ data: [DEFAULT_PORTAL_CONFIG] });
+    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_first_only' });
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    const createArgs = portalConfigurationsCreate.mock.calls[0][0];
+    expect(createArgs.business_profile.headline).toBe(
+      'Active discount: 15% off — FIRST15',
+    );
+    expect(createArgs.metadata.couponId).toBe('coupon_first');
+  });
+
+  it('prefers the customer-level discount over the subscription-level one when both exist', async () => {
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: {
+        coupon: {
+          id: 'coupon_customer',
+          percent_off: 30,
+          valid: true,
+        },
+        promotion_code: { id: 'promo_customer', code: 'CUSTOMER30' },
+      },
+    });
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: { id: 'coupon_sub', percent_off: 5, valid: true },
+          promotion_code: { id: 'promo_sub', code: 'SUB5' },
+        },
+      ],
+    });
+    portalConfigurationsList.mockResolvedValue({ data: [DEFAULT_PORTAL_CONFIG] });
+    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_customer_wins' });
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    // Customer-level coupon wins, so the subscription fetch is never
+    // even issued — keeps the portal-open hot path on a single Stripe
+    // call when nothing has changed for legacy tenants.
+    expect(subscriptionsRetrieve).not.toHaveBeenCalled();
+    const createArgs = portalConfigurationsCreate.mock.calls[0][0];
+    expect(createArgs.business_profile.headline).toBe(
+      'Active discount: 30% off — CUSTOMER30',
+    );
+    expect(createArgs.metadata.couponId).toBe('coupon_customer');
+  });
+
+  it('skips the subscription-discount lookup entirely when the tenant has no subscription id', async () => {
+    mockSubscriptionRow = {
+      stripe_customer_id: 'cus_portal_123',
+      stripe_subscription_id: null,
+    };
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: null,
+    });
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    expect(subscriptionsRetrieve).not.toHaveBeenCalled();
+    expect(portalConfigurationsCreate).not.toHaveBeenCalled();
+    const args = portalSessionsCreate.mock.calls[0][0];
+    expect('configuration' in args).toBe(false);
+  });
+
+  it('opens the portal without a configuration when neither customer nor subscription carry a discount', async () => {
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: null,
+    });
+    // subscriptionsRetrieve default returns `{ discounts: [] }` — no
+    // headline-eligible discount on either source.
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    expect(subscriptionsRetrieve).toHaveBeenCalledTimes(1);
+    expect(portalConfigurationsCreate).not.toHaveBeenCalled();
     const args = portalSessionsCreate.mock.calls[0][0];
     expect('configuration' in args).toBe(false);
   });

@@ -5,7 +5,11 @@ import type { PlanTier } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import type { TenantId } from '../../core/types';
-import { loadActiveCustomerDiscount, type UpgradeDiscount } from './effectiveRate';
+import {
+  loadActiveCustomerDiscount,
+  loadActiveSubscriptionDiscounts,
+  type UpgradeDiscount,
+} from './effectiveRate';
 
 const logger = createLogger('STRIPE_CHECKOUT');
 
@@ -443,26 +447,44 @@ export async function createPortalSession(params: {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT stripe_customer_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      `SELECT stripe_customer_id, stripe_subscription_id
+         FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
     await client.query('COMMIT');
 
     const customerId = rows[0]?.stripe_customer_id as string | undefined;
+    const subscriptionId = rows[0]?.stripe_subscription_id as string | undefined;
     if (!customerId) {
       throw new Error('No Stripe customer found for this tenant');
     }
 
-    // Resolve the active customer-level discount and, if present, the
-    // portal configuration that surfaces it as a headline. Both calls
-    // degrade silently (loadActiveCustomerDiscount already swallows its
-    // own errors and returns null) — a tenant must always be able to
-    // open their billing portal even when the discount lookup or
-    // configuration creation fails.
-    const discount = await loadActiveCustomerDiscount(stripe, customerId, {
+    // Resolve the active discount and, if present, the portal
+    // configuration that surfaces it as a headline. Both calls degrade
+    // silently (the loaders already swallow their own errors and
+    // return null/[]) — a tenant must always be able to open their
+    // billing portal even when the discount lookup or configuration
+    // creation fails.
+    //
+    // Modern tenants typically receive their coupon at the
+    // *subscription* level (`subscription.discounts[]`) rather than on
+    // the customer record itself. We check the customer first (so a
+    // legacy customer-scoped coupon still wins, matching the old
+    // behaviour) and then fall back to the first usable
+    // subscription-level discount so the much larger pool of tenants
+    // whose coupons live on the subscription also see the headline.
+    let discount = await loadActiveCustomerDiscount(stripe, customerId, {
       tenantId,
       surface: 'portal_session',
     });
+    if (!discount && subscriptionId) {
+      const subDiscounts = await loadActiveSubscriptionDiscounts(
+        stripe,
+        subscriptionId,
+        { tenantId, surface: 'portal_session' },
+      );
+      discount = subDiscounts[0] ?? null;
+    }
     const configurationId = await resolveDiscountedPortalConfigId(stripe, discount, {
       tenantId,
     });
