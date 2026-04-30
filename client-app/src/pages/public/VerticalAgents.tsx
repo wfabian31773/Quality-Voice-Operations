@@ -17,40 +17,40 @@ const agentMeta = [
     slug: 'azul-vision',
     icon: Eye,
     accent: 'bg-blue-600',
-    accentSoft: 'bg-blue-50',
-    accentText: 'text-blue-700',
+    accentSoft: 'bg-blue-50 dark:bg-blue-500/15',
+    accentText: 'text-blue-700 dark:text-blue-300',
     verticalLink: '/industries/healthcare',
   },
   {
     slug: 'medical-front-desk',
     icon: Stethoscope,
     accent: 'bg-emerald-600',
-    accentSoft: 'bg-emerald-50',
-    accentText: 'text-emerald-700',
+    accentSoft: 'bg-emerald-50 dark:bg-emerald-500/15',
+    accentText: 'text-emerald-700 dark:text-emerald-300',
     verticalLink: '/industries/healthcare',
   },
   {
     slug: 'dental-practice',
     icon: Smile,
     accent: 'bg-cyan-600',
-    accentSoft: 'bg-cyan-50',
-    accentText: 'text-cyan-700',
+    accentSoft: 'bg-cyan-50 dark:bg-cyan-500/15',
+    accentText: 'text-cyan-700 dark:text-cyan-300',
     verticalLink: '/industries/dental',
   },
   {
     slug: 'field-service',
     icon: Wrench,
     accent: 'bg-orange-600',
-    accentSoft: 'bg-orange-50',
-    accentText: 'text-orange-700',
+    accentSoft: 'bg-orange-50 dark:bg-orange-500/15',
+    accentText: 'text-orange-700 dark:text-orange-300',
     verticalLink: '/industries/home-services',
   },
   {
     slug: 'legal-intake',
     icon: Scale,
     accent: 'bg-amber-600',
-    accentSoft: 'bg-amber-50',
-    accentText: 'text-amber-700',
+    accentSoft: 'bg-amber-50 dark:bg-amber-500/15',
+    accentText: 'text-amber-700 dark:text-amber-300',
     verticalLink: '/industries/legal',
   },
   {
@@ -118,7 +118,7 @@ export default function VerticalAgents() {
               </Link>
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.BOOK_DEMO, '/industries/vertical-agents', 'hero')}
               >
                 {t('vertical_agents_page.hero.cta_secondary')}
@@ -154,7 +154,7 @@ export default function VerticalAgents() {
               return (
                 <RevealSection key={agent.slug} delay={i % 2 === 0 ? '' : 'scroll-delay-1'}>
                   <div
-                    className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col"
+                    className="bg-surface rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col"
                     onMouseEnter={() => trackVerticalEngagement(agent.slug, VERTICAL_ACTION.CARD_HOVER)}
                   >
                     <div className={`px-7 pt-7 pb-5 ${agent.accentSoft}`}>
@@ -206,7 +206,7 @@ export default function VerticalAgents() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -254,7 +254,7 @@ export default function VerticalAgents() {
               const Icon = deployStepIcons[i] || Sparkles;
               return (
                 <RevealSection key={step.title}>
-                  <div className="bg-white rounded-2xl border border-border/30 p-6 h-full">
+                  <div className="bg-surface rounded-2xl border border-border/30 p-6 h-full">
                     <div className="w-10 h-10 rounded-lg bg-surface-muted flex items-center justify-center mb-4">
                       <Icon className="h-5 w-5 text-text-primary" />
                     </div>
@@ -268,7 +268,7 @@ export default function VerticalAgents() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="bg-sidebar-bg text-white rounded-2xl p-8 lg:p-12">
@@ -310,7 +310,7 @@ export default function VerticalAgents() {
                     </Link>
                     <Link
                       to="/product/federated-ingest"
-                      className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
+                      className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10 dark:border-white/10"
                     >
                       {t('vertical_agents_page.spotlight.partner_alt')}
                     </Link>
@@ -347,7 +347,7 @@ export default function VerticalAgents() {
               </Link>
               <Link
                 to="/use-cases"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.SEE_USE_CASES, '/industries/vertical-agents', 'bottom-cta')}
               >
                 {t('vertical_agents_page.bottom_cta.cta_secondary')}

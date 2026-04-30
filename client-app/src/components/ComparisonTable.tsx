@@ -47,7 +47,7 @@ const competitors = [
 
 export default function ComparisonTable() {
   return (
-    <div className="bg-white rounded-2xl border border-border-strong/40 overflow-hidden shadow-sm">
+    <div className="bg-surface rounded-2xl border border-border-strong/40 overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px]">
           <thead>

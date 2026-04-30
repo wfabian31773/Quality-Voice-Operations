@@ -26,7 +26,7 @@ const certifications = [
 export default function Security() {
   useEffect(() => { trackPageView('/security'); }, []);
   return (
-    <div className="bg-white">
+    <div className="bg-surface">
       <SEO title="Security & Compliance — QVO" description="QVO security architecture, certifications, and compliance posture." canonicalPath="/security" />
       <section className="bg-sidebar-bg text-white py-20">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
@@ -42,7 +42,7 @@ export default function Security() {
         </div>
       </section>
 
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-surface">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-text-primary mb-8">Security controls</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -62,7 +62,7 @@ export default function Security() {
       <section className="py-16 bg-surface-secondary">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-text-primary mb-8">Compliance & certifications</h2>
-          <div className="bg-white rounded-xl border border-border/30 overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border/30 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-surface-secondary/50 border-b border-border/30">
                 <tr>
@@ -95,7 +95,7 @@ export default function Security() {
         </div>
       </section>
 
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-surface">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="font-display text-2xl font-bold text-text-primary mb-3">Data Processing Addendum</h2>
           <p className="text-text-primary/70 font-body mb-6 max-w-2xl mx-auto">

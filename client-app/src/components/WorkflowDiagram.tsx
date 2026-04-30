@@ -95,7 +95,7 @@ export default function WorkflowDiagram({
 
   return (
     <div
-      className={`rounded-2xl border border-border-strong/20 bg-white overflow-hidden transition-all duration-300 shadow-sm hover:shadow-lg hover:border-border-strong/30 ${compact ? 'p-5 lg:p-6' : 'p-6 lg:p-10'}`}
+      className={`rounded-2xl border border-border-strong/20 bg-surface overflow-hidden transition-all duration-300 shadow-sm hover:shadow-lg hover:border-border-strong/30 ${compact ? 'p-5 lg:p-6' : 'p-6 lg:p-10'}`}
       role="figure"
       aria-label={title ? `${title} workflow diagram` : 'Agent workflow diagram'}
     >

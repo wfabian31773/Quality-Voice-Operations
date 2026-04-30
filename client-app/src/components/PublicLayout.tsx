@@ -142,7 +142,7 @@ export default function PublicLayout() {
   return (
     <div className="public-surface min-h-screen flex flex-col bg-surface-secondary font-body text-text-primary">
       <header
-        className="bg-sidebar-bg text-white sticky top-0 z-50 border-b border-white/5"
+        className="bg-sidebar-bg text-white sticky top-0 z-50 border-b border-white/5 dark:border-white/5"
         style={{ boxShadow: 'var(--elevation-1)' }}
       >
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -163,8 +163,8 @@ export default function PublicLayout() {
                       to={item.to}
                       className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
                         isItemActive(item)
-                          ? 'bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                          ? 'bg-white/15 dark:bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
                       }`}
                     >
                       {t(item.i18nKey)}
@@ -183,8 +183,8 @@ export default function PublicLayout() {
                       onMouseEnter={() => setOpenDropdown(item.id)}
                       className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1 ${
                         isItemActive(item) || isOpen
-                          ? 'bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                          ? 'bg-white/15 dark:bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
                       }`}
                     >
                       {t(item.i18nKey)}
@@ -263,7 +263,7 @@ export default function PublicLayout() {
                 onClick={toggleTheme}
                 aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
                 aria-pressed={dark}
-                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors duration-[var(--motion-fast)]"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10 transition-colors duration-[var(--motion-fast)]"
               >
                 {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
@@ -275,7 +275,7 @@ export default function PublicLayout() {
               </Link>
               <Link
                 to="/book-demo"
-                className="text-sm font-medium text-white/90 hover:text-white border border-white/20 hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
+                className="text-sm font-medium text-white/90 hover:text-white border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
               >
                 {t('actions.book_demo')}
               </Link>
@@ -293,12 +293,12 @@ export default function PublicLayout() {
                 onClick={toggleTheme}
                 aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
                 aria-pressed={dark}
-                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/75 hover:text-white hover:bg-white/10 transition-colors"
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10 transition-colors"
               >
                 {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
               <button
-                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/80 hover:text-white hover:bg-white/10 dark:hover:bg-white/10 transition-colors"
                 onClick={() => setMobileOpen(!mobileOpen)}
                 aria-label={t('actions.open_menu')}
                 aria-expanded={mobileOpen}
@@ -310,7 +310,7 @@ export default function PublicLayout() {
         </div>
 
         {mobileOpen && (
-          <div className="lg:hidden border-t border-white/10 bg-sidebar-bg">
+          <div className="lg:hidden border-t border-white/10 dark:border-white/10 bg-sidebar-bg">
             <div className="px-6 py-4 space-y-1">
               {navItems.map((item) => {
                 if (item.kind === 'link') {
@@ -321,8 +321,8 @@ export default function PublicLayout() {
                       onClick={() => setMobileOpen(false)}
                       className={`block px-3 py-2.5 text-sm font-medium rounded-lg ${
                         isItemActive(item)
-                          ? 'bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                          ? 'bg-white/15 dark:bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
                       }`}
                     >
                       {t(item.i18nKey)}
@@ -339,8 +339,8 @@ export default function PublicLayout() {
                       aria-expanded={isExpanded}
                       className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg ${
                         isItemActive(item)
-                          ? 'bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10'
+                          ? 'bg-white/15 dark:bg-white/15 text-white'
+                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
                       }`}
                     >
                       <span>{t(item.i18nKey)}</span>
@@ -350,7 +350,7 @@ export default function PublicLayout() {
                       />
                     </button>
                     {isExpanded && (
-                      <div className="pl-3 mt-1 mb-2 space-y-2 border-l border-white/10 ml-3">
+                      <div className="pl-3 mt-1 mb-2 space-y-2 border-l border-white/10 dark:border-white/10 ml-3">
                         {item.groups.map((group, gi) => (
                           <div key={gi}>
                             {group.label && (
@@ -365,8 +365,8 @@ export default function PublicLayout() {
                                 onClick={() => setMobileOpen(false)}
                                 className={`block px-3 py-2 text-sm rounded-lg ${
                                   location.pathname === sub.to
-                                    ? 'bg-white/15 text-white'
-                                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                                    ? 'bg-white/15 dark:bg-white/15 text-white'
+                                    : 'text-white/70 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
                                 }`}
                               >
                                 <span className="inline-flex items-center gap-2">
@@ -386,7 +386,7 @@ export default function PublicLayout() {
                   </div>
                 );
               })}
-              <div className="pt-3 border-t border-white/10 mt-3 space-y-2">
+              <div className="pt-3 border-t border-white/10 dark:border-white/10 mt-3 space-y-2">
                 <div className="flex items-center justify-center px-3 py-2">
                   <LanguageSwitcher variant="header" />
                 </div>
@@ -400,7 +400,7 @@ export default function PublicLayout() {
                 <Link
                   to="/book-demo"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-center text-sm font-medium text-white border border-white/20 hover:border-white/40 px-4 py-2.5 rounded-lg"
+                  className="block text-center text-sm font-medium text-white border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 px-4 py-2.5 rounded-lg"
                 >
                   {t('actions.book_demo')}
                 </Link>
@@ -478,7 +478,7 @@ export default function PublicLayout() {
             </div>
           </div>
 
-          <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="border-t border-white/10 dark:border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-white/50">
               {t('footer.rights', { year: new Date().getFullYear() })}
             </p>

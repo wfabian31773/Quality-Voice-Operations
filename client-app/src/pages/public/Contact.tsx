@@ -62,7 +62,7 @@ export default function Contact() {
           <div className="grid lg:grid-cols-5 gap-12">
             <div className="lg:col-span-3">
               {submitted ? (
-                <div className="bg-white rounded-2xl border border-border/50 p-12 text-center">
+                <div className="bg-surface rounded-2xl border border-border/50 p-12 text-center">
                   <div className="w-14 h-14 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-6">
                     <CheckCircle2 className="h-7 w-7 text-success" />
                   </div>
@@ -74,7 +74,7 @@ export default function Contact() {
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-border/50 p-8 lg:p-10">
+                <form onSubmit={handleSubmit} className="bg-surface rounded-2xl border border-border/50 p-8 lg:p-10">
                   <h2 className="font-display text-xl font-bold text-text-primary mb-6">
                     {t('contact.form.title')}
                   </h2>
@@ -88,7 +88,7 @@ export default function Contact() {
                           required
                           value={form.name}
                           onChange={(e) => setForm({ ...form, name: e.target.value })}
-                          className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                          className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                           placeholder={t('contact.form.name_placeholder')}
                         />
                       </div>
@@ -100,7 +100,7 @@ export default function Contact() {
                           required
                           value={form.email}
                           onChange={(e) => setForm({ ...form, email: e.target.value })}
-                          className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                          className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                           placeholder={t('contact.form.email_placeholder')}
                         />
                       </div>
@@ -112,7 +112,7 @@ export default function Contact() {
                         type="text"
                         value={form.company}
                         onChange={(e) => setForm({ ...form, company: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                        className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                         placeholder={t('contact.form.company_placeholder')}
                       />
                     </div>
@@ -124,7 +124,7 @@ export default function Contact() {
                         rows={5}
                         value={form.message}
                         onChange={(e) => setForm({ ...form, message: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition resize-none"
+                        className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition resize-none"
                         placeholder={t('contact.form.message_placeholder')}
                       />
                     </div>
@@ -146,7 +146,7 @@ export default function Contact() {
             </div>
 
             <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl border border-border/50 p-7">
+              <div className="bg-surface rounded-2xl border border-border/50 p-7">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Mail className="h-4.5 w-4.5 text-primary" />
@@ -156,7 +156,7 @@ export default function Contact() {
                 <p className="text-sm text-text-primary/60 font-body">{t('contact.info.email_value')}</p>
               </div>
 
-              <div className="bg-white rounded-2xl border border-border/50 p-7">
+              <div className="bg-surface rounded-2xl border border-border/50 p-7">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Phone className="h-4.5 w-4.5 text-primary" />
@@ -166,7 +166,7 @@ export default function Contact() {
                 <p className="text-sm text-text-primary/60 font-body">{t('contact.info.phone_value')}</p>
               </div>
 
-              <div className="bg-white rounded-2xl border border-border/50 p-7">
+              <div className="bg-surface rounded-2xl border border-border/50 p-7">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <MapPin className="h-4.5 w-4.5 text-primary" />

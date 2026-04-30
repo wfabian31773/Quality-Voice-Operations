@@ -95,7 +95,7 @@ export default function SecurityPosture() {
   }, []);
 
   return (
-    <div className="bg-white">
+    <div className="bg-surface">
       <SEO
         title="Security Posture — QVO"
         description="QVO's compliance posture: SOC 2, HIPAA (with BAA), GDPR, CCPA, sub-processors, and data residency."
@@ -119,20 +119,20 @@ export default function SecurityPosture() {
           <div className="mt-6 flex flex-wrap gap-3 text-sm">
             <a
               href="/api/public/posture"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-medium"
+              className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 px-4 py-2 rounded-lg font-medium"
             >
               <Download className="h-4 w-4" />
               View JSON
             </a>
             <Link
               to="/security"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-medium"
+              className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 px-4 py-2 rounded-lg font-medium"
             >
               Security overview
             </Link>
             <Link
               to="/subprocessors"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-medium"
+              className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 px-4 py-2 rounded-lg font-medium"
             >
               Sub-processors
             </Link>
@@ -166,7 +166,7 @@ export default function SecurityPosture() {
         </section>
       ) : (
         <>
-          <section className="py-12 bg-white">
+          <section className="py-12 bg-surface">
             <div className="max-w-6xl mx-auto px-6 lg:px-8">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="font-display text-2xl font-bold text-text-primary">
@@ -221,7 +221,7 @@ export default function SecurityPosture() {
 
           <section className="py-12 bg-surface-secondary">
             <div className="max-w-6xl mx-auto px-6 lg:px-8 grid md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl border border-border/30 p-6">
+              <div className="bg-surface rounded-xl border border-border/30 p-6">
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle2 className="h-5 w-5 text-success" />
                   <h3 className="font-display text-lg font-semibold text-text-primary">
@@ -252,7 +252,7 @@ export default function SecurityPosture() {
                 </ul>
               </div>
 
-              <div className="bg-white rounded-xl border border-border/30 p-6">
+              <div className="bg-surface rounded-xl border border-border/30 p-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Map className="h-5 w-5 text-primary" />
                   <h3 className="font-display text-lg font-semibold text-text-primary">
@@ -270,7 +270,7 @@ export default function SecurityPosture() {
             </div>
           </section>
 
-          <section className="py-12 bg-white">
+          <section className="py-12 bg-surface">
             <div className="max-w-6xl mx-auto px-6 lg:px-8">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-display text-2xl font-bold text-text-primary">
@@ -289,7 +289,7 @@ export default function SecurityPosture() {
                   No active sub-processors are currently published.
                 </p>
               ) : (
-                <div className="bg-white rounded-xl border border-border/30 overflow-hidden">
+                <div className="bg-surface rounded-xl border border-border/30 overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-surface-secondary/50 border-b border-border/30">
                       <tr>
@@ -356,7 +356,7 @@ export default function SecurityPosture() {
                   <Link
                     key={d.url}
                     to={d.url}
-                    className="bg-white border border-border/30 hover:border-primary/40 rounded-lg p-4 flex items-center gap-3 transition-colors"
+                    className="bg-surface border border-border/30 hover:border-primary/40 rounded-lg p-4 flex items-center gap-3 transition-colors"
                   >
                     <FileText className="h-5 w-5 text-primary flex-shrink-0" />
                     <div className="min-w-0 flex-1">

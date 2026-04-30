@@ -19,7 +19,7 @@ const sections = [
 export default function Terms() {
   useEffect(() => { trackPageView('/terms'); }, []);
   return (
-    <div className="bg-white">
+    <div className="bg-surface">
       <SEO title="Terms of Service — QVO" description="QVO Terms of Service governing use of the platform." canonicalPath="/terms" />
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">

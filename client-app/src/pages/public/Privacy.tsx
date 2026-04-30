@@ -20,7 +20,7 @@ const sections = [
 export default function Privacy() {
   useEffect(() => { trackPageView('/privacy'); }, []);
   return (
-    <div className="bg-white">
+    <div className="bg-surface">
       <SEO title="Privacy Policy — QVO" description="How QVO collects, uses, and protects your data." canonicalPath="/privacy" />
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">

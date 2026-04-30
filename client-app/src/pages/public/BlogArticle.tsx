@@ -9,16 +9,16 @@ function renderMarkdown(md: string): string {
     .replace(/^## (.+)$/gm, '<h2 class="text-2xl font-bold text-text-primary mt-10 mb-4 font-display">$1</h2>')
     .replace(/^\*\*(.+?)\*\*$/gm, '<p class="font-semibold text-text-primary mt-4 mb-1">$1</p>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-600 leading-relaxed">$1</li>')
+    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-text-secondary leading-relaxed">$1</li>')
     .replace(/(<li.*<\/li>\n?)+/g, (match) => `<ul class="space-y-1.5 my-4">${match}</ul>`)
     .replace(/\|(.+)\|/g, (match) => {
       const cells = match.split('|').filter(Boolean).map((c) => c.trim());
       if (cells.every((c) => /^[-:]+$/.test(c))) return '';
-      const tag = match.includes('---') ? '' : cells.map((c) => `<td class="px-3 py-2 border border-gray-200 text-sm">${c}</td>`).join('');
+      const tag = match.includes('---') ? '' : cells.map((c) => `<td class="px-3 py-2 border border-border text-sm">${c}</td>`).join('');
       return tag ? `<tr>${tag}</tr>` : '';
     })
     .replace(/(<tr>.*<\/tr>\n?)+/g, (match) => `<table class="w-full border-collapse my-6">${match}</table>`)
-    .replace(/^(?!<[huptl])((?!\s*$).+)$/gm, '<p class="text-slate-600 leading-relaxed my-3">$1</p>')
+    .replace(/^(?!<[huptl])((?!\s*$).+)$/gm, '<p class="text-text-secondary leading-relaxed my-3">$1</p>')
     .replace(/\n{2,}/g, '\n');
 }
 
@@ -73,7 +73,7 @@ export default function BlogArticle() {
         </Link>
 
         {article.headerImage && (
-          <div className="rounded-2xl overflow-hidden mb-8 border border-gray-200">
+          <div className="rounded-2xl overflow-hidden mb-8 border border-border">
             <img
               src={article.headerImage}
               alt={`${article.title} header illustration`}
@@ -90,11 +90,11 @@ export default function BlogArticle() {
           <h1 className="font-display text-3xl md:text-4xl font-bold text-text-primary mt-3 mb-4">
             {article.title}
           </h1>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center gap-4 text-sm text-text-secondary">
             <span className="font-medium text-text-primary">{article.author}</span>
-            <span className="text-slate-300">|</span>
+            <span className="text-text-secondary/50">|</span>
             <span>{article.authorRole}</span>
-            <span className="text-slate-300">|</span>
+            <span className="text-text-secondary/50">|</span>
             <span className="flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
               {new Date(article.date).toLocaleDateString('en-US', {
@@ -115,11 +115,11 @@ export default function BlogArticle() {
           dangerouslySetInnerHTML={{ __html: renderMarkdown(article.content) }}
         />
 
-        <div className="flex flex-wrap gap-2 mt-10 pt-6 border-t border-gray-200">
+        <div className="flex flex-wrap gap-2 mt-10 pt-6 border-t border-border">
           {article.tags.map((tag) => (
             <span
               key={tag}
-              className="px-3 py-1 text-xs font-medium bg-gray-100 text-slate-600 rounded-full"
+              className="px-3 py-1 text-xs font-medium bg-surface-secondary text-text-secondary rounded-full"
             >
               {tag}
             </span>
@@ -128,7 +128,7 @@ export default function BlogArticle() {
       </article>
 
       {related.length > 0 && (
-        <section className="bg-gray-50 py-16">
+        <section className="bg-surface-secondary py-16">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
             <h2 className="font-display text-2xl font-bold text-text-primary mb-8">
               Related Articles
@@ -138,7 +138,7 @@ export default function BlogArticle() {
                 <Link
                   key={r.slug}
                   to={`/blog/${r.slug}`}
-                  className="group bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+                  className="group bg-surface rounded-xl border border-border p-6 hover:shadow-lg transition-shadow"
                 >
                   <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                     {r.category}
@@ -146,7 +146,7 @@ export default function BlogArticle() {
                   <h3 className="font-display text-lg font-bold text-text-primary mt-2 mb-2 group-hover:text-primary transition-colors">
                     {r.title}
                   </h3>
-                  <p className="text-sm text-slate-600 line-clamp-2 mb-3">
+                  <p className="text-sm text-text-secondary line-clamp-2 mb-3">
                     {r.excerpt}
                   </p>
                   <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">

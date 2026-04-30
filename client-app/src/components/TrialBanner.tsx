@@ -52,7 +52,7 @@ export default function TrialBanner() {
           containerClassName="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
           panelClassName="relative max-w-md w-full bg-surface rounded-2xl shadow-xl p-6 text-center border border-border"
         >
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-red-50 text-danger mb-4">
+          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-red-50 dark:bg-red-500/15 text-danger mb-4">
             <Lock className="h-7 w-7" />
           </div>
           <h2 className="text-xl font-bold font-display mb-2">Your trial has ended</h2>
@@ -95,7 +95,7 @@ export default function TrialBanner() {
         </div>
         <Link
           to="/billing"
-          className="shrink-0 inline-flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md text-xs font-semibold transition-colors"
+          className="shrink-0 inline-flex items-center gap-1.5 bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 px-3 py-1 rounded-md text-xs font-semibold transition-colors"
         >
           Upgrade now
         </Link>

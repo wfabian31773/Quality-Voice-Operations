@@ -231,7 +231,7 @@ export default function DocArticle() {
                 {adjacent.prev ? (
                   <Link
                     to={`/docs/${adjacent.prev.slug}`}
-                    className="group bg-white border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all"
+                    className="group bg-surface border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all"
                   >
                     <p className="text-xs text-text-primary/50 font-body mb-1">← Previous</p>
                     <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{translateMeta(adjacent.prev).title}</p>
@@ -240,7 +240,7 @@ export default function DocArticle() {
                 {adjacent.next ? (
                   <Link
                     to={`/docs/${adjacent.next.slug}`}
-                    className="group bg-white border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all sm:text-right"
+                    className="group bg-surface border border-border/50 rounded-xl p-4 hover:border-primary/40 hover:shadow-sm transition-all sm:text-right"
                   >
                     <p className="text-xs text-text-primary/50 font-body mb-1">Next →</p>
                     <p className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">{translateMeta(adjacent.next).title}</p>

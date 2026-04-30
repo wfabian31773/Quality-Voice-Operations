@@ -314,7 +314,7 @@ export default function WebsiteSalesWidget() {
   return (
     <>
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[380px] max-h-[560px] rounded-2xl overflow-hidden z-[999999] shadow-2xl flex flex-col bg-white border border-border-strong/20 animate-in slide-in-from-bottom-4 duration-300 max-[420px]:w-[calc(100vw-32px)] max-[420px]:right-4 max-[420px]:bottom-20">
+        <div className="fixed bottom-24 right-6 w-[380px] max-h-[560px] rounded-2xl overflow-hidden z-[999999] shadow-2xl flex flex-col bg-surface border border-border-strong/20 animate-in slide-in-from-bottom-4 duration-300 max-[420px]:w-[calc(100vw-32px)] max-[420px]:right-4 max-[420px]:bottom-20">
           <div className="bg-sidebar-bg px-5 py-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
@@ -341,14 +341,14 @@ export default function WebsiteSalesWidget() {
                   className={`max-w-[85%] px-3.5 py-2.5 rounded-xl text-sm leading-relaxed ${
                     msg.role === 'user'
                       ? 'bg-primary text-white rounded-br-sm'
-                      : 'bg-white text-text-primary border border-border-strong/20 rounded-bl-sm shadow-sm'
+                      : 'bg-surface text-text-primary border border-border-strong/20 rounded-bl-sm shadow-sm'
                   }`}
                 >
                   {msg.content}
                   {msg.actions && msg.actions.some(a => a.type === 'recommend_plan') && (
                     <div
                       className={`mt-2 pt-2 border-t ${
-                        msg.role === 'user' ? 'border-white/20' : 'border-border-strong/20'
+                        msg.role === 'user' ? 'border-white/20 dark:border-white/20' : 'border-border-strong/20'
                       }`}
                     >
                       {msg.actions.filter(a => a.type === 'recommend_plan').map((a, j) => {
@@ -422,7 +422,7 @@ export default function WebsiteSalesWidget() {
             {loading && (
               <div className="flex justify-start">
                 <div
-                  className="bg-white border border-border-strong/20 rounded-xl rounded-bl-sm px-4 py-3 shadow-sm"
+                  className="bg-surface border border-border-strong/20 rounded-xl rounded-bl-sm px-4 py-3 shadow-sm"
                   role="status"
                   aria-label="Assistant is typing a reply"
                 >
@@ -441,7 +441,7 @@ export default function WebsiteSalesWidget() {
                   <button
                     key={qa.label}
                     onClick={() => sendMessage(qa.message)}
-                    className="text-xs font-medium bg-white border border-primary/20 text-primary hover:bg-primary/5 px-3 py-1.5 rounded-full transition-colors"
+                    className="text-xs font-medium bg-surface border border-primary/20 text-primary hover:bg-primary/5 px-3 py-1.5 rounded-full transition-colors"
                   >
                     {qa.label}
                   </button>
@@ -452,7 +452,7 @@ export default function WebsiteSalesWidget() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-border-strong/20 p-3 bg-white shrink-0">
+          <div className="border-t border-border-strong/20 p-3 bg-surface shrink-0">
             {isListening && (
               <div className="flex items-center gap-2 mb-2 px-1">
                 <div className="flex items-center gap-[2px] h-4">

@@ -33,7 +33,7 @@ function CaseStudyCard({ study }: { study: CaseStudy }) {
   const m = study.metrics;
   return (
     <RevealSection>
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden hover:shadow-lg transition-shadow">
+      <div className="bg-surface rounded-2xl border border-border overflow-hidden hover:shadow-lg transition-shadow">
         <div className="bg-gradient-to-r from-sidebar-bg to-slate-700 p-6">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-medium text-primary bg-primary/20 px-2 py-0.5 rounded-full capitalize">
@@ -44,7 +44,7 @@ function CaseStudyCard({ study }: { study: CaseStudy }) {
           <h3 className="text-lg font-display font-bold text-white">{study.title}</h3>
         </div>
         <div className="p-6">
-          <p className="text-sm text-slate-600 mb-6 leading-relaxed">{study.summary}</p>
+          <p className="text-sm text-text-secondary mb-6 leading-relaxed">{study.summary}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard icon={Phone} label="Calls handled" value={m.totalCalls.toLocaleString()} tone="info" />
             <StatCard icon={TrendingUp} label="Automation" value={`${Math.round(m.automationRate * 100)}%`} tone="success" />
@@ -105,7 +105,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
           <p className="text-lg text-white/70">{study.summary}</p>
         </div>
       </section>
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-surface">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <h2 className="text-2xl font-display font-bold text-text-primary mb-8">Key Results</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
@@ -115,20 +115,20 @@ function CaseStudyDetail({ slug }: { slug: string }) {
             <StatCard icon={Star} label="Satisfaction" value={`${m.satisfactionScore}/5.0`} tone="warning" />
           </div>
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-slate-50 rounded-xl p-6">
+            <div className="bg-surface-secondary rounded-xl p-6">
               <h3 className="font-display font-semibold text-text-primary mb-3">Performance</h3>
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Avg response time</span><span className="font-medium">{m.avgResponseTime}s</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Days active</span><span className="font-medium">{m.daysActive}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Cost reduction</span><span className="font-medium text-emerald-600">{m.costSavingsPercent}%</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Avg response time</span><span className="font-medium text-text-primary">{m.avgResponseTime}s</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Days active</span><span className="font-medium text-text-primary">{m.daysActive}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Cost reduction</span><span className="font-medium text-emerald-600 dark:text-emerald-400">{m.costSavingsPercent}%</span></div>
               </div>
             </div>
-            <div className="bg-slate-50 rounded-xl p-6">
+            <div className="bg-surface-secondary rounded-xl p-6">
               <h3 className="font-display font-semibold text-text-primary mb-3">Business Impact</h3>
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Annual savings</span><span className="font-medium text-emerald-600">{formatDollars(m.monthlySavings * 12, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Total calls automated</span><span className="font-medium">{Math.round(m.totalCalls * m.automationRate).toLocaleString()}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-600">Company size</span><span className="font-medium capitalize">{study.companySize}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Annual savings</span><span className="font-medium text-emerald-600 dark:text-emerald-400">{formatDollars(m.monthlySavings * 12, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Total calls automated</span><span className="font-medium text-text-primary">{Math.round(m.totalCalls * m.automationRate).toLocaleString()}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Company size</span><span className="font-medium text-text-primary capitalize">{study.companySize}</span></div>
               </div>
             </div>
           </div>
@@ -138,7 +138,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-4">Get Results Like These</h2>
           <p className="text-white/80 mb-8">Start your free 14-day trial and see what QVO can do for your business.</p>
-          <Link to="/signup" className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors">
+          <Link to="/signup" className="inline-flex items-center gap-2 bg-surface text-primary hover:bg-surface-hover px-8 py-3.5 rounded-xl font-semibold transition-colors">
             Start Free Trial <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -205,7 +205,7 @@ export default function CaseStudies() {
                   { vertical: 'Home Services', name: 'Comfort First HVAC', metric: '$184K', label: 'recovered annually', summary: 'After-hours emergency calls now book directly into the dispatch queue without an on-call coordinator.' },
                   { vertical: 'Legal', name: 'Park & Associates', metric: '4.9 / 5', label: 'caller satisfaction', summary: 'Intake automation freed paralegals from screening calls so they could focus on case work.' },
                 ].map((s) => (
-                  <div key={s.name} className="bg-white border border-border/30 rounded-2xl p-6">
+                  <div key={s.name} className="bg-surface border border-border/30 rounded-2xl p-6">
                     <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">{s.vertical}</span>
                     <h3 className="font-display text-lg font-bold text-text-primary mt-4 mb-2">{s.name}</h3>
                     <div className="mb-3">
@@ -216,10 +216,10 @@ export default function CaseStudies() {
                   </div>
                 ))}
               </div>
-              <div className="text-center bg-white border border-border/30 rounded-2xl py-10 px-6">
+              <div className="text-center bg-surface border border-border/30 rounded-2xl py-10 px-6">
                 <BarChart3 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
                 <h3 className="text-lg font-display font-semibold text-text-primary mb-2">Detailed case studies coming soon</h3>
-                <p className="text-slate-500 mb-5 max-w-xl mx-auto text-sm">
+                <p className="text-text-secondary mb-5 max-w-xl mx-auto text-sm">
                   We are publishing in-depth stories from our healthcare, legal, and home-service customers. In the meantime, request a custom walkthrough.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
@@ -244,10 +244,10 @@ export default function CaseStudies() {
         </div>
       </section>
 
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-surface">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-text-primary mb-4">Ready to Be Our Next Success Story?</h2>
-          <p className="text-slate-600 mb-8">Start your free trial and see results within the first week.</p>
+          <p className="text-text-secondary mb-8">Start your free trial and see results within the first week.</p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link to="/signup" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Start Free Trial <ArrowRight className="h-4 w-4" />

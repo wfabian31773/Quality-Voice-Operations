@@ -81,7 +81,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Legal',
     channels: ['phone', 'web', 'sms'],
     icon: Scale,
-    color: 'bg-amber-100/80 text-amber-700 border-amber-200',
+    color: 'bg-amber-100/80 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30',
     avatar: '/assets/avatars/legal.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -90,7 +90,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: Wrench,
-    color: 'bg-orange-100/80 text-orange-700 border-orange-200',
+    color: 'bg-orange-100/80 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-500/30',
     avatar: '/assets/avatars/hvac.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -99,7 +99,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Sales & Marketing',
     channels: ['phone', 'sms'],
     icon: Megaphone,
-    color: 'bg-purple-100/80 text-purple-700 border-purple-200',
+    color: 'bg-purple-100/80 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-500/30',
     avatar: '/assets/avatars/collections.png',
     conversationRoles: [A, C, A, C, A, C, A],
   },
@@ -108,7 +108,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Support',
     channels: ['phone', 'web', 'sms'],
     icon: Users,
-    color: 'bg-blue-100/80 text-blue-700 border-blue-200',
+    color: 'bg-blue-100/80 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30',
     avatar: '/assets/avatars/customer-support.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -126,7 +126,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: Calendar,
-    color: 'bg-emerald-100/80 text-emerald-700 border-emerald-200',
+    color: 'bg-emerald-100/80 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30',
     avatar: '/assets/avatars/answering-service.png',
     conversationRoles: [A, C, A, C, A],
   },
@@ -135,7 +135,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: Building2,
-    color: 'bg-indigo-100/80 text-indigo-700 border-indigo-200',
+    color: 'bg-indigo-100/80 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30',
     conversationRoles: [C, A, C, A, C, A],
   },
   {
@@ -143,7 +143,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: UtensilsCrossed,
-    color: 'bg-rose-100/80 text-rose-700 border-rose-200',
+    color: 'bg-rose-100/80 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-500/30',
     conversationRoles: [C, A, C, A, C, A],
   },
   {
@@ -151,7 +151,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Sales & Marketing',
     channels: ['phone', 'web', 'sms'],
     icon: Home,
-    color: 'bg-amber-100/80 text-amber-700 border-amber-200',
+    color: 'bg-amber-100/80 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30',
     conversationRoles: [C, A, C, A, C, A],
   },
 ];
@@ -175,7 +175,7 @@ function ChannelBadge({ channel }: { channel: string }) {
   if (!info) return null;
   const Icon = info.icon;
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 text-text-primary/70 rounded border border-border">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-surface text-text-primary/70 rounded border border-border">
       <Icon className="h-3 w-3" />
       {t(`agents_page.channels.${info.i18nKey}`)}
     </span>
@@ -197,7 +197,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
   const escalationBehavior = t(`${base}.escalation_behavior`);
 
   return (
-    <div className="bg-white rounded-xl border border-border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+    <div className="bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
       <div className="p-6">
         <div className="flex items-start gap-4 mb-4">
           {agent.avatar ? (
@@ -263,7 +263,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
               <MessageSquare className="h-4 w-4 text-primary" />
               {t('agents_page.card.example_conversation')}
             </h4>
-            <div className="space-y-2.5 bg-white rounded-lg border border-border p-4">
+            <div className="space-y-2.5 bg-surface rounded-lg border border-border p-4">
               {conversationTexts.map((text, i) => {
                 const role: ConversationRole = agent.conversationRoles[i] ?? 'agent';
                 return (
@@ -374,7 +374,7 @@ export default function AgentsShowcase() {
               </Link>
               <Link
                 to="/demo"
-                className="inline-flex items-center justify-center gap-2 border border-white/25 hover:bg-white/10 text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
+                className="inline-flex items-center justify-center gap-2 border border-white/25 dark:border-white/25 hover:bg-white/10 dark:hover:bg-white/10 text-white font-semibold px-6 py-3.5 rounded-lg transition-colors text-sm"
                 onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, 'agents_hero')}
               >
                 {t('common.try_live_demo')}
@@ -396,7 +396,7 @@ export default function AgentsShowcase() {
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     activeCategory === cat
                       ? 'bg-sidebar-bg text-white shadow-sm'
-                      : 'bg-white text-text-primary/70 border border-border hover:border-sidebar-bg/40 hover:text-text-primary'
+                      : 'bg-surface text-text-primary/70 border border-border hover:border-sidebar-bg/40 hover:text-text-primary'
                   }`}
                 >
                   <CatIcon className="h-4 w-4" />
@@ -442,7 +442,7 @@ export default function AgentsShowcase() {
             </Link>
             <Link
               to="/pricing"
-              className="inline-flex items-center justify-center gap-2 border border-white/25 hover:bg-white/10 text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
+              className="inline-flex items-center justify-center gap-2 border border-white/25 dark:border-white/25 hover:bg-white/10 dark:hover:bg-white/10 text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-sm"
               onClick={() => trackCTAClick(CTA.VIEW_PRICING, 'agents_bottom')}
             >
               {t('agents_page.bottom_cta.view_pricing')}

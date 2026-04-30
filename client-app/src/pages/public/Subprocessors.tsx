@@ -29,7 +29,7 @@ export default function Subprocessors() {
   }, []);
 
   return (
-    <div className="bg-white">
+    <div className="bg-surface">
       <SEO title="Sub-processors — QVO" description="Third-party services QVO uses to deliver the platform." canonicalPath="/subprocessors" />
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
@@ -49,7 +49,7 @@ export default function Subprocessors() {
               Could not load sub-processors. Please try again later.
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-border/30 overflow-hidden">
+            <div className="bg-surface rounded-xl border border-border/30 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-surface-secondary/50 border-b border-border/30">
                   <tr>

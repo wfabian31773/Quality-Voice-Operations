@@ -37,7 +37,7 @@ export default function CalendarToolVisual({ visible }: CalendarToolVisualProps)
   const days = getDayLabels();
 
   return (
-    <div className="bg-white rounded-2xl border border-primary/20 p-6 animate-[fadeSlideIn_0.4s_ease-out]">
+    <div className="bg-surface rounded-2xl border border-primary/20 p-6 animate-[fadeSlideIn_0.4s_ease-out]">
       <div className="flex items-center gap-2 mb-4">
         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
           <Calendar className="h-4 w-4 text-primary" />

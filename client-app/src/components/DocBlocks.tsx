@@ -330,7 +330,7 @@ function LightboxHint({
       onTransitionEnd={(e) => {
         if (e.propertyName === 'opacity' && !visible) onDismiss();
       }}
-      className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full bg-white/15 backdrop-blur-sm text-white text-xs sm:text-sm font-body shadow-lg transition-opacity duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full bg-white/15 dark:bg-white/15 backdrop-blur-sm text-white text-xs sm:text-sm font-body shadow-lg transition-opacity duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     >
       {text}
     </button>
@@ -339,8 +339,8 @@ function LightboxHint({
 
 const calloutStyles = {
   info: { wrap: 'bg-primary/5 border-primary/20', icon: Info, iconClass: 'text-primary' },
-  tip: { wrap: 'bg-emerald-50 border-emerald-200', icon: Lightbulb, iconClass: 'text-emerald-600' },
-  warn: { wrap: 'bg-amber-50 border-amber-200', icon: AlertTriangle, iconClass: 'text-amber-600' },
+  tip: { wrap: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30', icon: Lightbulb, iconClass: 'text-emerald-600 dark:text-emerald-400' },
+  warn: { wrap: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30', icon: AlertTriangle, iconClass: 'text-amber-600 dark:text-amber-400' },
 };
 
 export function DocBlocks({
@@ -586,7 +586,7 @@ export function DocBlocks({
           type="button"
           onClick={(e) => { e.stopPropagation(); setZoomedIndex(null); }}
           aria-label="Close zoomed image"
-          className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
+          className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
         >
           <X className="h-5 w-5" />
         </button>
@@ -599,7 +599,7 @@ export function DocBlocks({
                 setZoomedIndex((i) => (i === null ? null : (i - 1 + images.length) % images.length));
               }}
               aria-label="Previous image"
-              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
             >
               <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
@@ -610,11 +610,11 @@ export function DocBlocks({
                 setZoomedIndex((i) => (i === null ? null : (i + 1) % images.length));
               }}
               aria-label="Next image"
-              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 rounded-full p-2 sm:p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white z-10"
             >
               <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-xs sm:text-sm text-white/80 bg-white/10 rounded-full px-3 py-1 font-body tabular-nums z-10">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-xs sm:text-sm text-white/80 bg-white/10 dark:bg-white/10 rounded-full px-3 py-1 font-body tabular-nums z-10">
               {zoomedIndex + 1} / {images.length}
             </div>
           </>

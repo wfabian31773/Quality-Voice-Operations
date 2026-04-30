@@ -56,7 +56,7 @@ export default function OnboardingChecklist() {
       </div>
 
       <div
-        className="w-full bg-white/10 rounded-full h-2 mb-5"
+        className="w-full bg-white/10 dark:bg-white/10 rounded-full h-2 mb-5"
         role="progressbar"
         aria-valuenow={Math.round(progress)}
         aria-valuemin={0}
@@ -89,7 +89,7 @@ export default function OnboardingChecklist() {
               {!done && (
                 <button
                   onClick={() => navigate(step.path)}
-                  className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
+                  className="text-xs bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
                 >
                   {step.cta} <ArrowRight className="h-3 w-3" />
                 </button>

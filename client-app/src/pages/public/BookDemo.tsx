@@ -168,7 +168,7 @@ export default function BookDemo() {
       <section className="py-12 lg:py-16">
         <div className="max-w-6xl mx-auto px-6 lg:px-8 grid lg:grid-cols-5 gap-8">
           <aside className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl border border-border/30 p-6">
+            <div className="bg-surface rounded-2xl border border-border/30 p-6">
               <h2 className="font-display text-lg font-bold text-text-primary mb-4">What to expect</h2>
               <ul className="space-y-4">
                 {benefits.map((b) => (
@@ -184,7 +184,7 @@ export default function BookDemo() {
                 ))}
               </ul>
             </div>
-            <div className="bg-white rounded-2xl border border-border/30 p-6">
+            <div className="bg-surface rounded-2xl border border-border/30 p-6">
               <p className="text-xs uppercase tracking-wider font-semibold text-text-primary/50 mb-3">Prefer self-serve?</p>
               <p className="text-sm text-text-primary/70 font-body mb-4">
                 Skip the demo and start your 14-day free trial — no credit card required.
@@ -202,7 +202,7 @@ export default function BookDemo() {
           <div className="lg:col-span-3">
             {submitted ? (
               <div className="space-y-5">
-                <div className="bg-white rounded-2xl border border-success/30 p-6 lg:p-8">
+                <div className="bg-surface rounded-2xl border border-success/30 p-6 lg:p-8">
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-success/15 flex items-center justify-center shrink-0">
                       <CheckCircle2 className="h-5 w-5 text-success" />
@@ -215,7 +215,7 @@ export default function BookDemo() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-2xl border border-border/30 overflow-hidden">
+                <div className="bg-surface rounded-2xl border border-border/30 overflow-hidden">
                   <div className="px-5 py-3 border-b border-border/30 flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-primary" />
                     <p className="text-sm font-display font-semibold text-text-primary">Choose a time</p>
@@ -249,7 +249,7 @@ export default function BookDemo() {
             ) : (
               <form
                 onSubmit={handleSubmit}
-                className="bg-white rounded-2xl border border-border/30 p-6 lg:p-8 space-y-5"
+                className="bg-surface rounded-2xl border border-border/30 p-6 lg:p-8 space-y-5"
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Calendar className="h-5 w-5 text-primary" />
@@ -303,7 +303,7 @@ export default function BookDemo() {
                       id="book-demo-team-size"
                       value={form.teamSize}
                       onChange={(e) => setForm({ ...form, teamSize: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-lg border border-border/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary bg-white"
+                      className="w-full px-3 py-2.5 rounded-lg border border-border/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary bg-surface"
                     >
                       {teamSizes.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
@@ -314,7 +314,7 @@ export default function BookDemo() {
                       id="book-demo-preferred-time"
                       value={form.preferredTime}
                       onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-lg border border-border/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary bg-white"
+                      className="w-full px-3 py-2.5 rounded-lg border border-border/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary bg-surface"
                     >
                       {timeWindows.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>

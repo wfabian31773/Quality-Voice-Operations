@@ -18,9 +18,9 @@ import {
 } from '../../data/ginBenchmarks';
 
 const STATUS_TONE: Record<GinBenchmarkStatus, string> = {
-  illustrative: 'bg-amber-100 text-amber-900 border-amber-300',
-  preview: 'bg-sky-100 text-sky-900 border-sky-300',
-  live: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+  illustrative: 'bg-amber-100 dark:bg-amber-500/20 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-500/40',
+  preview: 'bg-sky-100 dark:bg-sky-500/20 text-sky-900 dark:text-sky-200 border-sky-300 dark:border-sky-500/40',
+  live: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-500/40',
 };
 
 const STATUS_LABEL_KEY: Record<GinBenchmarkStatus, string> = {
@@ -150,7 +150,7 @@ export default function GlobalIntelligenceNetwork() {
               </Link>
               <Link
                 to="/security"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.READ_PRIVACY_MODEL, '/product/global-intelligence-network', 'hero')}
               >
                 {t('gin_page.hero.cta_secondary')}
@@ -179,7 +179,7 @@ export default function GlobalIntelligenceNetwork() {
           </RevealSection>
 
           <RevealSection>
-            <div className="max-w-5xl mx-auto bg-white rounded-2xl border border-border/30 overflow-hidden shadow-sm">
+            <div className="max-w-5xl mx-auto bg-surface rounded-2xl border border-border/30 overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-border/20 bg-surface-secondary/40 flex flex-wrap items-center justify-between gap-3">
                 <span
                   className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full border ${STATUS_TONE[status]}`}
@@ -231,7 +231,7 @@ export default function GlobalIntelligenceNetwork() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -285,7 +285,7 @@ export default function GlobalIntelligenceNetwork() {
               const Icon = howItWorksIcons[i] || ToggleRight;
               return (
                 <RevealSection key={step.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                  <div className="bg-white rounded-2xl border border-border/30 p-6 flex gap-4 h-full">
+                  <div className="bg-surface rounded-2xl border border-border/30 p-6 flex gap-4 h-full">
                     <div className="w-10 h-10 rounded-lg bg-surface-muted flex items-center justify-center shrink-0">
                       <Icon className="h-5 w-5 text-text-primary" />
                     </div>
@@ -301,7 +301,7 @@ export default function GlobalIntelligenceNetwork() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-start max-w-6xl mx-auto">
             <RevealSection>
@@ -348,16 +348,16 @@ export default function GlobalIntelligenceNetwork() {
                     </li>
                   ))}
                 </ul>
-                <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-3">
+                <div className="mt-6 pt-6 border-t border-white/10 dark:border-white/10 flex flex-wrap gap-3">
                   <Link
                     to="/security"
-                    className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
+                    className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10 dark:border-white/10"
                   >
                     {t('gin_page.control_plane.security_link')}
                   </Link>
                   <Link
                     to="/privacy"
-                    className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
+                    className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10 dark:border-white/10"
                   >
                     {t('gin_page.control_plane.privacy_link')}
                   </Link>
@@ -371,7 +371,7 @@ export default function GlobalIntelligenceNetwork() {
       <section className="py-20 lg:py-28 bg-surface-secondary">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
-            <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-border/30 p-8 lg:p-12 text-center">
+            <div className="max-w-4xl mx-auto bg-surface rounded-2xl border border-border/30 p-8 lg:p-12 text-center">
               <Layers className="h-9 w-9 text-primary mx-auto mb-5" />
               <h2 className="font-display text-2xl lg:text-3xl font-bold text-text-primary mb-4">
                 {t('gin_page.evolution_card.heading')}
@@ -417,7 +417,7 @@ export default function GlobalIntelligenceNetwork() {
               </Link>
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/product/global-intelligence-network', 'bottom-cta')}
               >
                 {t('gin_page.bottom_cta.cta_secondary')}

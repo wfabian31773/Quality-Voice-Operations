@@ -186,7 +186,7 @@ export default function Signup() {
               </p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="bg-surface rounded-2xl shadow-xl p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
                   <UserPlus className="h-5 w-5 text-white" />
@@ -199,7 +199,7 @@ export default function Signup() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (
-                  <div className="bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg border border-red-200">
+                  <div className="bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 text-sm px-3 py-2 rounded-lg border border-red-200 dark:border-red-500/30">
                     {error}
                   </div>
                 )}
@@ -212,7 +212,7 @@ export default function Signup() {
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     required
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.organization_name_placeholder')}
                   />
                 </div>
@@ -225,7 +225,7 @@ export default function Signup() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.email_placeholder')}
                   />
                 </div>
@@ -239,7 +239,7 @@ export default function Signup() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.password_min_8_placeholder')}
                   />
                 </div>
@@ -280,7 +280,7 @@ export default function Signup() {
                         {t('auth.billing_annual')}
                         <span
                           className={`text-[9px] font-semibold px-1 py-0.5 rounded-full ${
-                            isAnnual ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                            isAnnual ? 'bg-white/20 dark:bg-white/20 text-white' : 'bg-success/10 text-success'
                           }`}
                         >
                           −20%

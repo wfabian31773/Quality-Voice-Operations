@@ -15,14 +15,14 @@ interface Notification {
 }
 
 const TYPE_META: Record<string, { icon: typeof Bell; color: string; label: string }> = {
-  escalation: { icon: AlertCircle, color: 'text-danger bg-red-50', label: 'Escalations' },
-  billing: { icon: CreditCard, color: 'text-warning bg-amber-50', label: 'Billing' },
+  escalation: { icon: AlertCircle, color: 'text-danger bg-red-50 dark:bg-red-500/15', label: 'Escalations' },
+  billing: { icon: CreditCard, color: 'text-warning bg-amber-50 dark:bg-amber-500/15', label: 'Billing' },
   call: { icon: PhoneCall, color: 'text-primary bg-primary-light', label: 'Calls' },
-  sms: { icon: MessageSquare, color: 'text-blue-600 bg-blue-50', label: 'SMS' },
-  campaign: { icon: Megaphone, color: 'text-purple-600 bg-purple-50', label: 'Campaigns' },
-  integration: { icon: Wrench, color: 'text-orange-600 bg-orange-50', label: 'Integrations' },
-  integration_sms: { icon: Wrench, color: 'text-orange-600 bg-orange-50', label: 'Integrations' },
-  integration_recovery: { icon: CheckCircle2, color: 'text-emerald-600 bg-emerald-50', label: 'Integrations' },
+  sms: { icon: MessageSquare, color: 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/15', label: 'SMS' },
+  campaign: { icon: Megaphone, color: 'text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/15', label: 'Campaigns' },
+  integration: { icon: Wrench, color: 'text-orange-600 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15', label: 'Integrations' },
+  integration_sms: { icon: Wrench, color: 'text-orange-600 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15', label: 'Integrations' },
+  integration_recovery: { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15', label: 'Integrations' },
 };
 
 const FILTERS = ['all', 'escalation', 'billing', 'integration'] as const;

@@ -189,7 +189,7 @@ export default function MinutesPricingCalculator({
   const isAnnual = billingPeriod === 'annual';
 
   return (
-    <div className="bg-white rounded-2xl border border-border-strong/50 shadow-sm overflow-hidden">
+    <div className="bg-surface rounded-2xl border border-border-strong/50 shadow-sm overflow-hidden">
       <div className="p-6 lg:p-8 border-b border-border-strong/30 bg-surface-secondary/30">
         <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
           <div className="flex items-start gap-3">
@@ -208,7 +208,7 @@ export default function MinutesPricingCalculator({
             role="group"
             aria-label="Billing period"
             data-testid="calc-billing-toggle"
-            className="inline-flex items-center bg-white border border-border-strong/50 rounded-lg p-0.5 shrink-0"
+            className="inline-flex items-center bg-surface border border-border-strong/50 rounded-lg p-0.5 shrink-0"
           >
             <button
               type="button"
@@ -237,7 +237,7 @@ export default function MinutesPricingCalculator({
               Annual
               <span
                 className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                  isAnnual ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                  isAnnual ? 'bg-white/20 dark:bg-white/20 text-white' : 'bg-success/10 text-success'
                 }`}
               >
                 −20%

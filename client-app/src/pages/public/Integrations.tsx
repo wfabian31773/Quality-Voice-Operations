@@ -67,7 +67,7 @@ export default function Integrations() {
               </Link>
               <Link
                 to="/features"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.SEE_FEATURES, '/integrations', 'hero')}
               >
                 {t('integrations_page.hero.see_features')}
@@ -93,7 +93,7 @@ export default function Integrations() {
           <RevealSection>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
               {primaryIntegrations.map((int) => (
-                <div key={int.title} className="bg-white rounded-2xl border border-border/60 p-7 hover:border-primary/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                <div key={int.title} className="bg-surface rounded-2xl border border-border/60 p-7 hover:border-primary/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center gap-3 mb-4">
                     <BrandLogo provider={int.logoId} size={36} />
                     <span className="text-xs font-semibold font-display text-primary uppercase tracking-wide">{t(`integrations_page.categories.${int.categoryKey}`)}</span>
@@ -121,7 +121,7 @@ export default function Integrations() {
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {additionalIntegrations.map((int) => (
-                <div key={int.titleKey} className="bg-white rounded-2xl border border-border/50 p-6 hover:border-primary/30 hover:shadow-md transition-all duration-300">
+                <div key={int.titleKey} className="bg-surface rounded-2xl border border-border/50 p-6 hover:border-primary/30 hover:shadow-md transition-all duration-300">
                   <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                     <int.icon className="h-5 w-5 text-primary" />
                   </div>
@@ -134,7 +134,7 @@ export default function Integrations() {
         </div>
       </section>
 
-      <section className="bg-white py-20 lg:py-28">
+      <section className="bg-surface py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl mx-auto text-center">
             <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">

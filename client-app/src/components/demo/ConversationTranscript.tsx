@@ -28,7 +28,7 @@ export default function ConversationTranscript({ messages, isActive }: Conversat
   }, [messages]);
 
   return (
-    <div className="bg-white rounded-2xl border border-border-strong/50 p-6 flex flex-col h-full">
+    <div className="bg-surface rounded-2xl border border-border-strong/50 p-6 flex flex-col h-full">
       <div className="flex items-center gap-2 mb-4">
         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
           <Bot className="h-4 w-4 text-primary" />

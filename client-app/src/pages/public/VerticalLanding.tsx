@@ -18,7 +18,6 @@ interface VerticalConfig {
   slug: string;
   icon: typeof Phone;
   color: string;
-  colorLight: string;
   heroImage: string;
   heroOverlayAccent: string;
   demoAgent: string;
@@ -52,7 +51,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'healthcare',
     icon: Stethoscope,
     color: 'bg-blue-600',
-    colorLight: 'bg-blue-50',
     heroImage: '/industry-hero/healthcare.jpg',
     heroOverlayAccent: 'from-blue-500/20 to-primary/10',
     demoAgent: 'medical-intake',
@@ -61,7 +59,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'real-estate',
     icon: Home,
     color: 'bg-emerald-600',
-    colorLight: 'bg-emerald-50',
     heroImage: '/industry-hero/real-estate.jpg',
     heroOverlayAccent: 'from-emerald-500/20 to-primary/10',
     demoAgent: 'real-estate',
@@ -70,7 +67,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'legal',
     icon: Scale,
     color: 'bg-amber-600',
-    colorLight: 'bg-amber-50',
     heroImage: '/industry-hero/legal.jpg',
     heroOverlayAccent: 'from-amber-600/20 to-orange-500/10',
     demoAgent: 'legal-intake',
@@ -79,7 +75,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'home-services',
     icon: Wrench,
     color: 'bg-orange-600',
-    colorLight: 'bg-orange-50',
     heroImage: '/industry-hero/home-services.jpg',
     heroOverlayAccent: 'from-orange-500/20 to-amber-500/10',
     demoAgent: 'hvac-home-services',
@@ -88,7 +83,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'dental',
     icon: Smile,
     color: 'bg-cyan-600',
-    colorLight: 'bg-cyan-50',
     heroImage: '/industry-hero/dental.jpg',
     heroOverlayAccent: 'from-cyan-500/20 to-primary/10',
     demoAgent: 'dental-scheduling',
@@ -97,7 +91,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'veterinary',
     icon: PawPrint,
     color: 'bg-green-600',
-    colorLight: 'bg-green-50',
     heroImage: '/industry-hero/veterinary.jpg',
     heroOverlayAccent: 'from-green-500/20 to-primary/10',
     demoAgent: 'veterinary-scheduling',
@@ -106,7 +99,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'automotive',
     icon: Car,
     color: 'bg-slate-700',
-    colorLight: 'bg-slate-50',
     heroImage: '/industry-hero/automotive.jpg',
     heroOverlayAccent: 'from-slate-500/25 to-blue-500/10',
     demoAgent: 'automotive-service',
@@ -115,7 +107,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'finance',
     icon: Landmark,
     color: 'bg-indigo-700',
-    colorLight: 'bg-indigo-50',
     heroImage: '/industry-hero/finance.jpg',
     heroOverlayAccent: 'from-indigo-500/25 to-blue-500/10',
     demoAgent: 'finance-prospect',
@@ -124,7 +115,6 @@ const verticals: Record<string, VerticalConfig> = {
     slug: 'hospitality',
     icon: Hotel,
     color: 'bg-amber-700',
-    colorLight: 'bg-amber-50',
     heroImage: '/industry-hero/hospitality.jpg',
     heroOverlayAccent: 'from-amber-500/25 to-rose-500/10',
     demoAgent: 'hospitality-reservations',
@@ -231,7 +221,7 @@ export default function VerticalLanding() {
                 <Link
                   to={`/demo?agent=${config.demoAgent}`}
                   onClick={() => { trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'hero'); trackConversionEvent(CONVERSION_STAGE.DEMO_STARTED, `/industries/${config.slug}`); }}
-                  className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20"
+                  className="inline-flex items-center gap-2 bg-white/15 dark:bg-white/15 hover:bg-white/25 dark:hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20 dark:border-white/20"
                 >
                   {t('vertical_page.hero.try_demo')} <Phone className="h-4 w-4" />
                 </Link>
@@ -241,7 +231,7 @@ export default function VerticalLanding() {
             {/* Right-side floating stats card — desktop only */}
             <div className="hidden lg:flex justify-end">
               <div className="relative max-w-sm w-full">
-                <div className="rounded-2xl bg-sidebar-bg/70 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
+                <div className="rounded-2xl bg-sidebar-bg/70 backdrop-blur-md border border-white/15 dark:border-white/15 p-6 shadow-2xl">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
                     <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-success">{t('vertical_page.card.live_performance')}</span>
@@ -254,12 +244,12 @@ export default function VerticalLanding() {
                       </div>
                     ))}
                   </div>
-                  <div className="mt-5 pt-4 border-t border-white/10 flex items-center gap-2 text-[11px] text-white/70">
+                  <div className="mt-5 pt-4 border-t border-white/10 dark:border-white/10 flex items-center gap-2 text-[11px] text-white/70">
                     <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                     {t('vertical_page.card.from_customers_in', { vertical: verticalLower })}
                   </div>
                 </div>
-                <div className="absolute -bottom-3 -left-3 rounded-xl bg-white shadow-xl border border-slate-100 p-3 flex items-center gap-2.5 max-w-[220px]">
+                <div className="absolute -bottom-3 -left-3 rounded-xl bg-surface shadow-xl border border-border p-3 flex items-center gap-2.5 max-w-[220px]">
                   <div className={`w-8 h-8 rounded-lg ${config.color} flex items-center justify-center shrink-0`}>
                     <Icon className="h-4 w-4 text-white" />
                   </div>
@@ -274,7 +264,7 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-12 bg-white border-b border-slate-100">
+      <section className="py-12 bg-surface border-b border-border">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat) => (
@@ -302,9 +292,9 @@ export default function VerticalLanding() {
           <div className="grid md:grid-cols-2 gap-6">
             {painPoints.map((point, idx) => (
               <RevealSection key={point.title} delay={`delay-${idx * 100}`}>
-                <div className="bg-white rounded-2xl p-6 border border-slate-100 hover:shadow-lg transition-shadow">
+                <div className="bg-surface rounded-2xl p-6 border border-border hover:shadow-lg transition-shadow">
                   <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/15 flex items-center justify-center shrink-0 mt-0.5">
                       <Target className="h-4 w-4 text-red-500" />
                     </div>
                     <div>
@@ -319,7 +309,7 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-16">
@@ -391,7 +381,7 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
@@ -432,14 +422,14 @@ export default function VerticalLanding() {
             <Link
               to="/signup"
               onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'bottom-cta'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, `/industries/${config.slug}`, { cta: 'signup_bottom' }); }}
-              className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors"
+              className="inline-flex items-center gap-2 bg-surface text-primary hover:bg-surface-hover px-8 py-3.5 rounded-xl font-semibold transition-colors"
             >
               {t('vertical_page.bottom_cta.start_trial')} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to={`/demo?agent=${config.demoAgent}`}
               onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'bottom-cta')}
-              className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-8 py-3.5 rounded-xl font-semibold transition-colors backdrop-blur-sm"
+              className="inline-flex items-center gap-2 bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 text-white px-8 py-3.5 rounded-xl font-semibold transition-colors backdrop-blur-sm"
             >
               {t('vertical_page.bottom_cta.see_demo')} <Phone className="h-4 w-4" />
             </Link>

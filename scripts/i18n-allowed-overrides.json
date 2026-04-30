@@ -63,6 +63,8 @@
         "agents_page.categories.operations",
         "agents_page.categories.support",
         "agents_page.channels.sms",
+        "catalog.dental.title",
+        "catalog.federated-ingest.title",
         "contact.form.company_placeholder",
         "contact.form.name_placeholder",
         "contact.info.email_value",
@@ -491,6 +493,8 @@
       "marketing": [
         "agents_page.categories.legal",
         "agents_page.channels.sms",
+        "catalog.dental.title",
+        "catalog.legal.title",
         "contact.form.company_placeholder",
         "contact.form.name_placeholder",
         "contact.info.email_value",
@@ -685,6 +689,8 @@
       "marketing": [
         "agents_page.categories.support",
         "agents_page.channels.sms",
+        "catalog.docs.keywords",
+        "catalog.docs.title",
         "contact.form.company_placeholder",
         "contact.form.name_placeholder",
         "contact.hero.eyebrow",

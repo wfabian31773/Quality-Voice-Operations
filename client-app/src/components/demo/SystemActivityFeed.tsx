@@ -129,7 +129,7 @@ function getToolDetail(payload: Record<string, unknown> | null): string | null {
 
 export default function SystemActivityFeed({ events, isActive }: SystemActivityFeedProps) {
   return (
-    <div className="bg-white rounded-2xl border border-border-strong/50 p-6">
+    <div className="bg-surface rounded-2xl border border-border-strong/50 p-6">
       <div className="flex items-center gap-2 mb-4">
         <div className="w-8 h-8 rounded-lg bg-surface-muted flex items-center justify-center">
           <Activity className="h-4 w-4 text-text-primary" />

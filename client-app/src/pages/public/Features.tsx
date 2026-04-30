@@ -148,7 +148,7 @@ export default function Features() {
               </Link>
               <Link
                 to="/use-cases"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.SEE_USE_CASES, '/features', 'hero')}
               >
                 {t('common.see_use_cases')}
@@ -173,7 +173,7 @@ export default function Features() {
 
           <RevealSection>
             <div className="max-w-4xl mx-auto mb-16">
-              <div className="bg-white rounded-2xl border border-border/30 p-8 lg:p-10">
+              <div className="bg-surface rounded-2xl border border-border/30 p-8 lg:p-10">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {architectureBlocks.map((block) => (
                     <div
@@ -200,7 +200,7 @@ export default function Features() {
             {platformCapabilities.map((cap, i) => (
               <RevealSection key={cap.title} delay={i % 2 === 0 ? '' : 'scroll-delay-1'}>
                 <div
-                  className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow"
+                  className="bg-surface rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow"
                   onMouseEnter={() => trackFeatureView(cap.feature)}
                 >
                   <div className="p-8 lg:p-10">
@@ -231,7 +231,7 @@ export default function Features() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -288,7 +288,7 @@ export default function Features() {
               </Link>
               <Link
                 to="/demo"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/features', 'bottom-cta')}
               >
                 {t('common.try_live_demo')}

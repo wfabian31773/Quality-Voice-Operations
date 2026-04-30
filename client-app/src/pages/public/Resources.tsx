@@ -48,7 +48,7 @@ export default function Resources() {
               aria-label={t('resources.search_aria')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
+              className="w-full pl-11 pr-4 py-3 bg-white/10 dark:bg-white/10 border border-white/15 dark:border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
             />
           </div>
         </div>
@@ -71,7 +71,7 @@ export default function Resources() {
                   className={`text-left p-5 rounded-2xl border transition-all ${
                     activeCategory === cat.name
                       ? 'bg-primary/10 border-primary/30 shadow-sm'
-                      : 'bg-white border-border/50 hover:border-primary/30 hover:shadow-sm hover:-translate-y-0.5'
+                      : 'bg-surface border-border/50 hover:border-primary/30 hover:shadow-sm hover:-translate-y-0.5'
                   }`}
                 >
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
@@ -109,7 +109,7 @@ export default function Resources() {
                     <Link
                       key={page.slug}
                       to={page.path}
-                      className="group bg-white rounded-2xl border border-border/50 p-5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 transition-all"
+                      className="group bg-surface rounded-2xl border border-border/50 p-5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 transition-all"
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="w-9 h-9 rounded-lg bg-surface-muted flex items-center justify-center">
@@ -157,7 +157,7 @@ export default function Resources() {
                   <Link
                     key={guide.slug}
                     to={`/resources/${guide.slug}`}
-                    className="group bg-white rounded-2xl border border-border/50 p-7 hover:border-primary/30 hover:shadow-lg hover:-translate-y-1 transition-all"
+                    className="group bg-surface rounded-2xl border border-border/50 p-7 hover:border-primary/30 hover:shadow-lg hover:-translate-y-1 transition-all"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -191,7 +191,7 @@ export default function Resources() {
 
           {activeCategory === 'All' && !search && (
             <RevealSection className="mt-16">
-              <div className="bg-white rounded-2xl border border-border/50 p-8 flex flex-col md:flex-row items-center gap-6">
+              <div className="bg-surface rounded-2xl border border-border/50 p-8 flex flex-col md:flex-row items-center gap-6">
                 <div className="w-14 h-14 rounded-2xl bg-surface-muted flex items-center justify-center shrink-0">
                   <BookOpen className="h-7 w-7 text-text-primary" />
                 </div>

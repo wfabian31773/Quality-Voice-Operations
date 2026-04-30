@@ -40,7 +40,7 @@ export default function Blog() {
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                 activeCategory === cat
                   ? 'bg-primary text-white'
-                  : 'bg-white text-slate-600 hover:bg-gray-100 border border-gray-200'
+                  : 'bg-surface text-text-secondary hover:bg-surface-hover border border-border'
               }`}
             >
               {cat}
@@ -58,7 +58,7 @@ export default function Blog() {
               <Link
                 key={article.slug}
                 to={`/blog/${article.slug}`}
-                className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow"
+                className="group bg-surface rounded-xl border border-border overflow-hidden hover:shadow-lg transition-shadow"
               >
                 {article.headerImage && (
                   <div className="aspect-[16/9] overflow-hidden">

@@ -47,9 +47,9 @@ export default function LiveTranscriptMock() {
   return (
     <div className="relative">
       {/* Outer frame: simulated browser/window chrome */}
-      <div className="rounded-2xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/15 shadow-2xl backdrop-blur-sm overflow-hidden">
+      <div className="rounded-2xl bg-gradient-to-b from-white/[0.08] dark:from-white/[0.08] to-white/[0.02] dark:to-white/[0.02] border border-white/15 dark:border-white/15 shadow-2xl backdrop-blur-sm overflow-hidden">
         {/* Title bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-black/20">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 dark:border-white/10 bg-black/20">
           <div className="flex items-center gap-1.5" aria-hidden="true">
             <span className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
             <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
@@ -65,7 +65,7 @@ export default function LiveTranscriptMock() {
         </div>
 
         {/* Caller header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 bg-white/[0.02]">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 dark:border-white/10 bg-white/[0.02] dark:bg-white/[0.02]">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-success/60 flex items-center justify-center shadow-lg">
             <Phone className="h-4 w-4 text-white" />
           </div>
@@ -104,7 +104,7 @@ export default function LiveTranscriptMock() {
                   className={`inline-block rounded-xl px-3.5 py-2 text-sm leading-snug text-left ${
                     turn.speaker === 'agent'
                       ? 'bg-primary/15 border border-primary/25 text-white'
-                      : 'bg-white/10 border border-white/15 text-white/90'
+                      : 'bg-white/10 dark:bg-white/10 border border-white/15 dark:border-white/15 text-white/90'
                   }`}
                 >
                   {turn.text}
@@ -135,7 +135,7 @@ export default function LiveTranscriptMock() {
       </div>
 
       {/* Floating "action taken" card */}
-      <div className="absolute -bottom-5 -right-4 glass-card rounded-xl p-3.5 shadow-xl border border-white/15 bg-sidebar-bg/80 backdrop-blur-md max-w-[240px]">
+      <div className="absolute -bottom-5 -right-4 glass-card rounded-xl p-3.5 shadow-xl border border-white/15 dark:border-white/15 bg-sidebar-bg/80 backdrop-blur-md max-w-[240px]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-success/20 border border-success/30 flex items-center justify-center shrink-0">
             <Calendar className="w-4 h-4 text-success" />
@@ -148,7 +148,7 @@ export default function LiveTranscriptMock() {
       </div>
 
       {/* Floating outcome badge */}
-      <div className="absolute -top-4 -left-4 glass-card rounded-xl p-3 shadow-xl border border-white/15 bg-sidebar-bg/80 backdrop-blur-md">
+      <div className="absolute -top-4 -left-4 glass-card rounded-xl p-3 shadow-xl border border-white/15 dark:border-white/15 bg-sidebar-bg/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
             <CheckCircle2 className="w-3.5 h-3.5 text-primary" />

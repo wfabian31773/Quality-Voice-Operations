@@ -65,7 +65,7 @@ export default function UseCases() {
               </Link>
               <Link
                 to="/ai-agents"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.EXPLORE_AGENTS, '/use-cases', 'hero')}
               >
                 {t('common.explore_agents')}
@@ -96,7 +96,7 @@ export default function UseCases() {
             return (
               <RevealSection key={s.key}>
                 <div
-                  className="bg-white rounded-2xl border border-border/50 overflow-hidden"
+                  className="bg-surface rounded-2xl border border-border/50 overflow-hidden"
                   onMouseEnter={() => trackVerticalEngagement(title, VERTICAL_ACTION.VIEW)}
                 >
                   <div className="p-8 lg:p-10">
@@ -197,7 +197,7 @@ export default function UseCases() {
               </Link>
               <Link
                 to="/features"
-                className="inline-flex items-center gap-2 bg-white border border-border/50 hover:border-primary/30 text-text-primary font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"
+                className="inline-flex items-center gap-2 bg-surface border border-border/50 hover:border-primary/30 text-text-primary font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"
                 onClick={() => trackCTAClick(CTA.EXPLORE_PLATFORM, '/use-cases', 'mid-cta')}
               >
                 {t('use_cases.mid_cta.explore_features')}
@@ -226,7 +226,7 @@ export default function UseCases() {
             </Link>
             <Link
               to="/signup"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
+              className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors"
               onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, '/use-cases', 'bottom-cta')}
             >
               {t('common.start_free_trial')}

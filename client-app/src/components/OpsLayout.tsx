@@ -52,7 +52,7 @@ export default function OpsLayout() {
 
   const sidebar = (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-5 border-b border-white/10">
+      <div className="px-6 py-5 border-b border-white/10 dark:border-white/10">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase tracking-wider">Operations</span>
@@ -82,7 +82,7 @@ export default function OpsLayout() {
         ))}
       </nav>
 
-      <div className="px-3 py-4 border-t border-white/10 space-y-1">
+      <div className="px-3 py-4 border-t border-white/10 dark:border-white/10 space-y-1">
         <PortalSwitcher />
         <button
           onClick={toggle}

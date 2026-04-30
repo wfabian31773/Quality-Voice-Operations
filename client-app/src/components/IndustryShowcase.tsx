@@ -140,10 +140,10 @@ export default function IndustryShowcase() {
               {/* Content */}
               <div className="absolute inset-0 flex flex-col p-6 lg:p-7">
                 <div className="flex items-start justify-between">
-                  <div className={`w-11 h-11 rounded-xl bg-white/15 backdrop-blur-sm border border-white/25 flex items-center justify-center ring-2 ring-offset-0 ${ind.ringColor}`}>
+                  <div className={`w-11 h-11 rounded-xl bg-white/15 dark:bg-white/15 backdrop-blur-sm border border-white/25 dark:border-white/25 flex items-center justify-center ring-2 ring-offset-0 ${ind.ringColor}`}>
                     <Icon className="h-5 w-5 text-white" />
                   </div>
-                  <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-white/80 bg-white/10 backdrop-blur-sm border border-white/15 rounded-full px-2.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-white/80 bg-white/10 dark:bg-white/10 backdrop-blur-sm border border-white/15 dark:border-white/15 rounded-full px-2.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     Explore
                     <ArrowUpRight className="h-3 w-3" />
                   </div>
@@ -162,7 +162,7 @@ export default function IndustryShowcase() {
                     {ind.tagline}
                   </p>
 
-                  <div className="mt-4 flex items-center gap-3 pt-4 border-t border-white/15">
+                  <div className="mt-4 flex items-center gap-3 pt-4 border-t border-white/15 dark:border-white/15">
                     <div>
                       <p className="font-display text-2xl font-bold text-primary leading-none">{ind.stat.value}</p>
                       <p className="text-[10px] uppercase tracking-wider text-white/50 mt-1">{ind.stat.label}</p>

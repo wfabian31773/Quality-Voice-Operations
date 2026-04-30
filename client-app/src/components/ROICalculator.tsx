@@ -100,7 +100,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
       input: (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">Calls per month</span>
+            <span className="text-sm text-text-secondary">Calls per month</span>
             <span className="text-2xl font-display font-bold text-text-primary">{monthlyCallVolume.toLocaleString()}</span>
           </div>
           <input
@@ -110,9 +110,9 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={50}
             value={monthlyCallVolume}
             onChange={(e) => setMonthlyCallVolume(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-slate-400">
+          <div className="flex justify-between text-xs text-text-secondary">
             <span>50</span>
             <span>5,000</span>
           </div>
@@ -125,7 +125,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
       input: (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">Minutes per call</span>
+            <span className="text-sm text-text-secondary">Minutes per call</span>
             <span className="text-2xl font-display font-bold text-text-primary">{avgHandleTime} min</span>
           </div>
           <input
@@ -135,9 +135,9 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={0.5}
             value={avgHandleTime}
             onChange={(e) => setAvgHandleTime(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-slate-400">
+          <div className="flex justify-between text-xs text-text-secondary">
             <span>1 min</span>
             <span>15 min</span>
           </div>
@@ -150,7 +150,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
       input: (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">Hourly rate</span>
+            <span className="text-sm text-text-secondary">Hourly rate</span>
             <span className="text-2xl font-display font-bold text-text-primary">${agentHourlyCost}/hr</span>
           </div>
           <input
@@ -160,13 +160,13 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={1}
             value={agentHourlyCost}
             onChange={(e) => setAgentHourlyCost(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-slate-400">
+          <div className="flex justify-between text-xs text-text-secondary">
             <span>$10/hr</span>
             <span>$50/hr</span>
           </div>
-          <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
+          <p className="text-xs text-text-secondary pt-2 border-t border-border">
             Today this works out to about <span className="font-semibold text-text-primary">{formatCurrency((monthlyCallVolume * avgHandleTime / 60) * agentHourlyCost / Math.max(1, monthlyCallVolume))}</span> per call.
           </p>
         </div>
@@ -178,7 +178,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
       input: (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">% of calls handled by AI</span>
+            <span className="text-sm text-text-secondary">% of calls handled by AI</span>
             <span className="text-2xl font-display font-bold text-text-primary">{aiHandleRate}%</span>
           </div>
           <input
@@ -188,13 +188,13 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             step={5}
             value={aiHandleRate}
             onChange={(e) => setAiHandleRate(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-slate-400">
+          <div className="flex justify-between text-xs text-text-secondary">
             <span>20%</span>
             <span>95%</span>
           </div>
-          <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
+          <p className="text-xs text-text-secondary pt-2 border-t border-border">
             The remaining {100 - aiHandleRate}% stay with your team — escalations, complex cases, or VIP callers.
           </p>
         </div>
@@ -204,7 +204,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden">
+      <div className="bg-surface rounded-2xl border border-border shadow-lg overflow-hidden">
         {step < steps.length ? (
           <div className="p-8">
             <div className="flex items-center gap-3 mb-2">
@@ -216,7 +216,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
                   <div
                     key={idx}
                     className={`h-1.5 w-8 rounded-full transition-colors ${
-                      idx <= step ? 'bg-primary' : 'bg-slate-200'
+                      idx <= step ? 'bg-primary' : 'bg-border'
                     }`}
                   />
                 ))}
@@ -225,13 +225,13 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             <h3 className="text-xl font-display font-bold text-text-primary mt-6 mb-1">
               {steps[step].title}
             </h3>
-            <p className="text-sm text-slate-500 mb-8">{steps[step].description}</p>
+            <p className="text-sm text-text-secondary mb-8">{steps[step].description}</p>
             {steps[step].input}
             <div className="flex justify-between mt-8">
               <button
                 onClick={() => setStep(step - 1)}
                 disabled={step === 0}
-                className="flex items-center gap-1 text-sm text-slate-500 hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
@@ -246,45 +246,45 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         ) : (
           <div className="p-8">
             <h3 className="text-xl font-display font-bold text-text-primary mb-2">Your Projected Savings</h3>
-            <p className="text-sm text-slate-500 mb-8">
+            <p className="text-sm text-text-secondary mb-8">
               Based on {monthlyCallVolume.toLocaleString()} calls/month at {avgHandleTime} min each (≈{formatCurrency(results.currentCostPerCall)} per call), with QVO handling {aiHandleRate}% of volume.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              <div className="bg-emerald-50 rounded-xl p-5 text-center">
-                <DollarSign className="h-5 w-5 text-emerald-600 mx-auto mb-2" />
-                <div className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(results.monthlySavings)}</div>
-                <div className="text-xs text-emerald-600 mt-1">Monthly savings</div>
+              <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-5 text-center">
+                <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
+                <div className="text-2xl font-display font-bold text-emerald-700 dark:text-emerald-300">{formatCurrency(results.monthlySavings)}</div>
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">Monthly savings</div>
               </div>
-              <div className="bg-blue-50 rounded-xl p-5 text-center">
-                <TrendingUp className="h-5 w-5 text-blue-600 mx-auto mb-2" />
-                <div className="text-2xl font-display font-bold text-blue-700">{Math.round(results.annualROI)}%</div>
-                <div className="text-xs text-blue-600 mt-1">Annual ROI</div>
+              <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-5 text-center">
+                <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400 mx-auto mb-2" />
+                <div className="text-2xl font-display font-bold text-blue-700 dark:text-blue-300">{Math.round(results.annualROI)}%</div>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">Annual ROI</div>
               </div>
-              <div className="bg-purple-50 rounded-xl p-5 text-center">
-                <Clock className="h-5 w-5 text-purple-600 mx-auto mb-2" />
-                <div className="text-2xl font-display font-bold text-purple-700">{results.paybackDays} days</div>
-                <div className="text-xs text-purple-600 mt-1">Payback period</div>
+              <div className="bg-purple-50 dark:bg-purple-500/10 rounded-xl p-5 text-center">
+                <Clock className="h-5 w-5 text-purple-600 dark:text-purple-400 mx-auto mb-2" />
+                <div className="text-2xl font-display font-bold text-purple-700 dark:text-purple-300">{results.paybackDays} days</div>
+                <div className="text-xs text-purple-600 dark:text-purple-400 mt-1">Payback period</div>
               </div>
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-5 mb-8">
+            <div className="bg-surface-secondary rounded-xl p-5 mb-8">
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Current monthly cost (staff)</span>
+                  <span className="text-text-secondary">Current monthly cost (staff)</span>
                   <span className="font-medium text-text-primary">{formatCurrency(results.currentMonthlyCost)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Current cost per call</span>
+                  <span className="text-text-secondary">Current cost per call</span>
                   <span className="font-medium text-text-primary">{formatCurrency(results.currentCostPerCall)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">QVO monthly cost (incl. residual staff for {100 - aiHandleRate}%)</span>
+                  <span className="text-text-secondary">QVO monthly cost (incl. residual staff for {100 - aiHandleRate}%)</span>
                   <span className="font-medium text-primary">{formatCurrency(results.qvoMonthlyCost)}</span>
                 </div>
-                <div className="border-t border-slate-200 pt-3 flex justify-between text-sm font-semibold">
+                <div className="border-t border-border pt-3 flex justify-between text-sm font-semibold">
                   <span className="text-text-primary">Annual savings</span>
-                  <span className="text-emerald-600">{formatCurrency(results.annualSavings)}/year</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(results.annualSavings)}/year</span>
                 </div>
               </div>
             </div>
@@ -366,7 +366,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
               </Link>
               <button
                 onClick={() => { setStep(0); setEmailStatus('idle'); }}
-                className="flex items-center justify-center gap-2 text-slate-600 hover:text-text-primary px-6 py-3 rounded-xl font-medium transition-colors border border-slate-200"
+                className="flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary px-6 py-3 rounded-xl font-medium transition-colors border border-border"
               >
                 Recalculate
               </button>

@@ -196,7 +196,7 @@ export default function Landing() {
       ],
       example: t('landing.marketplace.hvac.example'),
       color: 'from-orange-100/80 to-accent/10',
-      iconBg: 'bg-orange-100 text-orange-700',
+      iconBg: 'bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300',
       avatar: '/assets/avatars/hvac.png',
     },
   ];
@@ -307,7 +307,7 @@ export default function Landing() {
                 </Link>
                 <Link
                   to="/product"
-                  className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
+                  className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 dark:border-white/15 hover:border-white/25 dark:hover:border-white/25 min-h-[44px]"
                   onClick={() => trackCTAClick(CTA.SEE_HOW_IT_WORKS, '/', 'hero')}
                 >
                   {t('common.see_how_it_works')}
@@ -321,7 +321,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="bg-sidebar-bg border-t border-white/5">
+      <section className="bg-sidebar-bg border-t border-white/5 dark:border-white/5">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             {socialProofStats.map((stat) => (
@@ -333,7 +333,7 @@ export default function Landing() {
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-6 pt-6 border-t border-white/5">
+          <div className="flex flex-wrap items-center justify-center gap-6 mt-6 pt-6 border-t border-white/5 dark:border-white/5">
             <span className="text-xs text-white/30 uppercase tracking-wider font-medium">{t('common.trusted_by')}</span>
             {industryLogos.map((logo) => (
               <div key={logo.name} className="flex items-center gap-1.5 opacity-40 hover:opacity-60 transition-opacity">
@@ -343,16 +343,16 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.soc2_in_progress')}
             </Link>
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.hipaa_ready')}
             </Link>
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.gdpr_compliant')}
             </Link>
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.aes_encryption')}
             </Link>
           </div>
@@ -376,7 +376,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
             {painPoints.map((point, i) => (
               <RevealSection key={point.title} delay={`scroll-delay-${i + 1}`}>
-                <div className="bg-white rounded-2xl border border-danger/10 p-6 hover:shadow-lg transition-shadow h-full">
+                <div className="bg-surface rounded-2xl border border-danger/10 p-6 hover:shadow-lg transition-shadow h-full">
                   <div className="w-11 h-11 rounded-xl bg-danger/10 flex items-center justify-center mb-4">
                     <point.icon className="h-5 w-5 text-danger" />
                   </div>
@@ -415,7 +415,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -444,12 +444,12 @@ export default function Landing() {
                   )}
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{agent.name}</h3>
                   <p className="text-sm text-text-primary/60 leading-relaxed font-body mb-3">{agent.desc}</p>
-                  <div className="bg-white/50 rounded-lg p-3 mb-4 border border-border/15">
+                  <div className="bg-surface-secondary rounded-lg p-3 mb-4 border border-border/15">
                     <p className="text-xs text-text-primary/70 font-body italic leading-relaxed">{agent.example}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {agent.capabilities.map((cap) => (
-                      <span key={cap} className="text-xs font-medium bg-white/70 text-text-primary/80 px-2.5 py-1 rounded-full border border-border/20">
+                      <span key={cap} className="text-xs font-medium bg-surface text-text-primary/80 px-2.5 py-1 rounded-full border border-border/20">
                         {cap}
                       </span>
                     ))}
@@ -511,7 +511,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featureGrid.map((f, i) => (
               <RevealSection key={f.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className="bg-white rounded-2xl p-7 border border-border/30 hover:border-primary/25 hover:shadow-lg transition-all h-full">
+                <div className="bg-surface rounded-2xl p-7 border border-border/30 hover:border-primary/25 hover:shadow-lg transition-all h-full">
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/15 to-sidebar-bg/10 flex items-center justify-center mb-4">
                     <f.icon className="h-5 w-5 text-primary" />
                   </div>
@@ -524,7 +524,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -571,7 +571,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white border-t border-border/20">
+      <section className="py-20 lg:py-28 bg-surface border-t border-border/20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-12">
@@ -614,7 +614,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-16 lg:py-20 bg-white">
+      <section className="py-16 lg:py-20 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
@@ -633,7 +633,7 @@ export default function Landing() {
                 { icon: Shield, label: t('landing.security.aes') },
                 { icon: BarChart3, label: t('landing.security.audit_logs') },
               ].map((badge) => (
-                <div key={badge.label} className="flex flex-col items-center text-center bg-white rounded-xl border border-border/30 p-5">
+                <div key={badge.label} className="flex flex-col items-center text-center bg-surface rounded-xl border border-border/30 p-5">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
                     <badge.icon className="h-5 w-5 text-primary" />
                   </div>
@@ -670,7 +670,7 @@ export default function Landing() {
               </Link>
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 hover:border-white/25 min-h-[44px]"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 dark:border-white/15 hover:border-white/25 dark:hover:border-white/25 min-h-[44px]"
                 onClick={() => trackCTAClick(CTA.BOOK_DEMO, '/', 'bottom-cta')}
               >
                 {t('common.book_a_demo')}

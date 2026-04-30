@@ -76,7 +76,7 @@ export default function TestimonialsCarousel() {
       onMouseEnter={() => { paused.current = true; }}
       onMouseLeave={() => { paused.current = false; }}
     >
-      <div className="bg-white rounded-2xl border border-border-strong/30 shadow-sm p-8 lg:p-12 relative overflow-hidden">
+      <div className="bg-surface rounded-2xl border border-border-strong/30 shadow-sm p-8 lg:p-12 relative overflow-hidden">
         <Quote className="absolute top-6 right-6 h-16 w-16 text-primary/10" />
         <div className="flex items-center gap-1 mb-6">
           {[...Array(5)].map((_, i) => (
@@ -102,7 +102,7 @@ export default function TestimonialsCarousel() {
         <button
           onClick={() => setIndex((i) => (i - 1 + testimonials.length) % testimonials.length)}
           aria-label="Previous testimonial"
-          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-text-primary hover:bg-primary hover:text-white hover:border-primary transition-colors"
+          className="w-10 h-10 rounded-full bg-surface border border-border-strong/40 flex items-center justify-center text-text-primary hover:bg-primary hover:text-white hover:border-primary transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -119,7 +119,7 @@ export default function TestimonialsCarousel() {
         <button
           onClick={() => setIndex((i) => (i + 1) % testimonials.length)}
           aria-label="Next testimonial"
-          className="w-10 h-10 rounded-full bg-white border border-border-strong/40 flex items-center justify-center text-text-primary hover:bg-primary hover:text-white hover:border-primary transition-colors"
+          className="w-10 h-10 rounded-full bg-surface border border-border-strong/40 flex items-center justify-center text-text-primary hover:bg-primary hover:text-white hover:border-primary transition-colors"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

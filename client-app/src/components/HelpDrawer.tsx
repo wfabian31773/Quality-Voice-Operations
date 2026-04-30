@@ -78,7 +78,7 @@ export function HelpDrawer() {
         onClose={() => setOpen(false)}
         ariaLabel="Help"
         containerClassName="fixed inset-0 z-50 flex justify-end"
-        panelClassName="relative w-full sm:w-[480px] h-full bg-white shadow-2xl flex flex-col focus:outline-none"
+        panelClassName="relative w-full sm:w-[480px] h-full bg-surface shadow-2xl flex flex-col focus:outline-none"
       >
         <aside className="flex flex-col h-full">
             <header className="px-5 py-4 border-b border-border-strong/40 flex items-center justify-between">
@@ -158,8 +158,8 @@ export function HelpDrawer() {
                 <div className="p-5">
                   {result?.success ? (
                     <div className="text-center py-8">
-                      <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                        <Check className="h-6 w-6 text-emerald-600" />
+                      <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center mb-4">
+                        <Check className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <h3 className="font-display text-lg font-bold text-text-primary mb-1">Message sent</h3>
                       <p className="text-sm text-text-primary/70 font-body">
@@ -182,7 +182,7 @@ export function HelpDrawer() {
                         <select
                           value={topic}
                           onChange={(e) => setTopic(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-border-strong/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 bg-white"
+                          className="w-full px-3 py-2 rounded-lg border border-border-strong/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 bg-surface"
                         >
                           <option value="question">General question</option>
                           <option value="bug">Something is broken</option>

@@ -110,7 +110,7 @@ Idempotency-Key: ext_call_8f02a7c1
               </Link>
               <Link
                 to="/contact"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.TALK_TO_ENGINEERING, '/product/federated-ingest', 'hero')}
               >
                 {t('federated_ingest_page.hero.cta_secondary')}
@@ -143,7 +143,7 @@ Idempotency-Key: ext_call_8f02a7c1
               return (
                 <RevealSection key={useCase.title} delay={`scroll-delay-${(i % 3) + 1}`}>
                   <div
-                    className="bg-white rounded-2xl border border-border/30 p-7 h-full hover:shadow-lg transition-shadow"
+                    className="bg-surface rounded-2xl border border-border/30 p-7 h-full hover:shadow-lg transition-shadow"
                     onMouseEnter={useCase.feature ? () => trackFeatureView(useCase.feature!) : undefined}
                   >
                     <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
@@ -159,7 +159,7 @@ Idempotency-Key: ext_call_8f02a7c1
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -197,15 +197,15 @@ Idempotency-Key: ext_call_8f02a7c1
 
             <RevealSection>
               <div className="bg-sidebar-bg rounded-2xl border border-sidebar-hover/40 overflow-hidden shadow-lg">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 dark:border-white/10">
                   <div className="flex items-center gap-2 text-white/60 text-xs font-mono">
                     <Code2 className="h-3.5 w-3.5" />
                     POST /ingest/calls
                   </div>
                   <div className="flex gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/20 dark:bg-white/20" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/20 dark:bg-white/20" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/20 dark:bg-white/20" />
                   </div>
                 </div>
                 <pre className="px-5 py-5 text-xs leading-relaxed text-white/85 font-mono overflow-x-auto">
@@ -241,7 +241,7 @@ Idempotency-Key: ext_call_8f02a7c1
               const Icon = platformBenefitIcons[i] || BarChart3;
               return (
                 <RevealSection key={benefit.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                  <div className="bg-white rounded-2xl border border-border/30 p-6 h-full hover:shadow-lg transition-shadow">
+                  <div className="bg-surface rounded-2xl border border-border/30 p-6 h-full hover:shadow-lg transition-shadow">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                       <Icon className="h-5 w-5 text-primary" />
                     </div>
@@ -255,7 +255,7 @@ Idempotency-Key: ext_call_8f02a7c1
         </div>
       </section>
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -303,13 +303,13 @@ Idempotency-Key: ext_call_8f02a7c1
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   to="/security"
-                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
+                  className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10 dark:border-white/10"
                 >
                   {t('federated_ingest_page.security_section.compliance_security_link')}
                 </Link>
                 <Link
                   to="/security/posture"
-                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10"
+                  className="inline-flex items-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-5 py-2.5 rounded-lg text-sm border border-white/10 dark:border-white/10"
                 >
                   {t('federated_ingest_page.security_section.compliance_posture_link')}
                 </Link>
@@ -344,7 +344,7 @@ Idempotency-Key: ext_call_8f02a7c1
               </Link>
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl transition-all text-sm border border-white/10 dark:border-white/10"
                 onClick={() => trackCTAClick(CTA.BOOK_PLATFORM_DEMO, '/product/federated-ingest', 'bottom-cta')}
               >
                 {t('federated_ingest_page.bottom_cta.cta_secondary')}

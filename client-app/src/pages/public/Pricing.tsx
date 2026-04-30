@@ -312,7 +312,7 @@ export default function Pricing() {
                 role="group"
                 aria-label="Billing period"
                 data-testid="pricing-billing-toggle"
-                className="inline-flex items-center bg-white border border-border-strong/50 rounded-lg p-0.5 shadow-sm"
+                className="inline-flex items-center bg-surface border border-border-strong/50 rounded-lg p-0.5 shadow-sm"
               >
                 <button
                   type="button"
@@ -341,7 +341,7 @@ export default function Pricing() {
                   {t('pricing.billing_toggle.annual')}
                   <span
                     className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                      isAnnual ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                      isAnnual ? 'bg-white/20 dark:bg-white/20 text-white' : 'bg-success/10 text-success'
                     }`}
                   >
                     {t('pricing.billing_toggle.save_badge')}
@@ -369,7 +369,7 @@ export default function Pricing() {
               <div
                 key={tier.key}
                 data-testid={`pricing-tier-${tier.key}`}
-                className={`relative bg-white rounded-2xl border p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group ${
+                className={`relative bg-surface rounded-2xl border p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group ${
                   tier.popular
                     ? 'border-primary ring-2 ring-primary/20 shadow-lg shadow-primary/10'
                     : 'border-border/50 hover:border-primary/30 hover:shadow-primary/5'
@@ -477,7 +477,7 @@ export default function Pricing() {
             <h2 className="font-display text-2xl font-bold text-text-primary mb-8 text-center">
               {t('pricing.compare.title')}
             </h2>
-            <div className="bg-white rounded-2xl border border-border/50 overflow-hidden shadow-sm">
+            <div className="bg-surface rounded-2xl border border-border/50 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -522,7 +522,7 @@ export default function Pricing() {
         </div>
       </section>
 
-      <section className="bg-white py-12 border-t border-border/30">
+      <section className="bg-surface py-12 border-t border-border/30">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
           <p className="text-center text-xs font-semibold text-text-primary/40 uppercase tracking-wider mb-6">
             {t('pricing.compliance.eyebrow')}
@@ -554,7 +554,7 @@ export default function Pricing() {
               {t('pricing.faq.subtitle')}
             </p>
           </div>
-          <div className="bg-white rounded-2xl border border-border/30 px-6 lg:px-8 shadow-sm">
+          <div className="bg-surface rounded-2xl border border-border/30 px-6 lg:px-8 shadow-sm">
             {faqs.map((faq, i) => (
               <FAQItem key={faq.q} q={faq.q} a={faq.a} id={String(i)} />
             ))}
@@ -572,7 +572,7 @@ export default function Pricing() {
         </div>
       </section>
 
-      <section className="bg-white py-14 border-t border-border/20">
+      <section className="bg-surface py-14 border-t border-border/20">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <LogosStrip title={t('pricing.logos.title')} />
         </div>
@@ -597,7 +597,7 @@ export default function Pricing() {
             </Link>
             <Link
               to="/signup"
-              className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] border border-white/15 hover:border-white/25 min-h-[44px]"
+              className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] border border-white/15 dark:border-white/15 hover:border-white/25 dark:hover:border-white/25 min-h-[44px]"
               onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_bottom')}
             >
               {t('common.start_free_trial')}

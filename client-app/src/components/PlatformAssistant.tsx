@@ -130,7 +130,7 @@ export default function PlatformAssistant() {
         <div className="fixed bottom-6 right-6 z-50 w-96 max-h-[600px] bg-surface border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
           <div className="bg-primary text-white px-5 py-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-white/20 dark:bg-white/20 flex items-center justify-center">
                 <Bot className="h-4 w-4" />
               </div>
               <div>
@@ -142,7 +142,7 @@ export default function PlatformAssistant() {
               {messages.length > 0 && (
                 <button
                   onClick={handleNewChat}
-                  className="text-white/60 hover:text-white text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded transition-colors"
+                  className="text-white/60 hover:text-white text-xs bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 px-2 py-1 rounded transition-colors"
                 >
                   New chat
                 </button>

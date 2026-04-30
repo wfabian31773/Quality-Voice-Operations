@@ -153,7 +153,7 @@ export default function GuideDetail() {
                   {adjacent.prev ? (
                     <Link
                       to={`/resources/${adjacent.prev.slug}`}
-                      className="group flex items-center gap-3 bg-white rounded-xl border border-border/50 p-4 hover:border-primary/30 hover:shadow-md transition-all flex-1"
+                      className="group flex items-center gap-3 bg-surface rounded-xl border border-border/50 p-4 hover:border-primary/30 hover:shadow-md transition-all flex-1"
                     >
                       <ArrowLeft className="h-4 w-4 text-text-primary/40 group-hover:text-primary transition-colors shrink-0" />
                       <div className="min-w-0">
@@ -167,7 +167,7 @@ export default function GuideDetail() {
                   {adjacent.next ? (
                     <Link
                       to={`/resources/${adjacent.next.slug}`}
-                      className="group flex items-center justify-end gap-3 bg-white rounded-xl border border-border/50 p-4 hover:border-primary/30 hover:shadow-md transition-all flex-1 text-right"
+                      className="group flex items-center justify-end gap-3 bg-surface rounded-xl border border-border/50 p-4 hover:border-primary/30 hover:shadow-md transition-all flex-1 text-right"
                     >
                       <div className="min-w-0">
                         <p className="text-xs text-text-primary/40 font-body">Next</p>

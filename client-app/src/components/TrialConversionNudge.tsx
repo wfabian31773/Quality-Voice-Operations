@@ -145,7 +145,7 @@ export default function TrialConversionNudge() {
         <X className="h-4 w-4" />
       </button>
       <div className="flex items-start gap-3">
-        <div className="p-2 bg-white/10 rounded-lg shrink-0">
+        <div className="p-2 bg-white/10 dark:bg-white/10 rounded-lg shrink-0">
           <Icon className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -153,7 +153,7 @@ export default function TrialConversionNudge() {
           <p className="text-xs text-white/80 mt-1">{nudge.message}</p>
           <button
             onClick={() => navigate('/billing')}
-            className="mt-3 text-xs bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-lg transition-colors font-medium"
+            className="mt-3 text-xs bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 px-4 py-1.5 rounded-lg transition-colors font-medium"
           >
             {nudge.ctaLabel}
           </button>

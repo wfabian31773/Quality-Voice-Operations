@@ -72,7 +72,7 @@ function WorkflowSection() {
   }, []);
 
   return (
-    <section className="bg-white py-20 lg:py-28 overflow-hidden">
+    <section className="bg-surface py-20 lg:py-28 overflow-hidden">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center mb-16">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
@@ -248,7 +248,7 @@ function IntegrationsSection() {
               {integrations.map((name) => (
                 <div
                   key={name}
-                  className="flex items-center gap-3 bg-white rounded-xl border border-border/30 px-4 py-3.5 hover:border-primary/30 hover:shadow-sm transition-all duration-200"
+                  className="flex items-center gap-3 bg-surface rounded-xl border border-border/30 px-4 py-3.5 hover:border-primary/30 hover:shadow-sm transition-all duration-200"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                     {name === customApi ? (
@@ -296,7 +296,7 @@ function SecuritySection() {
           {securityBadges.map((b) => (
             <div
               key={b.title}
-              className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-6 hover:bg-white/10 transition-all duration-300 group"
+              className="bg-white/5 dark:bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 dark:border-white/10 p-6 hover:bg-white/10 dark:hover:bg-white/10 transition-all duration-300 group"
             >
               <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4 group-hover:bg-primary/30 transition-colors">
                 <b.icon className="h-6 w-6 text-primary" />
@@ -387,7 +387,7 @@ export default function Product() {
           <RevealSection>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {capabilities.map((c) => (
-                <div key={c.title} className="bg-white rounded-2xl border border-border/50 p-7 hover:border-primary/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300 group">
+                <div key={c.title} className="bg-surface rounded-2xl border border-border/50 p-7 hover:border-primary/30 hover:shadow-md hover:-translate-y-1 transition-all duration-300 group">
                   <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-colors">
                     <c.icon className="h-5 w-5 text-primary" />
                   </div>
@@ -402,7 +402,7 @@ export default function Product() {
 
       <WorkflowSection />
 
-      <section className="py-16 lg:py-24 bg-white">
+      <section className="py-16 lg:py-24 bg-surface">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
@@ -468,7 +468,7 @@ export default function Product() {
               { src: '/assets/tools/sms-confirmation.png', title: t('product.tools_section.sms_title'), desc: t('product.tools_section.sms_desc') },
             ].map((tool) => (
               <RevealSection key={tool.title}>
-                <div className="bg-white rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow group">
+                <div className="bg-surface rounded-2xl border border-border/30 overflow-hidden hover:shadow-lg transition-shadow group">
                   <div className="aspect-[4/3] overflow-hidden">
                     <img
                       src={tool.src}
@@ -490,7 +490,7 @@ export default function Product() {
 
       <ScreenshotsSection />
 
-      <section className="py-20 lg:py-28 bg-white">
+      <section className="py-20 lg:py-28 bg-surface">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-14">
@@ -533,7 +533,7 @@ export default function Product() {
       <IntegrationsSection />
       <SecuritySection />
 
-      <section className="py-20 lg:py-24 bg-white">
+      <section className="py-20 lg:py-24 bg-surface">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <RevealSection>
             <div className="text-center mb-10">
