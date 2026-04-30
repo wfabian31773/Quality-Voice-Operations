@@ -990,7 +990,11 @@
       "tier_enterprise": "Enterprise",
       "pair_heading": "Principaux parcours de conversion",
       "pair_row": "{{from}} → {{to}} : {{count}} changements, {{amount}}/mois économisés",
-      "empty_pairs": "Aucun changement terminé sur les 30 derniers jours."
+      "empty_pairs": "Aucun changement terminé sur les 30 derniers jours.",
+      "pitch_heading": "Entonnoir par argumentaire",
+      "col_pitch": "Argumentaire",
+      "pitch_tier_switch": "Changement de plan",
+      "pitch_annual_only": "Facturation annuelle"
     },
     "discount_breakdown": {
       "title": "Entonnoir du badge de remise par coupon (30 j)",

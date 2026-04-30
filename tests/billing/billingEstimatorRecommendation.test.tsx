@@ -1,13 +1,22 @@
 // @vitest-environment happy-dom
 import * as React from 'react';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import BillingEstimator from '../../client-app/src/components/BillingEstimator';
+import BillingEstimator, {
+  type RecommendationEvent,
+} from '../../client-app/src/components/BillingEstimator';
 import type { PlanTier } from '../../shared/billing/planCatalog';
 
 void React;
 
 afterEach(() => cleanup());
+
+// Clear the impression-dedup sessionStorage between specs.
+beforeEach(() => {
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    window.sessionStorage.clear();
+  }
+});
 
 /**
  * UI tests for the BillingEstimator recommendation banner CTA.
@@ -245,6 +254,175 @@ describe('BillingEstimator recommendation CTA', () => {
       // Disabled buttons must not fire onClick — this guards against a
       // double-Checkout when the tenant taps the spinner impatiently.
       expect(calls).toEqual([]);
+    });
+  });
+
+  describe('pitch dimension on emitted analytics events', () => {
+    it('stamps pitch=tier-switch on the upgrade CTA click attribution', () => {
+      const events: RecommendationEvent[] = [];
+      const switchCalls: Array<{
+        tier: PlanTier;
+        attribution: { pitch: string; currentTier: string; recommendedTier: string };
+      }> = [];
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[280, 320, 300]}
+          onSwitchPlan={(tier, _interval, attribution) =>
+            switchCalls.push({
+              tier,
+              attribution: attribution as {
+                pitch: string;
+                currentTier: string;
+                recommendedTier: string;
+              },
+            })
+          }
+          onRecommendationEvent={(event) => events.push(event)}
+        />,
+      );
+
+      const impressions = events.filter((e) => e.type === 'impression');
+      expect(impressions).toHaveLength(1);
+      expect(impressions[0]!.pitch).toBe('tier-switch');
+      expect(impressions[0]!.currentTier).toBe('pro');
+      expect(impressions[0]!.recommendedTier).toBe('starter');
+
+      fireEvent.click(screen.getByTestId('billing-estimator-recommendation-cta'));
+
+      const clicks = events.filter((e) => e.type === 'click');
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0]!.pitch).toBe('tier-switch');
+      expect(switchCalls).toHaveLength(1);
+      expect(switchCalls[0]!.attribution.pitch).toBe('tier-switch');
+      expect(switchCalls[0]!.attribution.currentTier).toBe('pro');
+      expect(switchCalls[0]!.attribution.recommendedTier).toBe('starter');
+    });
+
+    it('fires an annual-only impression on the optimal branch when the tenant is monthly-billed and could save by going annual', () => {
+      const events: RecommendationEvent[] = [];
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+          currentBillingInterval="monthly"
+          onSwitchPlan={() => undefined}
+          onRecommendationEvent={(event) => events.push(event)}
+        />,
+      );
+
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-annual-pitch'),
+      ).toBeTruthy();
+
+      const impressions = events.filter((e) => e.type === 'impression');
+      expect(impressions).toHaveLength(1);
+      const impression = impressions[0]!;
+      expect(impression.pitch).toBe('annual-only');
+      expect(impression.currentTier).toBe('starter');
+      expect(impression.recommendedTier).toBe('starter');
+      expect(impression.monthlySavingsCents).toBeGreaterThan(0);
+    });
+
+    it('does not double-fire the annual-only impression on a re-render with the same dedup key', () => {
+      const events: RecommendationEvent[] = [];
+      const { rerender } = render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+          currentBillingInterval="monthly"
+          onSwitchPlan={() => undefined}
+          onRecommendationEvent={(event) => events.push(event)}
+        />,
+      );
+      rerender(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+          currentBillingInterval="monthly"
+          onSwitchPlan={() => undefined}
+          onRecommendationEvent={(event) => events.push(event)}
+          switchingPlan={null}
+        />,
+      );
+
+      const annualImpressions = events.filter(
+        (e) => e.type === 'impression' && e.pitch === 'annual-only',
+      );
+      expect(annualImpressions).toHaveLength(1);
+    });
+
+    it('suppresses the annual pitch impression and CTA when the tenant is already on annual billing', () => {
+      const events: RecommendationEvent[] = [];
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+          currentBillingInterval="annual"
+          onSwitchPlan={() => undefined}
+          onRecommendationEvent={(event) => events.push(event)}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('billing-estimator-recommendation-annual-pitch'),
+      ).toBeNull();
+      expect(
+        screen.queryByTestId(
+          'billing-estimator-recommendation-annual-pitch-cta',
+        ),
+      ).toBeNull();
+      expect(events.filter((e) => e.pitch === 'annual-only')).toEqual([]);
+    });
+
+    it('stamps pitch=annual-only on the optimal-branch annual CTA click attribution', () => {
+      const events: RecommendationEvent[] = [];
+      const switchCalls: Array<{
+        tier: PlanTier;
+        interval: string;
+        attribution: { pitch: string; currentTier: string; recommendedTier: string };
+      }> = [];
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+          currentBillingInterval="monthly"
+          onSwitchPlan={(tier, interval, attribution) =>
+            switchCalls.push({
+              tier,
+              interval,
+              attribution: attribution as {
+                pitch: string;
+                currentTier: string;
+                recommendedTier: string;
+              },
+            })
+          }
+          onRecommendationEvent={(event) => events.push(event)}
+        />,
+      );
+
+      const cta = screen.getByTestId(
+        'billing-estimator-recommendation-annual-pitch-cta',
+      );
+      fireEvent.click(cta);
+
+      const clicks = events.filter((e) => e.type === 'click');
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0]!.pitch).toBe('annual-only');
+      expect(clicks[0]!.currentTier).toBe('starter');
+      expect(clicks[0]!.recommendedTier).toBe('starter');
+
+      expect(switchCalls).toHaveLength(1);
+      expect(switchCalls[0]!.tier).toBe('starter');
+      expect(switchCalls[0]!.interval).toBe('annual');
+      expect(switchCalls[0]!.attribution.pitch).toBe('annual-only');
     });
   });
 });

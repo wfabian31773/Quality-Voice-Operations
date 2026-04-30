@@ -1646,6 +1646,14 @@ router.get(
 //     every `switch_completed` row in the window.
 const RECOMMENDATION_TIERS = ['starter', 'pro', 'enterprise'] as const;
 type RecommendationTier = (typeof RECOMMENDATION_TIERS)[number];
+
+// Order drives dashboard row order; tier-switch first since every
+// pre-migration row falls into that bucket.
+const RECOMMENDATION_PITCHES = ['tier-switch', 'annual-only'] as const;
+type RecommendationPitch = (typeof RECOMMENDATION_PITCHES)[number];
+const isRecommendationPitch = (value: unknown): value is RecommendationPitch =>
+  typeof value === 'string' &&
+  (RECOMMENDATION_PITCHES as readonly string[]).includes(value);
 const isRecommendationTier = (value: unknown): value is RecommendationTier =>
   typeof value === 'string' &&
   (RECOMMENDATION_TIERS as readonly string[]).includes(value);
@@ -1782,6 +1790,57 @@ router.get(
       const tenantsClicked = Number(tenantRows[0]?.tenants_clicked ?? 0) || 0;
       const tenantsSwitched = Number(tenantRows[0]?.tenants_switched ?? 0) || 0;
 
+      // Per-pitch funnel (tier-switch vs annual-only) for the dashboard.
+      const { rows: pitchRows } = await withPrivilegedClient(async (client) => {
+        return client.query(
+          `SELECT
+             pitch,
+             COUNT(*) FILTER (WHERE event_type = 'impression')::bigint
+               AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'click')::bigint
+               AS clicks,
+             COUNT(*) FILTER (WHERE event_type = 'switch_completed')::bigint
+               AS completed_switches,
+             COALESCE(
+               SUM(monthly_savings_cents)
+                 FILTER (WHERE event_type = 'switch_completed'),
+               0
+             )::bigint AS monthly_savings_cents
+             FROM billing_recommendation_events
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY pitch`,
+        );
+      });
+      const pitchIndex = new Map<RecommendationPitch, {
+        impressions: number;
+        clicks: number;
+        completedSwitches: number;
+        monthlySavingsCents: number;
+      }>();
+      for (const raw of pitchRows as Array<{
+        pitch: string;
+        impressions: string;
+        clicks: string;
+        completed_switches: string;
+        monthly_savings_cents: string;
+      }>) {
+        if (!isRecommendationPitch(raw.pitch)) continue;
+        pitchIndex.set(raw.pitch, {
+          impressions: Number(raw.impressions) || 0,
+          clicks: Number(raw.clicks) || 0,
+          completedSwitches: Number(raw.completed_switches) || 0,
+          monthlySavingsCents: Number(raw.monthly_savings_cents) || 0,
+        });
+      }
+      // Emit both pitches in stable order so empty buckets still render.
+      const byPitch = RECOMMENDATION_PITCHES.map((pitch) => ({
+        pitch,
+        impressions: pitchIndex.get(pitch)?.impressions ?? 0,
+        clicks: pitchIndex.get(pitch)?.clicks ?? 0,
+        completedSwitches: pitchIndex.get(pitch)?.completedSwitches ?? 0,
+        monthlySavingsCents: pitchIndex.get(pitch)?.monthlySavingsCents ?? 0,
+      }));
+
       return res.json({
         windowDays: 30,
         impressions: totals.impressions,
@@ -1798,6 +1857,7 @@ router.get(
             ? totals.completedSwitches / totals.clicks
             : 0,
         byRecommendedTier,
+        byPitch,
         switchPairs,
       });
     } catch (err) {

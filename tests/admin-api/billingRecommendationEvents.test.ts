@@ -204,6 +204,51 @@ describe('POST /billing/recommendation-event', () => {
     expect(params[3]).toBe('pro');
     expect(params[4]).toBe(30000);
     expect(params[5]).toBe(6);
+    expect(params[9]).toBe('tier-switch');
+  });
+
+  it('persists pitch=annual-only when the client forwards the optimal-branch annual pitch attribution', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'click',
+        currentTier: 'pro',
+        recommendedTier: 'pro',
+        monthlySavingsCents: 4400,
+        trailingWindowMonths: 3,
+        pitch: 'annual-only',
+      });
+
+    expect(res.status).toBe(204);
+    const insertCall = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(insertCall).toBeDefined();
+    const [, params] = insertCall as [string, unknown[]];
+    expect(params[1]).toBe('click');
+    expect(params[2]).toBe('pro');
+    expect(params[3]).toBe('pro');
+    expect(params[9]).toBe('annual-only');
+  });
+
+  it('falls back to the tier-switch bucket on an unknown pitch value (server allowlist)', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'impression',
+        currentTier: 'starter',
+        recommendedTier: 'pro',
+        monthlySavingsCents: 0,
+        pitch: 'something-novel',
+      });
+
+    expect(res.status).toBe(204);
+    const insertCall = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(insertCall).toBeDefined();
+    const [, params] = insertCall as [string, unknown[]];
+    expect(params[9]).toBe('tier-switch');
   });
 
   it('drops a non-whitelisted trailingWindowMonths value to NULL rather than 400ing', async () => {
@@ -448,6 +493,22 @@ describe('GET /platform/billing-recommendations', () => {
           monthlySavingsCents: 0,
         },
       ],
+      byPitch: [
+        {
+          pitch: 'tier-switch',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+        {
+          pitch: 'annual-only',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+      ],
       switchPairs: [
         {
           currentTier: 'pro',
@@ -506,8 +567,122 @@ describe('GET /platform/billing-recommendations', () => {
           monthlySavingsCents: 0,
         },
       ],
+      byPitch: [
+        {
+          pitch: 'tier-switch',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+        {
+          pitch: 'annual-only',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+      ],
       switchPairs: [],
     });
+  });
+
+  it('splits the funnel by pitch (tier-switch vs annual-only) in the dashboard payload', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (/GROUP BY pitch\b/i.test(s)) {
+        return {
+          rows: [
+            {
+              pitch: 'tier-switch',
+              impressions: '80',
+              clicks: '12',
+              completed_switches: '5',
+              monthly_savings_cents: '300000',
+            },
+            {
+              pitch: 'annual-only',
+              impressions: '40',
+              clicks: '6',
+              completed_switches: '3',
+              monthly_savings_cents: '13200',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.byPitch).toEqual([
+      {
+        pitch: 'tier-switch',
+        impressions: 80,
+        clicks: 12,
+        completedSwitches: 5,
+        monthlySavingsCents: 300000,
+      },
+      {
+        pitch: 'annual-only',
+        impressions: 40,
+        clicks: 6,
+        completedSwitches: 3,
+        monthlySavingsCents: 13200,
+      },
+    ]);
+  });
+
+  it('drops rows with an unknown pitch from the per-pitch breakdown rather than mis-bucketing them', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (/GROUP BY pitch\b/i.test(s)) {
+        return {
+          rows: [
+            {
+              pitch: 'tier-switch',
+              impressions: '7',
+              clicks: '3',
+              completed_switches: '1',
+              monthly_savings_cents: '500',
+            },
+            {
+              pitch: 'mystery-pitch',
+              impressions: '99',
+              clicks: '99',
+              completed_switches: '99',
+              monthly_savings_cents: '999999',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.byPitch).toEqual([
+      {
+        pitch: 'tier-switch',
+        impressions: 7,
+        clicks: 3,
+        completedSwitches: 1,
+        monthlySavingsCents: 500,
+      },
+      {
+        pitch: 'annual-only',
+        impressions: 0,
+        clicks: 0,
+        completedSwitches: 0,
+        monthlySavingsCents: 0,
+      },
+    ]);
   });
 
   it('drops rows with non-whitelisted recommended_tier values from the per-tier breakdown', async () => {
@@ -616,6 +791,7 @@ describe('POST /billing/checkout — recommendation attribution validation', () 
           recommendedTier: 'pro',
           monthlySavingsCents: 25000,
           trailingWindowMonths: 6,
+          pitch: 'tier-switch',
         },
       });
 
@@ -627,7 +803,53 @@ describe('POST /billing/checkout — recommendation attribution validation', () 
       recommendedTier: 'pro',
       monthlySavingsCents: 25000,
       trailingWindowMonths: 6,
+      pitch: 'tier-switch',
     });
+  });
+
+  it('forwards pitch=annual-only on the optimal-branch annual upgrade so the webhook can attribute the conversion', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/checkout')
+      .send({
+        plan: 'pro',
+        interval: 'annual',
+        recommendation: {
+          currentTier: 'pro',
+          recommendedTier: 'pro',
+          monthlySavingsCents: 4400,
+          trailingWindowMonths: 3,
+          pitch: 'annual-only',
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const args = createCheckoutSessionMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(args.recommendation).toEqual({
+      currentTier: 'pro',
+      recommendedTier: 'pro',
+      monthlySavingsCents: 4400,
+      trailingWindowMonths: 3,
+      pitch: 'annual-only',
+    });
+  });
+
+  it('coerces an unknown pitch to tier-switch rather than dropping the recommendation snapshot entirely', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/checkout')
+      .send({
+        plan: 'pro',
+        interval: 'monthly',
+        recommendation: {
+          currentTier: 'enterprise',
+          recommendedTier: 'pro',
+          monthlySavingsCents: 25000,
+          pitch: 'something-novel',
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const args = createCheckoutSessionMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect((args.recommendation as { pitch: string }).pitch).toBe('tier-switch');
   });
 
   it('drops recommendation attribution when recommendedTier does not match the purchased plan', async () => {

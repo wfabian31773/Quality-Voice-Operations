@@ -13,6 +13,7 @@ export interface CheckoutRecommendationAttribution {
   recommendedTier: PlanTier;
   monthlySavingsCents: number;
   trailingWindowMonths?: number;
+  pitch: 'tier-switch' | 'annual-only';
 }
 
 /**
@@ -66,6 +67,7 @@ export async function createCheckoutSession(params: {
           recommendationCurrentTier: recommendation.currentTier,
           recommendationRecommendedTier: recommendation.recommendedTier,
           recommendationMonthlySavingsCents: String(recommendation.monthlySavingsCents),
+          recommendationPitch: recommendation.pitch,
           ...(recommendation.trailingWindowMonths !== undefined
             ? { recommendationTrailingWindowMonths: String(recommendation.trailingWindowMonths) }
             : {}),

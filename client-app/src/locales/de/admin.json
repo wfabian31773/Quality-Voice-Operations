@@ -990,7 +990,11 @@
       "tier_enterprise": "Enterprise",
       "pair_heading": "Wichtigste Wechselpfade",
       "pair_row": "{{from}} → {{to}}: {{count}} Wechsel, {{amount}}/Monat gespart",
-      "empty_pairs": "Noch keine abgeschlossenen Wechsel in den letzten 30 Tagen."
+      "empty_pairs": "Noch keine abgeschlossenen Wechsel in den letzten 30 Tagen.",
+      "pitch_heading": "Funnel nach Pitch",
+      "col_pitch": "Pitch",
+      "pitch_tier_switch": "Tarifwechsel",
+      "pitch_annual_only": "Jahresabrechnung"
     },
     "discount_breakdown": {
       "title": "Rabatt-Badge-Funnel nach Coupon (30 T.)",

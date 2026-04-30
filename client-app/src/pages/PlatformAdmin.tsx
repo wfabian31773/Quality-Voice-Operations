@@ -3968,6 +3968,13 @@ interface RecommendationStatsShape {
     completedSwitches: number;
     monthlySavingsCents: number;
   }>;
+  byPitch: Array<{
+    pitch: 'tier-switch' | 'annual-only';
+    impressions: number;
+    clicks: number;
+    completedSwitches: number;
+    monthlySavingsCents: number;
+  }>;
   switchPairs: Array<{
     currentTier: RecommendationTier;
     recommendedTier: RecommendationTier;
@@ -4012,6 +4019,30 @@ function RecommendationBreakdownPanel({
   const totalCompleted = stats?.completedSwitches ?? 0;
   const totalSavings = stats?.totalMonthlySavingsCents ?? 0;
   const switchPairs = stats?.switchPairs ?? [];
+
+  const pitchOrder: Array<'tier-switch' | 'annual-only'> = [
+    'tier-switch',
+    'annual-only',
+  ];
+  const pitchRowsByKey = new Map(
+    (stats?.byPitch ?? []).map((row) => [row.pitch, row]),
+  );
+  const pitchRows = pitchOrder.map(
+    (pitch) =>
+      pitchRowsByKey.get(pitch) ?? {
+        pitch,
+        impressions: 0,
+        clicks: 0,
+        completedSwitches: 0,
+        monthlySavingsCents: 0,
+      },
+  );
+  const pitchLabel = (pitch: 'tier-switch' | 'annual-only'): string =>
+    adminT(
+      pitch === 'annual-only'
+        ? 'platform_admin.recommendation_breakdown.pitch_annual_only'
+        : 'platform_admin.recommendation_breakdown.pitch_tier_switch',
+    );
 
   return (
     <section
@@ -4117,6 +4148,70 @@ function RecommendationBreakdownPanel({
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-text-primary">
+          {adminT('platform_admin.recommendation_breakdown.pitch_heading')}
+        </h3>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
+                <th className="py-2 pr-4 font-medium">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_pitch',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_impressions',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_clicks',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_completed',
+                  )}
+                </th>
+                <th className="py-2 pr-0 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_savings',
+                  )}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {pitchRows.map((row) => (
+                <tr
+                  key={row.pitch}
+                  data-testid={`recommendation-pitch-row-${row.pitch}`}
+                  className="border-b border-border last:border-b-0"
+                >
+                  <td className="py-2 pr-4 font-medium text-text-primary">
+                    {pitchLabel(row.pitch)}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                    {row.impressions}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                    {row.clicks}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-primary">
+                    {row.completedSwitches}
+                  </td>
+                  <td className="py-2 pr-0 text-right tabular-nums text-text-primary">
+                    {formatCents(row.monthlySavingsCents)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="mt-5">
@@ -4380,6 +4475,13 @@ export default function PlatformAdmin() {
           completionRate: number;
           byRecommendedTier: Array<{
             recommendedTier: 'starter' | 'pro' | 'enterprise';
+            impressions: number;
+            clicks: number;
+            completedSwitches: number;
+            monthlySavingsCents: number;
+          }>;
+          byPitch: Array<{
+            pitch: 'tier-switch' | 'annual-only';
             impressions: number;
             clicks: number;
             completedSwitches: number;

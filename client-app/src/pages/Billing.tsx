@@ -537,6 +537,7 @@ export default function Billing() {
           currentTier: event.currentTier,
           recommendedTier: event.recommendedTier,
           monthlySavingsCents: event.monthlySavingsCents,
+          pitch: event.pitch,
           ...(event.trailingWindowMonths !== undefined
             ? { trailingWindowMonths: event.trailingWindowMonths }
             : {}),

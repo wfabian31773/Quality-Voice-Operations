@@ -990,7 +990,11 @@
       "tier_enterprise": "Enterprise",
       "pair_heading": "Principales rutas de conversión",
       "pair_row": "{{from}} → {{to}}: {{count}} cambios, {{amount}}/mes ahorrados",
-      "empty_pairs": "Aún no hay cambios completados en los últimos 30 días."
+      "empty_pairs": "Aún no hay cambios completados en los últimos 30 días.",
+      "pitch_heading": "Embudo por argumento",
+      "col_pitch": "Argumento",
+      "pitch_tier_switch": "Cambio de plan",
+      "pitch_annual_only": "Facturación anual"
     },
     "discount_breakdown": {
       "title": "Embudo de la insignia de descuento por cupón (30 d)",

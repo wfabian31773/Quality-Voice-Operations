@@ -299,11 +299,19 @@ const DEFAULT_TRAILING_WINDOWS: ReadonlyArray<TrailingWindow> = [3, 6, 12];
  * Recommendation snapshot passed both to the analytics callback and to
  * `onSwitchPlan` so the parent can stamp it into Stripe session metadata.
  */
+
+/**
+ * Splits the recommendation funnel between the tier-switch CTA and the
+ * optimal-branch annual-only CTA (which has currentTier === recommendedTier).
+ */
+export type RecommendationPitch = 'tier-switch' | 'annual-only';
+
 export interface RecommendationAttribution {
   currentTier: PlanTier;
   recommendedTier: PlanTier;
   monthlySavingsCents: number;
   trailingWindowMonths?: TrailingWindow;
+  pitch: RecommendationPitch;
 }
 
 export interface RecommendationEvent extends RecommendationAttribution {
@@ -1054,13 +1062,12 @@ function RecommendationCard({
     ? annualOption.monthlyCost
     : recommended.monthlyCost;
 
-  // Dedup impressions per (currentTier, recommendedTier, savings) per
-  // browser tab so re-renders from slider / window toggles don't get
-  // counted as new views.
+  // Per-tab impression dedup; pitch segment keeps tier-switch and
+  // annual-only keys disjoint so both can fire in the same tab.
   useEffect(() => {
     if (isAlreadyOptimal) return;
     if (!onRecommendationEvent) return;
-    const dedupKey = `billing.rec.impression.${current.tier}.${recommended.tier}.${monthlySavingsCents}`;
+    const dedupKey = `billing.rec.impression.tier-switch.${current.tier}.${recommended.tier}.${monthlySavingsCents}`;
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         if (window.sessionStorage.getItem(dedupKey)) return;
@@ -1075,6 +1082,7 @@ function RecommendationCard({
       recommendedTier: recommended.tier,
       monthlySavingsCents,
       trailingWindowMonths: trailingWindow,
+      pitch: 'tier-switch',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1082,6 +1090,48 @@ function RecommendationCard({
     current.tier,
     recommended.tier,
     monthlySavingsCents,
+    trailingWindow,
+  ]);
+
+  // Optimal-branch annual pitch: tenant already on the cheapest tier,
+  // still on monthly, with a non-zero annual saving and no Stripe
+  // override (we can't reprice negotiated rates).
+  const showAnnualPitch =
+    isAlreadyOptimal
+    && currentBillingInterval === 'monthly'
+    && !recommended.sourcedFromStripe
+    && annualOption.monthlySavings > 0;
+  const annualPitchSavingsCents = Math.max(
+    0,
+    Math.round(annualOption.monthlySavings * 100),
+  );
+
+  useEffect(() => {
+    if (!showAnnualPitch) return;
+    if (!onRecommendationEvent) return;
+    const dedupKey = `billing.rec.impression.annual-only.${recommended.tier}.${annualPitchSavingsCents}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem(dedupKey)) return;
+        window.sessionStorage.setItem(dedupKey, String(Date.now()));
+      }
+    } catch {
+      // sessionStorage unavailable (privacy mode) — fire anyway.
+    }
+    onRecommendationEvent({
+      type: 'impression',
+      currentTier: current.tier,
+      recommendedTier: recommended.tier,
+      monthlySavingsCents: annualPitchSavingsCents,
+      trailingWindowMonths: trailingWindow,
+      pitch: 'annual-only',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showAnnualPitch,
+    current.tier,
+    recommended.tier,
+    annualPitchSavingsCents,
     trailingWindow,
   ]);
 
@@ -1133,25 +1183,7 @@ function RecommendationCard({
     : null;
 
   if (isAlreadyOptimal) {
-    // Annual pitch: surfaces the 20%-off-base savings for tenants who
-    // are on the right tier but still paying monthly. Suppressed when
-    //   - the tenant is already on annual billing (nothing to pitch),
-    //   - the current tier was sourced from a Stripe override (we have
-    //     no way to project a custom/negotiated price onto a different
-    //     billing interval, so the discount would be a fabrication),
-    //   - or the projected savings collapse to zero (defensive — the
-    //     `sourcedFromStripe` guard already covers this case via
-    //     `annualOption`'s zeroing in the optimal branch, but we
-    //     re-check so the badge never reads "$0/yr").
-    const showAnnualPitch =
-      currentBillingInterval === 'monthly'
-      && !recommended.sourcedFromStripe
-      && annualOption.monthlySavings > 0;
     const isSwitchingToAnnual = switchingPlan === recommended.tier;
-    const annualPitchSavingsCents = Math.max(
-      0,
-      Math.round(annualOption.monthlySavings * 100),
-    );
     const annualCtaLabel = isSwitchingToAnnual
       ? 'Redirecting...'
       : 'Switch to annual billing';
@@ -1218,6 +1250,7 @@ function RecommendationCard({
                         recommendedTier: recommended.tier,
                         monthlySavingsCents: annualPitchSavingsCents,
                         trailingWindowMonths: trailingWindow,
+                        pitch: 'annual-only',
                       };
                       if (onRecommendationEvent) {
                         onRecommendationEvent({ type: 'click', ...attribution });
@@ -1319,6 +1352,7 @@ function RecommendationCard({
                     recommendedTier: recommended.tier,
                     monthlySavingsCents,
                     trailingWindowMonths: trailingWindow,
+                    pitch: 'tier-switch',
                   };
                   if (onRecommendationEvent) {
                     onRecommendationEvent({ type: 'click', ...attribution });

@@ -120,6 +120,56 @@ describe('handleStripeEvent — recommendation switch_completed attribution', ()
     expect(params[2]).toBe('pro');
     expect(params[3]).toBe(30000);
     expect(params[4]).toBe(6);
+    expect(params[6]).toBe('tier-switch');
+  });
+
+  it('writes a switch_completed row with pitch=annual-only when the session was stamped by the optimal-branch annual CTA', async () => {
+    const session = buildSession({
+      metadata: {
+        tenantId: 'tenant-rec',
+        plan: 'pro',
+        recommendationSource: 'billing_estimator_recommendation',
+        recommendationCurrentTier: 'pro',
+        recommendationRecommendedTier: 'pro',
+        recommendationMonthlySavingsCents: '4400',
+        recommendationTrailingWindowMonths: '3',
+        recommendationPitch: 'annual-only',
+      } as unknown as Stripe.Metadata,
+    });
+
+    await handleStripeEvent(buildEvent(session));
+
+    const recInsert = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(recInsert).toBeDefined();
+    const [, params] = recInsert as [string, unknown[]];
+    expect(params[1]).toBe('pro');
+    expect(params[2]).toBe('pro');
+    expect(params[6]).toBe('annual-only');
+  });
+
+  it('falls back to pitch=tier-switch when the session metadata carries an unknown recommendationPitch value', async () => {
+    const session = buildSession({
+      metadata: {
+        tenantId: 'tenant-rec',
+        plan: 'pro',
+        recommendationSource: 'billing_estimator_recommendation',
+        recommendationCurrentTier: 'enterprise',
+        recommendationRecommendedTier: 'pro',
+        recommendationMonthlySavingsCents: '30000',
+        recommendationPitch: 'mystery-pitch',
+      } as unknown as Stripe.Metadata,
+    });
+
+    await handleStripeEvent(buildEvent(session));
+
+    const recInsert = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(recInsert).toBeDefined();
+    const [, params] = recInsert as [string, unknown[]];
+    expect(params[6]).toBe('tier-switch');
   });
 
   it('does not insert a switch_completed row when recommendation metadata is absent', async () => {

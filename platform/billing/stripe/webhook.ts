@@ -248,6 +248,13 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       const recRecommended = session.metadata?.recommendationRecommendedTier;
       const recSavings = Number(session.metadata?.recommendationMonthlySavingsCents);
       const recWindow = Number(session.metadata?.recommendationTrailingWindowMonths);
+      // Pre–annual-pitch sessions (and any unknown value) fall back to
+      // 'tier-switch' to satisfy the CHECK constraint.
+      const recRawPitch = session.metadata?.recommendationPitch;
+      const recPitch =
+        recRawPitch === 'tier-switch' || recRawPitch === 'annual-only'
+          ? recRawPitch
+          : 'tier-switch';
       if (
         (recCurrent === 'starter' || recCurrent === 'pro' || recCurrent === 'enterprise') &&
         (recRecommended === 'starter' || recRecommended === 'pro' || recRecommended === 'enterprise')
@@ -256,8 +263,9 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
           await client.query(
             `INSERT INTO billing_recommendation_events
                (tenant_id, event_type, current_tier, recommended_tier,
-                monthly_savings_cents, trailing_window_months, metadata)
-             VALUES ($1, 'switch_completed', $2, $3, $4, $5, $6::jsonb)`,
+                monthly_savings_cents, trailing_window_months, metadata,
+                pitch)
+             VALUES ($1, 'switch_completed', $2, $3, $4, $5, $6::jsonb, $7)`,
             [
               tenantId,
               recCurrent,
@@ -271,6 +279,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
                 stripeEventId,
                 source: 'stripe_webhook',
               }),
+              recPitch,
             ],
           );
         } catch (err) {

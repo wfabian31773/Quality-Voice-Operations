@@ -408,6 +408,7 @@ async function readSwitchCompletedRow(
   monthly_savings_cents: number | null;
   trailing_window_months: number | null;
   metadata: Record<string, unknown>;
+  pitch: string;
 } | null> {
   const client = await pool.connect();
   try {
@@ -415,7 +416,7 @@ async function readSwitchCompletedRow(
     await client.query('SET LOCAL row_security = off');
     const { rows } = await client.query(
       `SELECT current_tier::text, recommended_tier::text,
-              monthly_savings_cents, trailing_window_months, metadata
+              monthly_savings_cents, trailing_window_months, metadata, pitch
          FROM billing_recommendation_events
         WHERE tenant_id = $1
           AND event_type = 'switch_completed'
@@ -465,6 +466,7 @@ async function fireCheckoutWebhook(args: {
       recommendationRecommendedTier: args.recommendedTier,
       recommendationMonthlySavingsCents: String(args.monthlySavingsCents),
       recommendationTrailingWindowMonths: String(args.trailingWindowMonths),
+      recommendationPitch: 'tier-switch',
     },
   } as unknown as Stripe.Checkout.Session;
   await handleCheckoutCompleted(session, args.stripeEventId);
@@ -684,7 +686,7 @@ async function run(): Promise<void> {
     // Verify the BillingEstimator wrote its sessionStorage dedup key
     // (this is what suppresses repeat impressions on slider/window
     // toggles within the same tab).
-    const dedupKey = `billing.rec.impression.enterprise.starter.90000`;
+    const dedupKey = `billing.rec.impression.tier-switch.enterprise.starter.90000`;
     const dedupValue = await tenantPage.evaluate(
       (k) => window.sessionStorage.getItem(k),
       dedupKey,
@@ -786,6 +788,10 @@ async function run(): Promise<void> {
     assert(
       (switchRow.metadata as { source?: string }).source === 'stripe_webhook',
       `switch_completed metadata.source should be 'stripe_webhook', got ${JSON.stringify(switchRow.metadata)}`,
+    );
+    assert(
+      switchRow.pitch === 'tier-switch',
+      `switch_completed pitch should be 'tier-switch', got ${JSON.stringify(switchRow.pitch)}`,
     );
     console.log('[e2e] switch_completed row written by handleCheckoutCompleted with correct attribution');
 

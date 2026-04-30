@@ -120,6 +120,14 @@ const VALID_PLANS = new Set(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set(['monthly', 'annual']);
 const RECOMMENDATION_TIERS = new Set(['starter', 'pro', 'enterprise']);
 const RECOMMENDATION_WINDOWS = new Set([3, 6, 12]);
+// Pitch dimension distinguishes the original "switch to a different
+// tier" CTA from the optimal-branch "switch to annual billing" CTA so
+// the admin recommendation funnel can tell them apart even when
+// `current_tier === recommended_tier`. The DB column also enforces the
+// CHECK constraint via migration 106; this set is the request-side
+// allowlist.
+const RECOMMENDATION_PITCHES = new Set(['tier-switch', 'annual-only']);
+const DEFAULT_RECOMMENDATION_PITCH = 'tier-switch';
 // Tenant-facing event writes. The `discount_*` variants mirror the
 // recommendation-banner contract for the upgrade-card discount badge —
 // see migration 105. The corresponding `*_switch_completed` variants
@@ -166,6 +174,7 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
       recommendedTier?: unknown;
       monthlySavingsCents?: unknown;
       trailingWindowMonths?: unknown;
+      pitch?: unknown;
     };
     discount?: {
       couponId?: unknown;
@@ -191,6 +200,7 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
     recommendedTier: 'starter' | 'pro' | 'enterprise';
     monthlySavingsCents: number;
     trailingWindowMonths?: number;
+    pitch: 'tier-switch' | 'annual-only';
   };
   if (recommendation && typeof recommendation === 'object') {
     const ct = recommendation.currentTier;
@@ -202,10 +212,16 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
     ) {
       const savings = Number(recommendation.monthlySavingsCents);
       const window = Number(recommendation.trailingWindowMonths);
+      // Stale clients without `pitch` fall back to 'tier-switch'.
+      const rawPitch = typeof recommendation.pitch === 'string' ? recommendation.pitch : '';
+      const pitch = (RECOMMENDATION_PITCHES.has(rawPitch)
+        ? rawPitch
+        : DEFAULT_RECOMMENDATION_PITCH) as 'tier-switch' | 'annual-only';
       validatedRecommendation = {
         currentTier: ct as 'starter' | 'pro' | 'enterprise',
         recommendedTier: rt as 'starter' | 'pro' | 'enterprise',
         monthlySavingsCents: Number.isFinite(savings) && savings >= 0 ? Math.round(savings) : 0,
+        pitch,
         ...(Number.isFinite(window) && RECOMMENDATION_WINDOWS.has(window)
           ? { trailingWindowMonths: window }
           : {}),
@@ -754,6 +770,7 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
     metadata?: unknown;
     couponId?: unknown;
     promotionCode?: unknown;
+    pitch?: unknown;
   };
 
   const eventType = typeof body.eventType === 'string' ? body.eventType : '';
@@ -804,6 +821,12 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
       ? rawWindow
       : null;
 
+  // Unknown/missing pitch falls back to 'tier-switch' for stale clients.
+  const rawPitch = typeof body.pitch === 'string' ? body.pitch : '';
+  const pitch = RECOMMENDATION_PITCHES.has(rawPitch)
+    ? rawPitch
+    : DEFAULT_RECOMMENDATION_PITCH;
+
   // Cap metadata at 4KB so a misbehaving client can't flood the table.
   let metadata: Record<string, unknown> = {};
   if (body.metadata && typeof body.metadata === 'object') {
@@ -826,8 +849,8 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
       `INSERT INTO billing_recommendation_events
          (tenant_id, event_type, current_tier, recommended_tier,
           monthly_savings_cents, trailing_window_months, metadata,
-          coupon_id, promotion_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+          coupon_id, promotion_code, pitch)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)`,
       [
         tenantId,
         eventType,
@@ -838,6 +861,7 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
         JSON.stringify(metadata),
         couponId,
         promotionCode,
+        pitch,
       ],
     );
     await client.query('COMMIT');

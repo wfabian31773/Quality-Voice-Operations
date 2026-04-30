@@ -990,7 +990,11 @@
       "tier_enterprise": "Enterprise",
       "pair_heading": "Top conversion paths",
       "pair_row": "{{from}} → {{to}}: {{count}} switches, {{amount}}/mo saved",
-      "empty_pairs": "No completed switches in the last 30 days yet."
+      "empty_pairs": "No completed switches in the last 30 days yet.",
+      "pitch_heading": "Funnel by pitch",
+      "col_pitch": "Pitch",
+      "pitch_tier_switch": "Tier switch",
+      "pitch_annual_only": "Annual billing"
     },
     "discount_breakdown": {
       "title": "Discount badge funnel by coupon (30d)",

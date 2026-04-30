@@ -990,7 +990,11 @@
       "tier_enterprise": "Enterprise",
       "pair_heading": "Principais caminhos de conversão",
       "pair_row": "{{from}} → {{to}}: {{count}} trocas, {{amount}}/mês economizados",
-      "empty_pairs": "Nenhuma troca concluída nos últimos 30 dias."
+      "empty_pairs": "Nenhuma troca concluída nos últimos 30 dias.",
+      "pitch_heading": "Funil por argumento",
+      "col_pitch": "Argumento",
+      "pitch_tier_switch": "Troca de plano",
+      "pitch_annual_only": "Cobrança anual"
     },
     "discount_breakdown": {
       "title": "Funil do selo de desconto por cupom (30 d)",
