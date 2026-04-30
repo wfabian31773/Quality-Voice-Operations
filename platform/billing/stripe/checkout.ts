@@ -369,6 +369,15 @@ async function resolveDiscountedPortalConfigId(
           // already <= 60 chars so this is just defensive.
           headline: headline.slice(0, 500),
           defaultConfigId: defaultConfig.id,
+          // Stamp the coupon / promotion-code provenance so the periodic
+          // cleanup sweep (PortalConfigCleanupScheduler) can match the
+          // configuration back to the discount it was minted for without
+          // having to reverse-parse the headline. Optional — older entries
+          // missing these fields fall back to headline matching.
+          ...(discount?.couponId ? { couponId: discount.couponId } : {}),
+          ...(discount?.promotionCodeId
+            ? { promotionCodeId: discount.promotionCodeId }
+            : {}),
         },
       });
       portalConfigByHeadline.set(cacheKey, created.id);
@@ -396,6 +405,28 @@ async function resolveDiscountedPortalConfigId(
 export function __resetPortalConfigCacheForTests(): void {
   portalConfigByHeadline.clear();
   portalConfigInFlight.clear();
+}
+
+/**
+ * Evict every cached entry that points to `configurationId`. Called by
+ * the periodic cleanup sweep right after it deactivates a configuration
+ * on Stripe so the in-process cache doesn't keep handing the now-dead id
+ * to subsequent portal-open requests in the same process. The next open
+ * for that coupon will recreate a fresh active configuration.
+ *
+ * Returns the number of cache entries removed (0 when nothing was
+ * cached locally — common when the cleanup runs in a different process
+ * from the one that originally cached it).
+ */
+export function evictPortalConfigCacheById(configurationId: string): number {
+  let removed = 0;
+  for (const [key, id] of portalConfigByHeadline.entries()) {
+    if (id === configurationId) {
+      portalConfigByHeadline.delete(key);
+      removed += 1;
+    }
+  }
+  return removed;
 }
 
 export async function createPortalSession(params: {

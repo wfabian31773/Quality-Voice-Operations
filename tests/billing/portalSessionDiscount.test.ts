@@ -232,6 +232,11 @@ describe('createPortalSession discount headline', () => {
       purpose: 'discount_headline',
       headline: 'Active discount: 25% off — PROMO25',
       defaultConfigId: DEFAULT_PORTAL_CONFIG.id,
+      // Provenance fields used by the periodic cleanup sweep
+      // (PortalConfigCleanupScheduler) to match the configuration
+      // back to the discount it was minted for.
+      couponId: 'coupon_promo25',
+      promotionCodeId: 'promo_xyz',
     });
 
     expect(portalSessionsCreate).toHaveBeenCalledWith({
