@@ -78,9 +78,13 @@ export default [
       'artifacts/**',
       // The canonical formatter helpers are the *only* place the
       // `cents / 100` and `dollars * 100` math is allowed to live.
+      // `shared/billing/stripeUnitAmount.ts` is the Stripe-specific
+      // sibling that preserves sub-cent precision on
+      // `unit_amount_decimal`; same exemption rationale.
       'client-app/src/lib/formatCurrency.ts',
       'platform/core/formatCurrency.ts',
       'shared/billing/formatCurrency.ts',
+      'shared/billing/stripeUnitAmount.ts',
     ],
   },
   {

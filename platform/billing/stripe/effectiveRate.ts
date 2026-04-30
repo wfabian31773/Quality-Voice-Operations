@@ -7,6 +7,10 @@ import {
   PLAN_CATALOG,
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
+import {
+  stripeUnitAmountToDollars,
+  stripeUnitAmountToWholeCents,
+} from '../../../shared/billing/stripeUnitAmount';
 
 const logger = createLogger('STRIPE_EFFECTIVE_RATE');
 
@@ -130,33 +134,18 @@ function classifyPrice(price: PriceLike | null | undefined): {
 }
 
 function unitAmountToDollarsPerMinute(price: PriceLike): number | null {
-  // Prefer `unit_amount_decimal` because Stripe permits sub-cent precision on
-  // metered prices (e.g. $0.075/min would round to $0.08 if we used the
-  // integer field) — and rounding the overage rate down would silently
-  // under-quote the tenant.
-  const decimal = price.unit_amount_decimal;
-  if (decimal != null && decimal !== '') {
-    const cents = Number(decimal);
-    // eslint-disable-next-line local/no-cents-divided-by-100 -- Need sub-cent decimal precision (e.g. $0.075/min). The shared `formatCurrency` returns a formatted string and `centsToWholeDollars` rounds to whole dollars; neither preserves the fractional precision the metered-rate quote requires.
-    if (Number.isFinite(cents)) return cents / 100;
-  }
-  if (price.unit_amount != null && Number.isFinite(price.unit_amount)) {
-    // eslint-disable-next-line local/no-cents-divided-by-100 -- Same as above: per-minute rate needs sub-cent precision the shared helpers don't preserve.
-    return price.unit_amount / 100;
-  }
-  return null;
+  // Delegate to the shared Stripe-price helper, which preserves sub-cent
+  // precision (e.g. $0.075/min must NOT round to $0.08 — that would
+  // silently over-quote the tenant). See
+  // `shared/billing/stripeUnitAmount.ts` for the full rationale.
+  return stripeUnitAmountToDollars(price);
 }
 
 function pickBasePriceCents(price: PriceLike): number | null {
-  const decimal = price.unit_amount_decimal;
-  if (decimal != null && decimal !== '') {
-    const cents = Number(decimal);
-    if (Number.isFinite(cents)) return Math.round(cents);
-  }
-  if (price.unit_amount != null && Number.isFinite(price.unit_amount)) {
-    return price.unit_amount;
-  }
-  return null;
+  // Base prices live in integer-cents columns on our side (PLAN_CATALOG,
+  // subscriptions), so round any fractional Stripe input to the nearest
+  // whole cent.
+  return stripeUnitAmountToWholeCents(price);
 }
 
 /**
