@@ -274,6 +274,40 @@ async function softDeleteUser(pool: pg.Pool, userId: string, originalEmail: stri
   }
 }
 
+async function restoreSubscriptionSnapshot(
+  pool: pg.Pool,
+  s: SubscriptionSnapshot,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO subscriptions (tenant_id, plan, status, billing_interval,
+       stripe_customer_id, stripe_subscription_id, stripe_price_id,
+       monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit,
+       overage_enabled, current_period_start, current_period_end)
+     VALUES ($1, $2, $3::subscription_status, $4::billing_interval,
+             $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       plan = EXCLUDED.plan,
+       status = EXCLUDED.status,
+       billing_interval = EXCLUDED.billing_interval,
+       stripe_customer_id = EXCLUDED.stripe_customer_id,
+       stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+       stripe_price_id = EXCLUDED.stripe_price_id,
+       monthly_call_limit = EXCLUDED.monthly_call_limit,
+       monthly_sms_limit = EXCLUDED.monthly_sms_limit,
+       monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
+       overage_enabled = EXCLUDED.overage_enabled,
+       current_period_start = EXCLUDED.current_period_start,
+       current_period_end = EXCLUDED.current_period_end,
+       updated_at = NOW()`,
+    [
+      ADMIN_TENANT_ID, s.plan, s.status, s.billing_interval,
+      s.stripe_customer_id, s.stripe_subscription_id, s.stripe_price_id,
+      s.monthly_call_limit, s.monthly_sms_limit, s.monthly_ai_minute_limit,
+      s.overage_enabled, s.current_period_start, s.current_period_end,
+    ],
+  );
+}
+
 async function cleanup(pool: pg.Pool, seedData: SeedResult): Promise<void> {
   // Delete the test-attributable billing_recommendation_events +
   // billing_events rows. RLS-bypass tx (privileged read).
@@ -301,37 +335,9 @@ async function cleanup(pool: pg.Pool, seedData: SeedResult): Promise<void> {
 
   // Restore admin-org's pre-test subscriptions row.
   if (seedData.subscriptionSnapshot) {
-    const s = seedData.subscriptionSnapshot;
-    await pool
-      .query(
-        `INSERT INTO subscriptions (tenant_id, plan, status, billing_interval,
-           stripe_customer_id, stripe_subscription_id, stripe_price_id,
-           monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit,
-           overage_enabled, current_period_start, current_period_end)
-         VALUES ($1, $2, $3::subscription_status, $4::billing_interval,
-                 $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         ON CONFLICT (tenant_id) DO UPDATE SET
-           plan = EXCLUDED.plan,
-           status = EXCLUDED.status,
-           billing_interval = EXCLUDED.billing_interval,
-           stripe_customer_id = EXCLUDED.stripe_customer_id,
-           stripe_subscription_id = EXCLUDED.stripe_subscription_id,
-           stripe_price_id = EXCLUDED.stripe_price_id,
-           monthly_call_limit = EXCLUDED.monthly_call_limit,
-           monthly_sms_limit = EXCLUDED.monthly_sms_limit,
-           monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
-           overage_enabled = EXCLUDED.overage_enabled,
-           current_period_start = EXCLUDED.current_period_start,
-           current_period_end = EXCLUDED.current_period_end,
-           updated_at = NOW()`,
-        [
-          ADMIN_TENANT_ID, s.plan, s.status, s.billing_interval,
-          s.stripe_customer_id, s.stripe_subscription_id, s.stripe_price_id,
-          s.monthly_call_limit, s.monthly_sms_limit, s.monthly_ai_minute_limit,
-          s.overage_enabled, s.current_period_start, s.current_period_end,
-        ],
-      )
-      .catch((err) => console.warn('[e2e] cleanup subscription restore failed:', err));
+    await restoreSubscriptionSnapshot(pool, seedData.subscriptionSnapshot).catch((err) =>
+      console.warn('[e2e] cleanup subscription restore failed:', err),
+    );
   }
 
   // Restore the pre-existing usage_metrics rows we overwrote.
@@ -560,6 +566,105 @@ interface CapturedCheckout {
   };
 }
 
+async function runAnnualIntervalPhase(
+  page: Page,
+  fixtureEmail: string,
+  stripeSessionId: string,
+): Promise<void> {
+  // Task #1298: prove that toggling the banner's interval to "Annual"
+  // before clicking the CTA flips both the DOM attribute and the
+  // outgoing checkout body. Without this, a regression that dropped
+  // `interval` from handleUpgrade would still pass the monthly case
+  // but quietly send tenants who chose Annual to a monthly sub.
+  const captured: CapturedCheckout = {};
+  await page.route('**/api/billing/checkout', async (route: Route) => {
+    try {
+      const raw = route.request().postData();
+      if (raw) captured.body = JSON.parse(raw);
+    } catch {
+      /* ignore */
+    }
+    const successUrl = captured.body?.successUrl ?? `${BASE_URL}/billing?checkout=success`;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ url: successUrl, sessionId: stripeSessionId }),
+    });
+  });
+
+  await login(page, fixtureEmail, FIXTURE_PASSWORD);
+  await page.goto(`${BASE_URL}/billing`, { waitUntil: 'networkidle' });
+  await page.waitForSelector(
+    '[data-testid="billing-estimator-recommendation"][data-recommendation-state="switch"][data-recommended-tier="starter"]',
+    { timeout: 20_000 },
+  );
+
+  const cta = page.locator('[data-testid="billing-estimator-recommendation-cta"]');
+  await cta.waitFor({ state: 'visible', timeout: 10_000 });
+  const initialIntervalAttr = await cta.getAttribute('data-recommendation-cta-interval');
+  assert(
+    initialIntervalAttr === 'monthly',
+    `CTA must default to data-recommendation-cta-interval="monthly", got ${JSON.stringify(initialIntervalAttr)}`,
+  );
+
+  // Toggle to annual and confirm the DOM attribute flips before we
+  // even hit the network — this is the wiring guard the task asks for.
+  await page.click('[data-testid="billing-estimator-recommendation-interval-annual"]');
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="billing-estimator-recommendation-cta"]')
+        ?.getAttribute('data-recommendation-cta-interval') === 'annual',
+    null,
+    { timeout: 5_000 },
+  );
+  const flippedIntervalAttr = await cta.getAttribute('data-recommendation-cta-interval');
+  assert(
+    flippedIntervalAttr === 'annual',
+    `CTA must flip to data-recommendation-cta-interval="annual" after toggle, got ${JSON.stringify(flippedIntervalAttr)}`,
+  );
+  // The annual toggle button should report aria-pressed="true" and the
+  // monthly one "false" — keeps the toggle's a11y contract locked down
+  // alongside the data attribute.
+  const annualPressed = await page
+    .locator('[data-testid="billing-estimator-recommendation-interval-annual"]')
+    .getAttribute('aria-pressed');
+  const monthlyPressed = await page
+    .locator('[data-testid="billing-estimator-recommendation-interval-monthly"]')
+    .getAttribute('aria-pressed');
+  assert(
+    annualPressed === 'true' && monthlyPressed === 'false',
+    `Annual toggle aria-pressed mismatch: annual=${annualPressed} monthly=${monthlyPressed}`,
+  );
+
+  const checkoutFired = page.waitForRequest(
+    (r) => r.method() === 'POST' && /\/api\/billing\/checkout(\?|$)/.test(r.url()),
+    { timeout: 15_000 },
+  );
+  const navigated = page.waitForURL(
+    (u) => u.toString().includes('/billing') && u.toString().includes('checkout=success'),
+    { timeout: 20_000 },
+  );
+  await cta.click();
+  await checkoutFired;
+  await navigated;
+
+  assert(captured.body, 'Expected to capture annual checkout request body');
+  assert(
+    captured.body.plan === 'starter',
+    `annual checkout plan should be 'starter', got ${captured.body.plan}`,
+  );
+  assert(
+    captured.body.interval === 'annual',
+    `annual checkout body must carry interval="annual", got ${JSON.stringify(captured.body.interval)}`,
+  );
+  assert(
+    captured.body.recommendation?.recommendedTier === 'starter',
+    `annual recommendation.recommendedTier should be 'starter', got ${captured.body.recommendation?.recommendedTier}`,
+  );
+  console.log('[e2e] annual: CTA flipped to data-recommendation-cta-interval="annual" and forwarded interval="annual" to /billing/checkout');
+}
+
 async function runViewerNoCtaPhase(page: Page, viewerEmail: string): Promise<void> {
   // RBAC carry-over from Task #1252: the banner sub-tree that holds the
   // CTA + interval toggle is gated on `onSwitchPlan && hasMinRole(role,
@@ -596,6 +701,7 @@ async function run(): Promise<void> {
   const pool = new pg.Pool({ connectionString: DB_URL, max: 4 });
   let browser: Browser | undefined;
   let tenantPage: Page | undefined;
+  let annualPage: Page | undefined;
   let viewerPage: Page | undefined;
   let adminPage: Page | undefined;
   let seedData: SeedResult | undefined;
@@ -813,9 +919,24 @@ async function run(): Promise<void> {
       '[e2e] billing_recommendation_events for admin-org bumped by +1 impression / +1 click / +1 switch_completed',
     );
 
+    // Annual-interval phase: a fresh context (clean cookies +
+    // sessionStorage) so the toggle's default-monthly state and the
+    // impression-dedup key are exercised again before we flip to
+    // annual and re-run the CTA → /billing/checkout flow. The monthly
+    // phase's webhook downgraded admin-org from enterprise → starter,
+    // which would suppress the recommendation banner; restore the
+    // pre-test snapshot so the banner re-renders in switch state.
+    await tenantCtx.close();
+    if (seedData.subscriptionSnapshot) {
+      await restoreSubscriptionSnapshot(pool, seedData.subscriptionSnapshot);
+    }
+    const annualCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    annualPage = await annualCtx.newPage();
+    await runAnnualIntervalPhase(annualPage, seedData.fixtureEmail, `${seedData.stripeSessionId}-annual`);
+    await annualCtx.close();
+
     // RBAC phase: viewer sees banner, no CTA / interval toggle. Fresh
     // context so the tenant_owner cookie doesn't bleed in.
-    await tenantCtx.close();
     const viewerCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     viewerPage = await viewerCtx.newPage();
     await runViewerNoCtaPhase(viewerPage, seedData.viewerEmail);
@@ -865,6 +986,7 @@ async function run(): Promise<void> {
     console.log('[e2e] PASS');
   } catch (err) {
     await captureFailureScreenshot(tenantPage, 'tenant');
+    await captureFailureScreenshot(annualPage, 'annual');
     await captureFailureScreenshot(viewerPage, 'viewer');
     await captureFailureScreenshot(adminPage, 'admin');
     throw err;
