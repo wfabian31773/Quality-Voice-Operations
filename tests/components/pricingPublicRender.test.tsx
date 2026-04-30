@@ -157,6 +157,11 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     expect(screen.queryByTestId('calc-source-pro')).toBeNull();
     expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
 
+    // The custom-rate callout (task #1210) is gated on an authenticated
+    // tenant with a Stripe-sourced delta — anonymous visitors MUST NOT
+    // see it.
+    expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
+
     // No /billing/* fetches for an anonymous visitor.
     expect(
       fetchUrls.some((u) => u.includes('/billing/')),
@@ -208,6 +213,231 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // Exactly one /billing/effective-rate call was made.
     const billingHits = fetchUrls.filter((u) => u.includes('/billing/effective-rate'));
     expect(billingHits.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows the custom-rate callout above the calculator when the tenant pays LESS than catalog (task #1210)', async () => {
+    mockUser = { tenantId: 'tenant-grandfathered' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Tenant grandfathered at $250/mo for Pro; catalog is $399.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 25000,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 20000,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    // Wait for the callout to mount.
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-direction')).toBe('less');
+
+    // Description carries the three core numbers (current, delta, catalog)
+    // and the tier name. We assert on the rendered text, not the i18n
+    // key, so a future copy tweak surfaces here as a real failure.
+    const description = screen.getByTestId('pricing-override-callout-description');
+    const text = description.textContent ?? '';
+    expect(text).toContain('$250');
+    expect(text).toContain('$149');
+    expect(text).toContain('$399');
+    expect(text.toLowerCase()).toContain('pro');
+    expect(text.toLowerCase()).toContain('less');
+
+    // The "Manage subscription" link points to /billing.
+    const link = screen.getByTestId('pricing-override-callout-link') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/billing');
+  });
+
+  it('shows the callout in the "more" direction when the tenant pays MORE than catalog (task #1210)', async () => {
+    mockUser = { tenantId: 'tenant-premium' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'starter',
+            // Custom rate $149/mo for Starter; catalog is $99.
+            basePriceCents: 14900,
+            overageRatePerMinute: 0.15,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 14900,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 12000,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-direction')).toBe('more');
+    const text = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
+    expect(text).toContain('$149');
+    expect(text).toContain('$50');
+    expect(text).toContain('$99');
+    expect(text.toLowerCase()).toContain('more');
+  });
+
+  it('does NOT render the custom-rate callout for a tenant on the standard published ANNUAL rate (task #1210, regression)', async () => {
+    // Regression: an annual-billed tenant on the catalog rate has
+    // basePriceCents = catalog × 0.8 (annualised monthly equivalent).
+    // A naive comparison against catalog monthly would falsely flag
+    // them as paying "less than the published rate" when they're
+    // simply on the annual interval. The fix is to compare against the
+    // matching catalog interval (annual = catalog × 0.8).
+    mockUser = { tenantId: 'tenant-on-published-annual' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // $399 monthly catalog × (1 - 0.20) = $319.20/mo annualised.
+            basePriceCents: 31920,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            // The matching (annual) interval reuses the sub-derived
+            // value verbatim; the other side comes from env lookup.
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 31920,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pricing-tier-pro-cta')).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
+  });
+
+  it('renders the callout against the ANNUAL catalog reference for an annual tenant on a negotiated rate (task #1210)', async () => {
+    mockUser = { tenantId: 'tenant-grandfathered-annual' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Annual contract at $3,000/yr → $250/mo annualised.
+            // Catalog annual reference = $399 × 0.8 = $319.20/mo.
+            // Delta = $319 - $250 = ~$69/mo less.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'stripe',
+            // Annual side mirrors basePriceCents for an annual sub.
+            annualBasePriceCents: 25000,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-direction')).toBe('less');
+    const text = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
+    // Reference should be the ANNUAL catalog price ($319), not monthly $399.
+    expect(text).toContain('$250');
+    expect(text).toContain('$319');
+    expect(text).toContain('$69');
+    // And specifically NOT the monthly catalog headline — that would
+    // be the regression we're guarding against.
+    expect(text).not.toContain('$399');
+  });
+
+  it('does NOT render the custom-rate callout when the tenant rate matches catalog (task #1210)', async () => {
+    mockUser = { tenantId: 'tenant-on-published-rate' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Tenant pays the published rate exactly — even though the
+            // payload is Stripe-sourced (live subscription), there's no
+            // delta to surface, so the callout MUST NOT mount.
+            basePriceCents: 39900,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 31900,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    // Page mounts cleanly.
+    await waitFor(() => {
+      expect(screen.getByTestId('pricing-tier-pro-cta')).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
   });
 
   it('does NOT render the badge when the effective rate comes back fully from catalog', async () => {
@@ -345,5 +575,205 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
       annualBasePriceSource: 'catalog',
     });
     expect(override).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeCustomRateDelta — see task #1210.
+//
+// Pure transform so the banner-vs-no-banner decision is unit-testable
+// without rendering the whole Pricing page. The tenant reference is the
+// interval-agnostic `basePriceCents` (monthly equivalent of whatever
+// interval the subscription is on), and the catalog reference is the
+// matching catalog interval price — monthly for monthly subs, the
+// catalog × (1 - 0.20) annual equivalent for annual subs.
+// ---------------------------------------------------------------------------
+describe('computeCustomRateDelta', () => {
+  it('returns null for a null/undefined payload', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    expect(computeCustomRateDelta(null)).toBeNull();
+    expect(computeCustomRateDelta(undefined)).toBeNull();
+  });
+
+  it('returns null when the response is fully catalog-sourced', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Pure-catalog payload is identical to what an anonymous visitor
+    // would see — the callout would lie, so it must not render.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'catalog',
+      overagePriceSource: 'catalog',
+    });
+    expect(delta).toBeNull();
+  });
+
+  it('returns null when Stripe-sourced but the rate matches catalog within 1¢', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Stripe sub exists but the customer is on the published price —
+    // a 1¢ proration drift from rounding shouldn't trigger the banner.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39901,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
+  });
+
+  it('flags a tenant paying less than catalog as "less"', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'catalog',
+    });
+    expect(delta).toEqual({
+      tier: 'pro',
+      tierName: 'Pro',
+      currentMonthlyDollars: 250,
+      catalogMonthlyDollars: 399,
+      deltaDollars: 149,
+      isLess: true,
+    });
+  });
+
+  it('flags a tenant paying more than catalog as not-less', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      plan: 'starter',
+      basePriceCents: 14900,
+      overageRatePerMinute: 0.15,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'catalog',
+    });
+    expect(delta).toEqual({
+      tier: 'starter',
+      tierName: 'Starter',
+      currentMonthlyDollars: 149,
+      catalogMonthlyDollars: 99,
+      deltaDollars: 50,
+      isLess: false,
+    });
+  });
+
+  it('engages even when only the overage side is Stripe-sourced, as long as base diverges', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // The "is this Stripe-sourced at all" check is permissive — any
+    // Stripe field flips it on — but the actual delta is computed from
+    // basePriceCents. So a tenant whose overage is negotiated but base
+    // is also custom (just labelled by the API differently) still
+    // surfaces a banner whenever base differs from catalog.
+    const delta = computeCustomRateDelta({
+      plan: 'enterprise',
+      basePriceCents: 80000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'catalog',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.isLess).toBe(true);
+    expect(delta?.currentMonthlyDollars).toBe(800);
+    expect(delta?.catalogMonthlyDollars).toBe(999);
+  });
+
+  it('does NOT flag a tenant on the standard published ANNUAL rate (regression for #1210)', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // catalog Pro monthly = $399, annual = $399 × 0.8 = $319.20.
+    // A tenant on STRIPE_PRICE_PRO_ANNUAL has basePriceCents = 31920,
+    // basePriceSource = 'stripe'. The earlier always-monthly comparison
+    // would have returned a $80 delta — the fix detects the annual
+    // interval and compares against the catalog annual reference,
+    // yielding a delta of ~0.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 31920,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'stripe',
+      annualBasePriceCents: 31920,
+      annualBasePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
+  });
+
+  it('compares against the ANNUAL catalog reference for an annual-billed tenant on a negotiated rate', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'catalog',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'stripe',
+      annualBasePriceCents: 25000,
+      annualBasePriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.currentMonthlyDollars).toBe(250);
+    // Catalog reference = round(39900 × 0.8 / 100) = 319 (annual, not 399).
+    expect(delta?.catalogMonthlyDollars).toBe(319);
+    expect(delta?.deltaDollars).toBe(69);
+    expect(delta?.isLess).toBe(true);
+  });
+
+  it('skips the callout when the per-interval breakdown is contradictory (interval cannot be inferred)', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // basePriceCents matches neither monthlyBasePriceCents nor
+    // annualBasePriceCents — we have no reliable signal for which
+    // interval the tenant is on, so we'd risk picking the wrong
+    // catalog reference. Better to skip than mislead.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 27000,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'stripe',
+      annualBasePriceCents: 31920,
+      annualBasePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
+  });
+
+  it('skips when the delta is below the whole-dollar render threshold', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Sub-dollar drift would print rounded numbers that don't add up
+    // ("$399 — that's $0/mo less than $399"). Suppress the callout.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39850,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      monthlyBasePriceCents: 39850,
+      monthlyBasePriceSource: 'stripe',
+      annualBasePriceCents: 31920,
+      annualBasePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
+  });
+
+  it('returns null for an unknown plan tier', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      // @ts-expect-error — deliberately invalid; guards against a future
+      // server-side schema drift quietly mounting a banner with broken
+      // copy.
+      plan: 'mythical',
+      basePriceCents: 12345,
+      overageRatePerMinute: 0.1,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
   });
 });

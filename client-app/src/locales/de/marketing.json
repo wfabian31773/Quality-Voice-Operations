@@ -494,6 +494,13 @@
       "title": "Sehen Sie Ihren effektiven Preis pro Minute",
       "subtitle": "Bewegen Sie den Schieber auf Ihr erwartetes monatliches Volumen. Wir zeigen die geschätzte Rechnung und den effektiven Minutenpreis pro Plan — mit denselben Sätzen, die Ihr Nutzungszähler abrechnet."
     },
+    "override_callout": {
+      "title_less": "Sie haben einen individuellen Tarif unter dem aktuellen Listenpreis",
+      "title_more": "Sie haben einen individuellen Tarif über dem aktuellen Listenpreis",
+      "description_less": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat weniger als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
+      "description_more": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat mehr als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
+      "manage_link": "Abonnement verwalten"
+    },
     "compare": {
       "title": "Alle Funktionen vergleichen",
       "feature_col": "Funktion"

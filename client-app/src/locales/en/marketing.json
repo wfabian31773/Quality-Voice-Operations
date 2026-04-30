@@ -494,6 +494,13 @@
       "title": "See your effective price per minute",
       "subtitle": "Drag the slider to match your expected monthly volume. We'll show your estimated bill and effective per-minute rate on every plan, using the same rates billed by your usage meter."
     },
+    "override_callout": {
+      "title_less": "You're on a custom rate below today's published price",
+      "title_more": "You're on a custom rate above today's published price",
+      "description_less": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo less than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
+      "description_more": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo more than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
+      "manage_link": "Manage subscription"
+    },
     "compare": {
       "title": "Compare all features",
       "feature_col": "Feature"

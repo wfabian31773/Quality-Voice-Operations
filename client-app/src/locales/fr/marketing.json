@@ -494,6 +494,13 @@
       "title": "Voyez votre prix effectif à la minute",
       "subtitle": "Faites glisser le curseur pour estimer votre volume mensuel. Nous affichons votre facture estimée et votre tarif effectif à la minute pour chaque plan, avec les mêmes tarifs appliqués par votre compteur d'usage."
     },
+    "override_callout": {
+      "title_less": "Vous bénéficiez d'un tarif personnalisé inférieur au prix public actuel",
+      "title_more": "Vous payez un tarif personnalisé supérieur au prix public actuel",
+      "description_less": "Votre compte paie {{currentPrice}}/mois pour {{tierName}} — soit {{deltaPrice}}/mois de moins que le tarif public actuel de {{catalogPrice}}. Passer à un plan actuel modifierait votre facture.",
+      "description_more": "Votre compte paie {{currentPrice}}/mois pour {{tierName}} — soit {{deltaPrice}}/mois de plus que le tarif public actuel de {{catalogPrice}}. Passer à un plan actuel modifierait votre facture.",
+      "manage_link": "Gérer l'abonnement"
+    },
     "compare": {
       "title": "Comparez toutes les fonctionnalités",
       "feature_col": "Fonctionnalité"

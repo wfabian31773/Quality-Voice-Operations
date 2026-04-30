@@ -494,6 +494,13 @@
       "title": "Veja seu preço efetivo por minuto",
       "subtitle": "Arraste o controle para informar o volume mensal esperado. Mostramos a fatura estimada e a tarifa efetiva por minuto em cada plano, com as mesmas taxas aplicadas pelo seu medidor de uso."
     },
+    "override_callout": {
+      "title_less": "Você tem uma tarifa personalizada abaixo do preço público atual",
+      "title_more": "Você tem uma tarifa personalizada acima do preço público atual",
+      "description_less": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a menos que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
+      "description_more": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a mais que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
+      "manage_link": "Gerenciar assinatura"
+    },
     "compare": {
       "title": "Compare todos os recursos",
       "feature_col": "Recurso"

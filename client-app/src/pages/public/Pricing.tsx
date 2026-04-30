@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck, BadgePercent } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
@@ -17,6 +17,7 @@ import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import {
   PLAN_CATALOG,
   PLAN_TIERS,
+  centsToWholeDollars,
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../../shared/billing/planCatalog';
@@ -37,6 +38,117 @@ export interface EffectiveRateResponse {
   monthlyBasePriceSource?: 'stripe' | 'catalog';
   annualBasePriceCents?: number;
   annualBasePriceSource?: 'stripe' | 'catalog';
+}
+
+/**
+ * Summary of how the tenant's actual Stripe-invoiced monthly rate compares
+ * to the *matching-interval* catalog price for the same tier — drives
+ * the "you're on a custom plan" callout that appears above the
+ * calculator.
+ *
+ * We deliberately compare like-with-like: a tenant on an annual
+ * subscription is compared against the published annual price (catalog
+ * monthly × 0.8), not against the catalog monthly. Otherwise every
+ * tenant on the standard published *annual* rate would falsely see a
+ * "you're paying less than the published rate" banner — they're on the
+ * published rate, just on a different interval.
+ *
+ * The interval is inferred from which of `monthlyBasePriceCents` or
+ * `annualBasePriceCents` matches `basePriceCents` (the API populates
+ * the matching side from the tenant's actual subscription and the
+ * other side from the published `STRIPE_PRICE_<TIER>_<INTERVAL>` env
+ * var).
+ */
+export interface CustomRateDelta {
+  tier: PlanTier;
+  tierName: string;
+  currentMonthlyDollars: number;
+  catalogMonthlyDollars: number;
+  deltaDollars: number;
+  /** True when the tenant pays *less* than the current published rate. */
+  isLess: boolean;
+}
+
+// Sub-dollar deltas are suppressed: the callout formats every monetary
+// value as whole dollars, so smaller drifts would render arithmetic that
+// doesn't add up on screen and are likely proration / Stripe rounding
+// noise rather than a meaningful negotiated rate.
+const RENDER_THRESHOLD_CENTS = 100;
+
+function inferTenantInterval(
+  payload: EffectiveRateResponse,
+): 'monthly' | 'annual' | 'unknown' {
+  // The matching interval is BOTH stripe-sourced AND has the same cents
+  // value as `basePriceCents` (the API populates the matching side from
+  // the live subscription). Annual is checked first so an annual sub
+  // wins when both happen to coincide with `basePriceCents`.
+  const base = payload.basePriceCents;
+  if (
+    payload.annualBasePriceSource === 'stripe'
+    && payload.annualBasePriceCents === base
+  ) return 'annual';
+  if (
+    payload.monthlyBasePriceSource === 'stripe'
+    && payload.monthlyBasePriceCents === base
+  ) return 'monthly';
+  // Pre-#1209 API responses don't carry the per-interval breakdown;
+  // default to monthly (the common case) rather than skip the banner.
+  if (
+    payload.monthlyBasePriceSource == null
+    && payload.annualBasePriceSource == null
+  ) return 'monthly';
+  return 'unknown';
+}
+
+function catalogReferenceCents(
+  tier: PlanTier,
+  interval: 'monthly' | 'annual',
+): number {
+  const monthly = PLAN_CATALOG[tier].monthlyPriceCents;
+  return interval === 'annual'
+    ? Math.round(monthly * (1 - ANNUAL_DISCOUNT))
+    : monthly;
+}
+
+export function computeCustomRateDelta(
+  payload: EffectiveRateResponse | null | undefined,
+): CustomRateDelta | null {
+  if (!payload) return null;
+  if (!(PLAN_TIERS as readonly string[]).includes(payload.plan)) return null;
+
+  // Only surface the callout when something on the response is actually
+  // sourced from Stripe — a fully-catalog response is identical to what
+  // an anonymous visitor sees and would render a misleading "custom
+  // plan" message for tenants on the published rate.
+  const isStripeSourced =
+    payload.basePriceSource === 'stripe'
+    || payload.monthlyBasePriceSource === 'stripe'
+    || payload.annualBasePriceSource === 'stripe'
+    || payload.overagePriceSource === 'stripe';
+  if (!isStripeSourced) return null;
+
+  const tier = payload.plan;
+  const interval = inferTenantInterval(payload);
+  // Ambiguous interval — we'd risk picking the wrong catalog reference
+  // and showing a misleading delta. Skip the banner rather than guess.
+  if (interval === 'unknown') return null;
+
+  const tenantCents = Number.isFinite(payload.basePriceCents)
+    ? payload.basePriceCents
+    : catalogReferenceCents(tier, interval);
+  const catalogCents = catalogReferenceCents(tier, interval);
+
+  const deltaCents = catalogCents - tenantCents;
+  if (Math.abs(deltaCents) < RENDER_THRESHOLD_CENTS) return null;
+
+  return {
+    tier,
+    tierName: PLAN_CATALOG[tier].name,
+    currentMonthlyDollars: centsToWholeDollars(tenantCents),
+    catalogMonthlyDollars: centsToWholeDollars(catalogCents),
+    deltaDollars: centsToWholeDollars(Math.abs(deltaCents)),
+    isLess: deltaCents > 0,
+  };
 }
 
 export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverride | undefined {
@@ -136,6 +248,77 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
   );
 }
 
+function formatWholeDollars(value: number): string {
+  return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+interface CustomRateCalloutProps {
+  delta: CustomRateDelta;
+  t: ReturnType<typeof useTranslation>['t'];
+}
+
+function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
+  const interp = {
+    tierName: delta.tierName,
+    currentPrice: formatWholeDollars(delta.currentMonthlyDollars),
+    catalogPrice: formatWholeDollars(delta.catalogMonthlyDollars),
+    deltaPrice: formatWholeDollars(delta.deltaDollars),
+  };
+  const descriptionKey = delta.isLess
+    ? 'pricing.override_callout.description_less'
+    : 'pricing.override_callout.description_more';
+  const titleKey = delta.isLess
+    ? 'pricing.override_callout.title_less'
+    : 'pricing.override_callout.title_more';
+  // Tinted by direction: success-green when the tenant is paying less than
+  // the current published price (good news), warning-amber when they're
+  // paying more (gentle nudge to revisit their plan).
+  const isLess = delta.isLess;
+  const tone = isLess
+    ? {
+        wrapper: 'border-success/30 bg-success/[0.06]',
+        accent: 'text-success',
+        iconBg: 'bg-success/15',
+      }
+    : {
+        wrapper: 'border-warning/30 bg-warning/[0.06]',
+        accent: 'text-warning',
+        iconBg: 'bg-warning/15',
+      };
+
+  return (
+    <div
+      data-testid="pricing-override-callout"
+      data-direction={isLess ? 'less' : 'more'}
+      role="status"
+      className={`mb-6 flex flex-col sm:flex-row sm:items-start gap-3 rounded-xl border p-4 sm:p-5 ${tone.wrapper}`}
+    >
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.iconBg} ${tone.accent}`}>
+        <BadgePercent className="h-4.5 w-4.5" aria-hidden="true" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`font-display text-sm font-semibold ${tone.accent}`}>
+          {t(titleKey)}
+        </p>
+        <p
+          data-testid="pricing-override-callout-description"
+          className="text-sm font-body text-text-primary/80 mt-1"
+        >
+          {t(descriptionKey, interp)}
+        </p>
+      </div>
+      <Link
+        to="/billing"
+        data-testid="pricing-override-callout-link"
+        className={`inline-flex items-center gap-1 self-start sm:self-center font-display text-sm font-semibold whitespace-nowrap hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-2 rounded ${tone.accent}`}
+      >
+        {t('pricing.override_callout.manage_link')}
+        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      </Link>
+    </div>
+  );
+}
+
 export default function Pricing() {
   const { t } = useTranslation('marketing');
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
@@ -164,10 +347,18 @@ export default function Pricing() {
   const tenantId = user?.tenantId ?? null;
   const [currentPlanOverride, setCurrentPlanOverride] =
     useState<CurrentPlanOverride | undefined>(undefined);
+  // The legacy/grandfathered-pricing callout above the calculator needs
+  // the original API response (specifically the interval-agnostic
+  // `basePriceCents` field) to compute a tenant-vs-catalog delta — the
+  // override structure deliberately remaps it for calculator purposes.
+  // Keep both so the two consumers don't share a leaky abstraction.
+  const [customRateDelta, setCustomRateDelta] =
+    useState<CustomRateDelta | null>(null);
 
   useEffect(() => {
     if (!tenantId) {
       setCurrentPlanOverride(undefined);
+      setCustomRateDelta(null);
       return;
     }
     let cancelled = false;
@@ -176,10 +367,14 @@ export default function Pricing() {
         const payload = await api.get<EffectiveRateResponse>('/billing/effective-rate');
         if (cancelled) return;
         setCurrentPlanOverride(buildOverride(payload));
+        setCustomRateDelta(computeCustomRateDelta(payload));
       } catch {
         // Silently ignore — the calculator just falls back to catalog
         // rates, which is exactly what anonymous visitors already see.
-        if (!cancelled) setCurrentPlanOverride(undefined);
+        if (!cancelled) {
+          setCurrentPlanOverride(undefined);
+          setCustomRateDelta(null);
+        }
       }
     })();
     return () => {
@@ -482,6 +677,9 @@ export default function Pricing() {
                 {t('pricing.calculator.subtitle')}
               </p>
             </div>
+            {customRateDelta && (
+              <CustomRateCallout delta={customRateDelta} t={t} />
+            )}
             <MinutesPricingCalculator
               billingPeriod={billingPeriod}
               onBillingPeriodChange={setBillingPeriod}
