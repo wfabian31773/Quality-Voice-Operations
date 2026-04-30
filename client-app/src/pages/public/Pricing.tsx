@@ -5,12 +5,51 @@ import { CheckCircle2, X as XIcon, ArrowRight, ChevronDown, Star, ShieldCheck } 
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
-import MinutesPricingCalculator, { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPricingCalculator';
+import MinutesPricingCalculator, {
+  ANNUAL_DISCOUNT,
+  type BillingPeriod,
+  type CurrentPlanOverride,
+} from '../../components/MinutesPricingCalculator';
 import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
-import { PLAN_CATALOG, getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
+import {
+  PLAN_CATALOG,
+  PLAN_TIERS,
+  getPlanMonthlyPriceWholeDollars,
+  type PlanTier,
+} from '../../../../shared/billing/planCatalog';
 import { formatDollars } from '../../lib/formatCurrency';
+import { useAuth } from '../../lib/auth';
+import { api } from '../../lib/api';
+
+interface EffectiveRateResponse {
+  plan: PlanTier;
+  basePriceCents: number;
+  overageRatePerMinute: number;
+  basePriceSource: 'stripe' | 'catalog';
+  overagePriceSource: 'stripe' | 'catalog';
+}
+
+function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverride | undefined {
+  if (!(PLAN_TIERS as readonly string[]).includes(payload.plan)) return undefined;
+  // No point passing an override that's pure catalog — that's exactly what
+  // anonymous visitors already see, and would render a misleading
+  // "Live Stripe rate" badge on the current tier card.
+  if (
+    payload.basePriceSource !== 'stripe'
+    && payload.overagePriceSource !== 'stripe'
+  ) {
+    return undefined;
+  }
+  return {
+    tier: payload.plan,
+    basePriceCents: payload.basePriceCents,
+    overageRatePerMinute: payload.overageRatePerMinute,
+    basePriceSource: payload.basePriceSource,
+    overagePriceSource: payload.overagePriceSource,
+  };
+}
 
 function formatOverageRate(ratePerMinute: number): string {
   return `${formatDollars(ratePerMinute)}/min`;
@@ -82,12 +121,56 @@ export default function Pricing() {
   const { t } = useTranslation('marketing');
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const isAnnual = billingPeriod === 'annual';
+  const { user } = useAuth();
 
   useEffect(() => {
     trackPageView('/pricing');
     captureUtmOnLoad();
     trackConversionEvent('page_view', '/pricing');
   }, []);
+
+  // Logged-in tenants browsing the public pricing page get a teaser of
+  // their actual Stripe-invoiced rate on the *current* tier card (next
+  // tiers stay at catalog prices because Stripe can't quote unsubscribed
+  // plans). Anonymous visitors skip the fetch entirely so we don't hammer
+  // the API or leak the existence of authenticated endpoints.
+  //
+  // We use a plain `useEffect` + `api.get` here (rather than React Query
+  // like the in-app BillingEstimator does) because the public marketing
+  // bundle (`main.public.tsx`) renders under Preact without a
+  // QueryClientProvider — pulling the React Query runtime into the
+  // marketing pages would bloat the eager preload graph for every
+  // anonymous visitor, just to power one optional teaser badge for the
+  // logged-in subset.
+  const tenantId = user?.tenantId ?? null;
+  const [currentPlanOverride, setCurrentPlanOverride] =
+    useState<CurrentPlanOverride | undefined>(undefined);
+
+  useEffect(() => {
+    if (!tenantId) {
+      setCurrentPlanOverride(undefined);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = await api.get<EffectiveRateResponse>('/billing/effective-rate');
+        if (cancelled) return;
+        setCurrentPlanOverride(buildOverride(payload));
+      } catch {
+        // Silently ignore — the calculator just falls back to catalog
+        // rates, which is exactly what anonymous visitors already see.
+        if (!cancelled) setCurrentPlanOverride(undefined);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on `tenantId` (not just `isAuthenticated`) so an account/tenant
+    // switch while staying logged in correctly refetches the rate for the
+    // new tenant. Unlikely on a public marketing page, but cheap and
+    // correct.
+  }, [tenantId]);
 
   const tUnlimited = t('pricing.features_list.unlimited');
   const tUpTo3 = t('pricing.features_list.up_to_3');
@@ -365,6 +448,7 @@ export default function Pricing() {
             <MinutesPricingCalculator
               billingPeriod={billingPeriod}
               onBillingPeriodChange={setBillingPeriod}
+              currentPlanOverride={currentPlanOverride}
             />
           </div>
           </RevealSection>

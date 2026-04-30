@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Calculator, Sparkles } from 'lucide-react';
 import { formatDollars } from '../lib/formatCurrency';
-import { PLAN_CATALOG, PLAN_TIERS, getPlanMonthlyPriceWholeDollars, type PlanTier } from '../../../shared/billing/planCatalog';
+import {
+  PLAN_CATALOG,
+  PLAN_TIERS,
+  centsToWholeDollars,
+  getPlanMonthlyPriceWholeDollars,
+  type PlanTier,
+} from '../../../shared/billing/planCatalog';
 
 interface CalculatorTier {
   key: PlanTier;
@@ -10,6 +16,28 @@ interface CalculatorTier {
   includedMinutes: number;
   overageRate: number;
   popular?: boolean;
+}
+
+/**
+ * Override sourced from `/billing/effective-rate` so a logged-in tenant
+ * sees what their *current* tier actually invoices at — including any
+ * negotiated, grandfathered, or otherwise-custom Stripe price — instead
+ * of the published catalog default. Only the tenant's current tier is
+ * overridden; the other tier cards keep catalog rates because Stripe
+ * can't quote unsubscribed plans for that tenant.
+ *
+ * The override is only applied while the calculator is in monthly mode.
+ * In annual mode the catalog rates and the standard 20% annual discount
+ * stay in force, since `/billing/effective-rate` returns the rate the
+ * tenant pays right now and we have no way to project it onto a
+ * different billing interval.
+ */
+export interface CurrentPlanOverride {
+  tier: PlanTier;
+  basePriceCents?: number | null;
+  overageRatePerMinute?: number | null;
+  basePriceSource?: 'stripe' | 'catalog';
+  overagePriceSource?: 'stripe' | 'catalog';
 }
 
 export type BillingPeriod = 'monthly' | 'annual';
@@ -58,11 +86,19 @@ export function getDiscountedBasePrice(basePrice: number, period: BillingPeriod)
 export interface MinutesPricingCalculatorProps {
   billingPeriod?: BillingPeriod;
   onBillingPeriodChange?: (period: BillingPeriod) => void;
+  /**
+   * Optional Stripe-sourced rate override applied to the tenant's current
+   * tier card. When provided (and the calculator is in monthly mode), the
+   * matching tier shows the live invoiced rate instead of the catalog
+   * default and renders a "Live Stripe rate" badge.
+   */
+  currentPlanOverride?: CurrentPlanOverride;
 }
 
 export default function MinutesPricingCalculator({
   billingPeriod: billingPeriodProp,
   onBillingPeriodChange,
+  currentPlanOverride,
 }: MinutesPricingCalculatorProps = {}) {
   const [minutes, setMinutes] = useState<number>(1_500);
   const [billingPeriodInternal, setBillingPeriodInternal] = useState<BillingPeriod>('monthly');
@@ -75,17 +111,73 @@ export default function MinutesPricingCalculator({
 
   const results = useMemo(() => {
     const safeMinutes = Math.max(0, Math.min(MAX_MINUTES, Math.round(minutes)));
+    // We only apply the Stripe override in monthly mode — the override
+    // represents the rate the tenant pays *right now* and we have no way
+    // to project it onto a different billing interval.
+    const overrideActive =
+      !!currentPlanOverride && billingPeriod === 'monthly';
+    const overrideBaseCents =
+      overrideActive
+        && currentPlanOverride?.basePriceSource === 'stripe'
+        && currentPlanOverride.basePriceCents != null
+        && Number.isFinite(currentPlanOverride.basePriceCents)
+        ? currentPlanOverride.basePriceCents
+        : null;
+    const overrideOverage =
+      overrideActive
+        && currentPlanOverride?.overagePriceSource === 'stripe'
+        && currentPlanOverride.overageRatePerMinute != null
+        && Number.isFinite(currentPlanOverride.overageRatePerMinute)
+        ? currentPlanOverride.overageRatePerMinute
+        : null;
+
     return CALC_TIERS.map((tier) => {
-      const effectiveBase = getDiscountedBasePrice(tier.basePrice, billingPeriod);
-      const billingTier = { ...tier, basePrice: effectiveBase };
+      const isOverriddenTier =
+        overrideActive && currentPlanOverride?.tier === tier.key;
+
+      // The current-tier card sourced from Stripe takes the live invoiced
+      // rate as-is — no annual discount, since the override IS the rate
+      // the tenant pays. Other cards (and the same card when no override
+      // applies) keep catalog rates plus the standard annual discount.
+      const baseFromOverride = isOverriddenTier && overrideBaseCents != null
+        ? centsToWholeDollars(overrideBaseCents)
+        : null;
+      const overageFromOverride = isOverriddenTier && overrideOverage != null
+        ? overrideOverage
+        : null;
+
+      const catalogBase = getDiscountedBasePrice(tier.basePrice, billingPeriod);
+      const effectiveBase = baseFromOverride ?? catalogBase;
+      const overageRate = overageFromOverride ?? tier.overageRate;
+      const billingTier = {
+        ...tier,
+        basePrice: effectiveBase,
+        overageRate,
+      };
       const monthlyCost = calculateMonthlyCost(billingTier, safeMinutes);
       const effectiveRate = safeMinutes > 0 ? monthlyCost / safeMinutes : 0;
       const overageMinutes = Math.max(0, safeMinutes - tier.includedMinutes);
-      const overageCost = overageMinutes * tier.overageRate;
-      const annualSavings = (tier.basePrice - effectiveBase) * 12;
-      return { tier, effectiveBase, monthlyCost, effectiveRate, overageMinutes, overageCost, annualSavings };
+      const overageCost = overageMinutes * overageRate;
+      // Annual savings only meaningful for catalog-priced cards. The
+      // override card never shows the savings line because its base is
+      // not derived from the catalog monthly→annual transform.
+      const annualSavings = baseFromOverride != null
+        ? 0
+        : (tier.basePrice - effectiveBase) * 12;
+      const sourcedFromStripe = baseFromOverride != null || overageFromOverride != null;
+      return {
+        tier,
+        effectiveBase,
+        effectiveOverageRate: overageRate,
+        monthlyCost,
+        effectiveRate,
+        overageMinutes,
+        overageCost,
+        annualSavings,
+        sourcedFromStripe,
+      };
     });
-  }, [minutes, billingPeriod]);
+  }, [minutes, billingPeriod, currentPlanOverride]);
 
   const cheapest = useMemo(() => {
     if (minutes <= 0) return null;
@@ -196,7 +288,7 @@ export default function MinutesPricingCalculator({
       </div>
 
       <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border-strong/30">
-        {results.map(({ tier, effectiveBase, monthlyCost, effectiveRate, overageMinutes, overageCost, annualSavings }) => {
+        {results.map(({ tier, effectiveBase, effectiveOverageRate, monthlyCost, effectiveRate, overageMinutes, overageCost, annualSavings, sourcedFromStripe }) => {
           const isBest = cheapest && cheapest.tier.key === tier.key && minutes > 0;
           return (
             <div
@@ -234,7 +326,16 @@ export default function MinutesPricingCalculator({
                 >
                   {minutes > 0 ? formatPerMinute(effectiveRate) : '—'} effective per minute
                 </div>
-                {isAnnual && (
+                {sourcedFromStripe && (
+                  <div
+                    data-testid={`calc-source-${tier.key}`}
+                    className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+                    title="Pulled from your live Stripe subscription — overrides published catalog rates for your current plan"
+                  >
+                    Live Stripe rate
+                  </div>
+                )}
+                {isAnnual && !sourcedFromStripe && (
                   <div
                     data-testid={`calc-savings-${tier.key}`}
                     className="text-[11px] text-success font-body font-medium mt-1.5"
@@ -251,7 +352,9 @@ export default function MinutesPricingCalculator({
                     data-testid={`calc-base-${tier.key}`}
                     className="text-text-primary font-medium"
                   >
-                    {isAnnual ? (
+                    {sourcedFromStripe ? (
+                      <span>{formatCurrency(effectiveBase)}/mo</span>
+                    ) : isAnnual ? (
                       <span className="inline-flex items-baseline gap-1.5">
                         <span className="line-through text-text-primary/40">{formatCurrency(tier.basePrice)}</span>
                         <span>{formatCurrency(effectiveBase)}/mo</span>
@@ -267,7 +370,7 @@ export default function MinutesPricingCalculator({
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Overage rate</dt>
-                  <dd className="text-text-primary font-medium">{formatPerMinute(tier.overageRate)}/min</dd>
+                  <dd className="text-text-primary font-medium">{formatPerMinute(effectiveOverageRate)}/min</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Overage this month</dt>

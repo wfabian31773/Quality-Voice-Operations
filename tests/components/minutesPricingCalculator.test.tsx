@@ -7,6 +7,7 @@ import MinutesPricingCalculator, {
   calculateEffectiveRate,
   getDiscountedBasePrice,
   ANNUAL_DISCOUNT,
+  type CurrentPlanOverride,
 } from '../../client-app/src/components/MinutesPricingCalculator';
 
 void React;
@@ -119,5 +120,114 @@ describe('MinutesPricingCalculator annual toggle', () => {
     const proSavings = screen.getByTestId('calc-savings-pro').textContent ?? '';
     expect(proSavings.toLowerCase()).toContain('vs monthly');
     expect(proSavings).toMatch(/\$95[78]/);
+  });
+});
+
+describe('MinutesPricingCalculator currentPlanOverride (logged-in tenant teaser)', () => {
+  // Negotiated Pro: $250/mo flat instead of catalog $399, $0.05/min overage
+  const proStripeOverride: CurrentPlanOverride = {
+    tier: 'pro',
+    basePriceCents: 25_000,
+    overageRatePerMinute: 0.05,
+    basePriceSource: 'stripe',
+    overagePriceSource: 'stripe',
+  };
+
+  it('applies the Stripe rate to the matching tier and renders the live-rate badge', () => {
+    render(<MinutesPricingCalculator currentPlanOverride={proStripeOverride} />);
+    const input = document.getElementById('minutes-input') as HTMLInputElement;
+    // 400 min — within all three tiers' included buckets, so monthly cost
+    // for each card == base price only (keeps the assertions clean).
+    fireEvent.change(input, { target: { value: '400' } });
+
+    // Pro card shows the negotiated $250 base, NOT the catalog $399
+    expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$250');
+    expect(screen.getByTestId('calc-base-pro').textContent).toContain('$250');
+    expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+
+    // Overage rate also flipped to the negotiated $0.050/min
+    expect(screen.getByTestId('calc-tier-pro').textContent).toContain('$0.050');
+
+    // Other tiers stay on catalog rates and have no badge
+    expect(screen.getByTestId('calc-monthly-starter').textContent).toContain('$99');
+    expect(screen.getByTestId('calc-monthly-enterprise').textContent).toContain('$999');
+    expect(screen.queryByTestId('calc-source-starter')).toBeNull();
+    expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
+  });
+
+  it('only overrides the named tier — catalog rates apply elsewhere even at higher minutes', () => {
+    render(<MinutesPricingCalculator currentPlanOverride={proStripeOverride} />);
+    const input = document.getElementById('minutes-input') as HTMLInputElement;
+    // 3,000 min — 500 over Pro's included
+    fireEvent.change(input, { target: { value: '3000' } });
+
+    // Pro: $250 base + 500 * $0.05 = $275  (override overage applied)
+    expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$275');
+
+    // Starter overage still uses catalog $0.150/min
+    const starterText = screen.getByTestId('calc-tier-starter').textContent ?? '';
+    expect(starterText).toContain('$0.150');
+  });
+
+  it('falls back to catalog (no badge) when annual mode is selected', () => {
+    render(<MinutesPricingCalculator currentPlanOverride={proStripeOverride} />);
+    const input = document.getElementById('minutes-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '1500' } });
+
+    // Sanity: badge present in monthly mode
+    expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('calc-billing-annual'));
+
+    // Badge is gone — Stripe override only applies to monthly
+    expect(screen.queryByTestId('calc-source-pro')).toBeNull();
+    // Pro card shows the catalog annual price ($399 → $319), not $250
+    expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$319');
+  });
+
+  it('does not render the badge when both override sources are catalog (anonymous fallback)', () => {
+    render(
+      <MinutesPricingCalculator
+        currentPlanOverride={{
+          tier: 'pro',
+          basePriceCents: 39_900,
+          overageRatePerMinute: 0.12,
+          basePriceSource: 'catalog',
+          overagePriceSource: 'catalog',
+        }}
+      />,
+    );
+    expect(screen.queryByTestId('calc-source-pro')).toBeNull();
+    // And the catalog price is unchanged
+    const input = document.getElementById('minutes-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '1500' } });
+    expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$399');
+  });
+
+  it('still shows badge when only the overage rate is overridden', () => {
+    render(
+      <MinutesPricingCalculator
+        currentPlanOverride={{
+          tier: 'starter',
+          basePriceCents: 9_900,
+          overageRatePerMinute: 0.10,
+          basePriceSource: 'catalog',
+          overagePriceSource: 'stripe',
+        }}
+      />,
+    );
+    expect(screen.getByTestId('calc-source-starter')).toBeTruthy();
+    // Starter base remains $99 (catalog), overage rate is the Stripe $0.10/min
+    const text = screen.getByTestId('calc-tier-starter').textContent ?? '';
+    expect(text).toContain('$99');
+    expect(text).toContain('$0.100');
+  });
+
+  it('renders unchanged for anonymous visitors (no override prop)', () => {
+    render(<MinutesPricingCalculator />);
+    expect(screen.queryByTestId('calc-source-starter')).toBeNull();
+    expect(screen.queryByTestId('calc-source-pro')).toBeNull();
+    expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
+    expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$399');
   });
 });
