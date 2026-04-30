@@ -15,6 +15,7 @@ import {
   getChecklistState,
   markStepComplete,
   markStepIncomplete,
+  normalizeChecklistLocale,
 } from '../../../platform/marketplace/ChecklistService';
 import {
   buildCustomizationSchema,
@@ -997,12 +998,24 @@ router.patch('/marketplace/installations/:id', requireAuth, requireRole('manager
   }
 });
 
+// Pick a checklist locale from `?locale=`, then the Accept-Language header,
+// then the default. `normalizeChecklistLocale` handles unknown values.
+function resolveChecklistLocale(req: { query: Record<string, unknown>; headers: Record<string, unknown> }) {
+  const queryLocale = typeof req.query.locale === 'string' ? req.query.locale : undefined;
+  if (queryLocale) return normalizeChecklistLocale(queryLocale);
+
+  const headerRaw = req.headers['accept-language'];
+  const header = typeof headerRaw === 'string' ? headerRaw.split(',')[0]?.split(';')[0]?.trim() : undefined;
+  return normalizeChecklistLocale(header);
+}
+
 router.get('/marketplace/installations/:id/checklist', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const installationId = req.params.id;
+  const locale = resolveChecklistLocale(req);
 
   try {
-    const checklist = await getChecklistState(tenantId, installationId);
+    const checklist = await getChecklistState(tenantId, installationId, locale);
     if (!checklist) {
       return res.status(404).json({ error: 'Installation not found' });
     }
@@ -1017,6 +1030,7 @@ router.patch('/marketplace/installations/:id/checklist', requireAuth, requireRol
   const { tenantId } = req.user!;
   const installationId = req.params.id;
   const { stepKey, completed } = req.body as { stepKey?: string; completed?: boolean };
+  const locale = resolveChecklistLocale(req);
 
   if (!stepKey || typeof stepKey !== 'string') {
     return res.status(400).json({ error: 'stepKey is required' });
@@ -1024,8 +1038,8 @@ router.patch('/marketplace/installations/:id/checklist', requireAuth, requireRol
 
   try {
     const result = completed === false
-      ? await markStepIncomplete(tenantId, installationId, stepKey)
-      : await markStepComplete(tenantId, installationId, stepKey);
+      ? await markStepIncomplete(tenantId, installationId, stepKey, locale)
+      : await markStepComplete(tenantId, installationId, stepKey, locale);
 
     if (!result.success) {
       return res.status(result.error === 'Installation not found' ? 404 : 400).json({ error: result.error });

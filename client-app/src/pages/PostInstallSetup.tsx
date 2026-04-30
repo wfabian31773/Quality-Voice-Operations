@@ -427,11 +427,15 @@ function CustomizationForm({
 }
 
 export default function PostInstallSetup() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { installationId } = useParams<{ installationId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'checklist' | 'customize'>('checklist');
+
+  // Included as a query param so the server returns localized labels, and
+  // in the cache key so a language switch refetches instead of reusing stale copy.
+  const checklistLocale = i18n.language || 'en';
 
   const { data: installData } = useQuery({
     queryKey: ['installation-detail', installationId],
@@ -441,14 +445,20 @@ export default function PostInstallSetup() {
   });
 
   const { data: checklistData, isLoading: checklistLoading } = useQuery({
-    queryKey: ['checklist', installationId],
-    queryFn: () => api.get<{ checklist: ChecklistState }>(`/marketplace/installations/${installationId}/checklist`),
+    queryKey: ['checklist', installationId, checklistLocale],
+    queryFn: () =>
+      api.get<{ checklist: ChecklistState }>(
+        `/marketplace/installations/${installationId}/checklist?locale=${encodeURIComponent(checklistLocale)}`,
+      ),
     enabled: !!installationId,
   });
 
   const markCompleteMutation = useMutation({
     mutationFn: (stepKey: string) =>
-      api.patch(`/marketplace/installations/${installationId}/checklist`, { stepKey, completed: true }),
+      api.patch(
+        `/marketplace/installations/${installationId}/checklist?locale=${encodeURIComponent(checklistLocale)}`,
+        { stepKey, completed: true },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['checklist', installationId] });
     },
