@@ -788,6 +788,79 @@ describe('Webhook routes — DB-only signing secret (no env var present)', () =>
     expect(mocks.notifyBookingConfirmed).toHaveBeenCalledTimes(1);
   });
 
+  it('Cal.com native webhook (POST /book-demo/calcom-native-webhook) accepts a body-only HMAC signed with the DB-stored secret when no env var is set', async () => {
+    // Regression: `verifyCalcomNativeSignature` previously read
+    // `process.env.CALCOM_WEBHOOK_SECRET` directly, which meant rotating the
+    // secret from the Demo scheduler admin panel silently broke Cal.com
+    // deliveries until the env var was also updated. The native adapter
+    // route must honour the same env-first / DB-fallback ordering as the
+    // canonical `/book-demo/calendar-webhook` handler.
+    const dbSecret = 'db-only-cal-native-secret-aaaaaa';
+    await seedDbSecret('calcomWebhookSecret', dbSecret);
+
+    // The native adapter route does not use `express.raw`; the contact
+    // router falls back to `JSON.stringify(req.body)` when the body isn't a
+    // Buffer, so a normal `application/json` POST exercises the same code
+    // path Cal.com's native signer hits in production.
+    const app = await buildApp();
+
+    const payload = {
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-db-native-1',
+        bookingId: 'bid-db-native-1',
+        startTime: '2026-05-01T10:00:00Z',
+        endTime: '2026-05-01T10:30:00Z',
+        attendees: [{ email: 'attendee@example.com', name: 'Attendee', timeZone: 'UTC' }],
+        metadata: { leadId: 99 },
+      },
+    };
+    const body = JSON.stringify(payload);
+    // Cal.com's native signer is a body-only HMAC — no timestamp envelope.
+    const sig = crypto.createHmac('sha256', dbSecret).update(body).digest('hex');
+
+    const r = await request(app)
+      .post('/book-demo/calcom-native-webhook')
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', sig)
+      .send(payload);
+
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 99, duplicate: false });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyBookingConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('Cal.com native webhook rejects a body-only HMAC signed with a different secret when only the DB secret is configured', async () => {
+    await seedDbSecret('calcomWebhookSecret', 'db-only-cal-native-secret-cccccc');
+    const app = await buildApp();
+
+    const payload = {
+      triggerEvent: 'BOOKING_CREATED',
+      payload: {
+        uid: 'uid-db-native-2',
+        bookingId: 'bid-db-native-2',
+        attendees: [{ email: 'attendee@example.com' }],
+        metadata: { leadId: 1 },
+      },
+    };
+    const body = JSON.stringify(payload);
+    const wrongSig = crypto
+      .createHmac('sha256', 'native-wrong-secret-zzzzzzzzzz')
+      .update(body)
+      .digest('hex');
+
+    const r = await request(app)
+      .post('/book-demo/calcom-native-webhook')
+      .set('Content-Type', 'application/json')
+      .set('x-cal-signature-256', wrongSig)
+      .send(payload);
+
+    expect(r.status).toBe(401);
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
+  });
+
   it('Cal.com webhook still rejects a signature signed with a different secret when only the DB secret is configured', async () => {
     await seedDbSecret('calcomWebhookSecret', 'db-only-cal-webhook-secret-bbbbbb');
     const app = await buildApp();

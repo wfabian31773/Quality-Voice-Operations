@@ -244,8 +244,17 @@ export function verifyCalcomSignature(
 export function verifyCalcomNativeSignature(
   rawBody: Buffer,
   signatureHeader: string | undefined,
+  /**
+   * Optional pre-resolved secret. When provided (e.g. by the route handler
+   * that loaded the active secret from env-or-DB via
+   * `getActiveCalcomWebhookSecret`), the env-var lookup below is skipped.
+   * This mirrors the env-first / DB-fallback ordering used by the canonical
+   * `verifyCalcomSignature` so admins can rotate the Cal.com webhook secret
+   * from the Demo scheduler admin panel without a redeploy.
+   */
+  resolvedSecret?: string | null,
 ): SignatureResult {
-  const secret = (process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
+  const secret = (resolvedSecret ?? process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
   if (!secret) {
     const allowUnsigned =
       (process.env.CALCOM_WEBHOOK_ALLOW_UNSIGNED ?? '').trim() === '1' &&
@@ -798,7 +807,12 @@ router.post('/book-demo/calcom-native-webhook', async (req: Request, res: Respon
     req.header('x-cal-signature') ||
     undefined;
 
-  const sigResult = verifyCalcomNativeSignature(raw, calcomSig);
+  // Resolve the active secret with the same env-first / DB-fallback ordering
+  // the canonical handler uses, so an admin who rotates the Cal.com webhook
+  // secret from the Demo scheduler admin panel doesn't have to also rotate
+  // the env var to keep this adapter route working.
+  const resolvedSecret = await getActiveCalcomWebhookSecret();
+  const sigResult = verifyCalcomNativeSignature(raw, calcomSig, resolvedSecret);
   if (!sigResult.ok) {
     logger.warn('Cal.com native webhook rejected', { reason: sigResult.error, status: sigResult.status });
     res.status(sigResult.status).json({ error: sigResult.error });
@@ -809,7 +823,7 @@ router.post('/book-demo/calcom-native-webhook', async (req: Request, res: Respon
   // When the dev/staging unsigned bypass was the reason verification passed
   // (no secret configured, CALCOM_WEBHOOK_ALLOW_UNSIGNED=1), forward without a
   // signature header so the canonical handler also follows the bypass branch.
-  const secret = (process.env.CALCOM_WEBHOOK_SECRET ?? '').trim();
+  const secret = (resolvedSecret ?? '').trim();
   if (!secret) {
     await handleCalcomWebhook(raw, undefined, undefined, res);
     return;
