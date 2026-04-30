@@ -1,0 +1,567 @@
+name: Billing config health tile (Stripe live) e2e
+
+# Nightly drift check for the Platform Admin "Billing config health"
+# panel against the real `/api/platform/billing-config-health` route
+# (no `page.route` mock). The deterministic sister spec —
+# `tests/e2e/platformAdminBillingHealth.spec.ts` — locks the visual
+# contract on every PR with synthetic data; this scheduled workflow is
+# what catches a Stripe price id rotated outside the env vars (drift
+# the deploy-time `verify:stripe-prices` script also catches but
+# doesn't surface visually).
+#
+# Failures page ops the same way the in-process
+# `StripePriceVerificationScheduler` does:
+#   1. POST a `:rotating_light:` alert to `OPS_SLACK_WEBHOOK_URL` (the
+#      same webhook the scheduler uses).
+#   2. Open / update a single deduplicated GitHub tracking issue
+#      labelled `billing-health-live-drift`.
+# Both are best-effort and the job still fails red regardless so the
+# Actions tab itself stays an authoritative signal.
+#
+# Subsequent green runs auto-close any open tracking issue so ops
+# isn't left chasing already-resolved alerts (mirrors the pattern in
+# `crm-cached-identity-validators.yml` and `check-openai-realtime-voices.yml`).
+
+on:
+  schedule:
+    # 04:37 UTC nightly. Odd minute on purpose to avoid the
+    # top-of-the-hour cron storm GitHub Actions runs.
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Needed so the alert step can open / update / close the dedup
+  # tracking issue used as the on-call notification surface.
+  issues: write
+
+concurrency:
+  group: billing-health-live-stripe
+  cancel-in-progress: false
+
+jobs:
+  billing-health-live-stripe:
+    name: Billing config health tile (Stripe live) e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: voiceaihub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      APP_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/voiceaihub_test
+      ADMIN_EMAIL: admin@voiceaihub.dev
+      ADMIN_PASSWORD: test-password-123
+      E2E_ADMIN_EMAIL: admin@voiceaihub.dev
+      E2E_ADMIN_PASSWORD: test-password-123
+      E2E_BASE_URL: http://localhost:5000
+      E2E_ARTIFACT_DIR: .ci-logs/screenshots
+      ADMIN_API_PORT: "3002"
+      VOICE_GATEWAY_PORT: "3001"
+      DISABLE_PHI_LOGGING: "true"
+      # Stripe secrets are injected per-step (gate / boot / spec)
+      # rather than at job scope so dependency installs and unrelated
+      # tooling never see them.
+
+    steps:
+      # Resolves to `true` only when the full set of base price ids
+      # AND the secret key are configured AND the secret key is a
+      # test-mode key. Hard-errors on a non-test key so live creds
+      # wired up by mistake fail fast — mirrors the gate in
+      # `billing-recommendation-checkout-stripe-e2e.yml`.
+      #
+      # Failure semantics by trigger:
+      #   - `schedule` (nightly cron) — missing secrets HARD-FAIL the
+      #     job. The whole point of this workflow is to detect drift
+      #     in the live verifier; silently skipping on missing secrets
+      #     would let the drift check be disabled by deleting (or
+      #     forgetting to rotate) a secret without anyone noticing.
+      #     A red scheduled run pages ops the same way a real drift
+      #     would.
+      #   - `workflow_dispatch` (manual) — missing secrets emit a
+      #     notice and skip cleanly, so a maintainer who triggers the
+      #     workflow on a non-prod fork or before secrets are
+      #     provisioned doesn't get a confusing red run.
+      #
+      # Additionally, if `STRIPE_METER_EVENT_AI_MINUTES` is set then
+      # the verifier ALSO checks the three metered AI-minute price
+      # ids and `STRIPE_METER_AI_MINUTES` — leaving any of those
+      # unset would later report `missing-env` rows and fail the
+      # spec. Pre-flight that configuration here so the failure mode
+      # is "config incomplete" instead of "drift detected".
+      - name: Determine whether to run the live Stripe spec
+        id: gate
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PRICE_STARTER_MONTHLY: ${{ secrets.STRIPE_PRICE_STARTER_MONTHLY }}
+          STRIPE_PRICE_STARTER_ANNUAL: ${{ secrets.STRIPE_PRICE_STARTER_ANNUAL }}
+          STRIPE_PRICE_PRO_MONTHLY: ${{ secrets.STRIPE_PRICE_PRO_MONTHLY }}
+          STRIPE_PRICE_PRO_ANNUAL: ${{ secrets.STRIPE_PRICE_PRO_ANNUAL }}
+          STRIPE_PRICE_ENTERPRISE_MONTHLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_MONTHLY }}
+          STRIPE_PRICE_ENTERPRISE_ANNUAL: ${{ secrets.STRIPE_PRICE_ENTERPRISE_ANNUAL }}
+          STRIPE_METER_EVENT_AI_MINUTES: ${{ secrets.STRIPE_METER_EVENT_AI_MINUTES }}
+          STRIPE_METER_AI_MINUTES: ${{ secrets.STRIPE_METER_AI_MINUTES }}
+          STRIPE_PRICE_STARTER_AI_MINUTES: ${{ secrets.STRIPE_PRICE_STARTER_AI_MINUTES }}
+          STRIPE_PRICE_PRO_AI_MINUTES: ${{ secrets.STRIPE_PRICE_PRO_AI_MINUTES }}
+          STRIPE_PRICE_ENTERPRISE_AI_MINUTES: ${{ secrets.STRIPE_PRICE_ENTERPRISE_AI_MINUTES }}
+        run: |
+          run_spec="false"
+          reason=""
+          missing=""
+
+          # Non-test key is ALWAYS a hard error — never run a live key
+          # against the verifier regardless of trigger type.
+          if [ -n "${STRIPE_SECRET_KEY}" ] && [ "${STRIPE_SECRET_KEY#sk_test_}" = "${STRIPE_SECRET_KEY}" ]; then
+            echo "::error::STRIPE_SECRET_KEY is configured but is not a test-mode key (sk_test_…). Refusing to run live Stripe e2e against a non-test key."
+            exit 1
+          fi
+
+          if [ -z "${STRIPE_SECRET_KEY}" ]; then
+            missing="${missing} STRIPE_SECRET_KEY"
+          fi
+          for var in STRIPE_PRICE_STARTER_MONTHLY STRIPE_PRICE_STARTER_ANNUAL STRIPE_PRICE_PRO_MONTHLY STRIPE_PRICE_PRO_ANNUAL STRIPE_PRICE_ENTERPRISE_MONTHLY STRIPE_PRICE_ENTERPRISE_ANNUAL; do
+            if [ -z "$(eval "echo \${$var}")" ]; then
+              missing="${missing} ${var}"
+            fi
+          done
+
+          # Metered AI-minute pre-flight: if the deployment opted into
+          # per-tier metered AI billing (`STRIPE_METER_EVENT_AI_MINUTES`
+          # is set), the verifier requires the meter id AND all three
+          # tier-specific metered price ids. Missing pieces here will
+          # later render as `missing-env` rows in the panel and trip
+          # the spec — surface them up front so the gate notice tells
+          # the truth.
+          if [ -n "${STRIPE_METER_EVENT_AI_MINUTES}" ]; then
+            for var in STRIPE_METER_AI_MINUTES STRIPE_PRICE_STARTER_AI_MINUTES STRIPE_PRICE_PRO_AI_MINUTES STRIPE_PRICE_ENTERPRISE_AI_MINUTES; do
+              if [ -z "$(eval "echo \${$var}")" ]; then
+                missing="${missing} ${var}"
+              fi
+            done
+          fi
+
+          if [ -n "${missing}" ]; then
+            reason="missing required secret(s):${missing}"
+          else
+            run_spec="true"
+          fi
+
+          echo "run_spec=${run_spec}" >> "$GITHUB_OUTPUT"
+
+          if [ "${run_spec}" = "true" ]; then
+            echo "::notice::Live Stripe billing creds detected — running platformAdminBillingHealthLive.spec.ts (metered AI-minute checks: $([ -n "${STRIPE_METER_EVENT_AI_MINUTES}" ] && echo on || echo off))."
+            exit 0
+          fi
+
+          # Missing secrets:
+          #   - schedule  → HARD-FAIL so the drift check can't silently disable itself.
+          #   - dispatch  → notice + clean skip so manual/fork triggers stay friendly.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "::error::Scheduled run cannot proceed — ${reason}. Restore the secret(s) in the repo settings; the live billing-health drift check is blind without them. (Manual workflow_dispatch runs would skip cleanly with the same missing config so a maintainer can pre-flight without paging ops.)"
+            exit 1
+          fi
+          echo "::notice::Skipping platformAdminBillingHealthLive.spec.ts on workflow_dispatch: ${reason}. Configure STRIPE_SECRET_KEY (sk_test_…), the six STRIPE_PRICE_<TIER>_<INTERVAL> secrets, and (if STRIPE_METER_EVENT_AI_MINUTES is set) the metered AI-minute secrets to enable this drift check. Scheduled runs will hard-fail until this is fixed."
+
+      - name: Check out repository
+        if: steps.gate.outputs.run_spec == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.run_spec == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install root dependencies
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install client-app dependencies
+        if: steps.gate.outputs.run_spec == 'true'
+        working-directory: client-app
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install Playwright Chromium browser
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run database migrations
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npx tsx scripts/run-migrations.ts
+
+      - name: Seed admin user
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npx tsx scripts/seed-admin.ts
+
+      - name: Boot Platform Dev stack
+        if: steps.gate.outputs.run_spec == 'true'
+        # All Stripe price env vars MUST be set on the Admin API
+        # process — `verifyStripePrices()` reads them from
+        # `process.env` and any unset key reports as `missing-env`,
+        # which would fail the spec for env-config reasons unrelated
+        # to actual Stripe drift. Per-tier metered AI-minute prices
+        # and the meter id are passed through too: when
+        # `STRIPE_METER_EVENT_AI_MINUTES` is set, the verifier also
+        # checks `STRIPE_PRICE_<TIER>_AI_MINUTES` against
+        # `STRIPE_METER_AI_MINUTES`. Leaving these unset is fine —
+        # the verifier skips the metered block entirely.
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_PRICE_STARTER_MONTHLY: ${{ secrets.STRIPE_PRICE_STARTER_MONTHLY }}
+          STRIPE_PRICE_STARTER_ANNUAL: ${{ secrets.STRIPE_PRICE_STARTER_ANNUAL }}
+          STRIPE_PRICE_PRO_MONTHLY: ${{ secrets.STRIPE_PRICE_PRO_MONTHLY }}
+          STRIPE_PRICE_PRO_ANNUAL: ${{ secrets.STRIPE_PRICE_PRO_ANNUAL }}
+          STRIPE_PRICE_ENTERPRISE_MONTHLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_MONTHLY }}
+          STRIPE_PRICE_ENTERPRISE_ANNUAL: ${{ secrets.STRIPE_PRICE_ENTERPRISE_ANNUAL }}
+          STRIPE_PRICE_STARTER_AI_MINUTES: ${{ secrets.STRIPE_PRICE_STARTER_AI_MINUTES }}
+          STRIPE_PRICE_PRO_AI_MINUTES: ${{ secrets.STRIPE_PRICE_PRO_AI_MINUTES }}
+          STRIPE_PRICE_ENTERPRISE_AI_MINUTES: ${{ secrets.STRIPE_PRICE_ENTERPRISE_AI_MINUTES }}
+          STRIPE_METER_EVENT_AI_MINUTES: ${{ secrets.STRIPE_METER_EVENT_AI_MINUTES }}
+          STRIPE_METER_AI_MINUTES: ${{ secrets.STRIPE_METER_AI_MINUTES }}
+        run: |
+          mkdir -p .ci-logs/screenshots
+          nohup bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
+          echo $! > .ci-logs/platform.pid
+
+      - name: Wait for vite (5000) and admin API (3002) to be healthy
+        if: steps.gate.outputs.run_spec == 'true'
+        run: |
+          set +e
+          for i in $(seq 1 90); do
+            curl -sSfo /dev/null http://localhost:5000/ \
+              && curl -sSfo /dev/null http://localhost:3002/health \
+              && echo "Both services up after ${i}s" \
+              && exit 0
+            sleep 2
+          done
+          echo "::error::Platform Dev did not come up within 180s"
+          echo "----- platform-dev.log (last 200 lines) -----"
+          tail -n 200 .ci-logs/platform-dev.log || true
+          exit 1
+
+      - name: Run live billing-health tile e2e
+        id: spec
+        if: steps.gate.outputs.run_spec == 'true'
+        run: |
+          set -o pipefail
+          npm run test:e2e:platform-admin-billing-health-live 2>&1 \
+            | tee .ci-logs/platform-admin-billing-health-live.log
+
+      - name: Capture Platform Dev logs
+        if: always() && steps.gate.outputs.run_spec == 'true'
+        run: |
+          if [ -f .ci-logs/platform-dev.log ]; then
+            echo "----- platform-dev.log (last 500 lines) -----"
+            tail -n 500 .ci-logs/platform-dev.log || true
+          fi
+
+      - name: Upload Platform Dev + spec logs and screenshots
+        # Always upload (success too) so the success screenshot is
+        # auditable as a visual receipt that the tile rendered "All
+        # prices healthy" against the real verifier on this run.
+        if: always() && steps.gate.outputs.run_spec == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: billing-health-live-stripe-artifacts
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # ─── Page ops on failure (Slack + GitHub tracking issue) ───────────
+      # The spec writes the live snapshot it pulled from
+      # `/api/platform/billing-config-health` to
+      # `.ci-logs/screenshots/platform-admin-billing-health-live-snapshot.json`
+      # so we can format a structured failure body without re-running
+      # the verifier. The body is reused by both the Slack post and
+      # the tracking-issue step.
+      # Fires on any post-gate failure (spec, boot, wait, etc.) — not
+      # just `steps.spec.outcome == 'failure'`. An infra failure that
+      # prevents the verifier from running is itself a silent gap that
+      # ops needs to see; the body-builder script below distinguishes
+      # the two cases so the alert message is accurate.
+      - name: Build failure alert body
+        if: failure() && steps.gate.outputs.run_spec == 'true'
+        id: alert_body
+        env:
+          SPEC_OUTCOME: ${{ steps.spec.outcome }}
+        run: |
+          set +e
+          mkdir -p .ci-out
+          snapshot_path=".ci-logs/screenshots/platform-admin-billing-health-live-snapshot.json"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # When the spec itself never ran (boot / wait failure), the
+          # snapshot file won't exist — emit an "infra failure" alert
+          # instead of a verifier-drift alert so ops doesn't waste
+          # time hunting for a Stripe price id that didn't actually
+          # rotate.
+          if [ "${SPEC_OUTCOME}" != "success" ] && [ "${SPEC_OUTCOME}" != "failure" ]; then
+            echo "Spec step did not run (outcome=${SPEC_OUTCOME}) — building infra-failure alert."
+            cat > .ci-out/snapshot-summary.json <<EOF
+          {"status":"infra-failure","total":0,"ok":0,"failed":0,"message":"CI infra failed before the verifier ran (spec outcome=${SPEC_OUTCOME}); see workflow log for the failing step.","generatedAt":"","failureLines":[]}
+          EOF
+            {
+              echo ":rotating_light: *Live billing-health CI failed before the verifier ran* — spec step outcome was \`${SPEC_OUTCOME}\` (boot / wait / install failure). The Platform Admin Billing config health tile was NOT exercised against live Stripe on this run, so price drift would NOT have been caught."
+              echo "Workflow run: ${run_url}"
+              echo "Runbook: open the workflow log, identify the failing step (Boot Platform Dev / Wait for vite & admin API / migrations / seed), and re-run."
+            } > .ci-out/slack-text.txt
+            {
+              echo "The nightly live billing-health tile e2e (\`platformAdminBillingHealthLive.spec.ts\`) failed BEFORE the verifier could run — the spec step outcome was \`${SPEC_OUTCOME}\` (skipped / cancelled / not-reached), meaning a step earlier in the job (boot, wait, install, seed, or migrations) failed."
+              echo
+              echo "**This run did NOT exercise the live Stripe verifier**, so a price-id rotation outside of env vars would NOT have been caught. Re-run the workflow once the underlying CI infra failure is fixed."
+              echo
+              echo "## Triage"
+              echo
+              echo "1. Open the workflow run linked below and find the first failed step (look for the red X above the spec step)."
+              echo "2. Common causes: postgres service not healthy in time, Platform Dev failing to bind 5000/3002 within 180s, an \`npm ci\` flake, or \`scripts/seed-admin.ts\` failing because of a Drizzle migration drift."
+              echo "3. Once fixed, re-run via \`workflow_dispatch\` to confirm the verifier renders \"All prices healthy\" — the auto-close step will close this issue automatically once the next scheduled run goes green."
+              echo
+              echo "Workflow run: ${run_url}"
+            } > .ci-out/issue-body.md
+            exit 0
+          fi
+
+          if [ -f "$snapshot_path" ]; then
+            node -e '
+              const fs = require("fs");
+              const snap = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              const summary = snap.summary || {};
+              const broken = (snap.results || []).filter(r => r.status !== "ok");
+              const lines = broken.map(r => {
+                const interval = r.interval ? " " + r.interval : "";
+                const detail = r.message ? " — " + r.message : "";
+                return "  - `" + r.envKey + "` (" + r.plan + interval + "): *" + r.status + "*" + detail;
+              });
+              const out = {
+                status: summary.status || "unknown",
+                total: summary.total ?? 0,
+                ok: summary.ok ?? 0,
+                failed: summary.failed ?? 0,
+                message: summary.message || "",
+                generatedAt: snap.generatedAt || "",
+                failureLines: lines,
+              };
+              fs.writeFileSync(".ci-out/snapshot-summary.json", JSON.stringify(out, null, 2));
+            ' "$snapshot_path"
+          else
+            echo "::warning::Spec snapshot missing at $snapshot_path — alert will be emitted with limited context."
+            cat > .ci-out/snapshot-summary.json <<EOF
+          {"status":"unknown","total":0,"ok":0,"failed":0,"message":"(spec snapshot unavailable — likely failed before fetching /api/platform/billing-config-health)","generatedAt":"","failureLines":[]}
+          EOF
+          fi
+
+          # Slack message — keep the format aligned with
+          # `StripePriceVerificationScheduler.buildRegressionSlackText`
+          # so on-call gets a consistent shape across the in-process
+          # alert and this CI alert. The Slack post step uses jq to
+          # encode this safely as a JSON payload.
+          {
+            echo ":rotating_light: *Live billing-health tile failed in CI* — the Platform Admin \`Billing config health\` panel did not render \"All prices healthy\" against the real \`/api/platform/billing-config-health\` route."
+            jq -r '
+              "Verifier summary: `\(.status)` (\(.failed)/\(.total) failed)" +
+              (if .message != "" then "\n" + .message else "" end) +
+              (if (.failureLines | length) > 0 then "\n" + (.failureLines | join("\n")) else "" end)
+            ' .ci-out/snapshot-summary.json
+            echo "Workflow run: ${run_url}"
+            echo "Runbook: re-run \`npm run verify:stripe-prices\` locally with the same Stripe creds, or open the Billing config health tab in the Platform Admin to see which env var rotated."
+          } > .ci-out/slack-text.txt
+
+          # GitHub tracking-issue body — richer than Slack since the
+          # issue is the durable record on-call references when
+          # triaging. Falls back gracefully when the snapshot is
+          # missing (spec died before the fetch).
+          {
+            echo "The nightly live billing-health tile e2e (\`platformAdminBillingHealthLive.spec.ts\`) failed."
+            echo
+            echo "This means the Platform Admin \`Billing config health\` panel did NOT render \"All prices healthy\" against the real \`/api/platform/billing-config-health\` route — i.e. one or more \`STRIPE_PRICE_<TIER>_<INTERVAL>\` env vars no longer line up with the live Stripe account, or the metered AI-minute price's \`recurring.meter\` no longer matches \`STRIPE_METER_AI_MINUTES\`. The deploy-time \`verify:stripe-prices\` script is the same gate, so a fresh deploy would also be blocked."
+            echo
+            echo "## Verifier snapshot"
+            echo
+            echo '```json'
+            cat .ci-out/snapshot-summary.json
+            echo '```'
+            echo
+            echo "## Triage"
+            echo
+            echo "1. Open the workflow run linked below and inspect the spec log + failure screenshot uploaded as \`billing-health-live-stripe-artifacts\` (\`platform-admin-billing-health-live-failure.png\`)."
+            echo "2. Re-run \`npm run verify:stripe-prices\` locally against the same Stripe creds to confirm the drift outside of the e2e harness."
+            echo "3. Identify the rotated env var from the per-row failure list above (each row names the \`STRIPE_PRICE_*\` env key, the failing \`status\`, and the human-readable message from \`verifyPrices.ts\`)."
+            echo "4. Re-point the env var at the new Stripe price id (or roll the Stripe price back), redeploy the Admin API, and re-run this workflow via \`workflow_dispatch\` to confirm the panel is back to \"All prices healthy\". The auto-close step will close this issue automatically once the next scheduled run goes green."
+            echo
+            echo "Sister deterministic spec: \`tests/e2e/platformAdminBillingHealth.spec.ts\` (locks the visual contract on PRs with synthetic data — should still be passing)."
+            echo "In-process alert path: \`platform/billing/StripePriceVerificationScheduler.ts\` (the \`OPS_SLACK_WEBHOOK_URL\` Slack alert this workflow mirrors)."
+            echo
+            echo "Workflow run: ${run_url}"
+          } > .ci-out/issue-body.md
+
+      - name: Post failure alert to OPS_SLACK_WEBHOOK_URL
+        # Mirrors `StripePriceVerificationScheduler.postSlackSafely`:
+        # uses the same `OPS_SLACK_WEBHOOK_URL` secret, posts a
+        # `text`-only Slack payload, and degrades quietly when the
+        # webhook is not configured (the GitHub tracking issue and
+        # the red CI run are still authoritative signals). Also fires
+        # on infra failures (boot / wait / install) — the alert body
+        # the previous step built distinguishes those from real
+        # verifier drift so ops doesn't chase a phantom rotation.
+        if: failure() && steps.gate.outputs.run_spec == 'true'
+        env:
+          OPS_SLACK_WEBHOOK_URL: ${{ secrets.OPS_SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "${OPS_SLACK_WEBHOOK_URL}" ]; then
+            echo "::warning::OPS_SLACK_WEBHOOK_URL is not configured — skipping Slack post. The GitHub tracking issue will still page on-call."
+            exit 0
+          fi
+          if [ ! -f .ci-out/slack-text.txt ]; then
+            echo "::warning::Slack text file missing — skipping Slack post."
+            exit 0
+          fi
+          payload="$(jq -Rs '{text: .}' .ci-out/slack-text.txt)"
+          response="$(curl -sS -o /tmp/slack-resp.txt -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$OPS_SLACK_WEBHOOK_URL" || echo "000")"
+          if [ "$response" != "200" ]; then
+            echo "::warning::Slack webhook returned HTTP ${response} — body: $(head -c 200 /tmp/slack-resp.txt 2>/dev/null || true). Tracking issue will still page on-call."
+          else
+            echo "Slack alert delivered (HTTP 200)."
+          fi
+
+      - name: Open or update tracking issue on failure
+        # Same fire condition as the Slack post — infra failures get a
+        # tracking issue too so ops sees a signal in both surfaces
+        # regardless of which step in the pipeline broke.
+        if: failure() && steps.gate.outputs.run_spec == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('.ci-out/issue-body.md', 'utf8');
+            const title = 'Live billing-health tile is failing against the real Stripe verifier';
+            const label = 'billing-health-live-drift';
+
+            // Best-effort: ensure our tracking label exists so the
+            // de-duplication search is reliable on first run.
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+              });
+            } catch (err) {
+              if (err.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: 'd73a4a',
+                  description: 'Tracking issue for the nightly live billing-health tile e2e. Routed to billing on-call alongside OPS_SLACK_WEBHOOK_URL.',
+                });
+              } else {
+                throw err;
+              }
+            }
+
+            // De-duplicate: if there's already an open issue with our
+            // label, update its body and add a comment so consecutive
+            // failures still ping on-call instead of going silent.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+
+            if (existing.data.length > 0) {
+              const issue = existing.data[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Re-detected on ${new Date().toISOString()} — see updated body above. ` +
+                  `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              core.notice(`Updated existing tracking issue #${issue.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened tracking issue #${created.data.number}.`);
+            }
+
+      - name: Auto-close tracking issue when tile is back in sync
+        if: success() && steps.spec.outcome == 'success' && steps.gate.outputs.run_spec == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // When the spec succeeds we close any open tracking issue
+            // from a previous drift run so on-call isn't left chasing
+            // already-resolved alerts. We comment before closing for a
+            // permanent audit trail of *why* the issue closed and a
+            // link to the green run that verified the fix. Mirrors the
+            // pattern in `crm-cached-identity-validators.yml` and
+            // `check-openai-realtime-voices.yml`.
+            const label = 'billing-health-live-drift';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Live billing-health tile rendered "All prices healthy" again as of ${new Date().toISOString()} — ` +
+                  `auto-closing. Workflow run: ` +
+                  `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.notice(`Auto-closed tracking issue #${issue.number}.`);
+            }
+
+      - name: Tear down Platform Dev
+        if: always() && steps.gate.outputs.run_spec == 'true'
+        run: |
+          if [ -f .ci-logs/platform.pid ]; then
+            kill "$(cat .ci-logs/platform.pid)" 2>/dev/null || true
+          fi
+          pkill -f "tsx server/admin-api" 2>/dev/null || true
+          pkill -f "tsx server/voice-gateway" 2>/dev/null || true
+          pkill -f "vite --config client-app" 2>/dev/null || true
+          exit 0
