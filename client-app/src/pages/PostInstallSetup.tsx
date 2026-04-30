@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import {
   CheckCircle2, Circle, Phone, MessageSquare, BookOpen,
@@ -59,15 +60,6 @@ const STEP_ICONS: Record<string, typeof Phone> = {
   publish_agent: Rocket,
 };
 
-const STEP_ACTION_LABELS: Record<string, string> = {
-  assign_phone: 'Quick Assign',
-  enable_widget: 'Enable Now',
-  attach_knowledge: 'Go to Knowledge',
-  customize_greeting: 'Customize',
-  test_call: 'Mark as Tested',
-  publish_agent: 'Publish Agent',
-};
-
 function StepCard({
   step,
   installationId,
@@ -77,9 +69,15 @@ function StepCard({
   installationId: string;
   onComplete: (stepKey: string) => void;
 }) {
+  const { t } = useTranslation();
   const Icon = STEP_ICONS[step.key] ?? Circle;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const stepActionLabel = (key: string) => {
+    const fallback = t('post_install.actions.go');
+    return t(`post_install.actions.${key}`, { defaultValue: fallback });
+  };
 
   const apiActionSteps = new Set(['assign_phone', 'enable_widget', 'publish_agent']);
   const hasApiAction = apiActionSteps.has(step.key);
@@ -100,7 +98,7 @@ function StepCard({
       }
       onComplete(step.key);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Action failed';
+      const msg = err instanceof Error ? err.message : t('post_install.step_card.action_failed');
       setError(msg);
     }
     setLoading(false);
@@ -135,7 +133,7 @@ function StepCard({
           <p className="text-xs text-text-muted mt-0.5">{step.description}</p>
           {step.completed && step.completedAt && (
             <p className="text-xs text-green-600 dark:text-green-500 mt-1">
-              Completed {new Date(step.completedAt).toLocaleDateString()}
+              {t('post_install.step_card.completed_at', { date: new Date(step.completedAt).toLocaleDateString() })}
             </p>
           )}
           {error && (
@@ -155,13 +153,13 @@ function StepCard({
                   }}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary hover:text-primary-hover transition"
                 >
-                  Customize <ChevronRight className="h-3.5 w-3.5" />
+                  {t('post_install.step_card.customize')} <ChevronRight className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={handleMarkComplete}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Done
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {t('post_install.step_card.done')}
                 </button>
               </>
             ) : hasNavLink ? (
@@ -170,13 +168,13 @@ function StepCard({
                   to={step.link}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary hover:text-primary-hover transition"
                 >
-                  {STEP_ACTION_LABELS[step.key] ?? 'Go'} <ChevronRight className="h-3.5 w-3.5" />
+                  {stepActionLabel(step.key)} <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
                 <button
                   onClick={handleMarkComplete}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary border border-border rounded-lg hover:bg-surface-hover transition"
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Done
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {t('post_install.step_card.done')}
                 </button>
               </>
             ) : hasApiAction ? (
@@ -186,14 +184,14 @@ function StepCard({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-50 transition"
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                {STEP_ACTION_LABELS[step.key] ?? 'Complete'}
+                {stepActionLabel(step.key)}
               </button>
             ) : (
               <button
                 onClick={handleMarkComplete}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition"
               >
-                {STEP_ACTION_LABELS[step.key] ?? 'Mark Complete'}
+                {t(`post_install.actions.${step.key}`, { defaultValue: t('post_install.actions.mark_complete') })}
               </button>
             )}
           </div>
@@ -210,6 +208,7 @@ function CustomizationForm({
   installationId: string;
   onGreetingSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['customization-schema', installationId],
     queryFn: () =>
@@ -272,7 +271,7 @@ function CustomizationForm({
       }
     }
     if (Object.keys(updates).length === 0) {
-      setError('No changes to save');
+      setError(t('post_install.customization.no_changes'));
       setTimeout(() => setError(null), 2000);
       return;
     }
@@ -289,7 +288,7 @@ function CustomizationForm({
           <div className="flex items-center gap-2">
             <label className="block text-sm font-medium text-text-primary">{field.label}</label>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-              <Lock className="h-3 w-3" /> Template Locked
+              <Lock className="h-3 w-3" /> {t('post_install.customization.template_locked')}
             </span>
           </div>
           {field.type === 'textarea' ? (
@@ -409,7 +408,7 @@ function CustomizationForm({
       {saved && (
         <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          Changes saved successfully
+          {t('post_install.customization.saved')}
         </div>
       )}
 
@@ -420,7 +419,7 @@ function CustomizationForm({
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition"
         >
           <Save className="h-4 w-4" />
-          {saveMutation.isPending ? 'Saving...' : 'Save Customizations'}
+          {saveMutation.isPending ? t('post_install.customization.saving') : t('post_install.customization.save')}
         </button>
       </div>
     </form>
@@ -428,6 +427,7 @@ function CustomizationForm({
 }
 
 export default function PostInstallSetup() {
+  const { t } = useTranslation();
   const { installationId } = useParams<{ installationId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -475,11 +475,14 @@ export default function PostInstallSetup() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-text-primary">Post-Install Setup</h1>
+          <h1 className="text-xl font-bold text-text-primary">{t('post_install.title')}</h1>
           <p className="text-sm text-text-muted mt-0.5">
             {installData
-              ? `${installData.template_name ?? installData.agent_name ?? 'Agent'} — Complete these steps to go live`
-              : 'Complete these steps to make your agent live'}
+              ? t('post_install.subtitle_with_template', {
+                  templateName:
+                    installData.template_name ?? installData.agent_name ?? t('post_install.agent_fallback'),
+                })
+              : t('post_install.subtitle_default')}
           </p>
         </div>
       </div>
@@ -487,7 +490,7 @@ export default function PostInstallSetup() {
       {checklist && (
         <div className="bg-surface border border-border rounded-xl p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-text-primary">Setup Progress</span>
+            <span className="text-sm font-medium text-text-primary">{t('post_install.progress')}</span>
             <span className="text-sm font-semibold text-primary">{checklist.completedCount}/{checklist.totalCount}</span>
           </div>
           <div className="w-full bg-surface-hover rounded-full h-2.5">
@@ -498,7 +501,7 @@ export default function PostInstallSetup() {
           </div>
           {checklist.allComplete && (
             <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-medium">
-              All steps complete — your agent is ready!
+              {t('post_install.all_complete')}
             </p>
           )}
         </div>
@@ -513,7 +516,7 @@ export default function PostInstallSetup() {
               : 'border-transparent text-text-secondary hover:text-text-primary'
           }`}
         >
-          Setup Checklist
+          {t('post_install.tabs.checklist')}
         </button>
         <button
           data-tab="customize"
@@ -524,7 +527,7 @@ export default function PostInstallSetup() {
               : 'border-transparent text-text-secondary hover:text-text-primary'
           }`}
         >
-          <Settings2 className="h-3.5 w-3.5" /> Customize Agent
+          <Settings2 className="h-3.5 w-3.5" /> {t('post_install.tabs.customize')}
         </button>
       </div>
 
@@ -545,16 +548,16 @@ export default function PostInstallSetup() {
             ))
           ) : (
             <div className="text-center py-12 text-text-muted">
-              Installation not found
+              {t('post_install.not_found')}
             </div>
           )}
         </div>
       ) : (
         <div className="bg-surface border border-border rounded-xl p-6">
           <div className="mb-5">
-            <h2 className="text-lg font-semibold text-text-primary">Agent Customization</h2>
+            <h2 className="text-lg font-semibold text-text-primary">{t('post_install.customization.title')}</h2>
             <p className="text-sm text-text-muted mt-0.5">
-              Customize your agent within the boundaries set by the template. Locked fields are protected to maintain guardrails.
+              {t('post_install.customization.subtitle')}
             </p>
           </div>
           {installationId && (

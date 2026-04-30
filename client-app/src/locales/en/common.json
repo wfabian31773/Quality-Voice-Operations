@@ -653,5 +653,103 @@
     "submit_failed": "Failed to accept invitation.",
     "submit_button": "Set Password & Join",
     "submitting": "Activating..."
+  },
+  "onboarding": {
+    "title": "Welcome to Voice AI Operations Hub",
+    "subtitle": "Let's get your environment set up",
+    "step_labels": {
+      "setup": "Setup",
+      "template": "Template",
+      "phone_number": "Phone number"
+    },
+    "go_to_step_aria": "Go to step {{step}}: {{label}}",
+    "setup": {
+      "title": "Setting Up Your Environment",
+      "ready": "Environment Ready",
+      "ready_message": "Your tenant environment has been provisioned successfully.",
+      "continue": "Continue",
+      "provisioning": "Provisioning your environment...",
+      "waiting_payment": "Waiting for payment confirmation...",
+      "usually_quick": "This usually takes just a few seconds."
+    },
+    "template": {
+      "title": "Choose Your Agent Template",
+      "subtitle": "Select the template that best fits your business. You can customize it later.",
+      "back": "Back",
+      "continue": "Continue",
+      "updating": "Updating..."
+    },
+    "phone": {
+      "title": "Add Your First Phone Number",
+      "description": "Connect a phone number to start receiving calls through your AI agent. You can do this now or from the dashboard later.",
+      "add": "Add Phone Number",
+      "skip": "Skip for Now — Go to Dashboard",
+      "back": "Back to template"
+    },
+    "dont_show": "Don't show this again",
+    "restart_anytime": "You can restart onboarding anytime from Settings.",
+    "templates": {
+      "answering-service": { "label": "Answering Service", "description": "General inbound call handling and ticket creation" },
+      "medical-after-hours": { "label": "Medical After-Hours", "description": "Medical triage with urgent escalation" },
+      "dental": { "label": "Dental Practice", "description": "Dental appointment scheduling and emergency routing" },
+      "property-management": { "label": "Property Management", "description": "Maintenance requests and emergency dispatch" },
+      "home-services": { "label": "Home Services", "description": "HVAC, plumbing, and electrical service booking" },
+      "legal": { "label": "Legal Intake", "description": "Consultation scheduling with conflict-of-interest screening" },
+      "real-estate": { "label": "Real Estate", "description": "Buyer/seller qualification and showing scheduling" },
+      "restaurant": { "label": "Restaurant Reservations", "description": "Take reservations or add callers to the waitlist" },
+      "salon": { "label": "Salon & Spa", "description": "Book stylist appointments and confirm the day before" }
+    }
+  },
+  "post_install": {
+    "title": "Post-Install Setup",
+    "subtitle_with_template": "{{templateName}} — Complete these steps to go live",
+    "agent_fallback": "Agent",
+    "subtitle_default": "Complete these steps to make your agent live",
+    "progress": "Setup Progress",
+    "all_complete": "All steps complete — your agent is ready!",
+    "tabs": {
+      "checklist": "Setup Checklist",
+      "customize": "Customize Agent"
+    },
+    "not_found": "Installation not found",
+    "step_card": {
+      "completed_at": "Completed {{date}}",
+      "action_failed": "Action failed",
+      "customize": "Customize",
+      "done": "Done"
+    },
+    "actions": {
+      "assign_phone": "Quick Assign",
+      "enable_widget": "Enable Now",
+      "attach_knowledge": "Go to Knowledge",
+      "customize_greeting": "Customize",
+      "test_call": "Mark as Tested",
+      "publish_agent": "Publish Agent",
+      "go": "Go",
+      "mark_complete": "Mark Complete"
+    },
+    "customization": {
+      "title": "Agent Customization",
+      "subtitle": "Customize your agent within the boundaries set by the template. Locked fields are protected to maintain guardrails.",
+      "saving": "Saving...",
+      "save": "Save Customizations",
+      "saved": "Changes saved successfully",
+      "no_changes": "No changes to save",
+      "template_locked": "Template Locked"
+    }
+  },
+  "maintenance": {
+    "label": "Scheduled Maintenance",
+    "title": "QVO is briefly offline for an upgrade",
+    "default_message": "We're rolling out improvements right now. Service will resume shortly.",
+    "estimated_completion": "Estimated completion: {{datetime}}",
+    "check_again": "Check again"
+  },
+  "not_found": {
+    "label": "404 — Not Found",
+    "title": "We can't find that page",
+    "description": "The link you followed may be broken, or the page may have been moved. Let's get you back on track.",
+    "go_dashboard": "Go to dashboard",
+    "go_back": "Go back"
   }
 }

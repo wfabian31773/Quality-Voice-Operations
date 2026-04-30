@@ -653,5 +653,103 @@
     "submit_failed": "Einladung konnte nicht angenommen werden.",
     "submit_button": "Passwort festlegen & beitreten",
     "submitting": "Wird aktiviert..."
+  },
+  "onboarding": {
+    "title": "Willkommen bei Voice AI Operations Hub",
+    "subtitle": "Lassen Sie uns Ihre Umgebung einrichten",
+    "step_labels": {
+      "setup": "Einrichtung",
+      "template": "Vorlage",
+      "phone_number": "Telefonnummer"
+    },
+    "go_to_step_aria": "Zu Schritt {{step}}: {{label}} wechseln",
+    "setup": {
+      "title": "Ihre Umgebung wird eingerichtet",
+      "ready": "Umgebung bereit",
+      "ready_message": "Ihre Tenant-Umgebung wurde erfolgreich bereitgestellt.",
+      "continue": "Weiter",
+      "provisioning": "Ihre Umgebung wird bereitgestellt...",
+      "waiting_payment": "Warten auf Zahlungsbestätigung...",
+      "usually_quick": "Das dauert in der Regel nur ein paar Sekunden."
+    },
+    "template": {
+      "title": "Wählen Sie Ihre Agenten-Vorlage",
+      "subtitle": "Wählen Sie die Vorlage, die am besten zu Ihrem Unternehmen passt. Sie können sie später anpassen.",
+      "back": "Zurück",
+      "continue": "Weiter",
+      "updating": "Wird aktualisiert..."
+    },
+    "phone": {
+      "title": "Fügen Sie Ihre erste Telefonnummer hinzu",
+      "description": "Verbinden Sie eine Telefonnummer, um Anrufe über Ihren KI-Agenten entgegenzunehmen. Sie können dies jetzt oder später vom Dashboard aus tun.",
+      "add": "Telefonnummer hinzufügen",
+      "skip": "Vorerst überspringen — Zum Dashboard",
+      "back": "Zurück zur Vorlage"
+    },
+    "dont_show": "Nicht erneut anzeigen",
+    "restart_anytime": "Sie können das Onboarding jederzeit in den Einstellungen neu starten.",
+    "templates": {
+      "answering-service": { "label": "Telefonservice", "description": "Allgemeine Bearbeitung eingehender Anrufe und Ticket-Erstellung" },
+      "medical-after-hours": { "label": "Medizinischer Notdienst", "description": "Medizinische Triage mit dringender Eskalation" },
+      "dental": { "label": "Zahnarztpraxis", "description": "Terminplanung für Zahnbehandlungen und Notfall-Routing" },
+      "property-management": { "label": "Immobilienverwaltung", "description": "Wartungsanfragen und Notfalleinsätze" },
+      "home-services": { "label": "Hausdienstleistungen", "description": "Buchungen für Heizung/Lüftung/Klima, Sanitär und Elektrik" },
+      "legal": { "label": "Rechtliche Aufnahme", "description": "Beratungsterminierung mit Interessenkonflikt-Prüfung" },
+      "real-estate": { "label": "Immobilien", "description": "Qualifizierung von Käufern/Verkäufern und Besichtigungstermine" },
+      "restaurant": { "label": "Restaurantreservierungen", "description": "Reservierungen entgegennehmen oder Anrufer auf die Warteliste setzen" },
+      "salon": { "label": "Salon & Spa", "description": "Stylisten-Termine buchen und am Vortag bestätigen" }
+    }
+  },
+  "post_install": {
+    "title": "Einrichtung nach der Installation",
+    "subtitle_with_template": "{{templateName}} — Schließen Sie diese Schritte ab, um live zu gehen",
+    "agent_fallback": "Agent",
+    "subtitle_default": "Schließen Sie diese Schritte ab, um Ihren Agenten live zu schalten",
+    "progress": "Einrichtungsfortschritt",
+    "all_complete": "Alle Schritte abgeschlossen — Ihr Agent ist bereit!",
+    "tabs": {
+      "checklist": "Einrichtungs-Checkliste",
+      "customize": "Agenten anpassen"
+    },
+    "not_found": "Installation nicht gefunden",
+    "step_card": {
+      "completed_at": "Abgeschlossen am {{date}}",
+      "action_failed": "Aktion fehlgeschlagen",
+      "customize": "Anpassen",
+      "done": "Fertig"
+    },
+    "actions": {
+      "assign_phone": "Schnellzuweisung",
+      "enable_widget": "Jetzt aktivieren",
+      "attach_knowledge": "Zur Wissensdatenbank",
+      "customize_greeting": "Anpassen",
+      "test_call": "Als getestet markieren",
+      "publish_agent": "Agenten veröffentlichen",
+      "go": "Los",
+      "mark_complete": "Als abgeschlossen markieren"
+    },
+    "customization": {
+      "title": "Agenten-Anpassung",
+      "subtitle": "Passen Sie Ihren Agenten innerhalb der von der Vorlage festgelegten Grenzen an. Gesperrte Felder sind geschützt, um die Leitplanken einzuhalten.",
+      "saving": "Wird gespeichert...",
+      "save": "Anpassungen speichern",
+      "saved": "Änderungen erfolgreich gespeichert",
+      "no_changes": "Keine Änderungen zum Speichern",
+      "template_locked": "Vorlage gesperrt"
+    }
+  },
+  "maintenance": {
+    "label": "Geplante Wartung",
+    "title": "QVO ist kurz für ein Upgrade offline",
+    "default_message": "Wir spielen gerade Verbesserungen aus. Der Dienst wird in Kürze wieder verfügbar sein.",
+    "estimated_completion": "Voraussichtliches Ende: {{datetime}}",
+    "check_again": "Erneut prüfen"
+  },
+  "not_found": {
+    "label": "404 — Nicht gefunden",
+    "title": "Diese Seite konnten wir nicht finden",
+    "description": "Der Link, dem Sie gefolgt sind, ist möglicherweise defekt oder die Seite wurde verschoben. Bringen wir Sie zurück auf den richtigen Weg.",
+    "go_dashboard": "Zum Dashboard",
+    "go_back": "Zurück"
   }
 }

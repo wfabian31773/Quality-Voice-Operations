@@ -653,5 +653,103 @@
     "submit_failed": "Impossible d'accepter l'invitation.",
     "submit_button": "Définir le mot de passe et rejoindre",
     "submitting": "Activation en cours..."
+  },
+  "onboarding": {
+    "title": "Bienvenue sur Voice AI Operations Hub",
+    "subtitle": "Configurons votre environnement",
+    "step_labels": {
+      "setup": "Configuration",
+      "template": "Modèle",
+      "phone_number": "Numéro de téléphone"
+    },
+    "go_to_step_aria": "Aller à l'étape {{step}} : {{label}}",
+    "setup": {
+      "title": "Configuration de votre environnement",
+      "ready": "Environnement prêt",
+      "ready_message": "L'environnement de votre tenant a été provisionné avec succès.",
+      "continue": "Continuer",
+      "provisioning": "Provisionnement de votre environnement...",
+      "waiting_payment": "En attente de la confirmation du paiement...",
+      "usually_quick": "Cela ne prend généralement que quelques secondes."
+    },
+    "template": {
+      "title": "Choisissez le modèle de votre agent",
+      "subtitle": "Sélectionnez le modèle qui correspond le mieux à votre activité. Vous pourrez le personnaliser plus tard.",
+      "back": "Retour",
+      "continue": "Continuer",
+      "updating": "Mise à jour..."
+    },
+    "phone": {
+      "title": "Ajoutez votre premier numéro de téléphone",
+      "description": "Connectez un numéro de téléphone pour commencer à recevoir des appels via votre agent IA. Vous pouvez le faire maintenant ou plus tard depuis le tableau de bord.",
+      "add": "Ajouter un numéro de téléphone",
+      "skip": "Passer pour l'instant — Aller au tableau de bord",
+      "back": "Retour au modèle"
+    },
+    "dont_show": "Ne plus afficher",
+    "restart_anytime": "Vous pouvez relancer l'intégration à tout moment depuis les paramètres.",
+    "templates": {
+      "answering-service": { "label": "Service de standard téléphonique", "description": "Gestion générale des appels entrants et création de tickets" },
+      "medical-after-hours": { "label": "Permanence médicale", "description": "Triage médical avec escalade d'urgence" },
+      "dental": { "label": "Cabinet dentaire", "description": "Prise de rendez-vous dentaires et routage des urgences" },
+      "property-management": { "label": "Gestion immobilière", "description": "Demandes de maintenance et envoi d'urgences" },
+      "home-services": { "label": "Services à domicile", "description": "Réservation pour CVC, plomberie et électricité" },
+      "legal": { "label": "Accueil juridique", "description": "Prise de rendez-vous avec vérification des conflits d'intérêts" },
+      "real-estate": { "label": "Immobilier", "description": "Qualification acheteurs/vendeurs et planification des visites" },
+      "restaurant": { "label": "Réservations de restaurant", "description": "Prendre des réservations ou ajouter des clients à la liste d'attente" },
+      "salon": { "label": "Salon et spa", "description": "Réservez des rendez-vous avec un coiffeur et confirmez la veille" }
+    }
+  },
+  "post_install": {
+    "title": "Configuration post-installation",
+    "subtitle_with_template": "{{templateName}} — Terminez ces étapes pour passer en production",
+    "agent_fallback": "Agent",
+    "subtitle_default": "Terminez ces étapes pour activer votre agent",
+    "progress": "Progression de la configuration",
+    "all_complete": "Toutes les étapes sont terminées — votre agent est prêt !",
+    "tabs": {
+      "checklist": "Liste de configuration",
+      "customize": "Personnaliser l'agent"
+    },
+    "not_found": "Installation introuvable",
+    "step_card": {
+      "completed_at": "Terminé le {{date}}",
+      "action_failed": "Action échouée",
+      "customize": "Personnaliser",
+      "done": "Terminé"
+    },
+    "actions": {
+      "assign_phone": "Attribution rapide",
+      "enable_widget": "Activer maintenant",
+      "attach_knowledge": "Aller à la base de connaissances",
+      "customize_greeting": "Personnaliser",
+      "test_call": "Marquer comme testé",
+      "publish_agent": "Publier l'agent",
+      "go": "Y aller",
+      "mark_complete": "Marquer comme terminé"
+    },
+    "customization": {
+      "title": "Personnalisation de l'agent",
+      "subtitle": "Personnalisez votre agent dans les limites définies par le modèle. Les champs verrouillés sont protégés pour préserver les garde-fous.",
+      "saving": "Enregistrement...",
+      "save": "Enregistrer les personnalisations",
+      "saved": "Modifications enregistrées avec succès",
+      "no_changes": "Aucune modification à enregistrer",
+      "template_locked": "Modèle verrouillé"
+    }
+  },
+  "maintenance": {
+    "label": "Maintenance planifiée",
+    "title": "QVO est brièvement hors ligne pour une mise à jour",
+    "default_message": "Nous déployons des améliorations en ce moment. Le service reprendra sous peu.",
+    "estimated_completion": "Fin estimée : {{datetime}}",
+    "check_again": "Réessayer"
+  },
+  "not_found": {
+    "label": "404 — Introuvable",
+    "title": "Nous ne trouvons pas cette page",
+    "description": "Le lien que vous avez suivi est peut-être rompu ou la page a peut-être été déplacée. Reprenons le bon chemin.",
+    "go_dashboard": "Aller au tableau de bord",
+    "go_back": "Retour"
   }
 }

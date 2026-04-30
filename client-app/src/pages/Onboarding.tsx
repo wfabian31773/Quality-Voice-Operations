@@ -2,6 +2,7 @@ import '../styles/tw-app.css';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
 import { type IndustryTemplateKey, getIndustryTemplateCopy } from '../lib/agentBuilderI18n';
@@ -28,17 +29,17 @@ function clampStep(value: unknown): number | null {
   return rounded;
 }
 
-const AGENT_TEMPLATES = [
-  { value: 'answering-service', label: 'Answering Service', description: 'General inbound call handling and ticket creation' },
-  { value: 'medical-after-hours', label: 'Medical After-Hours', description: 'Medical triage with urgent escalation' },
-  { value: 'dental', label: 'Dental Practice', description: 'Dental appointment scheduling and emergency routing' },
-  { value: 'property-management', label: 'Property Management', description: 'Maintenance requests and emergency dispatch' },
-  { value: 'home-services', label: 'Home Services', description: 'HVAC, plumbing, and electrical service booking' },
-  { value: 'legal', label: 'Legal Intake', description: 'Consultation scheduling with conflict-of-interest screening' },
-  { value: 'real-estate', label: 'Real Estate', description: 'Buyer/seller qualification and showing scheduling' },
-  { value: 'restaurant', label: 'Restaurant Reservations', description: 'Take reservations or add callers to the waitlist' },
-  { value: 'salon', label: 'Salon & Spa', description: 'Book stylist appointments and confirm the day before' },
-];
+const AGENT_TEMPLATE_VALUES = [
+  'answering-service',
+  'medical-after-hours',
+  'dental',
+  'property-management',
+  'home-services',
+  'legal',
+  'real-estate',
+  'restaurant',
+  'salon',
+] as const;
 
 /**
  * Maps an onboarding template slug (the agent `type` we save on the starter
@@ -60,6 +61,7 @@ const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
 };
 
 export default function Onboarding() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -76,6 +78,9 @@ export default function Onboarding() {
   const verifyAttempted = useRef(false);
   const persistedStepRef = useRef<number | null>(null);
   const tenantPrimaryLanguage = useTenantPrimaryLanguage();
+
+  const templateLabel = (value: string) => t(`onboarding.templates.${value}.label`);
+  const templateDescription = (value: string) => t(`onboarding.templates.${value}.description`);
 
   // Persist the user's current step to the server so they can resume
   // exactly where they left off after a refresh, logout, or new login.
@@ -174,7 +179,7 @@ export default function Onboarding() {
         const agents = await api.get<{ agents: Array<{ type?: string }> }>('/agents');
         if (cancelled) return;
         const currentType = agents.agents[0]?.type;
-        if (currentType && AGENT_TEMPLATES.some((t) => t.value === currentType)) {
+        if (currentType && (AGENT_TEMPLATE_VALUES as readonly string[]).includes(currentType)) {
           setSelectedTemplate(currentType);
         }
       } catch {
@@ -247,7 +252,7 @@ export default function Onboarding() {
       if (agents.agents.length > 0) {
         const updates: Record<string, unknown> = {
           type: selectedTemplate,
-          name: AGENT_TEMPLATES.find((t) => t.value === selectedTemplate)?.label ?? selectedTemplate,
+          name: templateLabel(selectedTemplate),
         };
         // When the chosen template has industry copy authored, seed the
         // greeting + system prompt from it — same behaviour as the Agents
@@ -277,6 +282,12 @@ export default function Onboarding() {
     navigate(path);
   };
 
+  const stepLabels = [
+    t('onboarding.step_labels.setup'),
+    t('onboarding.step_labels.template'),
+    t('onboarding.step_labels.phone_number'),
+  ];
+
   return (
     <div className="min-h-screen bg-surface-secondary flex items-center justify-center px-4">
       <div className="w-full max-w-lg">
@@ -284,8 +295,8 @@ export default function Onboarding() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-white mb-4">
             <Sparkles className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-bold text-text-primary">Welcome to Voice AI Operations Hub</h1>
-          <p className="text-sm text-text-secondary mt-1">Let's get your environment set up</p>
+          <h1 className="text-2xl font-bold text-text-primary">{t('onboarding.title')}</h1>
+          <p className="text-sm text-text-secondary mt-1">{t('onboarding.subtitle')}</p>
         </div>
 
         <div className="flex items-start justify-center gap-6 mb-8">
@@ -301,7 +312,6 @@ export default function Onboarding() {
             const furthestUnlocked = Math.max(step, maxVisitedStep);
             const isCompleted = !isActive && s <= furthestUnlocked;
             const isClickable = s <= furthestUnlocked;
-            const stepLabels = ['Setup', 'Template', 'Phone number'];
             const label = stepLabels[s - 1];
             const dotColorClass = isActive
               ? 'bg-primary'
@@ -322,7 +332,7 @@ export default function Onboarding() {
                   type="button"
                   onClick={() => goToStep(s)}
                   disabled={isActive}
-                  aria-label={`Go to step ${s}: ${label}`}
+                  aria-label={t('onboarding.go_to_step_aria', { step: s, label })}
                   aria-current={isActive ? 'step' : undefined}
                   className={`flex flex-col items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                     isActive
@@ -347,19 +357,19 @@ export default function Onboarding() {
         <div className="bg-surface rounded-xl border border-border p-6 shadow-sm">
           {step === 1 && (
             <div className="text-center space-y-4">
-              <h2 className="text-lg font-semibold text-text-primary">Setting Up Your Environment</h2>
+              <h2 className="text-lg font-semibold text-text-primary">{t('onboarding.setup.title')}</h2>
               {provisioningStatus?.status === 'ready' ? (
                 <>
                   <div className="flex items-center justify-center gap-2 text-green-600">
                     <CheckCircle2 className="h-8 w-8" />
-                    <span className="font-medium">Environment Ready</span>
+                    <span className="font-medium">{t('onboarding.setup.ready')}</span>
                   </div>
-                  <p className="text-sm text-text-secondary">Your tenant environment has been provisioned successfully.</p>
+                  <p className="text-sm text-text-secondary">{t('onboarding.setup.ready_message')}</p>
                   <button
                     onClick={() => advanceTo(2)}
                     className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
                   >
-                    Continue <ArrowRight className="h-4 w-4" />
+                    {t('onboarding.setup.continue')} <ArrowRight className="h-4 w-4" />
                   </button>
                 </>
               ) : (
@@ -367,10 +377,10 @@ export default function Onboarding() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
                   <p className="text-sm text-text-secondary">
                     {provisioningStatus?.status === 'provisioning'
-                      ? 'Provisioning your environment...'
-                      : 'Waiting for payment confirmation...'}
+                      ? t('onboarding.setup.provisioning')
+                      : t('onboarding.setup.waiting_payment')}
                   </p>
-                  <p className="text-xs text-text-secondary">This usually takes just a few seconds.</p>
+                  <p className="text-xs text-text-secondary">{t('onboarding.setup.usually_quick')}</p>
                 </>
               )}
             </div>
@@ -380,16 +390,16 @@ export default function Onboarding() {
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Bot className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold text-text-primary">Choose Your Agent Template</h2>
+                <h2 className="text-lg font-semibold text-text-primary">{t('onboarding.template.title')}</h2>
               </div>
-              <p className="text-sm text-text-secondary">Select the template that best fits your business. You can customize it later.</p>
+              <p className="text-sm text-text-secondary">{t('onboarding.template.subtitle')}</p>
 
               <div className="space-y-2 max-h-72 overflow-y-auto">
-                {AGENT_TEMPLATES.map((template) => (
+                {AGENT_TEMPLATE_VALUES.map((value) => (
                   <label
-                    key={template.value}
+                    key={value}
                     className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedTemplate === template.value
+                      selectedTemplate === value
                         ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/40'
                     }`}
@@ -397,14 +407,14 @@ export default function Onboarding() {
                     <input
                       type="radio"
                       name="template"
-                      value={template.value}
-                      checked={selectedTemplate === template.value}
-                      onChange={() => setSelectedTemplate(template.value)}
+                      value={value}
+                      checked={selectedTemplate === value}
+                      onChange={() => setSelectedTemplate(value)}
                       className="mt-1 accent-primary"
                     />
                     <div>
-                      <div className="text-sm font-medium text-text-primary">{template.label}</div>
-                      <div className="text-xs text-text-secondary">{template.description}</div>
+                      <div className="text-sm font-medium text-text-primary">{templateLabel(value)}</div>
+                      <div className="text-xs text-text-secondary">{templateDescription(value)}</div>
                     </div>
                   </label>
                 ))}
@@ -417,7 +427,7 @@ export default function Onboarding() {
                   disabled={updatingAgent}
                   className="bg-surface hover:bg-surface-secondary text-text-primary font-medium py-2.5 px-4 rounded-lg text-sm transition-colors border border-border disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <ArrowLeft className="h-4 w-4" /> Back
+                  <ArrowLeft className="h-4 w-4" /> {t('onboarding.template.back')}
                 </button>
                 <button
                   onClick={handleTemplateConfirm}
@@ -426,11 +436,11 @@ export default function Onboarding() {
                 >
                   {updatingAgent ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> Updating...
+                      <Loader2 className="h-4 w-4 animate-spin" /> {t('onboarding.template.updating')}
                     </>
                   ) : (
                     <>
-                      Continue <ArrowRight className="h-4 w-4" />
+                      {t('onboarding.template.continue')} <ArrowRight className="h-4 w-4" />
                     </>
                   )}
                 </button>
@@ -442,31 +452,29 @@ export default function Onboarding() {
             <div className="space-y-4 text-center">
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Phone className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold text-text-primary">Add Your First Phone Number</h2>
+                <h2 className="text-lg font-semibold text-text-primary">{t('onboarding.phone.title')}</h2>
               </div>
-              <p className="text-sm text-text-secondary">
-                Connect a phone number to start receiving calls through your AI agent. You can do this now or from the dashboard later.
-              </p>
+              <p className="text-sm text-text-secondary">{t('onboarding.phone.description')}</p>
 
               <div className="flex flex-col gap-3 pt-2">
                 <button
                   onClick={() => handleFinish('/phone-numbers')}
                   className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
                 >
-                  <Phone className="h-4 w-4" /> Add Phone Number
+                  <Phone className="h-4 w-4" /> {t('onboarding.phone.add')}
                 </button>
                 <button
                   onClick={() => handleFinish('/')}
                   className="w-full bg-surface hover:bg-surface-secondary text-text-primary font-medium py-2.5 px-4 rounded-lg text-sm transition-colors border border-border"
                 >
-                  Skip for Now — Go to Dashboard
+                  {t('onboarding.phone.skip')}
                 </button>
                 <button
                   type="button"
                   onClick={goBack}
                   className="w-full text-text-secondary hover:text-text-primary font-medium py-2 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
                 >
-                  <ArrowLeft className="h-4 w-4" /> Back to template
+                  <ArrowLeft className="h-4 w-4" /> {t('onboarding.phone.back')}
                 </button>
               </div>
             </div>
@@ -479,10 +487,10 @@ export default function Onboarding() {
             onClick={() => handleFinish('/')}
             className="text-xs text-text-secondary hover:text-text-primary underline-offset-4 hover:underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
           >
-            Don't show this again
+            {t('onboarding.dont_show')}
           </button>
           <p className="text-[11px] text-text-secondary mt-1">
-            You can restart onboarding anytime from Settings.
+            {t('onboarding.restart_anytime')}
           </p>
         </div>
       </div>

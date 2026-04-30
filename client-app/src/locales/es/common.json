@@ -653,5 +653,103 @@
     "submit_failed": "No se pudo aceptar la invitación.",
     "submit_button": "Establecer contraseña y unirse",
     "submitting": "Activando..."
+  },
+  "onboarding": {
+    "title": "Bienvenido a Voice AI Operations Hub",
+    "subtitle": "Vamos a configurar tu entorno",
+    "step_labels": {
+      "setup": "Configuración",
+      "template": "Plantilla",
+      "phone_number": "Número de teléfono"
+    },
+    "go_to_step_aria": "Ir al paso {{step}}: {{label}}",
+    "setup": {
+      "title": "Configurando tu entorno",
+      "ready": "Entorno listo",
+      "ready_message": "Tu entorno de inquilino se ha aprovisionado correctamente.",
+      "continue": "Continuar",
+      "provisioning": "Aprovisionando tu entorno...",
+      "waiting_payment": "Esperando confirmación del pago...",
+      "usually_quick": "Esto suele tardar solo unos segundos."
+    },
+    "template": {
+      "title": "Elige tu plantilla de agente",
+      "subtitle": "Selecciona la plantilla que mejor se adapte a tu negocio. Podrás personalizarla después.",
+      "back": "Atrás",
+      "continue": "Continuar",
+      "updating": "Actualizando..."
+    },
+    "phone": {
+      "title": "Añade tu primer número de teléfono",
+      "description": "Conecta un número de teléfono para empezar a recibir llamadas con tu agente de IA. Puedes hacerlo ahora o más tarde desde el panel.",
+      "add": "Añadir número de teléfono",
+      "skip": "Omitir por ahora — Ir al panel",
+      "back": "Volver a la plantilla"
+    },
+    "dont_show": "No volver a mostrar",
+    "restart_anytime": "Puedes reiniciar la incorporación en cualquier momento desde Ajustes.",
+    "templates": {
+      "answering-service": { "label": "Servicio de atención", "description": "Gestión general de llamadas entrantes y creación de tickets" },
+      "medical-after-hours": { "label": "Médico fuera de horario", "description": "Triaje médico con escalado de urgencias" },
+      "dental": { "label": "Consulta dental", "description": "Programación de citas dentales y derivación de emergencias" },
+      "property-management": { "label": "Administración de propiedades", "description": "Solicitudes de mantenimiento y envío de urgencias" },
+      "home-services": { "label": "Servicios para el hogar", "description": "Reservas para climatización, fontanería y servicios eléctricos" },
+      "legal": { "label": "Recepción legal", "description": "Programación de consultas con verificación de conflictos de interés" },
+      "real-estate": { "label": "Inmobiliaria", "description": "Calificación de compradores/vendedores y programación de visitas" },
+      "restaurant": { "label": "Reservas de restaurante", "description": "Acepta reservas o añade clientes a la lista de espera" },
+      "salon": { "label": "Salón y spa", "description": "Reserva citas con estilistas y confírmalas el día anterior" }
+    }
+  },
+  "post_install": {
+    "title": "Configuración posterior a la instalación",
+    "subtitle_with_template": "{{templateName}} — Completa estos pasos para ponerlo en marcha",
+    "agent_fallback": "Agente",
+    "subtitle_default": "Completa estos pasos para activar tu agente",
+    "progress": "Progreso de la configuración",
+    "all_complete": "¡Todos los pasos completados — tu agente está listo!",
+    "tabs": {
+      "checklist": "Lista de configuración",
+      "customize": "Personalizar agente"
+    },
+    "not_found": "Instalación no encontrada",
+    "step_card": {
+      "completed_at": "Completado el {{date}}",
+      "action_failed": "Acción fallida",
+      "customize": "Personalizar",
+      "done": "Hecho"
+    },
+    "actions": {
+      "assign_phone": "Asignación rápida",
+      "enable_widget": "Activar ahora",
+      "attach_knowledge": "Ir a Conocimiento",
+      "customize_greeting": "Personalizar",
+      "test_call": "Marcar como probado",
+      "publish_agent": "Publicar agente",
+      "go": "Ir",
+      "mark_complete": "Marcar como completado"
+    },
+    "customization": {
+      "title": "Personalización del agente",
+      "subtitle": "Personaliza tu agente dentro de los límites establecidos por la plantilla. Los campos bloqueados están protegidos para mantener las pautas.",
+      "saving": "Guardando...",
+      "save": "Guardar personalizaciones",
+      "saved": "Cambios guardados con éxito",
+      "no_changes": "No hay cambios para guardar",
+      "template_locked": "Plantilla bloqueada"
+    }
+  },
+  "maintenance": {
+    "label": "Mantenimiento programado",
+    "title": "QVO está brevemente fuera de línea por una actualización",
+    "default_message": "Estamos implementando mejoras ahora mismo. El servicio se reanudará en breve.",
+    "estimated_completion": "Finalización estimada: {{datetime}}",
+    "check_again": "Comprobar de nuevo"
+  },
+  "not_found": {
+    "label": "404 — No encontrado",
+    "title": "No podemos encontrar esa página",
+    "description": "El enlace que seguiste podría estar roto o la página podría haberse movido. Vamos a ayudarte a volver al rumbo.",
+    "go_dashboard": "Ir al panel",
+    "go_back": "Volver"
   }
 }
