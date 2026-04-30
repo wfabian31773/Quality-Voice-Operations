@@ -4,6 +4,7 @@ import { getPlanFromPriceId, PLAN_LIMITS } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import { provisionTenant } from '../../tenant/provisioning/TenantProvisioningService';
+import { normalizeDiscount, type UpgradeDiscount } from './effectiveRate';
 
 const logger = createLogger('STRIPE_WEBHOOK');
 
@@ -103,6 +104,9 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
       } catch (convErr) {
         logger.warn('Failed to record paid conversion event', { error: String(convErr) });
       }
+      break;
+    case 'invoice.finalized':
+      await handleInvoiceFinalized(event.data.object as Stripe.Invoice);
       break;
     case 'invoice.payment_succeeded':
       await handleInvoiceSucceeded(event.data.object as Stripe.Invoice, stripeEventId);
@@ -399,6 +403,198 @@ async function handleInvoiceSucceeded(invoice: Stripe.Invoice, stripeEventId: st
   });
 
   logger.info('Invoice payment succeeded', { tenantId, invoiceId: invoice.id });
+}
+
+/**
+ * Stamp a coupon-aware "Discount applied" badge onto the Stripe invoice
+ * before the receipt PDF is generated/emailed. Mirrors the same badge
+ * the tenant already sees in the Subscription card and invoice list, so
+ * Finance teams archiving the PDF can verify the coupon matches what
+ * was negotiated without reopening the app.
+ *
+ * Stripe natively renders a "Discount" subtotal line on the PDF when a
+ * coupon is on the invoice, but it surfaces only the dollar/percent
+ * amount — not the coupon name or promo code. We add an
+ * `invoice.custom_fields` entry (a labelled badge near the header) AND
+ * a footer line so the coupon's identity rides along with the receipt.
+ *
+ * Timing — why `invoice.finalized` (not `invoice.created`):
+ *   Stripe regenerates the receipt PDF whenever the invoice is updated,
+ *   and for `charge_automatically` subscriptions the receipt email is
+ *   sent shortly after `invoice.payment_succeeded`. Hooking the
+ *   `invoice.finalized` event puts the update *before* payment + email
+ *   under normal lifecycle ordering. There is a narrow race window
+ *   (Stripe generally processes finalize→pay→send within a few hundred
+ *   ms) where the first email could escape with the un-badged PDF; the
+ *   `invoices.update` here will still re-stamp the persisted PDF that
+ *   the customer downloads later from the hosted invoice page or the
+ *   billing portal. If real-world receipt timing proves unreliable in
+ *   production, a follow-up could move stamping into `invoice.created`
+ *   or stamp via `subscription_data.invoice_settings` at session
+ *   creation time.
+ *
+ * Idempotency — why metadata-only (not `billing_events`):
+ *   The global `isEventProcessed` check in `handleStripeEvent` only
+ *   short-circuits events for which we wrote a row to `billing_events`.
+ *   We deliberately don't write one for `invoice.finalized` — it isn't
+ *   a billing-state-change event for our domain (subscription status
+ *   doesn't move on finalize). Instead we use
+ *   `invoice.metadata.discountBadgeApplied = 'true'` as a per-invoice
+ *   marker, which:
+ *     1. Survives Stripe retries of the same event id (Stripe re-fires
+ *        finalized on certain mutations), and
+ *     2. Crucially, makes the no-discount and Stripe-update-failure
+ *        paths *re-runnable*. If we stored a `billing_events` row on
+ *        the first attempt, a subsequent retry after a transient Stripe
+ *        outage would be silently dropped.
+ */
+export async function handleInvoiceFinalized(invoice: Stripe.Invoice): Promise<void> {
+  const invoiceId = invoice.id;
+  if (!invoiceId) return;
+
+  // Skip when no discount is on the invoice — nothing to badge.
+  const totalDiscountAmounts = (invoice as unknown as {
+    total_discount_amounts?: unknown[] | null;
+  }).total_discount_amounts;
+  const hasDiscount = Array.isArray(totalDiscountAmounts) && totalDiscountAmounts.length > 0;
+  if (!hasDiscount) return;
+
+  // Skip if we've already stamped this invoice.
+  if (invoice.metadata?.discountBadgeApplied === 'true') return;
+
+  let stripe: Stripe;
+  try {
+    stripe = getStripeClient();
+  } catch (err) {
+    logger.warn('Stripe client unavailable — skipping discount badge', {
+      invoiceId,
+      error: String(err),
+    });
+    return;
+  }
+
+  // Re-retrieve with discounts expanded so we can read coupon name +
+  // percent/amount off. The webhook payload doesn't expand by default.
+  let discount: UpgradeDiscount | null = null;
+  try {
+    const expanded = await stripe.invoices.retrieve(invoiceId, {
+      expand: ['discounts', 'discounts.promotion_code'],
+    });
+    const rawDiscounts = (expanded as unknown as {
+      discounts?: unknown[] | null;
+    }).discounts ?? [];
+    for (const raw of rawDiscounts) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const normalized = normalizeDiscount(
+        raw as Parameters<typeof normalizeDiscount>[0],
+      );
+      if (normalized) {
+        discount = normalized;
+        break;
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to expand discounts on invoice.finalized', {
+      invoiceId,
+      error: String(err),
+    });
+    return;
+  }
+
+  if (!discount) return;
+
+  const fieldName = 'Discount applied';
+  // Stripe limits invoice custom_field name + value to 30 chars each.
+  const fieldValue = formatDiscountBadgeLabel(discount).slice(0, 30);
+  const footerLine = formatDiscountFooter(discount);
+
+  // Preserve any custom fields the operator already set in the Stripe
+  // dashboard; only replace our own slot. Cap at Stripe's 4-field max.
+  const existingFields = (invoice.custom_fields ?? []).filter(
+    (f) => f && f.name !== fieldName,
+  );
+  const customFields = [
+    ...existingFields,
+    { name: fieldName, value: fieldValue },
+  ].slice(0, 4);
+
+  const existingFooter = invoice.footer ?? '';
+  const footer =
+    existingFooter && !existingFooter.includes(footerLine)
+      ? `${existingFooter}\n\n${footerLine}`
+      : existingFooter || footerLine;
+
+  try {
+    await stripe.invoices.update(invoiceId, {
+      custom_fields: customFields,
+      footer,
+      metadata: {
+        ...(invoice.metadata ?? {}),
+        discountBadgeApplied: 'true',
+        discountBadgeCouponId: discount.couponId ?? '',
+        discountBadgePromotionCode: discount.promotionCode ?? '',
+      },
+    });
+    logger.info('Stamped discount badge on invoice', {
+      invoiceId,
+      couponId: discount.couponId,
+      promotionCode: discount.promotionCode,
+    });
+  } catch (err) {
+    logger.warn('Failed to stamp discount badge on invoice', {
+      invoiceId,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Format the short badge value shown in the invoice's `custom_fields`
+ * row near the PDF header. Capped externally at Stripe's 30-char limit;
+ * this helper just chooses the most informative label/amount pair.
+ */
+export function formatDiscountBadgeLabel(d: UpgradeDiscount): string {
+  const label = d.promotionCode ?? d.name ?? d.couponId ?? 'Coupon';
+  if (d.percentOff != null) {
+    const pct = Number.isInteger(d.percentOff)
+      ? d.percentOff
+      : Number(d.percentOff.toFixed(2));
+    return `${label} - ${pct}% off`;
+  }
+  if (d.amountOffCents != null) {
+    // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars formatting for the human-readable badge value on the receipt PDF.
+    const dollars = (d.amountOffCents / 100).toFixed(2);
+    const cur = (d.currency ?? 'usd').toUpperCase();
+    return `${label} - ${cur} ${dollars} off`;
+  }
+  return label;
+}
+
+/**
+ * Format the longer footer sentence appended to the invoice PDF. Unlike
+ * the badge, this isn't length-limited, so we spell out "code" vs
+ * "coupon" so Finance/procurement readers don't have to guess what
+ * identifier they're looking at.
+ */
+export function formatDiscountFooter(d: UpgradeDiscount): string {
+  const codeLabel = d.promotionCode
+    ? `promo code "${d.promotionCode}"`
+    : d.name
+      ? `coupon "${d.name}"`
+      : 'coupon';
+  if (d.percentOff != null) {
+    const pct = Number.isInteger(d.percentOff)
+      ? d.percentOff
+      : Number(d.percentOff.toFixed(2));
+    return `Discount applied: ${codeLabel} - ${pct}% off this invoice.`;
+  }
+  if (d.amountOffCents != null) {
+    // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars formatting for the human-readable footer line on the receipt PDF.
+    const dollars = (d.amountOffCents / 100).toFixed(2);
+    const cur = (d.currency ?? 'usd').toUpperCase();
+    return `Discount applied: ${codeLabel} - ${cur} ${dollars} off this invoice.`;
+  }
+  return `Discount applied: ${codeLabel}.`;
 }
 
 async function handleInvoiceFailed(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
