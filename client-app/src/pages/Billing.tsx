@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -25,7 +26,7 @@ import {
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight, ArrowDownRight,
-  FileText, Download, Clock, CheckCircle2, XCircle,
+  FileText, Download, Clock, CheckCircle2, XCircle, X,
   Sparkles, AlertTriangle, FileEdit, MinusCircle, Loader2,
 } from 'lucide-react';
 import { StatusBadge, PageHeader, type BadgeTone } from '../components/ui';
@@ -119,6 +120,62 @@ const PLAN_LABELS: Record<string, string> = {
   pro: 'Pro',
   enterprise: 'Enterprise',
 };
+
+// Annual-switch confirmation banner: marker stamped by handleUpgrade
+// before the Stripe redirect, hydrated only on the ?checkout=success
+// return so the banner is bound to a tenant-initiated monthly→annual
+// switch (not unrelated tier upgrades or portal changes).
+const ANNUAL_SWITCH_MARKER_KEY = 'billing-annual-switch-pending';
+// Polling budget for the webhook to flip billing_interval after the
+// success redirect; cleared after this if the flip never lands.
+const ANNUAL_SWITCH_MAX_WAIT_MS = 30_000;
+// Markers older than this are ignored on read so an abandoned tab
+// can't fire the banner on a much later unrelated visit.
+const ANNUAL_SWITCH_MARKER_MAX_AGE_MS = 30 * 60_000;
+
+type AnnualSwitchMarker = {
+  previousInterval: 'monthly';
+  initiatedAt: number;
+};
+
+function readAnnualSwitchMarker(): AnnualSwitchMarker | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(ANNUAL_SWITCH_MARKER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AnnualSwitchMarker> | null;
+    if (
+      !parsed
+      || parsed.previousInterval !== 'monthly'
+      || typeof parsed.initiatedAt !== 'number'
+      || Date.now() - parsed.initiatedAt > ANNUAL_SWITCH_MARKER_MAX_AGE_MS
+    ) {
+      window.sessionStorage.removeItem(ANNUAL_SWITCH_MARKER_KEY);
+      return null;
+    }
+    return { previousInterval: 'monthly', initiatedAt: parsed.initiatedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeAnnualSwitchMarker(marker: AnnualSwitchMarker): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(ANNUAL_SWITCH_MARKER_KEY, JSON.stringify(marker));
+  } catch {
+    // sessionStorage may be unavailable (private mode / quota).
+  }
+}
+
+function clearAnnualSwitchMarker(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(ANNUAL_SWITCH_MARKER_KEY);
+  } catch {
+    // Best-effort.
+  }
+}
 
 const COST_RATES = {
   twilioCostPerMinuteCents: 2,
@@ -342,7 +399,18 @@ export default function Billing() {
   const { user } = useAuth();
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+  // Annual-switch banner state. Marker is only hydrated on the
+  // ?checkout=success URL so a stale sessionStorage value can't fire
+  // the banner on unrelated visits. `returnedAt` is when that URL was
+  // observed and bounds the webhook-lag polling.
+  const [annualSwitchMarker, setAnnualSwitchMarker] =
+    useState<AnnualSwitchMarker | null>(null);
+  const [annualSwitchReturnedAt, setAnnualSwitchReturnedAt] =
+    useState<number | null>(null);
+  const [annualSwitchAcknowledged, setAnnualSwitchAcknowledged] = useState(false);
+  const [annualSwitchDismissed, setAnnualSwitchDismissed] = useState(false);
   // Monthly / Annual upgrade-interval toggle. Authoritative store is the
   // per-user `users.preferences` JSONB blob (key `billing_upgrade_interval`)
   // so the choice follows the user across browsers and devices. localStorage
@@ -524,11 +592,14 @@ export default function Billing() {
   const currency = useTenantCurrency();
   const formatCents = (cents: number | string | bigint | null | undefined) => formatCentsHelper(cents, { currency });
 
-  // Stripe Checkout redirects back to /billing?checkout=success.
-  // Drop cached billing snapshots so the page reflects the new plan.
+  // Stripe Checkout redirects back to /billing?checkout=success or
+  // /billing?checkout=cancelled. We always strip the query param so a
+  // reload doesn't re-fire side effects, and on success we drop cached
+  // billing snapshots so the page reflects the new plan immediately.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('checkout') === 'success') {
+    const checkoutParam = params.get('checkout');
+    if (checkoutParam === 'success') {
       queryClient.invalidateQueries({ queryKey: ['trial-status'] });
       queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
       queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
@@ -536,8 +607,55 @@ export default function Billing() {
         predicate: (query) => query.queryKey[0] === 'billing-usage-trailing',
       });
       queryClient.invalidateQueries({ queryKey: ['billing-upgrade-preview'] });
+      // Hydrate the annual-switch marker only on the success redirect
+      // (not on plain visits). This is the only signal that the tenant
+      // just came back from Stripe Checkout. Also stamp the return
+      // time so the polling budget below is measured from now, not
+      // from when the original click happened (Checkout itself can
+      // take longer than the polling budget).
+      const marker = readAnnualSwitchMarker();
+      if (marker) {
+        setAnnualSwitchMarker(marker);
+        setAnnualSwitchReturnedAt((prev) => prev ?? Date.now());
+        // Leave ?checkout=success in the URL until the banner renders
+        // (or the polling budget expires). This way a reload before
+        // the webhook lands re-runs this effect and resumes polling
+        // instead of silently dropping the marker.
+      } else {
+        // Marker missing (or expired) — nothing to wait for.
+        const url = new URL(window.location.href);
+        url.searchParams.delete('checkout');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } else if (checkoutParam === 'cancelled') {
+      clearAnnualSwitchMarker();
+      setAnnualSwitchMarker(null);
+      setAnnualSwitchReturnedAt(null);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('checkout');
+      window.history.replaceState({}, '', url.toString());
     }
-  }, [queryClient]);
+    // location.search is included so a SPA navigation that only
+    // changes the query string re-runs this effect.
+  }, [queryClient, location.search]);
+
+  // Strip ?checkout=success once the marker has resolved (banner
+  // rendered or polling gave up). Keeps the URL clean without losing
+  // the redirect signal during the wait window above.
+  const stripCheckoutParamFromUrl = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('checkout')) return;
+    url.searchParams.delete('checkout');
+    window.history.replaceState({}, '', url.toString());
+  }, []);
+
+  const dismissAnnualSwitchBanner = useCallback(() => {
+    setAnnualSwitchDismissed(true);
+    setAnnualSwitchMarker(null);
+    clearAnnualSwitchMarker();
+    stripCheckoutParamFromUrl();
+  }, [stripCheckoutParamFromUrl]);
 
   // Records impression / click events from the BillingEstimator banner.
   // Completion is attributed server-side from the Stripe webhook, so
@@ -863,6 +981,18 @@ export default function Billing() {
     discount?: { couponId: string | null; promotionCode: string | null },
   ) => {
     setUpgradeLoading(plan);
+    // Stamp the annual-switch marker before the Stripe redirect, but
+    // only for an actual monthly→annual switch. Other initiations
+    // clear any stale marker so it can't bleed into this checkout.
+    const currentInterval = sub?.billing_interval ?? 'none';
+    if (interval === 'annual' && currentInterval === 'monthly') {
+      writeAnnualSwitchMarker({
+        previousInterval: 'monthly',
+        initiatedAt: Date.now(),
+      });
+    } else {
+      clearAnnualSwitchMarker();
+    }
     checkoutMutation.mutate({ plan, interval, recommendation, discount });
   };
 
@@ -919,6 +1049,64 @@ export default function Billing() {
   const status = sub?.status ?? subData?.status ?? 'none';
   const usage = usageData?.usage ?? {};
   const budget = budgetData;
+
+  // One-time guarantee: once the banner is renderable, drop the
+  // sessionStorage marker and the URL param so reloads/fresh visits
+  // don't re-fire it. The in-memory marker keeps the banner visible
+  // until dismiss. Idempotent via `annualSwitchAcknowledged`.
+  useEffect(() => {
+    if (annualSwitchAcknowledged) return;
+    if (!annualSwitchMarker) return;
+    if (sub?.billing_interval !== 'annual') return;
+    if (status !== 'active' && status !== 'trialing') return;
+    clearAnnualSwitchMarker();
+    stripCheckoutParamFromUrl();
+    setAnnualSwitchAcknowledged(true);
+  }, [
+    annualSwitchAcknowledged,
+    annualSwitchMarker,
+    sub?.billing_interval,
+    status,
+    stripCheckoutParamFromUrl,
+  ]);
+
+  // Webhook-lag polling: while a marker is pending and the local
+  // subscription still shows monthly, re-fetch every 3s up to the
+  // budget measured from `returnedAt`. Self-rescheduling because a
+  // refetch that returns identical data may not re-run this effect
+  // (react-query keeps the same data reference under structural
+  // sharing), so we cannot rely on `sub` changing to drive the loop.
+  useEffect(() => {
+    if (!annualSwitchMarker) return;
+    if (annualSwitchReturnedAt === null) return;
+    if (sub?.billing_interval === 'annual') return;
+    let cancelled = false;
+    let handle: number | undefined;
+    const tick = () => {
+      if (cancelled) return;
+      if (Date.now() - annualSwitchReturnedAt > ANNUAL_SWITCH_MAX_WAIT_MS) {
+        clearAnnualSwitchMarker();
+        setAnnualSwitchMarker(null);
+        setAnnualSwitchReturnedAt(null);
+        stripCheckoutParamFromUrl();
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
+      handle = window.setTimeout(tick, 3_000);
+    };
+    handle = window.setTimeout(tick, 3_000);
+    return () => {
+      cancelled = true;
+      if (handle !== undefined) window.clearTimeout(handle);
+    };
+  }, [
+    annualSwitchMarker,
+    annualSwitchReturnedAt,
+    sub?.billing_interval,
+    queryClient,
+    stripCheckoutParamFromUrl,
+  ]);
 
   // Tiers strictly below the tenant's current plan, paired with the
   // interval shown on the toggle. Empty when the tenant has no paid
@@ -1012,6 +1200,69 @@ export default function Billing() {
           Downgrade to {PLAN_LABELS[downgradeNotice.plan] ?? downgradeNotice.plan} scheduled for {formatDate(downgradeNotice.scheduledFor)}. You will keep your current plan until then.
         </div>
       )}
+
+      {/* One-time monthly→annual switch confirmation. Gating + lifecycle
+          live in the effects above; see ANNUAL_SWITCH_MARKER_KEY. */}
+      {(() => {
+        const showBanner =
+          annualSwitchMarker !== null
+          && !annualSwitchDismissed
+          && sub?.billing_interval === 'annual'
+          && (status === 'active' || status === 'trialing');
+        if (!showBanner) return null;
+        const monthlyCents = effectiveRateData?.monthlyBasePriceCents;
+        const annualEquivCents = effectiveRateData?.annualBasePriceCents;
+        const planLabel = PLAN_LABELS[plan] ?? plan;
+        // Only render the savings clause when both rates are finite
+        // and annual is actually cheaper, to avoid "saving $0/yr".
+        const hasSavings =
+          typeof monthlyCents === 'number'
+          && typeof annualEquivCents === 'number'
+          && Number.isFinite(monthlyCents)
+          && Number.isFinite(annualEquivCents)
+          && monthlyCents > annualEquivCents;
+        const annualSavingsCents = hasSavings
+          ? (monthlyCents - annualEquivCents) * 12
+          : 0;
+        return (
+          <div
+            role="status"
+            data-testid="billing-annual-switch-success-banner"
+            className="bg-success/10 border border-success/30 text-text-primary text-sm px-4 py-3 rounded-lg flex items-start gap-3"
+          >
+            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-success">
+                You're now on annual billing
+              </p>
+              <p className="text-sm mt-0.5 text-text-muted">
+                Your {planLabel} plan switched to annual billing.
+                {hasSavings && annualSavingsCents > 0 && (
+                  <>
+                    {' '}You're saving{' '}
+                    <span
+                      data-testid="billing-annual-switch-success-savings"
+                      className="font-semibold text-success"
+                    >
+                      {formatCents(annualSavingsCents)}/yr
+                    </span>{' '}
+                    vs the monthly rate.
+                  </>
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissAnnualSwitchBanner}
+              data-testid="billing-annual-switch-success-dismiss"
+              className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+              aria-label="Dismiss annual billing confirmation"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })()}
 
       {subLoading ? (
         <div className="flex items-center justify-center py-20">
