@@ -24,7 +24,7 @@
  * The script is also invoked as a `prebuild` hook in `client-app/package.json`
  * so production builds always ship a fresh sitemap.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -213,6 +213,109 @@ export function collectDynamicPaths() {
   return paths;
 }
 
+/**
+ * Slug validator shared across case-study helpers. Accepts the URL-safe segment
+ * chars actually produced by platform/analytics/CaseStudyService.generateCaseStudy
+ * — lowercase ASCII alphanumerics, hyphens, and underscores (e.g.
+ * `cs-1abc-call_volume-500`). Must start with an alphanumeric. Anything else is
+ * dropped silently so a stray malformed row can never poison the sitemap.
+ */
+function isValidSlug(value) {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9_-]*$/.test(value);
+}
+
+/**
+ * Pull every valid `publicSlug` out of a parsed `/api/public/case-studies`
+ * response. Accepts both `publicSlug` (API) and `public_slug` (raw DB row
+ * snapshot). Drops nulls, invalid slugs, and dedupes.
+ */
+export function extractCaseStudySlugsFromPayload(body) {
+  if (!Array.isArray(body)) return [];
+  const slugs = [];
+  for (const item of body) {
+    if (!item || typeof item !== 'object') continue;
+    const candidate =
+      typeof item.publicSlug === 'string'
+        ? item.publicSlug
+        : typeof item.public_slug === 'string'
+          ? item.public_slug
+          : null;
+    if (isValidSlug(candidate)) slugs.push(candidate);
+  }
+  return Array.from(new Set(slugs));
+}
+
+/**
+ * Load published case-study slugs from a remote `url` (preferred) or local
+ * `file` snapshot. Returns `[]` on any failure so a flaky API can never block
+ * a release build.
+ */
+export async function loadCaseStudySlugs({
+  url,
+  file,
+  timeoutMs = 5000,
+  fetchImpl = typeof fetch === 'function' ? fetch : undefined,
+  logger = console,
+} = {}) {
+  if (url) {
+    if (typeof fetchImpl !== 'function') {
+      logger.warn?.('loadCaseStudySlugs: no fetch implementation available, skipping case-study URLs');
+      return [];
+    }
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+    try {
+      const res = await fetchImpl(url, controller ? { signal: controller.signal } : undefined);
+      if (!res || !res.ok) {
+        const status = res ? res.status : 'no response';
+        logger.warn?.(`loadCaseStudySlugs: ${url} returned ${status}, skipping case-study URLs`);
+        return [];
+      }
+      const body = await res.json();
+      return extractCaseStudySlugsFromPayload(body);
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? err.message : String(err);
+      logger.warn?.(`loadCaseStudySlugs: failed to fetch ${url} (${message}), skipping case-study URLs`);
+      return [];
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  if (file) {
+    try {
+      if (!existsSync(file)) {
+        logger.warn?.(`loadCaseStudySlugs: snapshot file ${file} not found, skipping case-study URLs`);
+        return [];
+      }
+      const raw = readFileSync(file, 'utf8');
+      const body = JSON.parse(raw);
+      return extractCaseStudySlugsFromPayload(body);
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err ? err.message : String(err);
+      logger.warn?.(`loadCaseStudySlugs: failed to read ${file} (${message}), skipping case-study URLs`);
+      return [];
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Turn validated case-study slugs into sitemap route entries (monthly/0.6,
+ * matching the doc/blog cadence).
+ */
+export function buildCaseStudyRoutes(slugs) {
+  const routes = [];
+  for (const slug of slugs) {
+    if (!isValidSlug(slug)) continue;
+    routes.push({ path: `/case-studies/${slug}`, changefreq: 'monthly', priority: '0.6' });
+  }
+  return routes;
+}
+
 function escapeXml(value) {
   return value
     .replace(/&/g, '&amp;')
@@ -222,12 +325,6 @@ function escapeXml(value) {
     .replace(/'/g, '&apos;');
 }
 
-/**
- * Build the sitemap XML string. Every public path gets one `<url>` per
- * supported locale, and every one of those `<url>` entries lists the FULL
- * set of `<xhtml:link rel="alternate" hreflang="…">` siblings (one per
- * locale plus `x-default`).
- */
 export function buildSitemapXml({ routes, locales = SUPPORTED_LOCALES, baseUrl = BASE_URL, lastmod } = {}) {
   const today = lastmod || new Date().toISOString().slice(0, 10);
   const out = [];
@@ -273,23 +370,49 @@ export function buildSitemapXml({ routes, locales = SUPPORTED_LOCALES, baseUrl =
   return out.join('\n');
 }
 
-export function generateSitemap({ baseUrl = BASE_URL, locales = SUPPORTED_LOCALES, lastmod } = {}) {
-  const routes = [...STATIC_ROUTES, ...collectDynamicPaths()];
+export function generateSitemap({
+  baseUrl = BASE_URL,
+  locales = SUPPORTED_LOCALES,
+  lastmod,
+  caseStudySlugs = [],
+} = {}) {
+  const routes = [
+    ...STATIC_ROUTES,
+    ...collectDynamicPaths(),
+    ...buildCaseStudyRoutes(caseStudySlugs),
+  ];
   return buildSitemapXml({ routes, locales, baseUrl, lastmod });
 }
 
 function isCli() {
-  // Run as CLI when executed directly (`node scripts/generate-sitemap.mjs`)
-  // rather than imported from a test file.
   if (!process.argv[1]) return false;
   return path.resolve(process.argv[1]) === __filename;
 }
 
+/**
+ * Resolve the case-study source the CLI should use given the current env.
+ * Precedence: snapshot file > URL override (`'' | 'none'` disables) >
+ * default `${baseUrl}/api/public/case-studies` API.
+ */
+export function resolveCaseStudySource({ env = process.env, baseUrl = BASE_URL } = {}) {
+  if (env.SITEMAP_CASE_STUDIES_FILE) return { file: env.SITEMAP_CASE_STUDIES_FILE };
+  if (Object.prototype.hasOwnProperty.call(env, 'SITEMAP_CASE_STUDIES_URL')) {
+    const override = env.SITEMAP_CASE_STUDIES_URL;
+    if (!override || override === 'none') return {};
+    return { url: override };
+  }
+  return { url: `${baseUrl}/api/public/case-studies` };
+}
+
 if (isCli()) {
-  const xml = generateSitemap();
+  const source = resolveCaseStudySource();
+  const caseStudySlugs = await loadCaseStudySlugs(source);
+  const xml = generateSitemap({ caseStudySlugs });
   const outPath = path.join(REPO_ROOT, 'client-app', 'public', 'sitemap.xml');
   writeFileSync(outPath, xml, 'utf8');
   const urlCount = (xml.match(/<url>/g) || []).length;
   // eslint-disable-next-line no-console
-  console.log(`Wrote ${outPath} (${urlCount} <url> entries across ${SUPPORTED_LOCALES.length} locales)`);
+  console.log(
+    `Wrote ${outPath} (${urlCount} <url> entries across ${SUPPORTED_LOCALES.length} locales, ${caseStudySlugs.length} case-study slug(s))`,
+  );
 }

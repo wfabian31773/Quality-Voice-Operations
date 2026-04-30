@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://qvo.ai/</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/"/>
@@ -14,7 +14,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/"/>
@@ -26,7 +26,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/"/>
@@ -38,7 +38,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/"/>
@@ -50,7 +50,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/"/>
@@ -62,7 +62,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/product</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product"/>
@@ -74,7 +74,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/product</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product"/>
@@ -86,7 +86,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/product</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product"/>
@@ -98,7 +98,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/product</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product"/>
@@ -110,7 +110,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/product</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product"/>
@@ -122,7 +122,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/product/federated-ingest</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/federated-ingest"/>
@@ -134,7 +134,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/product/federated-ingest</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/federated-ingest"/>
@@ -146,7 +146,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/product/federated-ingest</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/federated-ingest"/>
@@ -158,7 +158,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/product/federated-ingest</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/federated-ingest"/>
@@ -170,7 +170,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/product/federated-ingest</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/federated-ingest"/>
@@ -182,7 +182,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/product/global-intelligence-network</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/global-intelligence-network"/>
@@ -194,7 +194,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/product/global-intelligence-network</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/global-intelligence-network"/>
@@ -206,7 +206,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/product/global-intelligence-network</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/global-intelligence-network"/>
@@ -218,7 +218,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/product/global-intelligence-network</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/global-intelligence-network"/>
@@ -230,7 +230,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/product/global-intelligence-network</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/product/global-intelligence-network"/>
@@ -242,7 +242,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/features</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/features"/>
@@ -254,7 +254,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/features</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/features"/>
@@ -266,7 +266,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/features</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/features"/>
@@ -278,7 +278,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/features</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/features"/>
@@ -290,7 +290,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/features</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/features"/>
@@ -302,7 +302,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/ai-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/ai-agents"/>
@@ -314,7 +314,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/ai-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/ai-agents"/>
@@ -326,7 +326,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/ai-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/ai-agents"/>
@@ -338,7 +338,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/ai-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/ai-agents"/>
@@ -350,7 +350,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/ai-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/ai-agents"/>
@@ -362,7 +362,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/pricing"/>
@@ -374,7 +374,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/pricing"/>
@@ -386,7 +386,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/pricing"/>
@@ -398,7 +398,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/pricing"/>
@@ -410,7 +410,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/pricing"/>
@@ -422,7 +422,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/use-cases</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/use-cases"/>
@@ -434,7 +434,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/use-cases</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/use-cases"/>
@@ -446,7 +446,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/use-cases</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/use-cases"/>
@@ -458,7 +458,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/use-cases</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/use-cases"/>
@@ -470,7 +470,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/use-cases</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/use-cases"/>
@@ -482,7 +482,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/integrations"/>
@@ -494,7 +494,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/integrations"/>
@@ -506,7 +506,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/integrations"/>
@@ -518,7 +518,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/integrations"/>
@@ -530,7 +530,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/integrations"/>
@@ -542,7 +542,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/demo"/>
@@ -554,7 +554,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/demo"/>
@@ -566,7 +566,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/demo"/>
@@ -578,7 +578,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/demo"/>
@@ -590,7 +590,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/demo"/>
@@ -602,7 +602,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/contact</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/contact"/>
@@ -614,7 +614,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/contact</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/contact"/>
@@ -626,7 +626,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/contact</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/contact"/>
@@ -638,7 +638,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/contact</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/contact"/>
@@ -650,7 +650,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/contact</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/contact"/>
@@ -662,7 +662,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs"/>
@@ -674,7 +674,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs"/>
@@ -686,7 +686,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs"/>
@@ -698,7 +698,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs"/>
@@ -710,7 +710,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs"/>
@@ -722,7 +722,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/resources</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources"/>
@@ -734,7 +734,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/resources</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources"/>
@@ -746,7 +746,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/resources</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources"/>
@@ -758,7 +758,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/resources</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources"/>
@@ -770,7 +770,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/resources</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources"/>
@@ -782,7 +782,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/signup</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/signup"/>
@@ -794,7 +794,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/signup</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/signup"/>
@@ -806,7 +806,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/signup</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/signup"/>
@@ -818,7 +818,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/signup</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/signup"/>
@@ -830,7 +830,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/signup</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/signup"/>
@@ -842,7 +842,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/blog</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog"/>
@@ -854,7 +854,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/blog</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog"/>
@@ -866,7 +866,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/blog</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog"/>
@@ -878,7 +878,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/blog</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog"/>
@@ -890,7 +890,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/blog</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog"/>
@@ -902,7 +902,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/vertical-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/vertical-agents"/>
@@ -914,7 +914,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/vertical-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/vertical-agents"/>
@@ -926,7 +926,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/vertical-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/vertical-agents"/>
@@ -938,7 +938,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/vertical-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/vertical-agents"/>
@@ -950,7 +950,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/vertical-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/vertical-agents"/>
@@ -962,7 +962,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/case-studies</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/case-studies"/>
@@ -974,7 +974,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/case-studies</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/case-studies"/>
@@ -986,7 +986,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/case-studies</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/case-studies"/>
@@ -998,7 +998,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/case-studies</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/case-studies"/>
@@ -1010,7 +1010,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/case-studies</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/case-studies"/>
@@ -1022,7 +1022,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/book-demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/book-demo"/>
@@ -1034,7 +1034,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/book-demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/book-demo"/>
@@ -1046,7 +1046,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/book-demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/book-demo"/>
@@ -1058,7 +1058,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/book-demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/book-demo"/>
@@ -1070,7 +1070,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/book-demo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/book-demo"/>
@@ -1082,7 +1082,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/terms</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/terms"/>
@@ -1094,7 +1094,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/terms</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/terms"/>
@@ -1106,7 +1106,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/terms</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/terms"/>
@@ -1118,7 +1118,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/terms</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/terms"/>
@@ -1130,7 +1130,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/terms</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/terms"/>
@@ -1142,7 +1142,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/privacy</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/privacy"/>
@@ -1154,7 +1154,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/privacy</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/privacy"/>
@@ -1166,7 +1166,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/privacy</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/privacy"/>
@@ -1178,7 +1178,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/privacy</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/privacy"/>
@@ -1190,7 +1190,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/privacy</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/privacy"/>
@@ -1202,7 +1202,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/security</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security"/>
@@ -1214,7 +1214,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/security</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security"/>
@@ -1226,7 +1226,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/security</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security"/>
@@ -1238,7 +1238,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/security</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security"/>
@@ -1250,7 +1250,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/security</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security"/>
@@ -1262,7 +1262,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/security/posture</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security/posture"/>
@@ -1274,7 +1274,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/security/posture</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security/posture"/>
@@ -1286,7 +1286,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/security/posture</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security/posture"/>
@@ -1298,7 +1298,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/security/posture</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security/posture"/>
@@ -1310,7 +1310,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/security/posture</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/security/posture"/>
@@ -1322,7 +1322,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/subprocessors</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/subprocessors"/>
@@ -1334,7 +1334,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/subprocessors</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/subprocessors"/>
@@ -1346,7 +1346,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/subprocessors</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/subprocessors"/>
@@ -1358,7 +1358,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/subprocessors</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/subprocessors"/>
@@ -1370,7 +1370,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/subprocessors</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/subprocessors"/>
@@ -1382,7 +1382,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/quickstart</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/quickstart"/>
@@ -1394,7 +1394,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/quickstart</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/quickstart"/>
@@ -1406,7 +1406,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/quickstart</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/quickstart"/>
@@ -1418,7 +1418,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/quickstart</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/quickstart"/>
@@ -1430,7 +1430,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/quickstart</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/quickstart"/>
@@ -1442,7 +1442,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/core-concepts</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/core-concepts"/>
@@ -1454,7 +1454,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/core-concepts</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/core-concepts"/>
@@ -1466,7 +1466,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/core-concepts</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/core-concepts"/>
@@ -1478,7 +1478,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/core-concepts</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/core-concepts"/>
@@ -1490,7 +1490,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/core-concepts</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/core-concepts"/>
@@ -1502,7 +1502,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/glossary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/glossary"/>
@@ -1514,7 +1514,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/glossary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/glossary"/>
@@ -1526,7 +1526,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/glossary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/glossary"/>
@@ -1538,7 +1538,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/glossary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/glossary"/>
@@ -1550,7 +1550,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/glossary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/glossary"/>
@@ -1562,7 +1562,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/building-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/building-your-first-agent"/>
@@ -1574,7 +1574,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/building-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/building-your-first-agent"/>
@@ -1586,7 +1586,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/building-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/building-your-first-agent"/>
@@ -1598,7 +1598,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/building-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/building-your-first-agent"/>
@@ -1610,7 +1610,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/building-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/building-your-first-agent"/>
@@ -1622,7 +1622,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/voice-and-personality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/voice-and-personality"/>
@@ -1634,7 +1634,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/voice-and-personality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/voice-and-personality"/>
@@ -1646,7 +1646,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/voice-and-personality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/voice-and-personality"/>
@@ -1658,7 +1658,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/voice-and-personality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/voice-and-personality"/>
@@ -1670,7 +1670,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/voice-and-personality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/voice-and-personality"/>
@@ -1682,7 +1682,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/tools-and-functions</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/tools-and-functions"/>
@@ -1694,7 +1694,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/tools-and-functions</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/tools-and-functions"/>
@@ -1706,7 +1706,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/tools-and-functions</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/tools-and-functions"/>
@@ -1718,7 +1718,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/tools-and-functions</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/tools-and-functions"/>
@@ -1730,7 +1730,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/tools-and-functions</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/tools-and-functions"/>
@@ -1742,7 +1742,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/workflows-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/workflows-overview"/>
@@ -1754,7 +1754,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/workflows-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/workflows-overview"/>
@@ -1766,7 +1766,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/workflows-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/workflows-overview"/>
@@ -1778,7 +1778,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/workflows-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/workflows-overview"/>
@@ -1790,7 +1790,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/workflows-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/workflows-overview"/>
@@ -1802,7 +1802,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/configuring-workflows</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/configuring-workflows"/>
@@ -1814,7 +1814,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/configuring-workflows</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/configuring-workflows"/>
@@ -1826,7 +1826,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/configuring-workflows</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/configuring-workflows"/>
@@ -1838,7 +1838,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/configuring-workflows</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/configuring-workflows"/>
@@ -1850,7 +1850,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/configuring-workflows</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/configuring-workflows"/>
@@ -1862,7 +1862,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/integrations-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integrations-overview"/>
@@ -1874,7 +1874,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/integrations-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integrations-overview"/>
@@ -1886,7 +1886,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/integrations-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integrations-overview"/>
@@ -1898,7 +1898,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/integrations-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integrations-overview"/>
@@ -1910,7 +1910,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/integrations-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integrations-overview"/>
@@ -1922,7 +1922,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-salesforce</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-salesforce"/>
@@ -1934,7 +1934,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-salesforce</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-salesforce"/>
@@ -1946,7 +1946,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-salesforce</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-salesforce"/>
@@ -1958,7 +1958,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-salesforce</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-salesforce"/>
@@ -1970,7 +1970,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-salesforce</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-salesforce"/>
@@ -1982,7 +1982,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-outlook</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-outlook"/>
@@ -1994,7 +1994,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-outlook</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-outlook"/>
@@ -2006,7 +2006,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-outlook</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-outlook"/>
@@ -2018,7 +2018,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-outlook</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-outlook"/>
@@ -2030,7 +2030,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-outlook</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-outlook"/>
@@ -2042,7 +2042,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-hubspot</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-hubspot"/>
@@ -2054,7 +2054,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-hubspot</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-hubspot"/>
@@ -2066,7 +2066,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-hubspot</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-hubspot"/>
@@ -2078,7 +2078,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-hubspot</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-hubspot"/>
@@ -2090,7 +2090,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-hubspot</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-hubspot"/>
@@ -2102,7 +2102,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-calendar</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-calendar"/>
@@ -2114,7 +2114,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-calendar</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-calendar"/>
@@ -2126,7 +2126,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-calendar</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-calendar"/>
@@ -2138,7 +2138,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-calendar</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-calendar"/>
@@ -2150,7 +2150,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-calendar</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-calendar"/>
@@ -2162,7 +2162,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-slack</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-slack"/>
@@ -2174,7 +2174,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-slack</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-slack"/>
@@ -2186,7 +2186,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-slack</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-slack"/>
@@ -2198,7 +2198,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-slack</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-slack"/>
@@ -2210,7 +2210,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-slack</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-slack"/>
@@ -2222,7 +2222,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-pipedrive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-pipedrive"/>
@@ -2234,7 +2234,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-pipedrive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-pipedrive"/>
@@ -2246,7 +2246,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-pipedrive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-pipedrive"/>
@@ -2258,7 +2258,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-pipedrive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-pipedrive"/>
@@ -2270,7 +2270,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-pipedrive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-pipedrive"/>
@@ -2282,7 +2282,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/connecting-quickbooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-quickbooks"/>
@@ -2294,7 +2294,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/connecting-quickbooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-quickbooks"/>
@@ -2306,7 +2306,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/connecting-quickbooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-quickbooks"/>
@@ -2318,7 +2318,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/connecting-quickbooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-quickbooks"/>
@@ -2330,7 +2330,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/connecting-quickbooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/connecting-quickbooks"/>
@@ -2342,7 +2342,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/webhooks"/>
@@ -2354,7 +2354,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/webhooks"/>
@@ -2366,7 +2366,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/webhooks"/>
@@ -2378,7 +2378,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/webhooks"/>
@@ -2390,7 +2390,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/webhooks"/>
@@ -2402,7 +2402,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/sms-inbox</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/sms-inbox"/>
@@ -2414,7 +2414,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/sms-inbox</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/sms-inbox"/>
@@ -2426,7 +2426,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/sms-inbox</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/sms-inbox"/>
@@ -2438,7 +2438,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/sms-inbox</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/sms-inbox"/>
@@ -2450,7 +2450,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/sms-inbox</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/sms-inbox"/>
@@ -2462,7 +2462,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/managing-tickets</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/managing-tickets"/>
@@ -2474,7 +2474,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/managing-tickets</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/managing-tickets"/>
@@ -2486,7 +2486,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/managing-tickets</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/managing-tickets"/>
@@ -2498,7 +2498,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/managing-tickets</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/managing-tickets"/>
@@ -2510,7 +2510,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/managing-tickets</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/managing-tickets"/>
@@ -2522,7 +2522,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/scheduling-appointments</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/scheduling-appointments"/>
@@ -2534,7 +2534,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/scheduling-appointments</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/scheduling-appointments"/>
@@ -2546,7 +2546,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/scheduling-appointments</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/scheduling-appointments"/>
@@ -2558,7 +2558,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/scheduling-appointments</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/scheduling-appointments"/>
@@ -2570,7 +2570,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/scheduling-appointments</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/scheduling-appointments"/>
@@ -2582,7 +2582,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/dispatch</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/dispatch"/>
@@ -2594,7 +2594,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/dispatch</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/dispatch"/>
@@ -2606,7 +2606,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/dispatch</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/dispatch"/>
@@ -2618,7 +2618,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/dispatch</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/dispatch"/>
@@ -2630,7 +2630,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/dispatch</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/dispatch"/>
@@ -2642,7 +2642,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/api-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-overview"/>
@@ -2654,7 +2654,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/api-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-overview"/>
@@ -2666,7 +2666,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/api-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-overview"/>
@@ -2678,7 +2678,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/api-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-overview"/>
@@ -2690,7 +2690,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/api-overview</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-overview"/>
@@ -2702,7 +2702,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/api-authentication</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-authentication"/>
@@ -2714,7 +2714,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/api-authentication</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-authentication"/>
@@ -2726,7 +2726,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/api-authentication</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-authentication"/>
@@ -2738,7 +2738,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/api-authentication</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-authentication"/>
@@ -2750,7 +2750,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/api-authentication</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-authentication"/>
@@ -2762,7 +2762,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/api-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-agents"/>
@@ -2774,7 +2774,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/api-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-agents"/>
@@ -2786,7 +2786,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/api-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-agents"/>
@@ -2798,7 +2798,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/api-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-agents"/>
@@ -2810,7 +2810,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/api-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-agents"/>
@@ -2822,7 +2822,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/api-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-calls"/>
@@ -2834,7 +2834,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/api-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-calls"/>
@@ -2846,7 +2846,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/api-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-calls"/>
@@ -2858,7 +2858,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/api-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-calls"/>
@@ -2870,7 +2870,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/api-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-calls"/>
@@ -2882,7 +2882,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/api-webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-webhooks"/>
@@ -2894,7 +2894,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/api-webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-webhooks"/>
@@ -2906,7 +2906,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/api-webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-webhooks"/>
@@ -2918,7 +2918,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/api-webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-webhooks"/>
@@ -2930,7 +2930,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/api-webhooks</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-webhooks"/>
@@ -2942,7 +2942,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/api-error-codes</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-error-codes"/>
@@ -2954,7 +2954,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/api-error-codes</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-error-codes"/>
@@ -2966,7 +2966,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/api-error-codes</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-error-codes"/>
@@ -2978,7 +2978,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/api-error-codes</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-error-codes"/>
@@ -2990,7 +2990,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/api-error-codes</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/api-error-codes"/>
@@ -3002,7 +3002,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/call-quality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/call-quality"/>
@@ -3014,7 +3014,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/call-quality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/call-quality"/>
@@ -3026,7 +3026,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/call-quality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/call-quality"/>
@@ -3038,7 +3038,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/call-quality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/call-quality"/>
@@ -3050,7 +3050,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/call-quality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/call-quality"/>
@@ -3062,7 +3062,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/integration-sync</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integration-sync"/>
@@ -3074,7 +3074,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/integration-sync</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integration-sync"/>
@@ -3086,7 +3086,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/integration-sync</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integration-sync"/>
@@ -3098,7 +3098,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/integration-sync</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integration-sync"/>
@@ -3110,7 +3110,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/integration-sync</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/integration-sync"/>
@@ -3122,7 +3122,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/provisioning</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/provisioning"/>
@@ -3134,7 +3134,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/provisioning</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/provisioning"/>
@@ -3146,7 +3146,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/provisioning</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/provisioning"/>
@@ -3158,7 +3158,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/provisioning</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/provisioning"/>
@@ -3170,7 +3170,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/provisioning</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/provisioning"/>
@@ -3182,7 +3182,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/plans-and-pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/plans-and-pricing"/>
@@ -3194,7 +3194,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/plans-and-pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/plans-and-pricing"/>
@@ -3206,7 +3206,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/plans-and-pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/plans-and-pricing"/>
@@ -3218,7 +3218,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/plans-and-pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/plans-and-pricing"/>
@@ -3230,7 +3230,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/plans-and-pricing</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/plans-and-pricing"/>
@@ -3242,7 +3242,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/invoices-and-payment</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/invoices-and-payment"/>
@@ -3254,7 +3254,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/invoices-and-payment</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/invoices-and-payment"/>
@@ -3266,7 +3266,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/invoices-and-payment</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/invoices-and-payment"/>
@@ -3278,7 +3278,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/invoices-and-payment</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/invoices-and-payment"/>
@@ -3290,7 +3290,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/invoices-and-payment</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/invoices-and-payment"/>
@@ -3302,7 +3302,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/docs/budget-controls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/budget-controls"/>
@@ -3314,7 +3314,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/docs/budget-controls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/budget-controls"/>
@@ -3326,7 +3326,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/docs/budget-controls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/budget-controls"/>
@@ -3338,7 +3338,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/docs/budget-controls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/budget-controls"/>
@@ -3350,7 +3350,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/docs/budget-controls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/docs/budget-controls"/>
@@ -3362,7 +3362,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/blog/what-are-ai-voice-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/what-are-ai-voice-agents"/>
@@ -3374,7 +3374,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/blog/what-are-ai-voice-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/what-are-ai-voice-agents"/>
@@ -3386,7 +3386,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/blog/what-are-ai-voice-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/what-are-ai-voice-agents"/>
@@ -3398,7 +3398,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/blog/what-are-ai-voice-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/what-are-ai-voice-agents"/>
@@ -3410,7 +3410,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/blog/what-are-ai-voice-agents</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/what-are-ai-voice-agents"/>
@@ -3422,7 +3422,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/blog/ai-call-center-automation-guide</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/ai-call-center-automation-guide"/>
@@ -3434,7 +3434,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/blog/ai-call-center-automation-guide</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/ai-call-center-automation-guide"/>
@@ -3446,7 +3446,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/blog/ai-call-center-automation-guide</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/ai-call-center-automation-guide"/>
@@ -3458,7 +3458,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/blog/ai-call-center-automation-guide</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/ai-call-center-automation-guide"/>
@@ -3470,7 +3470,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/blog/ai-call-center-automation-guide</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/ai-call-center-automation-guide"/>
@@ -3482,7 +3482,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/blog/voice-ai-for-healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/voice-ai-for-healthcare"/>
@@ -3494,7 +3494,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/blog/voice-ai-for-healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/voice-ai-for-healthcare"/>
@@ -3506,7 +3506,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/blog/voice-ai-for-healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/voice-ai-for-healthcare"/>
@@ -3518,7 +3518,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/blog/voice-ai-for-healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/voice-ai-for-healthcare"/>
@@ -3530,7 +3530,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/blog/voice-ai-for-healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/voice-ai-for-healthcare"/>
@@ -3542,7 +3542,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/blog/outbound-call-automation-best-practices</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/outbound-call-automation-best-practices"/>
@@ -3554,7 +3554,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/blog/outbound-call-automation-best-practices</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/outbound-call-automation-best-practices"/>
@@ -3566,7 +3566,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/blog/outbound-call-automation-best-practices</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/outbound-call-automation-best-practices"/>
@@ -3578,7 +3578,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/blog/outbound-call-automation-best-practices</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/outbound-call-automation-best-practices"/>
@@ -3590,7 +3590,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/blog/outbound-call-automation-best-practices</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/outbound-call-automation-best-practices"/>
@@ -3602,7 +3602,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/blog/how-ai-receptionists-reduce-missed-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/how-ai-receptionists-reduce-missed-calls"/>
@@ -3614,7 +3614,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/blog/how-ai-receptionists-reduce-missed-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/how-ai-receptionists-reduce-missed-calls"/>
@@ -3626,7 +3626,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/blog/how-ai-receptionists-reduce-missed-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/how-ai-receptionists-reduce-missed-calls"/>
@@ -3638,7 +3638,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/blog/how-ai-receptionists-reduce-missed-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/how-ai-receptionists-reduce-missed-calls"/>
@@ -3650,7 +3650,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/blog/how-ai-receptionists-reduce-missed-calls</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/blog/how-ai-receptionists-reduce-missed-calls"/>
@@ -3662,7 +3662,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/resources/getting-started-with-qvo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/getting-started-with-qvo"/>
@@ -3674,7 +3674,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/resources/getting-started-with-qvo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/getting-started-with-qvo"/>
@@ -3686,7 +3686,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/resources/getting-started-with-qvo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/getting-started-with-qvo"/>
@@ -3698,7 +3698,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/resources/getting-started-with-qvo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/getting-started-with-qvo"/>
@@ -3710,7 +3710,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/resources/getting-started-with-qvo</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/getting-started-with-qvo"/>
@@ -3722,7 +3722,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/resources/setting-up-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/setting-up-your-first-agent"/>
@@ -3734,7 +3734,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/resources/setting-up-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/setting-up-your-first-agent"/>
@@ -3746,7 +3746,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/resources/setting-up-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/setting-up-your-first-agent"/>
@@ -3758,7 +3758,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/resources/setting-up-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/setting-up-your-first-agent"/>
@@ -3770,7 +3770,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/resources/setting-up-your-first-agent</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/setting-up-your-first-agent"/>
@@ -3782,7 +3782,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/resources/connecting-integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/connecting-integrations"/>
@@ -3794,7 +3794,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/resources/connecting-integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/connecting-integrations"/>
@@ -3806,7 +3806,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/resources/connecting-integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/connecting-integrations"/>
@@ -3818,7 +3818,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/resources/connecting-integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/connecting-integrations"/>
@@ -3830,7 +3830,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/resources/connecting-integrations</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/connecting-integrations"/>
@@ -3842,7 +3842,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/resources/running-your-first-campaign</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/running-your-first-campaign"/>
@@ -3854,7 +3854,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/resources/running-your-first-campaign</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/running-your-first-campaign"/>
@@ -3866,7 +3866,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/resources/running-your-first-campaign</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/running-your-first-campaign"/>
@@ -3878,7 +3878,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/resources/running-your-first-campaign</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/running-your-first-campaign"/>
@@ -3890,7 +3890,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/resources/running-your-first-campaign</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/resources/running-your-first-campaign"/>
@@ -3902,7 +3902,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/healthcare"/>
@@ -3914,7 +3914,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/healthcare"/>
@@ -3926,7 +3926,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/healthcare"/>
@@ -3938,7 +3938,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/healthcare"/>
@@ -3950,7 +3950,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/healthcare</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/healthcare"/>
@@ -3962,7 +3962,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/real-estate</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/real-estate"/>
@@ -3974,7 +3974,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/real-estate</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/real-estate"/>
@@ -3986,7 +3986,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/real-estate</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/real-estate"/>
@@ -3998,7 +3998,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/real-estate</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/real-estate"/>
@@ -4010,7 +4010,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/real-estate</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/real-estate"/>
@@ -4022,7 +4022,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/legal</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/legal"/>
@@ -4034,7 +4034,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/legal</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/legal"/>
@@ -4046,7 +4046,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/legal</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/legal"/>
@@ -4058,7 +4058,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/legal</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/legal"/>
@@ -4070,7 +4070,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/legal</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/legal"/>
@@ -4082,7 +4082,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/home-services</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/home-services"/>
@@ -4094,7 +4094,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/home-services</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/home-services"/>
@@ -4106,7 +4106,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/home-services</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/home-services"/>
@@ -4118,7 +4118,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/home-services</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/home-services"/>
@@ -4130,7 +4130,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/home-services</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/home-services"/>
@@ -4142,7 +4142,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/dental</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/dental"/>
@@ -4154,7 +4154,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/dental</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/dental"/>
@@ -4166,7 +4166,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/dental</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/dental"/>
@@ -4178,7 +4178,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/dental</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/dental"/>
@@ -4190,7 +4190,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/dental</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/dental"/>
@@ -4202,7 +4202,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/veterinary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/veterinary"/>
@@ -4214,7 +4214,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/veterinary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/veterinary"/>
@@ -4226,7 +4226,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/veterinary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/veterinary"/>
@@ -4238,7 +4238,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/veterinary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/veterinary"/>
@@ -4250,7 +4250,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/veterinary</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/veterinary"/>
@@ -4262,7 +4262,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/automotive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/automotive"/>
@@ -4274,7 +4274,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/automotive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/automotive"/>
@@ -4286,7 +4286,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/automotive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/automotive"/>
@@ -4298,7 +4298,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/automotive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/automotive"/>
@@ -4310,7 +4310,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/automotive</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/automotive"/>
@@ -4322,7 +4322,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/finance</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/finance"/>
@@ -4334,7 +4334,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/finance</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/finance"/>
@@ -4346,7 +4346,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/finance</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/finance"/>
@@ -4358,7 +4358,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/finance</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/finance"/>
@@ -4370,7 +4370,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/finance</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/finance"/>
@@ -4382,7 +4382,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/industries/hospitality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/hospitality"/>
@@ -4394,7 +4394,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/es/industries/hospitality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/hospitality"/>
@@ -4406,7 +4406,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/pt-BR/industries/hospitality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/hospitality"/>
@@ -4418,7 +4418,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/fr/industries/hospitality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/hospitality"/>
@@ -4430,7 +4430,7 @@
   </url>
   <url>
     <loc>https://qvo.ai/de/industries/hospitality</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-04-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://qvo.ai/industries/hospitality"/>

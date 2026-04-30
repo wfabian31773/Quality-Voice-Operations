@@ -1,12 +1,20 @@
 import { describe, it, expect } from 'vitest';
 
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 // @ts-expect-error: pure-JS Node script with no type declarations.
 import {
   generateSitemap,
   buildSitemapXml,
+  buildCaseStudyRoutes,
   withLocalePrefix,
   extractSlugs,
   extractVerticalSlugs,
+  extractCaseStudySlugsFromPayload,
+  loadCaseStudySlugs,
+  resolveCaseStudySource,
   SUPPORTED_LOCALES,
   DEFAULT_LOCALE,
 } from '../../scripts/generate-sitemap.mjs';
@@ -180,6 +188,320 @@ describe('generate-sitemap script', () => {
       // The raw `&y=2` (unescaped) would produce a `?x=1&y=2` substring; the
       // escaper turns that into `&amp;`, so the unescaped form must not appear.
       expect(xml).not.toContain('?x=1&y=2');
+    });
+  });
+
+  describe('extractCaseStudySlugsFromPayload', () => {
+    it('returns publicSlug values from a list of case studies', () => {
+      const payload = [
+        { id: '1', publicSlug: 'acme-co' },
+        { id: '2', publicSlug: 'globex-clinic' },
+      ];
+      expect(extractCaseStudySlugsFromPayload(payload)).toEqual([
+        'acme-co',
+        'globex-clinic',
+      ]);
+    });
+
+    it('also accepts public_slug (snake_case) for raw DB snapshots', () => {
+      const payload = [{ id: '1', public_slug: 'snake-cased' }];
+      expect(extractCaseStudySlugsFromPayload(payload)).toEqual(['snake-cased']);
+    });
+
+    it('drops null / missing slugs (unpublished studies)', () => {
+      const payload = [
+        { id: '1', publicSlug: null },
+        { id: '2' },
+        { id: '3', publicSlug: 'real-slug' },
+      ];
+      expect(extractCaseStudySlugsFromPayload(payload)).toEqual(['real-slug']);
+    });
+
+    it('drops slugs that would produce invalid URL segments', () => {
+      const payload = [
+        { id: '1', publicSlug: 'Has Spaces' },
+        { id: '2', publicSlug: '-leading-hyphen' },
+        { id: '3', publicSlug: 'CapsAreBad' },
+        { id: '4', publicSlug: 'good-slug' },
+      ];
+      expect(extractCaseStudySlugsFromPayload(payload)).toEqual(['good-slug']);
+    });
+
+    it('deduplicates repeated slugs', () => {
+      const payload = [
+        { id: '1', publicSlug: 'foo' },
+        { id: '2', publicSlug: 'foo' },
+      ];
+      expect(extractCaseStudySlugsFromPayload(payload)).toEqual(['foo']);
+    });
+
+    it('returns an empty array for non-array input (defensive)', () => {
+      expect(extractCaseStudySlugsFromPayload(null)).toEqual([]);
+      expect(extractCaseStudySlugsFromPayload({})).toEqual([]);
+      expect(extractCaseStudySlugsFromPayload('oops')).toEqual([]);
+    });
+  });
+
+  describe('buildCaseStudyRoutes', () => {
+    it('produces /case-studies/<slug> route entries with monthly cadence', () => {
+      expect(buildCaseStudyRoutes(['acme-co', 'globex'])).toEqual([
+        { path: '/case-studies/acme-co', changefreq: 'monthly', priority: '0.6' },
+        { path: '/case-studies/globex', changefreq: 'monthly', priority: '0.6' },
+      ]);
+    });
+
+    it('silently skips invalid slugs', () => {
+      expect(buildCaseStudyRoutes(['ok', 'BAD!', '', null, undefined, 'also-ok'])).toEqual([
+        { path: '/case-studies/ok', changefreq: 'monthly', priority: '0.6' },
+        { path: '/case-studies/also-ok', changefreq: 'monthly', priority: '0.6' },
+      ]);
+    });
+  });
+
+  describe('loadCaseStudySlugs', () => {
+    const silentLogger = { warn: () => {} };
+
+    it('fetches from the URL and returns valid slugs', async () => {
+      const fetchImpl = async (url: string) => {
+        expect(url).toBe('https://qvo.ai/api/public/case-studies');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { id: '1', publicSlug: 'acme-co' },
+            { id: '2', publicSlug: null },
+            { id: '3', publicSlug: 'globex' },
+          ],
+        };
+      };
+      const slugs = await loadCaseStudySlugs({
+        url: 'https://qvo.ai/api/public/case-studies',
+        fetchImpl,
+        logger: silentLogger,
+      });
+      expect(slugs).toEqual(['acme-co', 'globex']);
+    });
+
+    it('returns [] (does NOT throw) when the API returns a non-2xx status', async () => {
+      const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({}) });
+      const slugs = await loadCaseStudySlugs({
+        url: 'https://qvo.ai/api/public/case-studies',
+        fetchImpl,
+        logger: silentLogger,
+      });
+      expect(slugs).toEqual([]);
+    });
+
+    it('returns [] (does NOT throw) when fetch itself rejects (network down)', async () => {
+      const fetchImpl = async () => {
+        throw new Error('ECONNREFUSED');
+      };
+      const slugs = await loadCaseStudySlugs({
+        url: 'https://qvo.ai/api/public/case-studies',
+        fetchImpl,
+        logger: silentLogger,
+      });
+      expect(slugs).toEqual([]);
+    });
+
+    it('returns [] (does NOT throw) when the body is not valid JSON', async () => {
+      const fetchImpl = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError('Unexpected token <');
+        },
+      });
+      const slugs = await loadCaseStudySlugs({
+        url: 'https://qvo.ai/api/public/case-studies',
+        fetchImpl,
+        logger: silentLogger,
+      });
+      expect(slugs).toEqual([]);
+    });
+
+    it('reads from a local snapshot file when no URL is provided', async () => {
+      const dir = mkdtempSync(path.join(tmpdir(), 'sitemap-cs-'));
+      const file = path.join(dir, 'case-studies.json');
+      writeFileSync(
+        file,
+        JSON.stringify([
+          { id: '1', publicSlug: 'from-file' },
+          { id: '2', publicSlug: 'and-another' },
+        ]),
+      );
+      try {
+        const slugs = await loadCaseStudySlugs({ file, logger: silentLogger });
+        expect(slugs).toEqual(['from-file', 'and-another']);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('returns [] when the snapshot file is missing (does NOT throw)', async () => {
+      const slugs = await loadCaseStudySlugs({
+        file: '/tmp/definitely-not-here-' + Math.random().toString(36).slice(2) + '.json',
+        logger: silentLogger,
+      });
+      expect(slugs).toEqual([]);
+    });
+
+    it('returns [] when neither url nor file is provided (default no-op)', async () => {
+      const slugs = await loadCaseStudySlugs({ logger: silentLogger });
+      expect(slugs).toEqual([]);
+    });
+  });
+
+  describe('resolveCaseStudySource', () => {
+    it('defaults to ${baseUrl}/api/public/case-studies when no env vars are set', () => {
+      const source = resolveCaseStudySource({ env: {}, baseUrl: 'https://qvo.ai' });
+      expect(source).toEqual({ url: 'https://qvo.ai/api/public/case-studies' });
+    });
+
+    it('honors SITEMAP_CASE_STUDIES_URL as an override', () => {
+      const source = resolveCaseStudySource({
+        env: { SITEMAP_CASE_STUDIES_URL: 'https://staging.example.com/api/public/case-studies' },
+        baseUrl: 'https://qvo.ai',
+      });
+      expect(source).toEqual({
+        url: 'https://staging.example.com/api/public/case-studies',
+      });
+    });
+
+    it('disables case-study URLs when SITEMAP_CASE_STUDIES_URL is empty', () => {
+      const source = resolveCaseStudySource({
+        env: { SITEMAP_CASE_STUDIES_URL: '' },
+        baseUrl: 'https://qvo.ai',
+      });
+      expect(source).toEqual({});
+    });
+
+    it('disables case-study URLs when SITEMAP_CASE_STUDIES_URL is "none"', () => {
+      const source = resolveCaseStudySource({
+        env: { SITEMAP_CASE_STUDIES_URL: 'none' },
+        baseUrl: 'https://qvo.ai',
+      });
+      expect(source).toEqual({});
+    });
+
+    it('prefers the SITEMAP_CASE_STUDIES_FILE snapshot over any URL', () => {
+      const source = resolveCaseStudySource({
+        env: {
+          SITEMAP_CASE_STUDIES_FILE: '/snapshots/case-studies.json',
+          SITEMAP_CASE_STUDIES_URL: 'https://qvo.ai/api/public/case-studies',
+        },
+        baseUrl: 'https://qvo.ai',
+      });
+      expect(source).toEqual({ file: '/snapshots/case-studies.json' });
+    });
+  });
+
+  describe('CLI default flow (resolve + load)', () => {
+    const silentLogger = { warn: () => {} };
+
+    it('default CLI behavior fetches from the API and surfaces real slugs', async () => {
+      const calls: string[] = [];
+      const fetchImpl = async (url: string) => {
+        calls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { id: '1', publicSlug: 'real-customer-one' },
+            { id: '2', publicSlug: 'real-customer-two' },
+          ],
+        };
+      };
+      const source = resolveCaseStudySource({ env: {}, baseUrl: 'https://qvo.ai' });
+      const slugs = await loadCaseStudySlugs({ ...source, fetchImpl, logger: silentLogger });
+      expect(calls).toEqual(['https://qvo.ai/api/public/case-studies']);
+      expect(slugs).toEqual(['real-customer-one', 'real-customer-two']);
+    });
+
+    it('default CLI behavior gracefully skips case-study URLs when the API is unreachable', async () => {
+      const fetchImpl = async () => {
+        throw new Error('ENOTFOUND qvo.ai');
+      };
+      const source = resolveCaseStudySource({ env: {}, baseUrl: 'https://qvo.ai' });
+      const slugs = await loadCaseStudySlugs({ ...source, fetchImpl, logger: silentLogger });
+      expect(slugs).toEqual([]);
+      // And the rest of the sitemap still builds correctly with zero slugs:
+      const xml = generateSitemap({ caseStudySlugs: slugs, lastmod: '2026-04-29' });
+      expect(xml).toContain('<loc>https://qvo.ai/case-studies</loc>');
+      expect(xml).not.toMatch(/<loc>https:\/\/qvo\.ai\/case-studies\/[a-z]/);
+    });
+
+    it('default CLI behavior gracefully skips case-study URLs when the API returns an error status', async () => {
+      const fetchImpl = async () => ({ ok: false, status: 500, json: async () => ({}) });
+      const source = resolveCaseStudySource({ env: {}, baseUrl: 'https://qvo.ai' });
+      const slugs = await loadCaseStudySlugs({ ...source, fetchImpl, logger: silentLogger });
+      expect(slugs).toEqual([]);
+    });
+  });
+
+  describe('generateSitemap with caseStudySlugs', () => {
+    it('emits /case-studies/<slug> URLs for every locale when slugs are provided', () => {
+      const xml = generateSitemap({
+        lastmod: '2026-04-29',
+        caseStudySlugs: ['acme-co', 'globex-clinic'],
+      });
+      for (const slug of ['acme-co', 'globex-clinic']) {
+        for (const locale of SUPPORTED_LOCALES) {
+          const url = `https://qvo.ai${withLocalePrefix(locale, `/case-studies/${slug}`)}`;
+          expect(xml, `missing <loc>${url}</loc>`).toContain(`<loc>${url}</loc>`);
+        }
+        // hreflang siblings + x-default are emitted per the same rules as
+        // every other route — spot-check the x-default for one slug.
+        expect(xml).toContain(
+          `hreflang="x-default" href="https://qvo.ai/case-studies/${slug}"`,
+        );
+      }
+    });
+
+    it('does NOT emit any /case-studies/<slug> URLs when no slugs are provided', () => {
+      const xml = generateSitemap({ lastmod: '2026-04-29' });
+      // The index page /case-studies is in STATIC_ROUTES so it MUST appear,
+      // but no individual story URLs should leak in.
+      expect(xml).toContain('<loc>https://qvo.ai/case-studies</loc>');
+      expect(xml).not.toMatch(/<loc>https:\/\/qvo\.ai\/case-studies\/[a-z]/);
+    });
+
+    it('skips invalid case-study slugs without failing the build', () => {
+      const xml = generateSitemap({
+        lastmod: '2026-04-29',
+        caseStudySlugs: ['valid-one', 'BAD slug', '', 'valid-two'],
+      });
+      expect(xml).toContain('<loc>https://qvo.ai/case-studies/valid-one</loc>');
+      expect(xml).toContain('<loc>https://qvo.ai/case-studies/valid-two</loc>');
+      expect(xml).not.toContain('BAD slug');
+    });
+
+    it('preserves the underscore-bearing slug format produced by CaseStudyService.generateCaseStudy', () => {
+      // Real publicSlug values look like `cs-<base36hash>-<milestone.type>-<value>`,
+      // and milestone.type is snake_case (`call_volume`, `cost_savings`,
+      // `time_in_service`). Regression test for #1184: an earlier validator
+      // that excluded underscores silently dropped every real customer.
+      const realisticSlugs = [
+        'cs-1abc-call_volume-500',
+        'cs-2def-cost_savings-40',
+        'cs-3ghi-time_in_service-90',
+      ];
+      const apiPayload = realisticSlugs.map((slug, i) => ({ id: String(i), publicSlug: slug }));
+      // Round-trip through the extractor (mirrors what loadCaseStudySlugs does)
+      // so we prove the API → sitemap pipeline lets these through end-to-end.
+      const extracted = extractCaseStudySlugsFromPayload(apiPayload);
+      expect(extracted).toEqual(realisticSlugs);
+
+      const xml = generateSitemap({ lastmod: '2026-04-29', caseStudySlugs: extracted });
+      for (const slug of realisticSlugs) {
+        for (const locale of SUPPORTED_LOCALES) {
+          const url = `https://qvo.ai${withLocalePrefix(locale, `/case-studies/${slug}`)}`;
+          expect(xml, `missing <loc>${url}</loc>`).toContain(`<loc>${url}</loc>`);
+        }
+        expect(xml).toContain(
+          `hreflang="x-default" href="https://qvo.ai/case-studies/${slug}"`,
+        );
+      }
     });
   });
 
