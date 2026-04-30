@@ -15,11 +15,36 @@
  * every sandbox at once. See the "Validating cached CRM identity against
  * live sandboxes" section of `./README.md` for the per-provider env-var
  * matrix and how to wire it into CI.
+ *
+ * Optionally, each provider can additionally set `*_SANDBOX_REFRESH_TOKEN`
+ * (alongside the production `*_CLIENT_ID` / `*_CLIENT_SECRET` env vars
+ * that `tokenRefresh.ts` already reads). When that triple is present, the
+ * test stamps a stale `token_expires_at` on the synthetic config so the
+ * validator's internal `ensureFreshOAuthToken` call mints a fresh access
+ * token via the production refresh path before the validator runs. This
+ * keeps CI green even when sandbox access tokens have expired (HubSpot /
+ * Salesforce: ~hours, Zoho: ~1h) without a human babysitting secret
+ * rotations.
+ *
+ * The DB-persistence side of `ensureFreshOAuthToken` is stubbed out below
+ * so the integration test never writes the rotated credentials back to
+ * the platform DB — the synthetic `tenant-integration-test` /
+ * `integration-test` rows do not exist in any real schema.
  */
 
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import type { ConnectorConfig } from '../types';
 import type { TenantId } from '../../../core/types';
+
+// Avoid persisting refreshed credentials / reconnect flags against the
+// synthetic tenant — these rows do not exist in any real DB. Only the two
+// db helpers `tokenRefresh.ts` actually calls are stubbed; the validators
+// themselves do not import `../db` directly, so this mock is scoped to
+// the refresh side effect.
+vi.mock('../db', () => ({
+  updateConnectorCredentials: async (): Promise<void> => {},
+  markConnectorReconnectNeeded: async (): Promise<void> => {},
+}));
 
 import { validateHubSpotCachedIdentity } from './hubspot';
 import { validateSalesforceCachedIdentity } from './salesforce';
@@ -33,6 +58,25 @@ const env = (key: string): string | undefined => {
   return value && value.length > 0 ? value : undefined;
 };
 
+/**
+ * Stamp the credentials so the validator's internal `ensureFreshOAuthToken`
+ * call exchanges the supplied refresh_token for a fresh access_token via
+ * the production refresh path. Only invoked when the caller has provided
+ * both a refresh token and the provider's OAuth client credentials.
+ */
+function withRefreshGrant(
+  credentials: Record<string, string>,
+  refreshToken: string,
+): Record<string, string> {
+  return {
+    ...credentials,
+    refresh_token: refreshToken,
+    // Force `shouldRefresh` to fire regardless of clock skew between CI
+    // and the upstream provider.
+    token_expires_at: '0',
+  };
+}
+
 // ---------------------------------------------------------------------------
 // HubSpot
 // ---------------------------------------------------------------------------
@@ -41,17 +85,22 @@ const HUBSPOT_TOKEN = env('HUBSPOT_SANDBOX_ACCESS_TOKEN');
 const HUBSPOT_DELETED_CONTACT = env('HUBSPOT_SANDBOX_DELETED_CONTACT_ID');
 const HUBSPOT_DELETED_COMPANY = env('HUBSPOT_SANDBOX_DELETED_COMPANY_ID');
 const HUBSPOT_DELETED_DEAL = env('HUBSPOT_SANDBOX_DELETED_DEAL_ID');
+const HUBSPOT_REFRESH_TOKEN = env('HUBSPOT_SANDBOX_REFRESH_TOKEN');
+const HUBSPOT_CAN_REFRESH = !!(HUBSPOT_REFRESH_TOKEN && env('HUBSPOT_CLIENT_ID') && env('HUBSPOT_CLIENT_SECRET'));
 
 describe.skipIf(!HUBSPOT_TOKEN || (!HUBSPOT_DELETED_CONTACT && !HUBSPOT_DELETED_COMPANY && !HUBSPOT_DELETED_DEAL))(
   'validateHubSpotCachedIdentity (live sandbox)',
   () => {
+    const baseCredentials: Record<string, string> = { access_token: HUBSPOT_TOKEN ?? '' };
     const config: ConnectorConfig = {
       integrationId: 'integration-test',
       tenantId: TENANT,
       connectorType: 'crm',
       provider: 'hubspot',
       isEnabled: true,
-      credentials: { access_token: HUBSPOT_TOKEN ?? '' },
+      credentials: HUBSPOT_CAN_REFRESH
+        ? withRefreshGrant(baseCredentials, HUBSPOT_REFRESH_TOKEN!)
+        : baseCredentials,
     };
 
     test('marks the known-deleted record(s) stale under HubSpot-native field names', async () => {
@@ -79,22 +128,27 @@ const SALESFORCE_INSTANCE_URL = env('SALESFORCE_SANDBOX_INSTANCE_URL');
 const SALESFORCE_DELETED_CONTACT = env('SALESFORCE_SANDBOX_DELETED_CONTACT_ID');
 const SALESFORCE_DELETED_ACCOUNT = env('SALESFORCE_SANDBOX_DELETED_ACCOUNT_ID');
 const SALESFORCE_DELETED_OPPORTUNITY = env('SALESFORCE_SANDBOX_DELETED_OPPORTUNITY_ID');
+const SALESFORCE_REFRESH_TOKEN = env('SALESFORCE_SANDBOX_REFRESH_TOKEN');
+const SALESFORCE_CAN_REFRESH = !!(SALESFORCE_REFRESH_TOKEN && env('SALESFORCE_CLIENT_ID') && env('SALESFORCE_CLIENT_SECRET'));
 
 describe.skipIf(
   !SALESFORCE_TOKEN
     || !SALESFORCE_INSTANCE_URL
     || (!SALESFORCE_DELETED_CONTACT && !SALESFORCE_DELETED_ACCOUNT && !SALESFORCE_DELETED_OPPORTUNITY),
 )('validateSalesforceCachedIdentity (live sandbox)', () => {
+  const baseCredentials: Record<string, string> = {
+    access_token: SALESFORCE_TOKEN ?? '',
+    instance_url: SALESFORCE_INSTANCE_URL ?? '',
+  };
   const config: ConnectorConfig = {
     integrationId: 'integration-test',
     tenantId: TENANT,
     connectorType: 'crm',
     provider: 'salesforce',
     isEnabled: true,
-    credentials: {
-      access_token: SALESFORCE_TOKEN ?? '',
-      instance_url: SALESFORCE_INSTANCE_URL ?? '',
-    },
+    credentials: SALESFORCE_CAN_REFRESH
+      ? withRefreshGrant(baseCredentials, SALESFORCE_REFRESH_TOKEN!)
+      : baseCredentials,
   };
 
   // Salesforce's validator skips IDs whose key prefix does not match the
@@ -135,6 +189,15 @@ const PIPEDRIVE_COMPANY_DOMAIN = env('PIPEDRIVE_SANDBOX_COMPANY_DOMAIN');
 const PIPEDRIVE_DELETED_PERSON = env('PIPEDRIVE_SANDBOX_DELETED_PERSON_ID');
 const PIPEDRIVE_DELETED_ORG = env('PIPEDRIVE_SANDBOX_DELETED_ORG_ID');
 const PIPEDRIVE_DELETED_DEAL = env('PIPEDRIVE_SANDBOX_DELETED_DEAL_ID');
+const PIPEDRIVE_REFRESH_TOKEN = env('PIPEDRIVE_SANDBOX_REFRESH_TOKEN');
+// Pipedrive's API-token mode is not OAuth; refresh only applies when the
+// caller wired up the OAuth access_token path.
+const PIPEDRIVE_CAN_REFRESH = !!(
+  PIPEDRIVE_ACCESS_TOKEN
+    && PIPEDRIVE_REFRESH_TOKEN
+    && env('PIPEDRIVE_CLIENT_ID')
+    && env('PIPEDRIVE_CLIENT_SECRET')
+);
 
 describe.skipIf(
   (!PIPEDRIVE_ACCESS_TOKEN && !PIPEDRIVE_API_TOKEN)
@@ -151,7 +214,9 @@ describe.skipIf(
     connectorType: 'crm',
     provider: 'pipedrive',
     isEnabled: true,
-    credentials,
+    credentials: PIPEDRIVE_CAN_REFRESH
+      ? withRefreshGrant(credentials, PIPEDRIVE_REFRESH_TOKEN!)
+      : credentials,
   };
 
   test('marks the known-deleted record(s) stale under Pipedrive-native field names', async () => {
@@ -178,22 +243,33 @@ const ZOHO_API_DOMAIN = env('ZOHO_SANDBOX_API_DOMAIN');
 const ZOHO_DELETED_CONTACT = env('ZOHO_SANDBOX_DELETED_CONTACT_ID');
 const ZOHO_DELETED_ACCOUNT = env('ZOHO_SANDBOX_DELETED_ACCOUNT_ID');
 const ZOHO_DELETED_DEAL = env('ZOHO_SANDBOX_DELETED_DEAL_ID');
+const ZOHO_REFRESH_TOKEN = env('ZOHO_SANDBOX_REFRESH_TOKEN');
+const ZOHO_ACCOUNTS_SERVER = env('ZOHO_SANDBOX_ACCOUNTS_SERVER');
+const ZOHO_CAN_REFRESH = !!(ZOHO_REFRESH_TOKEN && env('ZOHO_CLIENT_ID') && env('ZOHO_CLIENT_SECRET'));
 
 describe.skipIf(
   !ZOHO_TOKEN
     || !ZOHO_API_DOMAIN
     || (!ZOHO_DELETED_CONTACT && !ZOHO_DELETED_ACCOUNT && !ZOHO_DELETED_DEAL),
 )('validateZohoCachedIdentity (live sandbox)', () => {
+  const baseCredentials: Record<string, string> = {
+    access_token: ZOHO_TOKEN ?? '',
+    api_domain: ZOHO_API_DOMAIN ?? '',
+  };
+  // Zoho's refresh exchange POSTs to the per-region accounts server. Allow
+  // CI to pin it explicitly so EU / IN / AU / JP sandboxes don't get
+  // routed at the default `accounts.zoho.com` endpoint.
+  if (ZOHO_ACCOUNTS_SERVER) baseCredentials.accounts_server = ZOHO_ACCOUNTS_SERVER;
+
   const config: ConnectorConfig = {
     integrationId: 'integration-test',
     tenantId: TENANT,
     connectorType: 'crm',
     provider: 'zoho',
     isEnabled: true,
-    credentials: {
-      access_token: ZOHO_TOKEN ?? '',
-      api_domain: ZOHO_API_DOMAIN ?? '',
-    },
+    credentials: ZOHO_CAN_REFRESH
+      ? withRefreshGrant(baseCredentials, ZOHO_REFRESH_TOKEN!)
+      : baseCredentials,
   };
 
   test('marks the known-deleted record(s) stale under Zoho-native field names', async () => {

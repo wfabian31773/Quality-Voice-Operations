@@ -162,6 +162,39 @@ will surface as a non-stale 401 and the test will fail loudly rather than
 silently rotating credentials. The CI workflow's per-run mint steps for
 Salesforce + Zoho are what keep that contract honest under a daily cron.
 
+By default (only the env vars above set) the suite uses the supplied
+sandbox `access_token` directly and does not perform OAuth refresh —
+no `token_expires_at` is stamped on the synthetic config. That keeps the
+default safe (a stale token surfaces as a hard failure rather than
+silently masking a broken validator), but it also means the test starts
+failing the moment the sandbox token expires (HubSpot / Salesforce:
+~hours, Zoho: ~1h).
+
+### Optional: auto-refresh sandbox access tokens
+
+To keep CI green across token expiry without a human babysitting secret
+rotations, additionally set the per-provider refresh token below. When
+the suite sees the refresh token *and* the production OAuth client
+credentials (the same env vars `tokenRefresh.ts` reads in production),
+it stamps a stale `token_expires_at` on the synthetic config so the
+validator's internal `ensureFreshOAuthToken` call exchanges the refresh
+token for a fresh access token via the production refresh path before
+hitting the validator. The persistence side of that refresh is stubbed
+out in the test so the rotated credentials are never written back to the
+platform DB against the synthetic `tenant-integration-test` row.
+
+| Provider     | Optional refresh-grant env vars                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| HubSpot      | `HUBSPOT_SANDBOX_REFRESH_TOKEN`, `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`                                                                |
+| Salesforce   | `SALESFORCE_SANDBOX_REFRESH_TOKEN`, `SALESFORCE_CLIENT_ID`, `SALESFORCE_CLIENT_SECRET` (and optional `SALESFORCE_LOGIN_URL` for sandbox `https://test.salesforce.com`) |
+| Pipedrive    | `PIPEDRIVE_SANDBOX_ACCESS_TOKEN` (must be the OAuth access token, not `..._API_TOKEN`) + `PIPEDRIVE_SANDBOX_REFRESH_TOKEN`, `PIPEDRIVE_CLIENT_ID`, `PIPEDRIVE_CLIENT_SECRET` |
+| Zoho         | `ZOHO_SANDBOX_REFRESH_TOKEN`, `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET` (and optional `ZOHO_SANDBOX_ACCOUNTS_SERVER` to pin the regional accounts host, e.g. `https://accounts.zoho.eu`) |
+
+If the refresh-grant env vars are absent, the suite falls back to the
+default behaviour and uses the raw sandbox `access_token` as before.
+Pipedrive's API-token mode (`PIPEDRIVE_SANDBOX_API_TOKEN`) is not OAuth
+and is unaffected by these refresh vars.
+
 ### Wiring it into CI
 
 This is automated via the
