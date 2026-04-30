@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
-import { sendEmail, connectorSyncErrorEmail, connectorSyncRecoveryEmail } from '../../email';
+import { sendEmail, connectorSyncErrorEmail, connectorSyncRecoveryEmail, normaliseMessageId } from '../../email';
 import {
   fanoutInAppNotification,
   filterEmailRecipientsByPreference,
@@ -71,15 +71,11 @@ interface RecipientAuditRow {
    * SID we could parse.
    */
   twilioMessageSid: string | null;
+  // Lookup key for the /connectors/email-status webhook. Null for SMS
+  // rows, console-mode sends, and skipped recipients.
+  emailMessageId: string | null;
 }
 
-/**
- * Persist a single recipient's delivery outcome to `connector_alert_recipients`
- * so the admin "outage timeline" detail view can show who was paged and
- * whether the message actually reached them. Errors here are logged and
- * swallowed — the alert send itself must not be blocked by audit-write
- * failures.
- */
 async function recordRecipientAudit(row: RecipientAuditRow): Promise<void> {
   try {
     const pool = getPlatformPool();
@@ -88,8 +84,8 @@ async function recordRecipientAudit(row: RecipientAuditRow): Promise<void> {
          tenant_id, integration_id, dispatch_id, notification_type, channel,
          user_id, recipient_name, recipient_email, recipient_phone,
          delivery_status, delivery_error, twilio_status_code,
-         twilio_message_sid
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         twilio_message_sid, email_message_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         row.tenantId,
         row.integrationId,
@@ -104,6 +100,7 @@ async function recordRecipientAudit(row: RecipientAuditRow): Promise<void> {
         row.deliveryError,
         row.twilioStatusCode,
         row.twilioMessageSid,
+        row.emailMessageId,
       ],
     );
   } catch (err) {
@@ -338,8 +335,12 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
     const userRecord = recipientByEmail.get(to);
     let deliveryStatus: 'sent' | 'failed' = 'sent';
     let deliveryError: string | null = null;
+    let emailMessageId: string | null = null;
     try {
       const result = await sendEmail({ to, subject, html, text });
+      // Strip RFC 5322 angle brackets so the stored value matches the
+      // canonical form the webhook parser produces from provider events.
+      emailMessageId = normaliseMessageId(result.messageId);
       if (!result.success) {
         deliveryStatus = 'failed';
         deliveryError = result.error ?? 'sendEmail returned success=false';
@@ -376,6 +377,7 @@ export async function notifyConnectorSyncError(params: AlertParams): Promise<voi
       deliveryError,
       twilioStatusCode: null,
       twilioMessageSid: null,
+      emailMessageId: deliveryStatus === 'sent' ? emailMessageId : null,
     });
   }
 
@@ -765,6 +767,7 @@ export async function notifySustainedConnectorFailure(
         deliveryError: outcome.deliveryError,
         twilioStatusCode: outcome.twilioStatusCode,
         twilioMessageSid: outcome.twilioMessageSid,
+        emailMessageId: null,
       });
     }
 
@@ -1214,6 +1217,8 @@ export async function resendConnectorAlertToFailedRecipients(
           deliveryStatus: 'skipped',
           deliveryError: 'No email address on file for recipient',
           twilioStatusCode: null,
+          twilioMessageSid: null,
+          emailMessageId: null,
         });
         continue;
       }
@@ -1221,8 +1226,10 @@ export async function resendConnectorAlertToFailedRecipients(
       outcome.attempted += 1;
       let deliveryStatus: 'sent' | 'failed' = 'sent';
       let deliveryError: string | null = null;
+      let emailMessageId: string | null = null;
       try {
         const result = await sendEmail({ to, subject, html, text });
+        emailMessageId = normaliseMessageId(result.messageId);
         if (!result.success) {
           deliveryStatus = 'failed';
           deliveryError = result.error ?? 'sendEmail returned success=false';
@@ -1259,6 +1266,8 @@ export async function resendConnectorAlertToFailedRecipients(
         deliveryStatus,
         deliveryError,
         twilioStatusCode: null,
+        twilioMessageSid: null,
+        emailMessageId: deliveryStatus === 'sent' ? emailMessageId : null,
       });
     }
 
@@ -1292,6 +1301,11 @@ export async function resendConnectorAlertToFailedRecipients(
     `${minutesForBody} min. Latest error: ${errorMessage.slice(0, 100)}. ` +
     `Reconnect at ${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
 
+  // Recreate the same statusCallback URL the original SMS dispatch used so
+  // resent messages also flow through the /twilio/sms-status webhook and
+  // the per-recipient row gets promoted to delivered/undelivered.
+  const resendStatusCallback = getOutageSmsStatusCallbackUrl();
+
   for (const row of candidateRows) {
     const to = row.recipient_phone;
     if (!to) {
@@ -1309,6 +1323,8 @@ export async function resendConnectorAlertToFailedRecipients(
         deliveryStatus: 'skipped',
         deliveryError: 'No phone number on file for recipient',
         twilioStatusCode: null,
+        twilioMessageSid: null,
+        emailMessageId: null,
       });
       continue;
     }
@@ -1328,12 +1344,14 @@ export async function resendConnectorAlertToFailedRecipients(
         deliveryStatus: 'skipped',
         deliveryError: 'Twilio is not configured on this server',
         twilioStatusCode: null,
+        twilioMessageSid: null,
+        emailMessageId: null,
       });
       continue;
     }
 
     outcome.attempted += 1;
-    const result = await sendTwilioSms(twilio, to, smsBody);
+    const result = await sendTwilioSms(twilio, to, smsBody, resendStatusCallback);
     if (result.ok) {
       outcome.succeeded += 1;
       await recordRecipientAudit({
@@ -1349,6 +1367,8 @@ export async function resendConnectorAlertToFailedRecipients(
         deliveryStatus: 'sent',
         deliveryError: null,
         twilioStatusCode: result.status ?? null,
+        twilioMessageSid: result.messageSid ?? null,
+        emailMessageId: null,
       });
     } else {
       outcome.failed += 1;
@@ -1372,6 +1392,8 @@ export async function resendConnectorAlertToFailedRecipients(
         deliveryStatus: 'failed',
         deliveryError: result.error ?? `Twilio HTTP ${result.status ?? 'error'}`,
         twilioStatusCode: result.status ?? null,
+        twilioMessageSid: null,
+        emailMessageId: null,
       });
     }
   }

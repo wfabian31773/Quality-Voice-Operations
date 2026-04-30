@@ -672,9 +672,6 @@ describe('GET /connectors/alerts/:alertId', () => {
       twilioMessageSid: 'SMbbbb2222',
       deliveryStatusUpdatedAt: '2026-04-26T18:30:06.000Z',
     });
-    // Both recipients are at terminal Twilio statuses (delivered /
-    // undelivered) so the panel must NOT keep polling. liveTrackingAvailable
-    // is the single source of truth the client uses to decide.
     expect(res.body.liveTrackingAvailable).toBe(false);
     expect(res.body.integration).toMatchObject({
       id: 'int-1',
@@ -821,9 +818,7 @@ describe('GET /connectors/alerts/:alertId', () => {
     expect(res.body.liveTrackingAvailable).toBe(true);
   });
 
-  it('reports liveTrackingAvailable=false for email alerts even when recipients are mid-status', async () => {
-    // Live tracking only applies to SMS — Twilio doesn't send email
-    // delivery callbacks here, so polling would just spin forever.
+  it('reports liveTrackingAvailable=true for email alerts when a recipient still has a non-terminal email_provider_event', async () => {
     const createdAt = new Date('2026-04-26T18:30:00.000Z');
     installDetailDispatcher({
       alertRow: {
@@ -849,6 +844,103 @@ describe('GET /connectors/alerts/:alertId', () => {
           twilio_message_status: null,
           twilio_error_code: null,
           twilio_message_sid: null,
+          email_message_id: 'msg-abc@acme.test',
+          email_provider_event: null,
+          delivery_status_updated_at: null,
+          dispatched_at: createdAt,
+        },
+      ],
+      integrationRow: null,
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.channel).toBe('email');
+    expect(res.body.liveTrackingAvailable).toBe(true);
+    expect(res.body.recipients[0].emailMessageId).toBe('msg-abc@acme.test');
+    expect(res.body.recipients[0].emailProviderEvent).toBeNull();
+  });
+
+  it('reports liveTrackingAvailable=false for email alerts once every recipient has reached a terminal email event', async () => {
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 1,
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'salesforce',
+          dispatchId: 'disp-email-done',
+        },
+        title: 'Email dispatched',
+        message: 'msg',
+      },
+      recipientRows: [
+        {
+          user_id: 'user-1',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: null,
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: null,
+          twilio_message_status: null,
+          twilio_error_code: null,
+          twilio_message_sid: null,
+          email_message_id: 'msg-done@acme.test',
+          email_provider_event: 'delivered',
+          delivery_status_updated_at: createdAt,
+          dispatched_at: createdAt,
+        },
+      ],
+      integrationRow: null,
+    });
+
+    const app = await buildApp();
+    const alertId = `int-1:integration:${createdAt.getTime()}`;
+    const res = await request(app).get(
+      `/connectors/alerts/${encodeURIComponent(alertId)}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.channel).toBe('email');
+    expect(res.body.liveTrackingAvailable).toBe(false);
+    expect(res.body.recipients[0].emailProviderEvent).toBe('delivered');
+  });
+
+  it('reports liveTrackingAvailable=false for email alerts when no email_message_id was captured (legacy or console-mode send)', async () => {
+    const createdAt = new Date('2026-04-26T18:30:00.000Z');
+    installDetailDispatcher({
+      alertRow: {
+        created_at: createdAt,
+        in_app_recipients: 1,
+        metadata: {
+          integrationId: 'int-1',
+          provider: 'salesforce',
+          dispatchId: 'disp-email-legacy',
+        },
+        title: 'Email dispatched',
+        message: 'msg',
+      },
+      recipientRows: [
+        {
+          user_id: 'user-1',
+          recipient_name: 'Ada',
+          recipient_email: 'ada@acme.test',
+          recipient_phone: null,
+          delivery_status: 'sent',
+          delivery_error: null,
+          twilio_status_code: null,
+          twilio_message_status: null,
+          twilio_error_code: null,
+          twilio_message_sid: null,
+          email_message_id: null,
+          email_provider_event: null,
           delivery_status_updated_at: null,
           dispatched_at: createdAt,
         },

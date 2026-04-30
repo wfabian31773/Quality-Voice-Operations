@@ -180,6 +180,10 @@ export function assertProductionSecrets(): void {
     ['ADMIN_JWT_SECRET', 'JWT signing secret for admin API auth'],
     ['ALLOWED_ORIGINS', 'comma-separated list of CORS origins allowed in production'],
     ['TURNSTILE_SECRET_KEY', 'Cloudflare Turnstile secret key for sign-up CAPTCHA'],
+    [
+      'CONNECTOR_EMAIL_WEBHOOK_SECRET',
+      'shared secret for /connectors/email-status delivery webhook (SES/Postmark/SendGrid/Mailgun)',
+    ],
   ];
 
   // Defense-in-depth: when the deployment is wired to Calendly (either via the

@@ -83,7 +83,11 @@ export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
         subject: parsed.subject,
       });
       logger.debug('Email body preview', { html: message.html.substring(0, 500) });
-      return { success: true, messageId: info.messageId };
+      // Deliberately omit messageId in console/jsonTransport mode so
+      // callers don't persist a fake id no real provider will ever
+      // confirm (would otherwise leave email rows in indefinite "live"
+      // polling because no webhook event can match the synthetic id).
+      return { success: true };
     }
 
     const info = await transport.sendMail(mailOptions);

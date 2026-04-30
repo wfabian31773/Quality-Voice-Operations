@@ -1,3 +1,4 @@
 export { sendEmail } from './EmailService';
 export type { EmailMessage, EmailResult } from './EmailService';
+export { normaliseMessageId } from './deliveryWebhookParser';
 export { invitationEmail, passwordResetEmail, billingAlertEmail, emailVerificationEmail, connectorSyncErrorEmail, connectorSyncRecoveryEmail, connectorAutoDisabledEmail, connectorReconnectNeededEmail, connectorTokenExpiringEmail, connectorSyncDigestEmail, connectorSchedulingDriftEmail, escalationAlertEmail, verifiedCallerExpiringEmail, verifiedCallerRevokedEmail, verifiedCallerTrustHubRejectedEmail, encryptionInitializationReminderEmail, dispatchRouteExportReadyEmail, dispatchRouteExportFailedEmail, dispatchCompletionPhotosEmail } from './templates';

@@ -2347,6 +2347,8 @@ interface OutageAlertRecipient {
   twilioMessageStatus: string | null;
   twilioErrorCode: number | null;
   twilioMessageSid: string | null;
+  emailMessageId: string | null;
+  emailProviderEvent: string | null;
   deliveryStatusUpdatedAt: string | null;
   dispatchedAt: string;
 }
@@ -2365,11 +2367,6 @@ interface OutageAlertIntegrationContext {
 interface OutageAlertDetail extends OutageAlert {
   reconnectLink: string | null;
   recipientsAvailable: boolean;
-  /**
-   * True iff this is an SMS alert and at least one recipient has a Twilio
-   * SID we can still expect a delivery callback for. Drives the panel's
-   * "Live" indicator and its background polling.
-   */
   liveTrackingAvailable: boolean;
   recipients: OutageAlertRecipient[];
   integration: OutageAlertIntegrationContext | null;
@@ -2753,6 +2750,30 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
         className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
         Icon: AlertCircle,
       };
+    case 'bounced':
+      return {
+        label: 'Bounced',
+        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        Icon: AlertCircle,
+      };
+    case 'dropped':
+      return {
+        label: 'Dropped',
+        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        Icon: AlertCircle,
+      };
+    case 'spam':
+      return {
+        label: 'Spam',
+        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        Icon: AlertTriangle,
+      };
+    case 'deferred':
+      return {
+        label: 'Deferred',
+        className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+        Icon: Clock,
+      };
     case 'failed':
       return {
         label: 'Failed',
@@ -2814,10 +2835,11 @@ function OutageAlertDetailPanel({
   // keeps us safe against any future id format changes.
   //
   // Poll every 5s while the server tells us at least one recipient is
-  // still mid-flight (queued/sending/sent without a delivered/failed
-  // callback). Once every recipient has reached a terminal Twilio status
-  // — or the alert isn't an SMS escalation in the first place — polling
-  // stops automatically.
+  // still mid-flight — either an SMS recipient awaiting a Twilio
+  // statusCallback (queued/sending/sent), or an email recipient with a
+  // captured Message-ID and no provider event (delivered/bounced/spam/
+  // dropped) on file yet. Once every recipient has reached a terminal
+  // state polling stops automatically.
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['connector-outage-alert-detail', alertId],
     enabled: open,
@@ -3004,11 +3026,6 @@ function OutageAlertDetailBody({
   isFetching,
 }: {
   detail: OutageAlertDetail;
-  /**
-   * True while the parent panel has a poll in flight. Drives the
-   * pulsing animation on the "Live" indicator so admins see a heartbeat
-   * each time a Twilio status callback could have landed.
-   */
   isFetching: boolean;
 }) {
   const isSms = detail.channel === 'sms';
@@ -3155,17 +3172,14 @@ function OutageAlertDetailBody({
             Recipients ({detail.recipients.length})
           </h4>
           <div className="flex items-center gap-2">
-            {/*
-              "Live" indicator: shown while the panel is auto-polling for
-              Twilio delivery callbacks. We pulse the dot only while a
-              fetch is actually in flight so there's a visible heartbeat
-              between polls without distracting motion when nothing is
-              changing.
-            */}
             {detail.liveTrackingAvailable && (
               <span
                 className="inline-flex items-center gap-1 text-[11px] text-blue-700 dark:text-blue-400"
-                title="Auto-refreshing as Twilio reports delivery updates"
+                title={
+                  isSms
+                    ? 'Auto-refreshing as Twilio reports delivery updates'
+                    : 'Auto-refreshing as the email provider reports delivery updates'
+                }
                 data-testid="outage-detail-live-indicator"
               >
                 <Radio
@@ -3194,25 +3208,14 @@ function OutageAlertDetailBody({
         ) : (
           <ul className="space-y-2">
             {(() => {
-              // Track how many times we've already seen each recipient on
-              // this dispatch so the second/third audit row for the same
-              // person renders as "Retry · timestamp" instead of looking
-              // like a duplicate. Recipients are returned in
-              // dispatched_at order so the first row per contact is the
-              // original send.
               const seenByContact = new Map<string, number>();
               return detail.recipients.map((recipient, idx) => {
-                // For SMS rows we prefer the live Twilio status (queued →
-                // sent → delivered/failed) when we have one. It's strictly
-                // more granular than our internal `delivery_status`, which
-                // only tracks 'sent' / 'failed' / 'skipped'. Fall back to
-                // the internal status when Twilio hasn't reported yet
-                // (e.g. send-time error before a SID was issued, or a
-                // legacy alert from before the callback shipped).
-                const displayStatus =
-                  isSms && recipient.twilioMessageStatus
-                    ? recipient.twilioMessageStatus
-                    : recipient.deliveryStatus;
+                // Prefer the live provider-reported state when we have it
+                // (Twilio for SMS, email-provider webhook for email);
+                // fall back to internal delivery_status otherwise.
+                const displayStatus = isSms
+                  ? (recipient.twilioMessageStatus ?? recipient.deliveryStatus)
+                  : (recipient.emailProviderEvent ?? recipient.deliveryStatus);
                 const badge = statusBadge(displayStatus);
                 const Icon = badge.Icon;
                 const contact = isSms ? recipient.phone : recipient.email;
@@ -3242,7 +3245,6 @@ function OutageAlertDetailBody({
                             {contact}
                           </div>
                         ) : null}
-                        {/* Show the secondary contact (email if SMS row, phone if email row) when present */}
                         {isSms && recipient.email ? (
                           <div className="text-[11px] text-text-secondary mt-0.5">
                             {recipient.email}
@@ -3251,7 +3253,7 @@ function OutageAlertDetailBody({
                         <div className="text-[11px] text-text-secondary mt-0.5">
                           Dispatched {formatExactTimestamp(recipient.dispatchedAt)}
                         </div>
-                        {isSms && updatedAt ? (
+                        {updatedAt ? (
                           <div className="text-[11px] text-text-secondary mt-0.5">
                             Updated {new Date(updatedAt).toLocaleTimeString()}
                           </div>

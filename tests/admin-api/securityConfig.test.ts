@@ -17,6 +17,7 @@ function resetEnv(): void {
   process.env = { ...ORIGINAL_ENV };
   delete process.env.ALLOWED_ORIGINS;
   delete process.env.TURNSTILE_SECRET_KEY;
+  delete process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET;
   delete process.env.APP_ENV;
   delete process.env.NODE_ENV;
 }
@@ -267,8 +268,29 @@ describe('assertProductionSecrets()', () => {
     process.env.ADMIN_JWT_SECRET = 'jwt';
     process.env.ALLOWED_ORIGINS = 'https://app.example.com';
     process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
     const { assertProductionSecrets } = await loadSecurity();
     expect(() => assertProductionSecrets()).not.toThrow();
+  });
+
+  it('throws in production when CONNECTOR_EMAIL_WEBHOOK_SECRET is missing', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 'jwt';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    delete process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET;
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).toThrow(/CONNECTOR_EMAIL_WEBHOOK_SECRET/);
+  });
+
+  it('throws in staging when CONNECTOR_EMAIL_WEBHOOK_SECRET is missing (APP_ENV=staging is production-like)', async () => {
+    process.env.APP_ENV = 'staging';
+    process.env.ADMIN_JWT_SECRET = 'jwt';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    delete process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET;
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).toThrow(/CONNECTOR_EMAIL_WEBHOOK_SECRET/);
   });
 
   // Task #995: dedicated, OAuth-flavoured boot guard. The ADMIN_JWT_SECRET

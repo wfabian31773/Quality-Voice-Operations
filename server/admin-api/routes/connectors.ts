@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import {
   listConnectorConfigs,
   upsertConnector,
@@ -10,6 +10,7 @@ import {
 import type { ConnectorType, StandardEventType } from '../../../platform/integrations/connectors';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
+import { isProductionLike } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { fetchSalesforceTaskPicklists } from '../../../platform/integrations/connectors/adapters/salesforce';
@@ -320,6 +321,8 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
       twilioMessageStatus: string | null;
       twilioErrorCode: number | null;
       twilioMessageSid: string | null;
+      emailMessageId: string | null;
+      emailProviderEvent: string | null;
       deliveryStatusUpdatedAt: string | null;
       dispatchedAt: string;
     }> = [];
@@ -337,12 +340,15 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
         twilio_message_status: string | null;
         twilio_error_code: number | null;
         twilio_message_sid: string | null;
+        email_message_id: string | null;
+        email_provider_event: string | null;
         delivery_status_updated_at: string | null;
         dispatched_at: string;
       }>(
         `SELECT user_id, recipient_name, recipient_email, recipient_phone,
                 delivery_status, delivery_error, twilio_status_code,
                 twilio_message_status, twilio_error_code, twilio_message_sid,
+                email_message_id, email_provider_event,
                 delivery_status_updated_at, dispatched_at
            FROM connector_alert_recipients
           WHERE tenant_id = $1
@@ -361,6 +367,8 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
         twilioMessageStatus: r.twilio_message_status,
         twilioErrorCode: r.twilio_error_code,
         twilioMessageSid: r.twilio_message_sid,
+        emailMessageId: r.email_message_id,
+        emailProviderEvent: r.email_provider_event,
         deliveryStatusUpdatedAt: r.delivery_status_updated_at
           ? new Date(r.delivery_status_updated_at).toISOString()
           : null,
@@ -368,21 +376,26 @@ router.get('/connectors/alerts/:alertId', requireAuth, async (req, res) => {
       }));
     }
 
-    // The detail panel polls while at least one recipient hasn't reached a
-    // terminal Twilio status. We compute that summary server-side so the
-    // client can flip its "Live" indicator on/off without having to know
-    // about every Twilio status string.
+    // True while any recipient hasn't reached a terminal provider state;
+    // the client uses this to drive the "Live" indicator and polling.
     const TERMINAL_TWILIO_STATUSES = new Set(['delivered', 'undelivered', 'failed']);
+    const TERMINAL_EMAIL_EVENTS = new Set(['delivered', 'bounced', 'spam', 'dropped']);
     const isSmsAlert = type === 'integration_sms';
     const liveTrackingAvailable =
-      isSmsAlert &&
       recipientsAvailable &&
-      recipients.some(
-        (r) =>
-          r.twilioMessageSid !== null &&
-          (r.twilioMessageStatus === null ||
-            !TERMINAL_TWILIO_STATUSES.has(r.twilioMessageStatus)),
-      );
+      (isSmsAlert
+        ? recipients.some(
+            (r) =>
+              r.twilioMessageSid !== null &&
+              (r.twilioMessageStatus === null ||
+                !TERMINAL_TWILIO_STATUSES.has(r.twilioMessageStatus)),
+          )
+        : recipients.some(
+            (r) =>
+              r.emailMessageId !== null &&
+              (r.emailProviderEvent === null ||
+                !TERMINAL_EMAIL_EVENTS.has(r.emailProviderEvent)),
+          ));
 
     // 3. Current connector context. We pull lastSyncError + lastSyncErrorAt
     //    so admins can correlate the alert with the connector's most
@@ -1031,6 +1044,193 @@ router.delete('/connectors/:integrationId', requireAuth, requireRole('manager'),
     return res.status(500).json({ error: 'Failed to delete connector' });
   }
 });
+
+// Email-provider delivery webhook for connector outage alerts.
+// Auth is shared-secret only; rows are matched strictly by the
+// outbound Message-ID captured at dispatch time (no recipient-email
+// fallback — tenant safety).
+const CONNECTOR_EMAIL_WEBHOOK_SECRET =
+  process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET ?? '';
+const ADVERSE_TERMINAL_EMAIL_EVENTS = new Set(['bounced', 'spam', 'dropped']);
+
+router.post(
+  '/connectors/email-status',
+  // SNS posts text/plain; the global express.json() won't parse it.
+  express.text({ type: 'text/*', limit: '2mb' }),
+  async (req, res) => {
+    // Key off APP_ENV via isProductionLike() — NODE_ENV alone is not
+    // authoritative in this codebase (see middleware/security.ts).
+    if (isProductionLike() && !CONNECTOR_EMAIL_WEBHOOK_SECRET) {
+      logger.error(
+        'CONNECTOR_EMAIL_WEBHOOK_SECRET is not configured in production-like env — rejecting connector email status webhook',
+      );
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    if (CONNECTOR_EMAIL_WEBHOOK_SECRET) {
+      const provided =
+        (req.headers['x-webhook-secret'] as string | undefined) ??
+        (typeof req.query.secret === 'string' ? req.query.secret : undefined);
+      if (provided !== CONNECTOR_EMAIL_WEBHOOK_SECRET) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+    }
+
+    let payload: unknown = req.body;
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch { payload = null; }
+    } else if (Buffer.isBuffer(payload)) {
+      try { payload = JSON.parse(payload.toString('utf8')); } catch { payload = null; }
+    }
+
+    // SNS subscription handshake — only follow AWS-issued URLs to prevent
+    // SSRF abuse of this endpoint as a generic URL fetcher.
+    if (
+      payload &&
+      typeof payload === 'object' &&
+      (payload as { Type?: unknown }).Type === 'SubscriptionConfirmation'
+    ) {
+      const subscribeUrl = (payload as { SubscribeURL?: unknown }).SubscribeURL;
+      if (typeof subscribeUrl === 'string') {
+        try {
+          const u = new URL(subscribeUrl);
+          if (u.protocol === 'https:' && /(^|\.)amazonaws\.com$/i.test(u.hostname)) {
+            const https = await import('node:https');
+            await new Promise<void>((resolve) => {
+              const sub = https.get(subscribeUrl, (resp) => {
+                resp.resume();
+                resp.on('end', () => resolve());
+                resp.on('error', () => resolve());
+              });
+              sub.on('error', () => resolve());
+              sub.setTimeout(5000, () => { sub.destroy(); resolve(); });
+            });
+            logger.info('Confirmed SNS subscription for connector email status webhook', {
+              topic_arn: (payload as { TopicArn?: unknown }).TopicArn,
+            });
+          } else {
+            logger.warn('Refusing SNS confirmation for non-AWS host', { host: u.hostname });
+          }
+        } catch (err) {
+          logger.warn('SNS subscription confirmation failed', { error: String(err) });
+        }
+      }
+      return res.status(200).json({ confirmed: true });
+    }
+
+    const { parseEmailDeliveryWebhookPayload } = await import(
+      '../../../platform/email/deliveryWebhookParser'
+    );
+    const events = parseEmailDeliveryWebhookPayload(payload);
+    if (events.length === 0) {
+      return res.status(202).json({ processed: 0 });
+    }
+
+    const { getPlatformPool } = await import('../../../platform/db');
+    const pool = getPlatformPool();
+    let processed = 0;
+    let skippedTerminal = 0;
+    let unmatched = 0;
+
+    for (const ev of events) {
+      if (!ev.messageId) {
+        unmatched += 1;
+        continue;
+      }
+
+      // Atomic UPDATE — precedence is encoded in the WHERE clause so two
+      // webhook deliveries arriving concurrently for the same Message-ID
+      // can't race past the SELECT and let a later "delivered" overwrite
+      // an adverse terminal that committed in between.
+      //
+      // Allowed transitions (anything else is a no-op write):
+      //   * current IS NULL                                   → any new
+      //   * current = 'deferred'                              → any new
+      //   * current = 'delivered' AND new ∈ adverse-terminal  → escalate
+      //
+      // delivery_status is recomputed from the new event class; the
+      // existing delivery_error is preserved unless the new event is
+      // adverse-terminal (then we record the provider-supplied diagnostic
+      // when one was sent, falling back to whatever was on file).
+      const newStatus = ev.status;
+      const newDeliveryStatus =
+        newStatus === 'delivered'
+          ? 'sent'
+          : ADVERSE_TERMINAL_EMAIL_EVENTS.has(newStatus)
+            ? 'failed'
+            : null; // deferred — keep current
+      const newError = ADVERSE_TERMINAL_EMAIL_EVENTS.has(newStatus) ? (ev.error ?? null) : null;
+
+      let result: { rowCount: number | null } = { rowCount: 0 };
+      try {
+        result = await pool.query(
+          `UPDATE connector_alert_recipients
+              SET email_provider_event = $2,
+                  delivery_status = COALESCE($3, delivery_status),
+                  delivery_error = CASE
+                    WHEN $2 IN ('bounced','spam','dropped')
+                      THEN COALESCE(delivery_error, $4)
+                    ELSE delivery_error
+                  END,
+                  delivery_status_updated_at = NOW()
+            WHERE email_message_id = $1
+              AND channel = 'email'
+              AND (
+                email_provider_event IS NULL
+                OR email_provider_event = 'deferred'
+                OR (email_provider_event = 'delivered'
+                    AND $2 IN ('bounced','spam','dropped'))
+              )`,
+          [ev.messageId, newStatus, newDeliveryStatus, newError],
+        );
+      } catch (err) {
+        logger.warn('Connector email status: failed to update recipient row', {
+          message_id: ev.messageId,
+          status: newStatus,
+          error: String(err),
+        });
+        continue;
+      }
+
+      if (result.rowCount && result.rowCount > 0) {
+        processed += 1;
+        continue;
+      }
+
+      // The atomic UPDATE didn't write — either the Message-ID isn't ours
+      // or precedence rejected the transition. A cheap follow-up SELECT
+      // disambiguates so the response counters stay accurate.
+      try {
+        const probe = await pool.query<{ id: number }>(
+          `SELECT id
+             FROM connector_alert_recipients
+            WHERE email_message_id = $1
+              AND channel = 'email'
+            LIMIT 1`,
+          [ev.messageId],
+        );
+        if (probe.rows.length === 0) {
+          unmatched += 1;
+        } else {
+          skippedTerminal += 1;
+        }
+      } catch (err) {
+        logger.warn('Connector email status: post-UPDATE probe failed', {
+          message_id: ev.messageId,
+          error: String(err),
+        });
+        unmatched += 1;
+      }
+    }
+
+    logger.info('Connector email status webhook processed', {
+      provider: events[0]?.provider,
+      processed,
+      skippedTerminal,
+      unmatched,
+    });
+    return res.status(200).json({ processed, skippedTerminal, unmatched });
+  },
+);
 
 router.post('/connectors/events/dispatch', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
