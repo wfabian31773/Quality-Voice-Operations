@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown, Check, Loader2 } from 'lucide-react';
@@ -645,6 +646,7 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
 }
 
 export default function KnowledgeBase() {
+  const { t: tenantT } = useTranslation('tenant');
   const [activeView, setActiveView] = useState<'articles' | 'documents'>('documents');
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -876,7 +878,7 @@ export default function KnowledgeBase() {
                                 className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition disabled:opacity-50">
                                 <RefreshCw className="h-3.5 w-3.5" />
                               </button>
-                              <button onClick={() => { if (confirm('Delete this document and all its chunks?')) deleteDocMut.mutate(doc.id); }}
+                              <button onClick={() => { if (confirm(tenantT('common.confirms.delete_document'))) deleteDocMut.mutate(doc.id); }}
                                 className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -955,7 +957,7 @@ export default function KnowledgeBase() {
                             className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => { if (confirm('Delete this article?')) deleteArticleMut.mutate(article.id); }}
+                          <button onClick={() => { if (confirm(tenantT('common.confirms.delete_article'))) deleteArticleMut.mutate(article.id); }}
                             className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

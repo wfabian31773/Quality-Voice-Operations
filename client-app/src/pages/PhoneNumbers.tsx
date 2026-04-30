@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -650,6 +651,7 @@ function ReassignModal({
 }
 
 export default function PhoneNumbers() {
+  const { t: tenantT } = useTranslation('tenant');
   const [showProvision, setShowProvision] = useState(false);
   const [reassigning, setReassigning] = useState<PhoneNumber | null>(null);
   const queryClient = useQueryClient();
@@ -895,7 +897,7 @@ export default function PhoneNumbers() {
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm('Remove this number? It will be released.'))
+                              if (confirm(tenantT('common.confirms.remove_phone_number')))
                                 deleteMut.mutate(pn.id);
                             }}
                             className="text-text-secondary hover:text-danger transition"

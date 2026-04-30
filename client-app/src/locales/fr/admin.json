@@ -212,6 +212,15 @@
       "validation_failed": "Validation échouée",
       "no_versions": "Aucune version créée pour le moment"
     },
+    "integration_diagnostics": {
+      "bulk_retry_status_failed": "en échec",
+      "bulk_retry_status_dead_letter": "en file morte",
+      "bulk_retry_status_all": "en échec et en file morte",
+      "bulk_retry_provider_all": "pour tous les fournisseurs",
+      "bulk_retry_provider_specific": "pour {{provider}}",
+      "bulk_retry_confirm_one": "Remettre en file {{count}} événement {{statusLabel}} de l'outbox {{providerLabel}} ? Il sera repris au prochain cycle de drainage.",
+      "bulk_retry_confirm_other": "Remettre en file {{count}} événements {{statusLabel}} de l'outbox {{providerLabel}} ? Ils seront repris au prochain cycle de drainage."
+    },
     "create_version_form": {
       "title": "Créer une nouvelle version",
       "version_label": "Version (semver)",
@@ -313,6 +322,10 @@
       "in_label": "dans {{label}}",
       "ago_label": "il y a {{label}}",
       "less_than_a_minute": "moins d'une minute"
+    },
+    "compliance": {
+      "confirm_initialize_encryption": "Initialiser le chiffrement pour {{tenant}} en son nom ? Cela créera une DEK active par tenant et sera enregistré dans le journal d'audit.",
+      "confirm_delete_subprocessor": "Supprimer {{name}} ? Cette action est irréversible."
     },
     "verified_caller": {
       "title": "Santé des appelants vérifiés",

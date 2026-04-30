@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -1408,6 +1409,7 @@ function HistoryDrawer({
 }
 
 export default function TrustedCallers() {
+  const { t: tenantT } = useTranslation('tenant');
   const { isManager } = useRole();
   const canManage = isManager;
   const queryClient = useQueryClient();
@@ -1693,7 +1695,7 @@ export default function TrustedCallers() {
                         {canManage && caller.status !== 'rotated' && (
                           <button
                             onClick={() => {
-                              if (window.confirm(`Delete verified caller ID ${caller.phoneNumber}?`)) {
+                              if (window.confirm(tenantT('common.confirms.delete_verified_caller', { phone: caller.phoneNumber }))) {
                                 deleteMutation.mutate(caller.id);
                               }
                             }}

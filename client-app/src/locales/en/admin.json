@@ -212,6 +212,15 @@
       "validation_failed": "Validation failed",
       "no_versions": "No versions created yet"
     },
+    "integration_diagnostics": {
+      "bulk_retry_status_failed": "failed",
+      "bulk_retry_status_dead_letter": "dead-letter",
+      "bulk_retry_status_all": "failed and dead-letter",
+      "bulk_retry_provider_all": "across all providers",
+      "bulk_retry_provider_specific": "for {{provider}}",
+      "bulk_retry_confirm_one": "Requeue {{count}} {{statusLabel}} outbox event {{providerLabel}}? It will be picked up on the next drain cycle.",
+      "bulk_retry_confirm_other": "Requeue {{count}} {{statusLabel}} outbox events {{providerLabel}}? They will be picked up on the next drain cycle."
+    },
     "create_version_form": {
       "title": "Create New Version",
       "version_label": "Version (semver)",
@@ -313,6 +322,10 @@
       "in_label": "in {{label}}",
       "ago_label": "{{label}} ago",
       "less_than_a_minute": "less than a minute"
+    },
+    "compliance": {
+      "confirm_initialize_encryption": "Initialize encryption for {{tenant}} on their behalf? This will create an active per-tenant DEK and is recorded in the audit log.",
+      "confirm_delete_subprocessor": "Delete {{name}}? This cannot be undone."
     },
     "verified_caller": {
       "title": "Verified caller health",

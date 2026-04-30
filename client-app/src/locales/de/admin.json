@@ -212,6 +212,15 @@
       "validation_failed": "Validierung fehlgeschlagen",
       "no_versions": "Noch keine Versionen erstellt"
     },
+    "integration_diagnostics": {
+      "bulk_retry_status_failed": "fehlgeschlagen",
+      "bulk_retry_status_dead_letter": "Dead-Letter",
+      "bulk_retry_status_all": "fehlgeschlagen und Dead-Letter",
+      "bulk_retry_provider_all": "über alle Anbieter hinweg",
+      "bulk_retry_provider_specific": "für {{provider}}",
+      "bulk_retry_confirm_one": "{{count}} Outbox-Ereignis mit Status „{{statusLabel}}\" {{providerLabel}} erneut einreihen? Es wird beim nächsten Drain-Zyklus verarbeitet.",
+      "bulk_retry_confirm_other": "{{count}} Outbox-Ereignisse mit Status „{{statusLabel}}\" {{providerLabel}} erneut einreihen? Sie werden beim nächsten Drain-Zyklus verarbeitet."
+    },
     "create_version_form": {
       "title": "Neue Version erstellen",
       "version_label": "Version (semver)",
@@ -313,6 +322,10 @@
       "in_label": "in {{label}}",
       "ago_label": "vor {{label}}",
       "less_than_a_minute": "weniger als eine Minute"
+    },
+    "compliance": {
+      "confirm_initialize_encryption": "Verschlüsselung für {{tenant}} in dessen Auftrag initialisieren? Dies erstellt einen aktiven DEK pro Mandant und wird im Audit-Log protokolliert.",
+      "confirm_delete_subprocessor": "{{name}} löschen? Dieser Vorgang kann nicht rückgängig gemacht werden."
     },
     "verified_caller": {
       "title": "Health verifizierter Anrufer-IDs",

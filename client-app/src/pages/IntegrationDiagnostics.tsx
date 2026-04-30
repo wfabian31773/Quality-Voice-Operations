@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -350,6 +351,7 @@ function WebhookRow({ webhook, onRetry, retrying }: {
 }
 
 export default function IntegrationDiagnostics() {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
@@ -763,17 +765,23 @@ export default function IntegrationDiagnostics() {
                 if (bulkRetryEligible === 0) return;
                 const providerLabel =
                   outboxProviderFilter === 'all'
-                    ? 'across all providers'
-                    : `for ${formatProviderLabel(outboxProviderFilter)}`;
+                    ? adminT('platform_admin.integration_diagnostics.bulk_retry_provider_all')
+                    : adminT('platform_admin.integration_diagnostics.bulk_retry_provider_specific', {
+                        provider: formatProviderLabel(outboxProviderFilter),
+                      });
                 const statusLabel =
                   bulkRetryStatus === 'failed'
-                    ? 'failed'
+                    ? adminT('platform_admin.integration_diagnostics.bulk_retry_status_failed')
                     : bulkRetryStatus === 'dead_letter'
-                      ? 'dead-letter'
-                      : 'failed and dead-letter';
+                      ? adminT('platform_admin.integration_diagnostics.bulk_retry_status_dead_letter')
+                      : adminT('platform_admin.integration_diagnostics.bulk_retry_status_all');
                 if (
                   window.confirm(
-                    `Requeue ${bulkRetryEligible} ${statusLabel} outbox event${bulkRetryEligible === 1 ? '' : 's'} ${providerLabel}? They will be picked up on the next drain cycle.`,
+                    adminT('platform_admin.integration_diagnostics.bulk_retry_confirm', {
+                      count: bulkRetryEligible,
+                      statusLabel,
+                      providerLabel,
+                    }),
                   )
                 ) {
                   setBulkFeedback(null);

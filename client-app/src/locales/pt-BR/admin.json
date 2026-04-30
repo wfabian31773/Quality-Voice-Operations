@@ -212,6 +212,15 @@
       "validation_failed": "Falha na validação",
       "no_versions": "Nenhuma versão criada ainda"
     },
+    "integration_diagnostics": {
+      "bulk_retry_status_failed": "com falha",
+      "bulk_retry_status_dead_letter": "em dead-letter",
+      "bulk_retry_status_all": "com falha e em dead-letter",
+      "bulk_retry_provider_all": "em todos os provedores",
+      "bulk_retry_provider_specific": "para {{provider}}",
+      "bulk_retry_confirm_one": "Reenfileirar {{count}} evento {{statusLabel}} do outbox {{providerLabel}}? Ele será processado no próximo ciclo de drenagem.",
+      "bulk_retry_confirm_other": "Reenfileirar {{count}} eventos {{statusLabel}} do outbox {{providerLabel}}? Eles serão processados no próximo ciclo de drenagem."
+    },
     "create_version_form": {
       "title": "Criar nova versão",
       "version_label": "Versão (semver)",
@@ -313,6 +322,10 @@
       "in_label": "em {{label}}",
       "ago_label": "há {{label}}",
       "less_than_a_minute": "menos de um minuto"
+    },
+    "compliance": {
+      "confirm_initialize_encryption": "Inicializar a criptografia para {{tenant}} em seu nome? Isso criará uma DEK ativa por tenant e ficará registrado no log de auditoria.",
+      "confirm_delete_subprocessor": "Excluir {{name}}? Esta ação não pode ser desfeita."
     },
     "verified_caller": {
       "title": "Saúde dos identificadores verificados",

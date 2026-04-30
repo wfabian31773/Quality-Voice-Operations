@@ -1057,7 +1057,23 @@
     "save": "Save",
     "view": "View",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "confirms": {
+      "delete_document": "Delete this document and all its chunks?",
+      "delete_article": "Delete this article?",
+      "delete_saved_view": "Delete saved view \"{{name}}\"?",
+      "delete_workflow": "Delete this workflow? Any agents using it will be unlinked.",
+      "disconnect_connector": "Disconnect {{name}}? This will remove all stored credentials.",
+      "revoke_api_key": "Revoke this API key?",
+      "revoke_user": "Remove {{email}} from this tenant?",
+      "rotate_encryption_key": "Rotate encryption key? This is a critical operation.",
+      "erase_pii": "PERMANENTLY erase all PII for {{email}}? This cannot be undone.",
+      "remove_phone_number": "Remove this number? It will be released.",
+      "delete_booking": "Delete this booking?",
+      "delete_verified_caller": "Delete verified caller ID {{phone}}?",
+      "downgrade_plan_with_date": "Downgrade from {{current}} to {{target}}? The change takes effect at the end of your current billing period ({{date}}). You will keep {{current}} access and limits until then.",
+      "downgrade_plan": "Downgrade from {{current}} to {{target}}? The change takes effect at the end of your current billing period. You will keep {{current}} access and limits until then."
+    }
   },
   "scheduling_drift_banner": {
     "title_one": "{{count}} {{subject}} is configured to book into a disconnected calendar",

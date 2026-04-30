@@ -1057,7 +1057,23 @@
     "save": "Speichern",
     "view": "Ansehen",
     "yes": "Ja",
-    "no": "Nein"
+    "no": "Nein",
+    "confirms": {
+      "delete_document": "Dieses Dokument und alle seine Chunks löschen?",
+      "delete_article": "Diesen Artikel löschen?",
+      "delete_saved_view": "Gespeicherte Ansicht „{{name}}\" löschen?",
+      "delete_workflow": "Diesen Workflow löschen? Alle ihn nutzenden Agenten werden entkoppelt.",
+      "disconnect_connector": "{{name}} trennen? Alle gespeicherten Zugangsdaten werden entfernt.",
+      "revoke_api_key": "Diesen API-Schlüssel widerrufen?",
+      "revoke_user": "{{email}} aus diesem Mandanten entfernen?",
+      "rotate_encryption_key": "Verschlüsselungsschlüssel rotieren? Dies ist ein kritischer Vorgang.",
+      "erase_pii": "Alle PII für {{email}} ENDGÜLTIG löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.",
+      "remove_phone_number": "Diese Nummer entfernen? Sie wird freigegeben.",
+      "delete_booking": "Diese Buchung löschen?",
+      "delete_verified_caller": "Verifizierte Anrufer-ID {{phone}} löschen?",
+      "downgrade_plan_with_date": "Von {{current}} auf {{target}} herabstufen? Die Änderung wird am Ende Ihres aktuellen Abrechnungszeitraums ({{date}}) wirksam. Bis dahin behalten Sie den Zugriff und die Limits von {{current}}.",
+      "downgrade_plan": "Von {{current}} auf {{target}} herabstufen? Die Änderung wird am Ende Ihres aktuellen Abrechnungszeitraums wirksam. Bis dahin behalten Sie den Zugriff und die Limits von {{current}}."
+    }
   },
   "scheduling_drift_banner": {
     "title_one": "{{count}} {{subject}} ist so konfiguriert, dass Termine in einem nicht verbundenen Kalender gebucht werden",

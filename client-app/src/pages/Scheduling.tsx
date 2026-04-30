@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -165,6 +166,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function Scheduling() {
+  const { t: tenantT } = useTranslation('tenant');
   const { user } = useAuth();
   const isReadOnly = !['tenant_owner', 'operations_manager'].includes(user?.role ?? '');
 
@@ -1395,7 +1397,7 @@ export default function Scheduling() {
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-secondary text-heading hover:bg-surface-secondary/80">
                     <Edit2 className="h-3 w-3" /> Edit
                   </button>
-                  <button onClick={() => { if (confirm('Delete this booking?')) deleteBooking(showDetailModal.id); }}
+                  <button onClick={() => { if (confirm(tenantT('common.confirms.delete_booking'))) deleteBooking(showDetailModal.id); }}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400">
                     <Trash2 className="h-3 w-3" /> Delete
                   </button>

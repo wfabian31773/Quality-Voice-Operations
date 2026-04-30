@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -290,6 +291,7 @@ function readServerUpgradeInterval(
 }
 
 export default function Billing() {
+  const { t: tenantT } = useTranslation('tenant');
   const { user } = useAuth();
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const queryClient = useQueryClient();
@@ -711,12 +713,17 @@ export default function Billing() {
   const handleDowngrade = (targetPlan: string, interval: string = 'monthly') => {
     const currentLabel = PLAN_LABELS[plan] ?? plan;
     const targetLabel = PLAN_LABELS[targetPlan] ?? targetPlan;
-    const renewalCopy = sub?.current_period_end
-      ? ` The change takes effect at the end of your current billing period (${formatDate(sub.current_period_end)}).`
-      : ' The change takes effect at the end of your current billing period.';
-    const ok = window.confirm(
-      `Downgrade from ${currentLabel} to ${targetLabel}?${renewalCopy} You will keep ${currentLabel} access and limits until then.`,
-    );
+    const message = sub?.current_period_end
+      ? tenantT('common.confirms.downgrade_plan_with_date', {
+          current: currentLabel,
+          target: targetLabel,
+          date: formatDate(sub.current_period_end),
+        })
+      : tenantT('common.confirms.downgrade_plan', {
+          current: currentLabel,
+          target: targetLabel,
+        });
+    const ok = window.confirm(message);
     if (!ok) return;
     setUpgradeLoading(targetPlan);
     downgradeMutation.mutate({ plan: targetPlan, interval });

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -502,6 +503,7 @@ function PlatformAuditTab() {
 }
 
 function EncryptionTab() {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [onlyGaps, setOnlyGaps] = useState(false);
   const [actionMessage, setActionMessage] = useState<{
@@ -844,7 +846,7 @@ function EncryptionTab() {
                               onClick={() => {
                                 if (
                                   confirm(
-                                    `Initialize encryption for ${t.tenant_name} on their behalf? This will create an active per-tenant DEK and is recorded in the audit log.`,
+                                    adminT('platform_admin.compliance.confirm_initialize_encryption', { tenant: t.tenant_name }),
                                   )
                                 ) {
                                   initializeMutation.mutate(t.tenant_id);
@@ -916,6 +918,7 @@ function EncryptionTab() {
 }
 
 function SubprocessorsTab() {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', purpose: '', data_types: '', location: 'United States', website: '' });
@@ -1059,7 +1062,7 @@ function SubprocessorsTab() {
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm(`Delete ${s.name}? This cannot be undone.`)) deleteMutation.mutate(s.id);
+                            if (confirm(adminT('platform_admin.compliance.confirm_delete_subprocessor', { name: s.name }))) deleteMutation.mutate(s.id);
                           }}
                           disabled={deleteMutation.isPending}
                           className="text-xs text-red-500 font-medium hover:text-red-700"

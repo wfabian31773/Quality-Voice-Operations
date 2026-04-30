@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -3325,6 +3326,7 @@ function formatSchedulingProvider(provider: string): string {
 }
 
 export default function Connectors() {
+  const { t: tenantT } = useTranslation('tenant');
   const [connectTarget, setConnectTarget] = useState<ConnectorDefinition | null>(null);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
@@ -3615,7 +3617,7 @@ export default function Connectors() {
                       onReconnect={() => setConnectTarget(def)}
                       onDisconnect={() => {
                         if (
-                          confirm(`Disconnect ${def.name}? This will remove all stored credentials.`)
+                          confirm(tenantT('common.confirms.disconnect_connector', { name: def.name }))
                         ) {
                           disconnectMutation.mutate(existing.integrationId);
                         }

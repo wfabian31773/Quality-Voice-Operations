@@ -1057,7 +1057,23 @@
     "save": "Salvar",
     "view": "Ver",
     "yes": "Sim",
-    "no": "Não"
+    "no": "Não",
+    "confirms": {
+      "delete_document": "Excluir este documento e todos os seus fragmentos?",
+      "delete_article": "Excluir este artigo?",
+      "delete_saved_view": "Excluir a visão salva \"{{name}}\"?",
+      "delete_workflow": "Excluir este workflow? Os agentes que o utilizam serão desvinculados.",
+      "disconnect_connector": "Desconectar {{name}}? Isso removerá todas as credenciais armazenadas.",
+      "revoke_api_key": "Revogar esta chave de API?",
+      "revoke_user": "Remover {{email}} deste tenant?",
+      "rotate_encryption_key": "Rotacionar a chave de criptografia? Esta é uma operação crítica.",
+      "erase_pii": "Apagar PERMANENTEMENTE todos os PII de {{email}}? Esta ação não pode ser desfeita.",
+      "remove_phone_number": "Remover este número? Ele será liberado.",
+      "delete_booking": "Excluir este agendamento?",
+      "delete_verified_caller": "Excluir o ID do chamador verificado {{phone}}?",
+      "downgrade_plan_with_date": "Fazer downgrade de {{current}} para {{target}}? A alteração entrará em vigor no fim do seu período de cobrança atual ({{date}}). Você manterá o acesso e os limites de {{current}} até lá.",
+      "downgrade_plan": "Fazer downgrade de {{current}} para {{target}}? A alteração entrará em vigor no fim do seu período de cobrança atual. Você manterá o acesso e os limites de {{current}} até lá."
+    }
   },
   "scheduling_drift_banner": {
     "title_one": "{{count}} {{subject}} está configurado para agendar em um calendário desconectado",

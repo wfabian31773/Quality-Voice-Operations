@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -84,6 +85,7 @@ const QUEUE_TABS = [
 ];
 
 export default function Tickets() {
+  const { t: tenantT } = useTranslation('tenant');
   const { user } = useAuth();
   const navigate = useNavigate();
   const isReadOnly = !['tenant_owner', 'operations_manager'].includes(user?.role ?? '');
@@ -357,7 +359,7 @@ export default function Tickets() {
               if (e.target.value.startsWith('__delete__:')) {
                 const viewId = e.target.value.replace('__delete__:', '');
                 const viewName = savedViews.find(v => v.id === viewId)?.name;
-                if (confirm(`Delete saved view "${viewName}"?`)) {
+                if (confirm(tenantT('common.confirms.delete_saved_view', { name: viewName }))) {
                   api.delete(`/ticket-saved-views/${viewId}`)
                     .then(() => setSavedViews(prev => prev.filter(v => v.id !== viewId)))
                     .catch(() => {});

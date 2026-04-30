@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -261,6 +262,7 @@ function AuditLogTab() {
 }
 
 function ApiKeysTab() {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
@@ -374,7 +376,7 @@ function ApiKeysTab() {
                   <td className="px-4 py-3 text-xs text-muted">{new Date(key.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={() => { if (confirm('Revoke this API key?')) revokeMutation.mutate(key.id); }}
+                      onClick={() => { if (confirm(tenantT('common.confirms.revoke_api_key'))) revokeMutation.mutate(key.id); }}
                       className="text-red-500 hover:text-red-700 text-xs font-medium"
                     >
                       Revoke
@@ -391,6 +393,7 @@ function ApiKeysTab() {
 }
 
 function RolesTab() {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState('');
@@ -507,7 +510,7 @@ function RolesTab() {
                       )}
                       <button
                         onClick={() => {
-                          if (confirm(`Remove ${r.email} from this tenant?`))
+                          if (confirm(tenantT('common.confirms.revoke_user', { email: r.email })))
                             revokeRoleMutation.mutate(r.id);
                         }}
                         disabled={revokeRoleMutation.isPending}
@@ -528,6 +531,7 @@ function RolesTab() {
 }
 
 function EncryptionTab() {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -607,7 +611,7 @@ function EncryptionTab() {
           )}
           {data?.encryptionEnabled && (
             <button
-              onClick={() => { if (confirm('Rotate encryption key? This is a critical operation.')) rotateMutation.mutate(); }}
+              onClick={() => { if (confirm(tenantT('common.confirms.rotate_encryption_key'))) rotateMutation.mutate(); }}
               disabled={rotateMutation.isPending}
               className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-secondary disabled:opacity-50"
             >
@@ -686,6 +690,7 @@ function Soc2Tab() {
 }
 
 function GdprTab() {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [exportEmail, setExportEmail] = useState('');
   const [eraseEmail, setEraseEmail] = useState('');
@@ -771,7 +776,7 @@ function GdprTab() {
             />
             <button
               onClick={() => {
-                if (confirm(`PERMANENTLY erase all PII for ${eraseEmail}? This cannot be undone.`)) {
+                if (confirm(tenantT('common.confirms.erase_pii', { email: eraseEmail }))) {
                   eraseMutation.mutate(eraseEmail);
                 }
               }}

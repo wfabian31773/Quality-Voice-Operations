@@ -706,6 +706,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
 }
 
 function TemplateVersionManager({ templateId }: { templateId: string }) {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
@@ -800,7 +801,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Publish version ${v.version}?`)) {
+                        if (confirm(adminT('platform_admin.template_version_manager.confirm_publish', { version: v.version }))) {
                           publishMutation.mutate(v.id);
                         }
                       }}
@@ -815,7 +816,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
                 {v.status === 'published' && !v.isLatest && (
                   <button
                     onClick={() => {
-                      if (confirm(`Deprecate version ${v.version}?`)) {
+                      if (confirm(adminT('platform_admin.template_version_manager.confirm_deprecate', { version: v.version }))) {
                         deprecateMutation.mutate(v.id);
                       }
                     }}

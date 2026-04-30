@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
@@ -425,6 +426,7 @@ function WorkflowBuilder({
 }
 
 export default function Workflows() {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [view, setView] = useState<'list' | 'builder'>('list');
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | undefined>();
@@ -539,7 +541,7 @@ export default function Workflows() {
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm('Delete this workflow? Any agents using it will be unlinked.')) deleteMut.mutate(wf.id);
+                    if (confirm(tenantT('common.confirms.delete_workflow'))) deleteMut.mutate(wf.id);
                   }}
                   className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition ml-auto"
                 >

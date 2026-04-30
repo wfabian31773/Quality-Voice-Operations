@@ -1057,7 +1057,23 @@
     "save": "Enregistrer",
     "view": "Voir",
     "yes": "Oui",
-    "no": "Non"
+    "no": "Non",
+    "confirms": {
+      "delete_document": "Supprimer ce document et tous ses fragments ?",
+      "delete_article": "Supprimer cet article ?",
+      "delete_saved_view": "Supprimer la vue enregistrée « {{name}} » ?",
+      "delete_workflow": "Supprimer ce workflow ? Les agents qui l'utilisent seront détachés.",
+      "disconnect_connector": "Déconnecter {{name}} ? Cela supprimera tous les identifiants enregistrés.",
+      "revoke_api_key": "Révoquer cette clé API ?",
+      "revoke_user": "Retirer {{email}} de ce tenant ?",
+      "rotate_encryption_key": "Faire tourner la clé de chiffrement ? Il s'agit d'une opération critique.",
+      "erase_pii": "Effacer DÉFINITIVEMENT toutes les données personnelles de {{email}} ? Cette action est irréversible.",
+      "remove_phone_number": "Retirer ce numéro ? Il sera libéré.",
+      "delete_booking": "Supprimer cette réservation ?",
+      "delete_verified_caller": "Supprimer l'identifiant d'appelant vérifié {{phone}} ?",
+      "downgrade_plan_with_date": "Rétrograder de {{current}} à {{target}} ? Le changement prendra effet à la fin de votre période de facturation actuelle ({{date}}). Vous conserverez l'accès et les limites de {{current}} jusque-là.",
+      "downgrade_plan": "Rétrograder de {{current}} à {{target}} ? Le changement prendra effet à la fin de votre période de facturation actuelle. Vous conserverez l'accès et les limites de {{current}} jusque-là."
+    }
   },
   "scheduling_drift_banner": {
     "title_one": "{{count}} {{subject}} est configuré pour réserver dans un calendrier déconnecté",
