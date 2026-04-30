@@ -1,0 +1,299 @@
+name: CRM sandbox fixture sweep (weekly)
+
+# Runs scripts/sweep-crm-sandbox-fixtures.ts against each configured CRM
+# sandbox to delete leftover booking-suite fixtures (>24h old) and their
+# associated children. Operational details, secret matrix, and on-call
+# runbook: docs/runbooks/crm-sandbox-credentials.md (Appendix →
+# Automated fixture-namespace sweep).
+
+on:
+  schedule:
+    # Sunday 05:47 UTC — odd minute to dodge the top-of-hour cron storm.
+    - cron: "47 5 * * 0"
+  push:
+    branches: [main, master]
+    paths:
+      - "scripts/sweep-crm-sandbox-fixtures.ts"
+      - "scripts/sweep-crm-sandbox-fixtures.test.ts"
+      - ".github/workflows/crm-sandbox-fixture-sweep.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run in dry-run mode (no deletes; just report what would be swept)."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write # tracking-issue create/update/close on failure
+
+# Never cancel an in-flight sweep — partial deletes are worse than a
+# delayed second run.
+concurrency:
+  group: crm-sandbox-fixture-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Sweep leftover sandbox booking fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Same secret matrix the validator workflow uses; the sweep script
+      # skips any provider whose secret is missing, so this can be
+      # brought online one provider at a time.
+      HUBSPOT_SANDBOX_ACCESS_TOKEN: ${{ secrets.HUBSPOT_SANDBOX_ACCESS_TOKEN }}
+
+      SALESFORCE_SANDBOX_CLIENT_ID: ${{ secrets.SALESFORCE_SANDBOX_CLIENT_ID }}
+      SALESFORCE_SANDBOX_CLIENT_SECRET: ${{ secrets.SALESFORCE_SANDBOX_CLIENT_SECRET }}
+      SALESFORCE_SANDBOX_USERNAME: ${{ secrets.SALESFORCE_SANDBOX_USERNAME }}
+      SALESFORCE_SANDBOX_PASSWORD: ${{ secrets.SALESFORCE_SANDBOX_PASSWORD }}
+      SALESFORCE_SANDBOX_SECURITY_TOKEN: ${{ secrets.SALESFORCE_SANDBOX_SECURITY_TOKEN }}
+      SALESFORCE_SANDBOX_LOGIN_URL: ${{ secrets.SALESFORCE_SANDBOX_LOGIN_URL }}
+
+      PIPEDRIVE_SANDBOX_ACCESS_TOKEN: ${{ secrets.PIPEDRIVE_SANDBOX_ACCESS_TOKEN }}
+      PIPEDRIVE_SANDBOX_API_TOKEN: ${{ secrets.PIPEDRIVE_SANDBOX_API_TOKEN }}
+      PIPEDRIVE_SANDBOX_COMPANY_DOMAIN: ${{ secrets.PIPEDRIVE_SANDBOX_COMPANY_DOMAIN }}
+
+      ZOHO_SANDBOX_REFRESH_TOKEN: ${{ secrets.ZOHO_SANDBOX_REFRESH_TOKEN }}
+      ZOHO_SANDBOX_CLIENT_ID: ${{ secrets.ZOHO_SANDBOX_CLIENT_ID }}
+      ZOHO_SANDBOX_CLIENT_SECRET: ${{ secrets.ZOHO_SANDBOX_CLIENT_SECRET }}
+      ZOHO_SANDBOX_ACCOUNTS_URL: ${{ secrets.ZOHO_SANDBOX_ACCOUNTS_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      # Mint fresh per-run access tokens for Salesforce/Zoho (mirrors
+      # the validator workflow's pattern; runbook covers rotation).
+
+      # `continue-on-error: true` so a failed mint for one provider
+      # doesn't abort the sweep for the others — if the token isn't
+      # in $GITHUB_ENV, the script just skips that provider with status
+      # `skipped` and the failure-tracking-issue logic still runs.
+      - name: Mint Salesforce sandbox access token
+        continue-on-error: true
+        if: env.SALESFORCE_SANDBOX_CLIENT_ID != '' && env.SALESFORCE_SANDBOX_CLIENT_SECRET != '' && env.SALESFORCE_SANDBOX_USERNAME != '' && env.SALESFORCE_SANDBOX_PASSWORD != ''
+        run: |
+          login_url="${SALESFORCE_SANDBOX_LOGIN_URL:-https://test.salesforce.com}"
+          password_with_token="${SALESFORCE_SANDBOX_PASSWORD}${SALESFORCE_SANDBOX_SECURITY_TOKEN}"
+          response="$(curl -sS -X POST "${login_url}/services/oauth2/token" \
+            --data-urlencode "grant_type=password" \
+            --data-urlencode "client_id=${SALESFORCE_SANDBOX_CLIENT_ID}" \
+            --data-urlencode "client_secret=${SALESFORCE_SANDBOX_CLIENT_SECRET}" \
+            --data-urlencode "username=${SALESFORCE_SANDBOX_USERNAME}" \
+            --data-urlencode "password=${password_with_token}")"
+          access_token="$(node -e 'const j=JSON.parse(process.argv[1]); if(!j.access_token){console.error("no access_token in response:", JSON.stringify(j)); process.exit(1)} process.stdout.write(j.access_token)' "$response")"
+          instance_url="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.instance_url || "")' "$response")"
+          echo "::add-mask::$access_token"
+          {
+            echo "SALESFORCE_SANDBOX_ACCESS_TOKEN=${access_token}"
+            echo "SALESFORCE_SANDBOX_INSTANCE_URL=${instance_url}"
+          } >> "$GITHUB_ENV"
+          echo "Salesforce sandbox token minted (instance_url=${instance_url})."
+
+      - name: Mint Zoho sandbox access token
+        continue-on-error: true
+        if: env.ZOHO_SANDBOX_REFRESH_TOKEN != '' && env.ZOHO_SANDBOX_CLIENT_ID != '' && env.ZOHO_SANDBOX_CLIENT_SECRET != ''
+        run: |
+          accounts_url="${ZOHO_SANDBOX_ACCOUNTS_URL:-https://accounts.zoho.com}"
+          response="$(curl -sS -X POST "${accounts_url}/oauth/v2/token" \
+            --data-urlencode "grant_type=refresh_token" \
+            --data-urlencode "client_id=${ZOHO_SANDBOX_CLIENT_ID}" \
+            --data-urlencode "client_secret=${ZOHO_SANDBOX_CLIENT_SECRET}" \
+            --data-urlencode "refresh_token=${ZOHO_SANDBOX_REFRESH_TOKEN}")"
+          access_token="$(node -e 'const j=JSON.parse(process.argv[1]); if(!j.access_token){console.error("no access_token in response:", JSON.stringify(j)); process.exit(1)} process.stdout.write(j.access_token)' "$response")"
+          api_domain="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.api_domain || "https://www.zohoapis.com")' "$response")"
+          echo "::add-mask::$access_token"
+          {
+            echo "ZOHO_SANDBOX_ACCESS_TOKEN=${access_token}"
+            echo "ZOHO_SANDBOX_API_DOMAIN=${api_domain}"
+          } >> "$GITHUB_ENV"
+          echo "Zoho sandbox token minted (api_domain=${api_domain})."
+
+      # On `push` always dry-run (PRs touching the sweep can never
+      # accidentally delete sandbox state); cron applies; dispatch opts in.
+      - name: Compute sweep mode
+        id: mode
+        run: |
+          dry_run="false"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            dry_run="true"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            dry_run="true"
+          fi
+          if [ "$dry_run" = "true" ]; then
+            echo "args=--dry-run" >> "$GITHUB_OUTPUT"
+            echo "Dry-run mode — no deletes will be issued."
+          else
+            echo "args=" >> "$GITHUB_OUTPUT"
+            echo "Apply mode — real deletes will be issued."
+          fi
+
+      - name: Run fixture sweep
+        id: sweep
+        run: |
+          set +e
+          mkdir -p .ci-out
+          npx tsx scripts/sweep-crm-sandbox-fixtures.ts ${{ steps.mode.outputs.args }} \
+            > .ci-out/sweep-result.json \
+            2> .ci-out/sweep-summary.md
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "----- sweep-summary.md -----"
+          cat .ci-out/sweep-summary.md || true
+          echo "----- sweep-result.json -----"
+          cat .ci-out/sweep-result.json || true
+          cat .ci-out/sweep-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+          exit $exit_code
+
+      - name: Upload sweep output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-sandbox-fixture-sweep
+          path: .ci-out/sweep-*
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # On failure: open/update a deduplicated tracking issue (same
+      # pattern as the validator workflow). Auto-closed below when the
+      # sweep is back to green.
+      - name: Build sweep tracking-issue body on failure
+        if: failure() && steps.sweep.outcome == 'failure'
+        run: |
+          mkdir -p .ci-out
+          {
+            echo "The weekly CRM sandbox fixture sweep failed."
+            echo
+            echo "This job hard-deletes leftover \`Apt Booked Co\` / \`+1555\` / \`apt-booked-*@example.invalid\` fixture records older than 24h from each configured provider sandbox. A failure here is operational hygiene — the validator suite is unaffected — but if the sweep stays red the sandbox will keep accumulating leaked fixtures and eventually start hiding real test signal in the noise."
+            echo
+            echo "**First responder checklist** (full runbook: \`docs/runbooks/crm-sandbox-credentials.md\` Appendix → fixture-namespace sweep):"
+            echo
+            echo "1. Open the workflow run linked below and read the \`Run fixture sweep\` step's stderr table — it lists which provider failed and the HTTP error returned."
+            echo "2. **HTTP 401 from a provider** → the same token rotation steps that fix the validator suite apply (see the provider's §5 in the runbook)."
+            echo "3. **HTTP 5xx storm from one provider** → typically transient; re-run the workflow via the Actions UI before opening a provider support ticket."
+            echo "4. **Parser-break style error** (e.g. \"unexpected response shape\") → the provider changed an API response shape the sweep depends on; patch \`scripts/sweep-crm-sandbox-fixtures.ts\` and add a regression case to \`scripts/sweep-crm-sandbox-fixtures.test.ts\`."
+            echo
+            echo "## Sweep result JSON"
+            echo
+            echo '```json'
+            cat .ci-out/sweep-result.json 2>/dev/null || echo "(sweep-result.json missing — failure happened before the script printed any output)"
+            echo '```'
+            echo
+            echo "## Sweep summary"
+            echo
+            cat .ci-out/sweep-summary.md 2>/dev/null || echo "_(sweep-summary.md unavailable)_"
+            echo
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > .ci-out/sweep-issue-body.md
+
+      - name: Open or update sweep tracking issue on failure
+        if: failure() && steps.sweep.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('.ci-out/sweep-issue-body.md', 'utf8');
+            const title = 'CRM sandbox fixture sweep is failing';
+            const label = 'crm-sandbox-fixture-sweep-failed';
+
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+              });
+            } catch (err) {
+              if (err.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: 'ededed',
+                  description: 'Tracking issue for the weekly CRM sandbox fixture sweep. Routed to integrations on-call.',
+                });
+              } else {
+                throw err;
+              }
+            }
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+
+            if (existing.data.length > 0) {
+              const issue = existing.data[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Re-detected on ${new Date().toISOString()} — see updated body above. ` +
+                  `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              core.notice(`Updated existing sweep tracking issue #${issue.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened sweep tracking issue #${created.data.number}.`);
+            }
+
+      - name: Auto-close sweep tracking issue when sweep is back in sync
+        if: success() && steps.sweep.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'crm-sandbox-fixture-sweep-failed';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 10,
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `Fixture sweep is back to green as of ${new Date().toISOString()} — ` +
+                  `auto-closing. Workflow run: ` +
+                  `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.notice(`Auto-closed sweep tracking issue #${issue.number}.`);
+            }

@@ -551,9 +551,17 @@ fixture-record namespaces disjoint:
   unique-per-run namespace generated at test time
   (`+1555xxxxxxx` synthetic phone, `Apt Booked Co <suffix>` company
   name, `apt-booked-<suffix>@example.invalid` email). The suite tears
-  down everything it created, but a crash mid-test can leak fixtures —
-  search the sandbox by the `Apt Booked Co` prefix or the `+1555` phone
-  prefix once a quarter and bulk-delete leftovers (cheap, idempotent).
+  down everything it created, but a crash mid-test can leak fixtures.
+  These leftovers are **purged automatically every Sunday** by the
+  `CRM sandbox fixture sweep (weekly)` workflow
+  (`.github/workflows/crm-sandbox-fixture-sweep.yml`), which calls
+  `scripts/sweep-crm-sandbox-fixtures.ts` against each provider whose
+  sandbox secrets are configured and hard-deletes any fixture rows
+  older than 24h. See [Automated fixture-namespace
+  sweep](#automated-fixture-namespace-sweep) below for the operating
+  details. No manual quarterly cleanup is needed any more — if the
+  sweep stays red for more than one cycle, follow the alert it opens
+  on the `crm-sandbox-fixture-sweep-failed` label instead.
 
 Specifically, **do not** reuse the validator suite's deleted-fixture IDs
 in any write test — re-creating a record with the same ID is impossible
@@ -562,8 +570,110 @@ invalidate the secret without the suite noticing until the next cron tick.
 
 If you ever add a third integration suite against these sandboxes, give
 it its own fixture-record namespace too (e.g. its own caller-phone
-prefix, its own company-name prefix) so the quarterly sweep can tell
-which suite leaked which row.
+prefix, its own company-name prefix) so the automated sweep below can
+tell which suite leaked which row, and extend
+`scripts/sweep-crm-sandbox-fixtures.ts` with that suite's namespace
+predicates at the same time.
+
+### Automated fixture-namespace sweep
+
+`.github/workflows/crm-sandbox-fixture-sweep.yml` runs every Sunday at
+**05:47 UTC** (and on manual `workflow_dispatch`, with a `dry_run`
+input). It executes
+`scripts/sweep-crm-sandbox-fixtures.ts`, which connects to each
+provider sandbox whose secrets are configured and deletes records that
+match the booking-suite fixture namespace and are older than 24 hours.
+
+**Parent records** are matched directly by namespace. Contact/Person/
+Lead are matched by **email OR phone** (not both) — a leaked record
+that lost its email half (e.g. provider PII scrubbing) is still picked
+up via the `+1555` phone, and vice versa:
+
+| Object                              | Match rule                                                                                          |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Company / Account / Organization    | name starts with `Apt Booked Co `                                                                   |
+| Contact / Person / Lead             | email starts with `apt-booked-` **OR** phone/mobile starts with `+1555` (each provider OR'd in the search query itself; see `buildHubspotContactSearchBody`, `buildSalesforceContactQuery`, `buildSalesforceLeadQuery`, `buildZohoContactQuery`) |
+| Deal / Opportunity                  | name ends with ` - QVO Appointment` **and** the company half of the name (everything before that suffix) starts with `Apt Booked Co ` |
+
+**Auxiliary records** (notes, Salesforce Tasks/ContentDocuments,
+Pipedrive activities) are written by the booking adapter with generic
+bodies (e.g. `AI Appointment Summary`) that aren't fixture-distinct.
+The sweep therefore identifies them by **association** to a fixture
+parent rather than by content, and deletes children before parents in
+each provider:
+
+| Provider   | Auxiliary records swept by parent association                                                       |
+| ---------- | --------------------------------------------------------------------------------------------------- |
+| HubSpot    | Notes (via `/crm/v4/objects/<obj>/<id>/associations/notes`)                                         |
+| Salesforce | Tasks (via `WhoId / WhatId / AccountId IN (…)`), ContentDocuments (via `ContentDocumentLink`)       |
+| Pipedrive  | Activities (via `/activities?org_id=`, `?person_id=`, `?deal_id=`)                                  |
+| Zoho       | Notes (via COQL `select id from Notes where Parent_Id = '<id>'`)                                    |
+
+Auxiliary-record counts are reported under the `notes` column of
+`sweep-result.json` regardless of provider — the umbrella keeps the
+output stable across providers.
+
+**Hard-delete vs soft-delete.** HubSpot, Pipedrive, and Zoho REST
+DELETE permanently removes the row. Salesforce REST DELETE soft-deletes
+into the Recycle Bin, so the sweep follows up with a SOAP
+`emptyRecycleBin` call to truly hard-delete the IDs. If the integration
+user lacks the **Bulk API Hard Delete** profile permission, that SOAP
+call is logged as a warning in the run's `errors[]` and the records
+remain soft-deleted (Salesforce auto-purges the Recycle Bin after 15
+days, so the worst-case lag is two weekly cycles). To restore true
+hard-delete, grant **Bulk API Hard Delete** on the integration user's
+profile.
+
+The 24-hour age floor is what makes this safe to run alongside live
+vitest sessions: a fixture currently in flight is younger than the
+floor and is skipped. The floor can be overridden for local debugging
+via `SWEEP_MIN_AGE_MINUTES=<n>`; CI never sets it.
+
+**Per-object delete cap.** The script will not scan or delete more
+than 200 records of any one object type in a single run. This is a
+circuit breaker — if the script ever goes wrong (a regex regression, a
+misclassified namespace), the blast radius is bounded and the next
+weekly run picks up the rest. The cap is silent: a capped run still
+exits 0. To tell whether you hit it, compare `scanned[<object>]`
+against the cap in the artifact's `sweep-result.json` — a value equal
+to 200 means the cap was reached and there were probably more matches
+behind it, so check next week's run too. (The 200 is large enough that
+a steady-state clean sandbox should never come close.)
+
+**Per-provider isolation.** Providers are processed sequentially. A
+single provider's failure (5xx storm, expired token, parser break)
+fails only that provider's segment and the script continues to the
+next; the overall job exits 1 only if at least one provider failed,
+which is what triggers the tracking-issue alert.
+
+**Triggers and modes**
+
+| Trigger                                      | Mode                       | Why                                                                                  |
+| -------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------ |
+| `schedule` (Sunday 05:47 UTC)                | Apply (real deletes)       | The hygiene cycle.                                                                   |
+| `workflow_dispatch` (default)                | Apply (real deletes)       | Manual catch-up after a known incident.                                              |
+| `workflow_dispatch` with `dry_run: true`     | Dry-run (no deletes)       | Preview what the next cycle would touch without actually touching anything.          |
+| `push` to `main`/`master` touching the sweep | Dry-run (forced)           | A PR that edits the sweep script can never accidentally delete real sandbox state.   |
+
+**Outputs.** Each run uploads a `crm-sandbox-fixture-sweep` artifact
+with `sweep-result.json` (machine-readable per-provider counts) and
+`sweep-summary.md` (the table also appended to the GitHub Actions run
+summary).
+
+**On failure.** A tracking issue labelled
+`crm-sandbox-fixture-sweep-failed` is opened (or updated with a
+fresh comment if one is already open) carrying a first-responder
+checklist that mirrors §5 of each provider's section. When the next
+run goes green the issue is auto-closed. The label is intentionally
+distinct from the validator workflow's `crm-cached-identity-drift`
+label so the on-call can tell hygiene from drift at a glance.
+
+**Adding a new provider.** Wire its sandbox secrets the same way the
+validator workflow consumes them, then teach
+`scripts/sweep-crm-sandbox-fixtures.ts` how to (a) search by the
+fixture namespace, (b) hard-delete a batch, and (c) report counts in
+the same shape the existing providers do. Cover the new helpers with a
+case in `scripts/sweep-crm-sandbox-fixtures.test.ts`.
 
 ### Optional booking-suite env vars (per provider)
 
