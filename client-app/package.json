@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
+    "prebuild": "node ../scripts/generate-sitemap.mjs",
     "build": "npm run build:app && npm run build:public",
     "build:app": "vite build --config vite.config.ts",
     "build:public": "vite build --config vite.public.config.ts",
