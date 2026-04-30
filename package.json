@@ -21,6 +21,7 @@
     "test:e2e:onboarding-template-update-failure-surfaces": "tsx tests/e2e/onboardingTemplateUpdateFailureSurfaces.spec.ts",
     "test:e2e:agent-builder-starter-templates": "tsx tests/e2e/agentBuilderStarterTemplates.spec.ts",
     "test:e2e:billing-recommendation-checkout": "tsx tests/e2e/billingRecommendationCheckout.spec.ts",
+    "test:e2e:billing-recommendation-checkout-stripe": "tsx tests/e2e/billingRecommendationCheckoutStripe.spec.ts",
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "test:e2e:public-hero-visual": "tsx tests/e2e/publicHeroVisualRegression.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"widget/**/*.{js,ts,tsx}\" \"server/**/*.{ts,tsx}\" \"shared/**/*.{ts,tsx}\"",
