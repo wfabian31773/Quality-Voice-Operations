@@ -681,7 +681,7 @@
       "try_again": "Reintentar",
       "update_failed_title": "No se pudo aplicar esa plantilla",
       "update_failed": "No pudimos actualizar tu agente con la plantilla elegida. Comprueba tu conexión e inténtalo de nuevo.",
-      "update_failed_with_detail": "No pudimos actualizar tu agente con la plantilla elegida: {{detail}}. Inténtalo de nuevo."
+      "update_failed_with_detail": "No pudimos actualizar tu agente con la plantilla elegida. {{detail}}"
     },
     "phone": {
       "title": "Añade tu primer número de teléfono",

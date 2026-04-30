@@ -16,6 +16,25 @@ export function getToken() {
   return token;
 }
 
+// Task #1279: friendlier user-visible fallback messages when the server
+// doesn't supply a `body.error` / `body.message`. The raw "Request failed:
+// <status>" wording used to leak straight into UI alerts (the onboarding
+// template-update failure being the canonical example). We keep the HTTP
+// status on the thrown error (`err.status`) so callers, logs, and Sentry
+// breadcrumbs can still branch on it; only the user-visible `err.message`
+// changes.
+const NETWORK_ERROR_MESSAGE =
+  "Couldn't reach the server. Check your connection and try again.";
+const SERVER_ERROR_MESSAGE =
+  "The server didn't respond as expected. Please try again.";
+const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.';
+
+function fallbackMessageForStatus(status: number): string {
+  if (status === 403) return 'Insufficient permissions';
+  if (status >= 500) return SERVER_ERROR_MESSAGE;
+  return GENERIC_ERROR_MESSAGE;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const tokenAtStart = token;
   const headers: Record<string, string> = {
@@ -26,7 +45,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers, credentials: 'include' });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, headers, credentials: 'include' });
+  } catch (networkErr) {
+    // fetch() rejects on transient network failures (offline, DNS, CORS
+    // preflight refusal, etc) with messages like "Failed to fetch" that
+    // are useless to end users. Replace with a short, plain-English
+    // message but preserve the original on `err.cause` so dev tools and
+    // Sentry can still see the underlying reason.
+    const err = new Error(NETWORK_ERROR_MESSAGE);
+    Object.assign(err, { status: 0, body: null, cause: networkErr });
+    throw err;
+  }
 
   if (res.status === 401) {
     if (token === tokenAtStart) {
@@ -61,7 +92,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
       throw new Error('Account setup incomplete');
     }
-    const msg = body.error || body.message || (res.status === 403 ? 'Insufficient permissions' : `Request failed: ${res.status}`);
+    const msg = body.error || body.message || fallbackMessageForStatus(res.status);
     const err = new Error(msg);
     Object.assign(err, { status: res.status, body });
     throw err;

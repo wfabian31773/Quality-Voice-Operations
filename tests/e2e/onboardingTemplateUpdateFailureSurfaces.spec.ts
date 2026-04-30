@@ -97,13 +97,20 @@ const PICKED_TEMPLATE_TYPE = 'medical-after-hours';
 const TEMPLATE_HEADING_TEXT = 'Choose Your Agent Template';
 const PHONE_HEADING_TEXT = 'Add Your First Phone Number';
 const ALERT_TITLE_TEXT = "Couldn't apply that template";
-// The api client wraps a non-OK response with no body as
-// `Request failed: <status>` (see client-app/src/lib/api.ts), and
-// `handleTemplateConfirm` formats that into the `_with_detail`
-// variant. Match the shared prefix so we don't pin the spec to the
-// transient HTTP status code.
+// The api client wraps a non-OK 5xx with no body as the friendly
+// fallback "The server didn't respond as expected. Please try again."
+// (see client-app/src/lib/api.ts — Task #1279), and
+// `handleTemplateConfirm` interpolates that as the `{{detail}}` of the
+// `_with_detail` variant. We assert two things:
+//   - the shared lead-in (`ALERT_DETAIL_PREFIX`) so the spec doesn't
+//     pin itself to the transient HTTP status code, and
+//   - that the user-visible alert body NEVER again leaks the raw
+//     `Request failed: <status>` developer string from the api client.
 const ALERT_DETAIL_PREFIX =
   "We couldn't update your agent with the chosen template";
+const ALERT_FRIENDLY_DETAIL =
+  "The server didn't respond as expected. Please try again.";
+const ALERT_RAW_LEAK_FRAGMENT = 'Request failed:';
 const TRY_AGAIN_BUTTON_TEXT = 'Try again';
 
 // What the seed writes to the starter agent. We RESET back to these
@@ -403,6 +410,14 @@ async function run(): Promise<void> {
     assert(
       alertText.includes(ALERT_DETAIL_PREFIX),
       `alert should mention the failure detail (prefix ${JSON.stringify(ALERT_DETAIL_PREFIX)}); got ${JSON.stringify(alertText)}`,
+    );
+    assert(
+      alertText.includes(ALERT_FRIENDLY_DETAIL),
+      `alert should surface the friendly server-error wording ${JSON.stringify(ALERT_FRIENDLY_DETAIL)} (Task #1279); got ${JSON.stringify(alertText)}`,
+    );
+    assert(
+      !alertText.includes(ALERT_RAW_LEAK_FRAGMENT),
+      `alert must not leak the raw "${ALERT_RAW_LEAK_FRAGMENT} <status>" developer string (Task #1279); got ${JSON.stringify(alertText)}`,
     );
 
     assert(

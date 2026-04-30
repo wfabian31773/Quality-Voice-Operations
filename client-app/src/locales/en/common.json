@@ -681,7 +681,7 @@
       "try_again": "Try again",
       "update_failed_title": "Couldn't apply that template",
       "update_failed": "We couldn't update your agent with the chosen template. Please check your connection and try again.",
-      "update_failed_with_detail": "We couldn't update your agent with the chosen template: {{detail}}. Please try again."
+      "update_failed_with_detail": "We couldn't update your agent with the chosen template. {{detail}}"
     },
     "phone": {
       "title": "Add Your First Phone Number",
