@@ -20,6 +20,7 @@
     "test:e2e:onboarding-template-updates-agent": "tsx tests/e2e/onboardingTemplateUpdatesAgent.spec.ts",
     "test:e2e:onboarding-template-update-failure-surfaces": "tsx tests/e2e/onboardingTemplateUpdateFailureSurfaces.spec.ts",
     "test:e2e:agent-builder-starter-templates": "tsx tests/e2e/agentBuilderStarterTemplates.spec.ts",
+    "test:e2e:agent-builder-template-localization": "tsx tests/e2e/agentBuilderTemplateLocalization.spec.ts",
     "test:e2e:billing-recommendation-checkout": "tsx tests/e2e/billingRecommendationCheckout.spec.ts",
     "test:e2e:billing-recommendation-checkout-stripe": "tsx tests/e2e/billingRecommendationCheckoutStripe.spec.ts",
     "test:e2e:billing-discount-badge": "tsx tests/e2e/billingDiscountBadge.spec.ts",

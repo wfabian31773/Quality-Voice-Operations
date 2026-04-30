@@ -6245,6 +6245,32 @@ export interface IndustryTemplateResolved {
 }
 
 /**
+ * Test-only seam: when `window.__INDUSTRY_TEMPLATE_COPY_FORCE_MISSING__` is set
+ * by a Playwright spec, treat the listed (template key, language code) pairs as
+ * if their `INDUSTRY_TEMPLATE_COPY` entry didn't exist. This lets the e2e suite
+ * (`tests/e2e/agentBuilderTemplateLocalization.spec.ts`) actually exercise the
+ * English-fallback hint code path even though, in production, every shipped
+ * template has copy for every supported language. Returns false in every other
+ * environment because the global is never assigned in product code.
+ */
+function isTemplateCopyForcedMissingForTest(
+  key: IndustryTemplateKey,
+  lang: string,
+): boolean {
+  if (typeof window === 'undefined') return false;
+  const overrides = (
+    window as unknown as {
+      __INDUSTRY_TEMPLATE_COPY_FORCE_MISSING__?: Partial<
+        Record<IndustryTemplateKey, readonly string[]>
+      >;
+    }
+  ).__INDUSTRY_TEMPLATE_COPY_FORCE_MISSING__;
+  if (!overrides) return false;
+  const langs = overrides[key];
+  return Array.isArray(langs) && langs.includes(lang);
+}
+
+/**
  * Resolve the industry-specific copy for a template + language pair.
  *
  * Behaviour:
@@ -6260,7 +6286,7 @@ export function getIndustryTemplateCopy(
 ): IndustryTemplateResolved {
   const lang = language && SUPPORTED_CODES.has(language) ? language : DEFAULT_AGENT_LANGUAGE;
   const map = INDUSTRY_TEMPLATE_COPY[key];
-  const localized = map[lang];
+  const localized = isTemplateCopyForcedMissingForTest(key, lang) ? undefined : map[lang];
   const englishCopy = map[DEFAULT_AGENT_LANGUAGE]!;
   const usedEnglishFallback = !localized && lang !== DEFAULT_AGENT_LANGUAGE;
   const baseGreeting = getDefaultWelcomeGreeting(lang);

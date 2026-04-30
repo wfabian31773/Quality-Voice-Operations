@@ -51,6 +51,11 @@ jobs:
       ADMIN_API_PORT: "3002"
       VOICE_GATEWAY_PORT: "3001"
       DISABLE_PHI_LOGGING: "true"
+      # Bump per-tenant live-stream/SSE cap so specs that re-mount
+      # Dashboard many times in a 60s window (e.g. the agent-builder
+      # template-localization spec) don't false-trip the 429 path.
+      # Production keeps the conservative default of 20.
+      TENANT_LIVE_STREAM_CAP: "500"
 
     steps:
       - name: Check out repository
@@ -192,6 +197,13 @@ jobs:
           set -o pipefail
           npm run test:e2e:agent-builder-starter-templates 2>&1 | tee .ci-logs/agent-builder-starter-templates.log
 
+      - name: Run Agent Builder template-localization e2e
+        id: spec-agent-builder-template-localization
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e:agent-builder-template-localization 2>&1 | tee .ci-logs/agent-builder-template-localization.log
+
       - name: Run Tenant visual smoke e2e
         id: spec-tenant-visual-smoke
         continue-on-error: true
@@ -215,7 +227,7 @@ jobs:
           fi
 
       - name: Upload Platform Dev + spec logs and screenshots on failure
-        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure'
+        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-agent-builder-template-localization.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: admin-e2e-artifacts
@@ -251,7 +263,7 @@ jobs:
       # spec failed. Without it, `continue-on-error: true` above would make
       # the whole job pass even though specs broke.
       - name: Fail job if any spec failed
-        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure'
+        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-agent-builder-template-localization.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure'
         run: |
           echo "::error::One or more admin e2e specs failed:"
           echo "  sales-inbox-filters:                ${{ steps.spec-sales-inbox-filters.outcome }}"
@@ -266,6 +278,7 @@ jobs:
           echo "  onboarding-template-update-failure-surfaces:${{ steps.spec-onboarding-template-update-failure-surfaces.outcome }}"
           echo "  tenant-status-badge-axe:            ${{ steps.spec-tenant-status-badge-axe.outcome }}"
           echo "  agent-builder-starter-templates:    ${{ steps.spec-agent-builder-starter-templates.outcome }}"
+          echo "  agent-builder-template-localization:${{ steps.spec-agent-builder-template-localization.outcome }}"
           echo "  tenant-visual-smoke:                ${{ steps.spec-tenant-visual-smoke.outcome }}"
           echo "  billing-downgrade-credit-copy:      ${{ steps.spec-billing-downgrade-credit-copy.outcome }}"
           exit 1
