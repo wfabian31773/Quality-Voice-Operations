@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Upload, FileJson, FileText, ShieldCheck, AlertTriangle,
   CheckCircle2, XCircle, Repeat, Plus, ArrowRight, Loader2, Eye,
+  StopCircle, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
-import { StatCard } from '../../components/ui';
+import { StatCard, PageHeader, OperationStatusPanel, type OperationStatus } from '../../components/ui';
 import {
   CallBackfillEventV1Schema,
   INGEST_FRESH_WINDOW_DAYS,
@@ -275,6 +276,8 @@ export default function BackfillCalls() {
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const [cancelled, setCancelled] = useState(false);
 
   const reasonValid = reason.trim().length >= 8;
   const attestedByValid = attestedBy.trim().length > 0;
@@ -389,8 +392,9 @@ export default function BackfillCalls() {
     setPreviewing(false);
   };
 
-  const handleSubmit = async () => {
-    if (!previewRows) return;
+  const submitRowsLoop = async (rowsToSubmit: SubmitRow[]) => {
+    cancelledRef.current = false;
+    setCancelled(false);
     setPageError(null);
     setSubmitting(true);
 
@@ -400,18 +404,25 @@ export default function BackfillCalls() {
       original_system: originalSystem.trim() || undefined,
     };
 
-    const initial: SubmitRow[] = previewRows.map((p) => ({
-      ...p,
-      status: p.validation === 'invalid' ? 'error' : 'pending',
-      errorMessage: p.validation === 'invalid' ? 'Skipped: validation failed' : undefined,
-    }));
-    setSubmitRows(initial);
+    const working = rowsToSubmit.slice();
+    setSubmitRows(working);
 
-    // Submit one event at a time so the per-row status table updates as we go.
-    // The endpoint is rate-limited at 100 req/min per tenant — well above the
-    // typical "handful of calls after a remix outage" use case.
-    for (let i = 0; i < initial.length; i++) {
-      const row = initial[i];
+    for (let i = 0; i < working.length; i++) {
+      if (cancelledRef.current) {
+        for (let j = i; j < working.length; j++) {
+          if (working[j].status === 'pending') {
+            working[j] = {
+              ...working[j],
+              status: 'error',
+              errorMessage: 'Cancelled by operator before submission.',
+            };
+          }
+        }
+        setSubmitRows([...working]);
+        break;
+      }
+
+      const row = working[i];
       if (row.status !== 'pending') continue;
       const merged = materializeEvent(row.raw, tenantId, attestation) as CallBackfillEventV1;
       try {
@@ -419,13 +430,13 @@ export default function BackfillCalls() {
           '/v1/ingest/calls/backfill',
           merged,
         );
-        initial[i] = { ...row, status: 'success', responseBody: res, httpStatus: 201 };
+        working[i] = { ...row, status: 'success', responseBody: res, httpStatus: 201 };
       } catch (err: unknown) {
         const errObj = err as { status?: number; body?: BackfillSubmitResponse; message?: string };
         const httpStatus = errObj.status;
         const body = errObj.body;
         if (httpStatus === 409) {
-          initial[i] = {
+          working[i] = {
             ...row,
             status: 'duplicate',
             httpStatus,
@@ -433,7 +444,7 @@ export default function BackfillCalls() {
             errorMessage: body?.error ?? 'Duplicate idempotency key',
           };
         } else {
-          initial[i] = {
+          working[i] = {
             ...row,
             status: 'error',
             httpStatus,
@@ -442,34 +453,120 @@ export default function BackfillCalls() {
           };
         }
       }
-      setSubmitRows([...initial]);
+      setSubmitRows([...working]);
     }
 
     setSubmitting(false);
   };
 
+  const handleSubmit = async () => {
+    if (!previewRows) return;
+    const initial: SubmitRow[] = previewRows.map((p) => ({
+      ...p,
+      status: p.validation === 'invalid' ? 'error' : 'pending',
+      errorMessage: p.validation === 'invalid' ? 'Skipped: validation failed' : undefined,
+    }));
+    await submitRowsLoop(initial);
+  };
+
+  const handleCancel = () => {
+    cancelledRef.current = true;
+    setCancelled(true);
+  };
+
+  const handleRetryFailed = async () => {
+    if (!submitRows) return;
+    const next = submitRows.map((r) =>
+      r.status === 'error' && r.errorMessage !== 'Skipped: validation failed' && r.validation === 'ok'
+        ? { ...r, status: 'pending' as const, errorMessage: undefined, httpStatus: undefined, responseBody: undefined }
+        : r,
+    );
+    if (!next.some((r) => r.status === 'pending')) return;
+    await submitRowsLoop(next);
+  };
+
   const loadJsonTemplate = () => { setMode('json'); setText(JSON_TEMPLATE); };
   const loadCsvTemplate = () => { setMode('csv'); setText(CSV_TEMPLATE); };
 
+  const opStatus: OperationStatus = submitting
+    ? 'running'
+    : cancelled && submitSummary
+      ? 'cancelled'
+      : submitSummary
+        ? submitSummary.error > 0
+          ? 'failed'
+          : 'success'
+        : previewing
+          ? 'queued'
+          : 'idle';
+  const canRetry = !submitting && !!submitSummary && submitSummary.error > 0;
+  const opProcessed = submitSummary
+    ? submitSummary.success + submitSummary.duplicate + submitSummary.error
+    : undefined;
+  const opTotal = submitSummary?.total ?? previewRows?.length ?? undefined;
+  const opProgress = opTotal && opProcessed !== undefined && opTotal > 0
+    ? opProcessed / opTotal
+    : submitting ? 0.05 : undefined;
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Repeat className="w-7 h-7 text-primary" />
-            Backfill calls
-          </h1>
-          <p className="text-muted mt-1 max-w-2xl">
-            Replay historical call events through the federated ingest endpoint without
-            writing one-off scripts. Paste JSON or upload CSV, attest who&nbsp;authorized
-            the late ingest and why, then preview the diff before submitting per-row.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <ShieldCheck className="w-4 h-4" />
-          Tenant: <span className="font-mono text-foreground">{tenantId || '—'}</span>
-        </div>
-      </div>
+      <PageHeader
+        title="Backfill calls"
+        description="Replay historical call events through the federated ingest endpoint without writing one-off scripts. Paste JSON or upload CSV, attest who authorized the late ingest and why, then preview the diff before submitting per-row."
+        icon={<Repeat className="h-5 w-5" />}
+        actions={
+          <div className="flex items-center gap-2 text-xs text-text-secondary px-3 py-1.5 rounded-md border border-border bg-surface-hover">
+            <ShieldCheck className="h-4 w-4" />
+            Tenant: <span className="font-mono text-text-primary">{tenantId || '—'}</span>
+          </div>
+        }
+      />
+
+      {(submitting || submitSummary || previewing) && (
+        <OperationStatusPanel
+          title="Backfill submission"
+          description={previewing
+            ? 'Validating events against the ingest schema and existing call IDs.'
+            : submitting
+              ? 'Submitting events one-by-one through /v1/ingest/calls/backfill.'
+              : cancelled
+                ? 'Submission cancelled — pending rows were not sent.'
+                : 'Run finished — review per-row results below.'}
+          status={opStatus}
+          progress={opProgress}
+          processed={opProcessed}
+          total={opTotal}
+          actions={
+            <>
+              {submitting && (
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-warning/40 bg-warning-light text-warning text-xs font-medium hover:bg-warning/10 transition-colors"
+                >
+                  <StopCircle className="h-3.5 w-3.5" /> Cancel
+                </button>
+              )}
+              {canRetry && (
+                <button
+                  type="button"
+                  onClick={handleRetryFailed}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-primary/40 bg-primary-light text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Retry failed ({submitSummary?.error ?? 0})
+                </button>
+              )}
+            </>
+          }
+          meta={submitSummary ? [
+            { label: 'Submitted', value: submitSummary.success },
+            { label: 'Duplicates', value: submitSummary.duplicate },
+            { label: 'Errors', value: submitSummary.error },
+            { label: 'Pending', value: submitSummary.pending },
+          ] : undefined}
+          error={pageError ?? undefined}
+        />
+      )}
 
       <section className="bg-surface border border-border rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">

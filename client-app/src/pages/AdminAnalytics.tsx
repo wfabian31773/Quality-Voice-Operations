@@ -7,9 +7,8 @@ import {
 } from 'recharts';
 import { Inbox } from 'lucide-react';
 import { api } from '../lib/api';
-import { PageHeader } from '../components/ui';
+import { PageHeader, AdminTable, AdminToolbar } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
-import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
 import { EmptyState, Skeleton, SkeletonRows } from '../components/state';
 
@@ -195,8 +194,6 @@ export default function AdminAnalytics() {
         }
       />
 
-      <GlobalScopeBanner />
-
       <OperationsAlertsBanner />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -297,25 +294,27 @@ export default function AdminAnalytics() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-lg font-semibold text-text-primary">
             Tenant-by-Tenant Breakdown
           </h2>
-          <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-text-secondary">
+            {filteredSortedTenants.length} of {tenants.length} tenants
+          </span>
+        </div>
+        <AdminToolbar
+          trailing={
             <input
               type="search"
               value={tenantSearch}
               onChange={(e) => setTenantSearch(e.target.value)}
               placeholder="Search by name or slug..."
               aria-label="Search tenants"
-              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-purple-400 w-64"
+              className="px-3 py-1.5 rounded-md bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary w-64"
             />
-            <span className="text-xs text-text-secondary">
-              {filteredSortedTenants.length} of {tenants.length} tenants
-            </span>
-          </div>
-        </div>
+          }
+        />
         {tenantsLoading ? (
           <SkeletonRows count={6} rowClassName="h-10" />
         ) : !tenants.length ? (
@@ -323,68 +322,66 @@ export default function AdminAnalytics() {
         ) : !filteredSortedTenants.length ? (
           <div className="text-muted-foreground">No tenants match "{tenantSearch}"</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="pb-2 font-medium">Tenant</th>
-                  <SortableTh label="Plan" sortKey="plan" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} />
-                  <SortableTh label="Status" sortKey="status" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} />
-                  <th className="pb-2 font-medium text-right">Users</th>
-                  <SortableTh label="Calls (30d)" sortKey="calls_last_30d" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
-                  <SortableTh label="Total Calls" sortKey="total_calls" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
-                  <SortableTh label="Last Activity" sortKey="last_call_at" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
-                  <th className="pb-2 font-medium text-right">&nbsp;</th>
+          <AdminTable density="dense">
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <SortableTh label="Plan" sortKey="plan" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} />
+                <SortableTh label="Status" sortKey="status" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} />
+                <th className="text-right">Users</th>
+                <SortableTh label="Calls (30d)" sortKey="calls_last_30d" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
+                <SortableTh label="Total Calls" sortKey="total_calls" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
+                <SortableTh label="Last Activity" sortKey="last_call_at" currentKey={tenantSortKey} dir={tenantSortDir} onSort={toggleTenantSort} align="right" />
+                <th className="text-right">&nbsp;</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSortedTenants.map((t) => (
+                <tr
+                  key={t.id}
+                  className="cursor-pointer outline-none"
+                  onClick={() => navigate(`/admin/analytics/tenants/${t.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/admin/analytics/tenants/${t.id}`);
+                    }
+                  }}
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`Drill into ${t.name}'s analytics`}
+                  title={`Drill into ${t.name}'s analytics`}
+                >
+                  <td className="font-medium">
+                    <div>{t.name}</div>
+                    <div className="text-xs text-text-secondary">{t.slug}</div>
+                  </td>
+                  <td className="capitalize">{t.plan ?? '—'}</td>
+                  <td>
+                    <span
+                      className={clsx(
+                        'inline-flex px-2 py-0.5 rounded text-xs font-medium capitalize',
+                        t.status === 'active' && 'bg-success-light text-success border border-success/30',
+                        t.status === 'pending' && 'bg-warning-light text-warning border border-warning/30',
+                        t.status === 'suspended' && 'bg-danger-light text-danger border border-danger/30',
+                      )}
+                    >
+                      {t.status}
+                    </span>
+                  </td>
+                  <td className="text-right">{toNum(t.user_count).toLocaleString()}</td>
+                  <td className="text-right">{toNum(t.calls_last_30d).toLocaleString()}</td>
+                  <td className="text-right">{toNum(t.total_calls).toLocaleString()}</td>
+                  <td className="text-right text-text-secondary text-xs">
+                    {t.last_call_at ? new Date(t.last_call_at).toLocaleDateString() : 'never'}
+                  </td>
+                  <td className="text-right text-xs text-primary font-medium">View →</td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredSortedTenants.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-b border-border/40 cursor-pointer hover:bg-white/5 focus-within:bg-white/5 transition-colors outline-none"
-                    onClick={() => navigate(`/admin/analytics/tenants/${t.id}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        navigate(`/admin/analytics/tenants/${t.id}`);
-                      }
-                    }}
-                    role="link"
-                    tabIndex={0}
-                    aria-label={`Drill into ${t.name}'s analytics`}
-                    title={`Drill into ${t.name}'s analytics`}
-                  >
-                    <td className="py-2.5 font-medium text-text-primary">
-                      <div>{t.name}</div>
-                      <div className="text-xs text-text-secondary">{t.slug}</div>
-                    </td>
-                    <td className="py-2.5 capitalize">{t.plan ?? '—'}</td>
-                    <td className="py-2.5">
-                      <span
-                        className={clsx(
-                          'inline-flex px-2 py-0.5 rounded text-xs font-medium capitalize',
-                          t.status === 'active' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                          t.status === 'pending' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-                          t.status === 'suspended' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                        )}
-                      >
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 text-right">{toNum(t.user_count).toLocaleString()}</td>
-                    <td className="py-2.5 text-right">{toNum(t.calls_last_30d).toLocaleString()}</td>
-                    <td className="py-2.5 text-right">{toNum(t.total_calls).toLocaleString()}</td>
-                    <td className="py-2.5 text-right text-text-secondary text-xs">
-                      {t.last_call_at ? new Date(t.last_call_at).toLocaleDateString() : 'never'}
-                    </td>
-                    <td className="py-2.5 text-right text-xs text-purple-300">View →</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </AdminTable>
         )}
-      </div>
+      </section>
 
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">

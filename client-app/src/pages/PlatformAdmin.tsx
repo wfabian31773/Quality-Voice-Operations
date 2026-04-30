@@ -690,7 +690,7 @@ function CreateVersionForm({ templateId, onClose }: { templateId: string; onClos
         <button
           onClick={() => createMutation.mutate()}
           disabled={!version || !changelog || createMutation.isPending}
-          className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium bg-primary text-on-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
         >
           {createMutation.isPending ? 'Creating...' : 'Create Draft'}
         </button>
@@ -754,7 +754,7 @@ function TemplateVersionManager({ templateId }: { templateId: string }) {
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium bg-primary text-on-primary rounded-lg hover:bg-primary/90"
         >
           <Plus className="h-3.5 w-3.5" /> New Version
         </button>
@@ -5264,7 +5264,7 @@ function SupportInboxTab() {
               onClick={() => setStatusFilter(s)}
               className={`px-3 py-1.5 text-sm rounded-lg border ${
                 statusFilter === s
-                  ? 'bg-primary text-white border-primary'
+                  ? 'bg-primary text-on-primary border-primary'
                   : 'bg-surface border-border text-text-muted hover:text-text-primary'
               }`}
             >
@@ -5388,7 +5388,7 @@ function SupportInboxTab() {
                       {t.user_email && (
                         <button
                           onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
-                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary text-white hover:opacity-90"
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary text-on-primary hover:opacity-90"
                         >
                           <Mail className="h-3 w-3" /> {adminT('platform_admin.support_inbox.reply')}
                         </button>
@@ -6667,7 +6667,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 type="button"
                 onClick={() => trimmed && sendReply.mutate(trimmed)}
                 disabled={!trimmed || sendReply.isPending || !ticket.user_email}
-                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-primary text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Mail className="h-3.5 w-3.5" />
                 {sendReply.isPending ? adminT('platform_admin.support_inbox.sending') : adminT('platform_admin.support_inbox.send_reply')}

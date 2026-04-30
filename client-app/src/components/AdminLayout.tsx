@@ -1,12 +1,16 @@
 import '../styles/tw-app.css';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
+import { api } from '../lib/api';
 import {
   Building2, BarChart3, Store, CreditCard, Shield,
-  LogOut, Moon, Sun, Menu, X, Compass, Inbox, History,
+  LogOut, Moon, Sun, Menu, X, Compass, Inbox,
+  ScrollText, LayoutDashboard, Upload,
+  ShieldCheck,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import PlatformAssistant from './PlatformAssistant';
@@ -15,30 +19,103 @@ import AppFooter from './AppFooter';
 import NotificationsCenter from './NotificationsCenter';
 import LanguageSwitcher from './LanguageSwitcher';
 import Modal from './Modal';
+import GlobalScopeBanner from './GlobalScopeBanner';
+import TenantScopePicker from './TenantScopePicker';
 
 interface NavItem {
   to: string;
   icon: typeof Building2;
   i18nKey: string;
+  /** When true, NavLink uses `end` so the nested Outlet routes don't keep
+   * the parent active. */
+  exact?: boolean;
 }
 
-const adminLinks: NavItem[] = [
-  { to: '/admin/dashboard', icon: Building2, i18nKey: 'admin_nav.tenants' },
-  { to: '/admin/analytics', icon: BarChart3, i18nKey: 'admin_nav.analytics' },
-  { to: '/admin/sales-inbox', icon: Inbox, i18nKey: 'admin_nav.sales_inbox' },
-  { to: '/admin/marketplace', icon: Store, i18nKey: 'admin_nav.marketplace' },
-  { to: '/admin/billing', icon: CreditCard, i18nKey: 'admin_nav.billing' },
-  { to: '/admin/security', icon: Shield, i18nKey: 'admin_nav.security' },
-  { to: '/admin/governance', icon: Compass, i18nKey: 'admin_nav.governance' },
-  { to: '/admin/ingest-backfill', icon: History, i18nKey: 'admin_nav.backfill' },
+interface NavGroup {
+  i18nKey: string;
+  items: NavItem[];
+}
+
+/**
+ * Admin sidebar grouped into purposeful sections so the long route list
+ * scans cleanly. Each group renders as a small uppercase eyebrow with the
+ * routes underneath. New routes added to the admin console should be
+ * filed into one of the existing groups (or a new group added here) so
+ * the chrome stays consistent across pages.
+ */
+const ADMIN_GROUPS: NavGroup[] = [
+  {
+    i18nKey: 'admin_nav.groups.overview',
+    items: [
+      { to: '/admin/dashboard', icon: LayoutDashboard, i18nKey: 'admin_nav.tenants', exact: true },
+      { to: '/admin/analytics', icon: BarChart3, i18nKey: 'admin_nav.analytics' },
+    ],
+  },
+  {
+    i18nKey: 'admin_nav.groups.tenants_growth',
+    items: [
+      { to: '/admin/sales-inbox', icon: Inbox, i18nKey: 'admin_nav.sales_inbox' },
+      { to: '/admin/marketplace', icon: Store, i18nKey: 'admin_nav.marketplace' },
+      { to: '/admin/billing', icon: CreditCard, i18nKey: 'admin_nav.billing' },
+    ],
+  },
+  {
+    i18nKey: 'admin_nav.groups.operations',
+    items: [
+      { to: '/admin/security', icon: Shield, i18nKey: 'admin_nav.security' },
+      { to: '/admin/governance', icon: Compass, i18nKey: 'admin_nav.governance' },
+      { to: '/admin/ingest-backfill', icon: Upload, i18nKey: 'admin_nav.ingest_backfill' },
+    ],
+  },
 ];
+
+/** Map raw DB role → i18n key under `admin_nav.role.*`. */
+function roleI18nKey(rawRole: string | undefined, isPlatformAdmin: boolean): string {
+  if (isPlatformAdmin) return 'admin_nav.role.platform_admin';
+  switch (rawRole) {
+    case 'tenant_owner': return 'admin_nav.role.tenant_owner';
+    case 'operations_manager': return 'admin_nav.role.operations_manager';
+    case 'billing_admin': return 'admin_nav.role.billing_admin';
+    case 'agent_developer': return 'admin_nav.role.agent_developer';
+    case 'support_reviewer': return 'admin_nav.role.support_reviewer';
+    default: return 'admin_nav.role.viewer';
+  }
+}
+
+interface TenantSummaryLite {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+function tenantIdFromPath(pathname: string): string | null {
+  const m = /^\/admin\/analytics\/tenants\/([^/]+)/.exec(pathname);
+  return m ? m[1] : null;
+}
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const scopedTenantId = tenantIdFromPath(location.pathname);
+
+  const { data: tenantsData } = useQuery({
+    queryKey: ['scope-picker-tenants'],
+    queryFn: () => api.get<{ tenants: TenantSummaryLite[] }>('/platform/tenants'),
+    staleTime: 60_000,
+    enabled: !!user?.isPlatformAdmin,
+  });
+  const scopedTenant = useMemo(
+    () =>
+      scopedTenantId
+        ? (tenantsData?.tenants ?? []).find((t) => t.id === scopedTenantId) ?? null
+        : null,
+    [tenantsData, scopedTenantId],
+  );
   // Auto-close the mobile menu when the viewport crosses the lg breakpoint so
   // the underlying <Modal>'s scroll lock doesn't strand desktop users.
   useEffect(() => {
@@ -54,6 +131,11 @@ export default function AdminLayout() {
     navigate('/login');
   };
 
+  const roleLabel = useMemo(
+    () => t(roleI18nKey(user?.role, !!user?.isPlatformAdmin)),
+    [t, user?.role, user?.isPlatformAdmin],
+  );
+
   const sidebar = (
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-on-sidebar/10">
@@ -61,41 +143,44 @@ export default function AdminLayout() {
           <h1 className="text-lg font-bold text-on-sidebar tracking-tight font-display">{t('brand.name')}</h1>
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-accent/30 text-on-sidebar uppercase tracking-wider">{t('admin_nav.badge')}</span>
         </div>
-        <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
+        <p className="text-xs text-sidebar-text mt-1 truncate" title={user?.email}>{user?.email}</p>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {adminLinks.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end={link.to === '/admin/dashboard'}
-            onClick={() => setMobileOpen(false)}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary-hover text-on-primary'
-                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
-              )
-            }
-          >
-            <link.icon className="h-4.5 w-4.5 shrink-0" />
-            {t(link.i18nKey)}
-          </NavLink>
+      <nav
+        aria-label={t('admin_nav.console')}
+        className="flex-1 px-3 py-4 space-y-5 overflow-y-auto"
+      >
+        {ADMIN_GROUPS.map((group) => (
+          <div key={group.i18nKey} className="space-y-1">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-on-sidebar/50">
+              {t(group.i18nKey)}
+            </p>
+            {group.items.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.exact}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-on-primary shadow-[0_0_0_1px_rgba(255,255,255,0.08)_inset]'
+                      : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
+                  )
+                }
+              >
+                <link.icon className="h-4.5 w-4.5 shrink-0" />
+                {t(link.i18nKey)}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 
       <div className="px-3 py-4 border-t border-on-sidebar/10 space-y-1">
         <PortalSwitcher />
         <LanguageSwitcher variant="sidebar" />
-        <button
-          onClick={toggle}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors"
-        >
-          {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-          {dark ? t('theme.light') : t('theme.dark')}
-        </button>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors"
@@ -108,7 +193,7 @@ export default function AdminLayout() {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-surface-secondary">
       <aside className="hidden lg:flex w-64 shrink-0 bg-sidebar-bg flex-col print:hidden">
         {sidebar}
       </aside>
@@ -126,10 +211,10 @@ export default function AdminLayout() {
       </Modal>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border print:hidden">
-          <div className="flex items-center gap-3">
+        <header className="flex items-center justify-between gap-4 px-4 lg:px-6 py-2.5 bg-surface border-b border-border print:hidden">
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              className="lg:hidden p-1.5 -ml-1.5"
+              className="lg:hidden p-1.5 -ml-1.5 text-text-secondary hover:text-text-primary transition-colors"
               onClick={() => setMobileOpen(true)}
               aria-label={t('actions.open_menu')}
               aria-expanded={mobileOpen}
@@ -138,13 +223,57 @@ export default function AdminLayout() {
             </button>
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-primary">
               <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
-              {t('admin_nav.console')}
+              <span className="hidden sm:inline">{t('admin_nav.console')}</span>
+              <span className="sm:hidden">{t('admin_nav.badge')}</span>
+            </span>
+            <span
+              className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-accent/40 bg-accent-light text-accent text-[10px] font-semibold uppercase tracking-wider"
+              title={`${roleLabel} · ${user?.email ?? ''}`}
+            >
+              <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+              {roleLabel}
             </span>
           </div>
+
           <div className="flex items-center gap-1">
+            <TenantScopePicker />
+            <button
+              type="button"
+              onClick={() => navigate('/admin/security?tab=audit')}
+              aria-label={t('admin_nav.audit_shortcut_aria')}
+              title={t('admin_nav.audit_log')}
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-text-secondary border border-border hover:text-text-primary hover:bg-surface-hover transition-colors"
+            >
+              <ScrollText className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('admin_nav.audit_log')}
+            </button>
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label={dark ? t('theme.light') : t('theme.dark')}
+              title={dark ? t('theme.light') : t('theme.dark')}
+              className="p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+            >
+              {dark
+                ? <Sun className="h-4.5 w-4.5" aria-hidden="true" />
+                : <Moon className="h-4.5 w-4.5" aria-hidden="true" />}
+            </button>
             <NotificationsCenter />
           </div>
         </header>
+
+        <div className="px-4 lg:px-6 pt-3 print:hidden">
+          {scopedTenantId ? (
+            <GlobalScopeBanner
+              variant="tenant"
+              compact
+              tenantName={scopedTenant?.name ?? scopedTenantId}
+              tenantSlug={scopedTenant?.slug}
+            />
+          ) : (
+            <GlobalScopeBanner variant="global" compact />
+          )}
+        </div>
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-8">
           <Outlet />

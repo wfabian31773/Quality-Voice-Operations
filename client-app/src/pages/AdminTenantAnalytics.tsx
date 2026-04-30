@@ -5,11 +5,11 @@ import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, BarChart3 } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import { PageHeader } from '../components/ui';
 
 interface TenantInfo {
   id: string;
@@ -91,53 +91,44 @@ export default function AdminTenantAnalytics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <PageHeader
+        title={tenant ? tenant.name : 'Tenant Analytics'}
+        description={tenant
+          ? `Per-tenant analytics for ${tenant.slug} · plan ${tenant.plan ?? '—'} · status ${tenant.status}`
+          : 'Loading tenant context…'}
+        icon={<BarChart3 className="h-5 w-5" />}
+        breadcrumbs={
           <button
+            type="button"
             onClick={() => navigate('/admin/analytics')}
-            className="inline-flex items-center gap-1.5 text-sm text-purple-300 hover:text-purple-200"
+            className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             Back to Global Analytics
           </button>
-        </div>
-        <div className="flex gap-1 bg-muted rounded-lg p-1">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={clsx(
-                'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-                range === r
-                  ? 'bg-background shadow text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold text-white">
-          {tenant ? tenant.name : 'Tenant Analytics'}
-        </h1>
-        <p className="text-sm text-purple-200/70 mt-1">
-          {tenant
-            ? `Per-tenant analytics for ${tenant.slug} · plan ${tenant.plan ?? '—'} · status ${tenant.status}`
-            : 'Loading tenant context…'}
-        </p>
-      </div>
-
-      <GlobalScopeBanner
-        variant="tenant"
-        tenantName={tenant?.name}
-        tenantSlug={tenant?.slug}
+        }
+        actions={
+          <div className="flex gap-1 bg-surface-hover rounded-lg p-1 border border-border">
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={clsx(
+                  'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                  range === r
+                    ? 'bg-surface shadow-[var(--elevation-1)] text-text-primary'
+                    : 'text-text-secondary hover:text-text-primary',
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        }
       />
 
       {error && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-lg border border-danger/40 bg-danger-light px-4 py-3 text-sm text-danger">
           Failed to load tenant analytics. The tenant may not exist or the request failed.
         </div>
       )}
@@ -163,7 +154,7 @@ export default function AdminTenantAnalytics() {
         />
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
+      <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
         <h2 className="text-lg font-semibold mb-4 text-text-primary">
           Call Volume <span className="text-xs font-normal text-text-secondary ml-2">tenant-scoped · last {range}</span>
         </h2>
@@ -193,7 +184,7 @@ export default function AdminTenantAnalytics() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-xl p-6">
+        <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
           <h2 className="text-lg font-semibold mb-4 text-text-primary">Cost Breakdown</h2>
           {isLoading ? (
             <div className="text-muted-foreground">Loading...</div>
@@ -209,7 +200,7 @@ export default function AdminTenantAnalytics() {
           )}
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-6">
+        <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
           <h2 className="text-lg font-semibold mb-4 text-text-primary">Call Outcomes</h2>
           {isLoading ? (
             <div className="text-muted-foreground">Loading...</div>
@@ -223,7 +214,7 @@ export default function AdminTenantAnalytics() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
+      <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
         <h2 className="text-lg font-semibold mb-4 text-text-primary">Campaign Performance</h2>
         {isLoading ? (
           <div className="text-muted-foreground">Loading...</div>
@@ -253,7 +244,7 @@ export default function AdminTenantAnalytics() {
                     <td className="py-2.5 font-medium text-text-primary">
                       <Link
                         to={tenantId ? `/admin/analytics/tenants/${tenantId}/campaigns/${c.campaignId}` : '#'}
-                        className="text-purple-300 hover:text-purple-200 hover:underline"
+                        className="text-primary hover:text-primary-hover hover:underline transition-colors"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {c.campaignName}
@@ -289,10 +280,10 @@ function KpiCard({
 }) {
   const inner = (
     <>
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="text-2xl font-bold mt-1 text-text-primary">{value}</p>
+      <p className="text-xs text-text-secondary uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-2xl font-bold mt-1 text-text-primary tabular-nums font-display">{value}</p>
       {to && (
-        <p className="text-xs text-purple-300 mt-2 group-hover:text-purple-200">
+        <p className="text-xs text-primary mt-2 group-hover:text-primary-hover font-medium">
           {linkLabel ?? 'View →'}
         </p>
       )}
@@ -302,13 +293,13 @@ function KpiCard({
     return (
       <Link
         to={to}
-        className="group block bg-card border border-border rounded-xl p-4 hover:border-purple-400/50 hover:bg-surface-hover transition-colors"
+        className="group block bg-surface border border-border rounded-xl p-4 hover:border-primary/50 hover:bg-surface-hover hover:shadow-[var(--elevation-2)] transition-all"
       >
         {inner}
       </Link>
     );
   }
-  return <div className="bg-card border border-border rounded-xl p-4">{inner}</div>;
+  return <div className="bg-surface border border-border rounded-xl p-4 shadow-[var(--elevation-1)]">{inner}</div>;
 }
 
 function Row({ label, value, bold, muted }: { label: string; value: string; bold?: boolean; muted?: boolean }) {

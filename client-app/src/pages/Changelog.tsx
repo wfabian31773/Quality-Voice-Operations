@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { api } from '../lib/api';
 import { Sparkles, CheckCheck } from 'lucide-react';
 import { PageHeader } from '../components/ui';
+import { EmptyState, Skeleton } from '../components/state';
 
 interface Entry {
   id: string;
@@ -40,32 +41,40 @@ export default function Changelog() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <PageHeader
-        icon={<Sparkles className="h-5 w-5" />}
         title="What's new"
         description="Recent platform updates, fixes, and improvements."
-        actions={(
+        icon={<Sparkles className="h-5 w-5" />}
+        actions={
           <button
             onClick={() => readAll.mutate()}
-            disabled={readAll.isPending}
-            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg hover:bg-surface-hover"
+            disabled={readAll.isPending || entries.length === 0}
+            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCheck className="h-4 w-4" /> Mark all read
           </button>
-        )}
+        }
       />
 
-      {isLoading && <p className="text-text-muted">Loading…</p>}
-      {!isLoading && entries.length === 0 && (
-        <div className="text-center py-12 bg-surface rounded-xl border border-border">
-          <p className="text-text-secondary">No changelog entries yet.</p>
+      {isLoading && (
+        <div className="space-y-4">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-32 rounded-xl" />
+          ))}
         </div>
+      )}
+      {!isLoading && entries.length === 0 && (
+        <EmptyState
+          icon={Sparkles}
+          title="No changelog entries yet"
+          description="Once the team ships an update we'll surface it here."
+        />
       )}
 
       <div className="space-y-4">
         {entries.map((e) => (
           <article
             key={e.id}
-            className="bg-surface rounded-xl border border-border p-5 sm:p-6"
+            className="bg-surface rounded-xl border border-border p-5 sm:p-6 shadow-[var(--elevation-1)]"
           >
             <div className="flex items-center justify-between gap-3 mb-2">
               <time className="text-xs text-text-muted uppercase tracking-wider font-semibold">
@@ -76,12 +85,12 @@ export default function Changelog() {
                 })}
               </time>
               {!e.read && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary text-white">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary text-on-primary">
                   New
                 </span>
               )}
             </div>
-            <h2 className="text-lg font-semibold font-display mb-2">{e.title}</h2>
+            <h2 className="text-lg font-semibold font-display text-text-primary mb-2">{e.title}</h2>
             <p className="text-sm text-text-secondary whitespace-pre-line leading-relaxed">{e.body}</p>
             {e.tags?.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-1.5">

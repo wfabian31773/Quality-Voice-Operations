@@ -8,7 +8,6 @@ import {
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
@@ -96,11 +95,6 @@ export default function AdminMarketplace() {
         description="Manage the global template registry, developer submissions, and platform revenue."
       />
 
-      <GlobalScopeBanner
-        label="Global Registry / All Tenants"
-        description="Actions here affect every tenant on the platform. Tenant-scoped install state lives in the tenant Marketplace."
-      />
-
       <div className="flex gap-2 border-b border-border">
         <TabButton active={tab === 'registry'} onClick={() => setTab('registry')} icon={Package} label="Registry" />
         <TabButton active={tab === 'submissions'} onClick={() => setTab('submissions')} icon={Inbox} label="Developer Submissions" />
@@ -124,7 +118,7 @@ function TabButton({
       onClick={onClick}
       className={clsx(
         'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-        active ? 'border-purple-500 text-purple-300' : 'border-transparent text-text-muted hover:text-text-primary',
+        active ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary',
       )}
     >
       <Icon className="h-4 w-4" />
@@ -759,9 +753,9 @@ function RevenueTab() {
 
 function Stat({ label, value, icon: Icon }: { label: string; value: string; icon: typeof DollarSign }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
-      <div className="h-10 w-10 rounded-lg bg-purple-500/15 flex items-center justify-center">
-        <Icon className="h-5 w-5 text-purple-400" />
+    <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-3 shadow-[var(--elevation-1)]">
+      <div className="h-10 w-10 rounded-lg bg-primary-light flex items-center justify-center">
+        <Icon className="h-5 w-5 text-primary" />
       </div>
       <div>
         <p className="text-xs text-text-secondary">{label}</p>

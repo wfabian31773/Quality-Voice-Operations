@@ -11,7 +11,6 @@ import {
   Users, ArrowUp, ArrowDown, CalendarRange, Eye, EyeOff,
 } from 'lucide-react';
 import { api, getToken } from '../lib/api';
-import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import { ErrorState, Skeleton } from '../components/state';
 import { PageHeader, StatCard } from '../components/ui';
 import Modal from '../components/Modal';
@@ -445,11 +444,6 @@ export default function AdminSalesInbox() {
 
   return (
     <div className="space-y-6">
-      <GlobalScopeBanner
-        label="Sales Inbox"
-        description="Triage marketing leads from Book a Demo, ROI Calculator, and Contact submissions. Includes Cal.com booking metadata."
-      />
-
       <PageHeader
         icon={<Inbox className="h-5 w-5" />}
         title="Sales Inbox"

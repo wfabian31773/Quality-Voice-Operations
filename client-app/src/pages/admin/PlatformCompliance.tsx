@@ -9,7 +9,7 @@ import {
   PhoneOff, BellOff, Bell,
 } from 'lucide-react';
 import { EmptyState, Skeleton } from '../../components/state';
-import { StatCard } from '../../components/ui';
+import { StatCard, PageHeader } from '../../components/ui';
 
 function TenantLink({
   tenantId,
@@ -424,7 +424,7 @@ function PlatformAuditTab() {
         )}
         <button
           onClick={handleExport}
-          className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+          className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90"
         >
           <Download className="h-4 w-4" />
           Export CSV
@@ -953,7 +953,7 @@ function SubprocessorsTab() {
         </p>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
           Add sub-processor
@@ -996,7 +996,7 @@ function SubprocessorsTab() {
             <button
               onClick={() => createMutation.mutate()}
               disabled={!form.name || !form.purpose || !form.data_types || createMutation.isPending}
-              className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {createMutation.isPending ? 'Saving…' : 'Save'}
             </button>
@@ -1214,7 +1214,7 @@ function IsolationTab() {
         <button
           onClick={() => runMutation.mutate()}
           disabled={runMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${runMutation.isPending ? 'animate-spin' : ''}`} />
           {runMutation.isPending ? 'Running…' : 'Run isolation tests'}
@@ -1483,7 +1483,7 @@ function FederalDncTab() {
           <button
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending || running}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`h-4 w-4 ${running || syncMutation.isPending ? 'animate-spin' : ''}`} />
             {running ? 'Sync in progress…' : 'Sync federal DNC now'}
@@ -1620,12 +1620,11 @@ export default function PlatformCompliance() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Compliance &amp; Security</h1>
-        <p className="text-sm text-muted mt-1">
-          Platform-wide security posture across every tenant: audit trail, encryption, sub-processors, deletions, and RLS isolation tests.
-        </p>
-      </div>
+      <PageHeader
+        title="Compliance & Security"
+        description="Platform-wide security posture across every tenant: audit trail, encryption, sub-processors, deletions, and RLS isolation tests."
+        icon={<Shield className="h-5 w-5" />}
+      />
 
       <div className="border-b border-border">
         <nav className="-mb-px flex gap-1 overflow-x-auto">

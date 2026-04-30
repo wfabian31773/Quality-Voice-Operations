@@ -15,6 +15,10 @@ export { default as StatStrip, type StatStripProps, type StatStripItem } from '.
 export { default as TestimonialBlock, type TestimonialBlockProps } from './TestimonialBlock';
 export { default as Callout, type CalloutProps, type CalloutTone } from './Callout';
 
+// Operator UI primitives (admin/ops console)
+export { default as OperationStatusPanel, type OperationStatusPanelProps, type OperationStatus } from './OperationStatusPanel';
+export { default as AdminTable, AdminTh, AdminToolbar, AdminPagination, type AdminTableProps, type AdminThProps, type AdminToolbarProps, type AdminPaginationProps } from './AdminTable';
+
 // Stat / status primitives
 export { default as StatCard, type StatCardProps, type StatTone } from './StatCard';
 export { default as StatusBadge, type StatusBadgeProps, type BadgeTone } from './StatusBadge';

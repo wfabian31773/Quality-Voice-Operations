@@ -11,7 +11,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { api } from '../lib/api';
-import GlobalScopeBanner from '../components/GlobalScopeBanner';
+import { PageHeader } from '../components/ui';
 
 interface TenantInfo {
   id: string;
@@ -138,52 +138,43 @@ export default function AdminTenantConnectors() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Link
-          to="/admin/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm text-purple-300 hover:text-purple-200"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Platform Admin
-        </Link>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          {isFetching ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold text-white">
-          {tenant ? `${tenant.name ?? 'Tenant'} · Connectors` : 'Tenant Connectors'}
-        </h1>
-        <p className="text-sm text-purple-200/70 mt-1">
-          {tenant
-            ? `Read-only view of connectors for ${tenant.slug ?? tenant.id} · plan ${tenant.plan ?? '—'} · status ${tenant.status ?? '—'}`
-            : 'Loading tenant context…'}
-        </p>
-      </div>
-
-      <GlobalScopeBanner
-        variant="tenant"
-        tenantName={tenant?.name ?? undefined}
-        tenantSlug={tenant?.slug ?? undefined}
-        description="You are inspecting another tenant's connector configuration as a platform admin. This view is read-only — make changes from inside that tenant's account if needed. Each load is logged in audit_logs."
+      <PageHeader
+        title={tenant ? `${tenant.name ?? 'Tenant'} · Connectors` : 'Tenant Connectors'}
+        description={tenant
+          ? `Read-only view of connectors for ${tenant.slug ?? tenant.id} · plan ${tenant.plan ?? '—'} · status ${tenant.status ?? '—'}`
+          : 'Loading tenant context…'}
+        icon={<Plug className="h-5 w-5" />}
+        breadcrumbs={
+          <Link
+            to="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Platform Admin
+          </Link>
+        }
+        actions={
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-border bg-surface text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+            {isFetching ? 'Refreshing…' : 'Refresh'}
+          </button>
+        }
       />
 
       {isForbidden && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-lg border border-danger/40 bg-danger-light px-4 py-3 text-sm text-danger">
           You don't have permission to view this tenant's connectors. This page
           requires platform-admin access.
         </div>
       )}
 
       {isNotFound && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        <div className="rounded-lg border border-warning/40 bg-warning-light px-4 py-3 text-sm text-warning">
           This tenant could not be found. It may have been deleted.
         </div>
       )}

@@ -6,9 +6,9 @@ import { format } from 'date-fns';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import GlobalScopeBanner from '../components/GlobalScopeBanner';
 import Modal from '../components/Modal';
 import { getAgentLanguageLabel } from '../lib/agentLanguages';
+import { PageHeader } from '../components/ui';
 
 interface TenantInfo {
   id: string;
@@ -444,29 +444,20 @@ export default function AdminTenantCalls() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => navigate(`/admin/analytics/tenants/${tenantId}`)}
-          className="inline-flex items-center gap-1.5 text-sm text-purple-300 hover:text-purple-200"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Tenant Analytics
-        </button>
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold text-white">
-          {tenant ? `${tenant.name} — Calls` : 'Tenant Calls'}
-        </h1>
-        <p className="text-sm text-purple-200/70 mt-1">
-          Read-only call list scoped to this tenant. Click a row to view transcript, events, and tool executions.
-        </p>
-      </div>
-
-      <GlobalScopeBanner
-        variant="tenant"
-        tenantName={tenant?.name}
-        tenantSlug={tenant?.slug}
+      <PageHeader
+        title={tenant ? `${tenant.name} — Calls` : 'Tenant Calls'}
+        description="Read-only call list scoped to this tenant. Click a row to view transcript, events, and tool executions."
+        icon={<PhoneCall className="h-5 w-5" />}
+        breadcrumbs={
+          <button
+            type="button"
+            onClick={() => navigate(`/admin/analytics/tenants/${tenantId}`)}
+            className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Tenant Analytics
+          </button>
+        }
       />
 
       <div className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-3">

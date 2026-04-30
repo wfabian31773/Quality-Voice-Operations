@@ -7,6 +7,7 @@ import {
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { EmptyState } from '../../components/state';
+import { PageHeader, OperationStatusPanel, type OperationStatus } from '../../components/ui';
 
 interface BatchAttestation {
   reason: string;
@@ -433,29 +434,90 @@ export default function IngestBackfill() {
     return response.results.filter((r) => r.status === filterStatus);
   }, [response, filterStatus]);
 
+  const summary = response?.summary;
+  const opStatus: OperationStatus = submit.isPending
+    ? 'running'
+    : submit.isError
+      ? 'failed'
+      : response
+        ? (summary && (summary.failed + summary.validation_failed + summary.window_rejected) > 0 ? 'failed' : 'success')
+        : 'idle';
+  const opTotal = response?.results.length ?? (rawRows.length || undefined);
+  const opProcessed = response?.results.length ?? (submit.isPending ? 0 : undefined);
+  const opProgress = opTotal && opProcessed !== undefined && opTotal > 0
+    ? opProcessed / opTotal
+    : submit.isPending ? 0.05 : undefined;
+
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <History className="h-6 w-6 text-primary" />
-            Backfill calls from a CSV
-          </h1>
-          <p className="text-sm text-muted mt-1 max-w-2xl">
-            Replay historical call events through the federated ingest backfill endpoint.
-            Upload a CSV (or NDJSON) of dropped calls plus a single attestation block —
-            the tool fans out per-row, preserving idempotency keys so partial failures
-            are safely resumable.
-          </p>
-        </div>
-        <button
-          onClick={downloadSample}
-          className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-surface-secondary"
-        >
-          <Download className="h-4 w-4" />
-          CSV template
-        </button>
-      </div>
+      <PageHeader
+        title="Backfill calls from a CSV"
+        description="Replay historical call events through the federated ingest backfill endpoint. Upload a CSV (or NDJSON) of dropped calls plus a single attestation block — the tool fans out per-row, preserving idempotency keys so partial failures are safely resumable."
+        icon={<History className="h-5 w-5" />}
+        actions={
+          <button
+            onClick={downloadSample}
+            className="inline-flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            CSV template
+          </button>
+        }
+      />
+
+      {(submit.isPending || response || submit.isError) && (
+        <OperationStatusPanel
+          title="Batch backfill"
+          description={submit.isPending
+            ? `Submitting ${rawRows.length} row${rawRows.length === 1 ? '' : 's'} to /v1/ingest/calls/backfill/batch.`
+            : submit.isError
+              ? 'Submission failed before the batch could be processed.'
+              : 'Batch processed — review the per-row table below.'}
+          status={opStatus}
+          progress={opProgress}
+          processed={opProcessed}
+          total={opTotal}
+          actions={
+            !submit.isPending ? (
+              <>
+                {submit.isError && (
+                  <button
+                    type="button"
+                    onClick={() => submit.mutate()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-primary/40 bg-primary-light text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Retry batch
+                  </button>
+                )}
+                {response && summary && summary.failed > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => submit.mutate()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-primary/40 bg-primary-light text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Retry failed rows
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { submit.reset(); setResponse(null); }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-text-secondary text-xs font-medium hover:bg-surface-hover transition-colors"
+                >
+                  Dismiss
+                </button>
+              </>
+            ) : undefined
+          }
+          meta={summary ? [
+            { label: 'Inserted', value: summary.inserted },
+            { label: 'Duplicate', value: summary.duplicate },
+            { label: 'Window rejected', value: summary.window_rejected },
+            { label: 'Validation failed', value: summary.validation_failed },
+            { label: 'Failed', value: summary.failed },
+          ] : undefined}
+          error={submit.isError ? ((submit.error as Error)?.message ?? 'Batch submission failed') : undefined}
+        />
+      )}
 
       <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold flex items-center gap-2">

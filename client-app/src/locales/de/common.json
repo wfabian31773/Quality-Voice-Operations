@@ -181,7 +181,43 @@
     "billing": "Abrechnung",
     "security": "Sicherheit",
     "governance": "Governance",
-    "backfill": "Anrufe nachladen"
+    "backfill": "Anrufe nachladen",
+    "ingest_backfill": "Ingest-Nachladen",
+    "changelog": "Änderungsprotokoll",
+    "maintenance": "Wartung",
+    "audit_log": "Audit-Protokoll",
+    "audit_shortcut_aria": "Audit-Protokoll öffnen",
+    "groups": {
+      "overview": "Überblick",
+      "tenants_growth": "Kunden & Wachstum",
+      "operations": "Betrieb",
+      "system": "Systemverwaltung"
+    },
+    "ops_console": "Operations-Konsole",
+    "ops_badge": "Betrieb",
+    "ops_groups": {
+      "live": "Live-Betrieb",
+      "investigation": "Untersuchung",
+      "data": "Datenhygiene"
+    },
+    "ops": {
+      "monitor": "Live-Monitor",
+      "reliability": "Zuverlässigkeit",
+      "backfill_calls": "Anrufe nachladen",
+      "debugger": "Fehlersuche",
+      "diagnostics": "Diagnose",
+      "cost": "Kosten",
+      "digital_twin": "Digitaler Zwilling"
+    },
+    "role": {
+      "platform_admin": "Plattform-Admin",
+      "tenant_owner": "Mandanteninhaber",
+      "operations_manager": "Operations-Manager",
+      "billing_admin": "Abrechnungs-Admin",
+      "agent_developer": "Agent-Entwickler",
+      "support_reviewer": "Support-Reviewer",
+      "viewer": "Betrachter"
+    }
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Bringen Sie Ihren eigenen Sprachagenten mit",
@@ -693,15 +729,42 @@
     "dont_show": "Nicht erneut anzeigen",
     "restart_anytime": "Sie können das Onboarding jederzeit in den Einstellungen neu starten.",
     "templates": {
-      "answering-service": { "label": "Telefonservice", "description": "Allgemeine Bearbeitung eingehender Anrufe und Ticket-Erstellung" },
-      "medical-after-hours": { "label": "Medizinischer Notdienst", "description": "Medizinische Triage mit dringender Eskalation" },
-      "dental": { "label": "Zahnarztpraxis", "description": "Terminplanung für Zahnbehandlungen und Notfall-Routing" },
-      "property-management": { "label": "Immobilienverwaltung", "description": "Wartungsanfragen und Notfalleinsätze" },
-      "home-services": { "label": "Hausdienstleistungen", "description": "Buchungen für Heizung/Lüftung/Klima, Sanitär und Elektrik" },
-      "legal": { "label": "Rechtliche Aufnahme", "description": "Beratungsterminierung mit Interessenkonflikt-Prüfung" },
-      "real-estate": { "label": "Immobilien", "description": "Qualifizierung von Käufern/Verkäufern und Besichtigungstermine" },
-      "restaurant": { "label": "Restaurantreservierungen", "description": "Reservierungen entgegennehmen oder Anrufer auf die Warteliste setzen" },
-      "salon": { "label": "Salon & Spa", "description": "Stylisten-Termine buchen und am Vortag bestätigen" }
+      "answering-service": {
+        "label": "Telefonservice",
+        "description": "Allgemeine Bearbeitung eingehender Anrufe und Ticket-Erstellung"
+      },
+      "medical-after-hours": {
+        "label": "Medizinischer Notdienst",
+        "description": "Medizinische Triage mit dringender Eskalation"
+      },
+      "dental": {
+        "label": "Zahnarztpraxis",
+        "description": "Terminplanung für Zahnbehandlungen und Notfall-Routing"
+      },
+      "property-management": {
+        "label": "Immobilienverwaltung",
+        "description": "Wartungsanfragen und Notfalleinsätze"
+      },
+      "home-services": {
+        "label": "Hausdienstleistungen",
+        "description": "Buchungen für Heizung/Lüftung/Klima, Sanitär und Elektrik"
+      },
+      "legal": {
+        "label": "Rechtliche Aufnahme",
+        "description": "Beratungsterminierung mit Interessenkonflikt-Prüfung"
+      },
+      "real-estate": {
+        "label": "Immobilien",
+        "description": "Qualifizierung von Käufern/Verkäufern und Besichtigungstermine"
+      },
+      "restaurant": {
+        "label": "Restaurantreservierungen",
+        "description": "Reservierungen entgegennehmen oder Anrufer auf die Warteliste setzen"
+      },
+      "salon": {
+        "label": "Salon & Spa",
+        "description": "Stylisten-Termine buchen und am Vortag bestätigen"
+      }
     }
   },
   "post_install": {

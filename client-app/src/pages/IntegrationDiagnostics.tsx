@@ -429,18 +429,18 @@ export default function IntegrationDiagnostics() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={<Plug2 className="h-5 w-5" />}
         title="Integration Diagnostics"
-        description="Monitor webhook deliveries, API health, and retry failed integrations"
-        actions={(
+        description="Monitor webhook deliveries, API health, and retry failed integrations."
+        icon={<Plug2 className="h-5 w-5" />}
+        actions={
           <button
             onClick={() => queryClient.invalidateQueries({ queryKey: ['integration-diagnostics'] })}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-border rounded-lg hover:bg-surface-secondary transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-border rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </button>
-        )}
+        }
       />
 
       <div className="bg-surface border border-border rounded-xl shadow-sm">

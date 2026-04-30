@@ -181,7 +181,43 @@
     "billing": "Facturation",
     "security": "Sécurité",
     "governance": "Gouvernance",
-    "backfill": "Rejouer les appels"
+    "backfill": "Rejouer les appels",
+    "ingest_backfill": "Rejouer l'ingestion",
+    "changelog": "Journal des modifications",
+    "maintenance": "Entretien",
+    "audit_log": "Journal d'audit",
+    "audit_shortcut_aria": "Ouvrir le journal d'audit",
+    "groups": {
+      "overview": "Aperçu",
+      "tenants_growth": "Clients et croissance",
+      "operations": "Opérations",
+      "system": "Système"
+    },
+    "ops_console": "Console des opérations",
+    "ops_badge": "Opérations",
+    "ops_groups": {
+      "live": "Opérations en direct",
+      "investigation": "Enquête",
+      "data": "Hygiène des données"
+    },
+    "ops": {
+      "monitor": "Moniteur en direct",
+      "reliability": "Fiabilité",
+      "backfill_calls": "Rejouer les appels",
+      "debugger": "Débogueur",
+      "diagnostics": "Diagnostic",
+      "cost": "Coût",
+      "digital_twin": "Jumeau numérique"
+    },
+    "role": {
+      "platform_admin": "Admin plateforme",
+      "tenant_owner": "Propriétaire du tenant",
+      "operations_manager": "Responsable des opérations",
+      "billing_admin": "Admin facturation",
+      "agent_developer": "Développeur d'agent",
+      "support_reviewer": "Relecteur support",
+      "viewer": "Lecteur"
+    }
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Apportez votre propre agent vocal",
@@ -693,15 +729,42 @@
     "dont_show": "Ne plus afficher",
     "restart_anytime": "Vous pouvez relancer l'intégration à tout moment depuis les paramètres.",
     "templates": {
-      "answering-service": { "label": "Service de standard téléphonique", "description": "Gestion générale des appels entrants et création de tickets" },
-      "medical-after-hours": { "label": "Permanence médicale", "description": "Triage médical avec escalade d'urgence" },
-      "dental": { "label": "Cabinet dentaire", "description": "Prise de rendez-vous dentaires et routage des urgences" },
-      "property-management": { "label": "Gestion immobilière", "description": "Demandes de maintenance et envoi d'urgences" },
-      "home-services": { "label": "Services à domicile", "description": "Réservation pour CVC, plomberie et électricité" },
-      "legal": { "label": "Accueil juridique", "description": "Prise de rendez-vous avec vérification des conflits d'intérêts" },
-      "real-estate": { "label": "Immobilier", "description": "Qualification acheteurs/vendeurs et planification des visites" },
-      "restaurant": { "label": "Réservations de restaurant", "description": "Prendre des réservations ou ajouter des clients à la liste d'attente" },
-      "salon": { "label": "Salon et spa", "description": "Réservez des rendez-vous avec un coiffeur et confirmez la veille" }
+      "answering-service": {
+        "label": "Service de standard téléphonique",
+        "description": "Gestion générale des appels entrants et création de tickets"
+      },
+      "medical-after-hours": {
+        "label": "Permanence médicale",
+        "description": "Triage médical avec escalade d'urgence"
+      },
+      "dental": {
+        "label": "Cabinet dentaire",
+        "description": "Prise de rendez-vous dentaires et routage des urgences"
+      },
+      "property-management": {
+        "label": "Gestion immobilière",
+        "description": "Demandes de maintenance et envoi d'urgences"
+      },
+      "home-services": {
+        "label": "Services à domicile",
+        "description": "Réservation pour CVC, plomberie et électricité"
+      },
+      "legal": {
+        "label": "Accueil juridique",
+        "description": "Prise de rendez-vous avec vérification des conflits d'intérêts"
+      },
+      "real-estate": {
+        "label": "Immobilier",
+        "description": "Qualification acheteurs/vendeurs et planification des visites"
+      },
+      "restaurant": {
+        "label": "Réservations de restaurant",
+        "description": "Prendre des réservations ou ajouter des clients à la liste d'attente"
+      },
+      "salon": {
+        "label": "Salon et spa",
+        "description": "Réservez des rendez-vous avec un coiffeur et confirmez la veille"
+      }
     }
   },
   "post_install": {

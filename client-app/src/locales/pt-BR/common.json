@@ -181,7 +181,43 @@
     "billing": "Faturamento",
     "security": "Segurança",
     "governance": "Governança",
-    "backfill": "Reprocessar chamadas"
+    "backfill": "Reprocessar chamadas",
+    "ingest_backfill": "Reprocesso de ingest",
+    "changelog": "Registro de alterações",
+    "maintenance": "Manutenção",
+    "audit_log": "Registro de auditoria",
+    "audit_shortcut_aria": "Abrir registro de auditoria",
+    "groups": {
+      "overview": "Visão geral",
+      "tenants_growth": "Clientes e crescimento",
+      "operations": "Operações",
+      "system": "Sistema"
+    },
+    "ops_console": "Console de operações",
+    "ops_badge": "Operações",
+    "ops_groups": {
+      "live": "Operações ao vivo",
+      "investigation": "Investigação",
+      "data": "Higiene de dados"
+    },
+    "ops": {
+      "monitor": "Monitor ao vivo",
+      "reliability": "Confiabilidade",
+      "backfill_calls": "Reprocessar chamadas",
+      "debugger": "Depurador",
+      "diagnostics": "Diagnóstico",
+      "cost": "Custo",
+      "digital_twin": "Gêmeo digital"
+    },
+    "role": {
+      "platform_admin": "Admin da plataforma",
+      "tenant_owner": "Proprietário do tenant",
+      "operations_manager": "Gerente de operações",
+      "billing_admin": "Admin de faturamento",
+      "agent_developer": "Desenvolvedor de agente",
+      "support_reviewer": "Revisor de suporte",
+      "viewer": "Visualizador"
+    }
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Traga seu próprio agente de voz",
@@ -693,15 +729,42 @@
     "dont_show": "Não mostrar novamente",
     "restart_anytime": "Você pode reiniciar a integração a qualquer momento em Configurações.",
     "templates": {
-      "answering-service": { "label": "Serviço de atendimento", "description": "Atendimento geral de chamadas recebidas e criação de tickets" },
-      "medical-after-hours": { "label": "Plantão médico", "description": "Triagem médica com escalonamento de urgências" },
-      "dental": { "label": "Consultório odontológico", "description": "Agendamento de consultas odontológicas e roteamento de emergências" },
-      "property-management": { "label": "Administração de imóveis", "description": "Solicitações de manutenção e envio de emergências" },
-      "home-services": { "label": "Serviços residenciais", "description": "Agendamento de serviços de climatização, encanamento e elétrica" },
-      "legal": { "label": "Recepção jurídica", "description": "Agendamento de consultas com verificação de conflito de interesses" },
-      "real-estate": { "label": "Imobiliário", "description": "Qualificação de compradores/vendedores e agendamento de visitas" },
-      "restaurant": { "label": "Reservas de restaurante", "description": "Aceite reservas ou adicione clientes à lista de espera" },
-      "salon": { "label": "Salão e spa", "description": "Agende horários com cabeleireiros e confirme no dia anterior" }
+      "answering-service": {
+        "label": "Serviço de atendimento",
+        "description": "Atendimento geral de chamadas recebidas e criação de tickets"
+      },
+      "medical-after-hours": {
+        "label": "Plantão médico",
+        "description": "Triagem médica com escalonamento de urgências"
+      },
+      "dental": {
+        "label": "Consultório odontológico",
+        "description": "Agendamento de consultas odontológicas e roteamento de emergências"
+      },
+      "property-management": {
+        "label": "Administração de imóveis",
+        "description": "Solicitações de manutenção e envio de emergências"
+      },
+      "home-services": {
+        "label": "Serviços residenciais",
+        "description": "Agendamento de serviços de climatização, encanamento e elétrica"
+      },
+      "legal": {
+        "label": "Recepção jurídica",
+        "description": "Agendamento de consultas com verificação de conflito de interesses"
+      },
+      "real-estate": {
+        "label": "Imobiliário",
+        "description": "Qualificação de compradores/vendedores e agendamento de visitas"
+      },
+      "restaurant": {
+        "label": "Reservas de restaurante",
+        "description": "Aceite reservas ou adicione clientes à lista de espera"
+      },
+      "salon": {
+        "label": "Salão e spa",
+        "description": "Agende horários com cabeleireiros e confirme no dia anterior"
+      }
     }
   },
   "post_install": {

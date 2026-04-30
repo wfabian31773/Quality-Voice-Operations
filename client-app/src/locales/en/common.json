@@ -181,7 +181,43 @@
     "billing": "Billing",
     "security": "Security",
     "governance": "Governance",
-    "backfill": "Backfill calls"
+    "backfill": "Backfill calls",
+    "ingest_backfill": "Ingest backfill",
+    "changelog": "Changelog",
+    "maintenance": "Maintenance",
+    "audit_log": "Audit log",
+    "audit_shortcut_aria": "Open audit log",
+    "groups": {
+      "overview": "Overview",
+      "tenants_growth": "Tenants & growth",
+      "operations": "Operations",
+      "system": "System"
+    },
+    "ops_console": "Operations Console",
+    "ops_badge": "Operations",
+    "ops_groups": {
+      "live": "Live operations",
+      "investigation": "Investigation",
+      "data": "Data hygiene"
+    },
+    "ops": {
+      "monitor": "Live Monitor",
+      "reliability": "Reliability",
+      "backfill_calls": "Backfill calls",
+      "debugger": "Debugger",
+      "diagnostics": "Diagnostics",
+      "cost": "Cost",
+      "digital_twin": "Digital Twin"
+    },
+    "role": {
+      "platform_admin": "Platform admin",
+      "tenant_owner": "Tenant owner",
+      "operations_manager": "Operations manager",
+      "billing_admin": "Billing admin",
+      "agent_developer": "Agent developer",
+      "support_reviewer": "Support reviewer",
+      "viewer": "Viewer"
+    }
   },
   "federated_ingest_page": {
     "seo_title": "Federated Ingest — Bring Your Own Voice Agent",
