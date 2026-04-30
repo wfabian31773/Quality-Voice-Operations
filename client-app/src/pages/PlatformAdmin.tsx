@@ -1690,6 +1690,254 @@ function verifiedCallerStatusBadge(status: VerifiedCallerHealthStatus, t: (k: st
   }
 }
 
+type BillingPriceCheckStatus =
+  | 'ok'
+  | 'missing-env'
+  | 'stripe-error'
+  | 'wrong-interval'
+  | 'no-amount';
+
+interface BillingPriceCheckResult {
+  envKey: string;
+  plan: 'starter' | 'pro' | 'enterprise';
+  interval: 'monthly' | 'annual';
+  status: BillingPriceCheckStatus;
+  priceId: string | null;
+  expectedInterval: 'month' | 'year';
+  actualInterval: string | null;
+  unitAmountCents: number | null;
+  monthlyEquivalentCents: number | null;
+  catalogMonthlyCents: number;
+  message?: string;
+}
+
+interface BillingConfigHealthResponse {
+  summary: {
+    total: number;
+    ok: number;
+    failed: number;
+    status: 'ok' | 'failed' | 'no-stripe-key';
+    message?: string;
+  };
+  results: BillingPriceCheckResult[];
+  generatedAt: string;
+}
+
+function fmtCentsAsUsd(cents: number | null | undefined): string {
+  if (cents == null) return '—';
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function billingStatusLabel(s: BillingPriceCheckStatus): string {
+  switch (s) {
+    case 'ok':
+      return 'OK';
+    case 'missing-env':
+      return 'Missing env var';
+    case 'stripe-error':
+      return 'Stripe error';
+    case 'wrong-interval':
+      return 'Wrong interval';
+    case 'no-amount':
+      return 'No unit amount';
+  }
+}
+
+/**
+ * Re-runs the same `STRIPE_PRICE_<TIER>_<INTERVAL>` verification the deploy
+ * build runs (`npm run verify:stripe-prices`), but on demand against the
+ * currently running Admin API. Useful when ops rotates a Stripe price id
+ * or is investigating a sudden live-rate badge regression — they can spot
+ * a typo/wrong-interval wiring without redeploying.
+ */
+function BillingConfigHealthPanel() {
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-billing-config-health'],
+    queryFn: () => api.get<BillingConfigHealthResponse>('/platform/billing-config-health'),
+    refetchInterval: 5 * 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
+        Loading billing config health…
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-8 text-center text-danger">
+        Failed to load billing config health: {error ? (error as Error).message : 'no data'}
+      </div>
+    );
+  }
+
+  const { summary, results, generatedAt } = data;
+  const generated = new Date(generatedAt).toLocaleString();
+
+  const summaryTone =
+    summary.status === 'ok'
+      ? 'text-success'
+      : summary.status === 'no-stripe-key'
+        ? 'text-warning'
+        : 'text-danger';
+
+  const SummaryIcon =
+    summary.status === 'ok'
+      ? CheckCircle
+      : summary.status === 'no-stripe-key'
+        ? AlertTriangle
+        : XCircle;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-primary" /> Billing config health
+          </h2>
+          <p className="text-xs text-text-muted mt-1">
+            Re-runs <code className="font-mono">npm run verify:stripe-prices</code> against the
+            current Admin API process. The same script gates the deploy build, so a healthy panel
+            here mirrors what shipped — re-run after rotating a Stripe price id, or when the
+            live-rate badge silently falls back to the catalog.
+          </p>
+          <p className="text-[11px] text-text-muted mt-1">
+            Last checked: {generated}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded hover:bg-surface-secondary disabled:opacity-50"
+            title="Re-run verification"
+          >
+            <RotateCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+            Run again
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Status</div>
+          <div className={`text-base font-semibold flex items-center gap-1.5 mt-0.5 ${summaryTone}`}>
+            <SummaryIcon className="h-4 w-4" />
+            {summary.status === 'ok'
+              ? 'All prices healthy'
+              : summary.status === 'no-stripe-key'
+                ? 'Stripe key not set'
+                : `${summary.failed} failed`}
+          </div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Prices checked</div>
+          <div className="text-2xl font-bold">{summary.total}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Healthy</div>
+          <div className="text-2xl font-bold text-success">{summary.ok}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-3">
+          <div className="text-xs text-text-muted">Failed</div>
+          <div className={`text-2xl font-bold ${summary.failed > 0 ? 'text-danger' : ''}`}>
+            {summary.failed}
+          </div>
+        </div>
+      </div>
+
+      {summary.message && summary.status !== 'ok' && (
+        <div className="bg-warning/10 border border-warning/30 text-warning rounded-xl p-3 text-sm flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <span>{summary.message}</span>
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Per-price verification
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            One row per <code className="font-mono">STRIPE_PRICE_&lt;TIER&gt;_&lt;INTERVAL&gt;</code> env var.
+            "Monthly equiv." divides annual prices by 12 so the catalog comparison stays
+            apples-to-apples.
+          </p>
+        </div>
+        {results.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-text-muted">
+            {summary.status === 'no-stripe-key'
+              ? 'STRIPE_SECRET_KEY is not set on this Admin API host — set it in the deployment secrets and re-run.'
+              : 'No prices configured.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary">
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Env var</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Plan</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Interval</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Stripe price id</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Unit amount</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Monthly equiv.</th>
+                  <th className="text-right px-4 py-2 font-medium text-text-muted">Catalog</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((r) => {
+                  const ok = r.status === 'ok';
+                  const StatusIcon = ok ? CheckCircle : XCircle;
+                  const statusTone = ok ? 'text-success' : 'text-danger';
+                  return (
+                    <tr key={r.envKey} className="border-b border-border last:border-0 align-top">
+                      <td className="px-4 py-2 text-xs font-mono">{r.envKey}</td>
+                      <td className="px-4 py-2 text-xs capitalize">{r.plan}</td>
+                      <td className="px-4 py-2 text-xs capitalize">
+                        {r.interval}
+                        {r.actualInterval && r.actualInterval !== r.expectedInterval && (
+                          <div className="text-[11px] text-danger mt-0.5">
+                            Stripe says: {r.actualInterval}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs font-mono break-all">
+                        {r.priceId ?? <span className="text-text-muted italic">unset</span>}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums">
+                        {fmtCentsAsUsd(r.unitAmountCents)}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums">
+                        {fmtCentsAsUsd(r.monthlyEquivalentCents)}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right tabular-nums text-text-muted">
+                        {fmtCentsAsUsd(r.catalogMonthlyCents)}
+                      </td>
+                      <td className={`px-4 py-2 text-xs ${statusTone}`}>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <StatusIcon className="h-3.5 w-3.5" />
+                          {billingStatusLabel(r.status)}
+                        </div>
+                        {r.message && (
+                          <div className="text-[11px] text-text-muted mt-0.5">{r.message}</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Render the days-remaining cell. Negative numbers (already expired) read
  * as "expired N days ago", `null` (no `expires_at` — typical for
@@ -3951,6 +4199,7 @@ type PlatformAdminTab =
   | 'integrations'
   | 'connector-health'
   | 'push-health'
+  | 'billing-health'
   | 'retention';
 
 type RecommendationTier = 'starter' | 'pro' | 'enterprise';
@@ -4579,6 +4828,7 @@ const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: type
   { key: 'integrations', labelKey: 'platform_admin.tabs.integrations', icon: Plug },
   { key: 'connector-health', labelKey: 'platform_admin.tabs.connector_health', icon: ShieldAlert },
   { key: 'push-health', labelKey: 'platform_admin.tabs.push_health', icon: BellRing },
+  { key: 'billing-health', labelKey: 'platform_admin.tabs.billing_health', icon: DollarSign },
   { key: 'retention', labelKey: 'platform_admin.tabs.retention', icon: Database },
 ];
 
@@ -4843,6 +5093,7 @@ export default function PlatformAdmin() {
       {activeTab === 'integrations' && <IntegrationsStatusPanel />}
       {activeTab === 'connector-health' && <ConnectorHealthPanel />}
       {activeTab === 'push-health' && <PushDeliveryHealthPanel />}
+      {activeTab === 'billing-health' && <BillingConfigHealthPanel />}
       {activeTab === 'retention' && <CallEventsRetentionPanel />}
 
       {activeTab === 'tenants' && (

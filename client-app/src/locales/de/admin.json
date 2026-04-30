@@ -21,7 +21,8 @@
       "support": "Support",
       "connector_health": "Connector-Health",
       "retention": "Anrufereignis-Aufbewahrung",
-      "push_health": "Push-Status"
+      "push_health": "Push-Status",
+      "billing_health": "Abrechnungskonfigurations-Status"
     },
     "overview": {
       "active_tenants": "Active tenants",

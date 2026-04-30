@@ -83,7 +83,13 @@ The validation also runs automatically on server startup. In production, it will
 
 ### Stripe Price ID Spot-Check
 
-After setting the `STRIPE_PRICE_<TIER>_<INTERVAL>` env vars (six total — STARTER/PRO/ENTERPRISE × MONTHLY/ANNUAL), verify each one resolves to a Stripe price with the expected `recurring.interval` so the live-rate badge engages on the public pricing calculator and the in-app billing estimator:
+After setting the `STRIPE_PRICE_<TIER>_<INTERVAL>` env vars (six total — STARTER/PRO/ENTERPRISE × MONTHLY/ANNUAL), each one is verified against Stripe to confirm it resolves to a price with the expected `recurring.interval` so the live-rate badge engages on the public pricing calculator and the in-app billing estimator.
+
+> **Automated as a deploy gate.** `.replit`'s `[deployment].build` chains `npm run verify:stripe-prices` after the type-checks but **before** the slow Vite build, so any non-zero exit (missing env var, wrong-interval wiring, deleted Stripe price, network failure to Stripe) **fails the publish before the new image goes live** — and fails fast, without spending a minute building a frontend that would have shipped against a broken billing config. You no longer need to remember to run it by hand for production deploys; just make sure `STRIPE_SECRET_KEY` and the six `STRIPE_PRICE_*` vars are set in the deployment's secrets before clicking Publish.
+>
+> **Re-run on demand from the admin console.** Platform admins can re-run the same check from **Platform Admin → Billing config health** (powered by `GET /platform/billing-config-health`) without redeploying. Useful when ops rotates a Stripe price ID, suspects a typo, or is investigating a sudden live-rate badge regression.
+
+You can still invoke it manually (e.g. against a staging key from a developer laptop, or to capture evidence in the deploy ticket):
 
 ```bash
 STRIPE_SECRET_KEY="sk_live_..." \

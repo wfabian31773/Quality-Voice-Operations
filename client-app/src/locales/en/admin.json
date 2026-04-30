@@ -21,7 +21,8 @@
       "support": "Support",
       "connector_health": "Connector Health",
       "retention": "Call Event Retention",
-      "push_health": "Push Health"
+      "push_health": "Push Health",
+      "billing_health": "Billing config health"
     },
     "overview": {
       "active_tenants": "Active tenants",

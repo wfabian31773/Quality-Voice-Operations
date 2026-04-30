@@ -21,7 +21,8 @@
       "support": "Support",
       "connector_health": "Santé des connecteurs",
       "retention": "Rétention des événements d'appel",
-      "push_health": "Santé des notifications push"
+      "push_health": "Santé des notifications push",
+      "billing_health": "Santé de la configuration de facturation"
     },
     "overview": {
       "active_tenants": "Active tenants",
