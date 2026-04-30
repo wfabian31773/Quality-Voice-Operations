@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI entrypoint for the two design-system regression checks:
+# CI entrypoint for the design-system regression checks:
 #
 #   1. `check:design-tokens` — static check that the locked Refined Harbor
 #      tokens in `client-app/src/lib/designTokens.ts` match the CSS custom
@@ -10,14 +10,24 @@
 #      and dark mode (catches white-on-white in dark mode, dark-on-dark in
 #      light mode, and other near-invisible-text regressions).
 #
+#   3. `check:public-hero-visual` — Playwright-based visual-regression
+#      check that the dominant top-of-section colour of every public
+#      route matches its checked-in baseline within tolerance, and that
+#      no dark-mode hero accidentally renders as a light/white slab
+#      (catches `from-white` and similar gradient-only regressions
+#      that the contrast probe can miss when no text sits on the
+#      offending layer).
+#
 # Designed to run from `scripts/post-merge.sh` and from any future CI
 # pipeline. Boots an ephemeral vite dev server on :5000 only if one is not
 # already responding, and tears it down on exit.
 #
 # Env vars:
-#   SKIP_DARK_MODE_CHECK=1  — skip the browser-based check (e.g. in a
-#                             headless container without chromium installed).
-#   E2E_BASE_URL            — override the URL the dark-mode check hits
+#   SKIP_DARK_MODE_CHECK=1  — skip the browser-based checks (the dark-mode
+#                             contrast probe AND the hero visual-regression
+#                             check), e.g. in a headless container without
+#                             chromium installed.
+#   E2E_BASE_URL            — override the URL the browser-based checks hit
 #                             (default http://localhost:5000).
 
 set -euo pipefail
@@ -29,7 +39,7 @@ echo "→ check:design-tokens (static)"
 npm run --silent check:design-tokens
 
 if [[ "${SKIP_DARK_MODE_CHECK:-0}" == "1" ]]; then
-  echo "↷ check:public-dark-mode skipped (SKIP_DARK_MODE_CHECK=1)"
+  echo "↷ check:public-dark-mode + check:public-hero-visual skipped (SKIP_DARK_MODE_CHECK=1)"
   exit 0
 fi
 
@@ -80,3 +90,6 @@ fi
 
 echo "→ check:public-dark-mode (browser, ${BASE_URL})"
 E2E_BASE_URL="$BASE_URL" npm run --silent check:public-dark-mode
+
+echo "→ check:public-hero-visual (browser, ${BASE_URL})"
+E2E_BASE_URL="$BASE_URL" npm run --silent check:public-hero-visual

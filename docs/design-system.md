@@ -219,9 +219,29 @@ npm run check:public-dark-mode
 
 It exits non-zero and prints up to 10 worst-offender elements per failing route, with their tag, classes, computed text colour, computed background colour and contrast ratio. Tunable via `DARKMODE_MIN_CONTRAST` (default `1.6`) and `DARKMODE_MAX_FAILURES` (default `0`).
 
-### Run both checks together (CI entrypoint)
+### Catch hero gradient regressions (visual baseline)
 
-`scripts/ci-design-checks.sh` is the single entrypoint that runs both checks back-to-back. It reuses an already-running vite dev server on `:5000` if there is one (so it doesn't fight a developer's open `Platform Dev` workflow) and otherwise boots an ephemeral one for the duration of the run. It also installs the Playwright Chromium binary on demand if it is not already cached.
+The contrast check above is text-anchored: it walks visible text nodes and asserts each one has enough contrast against its background. That misses an entire class of bug — a hero whose `<div class="absolute inset-0 bg-gradient-...">` backstop accidentally renders as a white slab in dark mode but happens to have no direct text on top of the offending layer.
+
+A third check fills that gap. For each public route in both light and dark mode it samples the colour at a grid of points across the top of the viewport, computes a dominant RGB triple, and compares it against a checked-in baseline (`tests/e2e/__baselines__/publicHeroColors.json`). It also enforces a hard invariant: in dark mode the hero's dominant colour must be dark (luminance ≤ `HERO_DARK_MAX_LUMA`, default `0.5`), so even a fresh baseline cannot lock in a white-slab regression.
+
+```bash
+# Same prerequisites as check:public-dark-mode.
+npm run check:public-hero-visual
+```
+
+After an intentional design change to a hero, regenerate the baseline and commit the JSON diff alongside the design change:
+
+```bash
+UPDATE_HERO_BASELINES=1 npm run check:public-hero-visual
+git add tests/e2e/__baselines__/publicHeroColors.json
+```
+
+Tunable via `HERO_RGB_TOLERANCE` (default `32`, max per-channel RGB delta), `HERO_DARK_MAX_LUMA` (default `0.5`), and `HERO_ZONE_HEIGHT` (default `600`, the top-of-page rectangle in CSS pixels).
+
+### Run all three checks together (CI entrypoint)
+
+`scripts/ci-design-checks.sh` is the single entrypoint that runs all three checks back-to-back. It reuses an already-running vite dev server on `:5000` if there is one (so it doesn't fight a developer's open `Platform Dev` workflow) and otherwise boots an ephemeral one for the duration of the run. It also installs the Playwright Chromium binary on demand if it is not already cached.
 
 ```bash
 npm run check:design
