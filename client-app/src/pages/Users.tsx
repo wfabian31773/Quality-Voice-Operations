@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { Plus, Users as UsersIcon, X, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useRole, ROLE_LABELS, type SimpleRole } from '../lib/useRole';
 import Modal from '../components/Modal';
+import { PageHeader } from '../components/ui';
 
 interface User {
   id: string;
@@ -103,18 +104,17 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Users</h1>
-          <p className="text-sm text-text-secondary mt-1">Manage team members and permissions</p>
-        </div>
-        {isOwner && (
+      <PageHeader
+        icon={<UsersIcon className="h-5 w-5" />}
+        title="Users"
+        description="Manage team members and permissions"
+        actions={isOwner && (
           <button onClick={() => setShowInvite(true)}
             className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2.5 rounded-lg transition">
             <Plus className="h-4 w-4" /> Invite User
           </button>
         )}
-      </div>
+      />
 
       {!isOwner && (
         <div className="bg-surface-hover border border-border rounded-lg px-4 py-3 flex items-center gap-2">

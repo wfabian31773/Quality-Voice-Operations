@@ -22,7 +22,7 @@ import {
   FileText, Download, Clock, CheckCircle2, XCircle,
   Sparkles, AlertTriangle, FileEdit, MinusCircle, Loader2,
 } from 'lucide-react';
-import { StatusBadge, type BadgeTone } from '../components/ui';
+import { StatusBadge, PageHeader, type BadgeTone } from '../components/ui';
 
 interface StatusMeta { tone: BadgeTone; icon: React.ReactNode; tooltip: string; }
 
@@ -590,12 +590,11 @@ export default function Billing() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Billing</h1>
-          <p className="text-sm text-text-muted mt-0.5">Manage your subscription, usage, and payment methods</p>
-        </div>
-        {sub && isAdmin && (
+      <PageHeader
+        icon={<CreditCard className="h-5 w-5" />}
+        title="Billing"
+        description="Manage your subscription, usage, and payment methods"
+        actions={sub && isAdmin && (
           <button
             onClick={() => portalMutation.mutate()}
             disabled={portalMutation.isPending}
@@ -606,7 +605,7 @@ export default function Billing() {
             <ExternalLink className="h-3.5 w-3.5 text-text-muted" />
           </button>
         )}
-      </div>
+      />
 
       {subError && (
         <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">

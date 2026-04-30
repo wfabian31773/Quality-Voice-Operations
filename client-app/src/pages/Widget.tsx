@@ -7,6 +7,7 @@ import {
   MessageSquare, Mic, Copy, Check, Plus, Trash2, Eye, EyeOff,
   Save, AlertCircle, CheckCircle, RefreshCw, Code, Palette, Shield, Gauge,
 } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface WidgetConfig {
   id: string;
@@ -156,13 +157,11 @@ export default function Widget() {
   };
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-text-primary">Website Widget</h1>
-        <p className="text-sm text-text-muted mt-0.5">
-          Configure and embed a voice/chat widget on your website
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Website Widget"
+        description="Configure and embed a voice/chat widget on your website"
+      />
 
       {saveMutation.error && (
         <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2 mb-4">

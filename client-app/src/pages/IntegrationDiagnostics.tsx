@@ -5,6 +5,7 @@ import {
   Plug2, RefreshCw, CheckCircle2, XCircle, AlertCircle,
   Clock, RotateCcw, ChevronDown, ChevronRight, Loader2, Activity, Inbox,
 } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface WebhookDelivery {
   id: string;
@@ -427,24 +428,20 @@ export default function IntegrationDiagnostics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <Plug2 className="h-6 w-6 text-emerald-500" />
-            Integration Diagnostics
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Monitor webhook deliveries, API health, and retry failed integrations
-          </p>
-        </div>
-        <button
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['integration-diagnostics'] })}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-border rounded-lg hover:bg-surface-secondary transition-colors"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </button>
-      </div>
+      <PageHeader
+        icon={<Plug2 className="h-5 w-5" />}
+        title="Integration Diagnostics"
+        description="Monitor webhook deliveries, API health, and retry failed integrations"
+        actions={(
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['integration-diagnostics'] })}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-border rounded-lg hover:bg-surface-secondary transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
+        )}
+      />
 
       <div className="bg-surface border border-border rounded-xl shadow-sm">
         <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">

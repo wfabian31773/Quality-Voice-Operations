@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api } from '../lib/api';
 import { Sparkles, CheckCheck } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface Entry {
   id: string;
@@ -37,23 +38,21 @@ export default function Changelog() {
   }, [entries.length]);
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold font-display flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" />
-            What's new
-          </h1>
-          <p className="text-text-secondary mt-1">Recent platform updates, fixes, and improvements.</p>
-        </div>
-        <button
-          onClick={() => readAll.mutate()}
-          disabled={readAll.isPending}
-          className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg hover:bg-surface-hover"
-        >
-          <CheckCheck className="h-4 w-4" /> Mark all read
-        </button>
-      </div>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <PageHeader
+        icon={<Sparkles className="h-5 w-5" />}
+        title="What's new"
+        description="Recent platform updates, fixes, and improvements."
+        actions={(
+          <button
+            onClick={() => readAll.mutate()}
+            disabled={readAll.isPending}
+            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg hover:bg-surface-hover"
+          >
+            <CheckCheck className="h-4 w-4" /> Mark all read
+          </button>
+        )}
+      />
 
       {isLoading && <p className="text-text-muted">Loading…</p>}
       {!isLoading && entries.length === 0 && (

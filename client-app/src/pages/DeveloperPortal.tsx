@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper, dollarsToCents } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import { StatCard } from '../components/ui';
+import { StatCard, PageHeader } from '../components/ui';
 import {
   Code2, Package, Upload, CheckCircle, XCircle, Clock,
   BarChart3, Star, Download, DollarSign, ChevronRight,
@@ -531,15 +531,11 @@ export default function DeveloperPortal() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Code2 className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary">Developer Portal</h1>
-            <p className="text-sm text-text-secondary">Build, submit, and manage marketplace packages</p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Code2 className="h-5 w-5" />}
+        title="Developer Portal"
+        description="Build, submit, and manage marketplace packages"
+      />
 
       <div className="flex gap-2 border-b border-border">
         {([

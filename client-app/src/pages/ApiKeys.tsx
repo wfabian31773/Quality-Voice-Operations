@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { Key, Plus, Trash2, Copy, Check, AlertTriangle } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface ApiKeyRecord {
   id: string;
@@ -78,21 +79,20 @@ export default function ApiKeys() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-heading">API Keys</h1>
-          <p className="text-sm text-muted mt-1">
-            Manage API keys for programmatic access to the platform
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
-        >
-          <Plus className="h-4 w-4" />
-          Create API Key
-        </button>
-      </div>
+      <PageHeader
+        icon={<Key className="h-5 w-5" />}
+        title="API Keys"
+        description="Manage API keys for programmatic access to the platform"
+        actions={(
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            <Plus className="h-4 w-4" />
+            Create API Key
+          </button>
+        )}
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">

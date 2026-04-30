@@ -1677,7 +1677,7 @@ function ReminderConfigManager({ tenantId, appointmentTypes, isReadOnly }: { ten
             {r.appointment_type_name && <span className="text-muted ml-2">| {r.appointment_type_name}</span>}
           </div>
           {!isReadOnly && (
-            <button onClick={() => deleteReminder(r.id)} className="p-1 rounded hover:bg-red-50 text-red-500">
+            <button onClick={() => deleteReminder(r.id)} className="p-1 rounded hover:bg-danger-light text-danger">
               <Trash2 className="h-3 w-3" />
             </button>
           )}

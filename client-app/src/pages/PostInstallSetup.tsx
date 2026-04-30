@@ -8,6 +8,7 @@ import {
   Mic, TestTube, Rocket, ChevronRight, ArrowLeft, Lock,
   Save, AlertCircle, Loader2, Settings2,
 } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface ChecklistStep {
   key: string;
@@ -477,25 +478,26 @@ export default function PostInstallSetup() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate('/marketplace/updates')}
-          className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-text-primary">{t('post_install.title')}</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            {installData
-              ? t('post_install.subtitle_with_template', {
-                  templateName:
-                    installData.template_name ?? installData.agent_name ?? t('post_install.agent_fallback'),
-                })
-              : t('post_install.subtitle_default')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Settings2 className="h-5 w-5" />}
+        title={t('post_install.title')}
+        description={
+          installData
+            ? t('post_install.subtitle_with_template', {
+                templateName:
+                  installData.template_name ?? installData.agent_name ?? t('post_install.agent_fallback'),
+              })
+            : t('post_install.subtitle_default')
+        }
+        breadcrumbs={(
+          <button
+            onClick={() => navigate('/marketplace/updates')}
+            className="inline-flex items-center gap-1 hover:text-text-primary"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> {t('actions.back', { defaultValue: 'Back' })}
+          </button>
+        )}
+      />
 
       {checklist && (
         <div className="bg-surface border border-border rounded-xl p-5">

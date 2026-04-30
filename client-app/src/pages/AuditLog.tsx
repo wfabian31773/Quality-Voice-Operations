@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Shield, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface AuditEvent {
   id: string;
@@ -55,10 +56,11 @@ export default function AuditLog() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Shield className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold">Audit Log</h1>
-      </div>
+      <PageHeader
+        icon={<Shield className="h-5 w-5" />}
+        title="Audit Log"
+        description="A historical record of every privileged action across the workspace."
+      />
 
       <div className="flex flex-wrap gap-3">
         <select

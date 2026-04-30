@@ -113,3 +113,21 @@
 .react-flow__node:focus-visible {
   box-shadow: 0 0 0 4px rgba(61, 179, 166, 0.18);
 }
+
+/* ----- Tenant page transition --------------------------------------
+ * Soft fade-in applied to the routed `<Outlet />` content inside
+ * TenantLayout. Keys off the route pathname so each navigation re-runs
+ * the animation. Respects prefers-reduced-motion. */
+.tenant-page-transition {
+  animation: tenant-page-fade var(--motion-base, 200ms) var(--easing-emphasized, ease-out) both;
+  will-change: opacity, transform;
+}
+@keyframes tenant-page-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tenant-page-transition {
+    animation: none;
+  }
+}

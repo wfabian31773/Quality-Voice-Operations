@@ -3552,7 +3552,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     <h3 className="text-sm font-semibold text-heading">{t.name}</h3>
                     <p className="text-xs text-muted">{t.region || 'No region'}</p>
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{t.status}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.status === 'active' ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{t.status}</span>
                 </div>
                 {t.description && <p className="text-xs text-muted mt-2">{t.description}</p>}
                 <div className="flex gap-4 mt-3 text-xs text-muted">
@@ -3562,7 +3562,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                 {!isReadOnly && (
                   <div className="flex gap-1.5 mt-3">
                     <button onClick={() => openForm('territory', t)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
-                    <button onClick={() => deleteItem('territory', t.id)} className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
+                    <button onClick={() => deleteItem('territory', t.id)} className="text-[10px] px-2 py-1 rounded bg-danger-light text-danger hover:bg-danger/20">Delete</button>
                   </div>
                 )}
               </div>
@@ -3605,12 +3605,12 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                     <td className="p-2 text-heading font-medium">{s.name}</td>
                     <td className="p-2 text-muted">{s.category}</td>
                     <td className="p-2 text-muted">{s.resource_count}</td>
-                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{s.status}</span></td>
+                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${s.status === 'active' ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{s.status}</span></td>
                     {!isReadOnly && (
                       <td className="p-2">
                         <div className="flex gap-1">
                           <button onClick={() => openForm('skill', s)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
-                          <button onClick={() => deleteItem('skill', s.id)} className="text-[10px] px-2 py-1 rounded text-red-600 hover:bg-red-50">Delete</button>
+                          <button onClick={() => deleteItem('skill', s.id)} className="text-[10px] px-2 py-1 rounded text-danger hover:bg-danger-light">Delete</button>
                         </div>
                       </td>
                     )}
@@ -3646,18 +3646,18 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                   <div>
                     <h3 className="text-sm font-semibold text-heading">{t.name}</h3>
                     <div className="flex gap-2 mt-1">
-                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">{t.trigger_event.replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-info/15 text-info rounded">{t.trigger_event.replace(/_/g, ' ')}</span>
                       <span className="text-[10px] px-1.5 py-0.5 bg-surface-hover text-text-primary rounded">{t.channel}</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{t.is_active ? 'Active' : 'Inactive'}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.is_active ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{t.is_active ? 'Active' : 'Inactive'}</span>
                 </div>
                 {t.subject && <p className="text-xs text-muted mt-2">Subject: {t.subject}</p>}
                 <p className="text-xs text-muted mt-1 line-clamp-2">{t.body_template}</p>
                 {!isReadOnly && (
                   <div className="flex gap-1.5 mt-3">
                     <button onClick={() => openForm('notification', t)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
-                    <button onClick={() => deleteItem('notification', t.id)} className="text-[10px] px-2 py-1 rounded text-red-600 hover:bg-red-50">Delete</button>
+                    <button onClick={() => deleteItem('notification', t.id)} className="text-[10px] px-2 py-1 rounded text-danger hover:bg-danger-light">Delete</button>
                   </div>
                 )}
               </div>
@@ -3698,9 +3698,9 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                 {assignmentRules.map(r => (
                   <tr key={r.id} className="border-b border-border">
                     <td className="p-2"><div className="text-heading font-medium">{r.name}</div><div className="text-muted">{r.description}</div></td>
-                    <td className="p-2"><span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]">{r.rule_type.replace(/_/g, ' ')}</span></td>
+                    <td className="p-2"><span className="px-1.5 py-0.5 bg-info/15 text-info rounded text-[10px]">{r.rule_type.replace(/_/g, ' ')}</span></td>
                     <td className="p-2 text-muted">{r.priority}</td>
-                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-hover text-text-primary'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${r.is_active ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
                     {!isReadOnly && (
                       <td className="p-2">
                         <div className="flex gap-1">

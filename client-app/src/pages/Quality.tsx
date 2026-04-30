@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { TrendingUp, AlertTriangle, History, RotateCcw, Star, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface QualityTrend {
   date: string;
@@ -144,10 +145,11 @@ export default function Quality() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-heading">Call Quality</h1>
-        <p className="text-sm text-muted mt-1">Monitor AI agent performance and manage prompt versions</p>
-      </div>
+      <PageHeader
+        icon={<TrendingUp className="h-5 w-5" />}
+        title="Call Quality"
+        description="Monitor AI agent performance and manage prompt versions"
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">

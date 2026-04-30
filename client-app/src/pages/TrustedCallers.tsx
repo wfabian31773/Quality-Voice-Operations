@@ -20,6 +20,7 @@ import {
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
 import EmptyState from '../components/EmptyState';
+import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 
 type CallerStatus = 'pending' | 'verified' | 'failed' | 'rotated';
@@ -1473,39 +1474,39 @@ export default function TrustedCallers() {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-text-primary flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-            Trusted Callers
-          </h1>
-          <p className="text-sm text-text-secondary mt-1 max-w-2xl">
+    <div className="space-y-6">
+      <PageHeader
+        icon={<ShieldCheck className="h-5 w-5" />}
+        title="Trusted Callers"
+        description={
+          <>
             Verified caller IDs that outbound campaigns can use as their{' '}
             <span className="font-mono">From</span> number. Once registered with a Twilio Trust Hub product,
             carriers attest A under STIR/SHAKEN so calls don't get tagged as spam.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-text-secondary">
-            <input
-              type="checkbox"
-              checked={includeRotated}
-              onChange={(e) => setIncludeRotated(e.target.checked)}
-              className="rounded border-border text-primary focus:ring-primary/30"
-            />
-            Show rotated history
-          </label>
-          {canManage && (
-            <button
-              onClick={() => setShowRegister(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg"
-            >
-              <Plus className="h-4 w-4" /> Register Number
-            </button>
-          )}
-        </div>
-      </header>
+          </>
+        }
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-xs text-text-secondary">
+              <input
+                type="checkbox"
+                checked={includeRotated}
+                onChange={(e) => setIncludeRotated(e.target.checked)}
+                className="rounded border-border text-primary focus:ring-primary/30"
+              />
+              Show rotated history
+            </label>
+            {canManage && (
+              <button
+                onClick={() => setShowRegister(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg"
+              >
+                <Plus className="h-4 w-4" /> Register Number
+              </button>
+            )}
+          </>
+        }
+      />
 
       {lastValidationCode && (
         <div className="border border-warning/40 bg-warning/10 text-text-primary rounded-lg p-4 flex items-start gap-3">

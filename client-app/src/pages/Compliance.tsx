@@ -6,6 +6,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Trash2, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import { EmptyState, ErrorState, Skeleton, SkeletonRows } from '../components/state';
+import { PageHeader } from '../components/ui';
 
 type Tab = 'audit' | 'api-keys' | 'roles' | 'encryption' | 'soc2' | 'gdpr';
 
@@ -853,13 +854,11 @@ export default function Compliance() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Shield className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold">Security & Compliance</h1>
-          <p className="text-sm text-muted">Enterprise security controls, audit logging, and compliance management</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Shield className="h-5 w-5" />}
+        title="Security & Compliance"
+        description="Enterprise security controls, audit logging, and compliance management"
+      />
 
       <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 overflow-x-auto">
         {TABS.map((tab) => (

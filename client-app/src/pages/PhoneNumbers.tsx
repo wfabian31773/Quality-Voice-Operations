@@ -13,6 +13,7 @@ import { useRole } from '../lib/useRole';
 import clsx from 'clsx';
 import Modal from '../components/Modal';
 import SchedulingDriftBanner from '../components/SchedulingDriftBanner';
+import { PageHeader } from '../components/ui';
 
 interface PhoneNumber {
   id: string;
@@ -709,14 +710,11 @@ export default function PhoneNumbers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Phone Numbers</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Get phone numbers for your AI agents
-          </p>
-        </div>
-        {isManager && (
+      <PageHeader
+        icon={<Phone className="h-5 w-5" />}
+        title="Phone Numbers"
+        description="Get phone numbers for your AI agents"
+        actions={isManager && (
           <TooltipWalkthrough
             tooltipKey="phone-setup"
             title="Get a Phone Number"
@@ -731,7 +729,7 @@ export default function PhoneNumbers() {
             </button>
           </TooltipWalkthrough>
         )}
-      </div>
+      />
 
       {!isLoading && (
         <SchedulingDriftBanner

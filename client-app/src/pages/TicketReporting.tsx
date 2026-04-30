@@ -5,6 +5,7 @@ import {
   ArrowLeft, BarChart3, Clock, TrendingUp, AlertTriangle, Users,
   Calendar, RefreshCw, Target, RotateCcw, Timer, Filter,
 } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface TeamMember { id: string; email: string; }
 
@@ -174,12 +175,16 @@ export default function TicketReporting() {
   if (error || !data) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/tickets')} className="p-1.5 rounded-lg hover:bg-surface-secondary">
-            <ArrowLeft className="h-5 w-5 text-muted" />
-          </button>
-          <h1 className="text-2xl font-bold text-heading">Ticket Reports</h1>
-        </div>
+        <PageHeader
+          icon={<BarChart3 className="h-5 w-5" />}
+          title="Ticket Reports"
+          description="Performance metrics and analytics"
+          breadcrumbs={(
+            <button onClick={() => navigate('/tickets')} className="inline-flex items-center gap-1 hover:text-text-primary">
+              <ArrowLeft className="h-3.5 w-3.5" /> Back to tickets
+            </button>
+          )}
+        />
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm text-red-700 dark:text-red-300">
           {error || 'No reporting data available'}
           <button onClick={fetchData} className="ml-3 underline">Retry</button>
@@ -206,37 +211,35 @@ export default function TicketReporting() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/tickets')} className="p-1.5 rounded-lg hover:bg-surface-secondary">
-            <ArrowLeft className="h-5 w-5 text-muted" />
+      <PageHeader
+        icon={<BarChart3 className="h-5 w-5" />}
+        title="Ticket Reports"
+        description="Performance metrics and analytics"
+        breadcrumbs={(
+          <button onClick={() => navigate('/tickets')} className="inline-flex items-center gap-1 hover:text-text-primary">
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to tickets
           </button>
-          <div className="flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold text-heading">Ticket Reports</h1>
-              <p className="text-sm text-muted">Performance metrics and analytics</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1.5 ${hasActiveFilters ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-surface text-muted hover:text-heading'}`}
-          >
-            <Filter className="h-3.5 w-3.5" />
-            Filters {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-          </button>
-          <select value={days} onChange={e => setDays(parseInt(e.target.value))} className="px-3 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm">
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
-          </select>
-          <button onClick={fetchData} aria-label="Refresh" className="p-2 rounded-lg hover:bg-surface-secondary text-muted">
-            <RefreshCw className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+        )}
+        actions={(
+          <>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1.5 ${hasActiveFilters ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-surface text-muted hover:text-heading'}`}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Filters {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+            </button>
+            <select value={days} onChange={e => setDays(parseInt(e.target.value))} className="px-3 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm">
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+            <button onClick={fetchData} aria-label="Refresh" className="p-2 rounded-lg hover:bg-surface-secondary text-muted">
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </>
+        )}
+      />
 
       {showFilters && (
         <div className="bg-surface border border-border rounded-xl p-4">

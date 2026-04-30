@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { ArrowUpCircle, AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RefreshCw, Settings2, Bot } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface ChangelogEntry {
   version: string;
@@ -208,22 +209,20 @@ export default function UpdateCenter() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ArrowUpCircle className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Update Center</h1>
-            <p className="text-sm text-muted">Manage template updates and post-install setup for your agents</p>
-          </div>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg hover:bg-surface-secondary transition-colors"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Check for Updates
-        </button>
-      </div>
+      <PageHeader
+        icon={<ArrowUpCircle className="h-5 w-5" />}
+        title="Update Center"
+        description="Manage template updates and post-install setup for your agents"
+        actions={(
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg hover:bg-surface-secondary transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Check for Updates
+          </button>
+        )}
+      />
 
       {upgradeMutation.isError && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-400">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Modal from '../components/Modal';
+import { PageHeader } from '../components/ui';
 import {
   TICKET_TEMPLATE_TOKENS,
   findUnknownTicketTemplateTokens,
@@ -232,25 +233,21 @@ export default function TicketAdmin() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/tickets')} className="p-1.5 rounded-lg hover:bg-surface-secondary">
-            <ArrowLeft className="h-5 w-5 text-muted" />
+      <PageHeader
+        icon={<Settings2 className="h-5 w-5" />}
+        title="Ticket Administration"
+        description="Configure categories, SLAs, macros, and automation"
+        breadcrumbs={(
+          <button onClick={() => navigate('/tickets')} className="inline-flex items-center gap-1 hover:text-text-primary">
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to tickets
           </button>
-          <div className="flex items-center gap-2">
-            <Settings2 className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold text-heading">Ticket Administration</h1>
-              <p className="text-sm text-muted">Configure categories, SLAs, macros, and automation</p>
-            </div>
-          </div>
-        </div>
-        {!isReadOnly && (
+        )}
+        actions={!isReadOnly && (
           <button onClick={openNew} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-2">
             <Plus className="h-4 w-4" /> Add New
           </button>
         )}
-      </div>
+      />
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">

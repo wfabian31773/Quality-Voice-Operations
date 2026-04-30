@@ -192,8 +192,8 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          {!embedded && <h1 className="text-2xl font-bold">Revenue & Performance</h1>}
-          <p className="text-sm text-muted-foreground mt-1">Revenue attribution, sentiment, topics, and conversion analytics</p>
+          {!embedded && <h1 className="text-2xl font-display font-bold tracking-tight text-text-primary">Revenue &amp; Performance</h1>}
+          <p className="text-sm text-text-secondary mt-1">Revenue attribution, sentiment, topics, and conversion analytics</p>
         </div>
         <div className="flex items-center gap-3">
           <button
