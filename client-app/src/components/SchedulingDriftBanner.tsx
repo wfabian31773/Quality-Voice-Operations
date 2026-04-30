@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, ArrowRight, X } from 'lucide-react';
 
 const SCHEDULING_PROVIDER_LABELS: Record<string, string> = {
@@ -14,15 +15,10 @@ function formatProvider(provider: string): string {
 const DISMISS_KEY_PREFIX = 'qvo_scheduling_drift_banner_dismissed:';
 
 export interface SchedulingDriftBannerProps {
-  /** Number of rows (agents or phone numbers) routed to a disconnected calendar. */
   count: number;
-  /** Unique list of disconnected provider identifiers across the rows. */
   disconnectedProviders: string[];
-  /** Singular label for an affected row (e.g. 'agent', 'phone number'). */
   subjectSingular: string;
-  /** Plural label for affected rows (e.g. 'agents', 'phone numbers'). */
   subjectPlural: string;
-  /** Stable key for the dismissal storage entry (page-scoped). */
   storageKey: string;
 }
 
@@ -33,13 +29,12 @@ export default function SchedulingDriftBanner({
   subjectPlural,
   storageKey,
 }: SchedulingDriftBannerProps) {
+  const { t } = useTranslation('tenant');
   const navigate = useNavigate();
 
   const dismissKey = useMemo(() => {
     if (count === 0) return '';
     const sortedProviders = [...disconnectedProviders].sort().join(',');
-    // Include the count so the banner re-surfaces when the impact grows
-    // (e.g. an additional agent gets pointed at the same broken calendar).
     return `${DISMISS_KEY_PREFIX}${storageKey}:${count}:${sortedProviders}`;
   }, [count, disconnectedProviders, storageKey]);
 
@@ -77,16 +72,21 @@ export default function SchedulingDriftBanner({
   };
 
   const subject = count === 1 ? subjectSingular : subjectPlural;
-  const verb = count === 1 ? 'is' : 'are';
 
   const providerNames = disconnectedProviders.map(formatProvider);
   let providerSummary = '';
   if (providerNames.length === 1) {
     providerSummary = providerNames[0];
   } else if (providerNames.length === 2) {
-    providerSummary = `${providerNames[0]} and ${providerNames[1]}`;
+    providerSummary = t('scheduling_drift_banner.provider_join_two', {
+      a: providerNames[0],
+      b: providerNames[1],
+    });
   } else if (providerNames.length > 2) {
-    providerSummary = `${providerNames.slice(0, -1).join(', ')}, and ${providerNames[providerNames.length - 1]}`;
+    providerSummary = t('scheduling_drift_banner.provider_join_many', {
+      list: providerNames.slice(0, -1).join(', '),
+      last: providerNames[providerNames.length - 1],
+    });
   }
 
   return (
@@ -100,11 +100,11 @@ export default function SchedulingDriftBanner({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
-            {count} {subject} {verb} configured to book into a disconnected calendar
+            {t('scheduling_drift_banner.title', { count, subject })}
           </p>
           {providerSummary && (
             <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-0.5">
-              Reconnect {providerSummary} so appointments keep syncing.
+              {t('scheduling_drift_banner.reconnect_summary', { providers: providerSummary })}
             </p>
           )}
         </div>
@@ -113,12 +113,12 @@ export default function SchedulingDriftBanner({
           onClick={handleReconnect}
           className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
         >
-          Reconnect <ArrowRight className="h-3 w-3" />
+          {t('scheduling_drift_banner.reconnect')} <ArrowRight className="h-3 w-3" />
         </button>
         <button
           type="button"
           onClick={handleDismiss}
-          aria-label="Dismiss"
+          aria-label={t('scheduling_drift_banner.dismiss')}
           className="p-1 text-amber-700/70 hover:text-amber-900 dark:text-amber-200/70 dark:hover:text-amber-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
         >
           <X className="h-4 w-4" />
@@ -130,7 +130,7 @@ export default function SchedulingDriftBanner({
           onClick={handleReconnect}
           className="inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
         >
-          Reconnect <ArrowRight className="h-3 w-3" />
+          {t('scheduling_drift_banner.reconnect')} <ArrowRight className="h-3 w-3" />
         </button>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
 import {
@@ -284,6 +285,14 @@ const CONTACT_STATUS_COLORS: Record<ContactStatus, string> = {
   opted_out: 'bg-danger/10 text-danger',
 };
 
+function statusLabel(t: TFunction, status: string): string {
+  return t(`campaigns.status.${status}`, { defaultValue: status.replace(/_/g, ' ') });
+}
+
+function contactStatusLabel(t: TFunction, status: string): string {
+  return t(`campaigns.contact_status.${status}`, { defaultValue: status.replace(/_/g, ' ') });
+}
+
 const DISPOSITION_COLORS: Record<string, string> = {
   confirmed: 'text-success',
   rescheduled: 'text-warning',
@@ -300,7 +309,7 @@ const DISPOSITION_COLORS: Record<string, string> = {
   no_response: 'text-text-muted',
 };
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 const CAMPAIGN_TYPE_ICONS: Record<string, React.ReactNode> = {
   Phone: <Phone className="h-5 w-5" />,
@@ -311,10 +320,10 @@ const CAMPAIGN_TYPE_ICONS: Record<string, React.ReactNode> = {
   TrendingUp: <TrendingUp className="h-5 w-5" />,
 };
 
-function StatusBadge({ status, colors }: { status: string; colors: Record<string, string> }) {
+function StatusBadge({ status, label, colors }: { status: string; label?: string; colors: Record<string, string> }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${colors[status] ?? 'bg-text-muted/10 text-text-muted'}`}>
-      {status.replace(/_/g, ' ')}
+      {label ?? status.replace(/_/g, ' ')}
     </span>
   );
 }
@@ -379,6 +388,7 @@ function TypeConfigFields({
   typeConfig: CampaignTypeConfigFields;
   onChange: (config: CampaignTypeConfigFields) => void;
 }) {
+  const { t: tenantT } = useTranslation('tenant');
   if (typeDef.configFields.length === 0) return null;
 
   // Per-field reads/writes are keyed by `CampaignTypeDefinition.configFields[].key`,
@@ -390,11 +400,11 @@ function TypeConfigFields({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-medium text-text-primary">{typeDef.label} Settings</h3>
+        <h3 className="text-sm font-medium text-text-primary">{tenantT('campaigns.create_modal.type_settings', { type: typeDef.label })}</h3>
         <div className="group relative">
           <Info className="h-3.5 w-3.5 text-text-muted cursor-help" />
           <div className="hidden group-hover:block absolute left-0 top-5 z-10 w-64 p-2 bg-surface border border-border rounded-lg shadow-lg text-xs text-text-muted">
-            Configure type-specific settings for your {typeDef.label.toLowerCase()} campaign.
+            {tenantT('campaigns.create_modal.type_tooltip', { type: typeDef.label.toLowerCase() })}
           </div>
         </div>
       </div>
@@ -430,6 +440,7 @@ function TypeConfigFields({
 }
 
 function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t: tenantT, i18n } = useTranslation('tenant');
   const { data: agentsData } = useQuery({ queryKey: ['agents'], queryFn: () => api.get<{ agents: Agent[] }>('/agents') });
   const agents = agentsData?.agents ?? [];
 
@@ -502,7 +513,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
   };
 
   return (
-    <Modal open onClose={onClose} ariaLabel={step === 'type' ? 'Choose Campaign Type' : 'Configure Campaign'} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={step === 'type' ? tenantT('campaigns.create_modal.aria_choose_type') : tenantT('campaigns.create_modal.aria_configure')} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             {step === 'config' && (
@@ -511,7 +522,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
               </button>
             )}
             <h2 className="text-lg font-semibold text-text-primary">
-              {step === 'type' ? 'Choose Campaign Type' : 'Configure Campaign'}
+              {step === 'type' ? tenantT('campaigns.create_modal.title_choose_type') : tenantT('campaigns.create_modal.title_configure')}
             </h2>
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X className="h-5 w-5" /></button>
@@ -519,7 +530,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
 
         {step === 'type' ? (
           <div className="p-6 space-y-4">
-            <p className="text-sm text-text-muted">Select the type of outbound campaign you want to create. Each type comes with optimized conversation templates and tracking.</p>
+            <p className="text-sm text-text-muted">{tenantT('campaigns.create_modal.intro')}</p>
             {campaignTypes.length > 0 ? (
               <CampaignTypeSelector
                 types={campaignTypes}
@@ -540,7 +551,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                 onClick={() => setStep('config')}
                 className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg"
               >
-                Continue
+                {tenantT('campaigns.create_modal.continue')}
               </button>
             </div>
           </div>
@@ -559,19 +570,24 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
             )}
 
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Campaign Name</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.campaign_name')}</label>
               <input
                 type="text"
                 required
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder={selectedTypeDef ? `${selectedTypeDef.label} — ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : 'March outreach'}
+                placeholder={selectedTypeDef
+                  ? tenantT('campaigns.create_modal.name_placeholder', {
+                      type: selectedTypeDef.label,
+                      date: new Date().toLocaleDateString(i18n.language || 'en-US', { month: 'long', year: 'numeric' }),
+                    })
+                  : tenantT('campaigns.create_modal.name_placeholder_default')}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Agent</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.agent')}</label>
               <select
                 value={form.agentId}
                 onChange={(e) => setForm((f) => ({ ...f, agentId: e.target.value }))}
@@ -592,46 +608,46 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
             )}
 
             <div className="border-t border-border pt-4">
-              <label className="block text-sm font-medium text-text-primary mb-1">Verified Caller ID</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.verified_caller_id')}</label>
               <select
                 value={form.verifiedCallerId}
                 onChange={(e) => setForm((f) => ({ ...f, verifiedCallerId: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                <option value="">Use default outbound number</option>
+                <option value="">{tenantT('campaigns.create_modal.use_default_outbound')}</option>
                 {verifiedCallers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.friendlyName ? `${c.friendlyName} — ${c.phoneNumber}` : c.phoneNumber}
-                    {c.attestationLevel ? ` (Attestation ${c.attestationLevel})` : ''}
+                    {c.attestationLevel ? ` (${tenantT('campaigns.create_modal.attestation', { level: c.attestationLevel })})` : ''}
                   </option>
                 ))}
               </select>
               <p className="text-xs text-text-muted mt-1">
-                Required to activate the campaign once you have any verified callers. Carriers attest A when the number is registered with a Trust Hub product.
+                {tenantT('campaigns.create_modal.verified_caller_help')}
               </p>
               {verifiedCallers.length === 0 && (
                 <p className="text-xs text-warning mt-1">
-                  No verified caller IDs yet. Register one under Trusted Callers before going live.
+                  {tenantT('campaigns.create_modal.no_verified_callers')}
                 </p>
               )}
             </div>
 
             <div className="border-t border-border pt-4">
-              <h3 className="text-sm font-medium text-text-primary mb-3">Schedule Settings</h3>
+              <h3 className="text-sm font-medium text-text-primary mb-3">{tenantT('campaigns.create_modal.schedule_settings')}</h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-1">Window Start</label>
+                    <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.window_start')}</label>
                     <input type="time" value={form.callWindowStart} onChange={(e) => setForm((f) => ({ ...f, callWindowStart: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-1">Window End</label>
+                    <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.window_end')}</label>
                     <input type="time" value={form.callWindowEnd} onChange={(e) => setForm((f) => ({ ...f, callWindowEnd: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">Timezone</label>
+                  <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.timezone')}</label>
                   <input
                     type="text"
                     value={form.timezone}
@@ -641,9 +657,9 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">Days of Week</label>
+                  <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.days_of_week')}</label>
                   <div className="flex gap-1">
-                    {DAYS.map((label, i) => (
+                    {DAYS.map((dayKey, i) => (
                       <button
                         key={i}
                         type="button"
@@ -654,7 +670,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                             : 'bg-surface-hover text-text-secondary'
                         }`}
                       >
-                        {label}
+                        {tenantT(`campaigns.days.${dayKey}`)}
                       </button>
                     ))}
                   </div>
@@ -668,22 +684,21 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                     className="mt-0.5 rounded border-border text-primary focus:ring-primary/30"
                   />
                   <span className="text-sm text-text-secondary">
-                    Apply quiet hours in each contact's local time (TCPA-friendly).
-                    When off, the campaign timezone above is used for everyone.
+                    {tenantT('campaigns.create_modal.respect_contact_tz')}
                   </span>
                 </label>
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-1">Concurrency</label>
+                    <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.concurrency')}</label>
                     <input type="number" min={1} max={50} value={form.maxConcurrentCalls} onChange={(e) => setForm((f) => ({ ...f, maxConcurrentCalls: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-1">Max Attempts</label>
+                    <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.max_attempts')}</label>
                     <input type="number" min={1} max={10} value={form.maxAttempts} onChange={(e) => setForm((f) => ({ ...f, maxAttempts: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-1">Retry (min)</label>
+                    <label className="block text-sm font-medium text-text-primary mb-1">{tenantT('campaigns.create_modal.retry_min')}</label>
                     <input type="number" min={1} value={form.retryDelayMinutes} onChange={(e) => setForm((f) => ({ ...f, retryDelayMinutes: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                 </div>
@@ -691,9 +706,9 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary">Cancel</button>
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary">{tenantT('campaigns.create_modal.cancel')}</button>
               <button type="submit" disabled={mutation.isPending} className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50">
-                {mutation.isPending ? 'Creating...' : 'Create Campaign'}
+                {mutation.isPending ? tenantT('campaigns.create_modal.creating') : tenantT('campaigns.create_modal.create')}
               </button>
             </div>
           </form>
@@ -703,6 +718,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
 }
 
 function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string; onClose: () => void; onAdded: () => void }) {
+  const { t: tenantT } = useTranslation('tenant');
   const [mode, setMode] = useState<'manual' | 'csv' | 'json'>('manual');
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
@@ -730,18 +746,18 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
   const handleSubmit = () => {
     setError('');
     if (mode === 'csv') {
-      if (!csvText.trim()) { setError('Paste CSV data'); return; }
+      if (!csvText.trim()) { setError(tenantT('campaigns.add_contacts.err_paste_csv')); return; }
       mutation.mutate({ csv: csvText });
     } else if (mode === 'json') {
-      if (!jsonText.trim()) { setError('Paste JSON data'); return; }
+      if (!jsonText.trim()) { setError(tenantT('campaigns.add_contacts.err_paste_json')); return; }
       try {
         const parsed = JSON.parse(jsonText);
         const contacts = Array.isArray(parsed) ? parsed : parsed.contacts;
-        if (!Array.isArray(contacts)) { setError('JSON must be an array or { contacts: [...] }'); return; }
+        if (!Array.isArray(contacts)) { setError(tenantT('campaigns.add_contacts.err_json_array')); return; }
         mutation.mutate({ contacts: contacts.map((c: Record<string, string>) => ({ phoneNumber: c.phoneNumber || c.phone || c.phone_number, name: c.name || undefined })) });
-      } catch { setError('Invalid JSON'); }
+      } catch { setError(tenantT('campaigns.add_contacts.err_invalid_json')); }
     } else {
-      if (manualEntries.length === 0) { setError('Add at least one contact'); return; }
+      if (manualEntries.length === 0) { setError(tenantT('campaigns.add_contacts.err_min_one')); return; }
       mutation.mutate({ contacts: manualEntries.map((e) => ({ phoneNumber: e.phone, name: e.name || undefined })) });
     }
   };
@@ -755,18 +771,18 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
   };
 
   return (
-    <Modal open onClose={onClose} ariaLabel="Add Contacts" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={tenantT('campaigns.add_contacts.aria_label')} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-text-primary">Add Contacts</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{tenantT('campaigns.add_contacts.title')}</h2>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-4">
           {error && <div className="bg-danger/10 text-danger text-sm px-3 py-2 rounded-lg">{error}</div>}
 
           <div className="flex gap-2">
-            <button onClick={() => setMode('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'manual' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>Manual Entry</button>
-            <button onClick={() => setMode('csv')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'csv' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>CSV Upload</button>
-            <button onClick={() => setMode('json')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'json' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>JSON</button>
+            <button onClick={() => setMode('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'manual' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>{tenantT('campaigns.add_contacts.manual_entry')}</button>
+            <button onClick={() => setMode('csv')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'csv' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>{tenantT('campaigns.add_contacts.csv_upload')}</button>
+            <button onClick={() => setMode('json')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${mode === 'json' ? 'bg-primary text-white' : 'bg-surface-hover text-text-secondary'}`}>{tenantT('campaigns.add_contacts.json')}</button>
           </div>
 
           {mode === 'json' ? (
@@ -778,13 +794,13 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                 placeholder={'[\n  { "phoneNumber": "2125551234", "name": "Jane Smith" },\n  { "phoneNumber": "3105559876", "name": "Bob Jones" }\n]'}
               />
-              <p className="text-xs text-text-muted">JSON array of objects with "phoneNumber" (or "phone") and optional "name" fields.</p>
+              <p className="text-xs text-text-muted">{tenantT('campaigns.add_contacts.json_help')}</p>
             </>
           ) : mode === 'manual' ? (
             <>
               <div className="flex gap-2">
-                <input type="text" placeholder="Phone number" value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                <input type="text" placeholder="Name (optional)" value={manualName} onChange={(e) => setManualName(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                <input type="text" placeholder={tenantT('campaigns.add_contacts.phone_placeholder')} value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                <input type="text" placeholder={tenantT('campaigns.add_contacts.name_optional')} value={manualName} onChange={(e) => setManualName(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 <button type="button" onClick={addManualEntry} className="px-3 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg"><Plus className="h-4 w-4" /></button>
               </div>
               {manualEntries.length > 0 && (
@@ -795,7 +811,7 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
                       <button onClick={() => setManualEntries((prev) => prev.filter((_, j) => j !== i))} className="text-text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
-                  <p className="text-xs text-text-muted">{manualEntries.length} contact{manualEntries.length !== 1 ? 's' : ''} ready</p>
+                  <p className="text-xs text-text-muted">{tenantT('campaigns.add_contacts.ready', { count: manualEntries.length })}</p>
                 </div>
               )}
             </>
@@ -804,7 +820,7 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
               <div>
                 <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
                   <Upload className="h-5 w-5 text-text-muted" />
-                  <span className="text-sm text-text-secondary">Choose a CSV file</span>
+                  <span className="text-sm text-text-secondary">{tenantT('campaigns.add_contacts.choose_csv')}</span>
                   <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
                 </label>
               </div>
@@ -815,14 +831,14 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                 placeholder={'phone,name\n2125551234,Jane Smith\n3105559876,Bob Jones'}
               />
-              <p className="text-xs text-text-muted">CSV must have a header row with a "phone" or "phone_number" column. Additional columns are saved as contact metadata (e.g. appointmentDate, providerName).</p>
+              <p className="text-xs text-text-muted">{tenantT('campaigns.add_contacts.csv_help')}</p>
             </>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary">{tenantT('campaigns.add_contacts.cancel')}</button>
             <button onClick={handleSubmit} disabled={mutation.isPending} className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50">
-              {mutation.isPending ? 'Uploading...' : 'Add Contacts'}
+              {mutation.isPending ? tenantT('campaigns.add_contacts.uploading') : tenantT('campaigns.add_contacts.submit')}
             </button>
           </div>
         </div>
@@ -831,6 +847,7 @@ function AddContactsModal({ campaignId, onClose, onAdded }: { campaignId: string
 }
 
 function TypeMetricsPanel({ campaignId, campaignType }: { campaignId: string; campaignType: string }) {
+  const { t: tenantT } = useTranslation('tenant');
   const { data: typeMetricsData } = useQuery({
     queryKey: ['campaign-type-metrics', campaignId],
     queryFn: () => api.get<{ typeMetrics: TypeSpecificMetrics | null }>(`/campaigns/${campaignId}/type-metrics`),
@@ -853,7 +870,7 @@ function TypeMetricsPanel({ campaignId, campaignType }: { campaignId: string; ca
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
         {CAMPAIGN_TYPE_ICONS[typeDef.icon]}
-        {typeDef.label} Metrics
+        {tenantT('campaigns.type_metrics.title', { type: typeDef.label })}
       </h3>
 
       <div className="bg-surface border border-border rounded-lg p-4">
@@ -1068,6 +1085,7 @@ function CompliancePanel({
   onScrub?: () => void;
   scrubbing?: boolean;
 }) {
+  const { t: tenantT } = useTranslation('tenant');
   const { data, isLoading, error } = useQuery({
     queryKey: ['campaign-compliance', campaignId],
     queryFn: () => api.get<{ compliance: ComplianceReport }>(`/campaigns/${campaignId}/compliance`),
@@ -1078,7 +1096,7 @@ function CompliancePanel({
     return (
       <div className="bg-surface border border-border rounded-lg p-4 flex items-center gap-3">
         <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-        <span className="text-sm text-text-muted">Checking TCPA compliance…</span>
+        <span className="text-sm text-text-muted">{tenantT('campaigns.compliance.checking')}</span>
       </div>
     );
   }
@@ -1087,7 +1105,7 @@ function CompliancePanel({
     return (
       <div className="bg-surface border border-border rounded-lg p-4 flex items-center gap-2 text-text-muted">
         <AlertCircle className="h-4 w-4" />
-        <span className="text-sm">Compliance report unavailable.</span>
+        <span className="text-sm">{tenantT('campaigns.compliance.unavailable')}</span>
       </div>
     );
   }
@@ -1102,44 +1120,47 @@ function CompliancePanel({
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
           <ShieldCheck className="h-4 w-4" />
-          TCPA Compliance
+          {tenantT('campaigns.compliance.title')}
         </h3>
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
           report.ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
         }`}>
-          {report.ok ? 'Ready to launch' : 'Action required'}
+          {report.ok ? tenantT('campaigns.compliance.ready_to_launch') : tenantT('campaigns.compliance.action_required')}
         </span>
       </div>
 
       <div className="grid grid-cols-4 gap-3">
         <div className={`rounded-lg p-3 text-center ${ringColor}`}>
           <p className={`text-2xl font-bold ${scoreColor}`}>{score}</p>
-          <p className="text-xs text-text-muted mt-0.5">Score</p>
+          <p className="text-xs text-text-muted mt-0.5">{tenantT('campaigns.compliance.score')}</p>
         </div>
         <div className="rounded-lg p-3 text-center bg-surface-hover">
           <p className="text-2xl font-bold text-text-primary">{report.totalContacts.toLocaleString()}</p>
-          <p className="text-xs text-text-muted mt-0.5">Contacts</p>
+          <p className="text-xs text-text-muted mt-0.5">{tenantT('campaigns.compliance.contacts')}</p>
         </div>
         <div className="rounded-lg p-3 text-center bg-surface-hover">
           <p className={`text-2xl font-bold ${report.dncMatchCount > 0 ? 'text-danger' : 'text-text-primary'}`}>
             {report.dncMatchCount}
           </p>
-          <p className="text-xs text-text-muted mt-0.5">DNC matches</p>
+          <p className="text-xs text-text-muted mt-0.5">{tenantT('campaigns.compliance.dnc_matches')}</p>
           {((report.tenantDncMatchCount ?? 0) > 0 || (report.federalDncMatchCount ?? 0) > 0) && (
             <p className="text-[10px] text-text-muted mt-0.5">
-              {report.tenantDncMatchCount ?? 0} tenant · {report.federalDncMatchCount ?? 0} federal
+              {tenantT('campaigns.compliance.tenant_federal_summary', {
+                tenant: report.tenantDncMatchCount ?? 0,
+                federal: report.federalDncMatchCount ?? 0,
+              })}
             </p>
           )}
         </div>
         <div className="rounded-lg p-3 text-center bg-surface-hover">
           <p className="text-2xl font-bold text-text-muted">{report.optedOutCount}</p>
-          <p className="text-xs text-text-muted mt-0.5">Opted out</p>
+          <p className="text-xs text-text-muted mt-0.5">{tenantT('campaigns.compliance.opted_out')}</p>
         </div>
       </div>
 
       {report.federalDncRegistryVersion && (
         <p className="mt-2 text-[11px] text-text-muted">
-          Federal DNC registry version: <span className="font-mono">{report.federalDncRegistryVersion}</span>
+          {tenantT('campaigns.compliance.fed_registry_version_label')} <span className="font-mono">{report.federalDncRegistryVersion}</span>
         </p>
       )}
 
@@ -1152,11 +1173,13 @@ function CompliancePanel({
         <div className="rounded-md border border-border bg-surface-hover px-2.5 py-2 flex items-start gap-2">
           <ShieldCheck className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${report.hasQuietHoursConfig ? 'text-success' : 'text-warning'}`} />
           <div>
-            <p className="font-medium text-text-primary">Voice quiet hours</p>
+            <p className="font-medium text-text-primary">{tenantT('campaigns.compliance.voice_quiet_hours')}</p>
             <p className="text-text-muted">
               {report.hasQuietHoursConfig
-                ? `Configured · ${report.respectsContactTimezone ? "recipient's local time" : 'campaign timezone'}`
-                : 'Not configured'}
+                ? (report.respectsContactTimezone
+                    ? tenantT('campaigns.compliance.voice_configured_local')
+                    : tenantT('campaigns.compliance.voice_configured_campaign'))
+                : tenantT('campaigns.compliance.voice_not_configured')}
             </p>
           </div>
         </div>
@@ -1164,21 +1187,21 @@ function CompliancePanel({
           <ShieldCheck className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${report.smsQuietHoursEnforced === false ? 'text-warning' : 'text-success'}`} />
           <div>
             <p className="font-medium text-text-primary flex items-center gap-1.5">
-              SMS quiet hours
+              {tenantT('campaigns.compliance.sms_quiet_hours')}
               {report.smsQuietHoursTenantOverride && (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
-                  Tenant override
+                  {tenantT('campaigns.compliance.tenant_override')}
                 </span>
               )}
             </p>
             <p className="text-text-muted">
               {report.smsQuietHoursEnforced === false
-                ? 'Not enforced'
-                : `Enforced · ${report.smsQuietHoursWindow ?? '08:00–21:00 local'}`}
+                ? tenantT('campaigns.compliance.sms_not_enforced')
+                : tenantT('campaigns.compliance.sms_enforced', { window: report.smsQuietHoursWindow ?? tenantT('campaigns.compliance.sms_default_window') })}
             </p>
             {report.smsQuietHoursTenantOverride && report.smsQuietHoursFederalWindow && (
               <p className="text-text-muted text-[10px]">
-                Federal default: {report.smsQuietHoursFederalWindow}
+                {tenantT('campaigns.compliance.federal_default', { window: report.smsQuietHoursFederalWindow })}
               </p>
             )}
           </div>
@@ -1191,7 +1214,9 @@ function CompliancePanel({
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-text-secondary">
-              DNC matches{report.dncMatchCount > report.dncMatches.length ? ` (showing first ${report.dncMatches.length})` : ''}
+              {report.dncMatchCount > report.dncMatches.length
+                ? tenantT('campaigns.compliance.dnc_matches_showing', { count: report.dncMatches.length })
+                : tenantT('campaigns.compliance.dnc_matches_label')}
             </p>
             {canScrub && onScrub && (
               <button
@@ -1205,7 +1230,7 @@ function CompliancePanel({
                 ) : (
                   <ShieldOff className="h-3.5 w-3.5" />
                 )}
-                {scrubbing ? 'Scrubbing…' : `Scrub ${report.dncMatchCount} DNC match${report.dncMatchCount === 1 ? '' : 'es'}`}
+                {scrubbing ? tenantT('campaigns.compliance.scrubbing') : tenantT('campaigns.compliance.scrub', { count: report.dncMatchCount })}
               </button>
             )}
           </div>
@@ -1225,11 +1250,11 @@ function CompliancePanel({
                   */}
                   {m.source === 'federal' ? (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning whitespace-nowrap">
-                      Federal DNC
+                      {tenantT('campaigns.compliance.federal_dnc')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface text-text-secondary whitespace-nowrap">
-                      Tenant DNC
+                      {tenantT('campaigns.compliance.tenant_dnc')}
                     </span>
                   )}
                   <span className="text-xs text-text-muted truncate max-w-[120px]">{m.contactName ?? '—'}</span>
@@ -1255,6 +1280,7 @@ function CompliancePanel({
 }
 
 function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: () => void }) {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'overview' | 'contacts' | 'dnc'>('overview');
   const [showAddContacts, setShowAddContacts] = useState(false);
@@ -1300,7 +1326,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
     onError: async (err: Error & { status?: number; body?: { error?: string; compliance?: ComplianceReport } }) => {
       const body = err.body;
       if (err.status === 409 && body?.compliance) {
-        setLaunchBlock({ message: body.error ?? 'Compliance check failed', report: body.compliance });
+        setLaunchBlock({ message: body.error ?? tenantT('campaigns.detail.compliance_failed_default'), report: body.compliance });
         queryClient.setQueryData(['campaign-compliance', campaignId], { compliance: body.compliance });
       }
     },
@@ -1338,7 +1364,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
   });
 
   if (loadingCampaign) return <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
-  if (!campaign) return <div className="text-center py-20 text-text-muted">Campaign not found</div>;
+  if (!campaign) return <div className="text-center py-20 text-text-muted">{tenantT('campaigns.detail.not_found')}</div>;
 
   const config = campaign.config;
   const typeDef = typesData?.types?.find((t) => t.type === campaign.type);
@@ -1361,28 +1387,28 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               </span>
             )}
           </div>
-          <p className="text-sm text-text-muted mt-0.5">Created {formatDate(campaign.createdAt)}</p>
+          <p className="text-sm text-text-muted mt-0.5">{tenantT('campaigns.detail.created_at', { date: formatDate(campaign.createdAt) })}</p>
         </div>
         {isManager && (
           <div className="flex items-center gap-2">
             {campaign.status === 'draft' && (
               <button onClick={() => statusMutation.mutate('running')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-                <Play className="h-4 w-4" /> Start
+                <Play className="h-4 w-4" /> {tenantT('campaigns.detail.start')}
               </button>
             )}
             {campaign.status === 'running' && (
               <button onClick={() => statusMutation.mutate('paused')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-warning hover:bg-warning/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-                <Pause className="h-4 w-4" /> Pause
+                <Pause className="h-4 w-4" /> {tenantT('campaigns.detail.pause')}
               </button>
             )}
             {campaign.status === 'paused' && (
               <button onClick={() => statusMutation.mutate('running')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-                <Play className="h-4 w-4" /> Resume
+                <Play className="h-4 w-4" /> {tenantT('campaigns.detail.resume')}
               </button>
             )}
             {['draft', 'running', 'paused'].includes(campaign.status) && (
               <button onClick={() => statusMutation.mutate('cancelled')} disabled={statusMutation.isPending} className="inline-flex items-center gap-1.5 px-3 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-                <XCircle className="h-4 w-4" /> Cancel
+                <XCircle className="h-4 w-4" /> {tenantT('campaigns.detail.cancel')}
               </button>
             )}
           </div>
@@ -1394,11 +1420,11 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
               tab === t ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary'
             }`}
           >
-            {t === 'dnc' ? 'DNC List' : t}
+            {tenantT(`campaigns.detail.tab_${t === 'dnc' ? 'dnc' : t}`)}
           </button>
         ))}
       </div>
@@ -1408,7 +1434,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           {metricsError && (
             <div className="bg-danger/10 text-danger text-sm px-3 py-2 rounded-lg flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
-              Failed to load metrics: {metricsError.message}
+              {tenantT('campaigns.detail.metrics_failed', { message: metricsError.message })}
             </div>
           )}
 
@@ -1417,14 +1443,17 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               <div className="flex items-start gap-2">
                 <ShieldOff className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium">Launch blocked: {launchBlock.message}</p>
+                  <p className="font-medium">{tenantT('campaigns.detail.launch_blocked', { message: launchBlock.message })}</p>
                   {launchBlock.report.dncMatchCount > 0 && (
                     <p className="text-xs mt-1 text-danger/80">
-                      {launchBlock.report.dncMatchCount} contact{launchBlock.report.dncMatchCount === 1 ? '' : 's'} on the Do-Not-Call list
+                      {tenantT('campaigns.detail.dnc_summary', { count: launchBlock.report.dncMatchCount })}
                       {((launchBlock.report.tenantDncMatchCount ?? 0) > 0 || (launchBlock.report.federalDncMatchCount ?? 0) > 0) && (
-                        <> ({launchBlock.report.tenantDncMatchCount ?? 0} tenant, {launchBlock.report.federalDncMatchCount ?? 0} federal)</>
+                        tenantT('campaigns.detail.dnc_summary_breakdown', {
+                          tenant: launchBlock.report.tenantDncMatchCount ?? 0,
+                          federal: launchBlock.report.federalDncMatchCount ?? 0,
+                        })
                       )}
-                      . Scrub them to opt-out and retry the launch in one step.
+                      {tenantT('campaigns.detail.dnc_summary_suffix')}
                     </p>
                   )}
                   {isManager && launchBlock.report.dncMatchCount > 0 && (
@@ -1440,8 +1469,8 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                         <ShieldOff className="h-3.5 w-3.5" />
                       )}
                       {scrubMutation.isPending
-                        ? 'Scrubbing & relaunching…'
-                        : `Scrub ${launchBlock.report.dncMatchCount} DNC match${launchBlock.report.dncMatchCount === 1 ? '' : 'es'} & launch`}
+                        ? tenantT('campaigns.detail.scrubbing_relaunching')
+                        : tenantT('campaigns.detail.scrub_relaunch', { count: launchBlock.report.dncMatchCount })}
                     </button>
                   )}
                 </div>
@@ -1455,7 +1484,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           {scrubMutation.isError && (
             <div className="bg-danger/10 border border-danger/30 text-danger text-sm px-4 py-3 rounded-lg flex items-start gap-2">
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <span>Failed to scrub DNC matches: {(scrubMutation.error as Error)?.message ?? 'Unknown error'}</span>
+              <span>{tenantT('campaigns.detail.failed_to_scrub', { message: (scrubMutation.error as Error)?.message ?? tenantT('campaigns.detail.unknown_error') })}</span>
             </div>
           )}
 
@@ -1474,10 +1503,10 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               )}
               <div className="flex-1">
                 <p className="font-medium">
-                  Scrubbed {scrubResult.scrubbed} contact{scrubResult.scrubbed === 1 ? '' : 's'} (marked opted-out, reason: dnc_match).
+                  {tenantT('campaigns.detail.scrubbed', { count: scrubResult.scrubbed })}
                 </p>
                 {scrubResult.relaunched && (
-                  <p className="text-xs mt-1 opacity-80">Launch retried automatically — campaign is running.</p>
+                  <p className="text-xs mt-1 opacity-80">{tenantT('campaigns.detail.launch_retried')}</p>
                 )}
                 {scrubResult.retryError && (
                   <p className="text-xs mt-1 opacity-80">{scrubResult.retryError}</p>
@@ -1502,21 +1531,21 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
 
           {metrics && (
             <div>
-              <h3 className="text-sm font-semibold text-text-primary mb-3">Call Metrics</h3>
+              <h3 className="text-sm font-semibold text-text-primary mb-3">{tenantT('campaigns.detail.call_metrics')}</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <StatCard icon={Users} label="Total" value={metrics.total.toLocaleString()} tone="neutral" />
-                <StatCard icon={Clock} label="Pending" value={metrics.pending.toLocaleString()} tone="neutral" />
-                <StatCard icon={Phone} label="Dialing" value={metrics.dialing.toLocaleString()} tone="primary" />
-                <StatCard icon={PhoneCall} label="Connected" value={metrics.connected.toLocaleString()} tone="success" />
-                <StatCard icon={CheckCircle2} label="Completed" value={metrics.completed.toLocaleString()} tone="success" />
-                <StatCard icon={XCircle} label="Failed" value={metrics.failed.toLocaleString()} tone="danger" />
-                <StatCard icon={PhoneMissed} label="No Answer" value={metrics.noAnswer.toLocaleString()} tone="warning" />
-                <StatCard icon={Voicemail} label="Voicemail" value={metrics.voicemail.toLocaleString()} tone="primary" />
-                <StatCard icon={SkipForward} label="Skipped" value={metrics.skipped.toLocaleString()} tone="neutral" />
-                <StatCard icon={ShieldOff} label="Opted Out" value={metrics.optedOut.toLocaleString()} tone="danger" />
+                <StatCard icon={Users} label={tenantT('campaigns.detail.stat_total')} value={metrics.total.toLocaleString()} tone="neutral" />
+                <StatCard icon={Clock} label={tenantT('campaigns.detail.stat_pending')} value={metrics.pending.toLocaleString()} tone="neutral" />
+                <StatCard icon={Phone} label={tenantT('campaigns.detail.stat_dialing')} value={metrics.dialing.toLocaleString()} tone="primary" />
+                <StatCard icon={PhoneCall} label={tenantT('campaigns.detail.stat_connected')} value={metrics.connected.toLocaleString()} tone="success" />
+                <StatCard icon={CheckCircle2} label={tenantT('campaigns.detail.stat_completed')} value={metrics.completed.toLocaleString()} tone="success" />
+                <StatCard icon={XCircle} label={tenantT('campaigns.detail.stat_failed')} value={metrics.failed.toLocaleString()} tone="danger" />
+                <StatCard icon={PhoneMissed} label={tenantT('campaigns.detail.stat_no_answer')} value={metrics.noAnswer.toLocaleString()} tone="warning" />
+                <StatCard icon={Voicemail} label={tenantT('campaigns.detail.stat_voicemail')} value={metrics.voicemail.toLocaleString()} tone="primary" />
+                <StatCard icon={SkipForward} label={tenantT('campaigns.detail.stat_skipped')} value={metrics.skipped.toLocaleString()} tone="neutral" />
+                <StatCard icon={ShieldOff} label={tenantT('campaigns.detail.stat_opted_out')} value={metrics.optedOut.toLocaleString()} tone="danger" />
               </div>
               <div className="mt-3">
-                <StatCard icon={Activity} label="Attempted" value={metrics.attempted.toLocaleString()} tone="info" />
+                <StatCard icon={Activity} label={tenantT('campaigns.detail.stat_attempted')} value={metrics.attempted.toLocaleString()} tone="info" />
               </div>
               {metrics.total > 0 && (
                 <div className="mt-3 h-3 bg-surface-hover rounded-full overflow-hidden flex">
@@ -1531,10 +1560,10 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           )}
 
           <div>
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Configuration</h3>
+            <h3 className="text-sm font-semibold text-text-primary mb-3">{tenantT('campaigns.detail.configuration')}</h3>
             <div className="bg-surface border border-border rounded-lg divide-y divide-border">
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm text-text-muted">Type</span>
+                <span className="text-sm text-text-muted">{tenantT('campaigns.detail.type')}</span>
                 <span className="text-sm text-text-primary flex items-center gap-1.5">
                   {typeDef && CAMPAIGN_TYPE_ICONS[typeDef.icon]}
                   {typeDef?.label ?? campaign.type.replace(/_/g, ' ')}
@@ -1542,43 +1571,43 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               </div>
               {config.timezone && (
                 <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-text-muted">Timezone</span>
+                  <span className="text-sm text-text-muted">{tenantT('campaigns.detail.timezone')}</span>
                   <span className="text-sm text-text-primary">{config.timezone}</span>
                 </div>
               )}
               {config.callWindowStart && (
                 <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-text-muted">Call Window</span>
+                  <span className="text-sm text-text-muted">{tenantT('campaigns.detail.call_window')}</span>
                   <span className="text-sm text-text-primary">{config.callWindowStart} — {config.callWindowEnd}</span>
                 </div>
               )}
               {Array.isArray(config.daysOfWeek) && config.daysOfWeek.length > 0 && (
                 <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-text-muted">Days</span>
-                  <span className="text-sm text-text-primary">{config.daysOfWeek.map((d) => DAYS[d]).join(', ')}</span>
+                  <span className="text-sm text-text-muted">{tenantT('campaigns.detail.days')}</span>
+                  <span className="text-sm text-text-primary">{config.daysOfWeek.map((d) => tenantT(`campaigns.days.${DAYS[d]}`)).join(', ')}</span>
                 </div>
               )}
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm text-text-muted">Concurrency</span>
+                <span className="text-sm text-text-muted">{tenantT('campaigns.detail.concurrency')}</span>
                 <span className="text-sm text-text-primary">{config.maxConcurrentCalls ?? config.maxConcurrent ?? '—'}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm text-text-muted">Max Attempts</span>
+                <span className="text-sm text-text-muted">{tenantT('campaigns.detail.max_attempts')}</span>
                 <span className="text-sm text-text-primary">{config.maxAttempts ?? '—'}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm text-text-muted">Retry Delay</span>
-                <span className="text-sm text-text-primary">{config.retryDelayMinutes ?? '—'} min</span>
+                <span className="text-sm text-text-muted">{tenantT('campaigns.detail.retry_delay')}</span>
+                <span className="text-sm text-text-primary">{config.retryDelayMinutes != null ? tenantT('campaigns.detail.retry_delay_min', { count: config.retryDelayMinutes }) : '—'}</span>
               </div>
               {campaign.startedAt && (
                 <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-text-muted">Started</span>
+                  <span className="text-sm text-text-muted">{tenantT('campaigns.detail.started')}</span>
                   <span className="text-sm text-text-primary">{formatDate(campaign.startedAt)}</span>
                 </div>
               )}
               {campaign.completedAt && (
                 <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-text-muted">Completed</span>
+                  <span className="text-sm text-text-muted">{tenantT('campaigns.detail.completed_at')}</span>
                   <span className="text-sm text-text-primary">{formatDate(campaign.completedAt)}</span>
                 </div>
               )}
@@ -1587,7 +1616,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
 
           {typeDef && typeDef.configFields.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-text-primary mb-3">{typeDef.label} Configuration</h3>
+              <h3 className="text-sm font-semibold text-text-primary mb-3">{tenantT('campaigns.detail.type_configuration', { type: typeDef.label })}</h3>
               <div className="bg-surface border border-border rounded-lg divide-y divide-border">
                 {typeDef.configFields.map((field) => {
                   // Per-field reads keyed by `CampaignTypeDefinition.configFields[].key`
@@ -1599,7 +1628,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                     <div key={field.key} className="flex items-center justify-between px-4 py-3">
                       <span className="text-sm text-text-muted">{field.label}</span>
                       <span className="text-sm text-text-primary">
-                        {typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val)}
+                        {typeof val === 'boolean' ? (val ? tenantT('campaigns.detail.yes') : tenantT('campaigns.detail.no')) : String(val)}
                       </span>
                     </div>
                   );
@@ -1614,11 +1643,11 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
         <div>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-text-primary">
-              Contacts {contactsData && <span className="text-text-muted font-normal">({contactsData.total})</span>}
+              {tenantT('campaigns.detail.contacts_section')} {contactsData && <span className="text-text-muted font-normal">({contactsData.total})</span>}
             </h3>
             {isManager && ['draft', 'paused'].includes(campaign.status) && (
               <button onClick={() => setShowAddContacts(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg">
-                <Upload className="h-3.5 w-3.5" /> Add Contacts
+                <Upload className="h-3.5 w-3.5" /> {tenantT('campaigns.detail.add_contacts_btn')}
               </button>
             )}
           </div>
@@ -1626,7 +1655,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           {contactsError ? (
             <div className="text-center py-12 text-danger">
               <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-70" />
-              <p className="text-sm">Failed to load contacts</p>
+              <p className="text-sm">{tenantT('campaigns.detail.load_contacts_failed')}</p>
               <p className="text-xs text-text-muted mt-1">{contactsError.message}</p>
             </div>
           ) : loadingContacts || !contactsData ? (
@@ -1634,10 +1663,10 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
           ) : contactsData.contacts.length === 0 ? (
             <EmptyState
               icon={Users}
-              title="No contacts yet"
-              description="Add the people this campaign should reach. You can upload a CSV, paste JSON, or enter contacts manually."
+              title={tenantT('campaigns.detail.no_contacts_title')}
+              description={tenantT('campaigns.detail.no_contacts_desc')}
               primaryAction={isManager && ['draft', 'paused'].includes(campaign.status)
-                ? { label: 'Add Contacts', onClick: () => setShowAddContacts(true), icon: Upload }
+                ? { label: tenantT('campaigns.detail.add_contacts_btn'), onClick: () => setShowAddContacts(true), icon: Upload }
                 : undefined}
               variant="compact"
             />
@@ -1647,14 +1676,14 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-surface-secondary">
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Phone</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Name</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Status</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.detail.header_phone')}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.detail.header_name')}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.detail.header_status')}</th>
                       {isTypedCampaign && (
-                        <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Disposition</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.detail.header_disposition')}</th>
                       )}
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Attempts</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Last Attempt</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.detail.header_attempts')}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.detail.header_last_attempt')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -1662,7 +1691,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
                       <tr key={c.id} className="hover:bg-surface-hover">
                         <td className="px-4 py-2.5 text-sm text-text-primary font-mono">{formatPhone(c.phoneNumber)}</td>
                         <td className="px-4 py-2.5 text-sm text-text-primary">{c.name ?? '—'}</td>
-                        <td className="px-4 py-2.5"><StatusBadge status={c.status} colors={CONTACT_STATUS_COLORS} /></td>
+                        <td className="px-4 py-2.5"><StatusBadge status={c.status} colors={CONTACT_STATUS_COLORS} label={contactStatusLabel(tenantT, c.status)} /></td>
                         {isTypedCampaign && (
                           <td className="px-4 py-2.5">
                             {c.metadata?.typeDisposition ? (
@@ -1683,7 +1712,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               </div>
               {contactsData.total > 20 && (
                 <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-text-muted">Page {contactPage} of {Math.ceil(contactsData.total / 20)}</p>
+                  <p className="text-sm text-text-muted">{tenantT('campaigns.detail.page_of', { page: contactPage, total: Math.ceil(contactsData.total / 20) })}</p>
                   <div className="flex gap-2">
                     <button disabled={contactPage <= 1} onClick={() => setContactPage((p) => p - 1)} className="p-1.5 rounded border border-border disabled:opacity-30 hover:bg-surface-hover"><ChevronLeft className="h-4 w-4" /></button>
                     <button disabled={contactPage >= Math.ceil(contactsData.total / 20)} onClick={() => setContactPage((p) => p + 1)} className="p-1.5 rounded border border-border disabled:opacity-30 hover:bg-surface-hover"><ChevronRight className="h-4 w-4" /></button>
@@ -1709,6 +1738,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
 }
 
 function DncPanel() {
+  const { t: tenantT } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [addPhone, setAddPhone] = useState('');
@@ -1740,7 +1770,7 @@ function DncPanel() {
       }
       queryClient.invalidateQueries({ queryKey: ['dnc'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove number from DNC list');
+      setError(err instanceof Error ? err.message : tenantT('campaigns.dnc_panel.remove_failed'));
     }
   };
 
@@ -1748,15 +1778,15 @@ function DncPanel() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-text-primary">
-          Do Not Call List {dncData && <span className="text-text-muted font-normal">({dncData.total})</span>}
+          {tenantT('campaigns.dnc_panel.title')} {dncData && <span className="text-text-muted font-normal">({dncData.total})</span>}
         </h3>
       </div>
 
       <div className="mb-4 flex gap-2">
-        <input type="text" placeholder="Phone number" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-        <input type="text" placeholder="Reason (optional)" value={addReason} onChange={(e) => setAddReason(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+        <input type="text" placeholder={tenantT('campaigns.dnc_panel.phone_placeholder')} value={addPhone} onChange={(e) => setAddPhone(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+        <input type="text" placeholder={tenantT('campaigns.dnc_panel.reason_placeholder')} value={addReason} onChange={(e) => setAddReason(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
         <button onClick={() => { setError(''); addMutation.mutate(); }} disabled={!addPhone.trim() || addMutation.isPending} className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50">
-          Add
+          {tenantT('campaigns.dnc_panel.add')}
         </button>
       </div>
       {error && <div className="bg-danger/10 text-danger text-sm px-3 py-2 rounded-lg mb-3">{error}</div>}
@@ -1764,7 +1794,7 @@ function DncPanel() {
       {dncError ? (
         <div className="text-center py-12 text-danger">
           <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-70" />
-          <p className="text-sm">Failed to load DNC list</p>
+          <p className="text-sm">{tenantT('campaigns.dnc_panel.load_failed')}</p>
           <p className="text-xs text-text-muted mt-1">{dncError.message}</p>
         </div>
       ) : isLoading ? (
@@ -1772,8 +1802,8 @@ function DncPanel() {
       ) : !dncData || dncData.entries.length === 0 ? (
         <EmptyState
           icon={ShieldOff}
-          title="No numbers on the DNC list"
-          description="Numbers added here will be automatically excluded from outbound campaigns."
+          title={tenantT('campaigns.dnc_panel.empty_title')}
+          description={tenantT('campaigns.dnc_panel.empty_desc')}
           variant="compact"
         />
       ) : (
@@ -1782,10 +1812,10 @@ function DncPanel() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Phone</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Reason</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Source</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">Added</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.dnc_panel.header_phone')}</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.dnc_panel.header_reason')}</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.dnc_panel.header_source')}</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-text-muted">{tenantT('campaigns.dnc_panel.header_added')}</th>
                   <th className="w-10"></th>
                 </tr>
               </thead>
@@ -1806,7 +1836,7 @@ function DncPanel() {
           </div>
           {dncData.total > 50 && (
             <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-text-muted">Page {page} of {Math.ceil(dncData.total / 50)}</p>
+              <p className="text-sm text-text-muted">{tenantT('campaigns.detail.page_of', { page, total: Math.ceil(dncData.total / 50) })}</p>
               <div className="flex gap-2">
                 <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1.5 rounded border border-border disabled:opacity-30 hover:bg-surface-hover"><ChevronLeft className="h-4 w-4" /></button>
                 <button disabled={page >= Math.ceil(dncData.total / 50)} onClick={() => setPage((p) => p + 1)} className="p-1.5 rounded border border-border disabled:opacity-30 hover:bg-surface-hover"><ChevronRight className="h-4 w-4" /></button>
@@ -1872,7 +1902,7 @@ export default function Campaigns() {
               onClick={() => setShowCreate(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition-colors"
             >
-              <Plus className="h-4 w-4" /> New Campaign
+              <Plus className="h-4 w-4" /> {tenantT('campaigns.list.new_campaign')}
             </button>
           ) : undefined
         }
@@ -1880,7 +1910,7 @@ export default function Campaigns() {
 
       <div
         role="tablist"
-        aria-label="Campaign status filter"
+        aria-label={tenantT('campaigns.list.filter_aria')}
         className="flex flex-wrap gap-1 mb-6 border-b border-border"
       >
         {(['', 'draft', 'running', 'paused', 'completed', 'cancelled'] as const).map((s) => (
@@ -1889,13 +1919,13 @@ export default function Campaigns() {
             role="tab"
             aria-selected={statusFilter === s}
             onClick={() => { setStatusFilter(s); setPage(1); }}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px capitalize ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
               statusFilter === s
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-text-primary'
             }`}
           >
-            {s || 'All'}
+            {s ? tenantT(`campaigns.list.filter_${s}`) : tenantT('campaigns.list.filter_all')}
           </button>
         ))}
       </div>
@@ -1905,14 +1935,16 @@ export default function Campaigns() {
       ) : campaigns.length === 0 ? (
         <EmptyState
           icon={Megaphone}
-          title={statusFilter ? `No ${statusFilter} campaigns` : 'No campaigns yet'}
+          title={statusFilter
+            ? tenantT('campaigns.list.empty_status_title', { status: tenantT(`campaigns.status.${statusFilter}`) })
+            : tenantT('campaigns.list.empty_title')}
           description={statusFilter
-            ? 'Try a different status filter or create a new campaign.'
-            : 'Create your first outbound campaign to start reaching contacts at scale.'}
+            ? tenantT('campaigns.list.empty_status_desc')
+            : tenantT('campaigns.list.empty_desc')}
           primaryAction={isManager
-            ? { label: 'New Campaign', onClick: () => setShowCreate(true), icon: Plus }
+            ? { label: tenantT('campaigns.list.new_campaign'), onClick: () => setShowCreate(true), icon: Plus }
             : undefined}
-          secondaryAction={statusFilter ? { label: 'Show all', onClick: () => { setStatusFilter(''); setPage(1); } } : undefined}
+          secondaryAction={statusFilter ? { label: tenantT('campaigns.list.show_all'), onClick: () => { setStatusFilter(''); setPage(1); } } : undefined}
         />
       ) : (
         <>
@@ -1920,12 +1952,12 @@ export default function Campaigns() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Contacts</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Type</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Primary Rate</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Created</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">{tenantT('campaigns.list.header_name')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">{tenantT('campaigns.list.header_status')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">{tenantT('campaigns.list.header_contacts')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">{tenantT('campaigns.list.header_type')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">{tenantT('campaigns.list.header_primary_rate')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">{tenantT('campaigns.list.header_created')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -1936,7 +1968,7 @@ export default function Campaigns() {
                     className="hover:bg-surface-hover cursor-pointer"
                   >
                     <td className="px-4 py-3 text-sm font-medium text-text-primary">{c.name}</td>
-                    <td className="px-4 py-3"><StatusBadge status={c.status} colors={STATUS_COLORS} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={c.status} colors={STATUS_COLORS} label={statusLabel(tenantT, c.status)} /></td>
                     <td className="px-4 py-3 text-sm text-text-muted">{(c.contactCount ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 text-sm text-text-muted">
@@ -1955,7 +1987,7 @@ export default function Campaigns() {
           </div>
           {total > 20 && (
             <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-text-muted">Showing {campaigns.length} of {total} campaigns</p>
+              <p className="text-sm text-text-muted">{tenantT('campaigns.list.showing_count', { shown: campaigns.length, total })}</p>
               <div className="flex gap-2">
                 <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1.5 rounded border border-border disabled:opacity-30 hover:bg-surface-hover"><ChevronLeft className="h-4 w-4" /></button>
                 <button disabled={page >= Math.ceil(total / 20)} onClick={() => setPage((p) => p + 1)} className="p-1.5 rounded border border-border disabled:opacity-30 hover:bg-surface-hover"><ChevronRight className="h-4 w-4" /></button>

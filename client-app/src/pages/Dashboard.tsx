@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
@@ -110,67 +111,68 @@ function formatDuration(seconds: number): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
-function stateLabel(state: string): string {
+function stateLabel(state: string, t: TFunction): string {
   const map: Record<string, string> = {
-    CALL_CONNECTED: 'Connected',
-    CALL_COMPLETED: 'Completed',
-    CALL_STARTED: 'Ringing',
-    CALL_FAILED: 'Failed',
-    CALL_ESCALATED: 'Escalated',
+    CALL_CONNECTED: t('dashboard.call_state.connected'),
+    CALL_COMPLETED: t('dashboard.call_state.completed'),
+    CALL_STARTED: t('dashboard.call_state.ringing'),
+    CALL_FAILED: t('dashboard.call_state.failed'),
+    CALL_ESCALATED: t('dashboard.call_state.escalated'),
   };
   return map[state] ?? state.replace(/_/g, ' ').toLowerCase();
 }
 
-function stateBadgeMeta(state: string): {
+function stateBadgeMeta(state: string, t: TFunction): {
   tone: BadgeTone;
   icon: React.ReactNode;
   tooltip: string;
 } {
-  const label = stateLabel(state);
+  const label = stateLabel(state, t);
   if (state === 'CALL_CONNECTED' || state === 'active') {
     return {
       tone: 'success',
       icon: <PhoneCall className="h-3 w-3" aria-hidden="true" />,
-      tooltip: `Call status: ${label} (in progress with the agent)`,
+      tooltip: t('dashboard.call_state_tooltips.in_progress', { label }),
     };
   }
   if (state === 'CALL_COMPLETED') {
     return {
       tone: 'neutral',
       icon: <CheckCircle2 className="h-3 w-3" aria-hidden="true" />,
-      tooltip: `Call status: ${label} (call ended successfully)`,
+      tooltip: t('dashboard.call_state_tooltips.completed', { label }),
     };
   }
   if (state === 'CALL_FAILED') {
     return {
       tone: 'danger',
       icon: <PhoneOff className="h-3 w-3" aria-hidden="true" />,
-      tooltip: `Call status: ${label} (the call did not complete)`,
+      tooltip: t('dashboard.call_state_tooltips.failed', { label }),
     };
   }
   if (state === 'CALL_ESCALATED') {
     return {
       tone: 'warning',
       icon: <AlertTriangle className="h-3 w-3" aria-hidden="true" />,
-      tooltip: `Call status: ${label} (handed off to a human)`,
+      tooltip: t('dashboard.call_state_tooltips.escalated', { label }),
     };
   }
   return {
     tone: 'info',
     icon: <Phone className="h-3 w-3" aria-hidden="true" />,
-    tooltip: `Call status: ${label}`,
+    tooltip: t('dashboard.call_state_tooltips.default', { label }),
   };
 }
 
-function QuickStartCard({ navigate, agentCount, hasPhoneNumbers }: {
+function QuickStartCard({ navigate, agentCount, hasPhoneNumbers, t }: {
   navigate: (path: string) => void;
   agentCount: number;
   hasPhoneNumbers: boolean;
+  t: TFunction;
 }) {
   const steps = [
-    { label: 'Create your first agent', done: agentCount > 0, action: '/agents', cta: 'Create Agent' },
-    { label: 'Attach a phone number', done: hasPhoneNumbers, action: '/phone-numbers', cta: 'Add Number' },
-    { label: 'Make a test call', done: false, action: '/agents', cta: 'Test Call' },
+    { label: t('dashboard.getting_started.create_agent_label'), done: agentCount > 0, action: '/agents', cta: t('dashboard.getting_started.create_agent_cta') },
+    { label: t('dashboard.getting_started.attach_phone_label'), done: hasPhoneNumbers, action: '/phone-numbers', cta: t('dashboard.getting_started.attach_phone_cta') },
+    { label: t('dashboard.getting_started.test_call_label'), done: false, action: '/agents', cta: t('dashboard.getting_started.test_call_cta') },
   ];
 
   const completedCount = steps.filter(s => s.done).length;
@@ -183,8 +185,8 @@ function QuickStartCard({ navigate, agentCount, hasPhoneNumbers }: {
           <Zap className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Getting Started</h2>
-          <p className="text-sm text-white/70">{completedCount} of {steps.length} steps complete</p>
+          <h2 className="text-lg font-semibold">{t('dashboard.getting_started.title')}</h2>
+          <p className="text-sm text-white/70">{t('dashboard.getting_started.steps_progress', { completed: completedCount, total: steps.length })}</p>
         </div>
       </div>
       <div className="space-y-3">
@@ -213,45 +215,45 @@ function QuickStartCard({ navigate, agentCount, hasPhoneNumbers }: {
   );
 }
 
-const exampleWorkflows = [
+const exampleWorkflowDefs = [
   {
     icon: Stethoscope,
-    title: 'Medical After-Hours',
-    description: 'Handle patient calls after hours with appointment scheduling, triage, and on-call doctor routing.',
+    titleKey: 'dashboard.example_workflows.medical_title',
+    descriptionKey: 'dashboard.example_workflows.medical_description',
     template: 'medical-after-hours',
     color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   },
   {
     icon: Building2,
-    title: 'Property Management',
-    description: 'Manage tenant inquiries, maintenance requests, and showing schedules for property managers.',
+    titleKey: 'dashboard.example_workflows.property_title',
+    descriptionKey: 'dashboard.example_workflows.property_description',
     template: 'property-management',
     color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   },
   {
     icon: Wrench,
-    title: 'Home Services',
-    description: 'Book HVAC, plumbing, or electrical appointments with smart scheduling and dispatch.',
+    titleKey: 'dashboard.example_workflows.home_title',
+    descriptionKey: 'dashboard.example_workflows.home_description',
     template: 'home-services',
     color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   },
   {
     icon: Scale,
-    title: 'Legal Intake',
-    description: 'Capture new client details, route by practice area, and schedule consultations automatically.',
+    titleKey: 'dashboard.example_workflows.legal_title',
+    descriptionKey: 'dashboard.example_workflows.legal_description',
     template: 'legal',
     color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   },
   {
     icon: Headphones,
-    title: 'Customer Support',
-    description: 'Handle support tickets, FAQs, and escalations with knowledge-base-backed AI responses.',
+    titleKey: 'dashboard.example_workflows.support_title',
+    descriptionKey: 'dashboard.example_workflows.support_description',
     template: 'customer-support',
     color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   },
 ];
 
-function ExampleWorkflowCards({ navigate }: { navigate: (path: string) => void }) {
+function ExampleWorkflowCards({ navigate, t }: { navigate: (path: string) => void; t: TFunction }) {
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem('dismissed_workflow_cards') === 'true'; } catch { return false; }
   });
@@ -261,18 +263,18 @@ function ExampleWorkflowCards({ navigate }: { navigate: (path: string) => void }
     <div className="bg-surface border border-border rounded-xl shadow-sm">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-text-primary">Example Workflows</h2>
-          <p className="text-xs text-text-secondary mt-0.5">Start from a proven template for your industry</p>
+          <h2 className="text-base font-semibold text-text-primary">{t('dashboard.example_workflows.title')}</h2>
+          <p className="text-xs text-text-secondary mt-0.5">{t('dashboard.example_workflows.subtitle')}</p>
         </div>
         <button
           onClick={() => { setDismissed(true); try { localStorage.setItem('dismissed_workflow_cards', 'true'); } catch {} }}
           className="text-xs text-text-secondary hover:text-text-primary transition-colors"
         >
-          Dismiss
+          {t('dashboard.example_workflows.dismiss')}
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 p-5">
-        {exampleWorkflows.map((wf) => {
+        {exampleWorkflowDefs.map((wf) => {
           const Icon = wf.icon;
           return (
             <div
@@ -283,10 +285,10 @@ function ExampleWorkflowCards({ navigate }: { navigate: (path: string) => void }
               <div className={`p-2 rounded-lg ${wf.color} inline-flex mb-3`}>
                 <Icon className="h-4 w-4" />
               </div>
-              <h3 className="text-sm font-semibold text-text-primary mb-1">{wf.title}</h3>
-              <p className="text-xs text-text-secondary leading-relaxed">{wf.description}</p>
+              <h3 className="text-sm font-semibold text-text-primary mb-1">{t(wf.titleKey)}</h3>
+              <p className="text-xs text-text-secondary leading-relaxed">{t(wf.descriptionKey)}</p>
               <span className="inline-flex items-center gap-1 text-xs text-primary font-medium mt-3 group-hover:underline">
-                Use Template <ArrowRight className="h-3 w-3" />
+                {t('dashboard.example_workflows.use_template')} <ArrowRight className="h-3 w-3" />
               </span>
             </div>
           );
@@ -375,10 +377,15 @@ export default function Dashboard() {
   const escalations = calls.filter((c) => c.escalation_target).length;
   const hasPhoneNumbers = (phoneData?.total ?? 0) > 0;
 
+  // Reference QuickStartCard so the helper compiles even when not rendered.
+  void QuickStartCard;
+  void hasPhoneNumbers;
+
   const completedCalls = calls.filter(c => c.duration_seconds && c.duration_seconds > 0);
   const avgDuration = completedCalls.length > 0
     ? Math.round(completedCalls.reduce((sum, c) => sum + (c.duration_seconds ?? 0), 0) / completedCalls.length)
     : 0;
+  void avgDuration;
 
   const aiMinutesUsed = usageData?.usage?.ai_minutes ?? 0;
   const callsUsed = usageData?.usage?.calls ?? 0;
@@ -399,17 +406,17 @@ export default function Dashboard() {
             <StatusBadge
               tone="success"
               icon={<Wifi className="h-3 w-3" aria-hidden="true" />}
-              tooltip="Live updates connected — call activity is streaming in real time"
+              tooltip={tenantT('dashboard.live_indicator.tooltip_connected')}
             >
-              Live
+              {tenantT('dashboard.live_indicator.live')}
             </StatusBadge>
           ) : (
             <StatusBadge
               tone="neutral"
               icon={<WifiOff className="h-3 w-3" aria-hidden="true" />}
-              tooltip="Reconnecting to the live updates stream"
+              tooltip={tenantT('dashboard.live_indicator.tooltip_connecting')}
             >
-              Connecting…
+              {tenantT('dashboard.live_indicator.connecting')}
             </StatusBadge>
           )
         }
@@ -418,7 +425,7 @@ export default function Dashboard() {
             onClick={() => navigate('/agents')}
             className="hidden sm:inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            <Plus className="h-4 w-4" /> New Agent
+            <Plus className="h-4 w-4" /> {tenantT('dashboard.actions.new_agent')}
           </button>
         }
       />
@@ -429,21 +436,21 @@ export default function Dashboard() {
 
       <TrialConversionNudge />
 
-      <ExampleWorkflowCards navigate={navigate} />
+      <ExampleWorkflowCards navigate={navigate} t={tenantT} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard icon={PhoneCall} label="Calls Today" value={totalToday} tone="info" />
-        <StatCard icon={CalendarCheck} label="Bookings Today" value={bookingsToday} sub={bookingsToday === 0 ? 'no bookings yet' : undefined} tone="primary" />
-        <StatCard icon={Bot} label="Active Agents" value={agentCount} tone="accent" />
-        <StatCard icon={DollarSign} label="Revenue (30d)" value={revenueDisplay} sub={revenueCents > 0 ? 'attributed' : 'no attribution yet'} tone="success" />
-        <StatCard icon={TrendingUp} label="Live Calls" value={activeCallCount} tone="warning" />
+        <StatCard icon={PhoneCall} label={tenantT('dashboard.stats.calls_today_card')} value={totalToday} tone="info" />
+        <StatCard icon={CalendarCheck} label={tenantT('dashboard.stats.bookings_today')} value={bookingsToday} sub={bookingsToday === 0 ? tenantT('dashboard.stats.no_bookings') : undefined} tone="primary" />
+        <StatCard icon={Bot} label={tenantT('dashboard.stats.active_agents_card')} value={agentCount} tone="accent" />
+        <StatCard icon={DollarSign} label={tenantT('dashboard.stats.revenue_30d')} value={revenueDisplay} sub={revenueCents > 0 ? tenantT('dashboard.stats.attributed') : tenantT('dashboard.stats.no_attribution')} tone="success" />
+        <StatCard icon={TrendingUp} label={tenantT('dashboard.stats.live_calls')} value={activeCallCount} tone="warning" />
       </div>
 
       {(escalations > 0 || activeCallCount > 0) && (
         <div className="bg-surface border border-border rounded-xl shadow-[var(--elevation-1)]">
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
             <Bell className="h-4 w-4 text-warning" />
-            <h2 className="text-base font-semibold text-text-primary">Needs Attention</h2>
+            <h2 className="text-base font-semibold text-text-primary">{tenantT('dashboard.sections.needs_attention')}</h2>
           </div>
           <div className="divide-y divide-border">
             {escalations > 0 && (
@@ -452,11 +459,11 @@ export default function Dashboard() {
                   <AlertTriangle className="h-4 w-4 text-danger" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-primary">{escalations} escalated conversation{escalations !== 1 ? 's' : ''}</p>
-                  <p className="text-xs text-text-secondary">Conversations that needed human follow-up</p>
+                  <p className="text-sm font-medium text-text-primary">{tenantT('dashboard.attention.escalated', { count: escalations })}</p>
+                  <p className="text-xs text-text-secondary">{tenantT('dashboard.attention.escalated_description')}</p>
                 </div>
                 <button onClick={() => navigate('/calls')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
-                  Review <ArrowRight className="h-3 w-3" />
+                  {tenantT('dashboard.actions.review')} <ArrowRight className="h-3 w-3" />
                 </button>
               </div>
             )}
@@ -466,8 +473,8 @@ export default function Dashboard() {
                   <Phone className="h-4 w-4 text-success" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-primary">{activeCallCount} live conversation{activeCallCount !== 1 ? 's' : ''} right now</p>
-                  <p className="text-xs text-text-secondary">Active calls being handled by your agents</p>
+                  <p className="text-sm font-medium text-text-primary">{tenantT('dashboard.attention.live', { count: activeCallCount })}</p>
+                  <p className="text-xs text-text-secondary">{tenantT('dashboard.attention.live_description')}</p>
                 </div>
               </div>
             )}
@@ -477,17 +484,17 @@ export default function Dashboard() {
 
       {usageData?.usage && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <UsageGauge label="Calls" used={callsUsed} icon={Phone} />
-          <UsageGauge label="AI Minutes" used={aiMinutesUsed} icon={BarChart3} />
+          <UsageGauge label={tenantT('dashboard.usage.calls')} used={callsUsed} icon={Phone} t={tenantT} />
+          <UsageGauge label={tenantT('dashboard.usage.ai_minutes')} used={aiMinutesUsed} icon={BarChart3} t={tenantT} />
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-surface border border-border rounded-xl shadow-sm">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text-primary">Recent Conversations</h2>
+            <h2 className="text-base font-semibold text-text-primary">{tenantT('dashboard.sections.recent_conversations')}</h2>
             <button onClick={() => navigate('/calls')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
-              View All <ArrowRight className="h-3 w-3" />
+              {tenantT('dashboard.actions.view_all')} <ArrowRight className="h-3 w-3" />
             </button>
           </div>
           {callsLoading ? (
@@ -499,50 +506,50 @@ export default function Dashboard() {
           ) : calls.length === 0 ? (
             <div className="p-12 text-center">
               <Phone className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
-              <p className="text-text-secondary font-medium">No calls yet</p>
-              <p className="text-sm text-text-secondary mt-1">Calls will appear here once your agents start handling them</p>
+              <p className="text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.no_calls_title')}</p>
+              <p className="text-sm text-text-secondary mt-1">{tenantT('dashboard.recent_conversations.no_calls_description')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
-                    <th className="px-5 py-3 text-text-secondary font-medium">Agent</th>
-                    <th className="px-5 py-3 text-text-secondary font-medium">Direction</th>
-                    <th className="px-5 py-3 text-text-secondary font-medium">Status</th>
-                    <th className="px-5 py-3 text-text-secondary font-medium">Duration</th>
-                    <th className="px-5 py-3 text-text-secondary font-medium">Time</th>
+                    <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.table_agent')}</th>
+                    <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.table_direction')}</th>
+                    <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.table_status')}</th>
+                    <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.table_duration')}</th>
+                    <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.table_time')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {calls.slice(0, 8).map((call) => (
                     <tr key={call.id} className="border-b border-border last:border-0 hover:bg-surface-hover transition-colors cursor-pointer" onClick={() => navigate('/calls')}>
-                      <td className="px-5 py-3 text-text-primary font-medium">{call.agent_name || 'Unknown Agent'}</td>
+                      <td className="px-5 py-3 text-text-primary font-medium">{call.agent_name || tenantT('dashboard.recent_conversations.unknown_agent')}</td>
                       <td className="px-5 py-3">
                         {call.direction === 'inbound' ? (
                           <StatusBadge
                             tone="info"
                             icon={<PhoneIncoming className="h-3 w-3" aria-hidden="true" />}
-                            tooltip="Inbound call — the customer dialled in"
+                            tooltip={tenantT('dashboard.recent_conversations.inbound_tooltip')}
                           >
-                            inbound
+                            {tenantT('dashboard.recent_conversations.direction_inbound')}
                           </StatusBadge>
                         ) : (
                           <StatusBadge
                             tone="warning"
                             icon={<PhoneOutgoing className="h-3 w-3" aria-hidden="true" />}
-                            tooltip="Outbound call — the agent dialled out"
+                            tooltip={tenantT('dashboard.recent_conversations.outbound_tooltip')}
                           >
-                            outbound
+                            {tenantT('dashboard.recent_conversations.direction_outbound')}
                           </StatusBadge>
                         )}
                       </td>
                       <td className="px-5 py-3">
                         {(() => {
-                          const meta = stateBadgeMeta(call.lifecycle_state);
+                          const meta = stateBadgeMeta(call.lifecycle_state, tenantT);
                           return (
                             <StatusBadge tone={meta.tone} icon={meta.icon} tooltip={meta.tooltip}>
-                              {stateLabel(call.lifecycle_state)}
+                              {stateLabel(call.lifecycle_state, tenantT)}
                             </StatusBadge>
                           );
                         })()}
@@ -561,21 +568,21 @@ export default function Dashboard() {
 
         <div className="bg-surface border border-border rounded-xl shadow-sm">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text-primary">Your Agents</h2>
+            <h2 className="text-base font-semibold text-text-primary">{tenantT('dashboard.sections.your_agents')}</h2>
             <button onClick={() => navigate('/agents')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
-              Manage <ArrowRight className="h-3 w-3" />
+              {tenantT('dashboard.actions.manage')} <ArrowRight className="h-3 w-3" />
             </button>
           </div>
           {agents.length === 0 ? (
             <div className="p-8 text-center">
               <Bot className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
-              <p className="text-text-secondary font-medium">No agents yet</p>
-              <p className="text-sm text-text-secondary mt-1 mb-4">Create your first AI voice agent to get started</p>
+              <p className="text-text-secondary font-medium">{tenantT('dashboard.your_agents.no_agents_title')}</p>
+              <p className="text-sm text-text-secondary mt-1 mb-4">{tenantT('dashboard.your_agents.no_agents_description')}</p>
               <button
                 onClick={() => navigate('/agents')}
                 className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
-                <Plus className="h-4 w-4" /> Create Agent
+                <Plus className="h-4 w-4" /> {tenantT('dashboard.actions.create_agent')}
               </button>
             </div>
           ) : (
@@ -600,8 +607,8 @@ export default function Dashboard() {
                     }
                     tooltip={
                       agent.status === 'active'
-                        ? 'Agent is active and answering calls'
-                        : `Agent is ${agent.status} — not currently answering calls`
+                        ? tenantT('dashboard.agent_status_tooltips.active')
+                        : tenantT('dashboard.agent_status_tooltips.inactive', { status: agent.status })
                     }
                   >
                     {agent.status}
@@ -618,13 +625,13 @@ export default function Dashboard() {
           <div className="px-5 py-4 border-b border-border">
             <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
               <StatusDot
-                label="Live calls in progress right now"
+                label={tenantT('dashboard.live_calls_section.live_dot_label')}
                 tone="success"
                 size="md"
                 pulse
                 ping
               />
-              Live Calls
+              {tenantT('dashboard.sections.live_calls')}
             </h2>
           </div>
           <div className="divide-y divide-border">
@@ -634,8 +641,8 @@ export default function Dashboard() {
                   <Phone className="h-4 w-4 text-success" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-primary">{call.agent_name || 'Agent'}</p>
-                  <p className="text-xs text-text-secondary">{call.direction} - {stateLabel(call.lifecycle_state)}</p>
+                  <p className="text-sm font-medium text-text-primary">{call.agent_name || tenantT('dashboard.live_calls_section.default_agent_label')}</p>
+                  <p className="text-xs text-text-secondary">{call.direction} - {stateLabel(call.lifecycle_state, tenantT)}</p>
                 </div>
                 <span className="text-xs text-text-secondary">
                   {formatDistanceToNow(new Date(call.start_time), { addSuffix: false })}
@@ -651,7 +658,7 @@ export default function Dashboard() {
   );
 }
 
-function UsageGauge({ label, used, icon: Icon }: { label: string; used: number; icon: React.ComponentType<{ className?: string }> }) {
+function UsageGauge({ label, used, icon: Icon, t }: { label: string; used: number; icon: React.ComponentType<{ className?: string }>; t: TFunction }) {
   return (
     <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
@@ -659,7 +666,7 @@ function UsageGauge({ label, used, icon: Icon }: { label: string; used: number; 
         <span className="text-sm font-medium text-text-secondary">{label}</span>
       </div>
       <p className="text-xl font-bold text-text-primary">{used.toLocaleString()}</p>
-      <p className="text-xs text-text-secondary mt-1">this billing period</p>
+      <p className="text-xs text-text-secondary mt-1">{t('dashboard.usage.this_billing_period')}</p>
     </div>
   );
 }

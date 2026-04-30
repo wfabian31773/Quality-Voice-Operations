@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   PointerSensor,
@@ -88,6 +89,7 @@ export default function PinnedSavedViewsBar({
   clearFilters,
   queryClient,
 }: PinnedSavedViewsBarProps) {
+  const { t: tenantT } = useTranslation('tenant');
   const pinnedDragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
@@ -134,9 +136,9 @@ export default function PinnedSavedViewsBar({
       : null;
     const matchCount = view.digest_last_match_count ?? 0;
     const digestStatus = view.digest_enabled
-      ? (lastRunRel
-          ? `Last digest ran ${lastRunRel} (${lastRunAbs}) — ${matchCount} matching call${matchCount === 1 ? '' : 's'}`
-          : 'Daily digest is on — has not run yet')
+      ? (lastRunRel && lastRunAbs
+          ? tenantT('calls.saved_view.digest_status_with_run', { count: matchCount, rel: lastRunRel, abs: lastRunAbs })
+          : tenantT('calls.saved_view.digest_status_no_run'))
       : null;
     return (
       <div
@@ -150,8 +152,8 @@ export default function PinnedSavedViewsBar({
             {...sortable.handle.attributes}
             {...sortable.handle.listeners}
             className="touch-none cursor-grab active:cursor-grabbing pl-2 pr-0.5 py-1.5 text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-l-full"
-            title="Drag to reorder (or use Space + arrow keys)"
-            aria-label={`Reorder pinned view ${view.name}`}
+            title={tenantT('calls.saved_view.drag_handle')}
+            aria-label={tenantT('calls.saved_view.drag_handle_aria', { name: view.name })}
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
@@ -160,7 +162,9 @@ export default function PinnedSavedViewsBar({
           onClick={() => applySavedView(view)}
           className={`inline-flex items-center gap-1.5 ${isSortablePinned ? 'pl-1' : 'pl-3'} pr-2 py-1.5 font-medium`}
           title={[
-            view.is_shared ? (isOwner ? 'Shared with team' : 'Shared by a teammate') : 'Personal view',
+            view.is_shared
+              ? (isOwner ? tenantT('calls.saved_view.shared_owner') : tenantT('calls.saved_view.shared_member'))
+              : tenantT('calls.saved_view.personal'),
             digestStatus,
           ].filter(Boolean).join('\n')}
         >
@@ -172,14 +176,18 @@ export default function PinnedSavedViewsBar({
             className="text-xs text-text-muted whitespace-nowrap"
             title={digestStatus ?? undefined}
           >
-            · {lastRunRel ? `${matchCount} ${lastRunRel}` : 'not run yet'}
+            · {lastRunRel
+              ? tenantT('calls.saved_view.digest_chip_with_run', { count: matchCount, rel: lastRunRel })
+              : tenantT('calls.saved_view.digest_chip_no_run')}
           </span>
         )}
         <button
           onClick={(e) => { e.stopPropagation(); handleTogglePin(view); }}
           className={`p-1 ${isOwner ? '' : 'mr-1'} rounded-full transition ${view.is_pinned ? 'text-primary' : 'text-text-muted hover:text-primary'}`}
-          title={view.is_pinned ? 'Unpin from my sidebar' : 'Pin to my sidebar'}
-          aria-label={view.is_pinned ? `Unpin saved view ${view.name} from my sidebar` : `Pin saved view ${view.name} to my sidebar`}
+          title={view.is_pinned ? tenantT('calls.saved_view.unpin_tooltip') : tenantT('calls.saved_view.pin_tooltip')}
+          aria-label={view.is_pinned
+            ? tenantT('calls.saved_view.unpin_aria', { name: view.name })
+            : tenantT('calls.saved_view.pin_aria', { name: view.name })}
         >
           {view.is_pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
         </button>
@@ -190,10 +198,12 @@ export default function PinnedSavedViewsBar({
               className={`p-1 rounded-full transition ${view.digest_enabled ? 'text-primary' : 'text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
               title={
                 view.digest_enabled
-                  ? `Daily email digest is on — click to turn off\n${digestStatus ?? ''}`.trim()
-                  : 'Send me a daily email digest'
+                  ? `${tenantT('calls.saved_view.digest_on_tooltip')}\n${digestStatus ?? ''}`.trim()
+                  : tenantT('calls.saved_view.digest_off_tooltip')
               }
-              aria-label={view.digest_enabled ? `Turn off daily digest for ${view.name}` : `Turn on daily digest for ${view.name}`}
+              aria-label={view.digest_enabled
+                ? tenantT('calls.saved_view.digest_on_aria', { name: view.name })
+                : tenantT('calls.saved_view.digest_off_aria', { name: view.name })}
             >
               {view.digest_enabled ? <Mail className="h-3.5 w-3.5" /> : <MailX className="h-3.5 w-3.5" />}
             </button>
@@ -201,8 +211,8 @@ export default function PinnedSavedViewsBar({
               <button
                 onClick={(e) => { e.stopPropagation(); setSubscribersOpenFor(subscribersOpenFor === view.id ? null : view.id); }}
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs transition ${subscribersOpenFor === view.id ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
-                title={`${view.digest_subscribers!.length} teammate${view.digest_subscribers!.length === 1 ? '' : 's'} subscribed — click to manage`}
-                aria-label={`Manage ${view.digest_subscribers!.length} subscribers for ${view.name}`}
+                title={tenantT('calls.saved_view.subscribers_chip_tooltip', { count: view.digest_subscribers!.length })}
+                aria-label={tenantT('calls.saved_view.subscribers_chip_aria', { count: view.digest_subscribers!.length, name: view.name })}
                 aria-expanded={subscribersOpenFor === view.id}
               >
                 <Users className="h-3.5 w-3.5" />
@@ -212,8 +222,8 @@ export default function PinnedSavedViewsBar({
             <button
               onClick={(e) => { e.stopPropagation(); handleDeleteView(view.id); }}
               className="p-1 mr-1 rounded-full text-text-muted hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-              title="Delete view"
-              aria-label={`Delete saved view ${view.name}`}
+              title={tenantT('calls.saved_view.delete_tooltip')}
+              aria-label={tenantT('calls.saved_view.delete_aria', { name: view.name })}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -225,8 +235,10 @@ export default function PinnedSavedViewsBar({
               <button
                 onClick={(e) => { e.stopPropagation(); handleToggleSubscribe(view); }}
                 className={`p-1 mr-1 rounded-full transition ${subscribed ? 'text-primary' : 'text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
-                title={subscribed ? 'You are subscribed to this digest — click to unsubscribe' : 'Subscribe me to this daily digest'}
-                aria-label={subscribed ? `Unsubscribe from ${view.name} digest` : `Subscribe to ${view.name} digest`}
+                title={subscribed ? tenantT('calls.saved_view.subscribed_tooltip') : tenantT('calls.saved_view.not_subscribed_tooltip')}
+                aria-label={subscribed
+                  ? tenantT('calls.saved_view.subscribed_aria', { name: view.name })
+                  : tenantT('calls.saved_view.not_subscribed_aria', { name: view.name })}
               >
                 {subscribed ? <Mail className="h-3.5 w-3.5" /> : <MailX className="h-3.5 w-3.5" />}
               </button>
@@ -264,7 +276,7 @@ export default function PinnedSavedViewsBar({
               onClick={() => { setActiveViewId(null); clearFilters(); }}
               className="text-xs text-text-secondary hover:text-text-primary px-2 py-1"
             >
-              Reset
+              {tenantT('calls.saved_view.reset')}
             </button>
           )}
         </div>

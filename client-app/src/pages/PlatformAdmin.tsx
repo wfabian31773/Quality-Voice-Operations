@@ -494,11 +494,14 @@ interface TenantOwnerOnboarding {
 // both together if the wizard grows / shrinks a step.
 const ONBOARDING_TOTAL_STEPS = 3;
 
-const ONBOARDING_STEP_LABELS: Record<number, string> = {
-  1: 'Provisioning',
-  2: 'Template selection',
-  3: 'Phone number',
-};
+function getOnboardingStepLabel(step: number, t: (k: string, opts?: any) => string): string {
+  switch (step) {
+    case 1: return t('platform_admin.badges.onboarding_provisioning');
+    case 2: return t('platform_admin.badges.onboarding_template');
+    case 3: return t('platform_admin.badges.onboarding_phone');
+    default: return t('platform_admin.badges.onboarding_step_label', { step });
+  }
+}
 
 function OwnerOnboardingBadge({
   step,
@@ -507,19 +510,20 @@ function OwnerOnboardingBadge({
   step: number;
   completed: boolean;
 }) {
+  const { t: adminT } = useTranslation('admin');
   if (completed) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
         <CheckCircle className="h-3 w-3" />
-        Completed
+        {adminT('platform_admin.badges.onboarding_completed')}
       </span>
     );
   }
-  const label = ONBOARDING_STEP_LABELS[step] ?? `Step ${step}`;
+  const label = getOnboardingStepLabel(step, adminT as any);
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
       <AlertCircle className="h-3 w-3" />
-      Step {step}/{ONBOARDING_TOTAL_STEPS} · {label}
+      {adminT('platform_admin.badges.onboarding_step_n', { step, total: ONBOARDING_TOTAL_STEPS, label })}
     </span>
   );
 }
@@ -1027,7 +1031,7 @@ interface ConnectorHealthResponse {
   };
 }
 
-function formatRelativeTime(iso: string | null): string {
+function formatRelativeTime(iso: string | null, t: (k: string, opts?: any) => string): string {
   if (!iso) return '—';
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
@@ -1043,6 +1047,7 @@ function formatRelativeTime(iso: string | null): string {
 }
 
 function ConnectorHealthPanel() {
+  const { t: adminT } = useTranslation('admin');
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-connector-health'],
     queryFn: () => api.get<ConnectorHealthResponse>('/platform/connector-health'),
@@ -1052,7 +1057,7 @@ function ConnectorHealthPanel() {
   if (isLoading) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
-        Loading connector health…
+        {adminT('platform_admin.connector_health.loading')}
       </div>
     );
   }
@@ -1060,7 +1065,7 @@ function ConnectorHealthPanel() {
   if (error || !data) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
-        Failed to load connector health: {error ? (error as Error).message : 'no data'}
+        {adminT('platform_admin.connector_health.load_failed', { error: error ? (error as Error).message : adminT('platform_admin.connector_health.no_data_error') })}
       </div>
     );
   }
@@ -1103,18 +1108,17 @@ function ConnectorHealthPanel() {
       <div className="bg-surface border border-border rounded-xl p-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-primary" /> Connector Health
+            <ShieldAlert className="h-4 w-4 text-primary" /> {adminT('platform_admin.connector_health.title')}
           </h2>
           <p className="text-xs text-text-muted mt-1">
-            Cross-tenant view of connectors that need a reconnect or are failing to sync, plus
-            recent proactive token-refresh failures from the background sweep.
+            {adminT('platform_admin.connector_health.subtitle')}
           </p>
         </div>
         <button
           onClick={() => refetch()}
           disabled={isFetching}
           className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
-          title="Refresh"
+          title={adminT('platform_admin.common.refresh_title')}
         >
           <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
         </button>
@@ -1122,59 +1126,59 @@ function ConnectorHealthPanel() {
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-text-muted">Reconnect needed</div>
+          <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_reconnect_needed')}</div>
           <div className={`text-2xl font-bold ${summary.needsReconnect > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
             {summary.needsReconnect}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-text-muted">Sync errors</div>
+          <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_sync_errors')}</div>
           <div className={`text-2xl font-bold ${summary.syncError > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
             {summary.syncError}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-text-muted" title={`Healthy connectors expiring in the next ${expiringSoonHours}h`}>
-            Expiring soon
+          <div className="text-xs text-text-muted" title={adminT('platform_admin.connector_health.stat_expiring_soon_title', { hours: expiringSoonHours })}>
+            {adminT('platform_admin.connector_health.stat_expiring_soon')}
           </div>
           <div className={`text-2xl font-bold ${expiringSoonCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
             {expiringSoonCount}
           </div>
-          <div className="text-xs text-text-muted mt-0.5">in {expiringSoonHours}h</div>
+          <div className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.connector_health.stat_expiring_in_hours', { hours: expiringSoonHours })}</div>
         </div>
         <div
           className="bg-surface border border-border rounded-xl p-3"
-          title="Outbox events parked in failed/dead_letter — see the Stuck connector messages panel below"
+          title={adminT('platform_admin.connector_health.stat_stuck_outbox_title')}
         >
-          <div className="text-xs text-text-muted">Stuck outbox</div>
+          <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_stuck_outbox')}</div>
           <div className={`text-2xl font-bold ${stuckTotal > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
             {stuckTotal}
           </div>
           <div className="text-xs text-text-muted mt-0.5">
-            {stuckSummary.deadLetter} dead · {stuckSummary.failed} retrying
+            {adminT('platform_admin.connector_health.stat_stuck_breakdown', { dead: stuckSummary.deadLetter, failed: stuckSummary.failed })}
           </div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-text-muted">Healthy</div>
+          <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_healthy')}</div>
           <div className="text-2xl font-bold text-green-600 dark:text-green-400">{summary.healthy}</div>
-          <div className="text-xs text-text-muted mt-0.5">of {summary.totalEnabled} enabled</div>
+          <div className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.connector_health.stat_healthy_sub', { total: summary.totalEnabled })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-3">
-          <div className="text-xs text-text-muted">Affected tenants</div>
+          <div className="text-xs text-text-muted">{adminT('platform_admin.connector_health.stat_affected_tenants')}</div>
           <div className="text-2xl font-bold">{summary.affectedTenants}</div>
         </div>
       </div>
 
       <ConnectorAttentionTable
-        title="Reconnect needed"
-        emptyText="No connectors are flagged as needing a reconnect. All OAuth tokens look healthy."
+        title={adminT('platform_admin.connector_health.title_reconnect_needed')}
+        emptyText={adminT('platform_admin.connector_health.empty_reconnect')}
         rows={reconnectConnectors}
         accent="amber"
       />
 
       <ConnectorAttentionTable
-        title="Sync errors"
-        emptyText="No connectors are currently in a sync-error state."
+        title={adminT('platform_admin.connector_health.title_sync_errors')}
+        emptyText={adminT('platform_admin.connector_health.empty_sync_errors')}
         rows={erroredConnectors}
         accent="red"
       />
@@ -1202,26 +1206,26 @@ function ConnectorHealthPanel() {
           <div>
             <h3 className="font-semibold text-sm flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              Recent token refresh failures
+              {adminT('platform_admin.connector_health.recent_failures_title')}
             </h3>
             <p className="text-xs text-text-muted mt-0.5">
-              From <code className="font-mono">connector.token_refresh_failed</code> audit events in the last {window.sinceDays} days.
+              {adminT('platform_admin.connector_health.recent_failures_subtitle_prefix')} <code className="font-mono">connector.token_refresh_failed</code> {adminT('platform_admin.connector_health.recent_failures_subtitle_suffix', { days: window.sinceDays })}
             </p>
           </div>
         </div>
         {recentRefreshFailures.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-text-muted">
-            No proactive token refresh failures in the last {window.sinceDays} days.
+            {adminT('platform_admin.connector_health.empty_recent_failures', { days: window.sinceDays })}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="text-left px-4 py-2 font-medium text-text-muted">When</th>
-                  <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
-                  <th className="text-left px-4 py-2 font-medium text-text-muted">Provider</th>
-                  <th className="text-left px-4 py-2 font-medium text-text-muted">Error</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_health.header_when')}</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_health.header_tenant')}</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_health.header_provider')}</th>
+                  <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_health.header_error')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1229,18 +1233,18 @@ function ConnectorHealthPanel() {
                   <tr key={ev.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                       <span title={new Date(ev.occurredAt).toLocaleString()}>
-                        {formatRelativeTime(ev.occurredAt)}
+                        {formatRelativeTime(ev.occurredAt, adminT)}
                       </span>
                     </td>
                     <td className="px-4 py-2 text-xs">
-                      <div className="font-medium">{ev.tenantName ?? '—'}</div>
+                      <div className="font-medium">{ev.tenantName ?? adminT('platform_admin.common.em_dash')}</div>
                       {ev.tenantSlug && (
                         <div className="text-text-muted font-mono">{ev.tenantSlug}</div>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-xs font-medium capitalize">{ev.provider ?? '—'}</td>
+                    <td className="px-4 py-2 text-xs font-medium capitalize">{ev.provider ?? adminT('platform_admin.common.em_dash')}</td>
                     <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[420px]">
-                      {ev.errorMessage ?? '—'}
+                      {ev.errorMessage ?? adminT('platform_admin.common.em_dash')}
                     </td>
                   </tr>
                 ))}
@@ -1309,6 +1313,7 @@ interface PushHealthResponse {
 }
 
 function PushDeliveryHealthPanel() {
+  const { t: adminT } = useTranslation('admin');
   const [windowDays, setWindowDays] = useState<number>(7);
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-push-health', windowDays],
@@ -1492,7 +1497,7 @@ function PushDeliveryHealthPanel() {
                       </td>
                       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                         <span title={r.lastAttemptAt ? new Date(r.lastAttemptAt).toLocaleString() : ''}>
-                          {formatRelativeTime(r.lastAttemptAt)}
+                          {formatRelativeTime(r.lastAttemptAt, adminT)}
                         </span>
                       </td>
                     </tr>
@@ -1539,7 +1544,7 @@ function PushDeliveryHealthPanel() {
                   <tr key={row.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                       <span title={new Date(row.occurredAt).toLocaleString()}>
-                        {formatRelativeTime(row.occurredAt)}
+                        {formatRelativeTime(row.occurredAt, adminT)}
                       </span>
                     </td>
                     <td className="px-4 py-2 text-xs">
@@ -1649,26 +1654,26 @@ interface VerifiedCallerAlertHistoryResponse {
   truncated: boolean;
 }
 
-function verifiedCallerStatusBadge(status: VerifiedCallerHealthStatus): {
+function verifiedCallerStatusBadge(status: VerifiedCallerHealthStatus, t: (k: string) => string): {
   label: string;
   classes: string;
 } {
   switch (status) {
     case 'revoked':
       return {
-        label: 'Revoked',
+        label: t('platform_admin.verified_caller.status_revoked'),
         classes:
           'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800',
       };
     case 'expired':
       return {
-        label: 'Expired',
+        label: t('platform_admin.verified_caller.status_expired'),
         classes:
           'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800',
       };
     case 'expiring_soon':
       return {
-        label: 'Expiring soon',
+        label: t('platform_admin.verified_caller.status_expiring'),
         classes:
           'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
       };
@@ -1687,13 +1692,14 @@ function VerifiedCallerDaysCell({
   status: VerifiedCallerHealthStatus;
   daysRemaining: number | null;
 }) {
+  const { t: adminT } = useTranslation('admin');
   if (daysRemaining === null) {
     return (
       <span
         className="text-text-muted"
-        title="No expiry timestamp available — typical for revoked callers."
+        title={adminT('platform_admin.verified_caller.no_expiry')}
       >
-        —
+        {adminT('platform_admin.common.em_dash')}
       </span>
     );
   }
@@ -1701,14 +1707,14 @@ function VerifiedCallerDaysCell({
     const ago = Math.abs(daysRemaining);
     return (
       <span className="text-red-600 dark:text-red-400 font-medium">
-        Expired {ago}d ago
+        {adminT('platform_admin.verified_caller.expired_days_ago', { count: ago })}
       </span>
     );
   }
   if (daysRemaining === 0) {
     return (
       <span className="text-red-600 dark:text-red-400 font-medium">
-        Expires today
+        {adminT('platform_admin.verified_caller.expires_today')}
       </span>
     );
   }
@@ -1716,7 +1722,7 @@ function VerifiedCallerDaysCell({
     status === 'expiring_soon' && daysRemaining <= 7
       ? 'text-amber-700 dark:text-amber-300 font-medium'
       : 'text-text-primary';
-  return <span className={tone}>{daysRemaining}d</span>;
+  return <span className={tone}>{adminT('platform_admin.verified_caller.days_unit', { count: daysRemaining })}</span>;
 }
 
 /**
@@ -1941,6 +1947,7 @@ function VerifiedCallerAlertHistory({
 }
 
 function VerifiedCallerHealthPanel() {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-verified-caller-health'],
@@ -1974,11 +1981,11 @@ function VerifiedCallerHealthPanel() {
         {},
       ),
     onSuccess: (resp) => {
-      window.alert(resp.message ?? 'Verified caller alert re-issued.');
+      window.alert(resp.message ?? adminT('platform_admin.verified_caller.reissued_default'));
       queryClient.invalidateQueries({ queryKey: ['platform-verified-caller-health'] });
     },
     onError: (err) => {
-      window.alert(`Failed to re-issue alert: ${(err as Error).message}`);
+      window.alert(adminT('platform_admin.verified_caller.reissue_failed', { error: (err as Error).message }));
     },
   });
 
@@ -2005,7 +2012,7 @@ function VerifiedCallerHealthPanel() {
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <PhoneOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            Verified caller health
+            {adminT('platform_admin.verified_caller.title')}
             <span
               className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 callers.length > 0
@@ -2017,24 +2024,22 @@ function VerifiedCallerHealthPanel() {
             </span>
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Cross-tenant view of verified outbound caller IDs that are about to expire,
-            already expired, or were revoked by Twilio. Sourced from the weekly health
-            scheduler.
+            {adminT('platform_admin.verified_caller.subtitle')}
           </p>
           {summary && summary.total > 0 && (
             <p className="text-xs text-text-muted mt-1">
               <span className="text-red-600 dark:text-red-400 font-medium">
-                {summary.revoked} revoked
+                {adminT('platform_admin.verified_caller.summary_revoked', { count: summary.revoked })}
               </span>{' '}
               ·{' '}
               <span className="text-red-600 dark:text-red-400 font-medium">
-                {summary.expired} expired
+                {adminT('platform_admin.verified_caller.summary_expired', { count: summary.expired })}
               </span>{' '}
               ·{' '}
               <span className="text-amber-700 dark:text-amber-300 font-medium">
-                {summary.expiringSoon} expiring soon
+                {adminT('platform_admin.verified_caller.summary_expiring', { count: summary.expiringSoon })}
               </span>{' '}
-              · {summary.affectedTenants} tenant{summary.affectedTenants === 1 ? '' : 's'} affected
+              · {adminT('platform_admin.verified_caller.summary_affected', { count: summary.affectedTenants })}
             </p>
           )}
         </div>
@@ -2042,50 +2047,50 @@ function VerifiedCallerHealthPanel() {
           onClick={() => refetch()}
           disabled={isFetching}
           className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
-          title="Refresh"
+          title={adminT('platform_admin.common.refresh_title')}
         >
           <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
         </button>
       </div>
       {isLoading ? (
         <div className="px-4 py-6 text-center text-sm text-text-muted">
-          Loading verified caller health…
+          {adminT('platform_admin.verified_caller.loading')}
         </div>
       ) : error ? (
         <div className="px-4 py-6 text-center text-sm text-red-600 dark:text-red-400">
-          Failed to load verified caller health: {(error as Error).message}
+          {adminT('platform_admin.verified_caller.load_failed', { error: (error as Error).message })}
         </div>
       ) : callers.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-text-muted">
-          No verified callers are flagged as expiring, expired, or revoked. All tenants are healthy.
+          {adminT('platform_admin.verified_caller.empty')}
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="px-2 py-2 w-8" aria-label="Expand row" />
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Phone number</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                <th className="px-2 py-2 w-8" aria-label={adminT('platform_admin.verified_caller.expand_row_aria')} />
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.verified_caller.header_tenant')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.verified_caller.header_phone')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.verified_caller.header_status')}</th>
                 <th className="text-left px-4 py-2 font-medium text-text-muted">
                   <button
                     type="button"
                     onClick={() => setDaysSort((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
                     className="inline-flex items-center gap-1 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-border rounded"
-                    aria-label={`Sort by days remaining, currently ${daysSort === 'asc' ? 'ascending (most urgent first)' : 'descending (least urgent first)'}. Click to toggle.`}
+                    aria-label={daysSort === 'asc' ? adminT('platform_admin.verified_caller.sort_aria_asc') : adminT('platform_admin.verified_caller.sort_aria_desc')}
                   >
-                    Days remaining
+                    {adminT('platform_admin.verified_caller.header_days_remaining')}
                     <span aria-hidden="true">{daysSort === 'asc' ? '↑' : '↓'}</span>
                   </button>
                 </th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Last check</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.verified_caller.header_last_check')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.verified_caller.header_actions')}</th>
               </tr>
             </thead>
             <tbody>
               {callers.map((row) => {
-                const badge = verifiedCallerStatusBadge(row.status);
+                const badge = verifiedCallerStatusBadge(row.status, adminT);
                 const isPending =
                   reissueAlert.isPending && reissueAlert.variables?.id === row.id;
                 const isExpanded = expandedRows.has(row.id);
@@ -2099,7 +2104,9 @@ function VerifiedCallerHealthPanel() {
                           onClick={() => toggleExpanded(row.id)}
                           aria-expanded={isExpanded}
                           aria-label={
-                            isExpanded ? 'Hide alert history' : 'Show alert history'
+                            isExpanded
+                              ? adminT('platform_admin.verified_caller.hide_alert_history')
+                              : adminT('platform_admin.verified_caller.show_alert_history')
                           }
                           className="p-1 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-border"
                         >
@@ -2111,7 +2118,7 @@ function VerifiedCallerHealthPanel() {
                         </button>
                       </td>
                       <td className="px-4 py-2 text-xs">
-                        <div className="font-medium">{row.tenantName ?? '—'}</div>
+                        <div className="font-medium">{row.tenantName ?? adminT('platform_admin.common.em_dash')}</div>
                         {row.tenantSlug && (
                           <div className="text-text-muted font-mono">{row.tenantSlug}</div>
                         )}
@@ -2131,10 +2138,10 @@ function VerifiedCallerHealthPanel() {
                         {lastAlert?.allBounced && (
                           <span
                             className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800"
-                            title={`Most recent alert (${new Date(lastAlert.dispatchedAt).toLocaleString()}) bounced for every recipient — no admin actually received it.`}
+                            title={adminT('platform_admin.verified_caller.all_bounced_title', { time: new Date(lastAlert.dispatchedAt).toLocaleString() })}
                           >
                             <MailX className="h-3 w-3" />
-                            All bounced
+                            {adminT('platform_admin.verified_caller.all_bounced_label')}
                           </span>
                         )}
                         {row.lastHealthMessage && (
@@ -2159,20 +2166,28 @@ function VerifiedCallerHealthPanel() {
                       </td>
                       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                         <span title={row.lastHealthCheckAt ?? undefined}>
-                          {formatRelativeTime(row.lastHealthCheckAt)}
+                          {formatRelativeTime(row.lastHealthCheckAt, adminT)}
                         </span>
                         {row.expiryAlertSentAt && (
                           <div
                             className="text-text-muted mt-0.5"
-                            title={`Last alert sent ${new Date(row.expiryAlertSentAt).toLocaleString()}`}
+                            title={adminT('platform_admin.verified_caller.last_alert_sent_title', { time: new Date(row.expiryAlertSentAt).toLocaleString() })}
                           >
-                            Alerted {formatRelativeTime(row.expiryAlertSentAt)}
+                            {adminT('platform_admin.verified_caller.alerted_prefix', { when: formatRelativeTime(row.expiryAlertSentAt, adminT) })}
                           </div>
                         )}
                         {lastAlert && (
                           <div
                             className="mt-0.5 text-[11px]"
-                            title={`Most recent dispatch (${lastAlert.source === 'admin_reissue' ? 'manual re-issue' : 'scheduler'}): ${lastAlert.sentCount} delivered, ${lastAlert.bouncedCount} bounced, ${lastAlert.failedCount} failed, ${lastAlert.skippedCount} skipped.`}
+                            title={adminT('platform_admin.verified_caller.most_recent_dispatch_title', {
+                              source: lastAlert.source === 'admin_reissue'
+                                ? adminT('platform_admin.verified_caller.dispatch_source_manual')
+                                : adminT('platform_admin.verified_caller.dispatch_source_scheduler'),
+                              sent: lastAlert.sentCount,
+                              bounced: lastAlert.bouncedCount,
+                              failed: lastAlert.failedCount,
+                              skipped: lastAlert.skippedCount,
+                            })}
                           >
                             <span className="text-emerald-700 dark:text-emerald-300">
                               {lastAlert.sentCount}↑
@@ -2195,7 +2210,7 @@ function VerifiedCallerHealthPanel() {
                           onClick={() => {
                             if (
                               window.confirm(
-                                `Re-issue alert email + in-app notification for ${row.phoneNumber} to ${row.tenantName ?? 'this tenant'}?`,
+                                adminT('platform_admin.verified_caller.confirm_reissue', { phone: row.phoneNumber, tenant: row.tenantName ?? adminT('platform_admin.verified_caller.confirm_reissue_no_tenant') }),
                               )
                             ) {
                               reissueAlert.mutate(row);
@@ -2203,10 +2218,10 @@ function VerifiedCallerHealthPanel() {
                           }}
                           disabled={isPending}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary text-text-primary text-xs disabled:opacity-50"
-                          title="Send the verified-caller alert email to the tenant's admins again, even if one was already sent this week"
+                          title={adminT('platform_admin.verified_caller.send_alert_title')}
                         >
                           <Send className="h-3 w-3" />
-                          {isPending ? 'Sending…' : 'Re-issue alert'}
+                          {isPending ? adminT('platform_admin.verified_caller.sending') : adminT('platform_admin.verified_caller.reissue_alert')}
                         </button>
                       </td>
                     </tr>
@@ -2268,13 +2283,14 @@ function ConnectorExpiringSoonTable({
   rows: ConnectorExpiringSoonRow[];
   windowHours: number;
 }) {
+  const { t: adminT } = useTranslation('admin');
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            Expiring soon
+            {adminT('platform_admin.expiring_soon.title')}
             <span
               className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 rows.length > 0
@@ -2286,25 +2302,24 @@ function ConnectorExpiringSoonTable({
             </span>
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Healthy OAuth connectors whose token expires in the next {windowHours}h. Reconnect proactively
-            to avoid downtime when the background sweep would otherwise fail.
+            {adminT('platform_admin.expiring_soon.subtitle', { hours: windowHours })}
           </p>
         </div>
       </div>
       {rows.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-text-muted">
-          No healthy connectors are within {windowHours}h of token expiry. Ops queue is clear.
+          {adminT('platform_admin.expiring_soon.empty', { hours: windowHours })}
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Connector</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Last refresh</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Expires</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.expiring_soon.header_tenant')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.expiring_soon.header_connector')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.expiring_soon.header_token_age')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.expiring_soon.header_expires_in')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.expiring_soon.header_actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -2313,7 +2328,7 @@ function ConnectorExpiringSoonTable({
                 return (
                   <tr key={r.integrationId} className="border-b border-border last:border-0 align-top">
                     <td className="px-4 py-2 text-xs">
-                      <div className="font-medium">{r.tenantName ?? '—'}</div>
+                      <div className="font-medium">{r.tenantName ?? adminT('platform_admin.common.em_dash')}</div>
                       {r.tenantSlug && (
                         <div className="text-text-muted font-mono">{r.tenantSlug}</div>
                       )}
@@ -2330,17 +2345,17 @@ function ConnectorExpiringSoonTable({
                     <td className="px-4 py-2 text-xs whitespace-nowrap">
                       <div
                         className="text-text-muted"
-                        title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : 'never'}
+                        title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : adminT('platform_admin.common.never')}
                       >
-                        {formatRelativeTime(r.tokenIssuedAt)}
+                        {formatRelativeTime(r.tokenIssuedAt, adminT)}
                       </div>
                     </td>
                     <td className="px-4 py-2 text-xs whitespace-nowrap">
                       <div
                         className="text-amber-700 dark:text-amber-300 font-medium"
-                        title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : 'unknown'}
+                        title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : adminT('platform_admin.common.unknown')}
                       >
-                        {formatExpiresIn(r.expiresInMs)}
+                        {formatExpiresIn(r.expiresInMs, adminT)}
                       </div>
                       {r.tokenExpiresAt && (
                         <div className="text-text-muted text-[10px] mt-0.5">
@@ -2359,9 +2374,9 @@ function ConnectorExpiringSoonTable({
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs"
-                        title="Open the tenant's Connectors page in a new tab"
+                        title={adminT('platform_admin.connector_attention.open_tenant_title')}
                       >
-                        <ExternalLink className="h-3 w-3" /> Open tenant connectors
+                        <ExternalLink className="h-3 w-3" /> {adminT('platform_admin.connector_attention.open_tenant_connectors')}
                       </a>
                     </td>
                   </tr>
@@ -2386,6 +2401,7 @@ function ConnectorAttentionTable({
   rows: ConnectorHealthRow[];
   accent: 'amber' | 'red';
 }) {
+  const { t: adminT } = useTranslation('admin');
   const accentClasses = accent === 'amber'
     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
     : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
@@ -2406,13 +2422,13 @@ function ConnectorAttentionTable({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Connector</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Last sync</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">First failed</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Last error</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Alerts</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_tenant')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_connector')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_last_sync')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_first_failed')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_last_error')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_alerts')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.connector_attention.header_actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -2428,6 +2444,7 @@ function ConnectorAttentionTable({
 }
 
 function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
@@ -2438,12 +2455,12 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
         {},
       ),
     onSuccess: (data) => {
-      setFeedback({ kind: 'success', message: data.message ?? 'Token refresh succeeded.' });
+      setFeedback({ kind: 'success', message: data.message ?? adminT('platform_admin.connector_attention.refresh_success_default') });
       queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
     },
     onError: (err: unknown) => {
       const detail = err instanceof Error ? err.message : String(err);
-      setFeedback({ kind: 'error', message: detail || 'Refresh failed.' });
+      setFeedback({ kind: 'error', message: detail || adminT('platform_admin.connector_attention.refresh_failed_default') });
     },
   });
 
@@ -2454,12 +2471,12 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
         {},
       ),
     onSuccess: (data) => {
-      setFeedback({ kind: 'success', message: data.message ?? 'Reconnect email re-issued.' });
+      setFeedback({ kind: 'success', message: data.message ?? adminT('platform_admin.connector_attention.alert_success_default') });
       queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
     },
     onError: (err: unknown) => {
       const detail = err instanceof Error ? err.message : String(err);
-      setFeedback({ kind: 'error', message: detail || 'Failed to re-issue reconnect email.' });
+      setFeedback({ kind: 'error', message: detail || adminT('platform_admin.connector_attention.alert_failed_default') });
     },
   });
 
@@ -2481,7 +2498,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
   return (
     <tr className="border-b border-border last:border-0 align-top">
       <td className="px-4 py-2 text-xs">
-        <div className="font-medium">{c.tenantName ?? '—'}</div>
+        <div className="font-medium">{c.tenantName ?? adminT('platform_admin.common.em_dash')}</div>
         {c.tenantSlug && (
           <div className="text-text-muted font-mono">{c.tenantSlug}</div>
         )}
@@ -2496,13 +2513,13 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
         </div>
       </td>
       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
-        <span title={c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : 'never'}>
-          {formatRelativeTime(c.lastSyncAt)}
+        <span title={c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : adminT('platform_admin.common.never')}>
+          {formatRelativeTime(c.lastSyncAt, adminT)}
         </span>
       </td>
       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
-        <span title={c.lastSyncErrorAt ? new Date(c.lastSyncErrorAt).toLocaleString() : 'never'}>
-          {formatRelativeTime(c.lastSyncErrorAt)}
+        <span title={c.lastSyncErrorAt ? new Date(c.lastSyncErrorAt).toLocaleString() : adminT('platform_admin.common.never')}>
+          {formatRelativeTime(c.lastSyncErrorAt, adminT)}
         </span>
       </td>
       <td className="px-4 py-2 text-xs">
@@ -2510,19 +2527,19 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
           className="font-mono text-red-600 dark:text-red-400 break-all max-w-[360px]"
           title={c.lastSyncError ?? ''}
         >
-          {truncated ?? '—'}
+          {truncated ?? adminT('platform_admin.common.em_dash')}
         </div>
       </td>
       <td className="px-4 py-2 text-xs whitespace-nowrap">
         {c.authAlertSentAt ? (
           <span
             className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
-            title={`Reconnect email sent ${new Date(c.authAlertSentAt).toLocaleString()}`}
+            title={adminT('platform_admin.connector_attention.email_sent_title', { time: new Date(c.authAlertSentAt).toLocaleString() })}
           >
-            <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt)}
+            <Mail className="h-3 w-3" /> {formatRelativeTime(c.authAlertSentAt, adminT)}
           </span>
         ) : (
-          <span className="text-text-muted">No email yet</span>
+          <span className="text-text-muted">{adminT('platform_admin.connector_attention.sent_email')}</span>
         )}
       </td>
       <td className="px-4 py-2 text-xs">
@@ -2533,9 +2550,9 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs"
-              title="Open the tenant's Connectors page in a new tab"
+              title={adminT('platform_admin.connector_attention.open_tenant_title')}
             >
-              <ExternalLink className="h-3 w-3" /> Open tenant connectors
+              <ExternalLink className="h-3 w-3" /> {adminT('platform_admin.connector_attention.open_tenant_connectors')}
             </a>
             <button
               type="button"
@@ -2546,11 +2563,11 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
               disabled={refreshing || alerting || !refreshable}
               className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               title={refreshable
-                ? 'Force an OAuth token refresh now'
-                : `${c.provider} does not support OAuth refresh from this panel`}
+                ? adminT('platform_admin.connector_attention.retry_refresh_title')
+                : adminT('platform_admin.connector_attention.retry_unsupported_title', { provider: c.provider })}
             >
               <RotateCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Retrying…' : 'Retry refresh'}
+              {refreshing ? adminT('platform_admin.connector_attention.retrying') : adminT('platform_admin.connector_attention.retry_refresh')}
             </button>
             <button
               type="button"
@@ -2560,10 +2577,10 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
               }}
               disabled={refreshing || alerting}
               className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Re-issue the reconnect email to tenant admins (bypasses the 24h throttle)"
+              title={adminT('platform_admin.connector_attention.send_email_title')}
             >
               <Send className={`h-3 w-3 ${alerting ? 'animate-pulse' : ''}`} />
-              {alerting ? 'Sending…' : 'Send email'}
+              {alerting ? adminT('platform_admin.connector_attention.sending') : adminT('platform_admin.connector_attention.send_email')}
             </button>
           </div>
           {feedback && (
@@ -2584,7 +2601,7 @@ function ConnectorAttentionRow({ row: c }: { row: ConnectorHealthRow }) {
   );
 }
 
-function formatNextAttempt(iso: string | null): string {
+function formatNextAttempt(iso: string | null, t: (k: string, opts?: any) => string): string {
   if (!iso) return '—';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '—';
@@ -2607,6 +2624,7 @@ function StuckOutboxEventsPanel({
   rows: StuckOutboxEventRow[];
   summary: StuckOutboxSummary;
 }) {
+  const { t: adminT } = useTranslation('admin');
   const total = summary.failed + summary.deadLetter;
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -2614,7 +2632,7 @@ function StuckOutboxEventsPanel({
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-            Stuck connector messages
+            {adminT('platform_admin.stuck_outbox.title')}
             <span
               className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 total > 0
@@ -2626,39 +2644,36 @@ function StuckOutboxEventsPanel({
             </span>
             {summary.deadLetter > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                {summary.deadLetter} dead-letter
+                {adminT('platform_admin.stuck_outbox.dead_letter_pill', { count: summary.deadLetter })}
               </span>
             )}
             {summary.failed > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                {summary.failed} retrying
+                {adminT('platform_admin.stuck_outbox.retrying_pill', { count: summary.failed })}
               </span>
             )}
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Outbox events the drain worker has parked. Failed rows still have automatic retries
-            scheduled; dead-letter rows have hit <code className="font-mono">max_attempts</code>
-            and need manual intervention. Retry now requeues the row immediately; Mark resolved
-            archives a dead-letter row so it stops surfacing here.
+            {adminT('platform_admin.stuck_outbox.subtitle')}
           </p>
         </div>
       </div>
       {rows.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-text-muted">
-          No outbox events are stuck. The drain worker is keeping up across all tenants.
+          {adminT('platform_admin.stuck_outbox.empty')}
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Event</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Attempts</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Next retry</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Last error</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Actions</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_tenant')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_event')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_status')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_attempts')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_next_retry')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_last_error')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.stuck_outbox.header_actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -2674,6 +2689,7 @@ function StuckOutboxEventsPanel({
 }
 
 function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<{ kind: 'success' | 'error'; message: string } | null>(
     null,
@@ -2686,12 +2702,12 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
         {},
       ),
     onSuccess: (data) => {
-      setFeedback({ kind: 'success', message: data.message ?? 'Outbox event requeued.' });
+      setFeedback({ kind: 'success', message: data.message ?? adminT('platform_admin.stuck_outbox.requeued_default') });
       queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
     },
     onError: (err: unknown) => {
       const detail = err instanceof Error ? err.message : String(err);
-      setFeedback({ kind: 'error', message: detail || 'Failed to requeue outbox event.' });
+      setFeedback({ kind: 'error', message: detail || adminT('platform_admin.stuck_outbox.requeue_failed_default') });
     },
   });
 
@@ -2702,12 +2718,12 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
         {},
       ),
     onSuccess: (data) => {
-      setFeedback({ kind: 'success', message: data.message ?? 'Outbox event archived.' });
+      setFeedback({ kind: 'success', message: data.message ?? adminT('platform_admin.stuck_outbox.archived_default') });
       queryClient.invalidateQueries({ queryKey: ['platform-connector-health'] });
     },
     onError: (err: unknown) => {
       const detail = err instanceof Error ? err.message : String(err);
-      setFeedback({ kind: 'error', message: detail || 'Failed to archive outbox event.' });
+      setFeedback({ kind: 'error', message: detail || adminT('platform_admin.stuck_outbox.archive_failed_default') });
     },
   });
 
@@ -2724,7 +2740,7 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
   return (
     <tr className="border-b border-border last:border-0 align-top">
       <td className="px-4 py-2 text-xs">
-        <div className="font-medium">{row.tenantName ?? '—'}</div>
+        <div className="font-medium">{row.tenantName ?? adminT('platform_admin.common.em_dash')}</div>
         {row.tenantSlug && (
           <div className="text-text-muted font-mono">{row.tenantSlug}</div>
         )}
@@ -2750,7 +2766,7 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
               : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
           }`}
         >
-          {isDeadLetter ? 'Dead-letter' : 'Failed'}
+          {isDeadLetter ? adminT('platform_admin.stuck_outbox.status_dead_letter') : adminT('platform_admin.stuck_outbox.status_failed')}
         </span>
       </td>
       <td className="px-4 py-2 text-xs whitespace-nowrap">
@@ -2766,18 +2782,18 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
       </td>
       <td className="px-4 py-2 text-xs whitespace-nowrap">
         {isDeadLetter ? (
-          <span className="text-text-muted">no automatic retry</span>
+          <span className="text-text-muted">{adminT('platform_admin.stuck_outbox.no_auto_retry')}</span>
         ) : (
           <span
             className="text-text-muted"
-            title={row.nextAttemptAt ? new Date(row.nextAttemptAt).toLocaleString() : 'unknown'}
+            title={row.nextAttemptAt ? new Date(row.nextAttemptAt).toLocaleString() : adminT('platform_admin.common.unknown')}
           >
-            {formatNextAttempt(row.nextAttemptAt)}
+            {formatNextAttempt(row.nextAttemptAt, adminT)}
           </span>
         )}
       </td>
       <td className="px-4 py-2 text-xs text-red-600 dark:text-red-400 font-mono break-all max-w-[360px]">
-        {truncatedError ?? '—'}
+        {truncatedError ?? adminT('platform_admin.common.em_dash')}
       </td>
       <td className="px-4 py-2 text-xs">
         <div className="flex flex-col gap-1">
@@ -2790,10 +2806,10 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
               }}
               disabled={retrying || archiving}
               className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50"
-              title="Reset status to pending and trigger the drain worker on the next cycle"
+              title={adminT('platform_admin.stuck_outbox.retry_now_title')}
             >
               <RotateCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
-              Retry now
+              {adminT('platform_admin.stuck_outbox.retry_now')}
             </button>
             {isDeadLetter && (
               <button
@@ -2804,10 +2820,10 @@ function StuckOutboxEventRowView({ row }: { row: StuckOutboxEventRow }) {
                 }}
                 disabled={archiving || retrying}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-secondary hover:bg-surface text-text-primary text-xs disabled:opacity-50"
-                title="Archive this dead-letter row so it stops appearing here. The original payload stays in the table for forensics."
+                title={adminT('platform_admin.stuck_outbox.mark_resolved_title')}
               >
                 <Archive className="h-3 w-3" />
-                Mark resolved
+                {adminT('platform_admin.stuck_outbox.mark_resolved')}
               </button>
             )}
           </div>
@@ -2838,6 +2854,7 @@ function formatDurationMs(ms: number): string {
 }
 
 function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetrics | null }) {
+  const { t: adminT } = useTranslation('admin');
   const [showCycles, setShowCycles] = useState(false);
   const [showTenants, setShowTenants] = useState(false);
 
@@ -2877,7 +2894,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
           <p className="text-xs text-text-muted mt-0.5">
             Background sweep that re-probes cached CRM IDs against the upstream provider and
             scrubs stale entries. Counters are in-memory and reset whenever the admin API
-            restarts (since {formatRelativeTime(metrics.startedAt)}).
+            restarts (since {formatRelativeTime(metrics.startedAt, adminT)}).
           </p>
         </div>
       </div>
@@ -2927,7 +2944,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
       {lastCycle && (
         <div className="px-4 pb-3 text-xs text-text-muted">
           Last cycle <span title={new Date(lastCycle.finishedAt).toLocaleString()}>
-            {formatRelativeTime(lastCycle.finishedAt)}
+            {formatRelativeTime(lastCycle.finishedAt, adminT)}
           </span>
           : scanned <strong>{lastCycle.scanned}</strong>, validated <strong>{lastCycle.validated}</strong>,
           scrubbed <strong>{lastCycle.staleScrubbed}</strong>, failed{' '}
@@ -2991,7 +3008,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
                   <tr key={`${c.startedAt}-${c.finishedAt}`} className="border-b border-border last:border-0">
                     <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                       <span title={new Date(c.finishedAt).toLocaleString()}>
-                        {formatRelativeTime(c.finishedAt)}
+                        {formatRelativeTime(c.finishedAt, adminT)}
                       </span>
                       {c.threw && (
                         <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -3058,7 +3075,7 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
                       </td>
                       <td className="px-4 py-2 text-xs text-text-muted whitespace-nowrap">
                         <span title={new Date(t.lastTouchedAt).toLocaleString()}>
-                          {formatRelativeTime(t.lastTouchedAt)}
+                          {formatRelativeTime(t.lastTouchedAt, adminT)}
                         </span>
                       </td>
                     </tr>
@@ -3079,18 +3096,20 @@ function CrmRevalidationMetricsPanel({ metrics }: { metrics: CrmRevalidationMetr
   );
 }
 
-function formatExpiresIn(ms: number | null): string {
-  if (ms === null) return 'unknown';
+function formatExpiresIn(ms: number | null, t: (k: string, opts?: any) => string): string {
+  if (ms === null) return t('platform_admin.common.unknown');
   const abs = Math.abs(ms);
   const min = Math.floor(abs / 60_000);
   const hr = Math.floor(min / 60);
   const days = Math.floor(hr / 24);
   let label: string;
-  if (min < 1) label = 'less than a minute';
+  if (min < 1) label = t('platform_admin.outbox_dlq.less_than_a_minute');
   else if (min < 60) label = `${min}m`;
   else if (hr < 24) label = `${hr}h ${min - hr * 60}m`;
   else label = `${days}d ${hr - days * 24}h`;
-  return ms >= 0 ? `in ${label}` : `${label} ago`;
+  return ms >= 0
+    ? t('platform_admin.outbox_dlq.in_label', { label })
+    : t('platform_admin.outbox_dlq.ago_label', { label });
 }
 
 function tokenStatusBadgeClasses(status: ConnectorTokenHealthStatus): string {
@@ -3107,7 +3126,7 @@ function tokenStatusBadgeClasses(status: ConnectorTokenHealthStatus): string {
   }
 }
 
-function tokenStatusLabel(status: ConnectorTokenHealthStatus): string {
+function tokenStatusLabel(status: ConnectorTokenHealthStatus, t: (k: string) => string): string {
   switch (status) {
     case 'healthy': return 'Healthy';
     case 'expiring': return 'Expiring soon';
@@ -3131,6 +3150,7 @@ function ConnectorTokenHealthPanel({
   expiringHorizonMs: number;
   staleCycleThreshold: number;
 }) {
+  const { t: adminT } = useTranslation('admin');
   const [sortKey, setSortKey] = useState<TokenHealthSortKey>('expiring');
   const [filter, setFilter] = useState<TokenHealthFilter>('all');
 
@@ -3182,72 +3202,70 @@ function ConnectorTokenHealthPanel({
       <div className="px-4 py-3 border-b border-border flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary" /> OAuth token freshness
+            <Clock className="h-4 w-4 text-primary" /> {adminT('platform_admin.token_health.title')}
             <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-secondary text-text-primary border border-border">
               {rows.length}
             </span>
             {expiringSoonCount > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                {expiringSoonCount} expiring
+                {adminT('platform_admin.token_health.expiring_pill', { count: expiringSoonCount })}
               </span>
             )}
             {staleCount > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                {staleCount} stale
+                {adminT('platform_admin.token_health.stale_pill_count', { count: staleCount })}
               </span>
             )}
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Last refresh and next expiry per OAuth connector. Tokens expiring within {horizonHours}h are
-            flagged; the worker sweeps every ~{cycleMinutes}m and a row badges as "stale" after{' '}
-            {staleCycleThreshold} missed cycles.
+            {adminT('platform_admin.token_health.long_subtitle', { hours: horizonHours, minutes: cycleMinutes, cycles: staleCycleThreshold })}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <label className="text-text-muted">Filter</label>
+          <label className="text-text-muted">{adminT('platform_admin.token_health.filter_label')}</label>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as TokenHealthFilter)}
             className="border border-border rounded px-2 py-1 bg-surface text-text-primary"
           >
-            <option value="all">All</option>
-            <option value="attention">Needs attention</option>
-            <option value="expiring">Expiring / expired</option>
-            <option value="stale">Stale only</option>
-            <option value="healthy">Healthy only</option>
+            <option value="all">{adminT('platform_admin.token_health.filter_all')}</option>
+            <option value="attention">{adminT('platform_admin.token_health.filter_attention')}</option>
+            <option value="expiring">{adminT('platform_admin.token_health.filter_expiring')}</option>
+            <option value="stale">{adminT('platform_admin.token_health.filter_stale')}</option>
+            <option value="healthy">{adminT('platform_admin.token_health.filter_healthy')}</option>
           </select>
-          <label className="text-text-muted ml-2">Sort</label>
+          <label className="text-text-muted ml-2">{adminT('platform_admin.token_health.sort_label')}</label>
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as TokenHealthSortKey)}
             className="border border-border rounded px-2 py-1 bg-surface text-text-primary"
           >
-            <option value="expiring">Expiring soonest</option>
-            <option value="lastRefresh">Most recently refreshed</option>
-            <option value="tenant">Tenant (A–Z)</option>
+            <option value="expiring">{adminT('platform_admin.token_health.sort_expiring')}</option>
+            <option value="lastRefresh">{adminT('platform_admin.token_health.sort_last_refresh')}</option>
+            <option value="tenant">{adminT('platform_admin.token_health.sort_tenant')}</option>
           </select>
         </div>
       </div>
       {sorted.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-text-muted">
           {rows.length === 0
-            ? 'No OAuth connectors enabled across tenants yet.'
-            : 'No connectors match the current filter.'}
+            ? adminT('platform_admin.token_health.empty_no_oauth')
+            : adminT('platform_admin.token_health.empty_no_filter_match')}
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Tenant</th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Connector</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.token_health.header_tenant')}</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.token_health.header_connector')}</th>
                 <th className="text-left px-4 py-2 font-medium text-text-muted">
                   <button
                     type="button"
                     onClick={() => setSortKey('lastRefresh')}
                     className={`inline-flex items-center gap-1 hover:text-text-primary ${sortKey === 'lastRefresh' ? 'text-text-primary' : ''}`}
                   >
-                    Last refresh
+                    {adminT('platform_admin.token_health.header_last_refresh')}
                     {sortKey === 'lastRefresh' && <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </th>
@@ -3257,18 +3275,18 @@ function ConnectorTokenHealthPanel({
                     onClick={() => setSortKey('expiring')}
                     className={`inline-flex items-center gap-1 hover:text-text-primary ${sortKey === 'expiring' ? 'text-text-primary' : ''}`}
                   >
-                    Expires
+                    {adminT('platform_admin.token_health.header_expires')}
                     {sortKey === 'expiring' && <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </th>
-                <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-2 font-medium text-text-muted">{adminT('platform_admin.token_health.header_status')}</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((r) => (
                 <tr key={r.integrationId} className="border-b border-border last:border-0 align-top">
                   <td className="px-4 py-2 text-xs">
-                    <div className="font-medium">{r.tenantName ?? '—'}</div>
+                    <div className="font-medium">{r.tenantName ?? adminT('platform_admin.common.em_dash')}</div>
                     {r.tenantSlug && (
                       <div className="text-text-muted font-mono">{r.tenantSlug}</div>
                     )}
@@ -3285,13 +3303,13 @@ function ConnectorTokenHealthPanel({
                   <td className="px-4 py-2 text-xs whitespace-nowrap">
                     <div
                       className="text-text-muted"
-                      title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : 'never'}
+                      title={r.tokenIssuedAt ? new Date(r.tokenIssuedAt).toLocaleString() : adminT('platform_admin.common.never')}
                     >
-                      {formatRelativeTime(r.tokenIssuedAt)}
+                      {formatRelativeTime(r.tokenIssuedAt, adminT)}
                     </div>
                     {r.cyclesSinceRefresh !== null && r.cyclesSinceRefresh > 0 && (
                       <div className="text-text-muted text-[10px] mt-0.5">
-                        {r.cyclesSinceRefresh} cycle{r.cyclesSinceRefresh === 1 ? '' : 's'} since refresh
+                        {adminT('platform_admin.token_health.cycles_since_refresh', { count: r.cyclesSinceRefresh })}
                       </div>
                     )}
                   </td>
@@ -3304,9 +3322,9 @@ function ConnectorTokenHealthPanel({
                             ? 'text-amber-700 dark:text-amber-300'
                             : 'text-text-muted'
                       }
-                      title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : 'unknown'}
+                      title={r.tokenExpiresAt ? new Date(r.tokenExpiresAt).toLocaleString() : adminT('platform_admin.common.unknown')}
                     >
-                      {formatExpiresIn(r.expiresInMs)}
+                      {formatExpiresIn(r.expiresInMs, adminT)}
                     </div>
                     {r.tokenExpiresAt && (
                       <div className="text-text-muted text-[10px] mt-0.5">
@@ -3324,22 +3342,22 @@ function ConnectorTokenHealthPanel({
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tokenStatusBadgeClasses(r.status)}`}
                       >
-                        {tokenStatusLabel(r.status)}
+                        {tokenStatusLabel(r.status, adminT)}
                       </span>
                       {r.stale && (
                         <span
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                          title={`Worker has missed at least ${staleCycleThreshold} refresh cycle${staleCycleThreshold === 1 ? '' : 's'} for this connector`}
+                          title={adminT('platform_admin.token_health.stale_pill_title', { count: staleCycleThreshold })}
                         >
-                          <AlertTriangle className="h-3 w-3" /> Stale
+                          <AlertTriangle className="h-3 w-3" /> {adminT('platform_admin.token_health.stale_label')}
                         </span>
                       )}
                       {r.tokenDecryptFailed && (
                         <span
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                          title="One or more token tracking fields failed to decrypt — check encryption keys"
+                          title={adminT('platform_admin.token_health.decrypt_failed_title')}
                         >
-                          <ShieldAlert className="h-3 w-3" /> Decrypt failed
+                          <ShieldAlert className="h-3 w-3" /> {adminT('platform_admin.token_health.decrypt_failed')}
                         </span>
                       )}
                     </div>
@@ -3415,21 +3433,22 @@ function formatRunTimestamp(iso: string | null): string {
   return d.toLocaleString();
 }
 
-function formatRelativeAge(iso: string | null): string {
-  if (!iso) return 'never';
+function formatRelativeAge(iso: string | null, t: (k: string, opts?: any) => string): string {
+  if (!iso) return t('platform_admin.common.never');
   const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms)) return 'unknown';
-  if (ms < 0) return 'just now';
+  if (Number.isNaN(ms)) return t('platform_admin.common.unknown');
+  if (ms < 0) return t('platform_admin.common.just_now');
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return t('platform_admin.common.just_now');
+  if (minutes < 60) return t('platform_admin.common.minutes_ago', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t('platform_admin.common.hours_ago', { count: hours });
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return t('platform_admin.common.days_ago', { count: days });
 }
 
 function CallEventsRetentionPanel() {
+  const { t: adminT } = useTranslation('admin');
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-call-events-retention'],
     queryFn: () =>
@@ -3440,7 +3459,7 @@ function CallEventsRetentionPanel() {
   if (isLoading) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
-        Loading call event retention status...
+        {adminT('platform_admin.retention.loading')}
       </div>
     );
   }
@@ -3448,7 +3467,7 @@ function CallEventsRetentionPanel() {
   if (error || !data) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
-        Failed to load retention status: {error ? (error as Error).message : 'no data'}
+        {adminT('platform_admin.retention.load_failed', { error: error ? (error as Error).message : adminT('platform_admin.common.no_data') })}
       </div>
     );
   }
@@ -3464,8 +3483,8 @@ function CallEventsRetentionPanel() {
     <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
   );
   const headerLabel = status.healthy
-    ? 'Retention worker is healthy'
-    : 'Retention worker needs attention';
+    ? adminT('platform_admin.retention.header_healthy')
+    : adminT('platform_admin.retention.header_attention');
 
   return (
     <div className="space-y-4">
@@ -3477,8 +3496,7 @@ function CallEventsRetentionPanel() {
               <Database className="h-4 w-4" /> {headerLabel}
             </h2>
             <p className="text-xs text-text-muted mt-1">
-              Daily worker keeps the partitioned <code className="font-mono">call_events</code> table inside its{' '}
-              {data.retentionDays}-day retention window and pre-creates next month's partition.
+              {adminT('platform_admin.retention.subtitle', { days: data.retentionDays })}
             </p>
             {status.reasons.length > 0 && (
               <ul className="mt-2 text-xs text-red-700 dark:text-red-300 list-disc list-inside space-y-0.5">
@@ -3493,7 +3511,7 @@ function CallEventsRetentionPanel() {
           onClick={() => refetch()}
           disabled={isFetching}
           className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50 flex-shrink-0"
-          title="Refresh"
+          title={adminT('platform_admin.common.refresh_title')}
         >
           <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
         </button>
@@ -3502,32 +3520,32 @@ function CallEventsRetentionPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={Clock}
-          label="Last successful cycle"
-          value={lastSuccessfulRun ? formatRelativeAge(lastSuccessfulRun.finished_at ?? lastSuccessfulRun.started_at) : 'Never'}
+          label={adminT('platform_admin.retention.stat_last_cycle')}
+          value={lastSuccessfulRun ? formatRelativeAge(lastSuccessfulRun.finished_at ?? lastSuccessfulRun.started_at, adminT) : adminT('platform_admin.common.never')}
           sub={
             lastSuccessfulRun
               ? formatRunTimestamp(lastSuccessfulRun.finished_at ?? lastSuccessfulRun.started_at)
-              : 'No cycle on record'
+              : adminT('platform_admin.retention.stat_no_cycle')
           }
           tone={status.stale ? 'warning' : undefined}
         />
         <StatCard
           icon={Database}
-          label="Partitions"
+          label={adminT('platform_admin.retention.stat_partitions')}
           value={String(partitions.length)}
-          sub={`Retention window: ${data.retentionDays} days`}
+          sub={adminT('platform_admin.retention.stat_partitions_sub', { days: data.retentionDays })}
         />
         <StatCard
           icon={partitionsExist.currentMonth ? CheckCircle : AlertTriangle}
-          label="Current month partition"
-          value={partitionsExist.currentMonth ? 'Ready' : 'Missing'}
+          label={adminT('platform_admin.retention.stat_current_month')}
+          value={partitionsExist.currentMonth ? adminT('platform_admin.retention.stat_ready') : adminT('platform_admin.retention.stat_missing')}
           sub={expected.currentMonthPartition}
           tone={partitionsExist.currentMonth ? undefined : 'warning'}
         />
         <StatCard
           icon={partitionsExist.nextMonth ? CheckCircle : AlertTriangle}
-          label="Next month partition"
-          value={partitionsExist.nextMonth ? 'Ready' : 'Missing'}
+          label={adminT('platform_admin.retention.stat_next_month')}
+          value={partitionsExist.nextMonth ? adminT('platform_admin.retention.stat_ready') : adminT('platform_admin.retention.stat_missing')}
           sub={expected.nextMonthPartition}
           tone={partitionsExist.nextMonth ? undefined : 'warning'}
         />
@@ -3535,33 +3553,33 @@ function CallEventsRetentionPanel() {
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <h3 className="font-semibold text-sm">Current partitions</h3>
-          <span className="text-xs text-text-muted">{partitions.length} total</span>
+          <h3 className="font-semibold text-sm">{adminT('platform_admin.retention.partitions_title')}</h3>
+          <span className="text-xs text-text-muted">{adminT('platform_admin.retention.partitions_total', { count: partitions.length })}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Partition</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Range start</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Range end (exclusive)</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Role</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_partition')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_range_start')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_range_end')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_role')}</th>
               </tr>
             </thead>
             <tbody>
               {partitions.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-center py-8 text-text-muted">
-                    No partitions found. The scheduler may not have run yet.
+                    {adminT('platform_admin.retention.empty_partitions')}
                   </td>
                 </tr>
               ) : (
                 partitions.map((p) => {
                   const role =
                     p.name === expected.currentMonthPartition
-                      ? 'Current month'
+                      ? adminT('platform_admin.retention.role_current')
                       : p.name === expected.nextMonthPartition
-                        ? 'Next month'
+                        ? adminT('platform_admin.retention.role_next')
                         : '';
                   return (
                     <tr key={p.name} className="border-b border-border last:border-0">
@@ -3586,25 +3604,25 @@ function CallEventsRetentionPanel() {
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <h3 className="font-semibold text-sm">Recent retention cycles</h3>
-          <span className="text-xs text-text-muted">Showing last {recentRuns.length}</span>
+          <h3 className="font-semibold text-sm">{adminT('platform_admin.retention.runs_title')}</h3>
+          <span className="text-xs text-text-muted">{adminT('platform_admin.retention.runs_showing', { count: recentRuns.length })}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Started</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Status</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Ensured</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Dropped</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Notes</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_started')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_status')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_ensured')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_dropped')}</th>
+                <th className="text-left px-4 py-2.5 font-medium text-text-muted">{adminT('platform_admin.retention.header_notes')}</th>
               </tr>
             </thead>
             <tbody>
               {recentRuns.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-text-muted">
-                    No retention cycles have been recorded yet.
+                    {adminT('platform_admin.retention.empty_runs')}
                   </td>
                 </tr>
               ) : (
@@ -3612,22 +3630,22 @@ function CallEventsRetentionPanel() {
                   <tr key={run.id} className="border-b border-border last:border-0 align-top">
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <div>{formatRunTimestamp(run.started_at)}</div>
-                      <div className="text-xs text-text-muted">{formatRelativeAge(run.started_at)}</div>
+                      <div className="text-xs text-text-muted">{formatRelativeAge(run.started_at, adminT)}</div>
                     </td>
                     <td className="px-4 py-2.5">
                       {run.status === 'success' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                          <CheckCircle className="h-3 w-3" /> Success
+                          <CheckCircle className="h-3 w-3" /> {adminT('platform_admin.retention.success')}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                          <XCircle className="h-3 w-3" /> Failure
+                          <XCircle className="h-3 w-3" /> {adminT('platform_admin.retention.failure')}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
                       {run.ensured_partitions.length === 0 ? (
-                        <span className="text-text-muted">—</span>
+                        <span className="text-text-muted">{adminT('platform_admin.common.em_dash')}</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {run.ensured_partitions.map((p) => (
@@ -3643,7 +3661,7 @@ function CallEventsRetentionPanel() {
                     </td>
                     <td className="px-4 py-2.5">
                       {run.dropped_partitions.length === 0 ? (
-                        <span className="text-text-muted">—</span>
+                        <span className="text-text-muted">{adminT('platform_admin.common.em_dash')}</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {run.dropped_partitions.map((p) => (
@@ -3661,7 +3679,7 @@ function CallEventsRetentionPanel() {
                       {run.error_message ? (
                         <span className="text-red-600 dark:text-red-400 break-words">{run.error_message}</span>
                       ) : (
-                        <span className="text-text-muted">{run.retention_days}d window</span>
+                        <span className="text-text-muted">{adminT('platform_admin.retention.retention_window_days', { days: run.retention_days })}</span>
                       )}
                     </td>
                   </tr>
@@ -3672,7 +3690,7 @@ function CallEventsRetentionPanel() {
         </div>
         {lastRun && lastRun.status === 'failure' && (
           <div className="px-4 py-2.5 border-t border-border bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300">
-            Last cycle failed at {formatRunTimestamp(lastRun.started_at)}. Check server logs for{' '}
+            {adminT('platform_admin.retention.last_failed_banner', { time: formatRunTimestamp(lastRun.started_at) })}{' '}
             <code className="font-mono">CALL_EVENTS_RETENTION</code>.
           </div>
         )}
@@ -3715,6 +3733,7 @@ interface IntegrationsStatusResponse {
 }
 
 function IntegrationsStatusPanel() {
+  const { t: adminT } = useTranslation('admin');
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-integrations-status'],
     queryFn: () => api.get<IntegrationsStatusResponse>('/platform/integrations-status'),
@@ -3724,7 +3743,7 @@ function IntegrationsStatusPanel() {
   if (isLoading) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center text-text-muted">
-        Loading integration status...
+        {adminT('platform_admin.integrations_panel.loading')}
       </div>
     );
   }
@@ -3732,7 +3751,7 @@ function IntegrationsStatusPanel() {
   if (error || !data) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center text-red-600 dark:text-red-400">
-        Failed to load integration status: {error ? (error as Error).message : 'no data'}
+        {adminT('platform_admin.integrations_panel.load_failed', { error: error ? (error as Error).message : adminT('platform_admin.common.no_data') })}
       </div>
     );
   }
@@ -3747,24 +3766,24 @@ function IntegrationsStatusPanel() {
       <div className="bg-surface border border-border rounded-xl p-4 flex items-center justify-between">
         <div>
           <h2 className="font-semibold flex items-center gap-2">
-            <Plug className="h-4 w-4 text-primary" /> OAuth Integration Credentials
+            <Plug className="h-4 w-4 text-primary" /> {adminT('platform_admin.integrations_panel.title')}
           </h2>
           <p className="text-xs text-text-muted mt-1">
-            Server-side check of <code className="font-mono">*_CLIENT_ID</code> /{' '}
-            <code className="font-mono">*_CLIENT_SECRET</code> environment variables. No secret values are shown — only whether they are set.
+            {adminT('platform_admin.integrations_panel.subtitle_prefix')} <code className="font-mono">*_CLIENT_ID</code> /{' '}
+            <code className="font-mono">*_CLIENT_SECRET</code> {adminT('platform_admin.integrations_panel.subtitle_suffix')}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm text-text-muted">
             <span className="font-semibold text-green-600 dark:text-green-400">{data.summary.configured}</span>
             {' / '}
-            {data.summary.total} configured
+            {adminT('platform_admin.integrations_panel.configured_count_suffix', { total: data.summary.total })}
           </div>
           <button
             onClick={() => refetch()}
             disabled={isFetching}
             className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary disabled:opacity-50"
-            title="Refresh"
+            title={adminT('platform_admin.common.refresh_title')}
           >
             <RotateCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
           </button>
@@ -3776,18 +3795,14 @@ function IntegrationsStatusPanel() {
           <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-900 dark:text-amber-200">
             <div className="font-medium">
-              {data.summary.missing} provider{data.summary.missing === 1 ? '' : 's'} {data.summary.missing === 1 ? 'is' : 'are'} missing server credentials.
+              {adminT('platform_admin.integrations_panel.missing', { count: data.summary.missing })}
             </div>
             <p className="text-xs mt-1 opacity-80">
-              Tenants will see a "not configured" message when they try to connect these providers. Set the listed environment variables and restart the server.
+              {adminT('platform_admin.integrations_panel.missing_explainer')}
             </p>
             {data.summary.blockedTenantDemand > 0 && (
               <p className="text-xs mt-1 font-medium">
-                {data.summary.blockedTenantDemand} tenant{data.summary.blockedTenantDemand === 1 ? '' : 's'}-by-provider
-                {' '}signal{data.summary.blockedTenantDemand === 1 ? '' : 's'} of demand on missing providers
-                {' '}(a tenant blocked on two providers counts twice). Each row's
-                {' '}<strong>blocked attempts</strong> badge shows tenants who tried to connect
-                {' '}but hit "OAuth not configured" — wire those credentials first.
+                {adminT('platform_admin.integrations_panel.blocked_demand', { count: data.summary.blockedTenantDemand })}
               </p>
             )}
           </div>
@@ -3822,11 +3837,11 @@ function IntegrationsStatusPanel() {
                     <span className="font-medium">{p.label}</span>
                     {p.configured ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                        <CheckCircle className="h-3 w-3" /> Configured
+                        <CheckCircle className="h-3 w-3" /> {adminT('platform_admin.integrations_panel.configured_pill')}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                        <XCircle className="h-3 w-3" /> Missing credentials
+                        <XCircle className="h-3 w-3" /> {adminT('platform_admin.integrations_panel.missing_pill')}
                       </span>
                     )}
                     {(p.enabledTenantCount > 0 || p.attemptedTenantCount > 0) && (
@@ -3838,15 +3853,15 @@ function IntegrationsStatusPanel() {
                         }`}
                         title={
                           p.configured
-                            ? `${p.enabledTenantCount} tenant(s) currently enabled; ${p.attemptedTenantCount} have ever connected`
-                            : `${p.enabledTenantCount} tenant(s) had this enabled before credentials were removed; ${p.attemptedTenantCount} have ever attempted`
+                            ? adminT('platform_admin.integrations_panel.active_title_configured', { enabled: p.enabledTenantCount, attempted: p.attemptedTenantCount })
+                            : adminT('platform_admin.integrations_panel.active_title_unconfigured', { enabled: p.enabledTenantCount, attempted: p.attemptedTenantCount })
                         }
                       >
                         <Users className="h-3 w-3" />
-                        {p.enabledTenantCount} active
+                        {adminT('platform_admin.integrations_panel.active_pill', { active: p.enabledTenantCount })}
                         {p.attemptedTenantCount > p.enabledTenantCount && (
                           <span className="opacity-80">
-                            {' '}/ {p.attemptedTenantCount} ever
+                            {' '}{adminT('platform_admin.integrations_panel.active_ever', { count: p.attemptedTenantCount })}
                           </span>
                         )}
                       </span>
@@ -3854,10 +3869,10 @@ function IntegrationsStatusPanel() {
                     {p.blockedAttemptCount > 0 && (
                       <span
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                        title={`${p.blockedAttemptCount} tenant(s) tried to connect but were blocked because the server's ${p.requiredEnv.join(' / ')} environment variable(s) weren't configured. Recorded from connector.oauth_attempt_blocked audit events.`}
+                        title={adminT('platform_admin.integrations_panel.blocked_attempts_title', { count: p.blockedAttemptCount, vars: p.requiredEnv.join(' / ') })}
                       >
                         <AlertCircle className="h-3 w-3" />
-                        {p.blockedAttemptCount} blocked attempt{p.blockedAttemptCount === 1 ? '' : 's'}
+                        {adminT('platform_admin.integrations_panel.blocked_attempts', { count: p.blockedAttemptCount })}
                       </span>
                     )}
                   </div>
@@ -3872,7 +3887,7 @@ function IntegrationsStatusPanel() {
                               ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
                               : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
                           }`}
-                          title={isMissing ? 'Not set in environment' : 'Set in environment'}
+                          title={isMissing ? adminT('platform_admin.integrations_panel.env_missing') : adminT('platform_admin.integrations_panel.env_set')}
                         >
                           {env}
                         </code>
@@ -3881,7 +3896,7 @@ function IntegrationsStatusPanel() {
                   </div>
                   {p.optionalEnv.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5 items-center">
-                      <span className="text-xs text-text-muted">Optional:</span>
+                      <span className="text-xs text-text-muted">{adminT('platform_admin.integrations_panel.optional_label')}</span>
                       {p.optionalEnv.map((env) => (
                         <code
                           key={env.name}
@@ -3890,7 +3905,7 @@ function IntegrationsStatusPanel() {
                               ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
                               : 'bg-surface-hover text-text-muted border-border'
                           }`}
-                          title={env.set ? 'Set in environment' : 'Not set (uses default)'}
+                          title={env.set ? adminT('platform_admin.integrations_panel.env_set') : adminT('platform_admin.integrations_panel.env_optional_unset')}
                         >
                           {env.name}
                         </code>
@@ -3904,7 +3919,7 @@ function IntegrationsStatusPanel() {
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-primary hover:underline whitespace-nowrap flex items-center gap-1 flex-shrink-0"
                 >
-                  <BookOpen className="h-3.5 w-3.5" /> Setup guide
+                  <BookOpen className="h-3.5 w-3.5" /> {adminT('platform_admin.integrations_panel.setup_guide')}
                 </a>
               </div>
             ))}
@@ -3928,18 +3943,18 @@ type PlatformAdminTab =
   | 'push-health'
   | 'retention';
 
-const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; label: string; icon: typeof Building2 }[] = [
-  { key: 'tenants', label: 'Tenants', icon: Building2 },
-  { key: 'templates', label: 'Template Versions', icon: Package },
-  { key: 'analytics', label: 'Template Analytics', icon: BarChart3 },
-  { key: 'cost-monitoring', label: 'Cost Monitoring', icon: DollarSign },
-  { key: 'activation', label: 'Activation', icon: Activity },
-  { key: 'docs-feedback', label: 'Docs Feedback', icon: BookOpen },
-  { key: 'support', label: 'Support', icon: LifeBuoy },
-  { key: 'integrations', label: 'Integrations', icon: Plug },
-  { key: 'connector-health', label: 'Connector Health', icon: ShieldAlert },
-  { key: 'push-health', label: 'Push Health', icon: BellRing },
-  { key: 'retention', label: 'Call Event Retention', icon: Database },
+const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: typeof Building2 }[] = [
+  { key: 'tenants', labelKey: 'platform_admin.tabs.tenants', icon: Building2 },
+  { key: 'templates', labelKey: 'platform_admin.tabs.templates', icon: Package },
+  { key: 'analytics', labelKey: 'platform_admin.tabs.analytics', icon: BarChart3 },
+  { key: 'cost-monitoring', labelKey: 'platform_admin.tabs.cost_monitoring', icon: DollarSign },
+  { key: 'activation', labelKey: 'platform_admin.tabs.activation', icon: Activity },
+  { key: 'docs-feedback', labelKey: 'platform_admin.tabs.docs_feedback', icon: BookOpen },
+  { key: 'support', labelKey: 'platform_admin.tabs.support', icon: LifeBuoy },
+  { key: 'integrations', labelKey: 'platform_admin.tabs.integrations', icon: Plug },
+  { key: 'connector-health', labelKey: 'platform_admin.tabs.connector_health', icon: ShieldAlert },
+  { key: 'push-health', labelKey: 'platform_admin.tabs.push_health', icon: BellRing },
+  { key: 'retention', labelKey: 'platform_admin.tabs.retention', icon: Database },
 ];
 
 export default function PlatformAdmin() {
@@ -4027,25 +4042,25 @@ export default function PlatformAdmin() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard
           icon={Building2}
-          label="Active Tenants"
+          label={adminT('platform_admin.stats.active_tenants')}
           value={statsLoading ? '...' : `${stats?.active_tenants ?? 0} / ${stats?.total_tenants ?? 0}`}
         />
         <StatCard
           icon={Users}
-          label="Total Users"
+          label={adminT('platform_admin.stats.total_users')}
           value={statsLoading ? '...' : String(stats?.total_users ?? 0)}
         />
         <StatCard
           icon={PhoneCall}
-          label="Calls (30d)"
+          label={adminT('platform_admin.stats.calls_30d')}
           value={statsLoading ? '...' : `${stats?.calls_last_30d ?? 0}`}
-          sub={statsLoading ? '' : `${stats?.calls_last_24h ?? 0} in last 24h`}
+          sub={statsLoading ? '' : adminT('platform_admin.stats.calls_24h_sub', { count: stats?.calls_last_24h ?? 0 })}
         />
         <StatCard
           icon={DollarSign}
-          label="Revenue (30d)"
+          label={adminT('platform_admin.stats.revenue_30d')}
           value={statsLoading ? '...' : formatCents(stats?.revenue_last_30d_cents ?? '0')}
-          sub={statsLoading ? '' : `${formatCents(stats?.total_revenue_cents ?? '0')} total`}
+          sub={statsLoading ? '' : adminT('platform_admin.stats.revenue_total_sub', { amount: formatCents(stats?.total_revenue_cents ?? '0') })}
         />
         {/* Platform-wide hard-bounce dedup table size. Click jumps to the
             Support Inbox tab and scrolls to the BouncedRecipientsPanel so the
@@ -4054,7 +4069,7 @@ export default function PlatformAdmin() {
             jump in the 7d window is the signal worth paging on. */}
         <StatCard
           icon={ShieldAlert}
-          label="Recipients ever hard-bounced"
+          label={adminT('platform_admin.stats.bounced_label')}
           value={
             bouncedStatsLoading
               ? '...'
@@ -4063,7 +4078,7 @@ export default function PlatformAdmin() {
           sub={
             bouncedStatsLoading
               ? ''
-              : `+${bouncedStats?.last_7d ?? 0} in 7d · +${bouncedStats?.last_30d ?? 0} in 30d`
+              : adminT('platform_admin.stats.bounced_sub', { week: bouncedStats?.last_7d ?? 0, month: bouncedStats?.last_30d ?? 0 })
           }
           tone={
             !bouncedStatsLoading && (bouncedStats?.last_7d ?? 0) > 0
@@ -4089,7 +4104,7 @@ export default function PlatformAdmin() {
 
       <div
         role="tablist"
-        aria-label="Platform admin sections"
+        aria-label={adminT('platform_admin.aria_tablist')}
         className="flex flex-wrap gap-1 border-b border-border overflow-x-auto"
       >
         {PLATFORM_ADMIN_TABS.map((t) => {
@@ -4108,7 +4123,7 @@ export default function PlatformAdmin() {
               }`}
             >
               <Icon className="h-4 w-4" />
-              {t.label}
+              {adminT(t.labelKey)}
             </button>
           );
         })}
@@ -4122,28 +4137,28 @@ export default function PlatformAdmin() {
       {activeTab === 'tenants' && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h2 className="font-semibold">All Tenants</h2>
+            <h2 className="font-semibold">{adminT('platform_admin.tenants.title')}</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
                   <th className="w-8 px-2"></th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Onboarding</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Users</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Calls (30d)</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Last Activity</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_tenant')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_status')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_plan')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_onboarding')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_users')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_calls_30d')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_last_activity')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {tenantsLoading ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">Loading...</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">{adminT('platform_admin.common_loading')}</td></tr>
                 ) : !tenantsData?.tenants.length ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">No tenants found</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">{adminT('platform_admin.tenants.no_tenants')}</td></tr>
                 ) : (
                   tenantsData.tenants.map((tenant) => (
                     <Fragment key={tenant.id}>
@@ -4181,38 +4196,38 @@ export default function PlatformAdmin() {
                         <td className="px-4 py-3 text-text-muted">{tenant.user_count}</td>
                         <td className="px-4 py-3 text-text-muted">{tenant.calls_last_30d}</td>
                         <td className="px-4 py-3 text-text-muted whitespace-nowrap">
-                          {tenant.last_call_at ? new Date(tenant.last_call_at).toLocaleDateString() : 'Never'}
+                          {tenant.last_call_at ? new Date(tenant.last_call_at).toLocaleDateString() : adminT('platform_admin.common.never')}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
                               className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
-                              title="View details"
+                              title={adminT('platform_admin.tenants.view_details')}
                             >
                               <Eye className="h-4 w-4" />
                             </button>
                             {tenant.status === 'active' ? (
                               <button
                                 onClick={() => {
-                                  if (confirm(`Suspend tenant "${tenant.name}"?`)) {
+                                  if (confirm(adminT('platform_admin.tenants.confirm_suspend', { name: tenant.name }))) {
                                     statusMutation.mutate({ id: tenant.id, status: 'suspended' });
                                   }
                                 }}
                                 className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-text-muted hover:text-red-600"
-                                title="Suspend tenant"
+                                title={adminT('platform_admin.tenants.suspend_tenant')}
                               >
                                 <Ban className="h-4 w-4" />
                               </button>
                             ) : tenant.status === 'suspended' ? (
                               <button
                                 onClick={() => {
-                                  if (confirm(`Reactivate tenant "${tenant.name}"?`)) {
+                                  if (confirm(adminT('platform_admin.tenants.confirm_reactivate', { name: tenant.name }))) {
                                     statusMutation.mutate({ id: tenant.id, status: 'active' });
                                   }
                                 }}
                                 className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-text-muted hover:text-green-600"
-                                title="Reactivate tenant"
+                                title={adminT('platform_admin.tenants.reactivate_tenant')}
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </button>
@@ -4239,32 +4254,32 @@ export default function PlatformAdmin() {
       {activeTab === 'templates' && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h2 className="font-semibold">Template Version Management</h2>
-            <p className="text-xs text-text-muted mt-0.5">Create, validate, publish, and deprecate template versions</p>
+            <h2 className="font-semibold">{adminT('platform_admin.templates.title')}</h2>
+            <p className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.templates.subtitle')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
                   <th className="w-8 px-2"></th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Template</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Slug</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Current Version</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_template')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_slug')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_current_version')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_status')}</th>
                 </tr>
               </thead>
               <tbody>
                 {templatesLoading ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">Loading templates...</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">{adminT('platform_admin.templates.loading')}</td></tr>
                 ) : !templatesData?.templates.length ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">No templates found</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">{adminT('platform_admin.templates.no_templates')}</td></tr>
                 ) : (
                   templatesData.templates.map((t) => (
                     <Fragment key={t.id}>
                       <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50 cursor-pointer"
                           onClick={() => setExpandedTemplate(expandedTemplate === t.id ? null : t.id)}>
                         <td className="px-2">
-                          <button aria-label={expandedTemplate === t.id ? 'Collapse template' : 'Expand template'} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
+                          <button aria-label={expandedTemplate === t.id ? adminT('platform_admin.templates.collapse_aria') : adminT('platform_admin.templates.expand_aria')} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
                             {expandedTemplate === t.id
                               ? <ChevronDown className="h-4 w-4 text-text-muted" />
                               : <ChevronRight className="h-4 w-4 text-text-muted" />}
@@ -4326,6 +4341,7 @@ export default function PlatformAdmin() {
 type DocsFeedbackReplyStateFilter = 'any' | 'failed' | 'hard_bounce';
 
 function DocsFeedbackTab() {
+  const { t: adminT } = useTranslation('admin');
   const [sort, setSort] = useState<DocsFeedbackSort>('lowest_ratio');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<DocsFeedbackStatusFilter>('new');
@@ -4369,20 +4385,20 @@ function DocsFeedbackTab() {
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="font-semibold">Article Helpfulness</h2>
-            <p className="text-xs text-text-muted mt-0.5">Reader votes from the &ldquo;Was this helpful?&rdquo; widget across help articles</p>
+            <h2 className="font-semibold">{adminT('platform_admin.docs_feedback.articles_title')}</h2>
+            <p className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.docs_feedback.articles_subtitle')}</p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-text-muted">Sort</label>
+            <label className="text-xs text-text-muted">{adminT('platform_admin.docs_feedback.sort_label')}</label>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as DocsFeedbackSort)}
               className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
             >
-              <option value="lowest_ratio">Lowest helpfulness ratio</option>
-              <option value="highest_ratio">Highest helpfulness ratio</option>
-              <option value="most_votes">Most votes</option>
-              <option value="recent">Most recent vote</option>
+              <option value="lowest_ratio">{adminT('platform_admin.docs_feedback.sort_lowest')}</option>
+              <option value="highest_ratio">{adminT('platform_admin.docs_feedback.sort_highest')}</option>
+              <option value="most_votes">{adminT('platform_admin.docs_feedback.sort_most_votes')}</option>
+              <option value="recent">{adminT('platform_admin.docs_feedback.sort_recent')}</option>
             </select>
           </div>
         </div>
@@ -4390,20 +4406,20 @@ function DocsFeedbackTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Article</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Helpfulness</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Helpful</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Not helpful</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Comments</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Last vote</th>
-                <th className="text-right px-4 py-3 font-medium text-text-muted">Actions</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_article')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_helpfulness')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_helpful')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_not_helpful')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_comments')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_last_vote')}</th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.docs_feedback.header_actions')}</th>
               </tr>
             </thead>
             <tbody>
               {summaryLoading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-text-muted">Loading feedback...</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-text-muted">{adminT('platform_admin.docs_feedback.loading_articles')}</td></tr>
               ) : articles.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-12 text-text-muted">No feedback collected yet</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-text-muted">{adminT('platform_admin.docs_feedback.no_articles')}</td></tr>
               ) : (
                 articles.map((a) => {
                   const ratio = a.helpful_ratio;
@@ -4416,7 +4432,7 @@ function DocsFeedbackTab() {
                     <tr key={a.article_slug} className={`border-b border-border last:border-0 hover:bg-surface-secondary/50 ${selectedSlug === a.article_slug ? 'bg-surface-secondary/40' : ''}`}>
                       <td className="px-4 py-3 font-mono text-xs">{a.article_slug}</td>
                       <td className={`px-4 py-3 font-semibold ${ratioColor}`}>
-                        {ratio === null ? '—' : `${ratio}%`}
+                        {ratio === null ? adminT('platform_admin.common.em_dash') : `${ratio}%`}
                         <span className="text-text-muted font-normal ml-1">({a.total_votes})</span>
                       </td>
                       <td className="px-4 py-3">
@@ -4436,7 +4452,7 @@ function DocsFeedbackTab() {
                           </span>
                           {a.comment_count > 0 && (
                             <span className="text-xs text-text-muted">
-                              {a.new_comment_count} new · {a.resolved_comment_count} resolved · {a.hidden_comment_count} hidden
+                              {adminT('platform_admin.docs_feedback.breakdown_counts', { new: a.new_comment_count, resolved: a.resolved_comment_count, hidden: a.hidden_comment_count })}
                             </span>
                           )}
                           {a.pending_reply_count > 0 && (
@@ -4447,23 +4463,23 @@ function DocsFeedbackTab() {
                                 setStatusFilter('pending_reply');
                               }}
                               className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-medium hover:bg-amber-100"
-                              title="Comments with a reply email that haven't been answered yet"
+                              title={adminT('platform_admin.docs_feedback.pending_reply_title')}
                             >
                               <Mail className="h-3 w-3" />
-                              {a.pending_reply_count} pending reply
+                              {adminT('platform_admin.docs_feedback.pending_reply', { count: a.pending_reply_count })}
                             </button>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-text-muted whitespace-nowrap">
-                        {a.last_vote_at ? new Date(a.last_vote_at).toLocaleDateString() : '—'}
+                        {a.last_vote_at ? new Date(a.last_vote_at).toLocaleDateString() : adminT('platform_admin.common.em_dash')}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => setSelectedSlug(selectedSlug === a.article_slug ? null : a.article_slug)}
                           className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
                         >
-                          {selectedSlug === a.article_slug ? 'Clear filter' : 'View comments'}
+                          {selectedSlug === a.article_slug ? adminT('platform_admin.docs_feedback.clear_filter') : adminT('platform_admin.docs_feedback.view_comments')}
                         </button>
                       </td>
                     </tr>
@@ -4479,16 +4495,16 @@ function DocsFeedbackTab() {
         <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 className="font-semibold">
-              {selectedSlug ? `Comments for ${selectedSlug}` : 'Recent Comments'}
+              {selectedSlug ? adminT('platform_admin.docs_feedback.comments_title_for', { slug: selectedSlug }) : adminT('platform_admin.docs_feedback.comments_title_recent')}
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
               {selectedSlug
-                ? 'Showing comments only for the selected article'
-                : 'Most recent reader comments across all articles'}
+                ? adminT('platform_admin.docs_feedback.comments_subtitle_for')
+                : adminT('platform_admin.docs_feedback.comments_subtitle_recent')}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-text-muted">Reply state</label>
+            <label className="text-xs text-text-muted">{adminT('platform_admin.docs_feedback.reply_state_label')}</label>
             <select
               value={replyStateFilter}
               onChange={(e) => setReplyStateFilter(e.target.value as DocsFeedbackReplyStateFilter)}
@@ -4499,32 +4515,32 @@ function DocsFeedbackTab() {
                     ? 'text-red-700 font-medium'
                     : ''
               }`}
-              title="Narrow the inbox to rows where the outbound reply failed (or specifically hard-bounced and won't auto-retry)."
+              title={adminT('platform_admin.docs_feedback.reply_state_title')}
             >
-              <option value="any">Any reply state</option>
-              <option value="failed">Failed replies only</option>
-              <option value="hard_bounce">Hard-bounced only</option>
+              <option value="any">{adminT('platform_admin.docs_feedback.reply_state_any')}</option>
+              <option value="failed">{adminT('platform_admin.docs_feedback.reply_state_failed')}</option>
+              <option value="hard_bounce">{adminT('platform_admin.docs_feedback.reply_state_hard_bounce')}</option>
             </select>
-            <label className="text-xs text-text-muted">Status</label>
+            <label className="text-xs text-text-muted">{adminT('platform_admin.docs_feedback.status_label')}</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as DocsFeedbackStatusFilter)}
               disabled={replyFilterActive}
               className="text-sm px-2 py-1.5 rounded border border-border bg-surface disabled:opacity-50"
             >
-              <option value="new">New</option>
-              <option value="pending_reply">Pending reply</option>
-              <option value="resolved">Resolved</option>
-              <option value="hidden">Hidden</option>
-              <option value="all">All</option>
+              <option value="new">{adminT('platform_admin.docs_feedback.status_new')}</option>
+              <option value="pending_reply">{adminT('platform_admin.docs_feedback.status_pending_reply')}</option>
+              <option value="resolved">{adminT('platform_admin.docs_feedback.status_resolved')}</option>
+              <option value="hidden">{adminT('platform_admin.docs_feedback.status_hidden')}</option>
+              <option value="all">{adminT('platform_admin.docs_feedback.status_all')}</option>
             </select>
           </div>
         </div>
         <div className="divide-y divide-border">
           {commentsLoading ? (
-            <div className="text-center py-12 text-text-muted">Loading comments...</div>
+            <div className="text-center py-12 text-text-muted">{adminT('platform_admin.docs_feedback.loading_comments')}</div>
           ) : comments.length === 0 ? (
-            <div className="text-center py-12 text-text-muted">No comments to show</div>
+            <div className="text-center py-12 text-text-muted">{adminT('platform_admin.docs_feedback.no_comments')}</div>
           ) : (
             comments.map((c) => (
               <DocsFeedbackCommentRow
@@ -4550,6 +4566,7 @@ function DocsFeedbackCommentRow({
   onUpdateStatus: (status: DocsFeedbackStatus) => void;
   isStatusPending: boolean;
 }) {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [showReply, setShowReply] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -4577,7 +4594,7 @@ function DocsFeedbackCommentRow({
         },
       ),
     onSuccess: () => {
-      setSuccess('Reply sent.');
+      setSuccess(adminT('platform_admin.docs_feedback.reply_sent'));
       setError(null);
       setReplyBody('');
       setReplySubject('');
@@ -4587,7 +4604,7 @@ function DocsFeedbackCommentRow({
     },
     onError: (err: unknown) => {
       const detail = err instanceof Error ? err.message : String(err);
-      setError(detail || 'Failed to send reply');
+      setError(detail || adminT('platform_admin.docs_feedback.reply_send_failed'));
       setSuccess(null);
     },
   });
@@ -4610,7 +4627,7 @@ function DocsFeedbackCommentRow({
         {},
       ),
     onSuccess: (data) => {
-      setSuccess('Reply re-sent.');
+      setSuccess(adminT('platform_admin.docs_feedback.reply_resent'));
       setError(null);
       const cooldown = readPositiveSeconds(data, 'retry_cooldown_seconds');
       if (cooldown !== null) {
@@ -4629,7 +4646,7 @@ function DocsFeedbackCommentRow({
         }
       }
       const detail = err instanceof Error ? err.message : String(err);
-      setError(detail || 'Failed to re-send reply');
+      setError(detail || adminT('platform_admin.docs_feedback.reply_resend_failed'));
       setSuccess(null);
     },
   });
@@ -4638,10 +4655,10 @@ function DocsFeedbackCommentRow({
   const retrySecondsLeft = Math.max(0, Math.ceil((retryCooldownUntil - now) / 1000));
   const retryDisabled = retryReply.isPending || retrySecondsLeft > 0;
   const retryLabel = retryReply.isPending
-    ? 'Retrying…'
+    ? adminT('platform_admin.docs_feedback.retrying')
     : retrySecondsLeft > 0
-      ? `Retry available in ${retrySecondsLeft}s`
-      : 'Retry send';
+      ? adminT('platform_admin.docs_feedback.retry_available_in', { seconds: retrySecondsLeft })
+      : adminT('platform_admin.docs_feedback.retry_send');
 
   const statusBadge =
     c.status === 'resolved' ? 'bg-green-100 text-green-700 border-green-200'
@@ -4684,20 +4701,20 @@ function DocsFeedbackCommentRow({
           <Mail className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <div className="font-semibold flex items-center gap-2 flex-wrap">
-              {lastReplyPermanent ? 'Hard bounce — reply will not be retried' : 'Last reply failed to send'}
+              {lastReplyPermanent ? adminT('platform_admin.docs_feedback.hard_bounce_will_not_retry') : adminT('platform_admin.docs_feedback.last_reply_failed')}
               {lastReplyPermanent ? (
                 <span
                   className="px-1.5 py-0.5 rounded border border-amber-400 bg-amber-100 text-amber-900 text-[10px] uppercase tracking-wide font-semibold"
-                  title="Permanent SMTP failure — auto-retry skipped, manual retry disabled"
+                  title={adminT('platform_admin.docs_feedback.hard_bounce_title')}
                 >
-                  Hard bounce
+                  {adminT('platform_admin.docs_feedback.hard_bounce_label')}
                 </span>
               ) : (
                 <span
                   className="px-1.5 py-0.5 rounded border border-red-300 bg-red-100 text-red-800 text-[10px] uppercase tracking-wide font-medium"
-                  title="Transient delivery failure — safe to retry"
+                  title={adminT('platform_admin.docs_feedback.transient_failed_title')}
                 >
-                  Failed
+                  {adminT('platform_admin.docs_feedback.failed_label_short')}
                 </span>
               )}
               {/* If the reply was skipped for a non-hard-bounce reason
@@ -4735,34 +4752,33 @@ function DocsFeedbackCommentRow({
             <div className={lastReplyPermanent ? 'text-amber-700/90' : 'text-red-600/80'}>
               {lastReplyPermanent ? (
                 <>
-                  The recipient address is permanently unreachable, so re-sending the same body
-                  would only burn sender reputation. Reach out another way:{' '}
+                  {adminT('platform_admin.docs_feedback.hard_bounce_explainer_prefix')}{' '}
                   {c.reply_email ? (
                     <a
                       href={`mailto:${c.reply_email}`}
-                      title={`Open a fresh email to ${c.reply_email} from your own client to verify the address out-of-band.`}
+                      title={adminT('platform_admin.docs_feedback.contact_email_title', { email: c.reply_email })}
                       className="underline font-medium text-amber-900 hover:text-amber-950"
                     >
-                      contact {c.reply_email}
+                      {adminT('platform_admin.docs_feedback.contact_email', { email: c.reply_email })}
                     </a>
                   ) : (
-                    'no reply email was captured for this comment.'
+                    adminT('platform_admin.docs_feedback.no_reply_email')
                   )}
                 </>
               ) : (
-                'Retry below to re-send the same body, or open the reply form to edit before sending.'
+                adminT('platform_admin.docs_feedback.retry_or_open_form')
               )}
               {c.last_reply_at && (
-                <> Attempted {new Date(c.last_reply_at).toLocaleString()}.</>
+                <> {adminT('platform_admin.docs_feedback.reply_attempted_at', { time: new Date(c.last_reply_at).toLocaleString() })}</>
               )}
             </div>
           </div>
           {lastReplyPermanent ? (
             <span
               className="ml-2 self-start px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[11px] whitespace-nowrap cursor-not-allowed"
-              title="Retry is disabled because this address hard-bounced. Contact the recipient out-of-band instead."
+              title={adminT('platform_admin.docs_feedback.retry_disabled_title')}
             >
-              Retry disabled
+              {adminT('platform_admin.docs_feedback.retry_disabled')}
             </span>
           ) : (
             <button
@@ -4775,7 +4791,7 @@ function DocsFeedbackCommentRow({
               }}
               title={
                 retrySecondsLeft > 0
-                  ? `Server-side cooldown active. Re-enables in ${retrySecondsLeft}s.`
+                  ? adminT('platform_admin.docs_feedback.retry_cooldown_title', { seconds: retrySecondsLeft })
                   : undefined
               }
               className="ml-2 self-start px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
@@ -4787,9 +4803,9 @@ function DocsFeedbackCommentRow({
       )}
       <div className="flex items-center gap-2 text-xs text-text-muted mb-1 flex-wrap">
         {c.vote === 'helpful' ? (
-          <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> helpful</span>
+          <span className="inline-flex items-center gap-1 text-green-600"><ThumbsUp className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.vote_helpful')}</span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> not helpful</span>
+          <span className="inline-flex items-center gap-1 text-red-600"><ThumbsDown className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.vote_not_helpful')}</span>
         )}
         <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase tracking-wide font-medium ${statusBadge}`}>
           {c.status}
@@ -4798,7 +4814,7 @@ function DocsFeedbackCommentRow({
         {c.page_path && <span className="text-text-muted">· {c.page_path}</span>}
         {c.reply_count > 0 && (
           <span className="inline-flex items-center gap-1 text-teal-700">
-            <Mail className="h-3 w-3" /> {c.reply_count} repl{c.reply_count === 1 ? 'y' : 'ies'}
+            <Mail className="h-3 w-3" /> {adminT('platform_admin.docs_feedback.replies', { count: c.reply_count })}
           </span>
         )}
         <span className="ml-auto">{new Date(c.created_at).toLocaleString()}</span>
@@ -4821,7 +4837,7 @@ function DocsFeedbackCommentRow({
             }}
             className="px-2 py-1 rounded border border-teal-200 text-teal-700 hover:bg-teal-50"
           >
-            {showReply ? 'Cancel reply' : 'Reply by email'}
+            {showReply ? adminT('platform_admin.docs_feedback.cancel_reply') : adminT('platform_admin.docs_feedback.reply_by_email')}
           </button>
         )}
         {c.reply_email && (
@@ -4831,10 +4847,10 @@ function DocsFeedbackCommentRow({
             className="px-2 py-1 rounded border border-border hover:bg-surface-secondary"
           >
             {showHistory
-              ? 'Hide replies'
+              ? adminT('platform_admin.docs_feedback.hide_replies')
               : c.reply_count > 0
-                ? `Show ${c.reply_count} repl${c.reply_count === 1 ? 'y' : 'ies'}`
-                : 'Show reply history'}
+                ? adminT('platform_admin.docs_feedback.show_n_replies', { count: c.reply_count })
+                : adminT('platform_admin.docs_feedback.show_reply_history')}
           </button>
         )}
         {c.status !== 'resolved' && (
@@ -4844,7 +4860,7 @@ function DocsFeedbackCommentRow({
             onClick={() => onUpdateStatus('resolved')}
             className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
           >
-            Mark resolved
+            {adminT('platform_admin.docs_feedback.mark_resolved')}
           </button>
         )}
         {c.status !== 'hidden' && (
@@ -4854,7 +4870,7 @@ function DocsFeedbackCommentRow({
             onClick={() => onUpdateStatus('hidden')}
             className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
           >
-            Hide
+            {adminT('platform_admin.docs_feedback.hide')}
           </button>
         )}
         {c.status !== 'new' && (
@@ -4864,12 +4880,12 @@ function DocsFeedbackCommentRow({
             onClick={() => onUpdateStatus('new')}
             className="px-2 py-1 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
           >
-            Reopen
+            {adminT('platform_admin.docs_feedback.reopen')}
           </button>
         )}
         {c.status_updated_by && c.status_updated_at && (
           <span className="text-text-muted ml-auto">
-            {c.status} by {c.status_updated_by} · {new Date(c.status_updated_at).toLocaleString()}
+            {adminT('platform_admin.docs_feedback.status_updated_by', { status: c.status, user: c.status_updated_by, time: new Date(c.status_updated_at).toLocaleString() })}
           </span>
         )}
       </div>
@@ -4879,20 +4895,20 @@ function DocsFeedbackCommentRow({
       {showReply && c.reply_email && (
         <div className="mt-3 border border-teal-200 rounded-lg bg-teal-50/30 p-3 space-y-2">
           <div className="text-xs text-text-muted">
-            Reply will be sent from your support address to <span className="font-mono">{c.reply_email}</span>.
+            {adminT('platform_admin.docs_feedback.reply_will_be_sent_prefix')} <span className="font-mono">{c.reply_email}</span>.
           </div>
           <input
             type="text"
             value={replySubject}
             onChange={(e) => setReplySubject(e.target.value)}
-            placeholder={`Subject (default: Re: your feedback on ${c.article_slug})`}
+            placeholder={adminT('platform_admin.docs_feedback.reply_subject_placeholder', { slug: c.article_slug })}
             className="w-full px-2 py-1.5 rounded border border-border text-sm bg-surface"
           />
           <textarea
             value={replyBody}
             onChange={(e) => setReplyBody(e.target.value)}
             rows={5}
-            placeholder="Write your reply..."
+            placeholder={adminT('platform_admin.docs_feedback.reply_body_placeholder')}
             className="w-full px-2 py-1.5 rounded border border-border text-sm bg-surface"
           />
           <label className="flex items-center gap-2 text-xs text-text-muted">
@@ -4901,7 +4917,7 @@ function DocsFeedbackCommentRow({
               checked={markResolved}
               onChange={(e) => setMarkResolved(e.target.checked)}
             />
-            Mark this comment as resolved after sending
+            {adminT('platform_admin.docs_feedback.mark_after_send')}
           </label>
           {error && <div className="text-xs text-red-600">{error}</div>}
           <div className="flex gap-2">
@@ -4914,7 +4930,7 @@ function DocsFeedbackCommentRow({
               }}
               className="px-3 py-1.5 text-sm rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
             >
-              {sendReply.isPending ? 'Sending...' : 'Send reply'}
+              {sendReply.isPending ? adminT('platform_admin.docs_feedback.sending') : adminT('platform_admin.docs_feedback.send_reply')}
             </button>
             <button
               type="button"
@@ -4924,7 +4940,7 @@ function DocsFeedbackCommentRow({
               }}
               className="px-3 py-1.5 text-sm rounded border border-border hover:bg-surface-secondary"
             >
-              Cancel
+              {adminT('platform_admin.common.cancel')}
             </button>
           </div>
         </div>
@@ -4933,9 +4949,9 @@ function DocsFeedbackCommentRow({
       {showHistory && (
         <div className="mt-3 border border-border rounded-lg bg-surface-secondary/30 p-3 space-y-2">
           {repliesLoading ? (
-            <div className="text-xs text-text-muted">Loading replies...</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.docs_feedback.loading_replies')}</div>
           ) : replies.length === 0 ? (
-            <div className="text-xs text-text-muted">No replies yet.</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.docs_feedback.no_replies')}</div>
           ) : (
             groupDocsFeedbackReplyChains(replies).map((chain) => {
               const r = chain.root;
@@ -4947,18 +4963,18 @@ function DocsFeedbackCommentRow({
                 >
                   <div className="flex items-center gap-2 text-text-muted mb-1 flex-wrap">
                     <span>{new Date(r.created_at).toLocaleString()}</span>
-                    <span>· from {r.sent_by ?? 'admin'}</span>
-                    <span>· to {r.to_email}</span>
+                    <span>· {adminT('platform_admin.docs_feedback.from_admin_label', { user: r.sent_by ?? 'admin' })}</span>
+                    <span>· {adminT('platform_admin.docs_feedback.to_label', { email: r.to_email })}</span>
                     {r.email_error
                       ? (
                         <span className="text-red-600 inline-flex items-center gap-1">
-                          · failed: {r.email_error}
+                          · {adminT('platform_admin.docs_feedback.failed_label', { error: r.email_error })}
                           {isHardBounce(r) && (
                             <span
                               className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
-                              title="Permanent SMTP failure — auto-retry skipped"
+                              title={adminT('platform_admin.docs_feedback.hard_bounce_title_short')}
                             >
-                              Hard bounce
+                              {adminT('platform_admin.docs_feedback.hard_bounce_label')}
                             </span>
                           )}
                           {/* Render a distinct badge for any *non-hard-bounce*
@@ -4983,13 +4999,13 @@ function DocsFeedbackCommentRow({
                           />
                         </span>
                       )
-                      : <span className="text-green-700">· delivered</span>}
+                      : <span className="text-green-700">· {adminT('platform_admin.docs_feedback.delivered')}</span>}
                     {chain.retries.length > 0 && (
                       <span
                         className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
-                        title={`Original attempt followed by ${chain.retries.length} retr${chain.retries.length === 1 ? 'y' : 'ies'} of the same body`}
+                        title={adminT('platform_admin.docs_feedback.attempts_chain_title', { count: chain.retries.length })}
                       >
-                        {totalAttempts} attempts
+                        {adminT('platform_admin.docs_feedback.attempts', { count: totalAttempts })}
                       </span>
                     )}
                   </div>
@@ -4998,7 +5014,7 @@ function DocsFeedbackCommentRow({
                   {chain.retries.length > 0 && (
                     <div className="mt-2 pl-3 border-l-2 border-amber-200 space-y-1">
                       <div className="text-[10px] uppercase tracking-wide text-amber-700 font-semibold">
-                        Retries of this attempt
+                        {adminT('platform_admin.docs_feedback.retries_section')}
                       </div>
                       {chain.retries.map((retry, idx) => (
                         <div
@@ -5007,22 +5023,22 @@ function DocsFeedbackCommentRow({
                         >
                           <span
                             className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] uppercase tracking-wide"
-                            title={`Same body re-sent; original attempt at ${new Date(r.created_at).toLocaleString()}`}
+                            title={adminT('platform_admin.docs_feedback.retry_title', { time: new Date(r.created_at).toLocaleString() })}
                           >
-                            Retry #{idx + 1}
+                            {adminT('platform_admin.docs_feedback.retry_n', { n: idx + 1 })}
                           </span>
                           <span>{new Date(retry.created_at).toLocaleString()}</span>
-                          <span>· from {retry.sent_by ?? 'admin'}</span>
+                          <span>· {adminT('platform_admin.docs_feedback.from_admin_label', { user: retry.sent_by ?? 'admin' })}</span>
                           {retry.email_error
                             ? (
                               <span className="text-red-600 inline-flex items-center gap-1">
-                                · failed: {retry.email_error}
+                                · {adminT('platform_admin.docs_feedback.failed_label', { error: retry.email_error })}
                                 {isHardBounce(retry) && (
                                   <span
                                     className="px-1 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
-                                    title="Permanent SMTP failure — auto-retry skipped"
+                                    title={adminT('platform_admin.docs_feedback.hard_bounce_title_short')}
                                   >
-                                    Hard bounce
+                                    {adminT('platform_admin.docs_feedback.hard_bounce_label')}
                                   </span>
                                 )}
                                 {!isHardBounce(retry) && retry.retry_skipped_reason && (
@@ -5035,7 +5051,7 @@ function DocsFeedbackCommentRow({
                                 />
                               </span>
                             )
-                            : <span className="text-green-700">· delivered</span>}
+                            : <span className="text-green-700">· {adminT('platform_admin.docs_feedback.delivered')}</span>}
                         </div>
                       ))}
                     </div>
@@ -5104,6 +5120,7 @@ interface SupportReply {
 }
 
 function SupportInboxTab() {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'resolved' | 'closed'>('open');
   const [hardBounceOnly, setHardBounceOnly] = useState(false);
@@ -5161,13 +5178,13 @@ function SupportInboxTab() {
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <div className="text-sm">
             <div className="font-medium">
-              {failedCount} ticket{failedCount === 1 ? '' : 's'} with initial-send email delivery errors
+              {adminT('platform_admin.support_inbox.banner_failed_title', { count: failedCount })}
               {failedOpenCount > 0 && failedOpenCount !== failedCount && (
-                <span className="font-normal"> ({failedOpenCount} still open)</span>
+                <span className="font-normal">{adminT('platform_admin.support_inbox.banner_failed_open', { count: failedOpenCount })}</span>
               )}
             </div>
             <div className="text-xs mt-0.5">
-              The platform team has been alerted. Check SMTP configuration and the routing destinations below.
+              {adminT('platform_admin.support_inbox.banner_failed_explainer')}
             </div>
           </div>
         </div>
@@ -5177,27 +5194,26 @@ function SupportInboxTab() {
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <div className="text-sm">
             <div className="font-medium">
-              {replyFailedCount} ticket{replyFailedCount === 1 ? '' : 's'} with admin reply delivery errors
+              {adminT('platform_admin.support_inbox.banner_reply_title', { count: replyFailedCount })}
               {replyFailedOpenCount > 0 && replyFailedOpenCount !== replyFailedCount && (
-                <span className="font-normal"> ({replyFailedOpenCount} still open)</span>
+                <span className="font-normal">{adminT('platform_admin.support_inbox.banner_failed_open', { count: replyFailedOpenCount })}</span>
               )}
               {hardBounceCount > 0 && (
                 <>
                   {' '}<span className="font-normal text-amber-800">·</span>{' '}
                   <span className="font-medium">
-                    {hardBounceCount} hard bounce{hardBounceCount === 1 ? '' : 's'}
+                    {adminT('platform_admin.support_inbox.banner_hard_bounce', { count: hardBounceCount })}
                   </span>
                   {hardBounceOpenCount > 0 && hardBounceOpenCount !== hardBounceCount && (
-                    <span className="font-normal"> ({hardBounceOpenCount} still open)</span>
+                    <span className="font-normal">{adminT('platform_admin.support_inbox.banner_failed_open', { count: hardBounceOpenCount })}</span>
                   )}
                 </>
               )}
             </div>
             <div className="text-xs mt-0.5">
-              An outbound admin reply failed to deliver. Auto-retries run in the background; persistent failures
-              raise an operations alert. Open the ticket to see the failed reply and re-send manually.
+              {adminT('platform_admin.support_inbox.banner_reply_explainer')}
               {hardBounceCount > 0 && (
-                <> Use the &ldquo;Hard bounces only&rdquo; filter to focus on permanently undeliverable addresses.</>
+                <>{adminT('platform_admin.support_inbox.banner_hard_bounce_focus')}</>
               )}
             </div>
           </div>
@@ -5216,7 +5232,7 @@ function SupportInboxTab() {
                   : 'bg-surface border-border text-text-muted hover:text-text-primary'
               }`}
             >
-              {s.replace('_', ' ')}
+              {adminT(`platform_admin.support_inbox.filter_${s}`)}
             </button>
           ))}
         </div>
@@ -5228,7 +5244,7 @@ function SupportInboxTab() {
               onChange={(e) => setHardBounceOnly(e.target.checked)}
             />
             <span className={hardBounceOnly ? 'text-red-700 font-medium' : ''}>
-              Hard bounces only
+              {adminT('platform_admin.support_inbox.hard_bounce_only')}
               {/* The count next to this label has to be the global hard-bounce
                   total (status-agnostic) — the stats endpoint isn't
                   status-scoped, and showing "(7)" while the visible "open"
@@ -5242,7 +5258,7 @@ function SupportInboxTab() {
               )}
             </span>
           </label>
-          <div className="text-xs text-text-muted">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</div>
+          <div className="text-xs text-text-muted">{adminT('platform_admin.support_inbox.tickets_count', { count: tickets.length })}</div>
         </div>
       </div>
 
@@ -5261,21 +5277,21 @@ function SupportInboxTab() {
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
               <th className="w-8 px-2"></th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Ticket</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">From</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Topic</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Routed To</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Created</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_ticket')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_from')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_topic')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_plan')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_routed_to')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_status')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_created')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.header_actions')}</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} className="text-center py-12 text-text-muted">Loading tickets...</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-text-muted">{adminT('platform_admin.support_inbox.loading_tickets')}</td></tr>
             ) : tickets.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-12 text-text-muted">No tickets found</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-text-muted">{adminT('platform_admin.support_inbox.no_tickets')}</td></tr>
             ) : (
               tickets.map((t) => (
                 <Fragment key={t.id}>
@@ -5299,8 +5315,8 @@ function SupportInboxTab() {
                         >
                           <AlertCircle className="h-3 w-3" />
                           {isHardBounce(t)
-                            ? 'email failed (hard bounce)'
-                            : 'email failed'}
+                            ? adminT('platform_admin.support_inbox.email_failed_hard_bounce')
+                            : adminT('platform_admin.support_inbox.email_failed')}
                           {/* Surface non-hard-bounce skip reasons (suppression,
                               manual cancel, unsubscribe, …) as a distinct pill
                               so ops can triage from the row without expanding
@@ -5313,8 +5329,8 @@ function SupportInboxTab() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div>{t.user_email ?? '—'}</div>
-                      <div className="text-xs text-text-muted">{t.tenant_name ?? t.tenant_id ?? '—'}</div>
+                      <div>{t.user_email ?? adminT('platform_admin.common.em_dash')}</div>
+                      <div className="text-xs text-text-muted">{t.tenant_name ?? t.tenant_id ?? adminT('platform_admin.common.em_dash')}</div>
                     </td>
                     <td className="px-4 py-3">{t.topic}</td>
                     <td className="px-4 py-3"><PlanBadge plan={t.plan ?? 'trial'} /></td>
@@ -5325,10 +5341,10 @@ function SupportInboxTab() {
                         onChange={(e) => updateStatus.mutate({ id: t.id, status: e.target.value })}
                         className="text-xs px-2 py-1 rounded border border-border bg-surface"
                       >
-                        <option value="open">open</option>
-                        <option value="in_progress">in_progress</option>
-                        <option value="resolved">resolved</option>
-                        <option value="closed">closed</option>
+                        <option value="open">{adminT('platform_admin.support_inbox.status_open')}</option>
+                        <option value="in_progress">{adminT('platform_admin.support_inbox.status_in_progress')}</option>
+                        <option value="resolved">{adminT('platform_admin.support_inbox.status_resolved')}</option>
+                        <option value="closed">{adminT('platform_admin.support_inbox.status_closed')}</option>
                       </select>
                     </td>
                     <td className="px-4 py-3 text-text-muted text-xs">{new Date(t.created_at).toLocaleString()}</td>
@@ -5338,7 +5354,7 @@ function SupportInboxTab() {
                           onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}
                           className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary text-white hover:opacity-90"
                         >
-                          <Mail className="h-3 w-3" /> Reply
+                          <Mail className="h-3 w-3" /> {adminT('platform_admin.support_inbox.reply')}
                         </button>
                       )}
                     </td>
@@ -5407,19 +5423,16 @@ function SuppressedBadge({
   suppression: SuppressionEntry;
   size?: 'xs' | 'sm';
 }) {
-  // Tooltip explains *who* suppressed and *why*. Manual ops entries get the
-  // admin user id so on-call can chase the original decision; auto entries
-  // surface the source label (e.g. 'support_reply_retry_scheduler') so it's
-  // obvious the bounce loop did it on its own.
+  const { t: adminT } = useTranslation('admin');
   const wasManual = !!suppression.added_by_user_id;
   const tooltipParts = [
     wasManual
-      ? `Suppressed by admin (${suppression.added_by_user_id ?? '?'})`
-      : `Auto-suppressed (${suppression.source ?? 'system'})`,
-    `Added ${new Date(suppression.added_at).toLocaleString()}`,
-    `Reason: ${suppression.reason}`,
+      ? adminT('platform_admin.support_inbox.suppressed_by_admin_tt', { user: suppression.added_by_user_id ?? '?' })
+      : adminT('platform_admin.support_inbox.auto_suppressed_tt', { source: suppression.source ?? 'system' }),
+    adminT('platform_admin.support_inbox.added_at_tt', { time: new Date(suppression.added_at).toLocaleString() }),
+    adminT('platform_admin.support_inbox.reason_tt', { reason: suppression.reason }),
   ];
-  if (suppression.notes) tooltipParts.push(`Notes: ${suppression.notes}`);
+  if (suppression.notes) tooltipParts.push(adminT('platform_admin.support_inbox.notes_tt', { notes: suppression.notes }));
   const padding = size === 'xs' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-xs';
   return (
     <span
@@ -5427,7 +5440,7 @@ function SuppressedBadge({
       title={tooltipParts.join(' · ')}
     >
       <ShieldOff className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
-      Suppressed{wasManual ? ' by ops' : ''}
+      {wasManual ? adminT('platform_admin.support_inbox.suppressed_by_ops') : adminT('platform_admin.support_inbox.suppressed')}
     </span>
   );
 }
@@ -5437,6 +5450,7 @@ function BouncedRecipientsPanel({
 }: {
   onOpenTicket: (ticketId: string) => void;
 }) {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [openEmails, setOpenEmails] = useState<Set<string>>(new Set());
@@ -5520,7 +5534,7 @@ function BouncedRecipientsPanel({
       const key = vars.email.toLowerCase();
       setRowErrors((prev) => ({
         ...prev,
-        [key]: err instanceof Error ? err.message : 'Suppress failed',
+        [key]: err instanceof Error ? err.message : adminT('platform_admin.support_inbox.suppress_failed'),
       }));
     },
   });
@@ -5544,7 +5558,7 @@ function BouncedRecipientsPanel({
       const key = email.toLowerCase();
       setRowErrors((prev) => ({
         ...prev,
-        [key]: err instanceof Error ? err.message : 'Unsuppress failed',
+        [key]: err instanceof Error ? err.message : adminT('platform_admin.support_inbox.unsuppress_failed'),
       }));
     },
   });
@@ -5588,18 +5602,16 @@ function BouncedRecipientsPanel({
           <ShieldAlert className="h-4 w-4 text-red-600" />
           <div>
             <div className="text-sm font-medium">
-              Bounced recipients
+              {adminT('platform_admin.support_inbox.bounced_title')}
               <span className="ml-2 text-xs text-text-muted font-normal">
                 {isLoading
-                  ? 'loading…'
-                  : `${total} address${total === 1 ? '' : 'es'} with permanent SMTP failures`}
-                {truncated && ' (showing first 200)'}
+                  ? adminT('platform_admin.support_inbox.bounced_loading')
+                  : adminT('platform_admin.support_inbox.bounced_count', { count: total })}
+                {truncated && adminT('platform_admin.support_inbox.bounced_truncated', { count: 200 })}
               </span>
             </div>
             <div className="text-xs text-text-muted mt-0.5">
-              Addresses that have produced at least one hard bounce on an outbound reply.
-              Use this list to clean records, contact users via another channel, or suspend
-              tickets that can&rsquo;t be answered by email.
+              {adminT('platform_admin.support_inbox.bounced_subtitle')}
             </div>
           </div>
         </div>
@@ -5609,18 +5621,18 @@ function BouncedRecipientsPanel({
           <thead>
             <tr className="border-b border-border bg-surface">
               <th className="w-8 px-2"></th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Recipient</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Failures</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Tickets</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Last failure</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Alerted</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Most recent error</th>
-              <th className="text-left px-4 py-3 font-medium text-text-muted">Suppression</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_recipient')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_failures')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_tickets')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_last_failure')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_alerted')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_recent_error')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.bounced_header_suppression')}</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-8 text-text-muted">Loading…</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-text-muted">{adminT('platform_admin.support_inbox.loading_short')}</td></tr>
             ) : (
               recipients.map((r) => {
                 const key = r.user_email.toLowerCase();
@@ -5642,7 +5654,7 @@ function BouncedRecipientsPanel({
                         type="button"
                         onClick={() => toggleEmail(r.user_email)}
                         className="p-1 rounded hover:bg-surface-secondary"
-                        aria-label={openEmails.has(r.user_email) ? 'Collapse tickets' : 'Expand tickets'}
+                        aria-label={openEmails.has(r.user_email) ? adminT('platform_admin.support_inbox.collapse_tickets') : adminT('platform_admin.support_inbox.expand_tickets')}
                       >
                         {openEmails.has(r.user_email)
                           ? <ChevronDown className="h-4 w-4 text-text-muted" />
@@ -5664,7 +5676,7 @@ function BouncedRecipientsPanel({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-text-muted">
-                      {r.ticket_count} ticket{r.ticket_count === 1 ? '' : 's'}
+                      {adminT('platform_admin.support_inbox.tickets_inline', { count: r.ticket_count })}
                     </td>
                     <td className="px-4 py-3 text-xs text-text-muted">
                       {new Date(r.last_failure_at).toLocaleString()}
@@ -5674,10 +5686,10 @@ function BouncedRecipientsPanel({
                         <div className="flex items-center gap-2">
                           <span
                             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800"
-                            title={`Ops was paged about this address at ${new Date(r.alerted_at).toLocaleString()}`}
+                            title={adminT('platform_admin.support_inbox.alerted_title', { time: new Date(r.alerted_at).toLocaleString() })}
                           >
                             <ShieldAlert className="h-3 w-3" />
-                            Alerted
+                            {adminT('platform_admin.support_inbox.alerted')}
                           </span>
                           <button
                             type="button"
@@ -5687,16 +5699,16 @@ function BouncedRecipientsPanel({
                               clearAlert.variables === r.user_email
                             }
                             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-border hover:bg-surface-secondary disabled:opacity-50"
-                            title="Drop the dedup row so the next bounce on this address re-pages ops"
+                            title={adminT('platform_admin.support_inbox.clear_alert_title')}
                           >
                             {clearAlert.isPending &&
                             clearAlert.variables === r.user_email
-                              ? 'Clearing…'
-                              : 'Clear alert'}
+                              ? adminT('platform_admin.support_inbox.clearing')
+                              : adminT('platform_admin.support_inbox.clear_alert')}
                           </button>
                         </div>
                       ) : (
-                        <span className="text-text-muted">—</span>
+                        <span className="text-text-muted">{adminT('platform_admin.common.em_dash')}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs text-red-700 max-w-md truncate" title={r.last_error}>
@@ -5714,10 +5726,10 @@ function BouncedRecipientsPanel({
                             disabled={unsuppressing}
                             onClick={() => unsuppressMutation.mutate(r.user_email)}
                             className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50"
-                            title="Remove this address from the suppression list so future replies attempt delivery again."
+                            title={adminT('platform_admin.support_inbox.unsuppress_title')}
                           >
                             <RotateCw className={`h-3 w-3 ${unsuppressing ? 'animate-spin' : ''}`} />
-                            {unsuppressing ? 'Unsuppressing…' : 'Unsuppress'}
+                            {unsuppressing ? adminT('platform_admin.support_inbox.unsuppressing') : adminT('platform_admin.support_inbox.unsuppress')}
                           </button>
                         ) : noteOpen ? (
                           <div className="flex flex-col gap-1">
@@ -5728,7 +5740,7 @@ function BouncedRecipientsPanel({
                               }
                               maxLength={1000}
                               rows={2}
-                              placeholder="Optional note (why suppress?)"
+                              placeholder={adminT('platform_admin.support_inbox.suppress_note_placeholder')}
                               className="text-xs px-2 py-1 rounded border border-border bg-surface w-56"
                             />
                             <div className="flex items-center gap-1">
@@ -5744,7 +5756,7 @@ function BouncedRecipientsPanel({
                                 className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
                               >
                                 <ShieldOff className="h-3 w-3" />
-                                {suppressing ? 'Suppressing…' : 'Confirm'}
+                                {suppressing ? adminT('platform_admin.support_inbox.suppressing') : adminT('platform_admin.support_inbox.suppress_confirm')}
                               </button>
                               <button
                                 type="button"
@@ -5753,7 +5765,7 @@ function BouncedRecipientsPanel({
                                 }}
                                 className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
                               >
-                                Cancel
+                                {adminT('platform_admin.support_inbox.suppress_cancel')}
                               </button>
                             </div>
                           </div>
@@ -5762,10 +5774,10 @@ function BouncedRecipientsPanel({
                             type="button"
                             onClick={() => setShowNoteFor(key)}
                             className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900"
-                            title="Stop every future support send to this address until an admin unsuppresses it."
+                            title={adminT('platform_admin.support_inbox.suppress_title')}
                           >
                             <ShieldOff className="h-3 w-3" />
-                            Suppress
+                            {adminT('platform_admin.support_inbox.suppress')}
                           </button>
                         )}
                         {rowError && (
@@ -5780,16 +5792,16 @@ function BouncedRecipientsPanel({
                     <tr className="bg-surface-secondary/30">
                       <td colSpan={7} className="px-6 py-3">
                         <div className="text-xs text-text-muted mb-2">
-                          Affected tickets (newest failure first):
+                          {adminT('platform_admin.support_inbox.affected_tickets')}
                         </div>
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="text-text-muted">
-                              <th className="text-left py-1 font-medium">Ticket</th>
-                              <th className="text-left py-1 font-medium">Status</th>
-                              <th className="text-left py-1 font-medium">Failures</th>
-                              <th className="text-left py-1 font-medium">Last failure</th>
-                              <th className="text-left py-1 font-medium">Last error</th>
+                              <th className="text-left py-1 font-medium">{adminT('platform_admin.support_inbox.inline_header_ticket')}</th>
+                              <th className="text-left py-1 font-medium">{adminT('platform_admin.support_inbox.inline_header_status')}</th>
+                              <th className="text-left py-1 font-medium">{adminT('platform_admin.support_inbox.inline_header_failures')}</th>
+                              <th className="text-left py-1 font-medium">{adminT('platform_admin.support_inbox.inline_header_last_failure')}</th>
+                              <th className="text-left py-1 font-medium">{adminT('platform_admin.support_inbox.inline_header_last_error')}</th>
                               <th className="py-1"></th>
                             </tr>
                           </thead>
@@ -5815,7 +5827,7 @@ function BouncedRecipientsPanel({
                                     className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-border hover:bg-surface"
                                   >
                                     <ExternalLink className="h-3 w-3" />
-                                    Open ticket
+                                    {adminT('platform_admin.support_inbox.open_ticket')}
                                   </button>
                                 </td>
                               </tr>
@@ -5872,6 +5884,7 @@ interface UnsubscribedAddressesResponse {
 // without grepping server logs. The window is 30 days (server-side
 // constant), long enough to cover a typical complaint cycle.
 function UnsubscribedAddressesPanel() {
+  const { t: adminT } = useTranslation('admin');
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState('');
 
@@ -5906,26 +5919,24 @@ function UnsubscribedAddressesPanel() {
     ? recentResubscribes.filter((r) => r.email_lower.includes(needle))
     : recentResubscribes;
 
-  // Header summary line — show counts for both lists so support reps can
-  // tell at a glance whether the interesting signal is "lots of new
-  // opt-outs" vs "a wave of resubscribes" without expanding the panel.
   const summaryParts: string[] = [];
   if (isLoading) {
-    summaryParts.push('loading…');
+    summaryParts.push(adminT('platform_admin.support_inbox.bounced_loading'));
   } else {
     summaryParts.push(
-      `${total} address${total === 1 ? '' : 'es'} on the support opt-out list`,
+      adminT('platform_admin.support_inbox.unsubs_count', { count: total }),
     );
     if (truncated) {
-      summaryParts.push(`showing first ${unsubscribes.length}`);
+      summaryParts.push(adminT('platform_admin.support_inbox.unsubs_showing_first', { count: unsubscribes.length }));
     }
     if (recentResubscribes.length > 0) {
-      // Append "(more not shown)" when the audit window had more rows
-      // than RESUBSCRIBE_LIMIT — otherwise ops has no way to tell
-      // whether the panel is showing every resubscribe or just the
-      // most-recent slice.
-      const resubLabel = `${recentResubscribes.length}${recentResubscribesTruncated ? '+' : ''} resubscribed in the last ${resubscribeWindowDays} days`;
-      summaryParts.push(resubLabel);
+      summaryParts.push(
+        adminT('platform_admin.support_inbox.unsubs_resubs_summary', {
+          count: recentResubscribes.length,
+          plus: recentResubscribesTruncated ? '+' : '',
+          days: resubscribeWindowDays,
+        }),
+      );
     }
   }
 
@@ -5943,15 +5954,13 @@ function UnsubscribedAddressesPanel() {
           <MailX className="h-4 w-4 text-amber-600" />
           <div>
             <div className="text-sm font-medium">
-              Unsubscribed addresses
+              {adminT('platform_admin.support_inbox.unsubs_title')}
               <span className="ml-2 text-xs text-text-muted font-normal">
                 {summaryParts.join(' · ')}
               </span>
             </div>
             <div className="text-xs text-text-muted mt-0.5">
-              Recipients who clicked the unsubscribe link or sent a one-click
-              opt-out header. Outbound support replies skip these addresses
-              automatically.
+              {adminT('platform_admin.support_inbox.unsubs_subtitle')}
             </div>
           </div>
         </div>
@@ -5963,23 +5972,23 @@ function UnsubscribedAddressesPanel() {
               type="search"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter by email (e.g. user@example.com)"
+              placeholder={adminT('platform_admin.support_inbox.unsubs_filter_placeholder')}
               className="w-full max-w-sm text-xs px-2 py-1 rounded border border-border bg-surface"
             />
           </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface">
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Address</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Source</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Unsubscribed at</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.unsubs_header_address')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.unsubs_header_source')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.unsubs_header_unsubscribed_at')}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={3} className="text-center py-8 text-text-muted">Loading…</td></tr>
+                <tr><td colSpan={3} className="text-center py-8 text-text-muted">{adminT('platform_admin.support_inbox.loading_short')}</td></tr>
               ) : filteredUnsubs.length === 0 ? (
-                <tr><td colSpan={3} className="text-center py-8 text-text-muted">No matching addresses</td></tr>
+                <tr><td colSpan={3} className="text-center py-8 text-text-muted">{adminT('platform_admin.support_inbox.unsubs_no_match')}</td></tr>
               ) : (
                 filteredUnsubs.map((u) => (
                   <tr
@@ -5988,7 +5997,7 @@ function UnsubscribedAddressesPanel() {
                   >
                     <td className="px-4 py-3 font-mono text-xs">{u.email_lower}</td>
                     <td className="px-4 py-3 text-xs text-text-muted">
-                      {u.source ?? '—'}
+                      {u.source ?? adminT('platform_admin.common.em_dash')}
                     </td>
                     <td className="px-4 py-3 text-xs text-text-muted">
                       {new Date(u.unsubscribed_at).toLocaleString()}
@@ -6009,25 +6018,24 @@ function UnsubscribedAddressesPanel() {
             <div>
               <div className="px-4 py-3 border-y border-border bg-surface-secondary/40">
                 <div className="text-xs font-medium text-text-muted">
-                  Recently resubscribed (last {resubscribeWindowDays} days)
+                  {adminT('platform_admin.support_inbox.resubs_title', { days: resubscribeWindowDays })}
                 </div>
                 <div className="text-[11px] text-text-muted mt-0.5">
-                  Addresses that came off the opt-out list. Useful for
-                  sanity-checking "I thought I asked to stop" complaints.
+                  {adminT('platform_admin.support_inbox.resubs_subtitle')}
                 </div>
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface">
-                    <th className="text-left px-4 py-3 font-medium text-text-muted">Address</th>
-                    <th className="text-left px-4 py-3 font-medium text-text-muted">Resubscribed via</th>
-                    <th className="text-left px-4 py-3 font-medium text-text-muted">Resubscribed at</th>
-                    <th className="text-left px-4 py-3 font-medium text-text-muted">Originally opted out</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.resubs_header_address')}</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.resubs_header_via')}</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.resubs_header_at')}</th>
+                    <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.support_inbox.resubs_header_originally')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredResubs.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-6 text-text-muted">No matching resubscribes</td></tr>
+                    <tr><td colSpan={4} className="text-center py-6 text-text-muted">{adminT('platform_admin.support_inbox.resubs_no_match')}</td></tr>
                   ) : (
                     filteredResubs.map((r) => (
                       <tr
@@ -6036,7 +6044,7 @@ function UnsubscribedAddressesPanel() {
                       >
                         <td className="px-4 py-3 font-mono text-xs">{r.email_lower}</td>
                         <td className="px-4 py-3 text-xs text-text-muted">
-                          {r.resubscribed_source ?? '—'}
+                          {r.resubscribed_source ?? adminT('platform_admin.common.em_dash')}
                         </td>
                         <td className="px-4 py-3 text-xs text-text-muted">
                           {new Date(r.resubscribed_at).toLocaleString()}
@@ -6048,12 +6056,12 @@ function UnsubscribedAddressesPanel() {
                                 {new Date(r.previous_unsubscribed_at).toLocaleString()}
                                 {r.previous_source ? (
                                   <span className="ml-1 text-[11px]">
-                                    (via {r.previous_source})
+                                    {adminT('platform_admin.support_inbox.resubs_via_inline', { source: r.previous_source })}
                                   </span>
                                 ) : null}
                               </>
                             )
-                            : '—'}
+                            : adminT('platform_admin.common.em_dash')}
                         </td>
                       </tr>
                     ))
@@ -6069,6 +6077,7 @@ function UnsubscribedAddressesPanel() {
 }
 
 function TicketThread({ ticket }: { ticket: SupportTicket }) {
+  const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
 
@@ -6104,7 +6113,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
       queryClient.invalidateQueries({ queryKey: ['support-bounced-recipients'] });
     },
     onError: (err) => {
-      setThreadSuppressError(err instanceof Error ? err.message : 'Suppress failed');
+      setThreadSuppressError(err instanceof Error ? err.message : adminT('platform_admin.support_inbox.suppress_failed'));
     },
   });
 
@@ -6119,7 +6128,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
       queryClient.invalidateQueries({ queryKey: ['support-bounced-recipients'] });
     },
     onError: (err) => {
-      setThreadSuppressError(err instanceof Error ? err.message : 'Unsuppress failed');
+      setThreadSuppressError(err instanceof Error ? err.message : adminT('platform_admin.support_inbox.unsuppress_failed'));
     },
   });
 
@@ -6218,7 +6227,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
       // inline so the admin knows the retry never actually ran.
       setRetryErrors((prev) => ({
         ...prev,
-        [replyId]: err instanceof Error ? err.message : 'Retry failed',
+        [replyId]: err instanceof Error ? err.message : adminT('platform_admin.support_inbox.retry_failed_short'),
       }));
     },
     onSettled: () => {
@@ -6255,7 +6264,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
     onError: (err, replyId) => {
       setCancelErrors((prev) => ({
         ...prev,
-        [replyId]: err instanceof Error ? err.message : 'Cancel failed',
+        [replyId]: err instanceof Error ? err.message : adminT('platform_admin.support_inbox.cancel_failed_short'),
       }));
     },
     onSettled: () => {
@@ -6279,11 +6288,11 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div className="space-y-3">
         <div>
-          <div className="text-xs font-medium text-text-muted mb-1">Original message</div>
+          <div className="text-xs font-medium text-text-muted mb-1">{adminT('platform_admin.support_inbox.thread_original_message')}</div>
           <pre className="whitespace-pre-wrap text-sm bg-surface p-3 rounded border border-border">{ticket.message}</pre>
           <div className="text-xs text-text-muted mt-1 flex items-center gap-2 flex-wrap">
             <span>
-              {ticket.user_email ?? '—'} · {new Date(ticket.created_at).toLocaleString()}
+              {ticket.user_email ?? adminT('platform_admin.common.em_dash')} · {new Date(ticket.created_at).toLocaleString()}
             </span>
             {suppression && <SuppressedBadge suppression={suppression} size="xs" />}
           </div>
@@ -6299,10 +6308,10 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   disabled={unsuppressFromThread.isPending}
                   onClick={() => unsuppressFromThread.mutate(ticket.user_email!)}
                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50"
-                  title="Remove this address from the suppression list so future replies attempt delivery again."
+                  title={adminT('platform_admin.support_inbox.unsuppress_title')}
                 >
                   <RotateCw className={`h-3 w-3 ${unsuppressFromThread.isPending ? 'animate-spin' : ''}`} />
-                  {unsuppressFromThread.isPending ? 'Unsuppressing…' : 'Unsuppress recipient'}
+                  {unsuppressFromThread.isPending ? adminT('platform_admin.support_inbox.unsuppressing') : adminT('platform_admin.support_inbox.thread_unsuppress_recipient')}
                 </button>
               ) : threadNoteOpen ? (
                 <div className="flex flex-col gap-1">
@@ -6311,7 +6320,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                     onChange={(e) => setThreadNoteDraft(e.target.value)}
                     maxLength={1000}
                     rows={2}
-                    placeholder="Optional note (why suppress?)"
+                    placeholder={adminT('platform_admin.support_inbox.suppress_note_placeholder')}
                     className="text-xs px-2 py-1 rounded border border-border bg-surface w-72"
                   />
                   <div className="flex items-center gap-1">
@@ -6327,7 +6336,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                       className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
                     >
                       <ShieldOff className="h-3 w-3" />
-                      {suppressFromThread.isPending ? 'Suppressing…' : 'Confirm suppress'}
+                      {suppressFromThread.isPending ? adminT('platform_admin.support_inbox.suppressing') : adminT('platform_admin.support_inbox.thread_confirm_suppress')}
                     </button>
                     <button
                       type="button"
@@ -6336,7 +6345,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                       }}
                       className="text-xs px-2 py-1 rounded border border-border hover:bg-surface-secondary"
                     >
-                      Cancel
+                      {adminT('platform_admin.support_inbox.suppress_cancel')}
                     </button>
                   </div>
                 </div>
@@ -6345,10 +6354,10 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   type="button"
                   onClick={() => setThreadNoteOpen(true)}
                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-900"
-                  title="Stop every future support send to this address until an admin unsuppresses it."
+                  title={adminT('platform_admin.support_inbox.suppress_title')}
                 >
                   <ShieldOff className="h-3 w-3" />
-                  Suppress recipient
+                  {adminT('platform_admin.support_inbox.thread_suppress_recipient')}
                 </button>
               )}
               {threadSuppressError && (
@@ -6361,25 +6370,25 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
         </div>
         {ticket.recent_errors && (
           <div>
-            <div className="text-xs font-medium text-text-muted mb-1">Recent errors</div>
+            <div className="text-xs font-medium text-text-muted mb-1">{adminT('platform_admin.support_inbox.thread_recent_errors')}</div>
             <pre className="whitespace-pre-wrap text-xs bg-red-50 dark:bg-red-950/20 p-3 rounded border border-border font-mono">{ticket.recent_errors}</pre>
           </div>
         )}
         {ticket.context && Object.keys(ticket.context).length > 0 && (
           <div>
-            <div className="text-xs font-medium text-text-muted mb-1">Context</div>
+            <div className="text-xs font-medium text-text-muted mb-1">{adminT('platform_admin.support_inbox.thread_context')}</div>
             <pre className="text-xs bg-surface p-3 rounded border border-border font-mono">{JSON.stringify(ticket.context, null, 2)}</pre>
           </div>
         )}
         {ticket.email_error && (
           <div className="text-xs text-red-600 flex items-center gap-1 flex-wrap">
-            <span>Initial email delivery error: {ticket.email_error}</span>
+            <span>{adminT('platform_admin.support_inbox.thread_initial_error', { error: ticket.email_error })}</span>
             {isHardBounce(ticket) && (
               <span
                 className="ml-1 px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] uppercase tracking-wide font-medium dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
-                title="Permanent SMTP failure — auto-retry skipped"
+                title={adminT('platform_admin.support_inbox.thread_hard_bounce_title')}
               >
-                Hard bounce — won&rsquo;t auto-retry
+                {adminT('platform_admin.support_inbox.thread_hard_bounce_label')}
               </span>
             )}
             {/* Non-hard-bounce skip reasons (suppression, manual cancel,
@@ -6393,12 +6402,12 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
       </div>
 
       <div className="space-y-3">
-        <div className="text-xs font-medium text-text-muted">Conversation</div>
+        <div className="text-xs font-medium text-text-muted">{adminT('platform_admin.support_inbox.thread_conversation')}</div>
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {isLoading ? (
-            <div className="text-xs text-text-muted">Loading replies…</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.support_inbox.thread_loading_replies')}</div>
           ) : replies.length === 0 ? (
-            <div className="text-xs text-text-muted italic">No replies yet.</div>
+            <div className="text-xs text-text-muted italic">{adminT('platform_admin.support_inbox.thread_no_replies')}</div>
           ) : (
             replies.map((r) => {
               if (r.direction === 'system') {
@@ -6441,32 +6450,28 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 if (r.email_error) {
                   badge = isPermanentFailure
                     ? {
-                        // Distinct dark-red styling so a hard bounce reads
-                        // differently from a transient "still down" failure.
-                        // The retry button is suppressed for these rows.
-                        label: 'Permanent failure',
+                        label: adminT('platform_admin.support_inbox.badge_permanent_failure'),
                         className:
                           'bg-red-200 text-red-900 border-red-500 dark:bg-red-900/60 dark:text-red-100 dark:border-red-700',
-                        title:
-                          'Hard SMTP failure (5xx, address rejected, mailbox full, …) — won\'t retry. Investigate the recipient address before resending manually.',
+                        title: adminT('platform_admin.support_inbox.badge_permanent_failure_title'),
                       }
                     : {
-                        label: 'Failed',
+                        label: adminT('platform_admin.support_inbox.badge_failed'),
                         className:
                           'bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
                         title: r.email_error,
                       };
                 } else if (r.email_message_id) {
                   badge = {
-                    label: 'Sent',
+                    label: adminT('platform_admin.support_inbox.badge_sent'),
                     className: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900',
-                    title: `SMTP message id: ${r.email_message_id}`,
+                    title: adminT('platform_admin.support_inbox.badge_sent_title', { id: r.email_message_id }),
                   };
                 } else {
                   badge = {
-                    label: 'Logged (dev)',
+                    label: adminT('platform_admin.support_inbox.badge_logged_dev'),
                     className: 'bg-muted/30 text-text-muted border-border',
-                    title: 'No SMTP delivery — reply was logged to the server console (development mode).',
+                    title: adminT('platform_admin.support_inbox.badge_logged_dev_title'),
                   };
                 }
               }
@@ -6496,10 +6501,10 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
               const retrySecondsLeft = Math.max(0, Math.ceil((cooldownUntil - nowMs) / 1000));
               const retryDisabled = isRetrying || retrySecondsLeft > 0;
               const retryLabel = isRetrying
-                ? 'Retrying…'
+                ? adminT('platform_admin.support_inbox.retrying')
                 : retrySecondsLeft > 0
-                  ? `Retry available in ${retrySecondsLeft}s`
-                  : 'Retry send';
+                  ? adminT('platform_admin.support_inbox.retry_available_in', { seconds: retrySecondsLeft })
+                  : adminT('platform_admin.support_inbox.retry_send');
               return (
                 <div
                   key={r.id}
@@ -6514,7 +6519,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   <div className="flex items-center justify-between text-xs text-text-muted mb-1 gap-2">
                     <span className="flex items-center gap-2 min-w-0 flex-wrap">
                       <strong className="text-text-primary">
-                        {isOutbound ? 'Support' : 'Customer'}
+                        {isOutbound ? adminT('platform_admin.support_inbox.thread_support') : adminT('platform_admin.support_inbox.thread_customer')}
                       </strong>
                       {r.author_email ? <span className="truncate">· {r.author_email}</span> : null}
                       {badge && (
@@ -6541,8 +6546,8 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           disabled={retryDisabled}
                           title={
                             retrySecondsLeft > 0
-                              ? `Server-side cooldown active. Re-enables in ${retrySecondsLeft}s.`
-                              : `Re-send to ${ticket.user_email}`
+                              ? adminT('platform_admin.support_inbox.retry_cooldown_title', { seconds: retrySecondsLeft })
+                              : adminT('platform_admin.support_inbox.retry_resend_title', { email: ticket.user_email })
                           }
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-red-300 dark:border-red-900 bg-white dark:bg-red-950/20 text-red-700 dark:text-red-300 text-[11px] font-medium hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
@@ -6555,10 +6560,10 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                           type="button"
                           onClick={() => cancelRetries.mutate(r.id)}
                           disabled={cancellingReplyId === r.id && cancelRetries.isPending}
-                          title="Stop the background scheduler from auto-retrying this reply. Use after you've already replied to the customer through another channel."
+                          title={adminT('platform_admin.support_inbox.stop_auto_retries_title')}
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-surface text-text-muted text-[11px] font-medium hover:bg-surface-secondary disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          Stop auto-retries
+                          {adminT('platform_admin.support_inbox.stop_auto_retries')}
                         </button>
                       )}
                     </span>
@@ -6567,29 +6572,25 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                   <div className="whitespace-pre-wrap text-sm">{r.body}</div>
                   {r.email_error && (
                     <div className="text-xs text-red-600 mt-1">
-                      Email delivery error: {r.email_error}
+                      {adminT('platform_admin.support_inbox.email_delivery_error', { error: r.email_error })}
                       {isPermanentFailure && (
                         <div className="text-amber-700 dark:text-amber-400 mt-0.5">
-                          Classified as a permanent SMTP failure — the
-                          background scheduler will not auto-retry this reply.
-                          Use “Retry send” above only after fixing the
-                          recipient address.
+                          {adminT('platform_admin.support_inbox.permanent_classification')}
                         </div>
                       )}
                     </div>
                   )}
                   {isPermanentFailure && (
                     <div className="text-xs text-red-700 dark:text-red-300 mt-1">
-                      Won&apos;t retry — recipient address was permanently rejected. Fix the address (or
-                      reply to the customer through another channel) before resending manually.
+                      {adminT('platform_admin.support_inbox.wont_retry_long')}
                     </div>
                   )}
                   {retryError && (
-                    <div className="text-xs text-red-600 mt-1">Retry failed: {retryError}</div>
+                    <div className="text-xs text-red-600 mt-1">{adminT('platform_admin.support_inbox.retry_failed_inline', { error: retryError })}</div>
                   )}
                   {cancelErrors[r.id] && (
                     <div className="text-xs text-red-600 mt-1">
-                      Couldn&rsquo;t stop auto-retries: {cancelErrors[r.id]}
+                      {adminT('platform_admin.support_inbox.cancel_failed_inline', { error: cancelErrors[r.id] })}
                     </div>
                   )}
                 </div>
@@ -6600,18 +6601,18 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
 
         <div className="space-y-2 pt-2 border-t border-border">
           <label className="text-xs font-medium text-text-muted">
-            Reply to {ticket.user_email ?? 'customer'}
+            {adminT('platform_admin.support_inbox.reply_to_label', { email: ticket.user_email ?? adminT('platform_admin.support_inbox.reply_to_customer_fallback') })}
           </label>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={5}
-            placeholder="Type your reply…"
+            placeholder={adminT('platform_admin.support_inbox.reply_textarea_placeholder')}
             className="w-full text-sm rounded-lg border border-border bg-surface p-3 focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="text-xs text-text-muted">
-              Sent via the same SMTP path. Customer replies thread back automatically.
+              {adminT('platform_admin.support_inbox.reply_helper')}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -6621,10 +6622,10 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {changeStatus.isPending
-                  ? 'Updating…'
+                  ? adminT('platform_admin.support_inbox.updating')
                   : isResolved
-                    ? 'Reopen ticket'
-                    : 'Mark resolved'}
+                    ? adminT('platform_admin.support_inbox.reopen_ticket')
+                    : adminT('platform_admin.support_inbox.mark_resolved')}
               </button>
               <button
                 type="button"
@@ -6633,7 +6634,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
                 className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-primary text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Mail className="h-3.5 w-3.5" />
-                {sendReply.isPending ? 'Sending…' : 'Send reply'}
+                {sendReply.isPending ? adminT('platform_admin.support_inbox.sending') : adminT('platform_admin.support_inbox.send_reply')}
               </button>
             </div>
           </div>
@@ -6643,7 +6644,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
           {sendError && <div className="text-xs text-red-600">{sendError}</div>}
           {lastReply && !sendError && (
             <div className="text-xs text-green-600">
-              {lastReply.email_delivered ? 'Reply sent.' : 'Reply recorded, but email delivery failed.'}
+              {lastReply.email_delivered ? adminT('platform_admin.support_inbox.reply_sent_ok') : adminT('platform_admin.support_inbox.reply_sent_fail')}
             </div>
           )}
         </div>
@@ -6653,8 +6654,9 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
 }
 
 function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitoringData } | undefined; loading: boolean }) {
-  if (loading) return <div className="text-center py-12 text-text-muted">Loading cost data...</div>;
-  if (!data) return <div className="text-center py-12 text-text-muted">No data available</div>;
+  const { t: adminT } = useTranslation('admin');
+  if (loading) return <div className="text-center py-12 text-text-muted">{adminT('platform_admin.cost_monitoring.loading')}</div>;
+  if (!data) return <div className="text-center py-12 text-text-muted">{adminT('platform_admin.cost_monitoring.no_data')}</div>;
 
   const m = data.monitoring;
 
@@ -6664,62 +6666,62 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="h-4 w-4 text-text-muted" />
-            <span className="text-sm text-text-muted">Daily Call Minutes</span>
+            <span className="text-sm text-text-muted">{adminT('platform_admin.cost_monitoring.daily_call_minutes')}</span>
           </div>
           <div className="text-2xl font-bold">{m.daily.callMinutes.toLocaleString()}</div>
-          <div className="text-xs text-text-muted mt-1">{m.daily.callCount} calls today</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.cost_monitoring.calls_today', { count: m.daily.callCount })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="h-4 w-4 text-text-muted" />
-            <span className="text-sm text-text-muted">Daily AI Cost</span>
+            <span className="text-sm text-text-muted">{adminT('platform_admin.cost_monitoring.daily_ai_cost')}</span>
           </div>
           <div className="text-2xl font-bold">{formatCents(String(m.daily.aiCostCents))}</div>
-          <div className="text-xs text-text-muted mt-1">{formatCents(String(m.daily.totalCostCents))} total cost</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.cost_monitoring.total_cost', { amount: formatCents(String(m.daily.totalCostCents)) })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <PhoneCall className="h-4 w-4 text-text-muted" />
-            <span className="text-sm text-text-muted">Daily Twilio Spend</span>
+            <span className="text-sm text-text-muted">{adminT('platform_admin.cost_monitoring.daily_twilio_spend')}</span>
           </div>
           <div className="text-2xl font-bold">{formatCents(String(m.daily.twilioCostCents))}</div>
-          <div className="text-xs text-text-muted mt-1">SMS: {formatCents(String(m.daily.smsCostCents))}</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.cost_monitoring.sms_amount', { amount: formatCents(String(m.daily.smsCostCents)) })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Users className="h-4 w-4 text-text-muted" />
-            <span className="text-sm text-text-muted">Active Trials</span>
+            <span className="text-sm text-text-muted">{adminT('platform_admin.cost_monitoring.active_trials')}</span>
           </div>
           <div className="text-2xl font-bold">{m.trials.activeTrials}</div>
-          <div className="text-xs text-text-muted mt-1">{m.trials.paidAccounts} paid accounts</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.cost_monitoring.paid_accounts', { count: m.trials.paidAccounts })}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-surface border border-border rounded-xl p-6">
-          <h3 className="font-semibold mb-4">Trial-to-Paid Conversion</h3>
+          <h3 className="font-semibold mb-4">{adminT('platform_admin.cost_monitoring.trial_to_paid_conversion')}</h3>
           <div className="flex items-center gap-4">
             <div className="text-4xl font-bold text-primary">{m.trials.conversionRate}%</div>
             <div className="text-sm text-text-muted">
-              <div>{m.trials.paidAccounts} paid / {m.trials.totalAccounts} total</div>
-              <div>{m.trials.activeTrials} active trials</div>
+              <div>{adminT('platform_admin.cost_monitoring.paid_total', { paid: m.trials.paidAccounts, total: m.trials.totalAccounts })}</div>
+              <div>{adminT('platform_admin.cost_monitoring.active_trials_inline', { count: m.trials.activeTrials })}</div>
             </div>
           </div>
         </div>
 
         <div className="bg-surface border border-border rounded-xl p-6">
-          <h3 className="font-semibold mb-4">Unit Economics</h3>
+          <h3 className="font-semibold mb-4">{adminT('platform_admin.cost_monitoring.unit_economics')}</h3>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-xs text-text-muted mb-1">Cost/Call</div>
+              <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.cost_per_call')}</div>
               <div className="text-lg font-bold">{formatCents(String(m.economics.costPerCallCents))}</div>
             </div>
             <div>
-              <div className="text-xs text-text-muted mb-1">Revenue/Call</div>
+              <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.revenue_per_call')}</div>
               <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.economics.revenuePerCallCents))}</div>
             </div>
             <div>
-              <div className="text-xs text-text-muted mb-1">Margin/Call</div>
+              <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.margin_per_call')}</div>
               <div className={`text-lg font-bold ${m.economics.marginPerCallCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {formatCents(String(m.economics.marginPerCallCents))}
               </div>
@@ -6729,44 +6731,44 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-6">
-        <h3 className="font-semibold mb-4">Monthly Summary</h3>
+        <h3 className="font-semibold mb-4">{adminT('platform_admin.cost_monitoring.monthly_summary')}</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div>
-            <div className="text-xs text-text-muted mb-1">Call Minutes</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.call_minutes')}</div>
             <div className="text-lg font-bold">{m.monthly.callMinutes.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-xs text-text-muted mb-1">Total Calls</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.total_calls')}</div>
             <div className="text-lg font-bold">{m.monthly.callCount.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-xs text-text-muted mb-1">AI Cost</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.ai_cost')}</div>
             <div className="text-lg font-bold">{formatCents(String(m.monthly.aiCostCents))}</div>
           </div>
           <div>
-            <div className="text-xs text-text-muted mb-1">Twilio Cost</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.twilio_cost')}</div>
             <div className="text-lg font-bold">{formatCents(String(m.monthly.twilioCostCents))}</div>
           </div>
           <div>
-            <div className="text-xs text-text-muted mb-1">Total Cost</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.total_cost_label')}</div>
             <div className="text-lg font-bold">{formatCents(String(m.monthly.totalCostCents))}</div>
           </div>
           <div>
-            <div className="text-xs text-text-muted mb-1">Revenue</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.revenue')}</div>
             <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(String(m.monthly.revenueCents))}</div>
           </div>
         </div>
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-6">
-        <h3 className="font-semibold mb-4">Daily Usage (Tool & API)</h3>
+        <h3 className="font-semibold mb-4">{adminT('platform_admin.cost_monitoring.daily_usage')}</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <div className="text-xs text-text-muted mb-1">Tool Executions Today</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.tool_executions_today')}</div>
             <div className="text-lg font-bold">{m.daily.toolExecutions.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-xs text-text-muted mb-1">API Requests Today</div>
+            <div className="text-xs text-text-muted mb-1">{adminT('platform_admin.cost_monitoring.api_requests_today')}</div>
             <div className="text-lg font-bold">{m.daily.apiRequests.toLocaleString()}</div>
           </div>
         </div>
@@ -6775,16 +6777,16 @@ function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitori
       {m.trend.length > 0 && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h3 className="font-semibold">30-Day Trend</h3>
+            <h3 className="font-semibold">{adminT('platform_admin.cost_monitoring.trend_30d')}</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">Date</th>
-                  <th className="text-right px-4 py-3 font-medium text-text-muted">Calls</th>
-                  <th className="text-right px-4 py-3 font-medium text-text-muted">Minutes</th>
-                  <th className="text-right px-4 py-3 font-medium text-text-muted">Cost</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.cost_monitoring.trend_header_date')}</th>
+                  <th className="text-right px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.cost_monitoring.trend_header_calls')}</th>
+                  <th className="text-right px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.cost_monitoring.trend_header_minutes')}</th>
+                  <th className="text-right px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.cost_monitoring.trend_header_cost')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -6883,6 +6885,7 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
   sortDir: SortDir;
   onSort: (f: SortField) => void;
 }) {
+  const { t: adminT } = useTranslation('admin');
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -6895,8 +6898,8 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
     return (
       <div className="bg-surface border border-border rounded-xl p-12 text-center">
         <BarChart3 className="h-10 w-10 text-text-muted mx-auto mb-3" />
-        <p className="text-text-muted">No template analytics data available yet.</p>
-        <p className="text-xs text-text-muted mt-1">Analytics will populate as tenants install and use templates.</p>
+        <p className="text-text-muted">{adminT('platform_admin.template_analytics.no_data_title')}</p>
+        <p className="text-xs text-text-muted mt-1">{adminT('platform_admin.template_analytics.no_data_subtitle')}</p>
       </div>
     );
   }
@@ -6918,24 +6921,24 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={DownloadIcon}
-          label="Total Installs"
+          label={adminT('platform_admin.template_analytics.total_installs')}
           value={String(templates.reduce((s, t) => s + t.totalInstalls, 0))}
-          sub={`${templates.reduce((s, t) => s + t.activeInstalls, 0)} active`}
+          sub={adminT('platform_admin.template_analytics.active_count', { count: templates.reduce((s, t) => s + t.activeInstalls, 0) })}
         />
         <StatCard
           icon={Activity}
-          label="Avg Activation Rate"
+          label={adminT('platform_admin.template_analytics.avg_activation_rate')}
           value={`${templates.length > 0 ? Math.round(templates.reduce((s, t) => s + t.activationRate, 0) / templates.length) : 0}%`}
         />
         <StatCard
           icon={PhoneCall}
-          label="Template Calls (30d)"
+          label={adminT('platform_admin.template_analytics.template_calls_30d')}
           value={String(templates.reduce((s, t) => s + t.callsLast30d, 0))}
-          sub={`${templates.reduce((s, t) => s + t.totalCalls, 0)} total`}
+          sub={adminT('platform_admin.template_analytics.total_count', { count: templates.reduce((s, t) => s + t.totalCalls, 0) })}
         />
         <StatCard
           icon={TrendingUp}
-          label="Avg Satisfaction"
+          label={adminT('platform_admin.template_analytics.avg_satisfaction')}
           value={(() => {
             const withScores = templates.filter(t => t.avgSatisfaction > 0);
             return withScores.length > 0
@@ -6947,21 +6950,21 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-surface border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-sm mb-1">Installs by Template</h3>
-          <p className="text-xs text-text-muted mb-4">Total installs (dark) vs active installs (light)</p>
+          <h3 className="font-semibold text-sm mb-1">{adminT('platform_admin.template_analytics.installs_by_template')}</h3>
+          <p className="text-xs text-text-muted mb-4">{adminT('platform_admin.template_analytics.installs_chart_subtitle')}</p>
           <BarChart data={chartData} labelKey="displayName" valueKey="activeInstalls" secondaryKey="totalInstalls" barColor="bg-primary" secondaryColor="bg-primary/25" />
         </div>
         <div className="bg-surface border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-sm mb-1">Call Volume by Template (30d)</h3>
-          <p className="text-xs text-text-muted mb-4">Calls generated through template-installed agents</p>
+          <h3 className="font-semibold text-sm mb-1">{adminT('platform_admin.template_analytics.call_volume_by_template')}</h3>
+          <p className="text-xs text-text-muted mb-4">{adminT('platform_admin.template_analytics.call_volume_subtitle')}</p>
           <BarChart data={[...templates].sort((a, b) => b.callsLast30d - a.callsLast30d).slice(0, 10)} labelKey="displayName" valueKey="callsLast30d" barColor="bg-green-500" />
         </div>
       </div>
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="font-semibold">Template Performance</h2>
-          <p className="text-xs text-text-muted mt-0.5">Click column headers to sort. Includes call and campaign metrics.</p>
+          <h2 className="font-semibold">{adminT('platform_admin.template_analytics.template_performance')}</h2>
+          <p className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.template_analytics.performance_subtitle')}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -6969,19 +6972,19 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
               <tr className="border-b border-border bg-surface-secondary">
                 <th className="text-left px-4 py-3 font-medium text-text-muted cursor-pointer select-none hover:text-text-primary" onClick={() => onSort('displayName')}>
                   <span className="inline-flex items-center gap-1">
-                    Template
+                    {adminT('platform_admin.template_analytics.header_template')}
                     {sortField === 'displayName' ? <span className="text-primary text-[10px]">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-text-muted/40 text-[10px]">{'\u25BC'}</span>}
                   </span>
                 </th>
-                <SortableHeader label="Installs" field="totalInstalls" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <th className="text-right px-4 py-3 font-medium text-text-muted">Active</th>
-                <SortableHeader label="Activation" field="activationRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Upgrade Adoption" field="upgradeAdoption" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Uninstalls" field="uninstallRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Calls (30d)" field="callsLast30d" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Campaigns" field="totalCampaigns" currentField={sortField} currentDir={sortDir} onSort={onSort} />
-                <th className="text-right px-4 py-3 font-medium text-text-muted">Avg Duration</th>
-                <SortableHeader label="CSAT" field="avgSatisfaction" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_installs')} field="totalInstalls" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <th className="text-right px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.template_analytics.header_active')}</th>
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_activation')} field="activationRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_upgrade_adoption')} field="upgradeAdoption" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_uninstalls')} field="uninstallRate" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_calls_30d')} field="callsLast30d" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_campaigns')} field="totalCampaigns" currentField={sortField} currentDir={sortDir} onSort={onSort} />
+                <th className="text-right px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.template_analytics.header_avg_duration')}</th>
+                <SortableHeader label={adminT('platform_admin.template_analytics.header_csat')} field="avgSatisfaction" currentField={sortField} currentDir={sortDir} onSort={onSort} />
               </tr>
             </thead>
             <tbody>
@@ -6989,7 +6992,7 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
                 <tr key={t.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                   <td className="px-4 py-3">
                     <div className="font-medium">{t.displayName}</div>
-                    <div className="text-xs text-text-muted font-mono">{t.slug} · v{t.currentVersion}</div>
+                    <div className="text-xs text-text-muted font-mono">{adminT('platform_admin.template_analytics.slug_version', { slug: t.slug, version: t.currentVersion })}</div>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.totalInstalls}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.activeInstalls}</td>
@@ -7006,12 +7009,12 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    <span className={t.uninstallRate > 30 ? 'text-red-600 dark:text-red-400' : ''}>{t.uninstallCount} ({t.uninstallRate}%)</span>
+                    <span className={t.uninstallRate > 30 ? 'text-red-600 dark:text-red-400' : ''}>{adminT('platform_admin.template_analytics.uninstall_inline', { count: t.uninstallCount, rate: t.uninstallRate })}</span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.callsLast30d.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{t.totalCampaigns > 0 ? `${t.completedCampaigns}/${t.totalCampaigns}` : '\u2014'}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{t.avgCallDuration > 0 ? `${Math.floor(t.avgCallDuration / 60)}m ${t.avgCallDuration % 60}s` : '\u2014'}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{t.avgSatisfaction > 0 ? t.avgSatisfaction.toFixed(1) : '\u2014'}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.totalCampaigns > 0 ? adminT('platform_admin.template_analytics.campaigns_inline', { completed: t.completedCampaigns, total: t.totalCampaigns }) : adminT('platform_admin.common.em_dash')}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.avgCallDuration > 0 ? adminT('platform_admin.template_analytics.duration_minutes_seconds', { minutes: Math.floor(t.avgCallDuration / 60), seconds: t.avgCallDuration % 60 }) : adminT('platform_admin.common.em_dash')}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.avgSatisfaction > 0 ? t.avgSatisfaction.toFixed(1) : adminT('platform_admin.common.em_dash')}</td>
                 </tr>
               ))}
             </tbody>
@@ -7025,17 +7028,17 @@ function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="font-semibold text-sm">{t.displayName}</h3>
-                <p className="text-xs text-text-muted">v{t.currentVersion}</p>
+                <p className="text-xs text-text-muted">{adminT('platform_admin.template_analytics.version_label', { version: t.currentVersion })}</p>
               </div>
               <StatusBadge status={t.status} />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <MetricItem label="Conversion Rate" value={`${t.activationRate}%`} trend={t.activationRate >= 50 ? 'up' : t.activationRate >= 20 ? 'neutral' : 'down'} />
-              <MetricItem label="Avg Call Duration" value={t.avgCallDuration > 0 ? `${Math.floor(t.avgCallDuration / 60)}m ${t.avgCallDuration % 60}s` : '\u2014'} />
-              <MetricItem label="CSAT Score" value={t.avgSatisfaction > 0 ? t.avgSatisfaction.toFixed(1) : '\u2014'} trend={t.avgSatisfaction >= 4 ? 'up' : t.avgSatisfaction >= 3 ? 'neutral' : t.avgSatisfaction > 0 ? 'down' : undefined} />
-              <MetricItem label="Calls (30d)" value={t.callsLast30d.toLocaleString()} />
-              <MetricItem label="Upgrade Adoption" value={`${t.upgradeAdoption}%`} trend={t.upgradeAdoption >= 50 ? 'up' : t.upgradeAdoption >= 20 ? 'neutral' : 'down'} />
-              <MetricItem label="Uninstall Rate" value={`${t.uninstallRate}%`} trend={t.uninstallRate <= 10 ? 'up' : t.uninstallRate <= 30 ? 'neutral' : 'down'} />
+              <MetricItem label={adminT('platform_admin.template_analytics.conversion_rate')} value={`${t.activationRate}%`} trend={t.activationRate >= 50 ? 'up' : t.activationRate >= 20 ? 'neutral' : 'down'} />
+              <MetricItem label={adminT('platform_admin.template_analytics.avg_call_duration')} value={t.avgCallDuration > 0 ? adminT('platform_admin.template_analytics.duration_minutes_seconds', { minutes: Math.floor(t.avgCallDuration / 60), seconds: t.avgCallDuration % 60 }) : adminT('platform_admin.common.em_dash')} />
+              <MetricItem label={adminT('platform_admin.template_analytics.csat_score')} value={t.avgSatisfaction > 0 ? t.avgSatisfaction.toFixed(1) : adminT('platform_admin.common.em_dash')} trend={t.avgSatisfaction >= 4 ? 'up' : t.avgSatisfaction >= 3 ? 'neutral' : t.avgSatisfaction > 0 ? 'down' : undefined} />
+              <MetricItem label={adminT('platform_admin.template_analytics.calls_30d_card')} value={t.callsLast30d.toLocaleString()} />
+              <MetricItem label={adminT('platform_admin.template_analytics.upgrade_adoption_card')} value={`${t.upgradeAdoption}%`} trend={t.upgradeAdoption >= 50 ? 'up' : t.upgradeAdoption >= 20 ? 'neutral' : 'down'} />
+              <MetricItem label={adminT('platform_admin.template_analytics.uninstall_rate_card')} value={`${t.uninstallRate}%`} trend={t.uninstallRate <= 10 ? 'up' : t.uninstallRate <= 30 ? 'neutral' : 'down'} />
             </div>
           </div>
         ))}
@@ -7062,8 +7065,8 @@ function MilestoneIcon({ done }: { done: boolean }) {
   return <AlertCircle className="h-4 w-4 text-text-muted" />;
 }
 
-function formatHours(hours: number | null): string {
-  if (hours === null) return '\u2014';
+function formatHours(hours: number | null, t: (k: string) => string): string {
+  if (hours === null) return t('platform_admin.common.em_dash');
   if (hours < 1) return `${Math.round(hours * 60)}m`;
   if (hours < 24) return `${hours.toFixed(1)}h`;
   return `${(hours / 24).toFixed(1)}d`;
@@ -7081,6 +7084,7 @@ interface OnboardingFunnel {
 }
 
 function OnboardingFunnelCards() {
+  const { t: adminT } = useTranslation('admin');
   const [days, setDays] = useState(30);
   const { data, isLoading } = useQuery({
     queryKey: ['platform-onboarding-funnel', days],
@@ -7095,7 +7099,7 @@ function OnboardingFunnelCards() {
   // doesn't render a bogus "0%" the moment the platform is freshly
   // bootstrapped.
   const pct = (n: number | undefined): string => {
-    if (!funnel || !funnel.total) return '—';
+    if (!funnel || !funnel.total) return adminT('platform_admin.common.em_dash');
     const v = n ?? 0;
     return `${Math.round((v / funnel.total) * 100)}%`;
   };
@@ -7103,66 +7107,65 @@ function OnboardingFunnelCards() {
     <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-semibold">Onboarding wizard funnel</h2>
+          <h2 className="font-semibold">{adminT('platform_admin.onboarding_funnel.title')}</h2>
           <p className="text-xs text-text-muted">
-            Where new tenant owners stand in the 3-step setup wizard, scoped to
-            users that signed up in the selected window.
+            {adminT('platform_admin.onboarding_funnel.subtitle')}
           </p>
         </div>
         <select
-          aria-label="Funnel window"
+          aria-label={adminT('platform_admin.onboarding_funnel.window_aria')}
           value={days}
           onChange={(e) => setDays(parseInt(e.target.value, 10))}
           className="text-sm border border-border rounded-lg px-2 py-1 bg-surface focus:outline-none focus:ring-2 focus:ring-primary/50"
         >
-          <option value={7}>Last 7 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
+          <option value={7}>{adminT('platform_admin.onboarding_funnel.last_7_days')}</option>
+          <option value={30}>{adminT('platform_admin.onboarding_funnel.last_30_days')}</option>
+          <option value={90}>{adminT('platform_admin.onboarding_funnel.last_90_days')}</option>
         </select>
       </div>
       {isLoading ? (
-        <div className="text-sm text-text-muted">Loading funnel...</div>
+        <div className="text-sm text-text-muted">{adminT('platform_admin.onboarding_funnel.loading')}</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="border border-border rounded-lg p-3">
-            <div className="text-xs text-text-muted">New owners</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.new_owners')}</div>
             <div className="text-2xl font-bold">{funnel?.total ?? 0}</div>
-            <div className="text-xs text-text-muted mt-1">in window</div>
+            <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.onboarding_funnel.in_window')}</div>
           </div>
           <div className="border border-border rounded-lg p-3">
-            <div className="text-xs text-text-muted">Step 1 · Provisioning</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.step_1_provisioning')}</div>
             <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
               {funnel?.step_1 ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
-              {pct(funnel?.step_1)} of new
+              {adminT('platform_admin.onboarding_funnel.pct_of_new', { pct: pct(funnel?.step_1) })}
             </div>
           </div>
           <div className="border border-border rounded-lg p-3">
-            <div className="text-xs text-text-muted">Step 2 · Template</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.step_2_template')}</div>
             <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
               {funnel?.step_2 ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
-              {pct(funnel?.step_2)} of new
+              {adminT('platform_admin.onboarding_funnel.pct_of_new', { pct: pct(funnel?.step_2) })}
             </div>
           </div>
           <div className="border border-border rounded-lg p-3">
-            <div className="text-xs text-text-muted">Step 3 · Phone number</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.step_3_phone')}</div>
             <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
               {funnel?.step_3 ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
-              {pct(funnel?.step_3)} of new
+              {adminT('platform_admin.onboarding_funnel.pct_of_new', { pct: pct(funnel?.step_3) })}
             </div>
           </div>
           <div className="border border-border rounded-lg p-3">
-            <div className="text-xs text-text-muted">Completed</div>
+            <div className="text-xs text-text-muted">{adminT('platform_admin.onboarding_funnel.completed')}</div>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">
               {funnel?.completed ?? 0}
             </div>
             <div className="text-xs text-text-muted mt-1">
-              {pct(funnel?.completed)} of new
+              {adminT('platform_admin.onboarding_funnel.pct_of_new', { pct: pct(funnel?.completed) })}
             </div>
           </div>
         </div>
@@ -7172,6 +7175,7 @@ function OnboardingFunnelCards() {
 }
 
 function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMetricRow[] } | undefined; loading: boolean }) {
+  const { t: adminT } = useTranslation('admin');
   // Render the wizard funnel even if the per-tenant activation table is
   // still loading or empty — the two are independent queries and product
   // cares about the funnel even on a fresh platform with no completed
@@ -7180,7 +7184,7 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
     return (
       <div className="space-y-6">
         <OnboardingFunnelCards />
-        <div className="text-center py-12 text-text-muted">Loading activation metrics...</div>
+        <div className="text-center py-12 text-text-muted">{adminT('platform_admin.activation_metrics.loading')}</div>
       </div>
     );
   }
@@ -7188,7 +7192,7 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
     return (
       <div className="space-y-6">
         <OnboardingFunnelCards />
-        <div className="text-center py-12 text-text-muted">No data available</div>
+        <div className="text-center py-12 text-text-muted">{adminT('platform_admin.activation_metrics.no_data')}</div>
       </div>
     );
   }
@@ -7216,47 +7220,47 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
       <OnboardingFunnelCards />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-text-muted mb-1">Agent Created</div>
+          <div className="text-sm text-text-muted mb-1">{adminT('platform_admin.activation_metrics.agent_created')}</div>
           <div className="text-2xl font-bold">{withAgent} <span className="text-sm text-text-muted font-normal">/ {totalTenants}</span></div>
-          <div className="text-xs text-text-muted mt-1">Avg time: {formatHours(avgTimeToAgent)}</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.activation_metrics.avg_time', { value: formatHours(avgTimeToAgent, adminT) })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-text-muted mb-1">First Call</div>
+          <div className="text-sm text-text-muted mb-1">{adminT('platform_admin.activation_metrics.first_call')}</div>
           <div className="text-2xl font-bold">{withCall} <span className="text-sm text-text-muted font-normal">/ {totalTenants}</span></div>
-          <div className="text-xs text-text-muted mt-1">Avg time: {formatHours(avgTimeToCall)}</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.activation_metrics.avg_time', { value: formatHours(avgTimeToCall, adminT) })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-text-muted mb-1">First Workflow</div>
+          <div className="text-sm text-text-muted mb-1">{adminT('platform_admin.activation_metrics.first_workflow')}</div>
           <div className="text-2xl font-bold">{withWorkflow} <span className="text-sm text-text-muted font-normal">/ {totalTenants}</span></div>
-          <div className="text-xs text-text-muted mt-1">Avg time: {formatHours(avgTimeToWorkflow)}</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.activation_metrics.avg_time', { value: formatHours(avgTimeToWorkflow, adminT) })}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
-          <div className="text-sm text-text-muted mb-1">Stuck Tenants</div>
+          <div className="text-sm text-text-muted mb-1">{adminT('platform_admin.activation_metrics.stuck_tenants')}</div>
           <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stuckTenants.length}</div>
-          <div className="text-xs text-text-muted mt-1">Started but stalled (&lt;2 milestones)</div>
+          <div className="text-xs text-text-muted mt-1">{adminT('platform_admin.activation_metrics.stuck_subtitle')}</div>
         </div>
       </div>
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
-          <h2 className="font-semibold">Tenant Activation Progress</h2>
+          <h2 className="font-semibold">{adminT('platform_admin.activation_metrics.tenant_progress')}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
-                <th className="text-center px-4 py-3 font-medium text-text-muted">Agent</th>
-                <th className="text-center px-4 py-3 font-medium text-text-muted">Deploy</th>
-                <th className="text-center px-4 py-3 font-medium text-text-muted">Phone</th>
-                <th className="text-center px-4 py-3 font-medium text-text-muted">Tools</th>
-                <th className="text-center px-4 py-3 font-medium text-text-muted">1st Call</th>
-                <th className="text-center px-4 py-3 font-medium text-text-muted">Workflow</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Time to Agent</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Time to Call</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Time to Workflow</th>
-                <th className="text-left px-4 py-3 font-medium text-text-muted">Progress</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_tenant')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_plan')}</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_agent')}</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_deploy')}</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_phone')}</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_tools')}</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_first_call')}</th>
+                <th className="text-center px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_workflow')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_time_to_agent')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_time_to_call')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_time_to_workflow')}</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.activation_metrics.header_progress')}</th>
               </tr>
             </thead>
             <tbody>
@@ -7273,9 +7277,9 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.tools_connected_at} /></td>
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.first_call_at} /></td>
                   <td className="px-4 py-3 text-center"><MilestoneIcon done={!!m.first_workflow_at} /></td>
-                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_agent_hours)}</td>
-                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_call_hours)}</td>
-                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_workflow_hours)}</td>
+                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_agent_hours, adminT)}</td>
+                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_call_hours, adminT)}</td>
+                  <td className="px-4 py-3 text-text-muted">{formatHours(m.time_to_workflow_hours, adminT)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-16 bg-surface-hover rounded-full h-2">
@@ -7288,13 +7292,13 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
                           style={{ width: `${Math.round((m.milestones_completed / TOTAL_MILESTONES) * 100)}%` }}
                         />
                       </div>
-                      <span className="text-xs text-text-muted">{m.milestones_completed}/{TOTAL_MILESTONES}</span>
+                      <span className="text-xs text-text-muted">{adminT('platform_admin.activation_metrics.milestones_progress', { done: m.milestones_completed, total: TOTAL_MILESTONES })}</span>
                     </div>
                   </td>
                 </tr>
               ))}
               {metrics.length === 0 && (
-                <tr><td colSpan={12} className="text-center py-12 text-text-muted">No tenant data yet</td></tr>
+                <tr><td colSpan={12} className="text-center py-12 text-text-muted">{adminT('platform_admin.activation_metrics.no_tenant_data')}</td></tr>
               )}
             </tbody>
           </table>

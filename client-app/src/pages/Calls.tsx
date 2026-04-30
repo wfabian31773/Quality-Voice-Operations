@@ -123,45 +123,46 @@ function shortId(id: string | undefined): string {
 }
 
 function SalesforceRecordCard({ event }: { event: CallEvent & { payload: ConnectorDispatchPayload } }) {
+  const { t } = useTranslation('tenant');
   const payload = event.payload;
   const meta = payload.meta ?? {};
   const instanceUrl = meta.instanceUrl;
   const isSuccess = payload.success !== false;
   const eventLabel = (() => {
     switch (meta.eventType ?? payload.payloadType) {
-      case 'call.completed': return 'Call logged';
-      case 'appointment.booked': return 'Appointment booked';
-      default: return payload.payloadType ?? 'Event dispatched';
+      case 'call.completed': return t('calls.crm.event_call_logged');
+      case 'appointment.booked': return t('calls.crm.event_appointment_booked');
+      default: return payload.payloadType ?? t('calls.crm.event_default');
     }
   })();
 
   const records: Array<{ icon: typeof UserPlus; label: string; sobject: string; id: string | undefined; sublabel?: string }> = [];
   if (meta.convertedFromLead && meta.convertedFromLeadId) {
-    records.push({ icon: ArrowRightLeft, label: 'Converted from Lead', sobject: 'Lead', id: meta.convertedFromLeadId, sublabel: 'Lead → Contact' });
+    records.push({ icon: ArrowRightLeft, label: t('calls.crm.record_converted_from_lead'), sobject: 'Lead', id: meta.convertedFromLeadId, sublabel: t('calls.crm.record_converted_sublabel') });
   }
   if (meta.contactId || (meta.whoObject === 'Contact' && meta.whoId)) {
     const id = meta.contactId ?? meta.whoId;
     records.push({
       icon: UserPlus,
-      label: meta.contactId ? 'Contact (created/linked)' : 'Contact attached',
+      label: meta.contactId ? t('calls.crm.record_contact_created_linked') : t('calls.crm.record_contact_attached'),
       sobject: 'Contact',
       id,
     });
   } else if (meta.whoObject === 'Lead' && meta.whoId) {
-    records.push({ icon: UserPlus, label: 'Lead attached', sobject: 'Lead', id: meta.whoId });
+    records.push({ icon: UserPlus, label: t('calls.crm.record_lead_attached'), sobject: 'Lead', id: meta.whoId });
   }
   if (meta.accountId) {
-    records.push({ icon: Building2, label: 'Account', sobject: 'Account', id: meta.accountId });
+    records.push({ icon: Building2, label: t('calls.crm.record_account'), sobject: 'Account', id: meta.accountId });
   }
   if (meta.opportunityId) {
-    records.push({ icon: Briefcase, label: 'Opportunity', sobject: 'Opportunity', id: meta.opportunityId });
+    records.push({ icon: Briefcase, label: t('calls.crm.record_opportunity'), sobject: 'Opportunity', id: meta.opportunityId });
   }
   if (meta.taskId) {
-    records.push({ icon: ClipboardCheck, label: 'Activity (Task)', sobject: 'Task', id: meta.taskId });
+    records.push({ icon: ClipboardCheck, label: t('calls.crm.record_activity_task'), sobject: 'Task', id: meta.taskId });
   }
   if (meta.whatId && !meta.opportunityId && !meta.accountId && meta.whatObject && meta.whatObject !== 'Task' && meta.whatObject !== 'Event') {
     const icon = meta.whatObject === 'Opportunity' ? Briefcase : Building2;
-    records.push({ icon, label: `Related ${meta.whatObject}`, sobject: meta.whatObject, id: meta.whatId });
+    records.push({ icon, label: t('calls.crm.record_related', { object: meta.whatObject }), sobject: meta.whatObject, id: meta.whatId });
   }
 
   return (
@@ -174,11 +175,11 @@ function SalesforceRecordCard({ event }: { event: CallEvent & { payload: Connect
             <span className="text-[10px] uppercase tracking-wide text-text-muted bg-surface px-1.5 py-0.5 rounded">{meta.pipelineMode}</span>
           )}
           {payload.usedFallback && (
-            <span className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">fallback</span>
+            <span className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{t('calls.crm.fallback_badge')}</span>
           )}
         </div>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
-          {isSuccess ? 'success' : 'failed'}
+          {isSuccess ? t('calls.crm.success') : t('calls.crm.failed')}
         </span>
       </div>
 
@@ -223,23 +224,24 @@ function SalesforceRecordCard({ event }: { event: CallEvent & { payload: Connect
           })}
         </ul>
       ) : (
-        isSuccess && <p className="text-xs text-text-muted">No records returned</p>
+        isSuccess && <p className="text-xs text-text-muted">{t('calls.crm.no_records')}</p>
       )}
     </div>
   );
 }
 
 function GenericConnectorCard({ event }: { event: CallEvent & { payload: ConnectorDispatchPayload } }) {
+  const { t } = useTranslation('tenant');
   const payload = event.payload;
   const isSuccess = payload.success !== false;
   return (
     <div className="bg-surface-hover rounded-lg p-3 border border-border">
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-medium text-text-primary capitalize">
-          {payload.provider ?? payload.connectorType ?? 'Connector'}
+          {payload.provider ?? payload.connectorType ?? t('calls.crm.connector_fallback')}
         </span>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
-          {isSuccess ? 'success' : 'failed'}
+          {isSuccess ? t('calls.crm.success') : t('calls.crm.failed')}
         </span>
       </div>
       <div className="text-xs text-text-secondary flex items-center justify-between">
@@ -257,6 +259,7 @@ function GenericConnectorCard({ event }: { event: CallEvent & { payload: Connect
 }
 
 function CrmRecordsSection({ events }: { events: CallEvent[] }) {
+  const { t } = useTranslation('tenant');
   const dispatchEvents = useMemo(
     () => events.filter(isConnectorDispatchEvent),
     [events],
@@ -265,7 +268,7 @@ function CrmRecordsSection({ events }: { events: CallEvent[] }) {
 
   return (
     <div className="px-5 py-4 border-b border-border">
-      <h3 className="text-sm font-semibold text-text-primary mb-3">CRM &amp; Connector Records</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-3">{t('calls.crm.section_title')}</h3>
       <div className="space-y-3">
         {dispatchEvents.map((event) => {
           const provider = event.payload?.provider ?? event.payload?.meta?.provider;
@@ -297,6 +300,7 @@ function StirAttestationBadge({
 }: {
   call: Pick<Call, 'stir_status' | 'stir_verstat' | 'stir_attestation'>;
 }) {
+  const { t } = useTranslation('tenant');
   const hasAnyStir =
     Boolean(call.stir_attestation) ||
     Boolean(call.stir_status) ||
@@ -306,15 +310,15 @@ function StirAttestationBadge({
   const degraded = isStirDegraded(call);
   const attestation = call.stir_attestation ?? null;
   const label = attestation
-    ? `STIR ${attestation}`
+    ? t('calls.stir.label_attestation', { attestation })
     : call.stir_status
-      ? `STIR ${call.stir_status}`
-      : 'STIR unverified';
+      ? t('calls.stir.label_status', { status: call.stir_status })
+      : t('calls.stir.label_unverified');
   const tooltipParts: string[] = [];
-  if (attestation) tooltipParts.push(`Attestation level ${attestation}`);
-  if (call.stir_status) tooltipParts.push(`Status: ${call.stir_status}`);
-  if (call.stir_verstat) tooltipParts.push(`Verstat: ${call.stir_verstat}`);
-  if (degraded && !attestation) tooltipParts.push('Carrier did not validate the caller ID');
+  if (attestation) tooltipParts.push(t('calls.stir.tooltip_attestation', { level: attestation }));
+  if (call.stir_status) tooltipParts.push(t('calls.stir.tooltip_status', { status: call.stir_status }));
+  if (call.stir_verstat) tooltipParts.push(t('calls.stir.tooltip_verstat', { verstat: call.stir_verstat }));
+  if (degraded && !attestation) tooltipParts.push(t('calls.stir.tooltip_carrier_failed'));
 
   const cls = degraded
     ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
@@ -333,6 +337,7 @@ function StirAttestationBadge({
 }
 
 export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose: () => void }) {
+  const { t } = useTranslation('tenant');
   const currency = useTenantCurrency();
   const formatCents = (cents: number | null | undefined) => formatCentsHelper(cents, { currency });
 
@@ -367,34 +372,34 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
     <Modal
       open
       onClose={onClose}
-      ariaLabel="Call Details"
+      ariaLabel={t('calls.detail.title')}
       containerClassName="fixed inset-0 z-50 flex justify-end"
       panelClassName="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border"
     >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
-          <h2 className="text-lg font-semibold text-text-primary">Call Details</h2>
-          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-text-secondary hover:text-text-primary" /></button>
+          <h2 className="text-lg font-semibold text-text-primary">{t('calls.detail.title')}</h2>
+          <button onClick={onClose} aria-label={t('calls.detail.close_aria')}><X className="h-5 w-5 text-text-secondary hover:text-text-primary" /></button>
         </div>
 
         {call && (
           <div className="px-5 py-4 border-b border-border space-y-2">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-text-secondary">From:</span>
+                <span className="text-text-secondary">{t('calls.detail.from')}</span>
                 <span className="font-mono text-xs">{call.caller_number}</span>
                 <StirAttestationBadge call={call} />
               </div>
-              <div><span className="text-text-secondary">To:</span> <span className="font-mono text-xs">{call.called_number}</span></div>
-              <div><span className="text-text-secondary">Direction:</span> {call.direction}</div>
-              <div><span className="text-text-secondary">Status:</span> {call.lifecycle_state}</div>
-              <div><span className="text-text-secondary">Agent:</span> {call.agent_name || '--'}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.to')}</span> <span className="font-mono text-xs">{call.called_number}</span></div>
+              <div><span className="text-text-secondary">{t('calls.detail.direction')}</span> {call.direction}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.status')}</span> {call.lifecycle_state}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.agent')}</span> {call.agent_name || '--'}</div>
               <div data-testid="call-detail-language">
-                <span className="text-text-secondary">Language:</span>{' '}
-                {call.language ? getAgentLanguageLabel(call.language) : 'Unknown'}
+                <span className="text-text-secondary">{t('calls.detail.language')}</span>{' '}
+                {call.language ? getAgentLanguageLabel(call.language) : t('calls.detail.unknown_language')}
               </div>
-              <div><span className="text-text-secondary">Duration:</span> {call.duration_seconds ? `${call.duration_seconds}s` : '--'}</div>
-              <div><span className="text-text-secondary">Started:</span> {call.start_time ? format(new Date(call.start_time), 'PPp') : '--'}</div>
-              <div><span className="text-text-secondary">Ended:</span> {call.end_time ? format(new Date(call.end_time), 'PPp') : '--'}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.duration')}</span> {call.duration_seconds ? t('calls.detail.duration_seconds', { seconds: call.duration_seconds }) : '--'}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.started')}</span> {call.start_time ? format(new Date(call.start_time), 'PPp') : '--'}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.ended')}</span> {call.end_time ? format(new Date(call.end_time), 'PPp') : '--'}</div>
             </div>
           </div>
         )}
@@ -403,24 +408,24 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
 
         {costBreakdown && (
           <div className="px-5 py-4 border-b border-border">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Cost Breakdown</h3>
+            <h3 className="text-sm font-semibold text-text-primary mb-3">{t('calls.detail.cost_breakdown_title')}</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-text-secondary">STT:</span> {formatCents(costBreakdown.sttCostCents)}</div>
-              <div><span className="text-text-secondary">LLM:</span> {formatCents(costBreakdown.llmCostCents)}</div>
-              <div><span className="text-text-secondary">TTS:</span> {formatCents(costBreakdown.ttsCostCents)}</div>
-              <div><span className="text-text-secondary">Infra:</span> {formatCents(costBreakdown.infraCostCents)}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_stt')}</span> {formatCents(costBreakdown.sttCostCents)}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_llm')}</span> {formatCents(costBreakdown.llmCostCents)}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_tts')}</span> {formatCents(costBreakdown.ttsCostCents)}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_infra')}</span> {formatCents(costBreakdown.infraCostCents)}</div>
               <div className="col-span-2 font-semibold border-t border-border pt-1 mt-1">
-                <span className="text-text-secondary">Total:</span> {formatCents(costBreakdown.totalCostCents)}
+                <span className="text-text-secondary">{t('calls.detail.cost_total')}</span> {formatCents(costBreakdown.totalCostCents)}
               </div>
-              <div><span className="text-text-secondary">Model:</span> {costBreakdown.modelUsed}</div>
-              <div><span className="text-text-secondary">Tier:</span> <span className="capitalize">{costBreakdown.modelTier}</span></div>
-              <div><span className="text-text-secondary">Input Tokens:</span> {costBreakdown.inputTokens.toLocaleString()}</div>
-              <div><span className="text-text-secondary">Output Tokens:</span> {costBreakdown.outputTokens.toLocaleString()}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_model')}</span> {costBreakdown.modelUsed}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_tier')}</span> <span className="capitalize">{costBreakdown.modelTier}</span></div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_input_tokens')}</span> {costBreakdown.inputTokens.toLocaleString()}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.cost_output_tokens')}</span> {costBreakdown.outputTokens.toLocaleString()}</div>
               {costBreakdown.cacheHits > 0 && (
-                <div><span className="text-text-secondary">Cache Hits:</span> {costBreakdown.cacheHits}</div>
+                <div><span className="text-text-secondary">{t('calls.detail.cost_cache_hits')}</span> {costBreakdown.cacheHits}</div>
               )}
               {costBreakdown.promptTokensSaved > 0 && (
-                <div><span className="text-text-secondary">Tokens Saved:</span> {costBreakdown.promptTokensSaved.toLocaleString()}</div>
+                <div><span className="text-text-secondary">{t('calls.detail.cost_tokens_saved')}</span> {costBreakdown.promptTokensSaved.toLocaleString()}</div>
               )}
             </div>
           </div>
@@ -430,15 +435,15 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           <div className="flex px-5">
             <button onClick={() => setTab('transcript')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === 'transcript' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
-              Transcript
+              {t('calls.detail.tab_transcript')}
             </button>
             <button onClick={() => setTab('events')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === 'events' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
-              Events ({events.length})
+              {t('calls.detail.tab_count', { label: t('calls.detail.tab_events'), count: events.length })}
             </button>
             <button onClick={() => setTab('tools')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === 'tools' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
-              Tools ({toolExecutions.length})
+              {t('calls.detail.tab_count', { label: t('calls.detail.tab_tools'), count: toolExecutions.length })}
             </button>
           </div>
         </div>
@@ -447,9 +452,9 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           {tab === 'transcript' && (
             <>
               {transcriptLoading ? (
-                <p className="text-sm text-text-secondary">Loading transcript...</p>
+                <p className="text-sm text-text-secondary">{t('calls.detail.transcript_loading')}</p>
               ) : transcript.length === 0 ? (
-                <p className="text-sm text-text-secondary">No transcript available</p>
+                <p className="text-sm text-text-secondary">{t('calls.detail.transcript_empty')}</p>
               ) : (
                 <div className="space-y-3">
                   {transcript.map((entry) => (
@@ -472,9 +477,9 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           {tab === 'events' && (
             <>
               {eventsLoading ? (
-                <p className="text-sm text-text-secondary">Loading events...</p>
+                <p className="text-sm text-text-secondary">{t('calls.detail.events_loading')}</p>
               ) : events.length === 0 ? (
-                <p className="text-sm text-text-secondary">No events recorded</p>
+                <p className="text-sm text-text-secondary">{t('calls.detail.events_empty')}</p>
               ) : (
                 <div className="relative">
                   <div className="absolute left-3 top-0 bottom-0 w-px bg-border" />
@@ -484,20 +489,23 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                       const dispatchProvider = dispatchPayload?.provider ?? dispatchPayload?.meta?.provider;
                       const dispatchSuccess = dispatchPayload ? dispatchPayload.success !== false : null;
                       const eventLabel = dispatchPayload
-                        ? `${dispatchProvider ?? dispatchPayload.connectorType ?? 'connector'} · ${dispatchPayload.payloadType ?? 'dispatched'}`
+                        ? t('calls.detail.event_dispatch_label', {
+                            provider: dispatchProvider ?? dispatchPayload.connectorType ?? t('calls.detail.event_dispatch_default_provider'),
+                            type: dispatchPayload.payloadType ?? t('calls.detail.event_dispatch_default_type'),
+                          })
                         : event.event_type;
                       const dispatchStatusLabel =
                         dispatchSuccess === false
-                          ? 'failed'
+                          ? t('calls.detail.event_status_failed')
                           : dispatchSuccess === true
-                            ? 'succeeded'
-                            : 'recorded';
+                            ? t('calls.detail.event_status_succeeded')
+                            : t('calls.detail.event_status_recorded');
                       const dispatchTitle =
                         dispatchSuccess === false
-                          ? 'Dispatch failed'
+                          ? t('calls.detail.event_dispatch_failed')
                           : dispatchSuccess === true
-                            ? 'Dispatch succeeded'
-                            : 'Event recorded';
+                            ? t('calls.detail.event_dispatch_succeeded')
+                            : t('calls.detail.event_recorded');
                       const StatusIcon =
                         dispatchSuccess === false
                           ? XCircle
@@ -514,7 +522,7 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                         <div key={event.id} className="relative pl-8">
                           <span
                             role="img"
-                            aria-label={`Event ${dispatchStatusLabel}`}
+                            aria-label={t('calls.detail.event_status_aria', { status: dispatchStatusLabel })}
                             title={dispatchTitle}
                             className={`absolute left-0 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-surface ${statusBgClass}`}
                           >
@@ -544,9 +552,9 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           {tab === 'tools' && (
             <>
               {toolExecLoading ? (
-                <p className="text-sm text-text-secondary">Loading tool executions...</p>
+                <p className="text-sm text-text-secondary">{t('calls.detail.tools_loading')}</p>
               ) : toolExecutions.length === 0 ? (
-                <p className="text-sm text-text-secondary">No tool executions for this call</p>
+                <p className="text-sm text-text-secondary">{t('calls.detail.tools_empty')}</p>
               ) : (
                 <div className="space-y-3">
                   {toolExecutions.map((exec) => (
@@ -559,13 +567,13 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                       </div>
                       <div className="flex items-center gap-3 text-xs text-text-muted mt-1">
                         <span>{exec.invokedAt ? format(new Date(exec.invokedAt), 'h:mm:ss a') : '--'}</span>
-                        {exec.durationMs != null && <span>{exec.durationMs}ms</span>}
+                        {exec.durationMs != null && <span>{t('calls.detail.duration_ms', { ms: exec.durationMs })}</span>}
                       </div>
                       {exec.errorMessage && (
                         <p className="text-xs text-red-600 dark:text-red-400 mt-2">{exec.errorMessage}</p>
                       )}
                       {exec.recoveryAction && (
-                        <p className="text-xs text-text-secondary mt-1 italic">Recovery: {exec.recoveryAction}</p>
+                        <p className="text-xs text-text-secondary mt-1 italic">{t('calls.detail.tool_recovery', { action: exec.recoveryAction })}</p>
                       )}
                     </div>
                   ))}
@@ -738,7 +746,7 @@ export default function Calls() {
   const handleSaveView = async () => {
     const name = newViewName.trim();
     if (!name) {
-      setSaveError('Please enter a name');
+      setSaveError(tenantT('calls.save_view_panel.name_required'));
       return;
     }
     setSaveError(null);
@@ -757,7 +765,7 @@ export default function Calls() {
       setNewViewShared(false);
       setNewViewDigest(false);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save view');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.save_error'));
     }
   };
 
@@ -767,7 +775,7 @@ export default function Calls() {
       await api.patch(`/call-saved-views/${activeView.id}`, { filters });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to update view');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.update_error'));
     }
   };
 
@@ -776,13 +784,13 @@ export default function Calls() {
       await api.patch(`/call-saved-views/${view.id}`, { digest_enabled: !view.digest_enabled });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to toggle digest');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.toggle_digest_error'));
     }
   };
 
   const handleToggleSubscribe = async (view: SavedView) => {
     if (!currentUserEmail) {
-      setSaveError('Your account needs an email to subscribe.');
+      setSaveError(tenantT('calls.save_view_panel.subscribe_needs_email'));
       return;
     }
     const current = (view.digest_subscribers ?? []).map((e) => e.toLowerCase());
@@ -794,7 +802,7 @@ export default function Calls() {
       await api.patch(`/call-saved-views/${view.id}`, { digest_subscribers: next });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to update subscription');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.subscribe_error'));
     }
   };
 
@@ -805,7 +813,7 @@ export default function Calls() {
       await api.patch(`/call-saved-views/${view.id}`, { digest_subscribers: next });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to remove subscriber');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.remove_subscriber_error'));
     }
   };
 
@@ -815,7 +823,7 @@ export default function Calls() {
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
     } catch (err) {
-      alert(`Failed to reorder pinned view: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(tenantT('calls.save_view_panel.reorder_error', { message: err instanceof Error ? err.message : tenantT('calls.save_view_panel.reorder_unknown_error') }));
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
     }
@@ -827,18 +835,18 @@ export default function Calls() {
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views', 'pinned'] });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to pin view');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.pin_error'));
     }
   };
 
   const handleDeleteView = async (id: string) => {
-    if (!window.confirm('Delete this saved view?')) return;
+    if (!window.confirm(tenantT('calls.save_view_panel.delete_confirm'))) return;
     try {
       await api.delete(`/call-saved-views/${id}`);
       if (activeViewId === id) setActiveViewId(null);
       await queryClient.invalidateQueries({ queryKey: ['call-saved-views'] });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to delete view');
+      setSaveError(err instanceof Error ? err.message : tenantT('calls.save_view_panel.delete_error'));
     }
   };
 
@@ -904,9 +912,9 @@ export default function Calls() {
               <button
                 onClick={handleUpdateActiveView}
                 className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
-                title={`Save current filters into "${activeView.name}"`}
+                title={tenantT('calls.toolbar.update_view_tooltip', { name: activeView.name })}
               >
-                <Star className="h-4 w-4" /> Update view
+                <Star className="h-4 w-4" /> {tenantT('calls.toolbar.update_view')}
               </button>
             )}
             {activeFilterCount > 0 && !savingView && (
@@ -914,12 +922,12 @@ export default function Calls() {
                 onClick={() => { setSavingView(true); setSaveError(null); setNewViewName(''); setNewViewShared(false); setNewViewDigest(false); }}
                 className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
               >
-                <Bookmark className="h-4 w-4" /> Save view
+                <Bookmark className="h-4 w-4" /> {tenantT('calls.toolbar.save_view')}
               </button>
             )}
             <button onClick={() => setShowFilters(!showFilters)}
               className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${activeFilterCount > 0 ? 'border-primary text-primary bg-primary-light' : 'border-border text-text-secondary hover:bg-surface-hover'}`}>
-              <Filter className="h-4 w-4" /> Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+              <Filter className="h-4 w-4" /> {tenantT('calls.toolbar.filters')} {activeFilterCount > 0 && `(${activeFilterCount})`}
             </button>
           </>
         }
@@ -957,22 +965,22 @@ export default function Calls() {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-text-primary">
-                  Digest subscribers — {view.name}
+                  {tenantT('calls.subscribers_panel.title', { name: view.name })}
                 </h3>
                 <p className="text-xs text-text-secondary mt-0.5">
-                  Teammates who opted in to this shared view's daily email.
+                  {tenantT('calls.subscribers_panel.description')}
                 </p>
               </div>
               <button
                 onClick={() => setSubscribersOpenFor(null)}
                 className="p-1 rounded text-text-muted hover:text-text-primary"
-                aria-label="Close subscribers panel"
+                aria-label={tenantT('calls.subscribers_panel.close_aria')}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             {subs.length === 0 ? (
-              <p className="text-sm text-text-secondary">No teammates have subscribed yet.</p>
+              <p className="text-sm text-text-secondary">{tenantT('calls.subscribers_panel.empty')}</p>
             ) : (
               <ul className="flex flex-wrap gap-2">
                 {subs.map((email) => (
@@ -984,8 +992,8 @@ export default function Calls() {
                     <button
                       onClick={() => handleRemoveSubscriber(view, email)}
                       className="p-1 rounded-full text-text-muted hover:text-red-600 transition"
-                      title={`Remove ${email}`}
-                      aria-label={`Remove ${email} from ${view.name} digest`}
+                      title={tenantT('calls.subscribers_panel.remove_tooltip', { email })}
+                      aria-label={tenantT('calls.subscribers_panel.remove_aria', { email, name: view.name })}
                     >
                       <UserMinus className="h-3.5 w-3.5" />
                     </button>
@@ -999,7 +1007,7 @@ export default function Calls() {
 
       {savingView && (
         <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-text-primary mb-2">Save current filters as a view</h3>
+          <h3 className="text-sm font-semibold text-text-primary mb-2">{tenantT('calls.save_view_panel.title')}</h3>
           <div className="flex flex-wrap items-center gap-3">
             <input
               autoFocus
@@ -1007,7 +1015,7 @@ export default function Calls() {
               value={newViewName}
               onChange={(e) => setNewViewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSaveView(); if (e.key === 'Escape') setSavingView(false); }}
-              placeholder='e.g. "Failed tools, last 24h"'
+              placeholder={tenantT('calls.save_view_panel.name_placeholder')}
               maxLength={120}
               className="flex-1 min-w-[220px] px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
             />
@@ -1018,9 +1026,9 @@ export default function Calls() {
                 onChange={(e) => setNewViewShared(e.target.checked)}
                 className="rounded border-border"
               />
-              Share with my team
+              {tenantT('calls.save_view_panel.share_label')}
             </label>
-            <label className="inline-flex items-center gap-2 text-sm text-text-primary" title="We'll email you once a day if any new calls match this view in the last 24 hours.">
+            <label className="inline-flex items-center gap-2 text-sm text-text-primary" title={tenantT('calls.save_view_panel.digest_tooltip')}>
               <input
                 type="checkbox"
                 checked={newViewDigest}
@@ -1028,19 +1036,19 @@ export default function Calls() {
                 className="rounded border-border"
               />
               <Mail className="h-3.5 w-3.5" />
-              Email me a daily summary
+              {tenantT('calls.save_view_panel.digest_label')}
             </label>
             <button
               onClick={handleSaveView}
               className="text-sm font-medium px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition"
             >
-              Save
+              {tenantT('calls.save_view_panel.save')}
             </button>
             <button
               onClick={() => { setSavingView(false); setSaveError(null); }}
               className="text-sm font-medium px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition"
             >
-              Cancel
+              {tenantT('calls.save_view_panel.cancel')}
             </button>
           </div>
           {saveError && <p className="text-xs text-red-600 mt-2">{saveError}</p>}
@@ -1051,7 +1059,7 @@ export default function Calls() {
         <div className="bg-surface border border-border rounded-xl p-4 shadow-sm space-y-3">
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">
-              Search caller number or call ID
+              {tenantT('calls.filters.search_label')}
             </label>
             <div className="relative">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
@@ -1059,7 +1067,7 @@ export default function Calls() {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="e.g. +1555 or partial call ID"
+                placeholder={tenantT('calls.filters.search_placeholder')}
                 className="w-full pl-9 pr-9 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm"
               />
               {searchInput && (
@@ -1067,7 +1075,7 @@ export default function Calls() {
                   type="button"
                   onClick={() => setSearchInput('')}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary"
-                  aria-label="Clear search"
+                  aria-label={tenantT('calls.filters.clear_search_aria')}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -1077,68 +1085,68 @@ export default function Calls() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Date Range</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.date_range_label')}</label>
               <select value={filters.dateRange} onChange={(e) => setFilter('dateRange', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">All Time</option>
-                <option value="today">Today</option>
-                <option value="7d">Last 7 Days</option>
-                <option value="30d">Last 30 Days</option>
+                <option value="">{tenantT('calls.filters.date_range_all')}</option>
+                <option value="today">{tenantT('calls.filters.date_range_today')}</option>
+                <option value="7d">{tenantT('calls.filters.date_range_7d')}</option>
+                <option value="30d">{tenantT('calls.filters.date_range_30d')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Agent</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.agent_label')}</label>
               <select value={filters.agent_id} onChange={(e) => setFilter('agent_id', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">All Agents</option>
+                <option value="">{tenantT('calls.filters.agent_all')}</option>
                 {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Direction</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.direction_label')}</label>
               <select value={filters.direction} onChange={(e) => setFilter('direction', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">All</option>
-                <option value="inbound">Inbound</option>
-                <option value="outbound">Outbound</option>
+                <option value="">{tenantT('calls.filters.direction_all')}</option>
+                <option value="inbound">{tenantT('calls.filters.direction_inbound')}</option>
+                <option value="outbound">{tenantT('calls.filters.direction_outbound')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Status</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.status_label')}</label>
               <select value={filters.lifecycle_state} onChange={(e) => setFilter('lifecycle_state', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">All</option>
-                <option value="CALL_RECEIVED">Received</option>
-                <option value="CALL_CONNECTED">Connected</option>
-                <option value="CALL_ENDED">Ended</option>
-                <option value="CALL_FAILED">Failed</option>
+                <option value="">{tenantT('calls.filters.status_all')}</option>
+                <option value="CALL_RECEIVED">{tenantT('calls.filters.status_received')}</option>
+                <option value="CALL_CONNECTED">{tenantT('calls.filters.status_connected')}</option>
+                <option value="CALL_ENDED">{tenantT('calls.filters.status_ended')}</option>
+                <option value="CALL_FAILED">{tenantT('calls.filters.status_failed')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Transcript</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.transcript_label')}</label>
               <select value={filters.has_transcript} onChange={(e) => setFilter('has_transcript', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">Any</option>
-                <option value="true">Has transcript</option>
-                <option value="false">No transcript</option>
+                <option value="">{tenantT('calls.filters.any')}</option>
+                <option value="true">{tenantT('calls.filters.has_transcript')}</option>
+                <option value="false">{tenantT('calls.filters.no_transcript')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Events</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.events_label')}</label>
               <select value={filters.has_events} onChange={(e) => setFilter('has_events', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">Any</option>
-                <option value="true">Has events</option>
-                <option value="false">No events</option>
+                <option value="">{tenantT('calls.filters.any')}</option>
+                <option value="true">{tenantT('calls.filters.has_events')}</option>
+                <option value="false">{tenantT('calls.filters.no_events')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Tool executions</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{tenantT('calls.filters.tool_executions_label')}</label>
               <select value={filters.has_tool_executions} onChange={(e) => setFilter('has_tool_executions', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                <option value="">Any</option>
-                <option value="true">Has tool executions</option>
-                <option value="false">No tool executions</option>
+                <option value="">{tenantT('calls.filters.any')}</option>
+                <option value="true">{tenantT('calls.filters.has_tool_executions')}</option>
+                <option value="false">{tenantT('calls.filters.no_tool_executions')}</option>
               </select>
             </div>
             <div className="flex items-end">
@@ -1150,13 +1158,13 @@ export default function Calls() {
                   className="rounded border-border"
                 />
                 <AlertTriangle className="h-4 w-4 text-red-500" />
-                Tool failures only
+                {tenantT('calls.filters.tool_failures_only')}
               </label>
             </div>
           </div>
           {activeFilterCount > 0 && (
             <button onClick={clearFilters}
-              className="text-xs text-primary hover:text-primary-hover font-medium">Clear all filters</button>
+              className="text-xs text-primary hover:text-primary-hover font-medium">{tenantT('calls.filters.clear_all')}</button>
           )}
         </div>
       )}
@@ -1168,18 +1176,18 @@ export default function Calls() {
           {activeFilterCount > 0 ? (
             <EmptyState
               icon={Filter}
-              title="No calls match your filters"
-              description="Try adjusting or clearing your filters to see more conversations."
+              title={tenantT('calls.empty.filtered_title')}
+              description={tenantT('calls.empty.filtered_description')}
               primaryAction={{
-                label: 'Clear filters',
+                label: tenantT('calls.empty.clear_filters'),
                 onClick: clearFilters,
               }}
             />
           ) : (
             <EmptyState
               icon={PhoneCall}
-              title="No calls yet"
-              description="When your agents handle calls, transcripts and recordings will show up here for review."
+              title={tenantT('calls.empty.no_calls_title')}
+              description={tenantT('calls.empty.no_calls_description')}
             />
           )}
         </div>
@@ -1189,12 +1197,12 @@ export default function Calls() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="px-5 py-3 text-text-secondary font-medium">Agent</th>
-                  <th className="px-5 py-3 text-text-secondary font-medium">Language</th>
-                  <th className="px-5 py-3 text-text-secondary font-medium">Direction</th>
-                  <th className="px-5 py-3 text-text-secondary font-medium">Status</th>
-                  <th className="px-5 py-3 text-text-secondary font-medium">Duration</th>
-                  <th className="px-5 py-3 text-text-secondary font-medium">Date</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.agent')}</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.language')}</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.direction')}</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.status')}</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.duration')}</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.date')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1217,16 +1225,16 @@ export default function Calls() {
                         </span>
                         {call.failed_tool_count && call.failed_tool_count > 0 ? (
                           <span
-                            title={`${call.failed_tool_count} failed or timed-out tool execution${call.failed_tool_count === 1 ? '' : 's'}`}
+                            title={tenantT('calls.table.failed_tool_tooltip', { count: call.failed_tool_count })}
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                           >
                             <AlertTriangle className="h-3 w-3" />
-                            {call.failed_tool_count} failed
+                            {tenantT('calls.table.failed_tool_badge', { count: call.failed_tool_count })}
                           </span>
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-text-secondary">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</td>
+                    <td className="px-5 py-3 text-text-secondary">{call.duration_seconds ? tenantT('calls.table.duration_seconds', { seconds: call.duration_seconds }) : '--'}</td>
                     <td className="px-5 py-3 text-text-secondary">{call.start_time ? format(new Date(call.start_time), 'MMM d, h:mm a') : '--'}</td>
                   </tr>
                 ))}
@@ -1236,13 +1244,13 @@ export default function Calls() {
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-text-secondary">{total} calls total</p>
+              <p className="text-sm text-text-secondary">{tenantT('calls.pagination.total', { count: total })}</p>
               <div className="flex items-center gap-2">
                 <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                  className="p-2 rounded-lg border border-border hover:bg-surface-hover disabled:opacity-30 transition"><ChevronLeft className="h-4 w-4" /></button>
-                <span className="text-sm text-text-secondary">Page {page} of {totalPages}</span>
+                  className="p-2 rounded-lg border border-border hover:bg-surface-hover disabled:opacity-30 transition" aria-label={tenantT('calls.pagination.previous_aria')}><ChevronLeft className="h-4 w-4" /></button>
+                <span className="text-sm text-text-secondary">{tenantT('calls.pagination.page_of', { page, total: totalPages })}</span>
                 <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="p-2 rounded-lg border border-border hover:bg-surface-hover disabled:opacity-30 transition"><ChevronRight className="h-4 w-4" /></button>
+                  className="p-2 rounded-lg border border-border hover:bg-surface-hover disabled:opacity-30 transition" aria-label={tenantT('calls.pagination.next_aria')}><ChevronRight className="h-4 w-4" /></button>
               </div>
             </div>
           )}

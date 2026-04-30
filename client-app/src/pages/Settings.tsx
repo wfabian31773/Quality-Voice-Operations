@@ -10,6 +10,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, Navigate, Link, useBlocker } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useRole, ROLE_LABELS, PERMISSIONS_MATRIX, type SimpleRole } from '../lib/useRole';
@@ -91,14 +92,14 @@ const ALL_TIMEZONES: string[] = (() => {
 
 type Tab = 'general' | 'security' | 'api-keys' | 'roles' | 'privacy' | 'notifications' | 'csat';
 
-const TABS: { key: Tab; label: string; icon: typeof Settings2 }[] = [
-  { key: 'general', label: 'General', icon: Settings2 },
-  { key: 'notifications', label: 'Notifications', icon: Bell },
-  { key: 'csat', label: 'Customer Satisfaction', icon: MessageSquareHeart },
-  { key: 'roles', label: 'Roles & Permissions', icon: Users },
-  { key: 'security', label: 'Security', icon: Shield },
-  { key: 'api-keys', label: 'API Keys', icon: Key },
-  { key: 'privacy', label: 'Privacy & Data', icon: Lock },
+const TABS: { key: Tab; labelKey: string; icon: typeof Settings2 }[] = [
+  { key: 'general', labelKey: 'settings.tabs.general', icon: Settings2 },
+  { key: 'notifications', labelKey: 'settings.tabs.notifications', icon: Bell },
+  { key: 'csat', labelKey: 'settings.tabs.csat', icon: MessageSquareHeart },
+  { key: 'roles', labelKey: 'settings.tabs.roles', icon: Users },
+  { key: 'security', labelKey: 'settings.tabs.security', icon: Shield },
+  { key: 'api-keys', labelKey: 'settings.tabs.api_keys', icon: Key },
+  { key: 'privacy', labelKey: 'settings.tabs.privacy', icon: Lock },
 ];
 
 interface AgentType {
@@ -132,6 +133,7 @@ function useReportDirty(id: string, dirty: boolean) {
 }
 
 function GeneralSettings() {
+  const { t } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isOwner } = useRole();
@@ -155,7 +157,7 @@ function GeneralSettings() {
       });
       navigate('/onboarding');
     } catch (err) {
-      setRestartError(err instanceof Error ? err.message : 'Failed to restart onboarding');
+      setRestartError(err instanceof Error ? err.message : t('settings.general.restart_failed'));
       setRestartingOnboarding(false);
     }
   };
@@ -195,22 +197,22 @@ function GeneralSettings() {
 
   useEffect(() => {
     if (data?.tenant) {
-      const t = data.tenant;
-      const s = (t.settings ?? {}) as Record<string, string>;
+      const tenant = data.tenant;
+      const s = (tenant.settings ?? {}) as Record<string, string>;
       setForm({
-        name: t.name ?? '',
+        name: tenant.name ?? '',
         // The `/tenants/me` GET COALESCEs `tenants.timezone` to
-        // 'America/New_York', so `t.timezone` is always populated. The
+        // 'America/New_York', so `tenant.timezone` is always populated. The
         // remaining fallbacks (`s.timezone` from the legacy JSON blob, then
         // the browser zone) are belt-and-suspenders defenses for any
         // hypothetical response that omits the column entirely.
         timezone:
-          t.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+          tenant.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
         defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
         defaultVoice: s.defaultVoice ?? 'sage',
         defaultAgentType: s.defaultAgentType ?? 'general',
-        billingCurrency: normalizeBillingCurrencyCode(t.billing_currency),
+        billingCurrency: normalizeBillingCurrencyCode(tenant.billing_currency),
       });
     }
   }, [data]);
@@ -279,17 +281,17 @@ function GeneralSettings() {
 
   const dirty = useMemo(() => {
     if (!data?.tenant) return false;
-    const t = data.tenant;
-    const s = (t.settings ?? {}) as Record<string, string>;
+    const tenant = data.tenant;
+    const s = (tenant.settings ?? {}) as Record<string, string>;
     const original = {
-      name: t.name ?? '',
+      name: tenant.name ?? '',
       timezone:
-        t.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        tenant.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
       defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
       defaultVoice: s.defaultVoice ?? 'sage',
       defaultAgentType: s.defaultAgentType ?? 'general',
-      billingCurrency: normalizeBillingCurrencyCode(t.billing_currency),
+      billingCurrency: normalizeBillingCurrencyCode(tenant.billing_currency),
     };
     return (
       original.name !== form.name ||
@@ -322,12 +324,12 @@ function GeneralSettings() {
     return (
       <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
         <AlertCircle className="h-4 w-4 shrink-0" />
-        <span>Failed to load organization settings. Please check your connection and try again.</span>
+        <span>{t('settings.general.load_error')}</span>
         <button
           onClick={() => queryClient.invalidateQueries({ queryKey: ['tenant-settings'] })}
           className="ml-auto text-xs font-medium underline hover:no-underline"
         >
-          Retry
+          {t('settings.general.retry')}
         </button>
       </div>
     );
@@ -349,8 +351,8 @@ function GeneralSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">General Settings</h2>
-        <p className="text-sm text-text-muted mt-0.5">Configure your organization-wide preferences</p>
+        <h2 className="text-lg font-semibold text-text-primary">{t('settings.general.heading')}</h2>
+        <p className="text-sm text-text-muted mt-0.5">{t('settings.general.subheading')}</p>
       </div>
 
       {mutation.error && (
@@ -363,13 +365,13 @@ function GeneralSettings() {
       {saved && (
         <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Settings saved successfully
+          {t('settings.general.settings_saved_success')}
         </div>
       )}
 
       <div className="bg-surface border border-border rounded-xl divide-y divide-border">
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">Organization Name</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">{t('settings.general.tenant_name')}</label>
           <input
             type="text"
             value={form.name}
@@ -377,13 +379,13 @@ function GeneralSettings() {
             disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           />
-          <p className="text-xs text-text-muted mt-1.5">This name appears throughout the platform</p>
+          <p className="text-xs text-text-muted mt-1.5">{t('settings.general.tenant_name_help')}</p>
         </div>
 
         <div className="p-6">
           <label className="block text-sm font-medium text-text-primary mb-1.5">
             <Globe className="h-4 w-4 inline-block mr-1.5 -mt-0.5 text-text-muted" />
-            Default Timezone
+            {t('settings.general.default_timezone')}
           </label>
           <select
             value={form.timezone}
@@ -395,13 +397,13 @@ function GeneralSettings() {
               <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
             ))}
           </select>
-          <p className="text-xs text-text-muted mt-1.5">Used for campaign scheduling and report generation</p>
+          <p className="text-xs text-text-muted mt-1.5">{t('settings.general.timezone_help')}</p>
         </div>
 
         <div className="p-6">
           <label className="block text-sm font-medium text-text-primary mb-1.5">
             <Globe className="h-4 w-4 inline-block mr-1.5 -mt-0.5 text-text-muted" />
-            Primary Language
+            {t('settings.general.primary_language')}
           </label>
           <select
             value={form.primaryLanguage}
@@ -416,12 +418,12 @@ function GeneralSettings() {
             ))}
           </select>
           <p className="text-xs text-text-muted mt-1.5 max-w-md">
-            New agents pre-fill with this language, and the Default Voice picker below recommends voices and previews greetings in this language.
+            {t('settings.general.primary_language_help')}
           </p>
         </div>
 
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">Default Voice Model</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">{t('settings.general.default_voice_model')}</label>
           <select
             value={form.defaultVoiceModel}
             onChange={(e) => set('defaultVoiceModel', e.target.value)}
@@ -432,7 +434,7 @@ function GeneralSettings() {
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
-          <p className="text-xs text-text-muted mt-1.5">Model used for new agents by default</p>
+          <p className="text-xs text-text-muted mt-1.5">{t('settings.general.default_voice_model_help')}</p>
         </div>
 
         <div className="p-6">
@@ -451,22 +453,22 @@ function GeneralSettings() {
               labelClassName="block text-sm font-medium text-text-primary mb-1.5"
             />
           </div>
-          <p className="text-xs text-text-muted mt-1.5 max-w-md">Voice used for new agents by default. Use the play buttons to preview each voice.</p>
+          <p className="text-xs text-text-muted mt-1.5 max-w-md">{t('settings.general.default_voice_help')}</p>
         </div>
 
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">Default Agent Type</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">{t('settings.general.default_agent_type')}</label>
           <select
             value={form.defaultAgentType}
             onChange={(e) => set('defaultAgentType', e.target.value)}
             disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {agentTypes.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
+            {agentTypes.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <p className="text-xs text-text-muted mt-1.5">Template used when creating new agents</p>
+          <p className="text-xs text-text-muted mt-1.5">{t('settings.general.default_agent_type_help')}</p>
         </div>
 
         <div className="p-6">
@@ -524,13 +526,13 @@ function GeneralSettings() {
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            {mutation.isPending ? 'Saving...' : 'Save Settings'}
+            {mutation.isPending ? t('settings.general.saving') : t('settings.general.save_settings')}
           </button>
         </div>
       )}
 
       {!isOwner && (
-        <p className="text-sm text-text-muted">Contact your organization owner to change settings.</p>
+        <p className="text-sm text-text-muted">{t('settings.general.owner_only')}</p>
       )}
 
       <div className="bg-surface border border-border rounded-xl p-6">
@@ -539,10 +541,9 @@ function GeneralSettings() {
             <Sparkles className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-text-primary">Onboarding wizard</h3>
+            <h3 className="text-sm font-semibold text-text-primary">{t('settings.general.onboarding_card_title')}</h3>
             <p className="text-sm text-text-muted mt-1 mb-4">
-              Replay the welcome wizard to revisit the agent template picker and walk through setup again.
-              This affects only your account.
+              {t('settings.general.onboarding_card_body')}
             </p>
             {restartError && (
               <div className="bg-danger/10 text-danger text-xs px-3 py-2 rounded mb-3">{restartError}</div>
@@ -555,11 +556,11 @@ function GeneralSettings() {
             >
               {restartingOnboarding ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Restarting…
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t('settings.general.restarting')}
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-4 w-4" /> Restart onboarding
+                  <Sparkles className="h-4 w-4" /> {t('settings.general.restart_onboarding')}
                 </>
               )}
             </button>
@@ -570,16 +571,45 @@ function GeneralSettings() {
   );
 }
 
+const ROLE_LABEL_KEYS: Record<SimpleRole, string> = {
+  owner: 'settings.roles.role_labels.owner',
+  manager: 'settings.roles.role_labels.manager',
+  operator: 'settings.roles.role_labels.operator',
+  viewer: 'settings.roles.role_labels.viewer',
+};
+
+const PERMISSION_LABEL_KEYS: string[] = [
+  'settings.roles.capabilities.view_dashboard',
+  'settings.roles.capabilities.view_calls',
+  'settings.roles.capabilities.view_agents',
+  'settings.roles.capabilities.view_team',
+  'settings.roles.capabilities.edit_agents',
+  'settings.roles.capabilities.manage_phone_numbers',
+  'settings.roles.capabilities.manage_connectors',
+  'settings.roles.capabilities.manage_kb',
+  'settings.roles.capabilities.launch_campaigns',
+  'settings.roles.capabilities.manage_widget',
+  'settings.roles.capabilities.view_billing',
+  'settings.roles.capabilities.view_security',
+  'settings.roles.capabilities.manage_api_keys',
+  'settings.roles.capabilities.invite_users',
+  'settings.roles.capabilities.change_roles',
+  'settings.roles.capabilities.edit_org',
+  'settings.roles.capabilities.gdpr_erasure',
+  'settings.roles.capabilities.encryption_keys',
+];
+
 function RolesPermissions() {
+  const { t } = useTranslation('tenant');
   const { role: currentRole } = useRole();
   const roles: SimpleRole[] = ['owner', 'manager', 'operator', 'viewer'];
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Roles & Permissions</h2>
+        <h2 className="text-lg font-semibold text-text-primary">{t('settings.roles.heading')}</h2>
         <p className="text-sm text-text-muted mt-0.5">
-          View what each role can access. Your current role: <span className="font-medium text-text-primary">{ROLE_LABELS[currentRole]}</span>
+          {t('settings.roles.subheading_prefix')} <span className="font-medium text-text-primary">{t(ROLE_LABEL_KEYS[currentRole])}</span>
         </p>
       </div>
 
@@ -588,11 +618,11 @@ function RolesPermissions() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="px-5 py-3 text-left text-text-secondary font-medium min-w-[200px]">Capability</th>
+                <th className="px-5 py-3 text-left text-text-secondary font-medium min-w-[200px]">{t('settings.roles.capability')}</th>
                 {roles.map((r) => (
                   <th key={r} className={`px-5 py-3 text-center font-medium min-w-[100px] ${r === currentRole ? 'text-primary bg-primary/5' : 'text-text-secondary'}`}>
-                    {ROLE_LABELS[r]}
-                    {r === currentRole && <span className="block text-[10px] font-normal text-primary mt-0.5">(You)</span>}
+                    {t(ROLE_LABEL_KEYS[r])}
+                    {r === currentRole && <span className="block text-[10px] font-normal text-primary mt-0.5">{t('settings.roles.you')}</span>}
                   </th>
                 ))}
               </tr>
@@ -600,7 +630,7 @@ function RolesPermissions() {
             <tbody>
               {PERMISSIONS_MATRIX.map((cap, i) => (
                 <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-hover transition-colors">
-                  <td className="px-5 py-2.5 text-text-primary">{cap.label}</td>
+                  <td className="px-5 py-2.5 text-text-primary">{t(PERMISSION_LABEL_KEYS[i] ?? '') || cap.label}</td>
                   {roles.map((r) => (
                     <td key={r} className={`px-5 py-2.5 text-center ${r === currentRole ? 'bg-primary/5' : ''}`}>
                       {cap[r] ? (
@@ -619,8 +649,7 @@ function RolesPermissions() {
 
       <div className="bg-surface-hover border border-border rounded-lg p-4">
         <p className="text-xs text-text-muted">
-          Roles are hierarchical: each role inherits all permissions from roles below it. Owner permissions cannot be edited.
-          Contact your organization owner to change your role.
+          {t('settings.roles.footer')}
         </p>
       </div>
     </div>
@@ -628,6 +657,7 @@ function RolesPermissions() {
 }
 
 function SecuritySettings() {
+  const { t } = useTranslation('tenant');
   const { data, isLoading } = useQuery({
     queryKey: ['tenant-settings'],
     queryFn: () => api.get<{ tenant: Tenant }>('/tenants/me'),
@@ -648,86 +678,88 @@ function SecuritySettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Security Settings</h2>
-        <p className="text-sm text-text-muted mt-0.5">Review your organization's security configuration</p>
+        <h2 className="text-lg font-semibold text-text-primary">{t('settings.security.heading')}</h2>
+        <p className="text-sm text-text-muted mt-0.5">{t('settings.security.subheading')}</p>
       </div>
 
       <div className="bg-surface border border-border rounded-xl divide-y divide-border">
         <div className="p-6">
-          <h3 className="text-sm font-medium text-text-primary mb-3">Authentication</h3>
+          <h3 className="text-sm font-medium text-text-primary mb-3">{t('settings.security.section_authentication')}</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Authentication Method</span>
-              <span className="text-sm text-text-primary font-medium">Email / Password (JWT)</span>
+              <span className="text-sm text-text-muted">{t('settings.security.auth_method')}</span>
+              <span className="text-sm text-text-primary font-medium">{t('settings.security.auth_method_value')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Session Duration</span>
+              <span className="text-sm text-text-muted">{t('settings.security.session_duration')}</span>
               <span className="text-sm text-text-primary font-medium">
                 <Clock className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5" />
-                {sessionTimeoutMinutes >= 60 ? `${Math.floor(sessionTimeoutMinutes / 60)}h` : `${sessionTimeoutMinutes}m`}
+                {sessionTimeoutMinutes >= 60
+                  ? t('settings.security.session_hours', { count: Math.floor(sessionTimeoutMinutes / 60) })
+                  : t('settings.security.session_minutes', { count: sessionTimeoutMinutes })}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Token Type</span>
-              <span className="text-sm text-text-primary font-medium">JWT (Bearer)</span>
+              <span className="text-sm text-text-muted">{t('settings.security.token_type')}</span>
+              <span className="text-sm text-text-primary font-medium">{t('settings.security.token_type_value')}</span>
             </div>
           </div>
         </div>
 
         <div className="p-6">
-          <h3 className="text-sm font-medium text-text-primary mb-3">Password Policy</h3>
+          <h3 className="text-sm font-medium text-text-primary mb-3">{t('settings.security.section_password')}</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Minimum Length</span>
-              <span className="text-sm text-text-primary font-medium">8 characters</span>
+              <span className="text-sm text-text-muted">{t('settings.security.min_length')}</span>
+              <span className="text-sm text-text-primary font-medium">{t('settings.security.min_length_value')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Complexity Requirements</span>
-              <span className="text-sm text-text-primary font-medium">Standard</span>
+              <span className="text-sm text-text-muted">{t('settings.security.complexity')}</span>
+              <span className="text-sm text-text-primary font-medium">{t('settings.security.complexity_value')}</span>
             </div>
           </div>
         </div>
 
         <div className="p-6">
-          <h3 className="text-sm font-medium text-text-primary mb-3">Access Control</h3>
+          <h3 className="text-sm font-medium text-text-primary mb-3">{t('settings.security.section_access')}</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Role-Based Access</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">Enabled</span>
+              <span className="text-sm text-text-muted">{t('settings.security.rbac')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_enabled')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Row-Level Security</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">Enabled</span>
+              <span className="text-sm text-text-muted">{t('settings.security.rls')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_enabled')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">PHI Protection</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">Active</span>
+              <span className="text-sm text-text-muted">{t('settings.security.phi')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_active')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">API Key Authentication</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">Available</span>
+              <span className="text-sm text-text-muted">{t('settings.security.api_key_auth')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_available')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Audit Logging</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">Enabled</span>
+              <span className="text-sm text-text-muted">{t('settings.security.audit_log')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_enabled')}</span>
             </div>
           </div>
         </div>
 
         <div className="p-6">
-          <h3 className="text-sm font-medium text-text-primary mb-3">Data Protection</h3>
+          <h3 className="text-sm font-medium text-text-primary mb-3">{t('settings.security.section_data')}</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Encryption at Rest</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">Enabled</span>
+              <span className="text-sm text-text-muted">{t('settings.security.encryption_rest')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_enabled')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Encryption in Transit</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">TLS 1.2+</span>
+              <span className="text-sm text-text-muted">{t('settings.security.encryption_transit')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_tls')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-muted">Connector Secret Encryption</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">AES-256</span>
+              <span className="text-sm text-text-muted">{t('settings.security.secret_encryption')}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t('settings.security.status_aes')}</span>
             </div>
           </div>
         </div>
@@ -735,8 +767,7 @@ function SecuritySettings() {
 
       <div className="bg-surface-hover border border-border rounded-lg p-4">
         <p className="text-xs text-text-muted">
-          Values shown reflect platform-level defaults for your current plan. Contact support for SSO/SAML configuration,
-          custom IP allowlists, or advanced security policy changes.
+          {t('settings.security.footer')}
         </p>
       </div>
     </div>
@@ -752,6 +783,7 @@ interface DeletionRequest {
 }
 
 function PrivacySettings() {
+  const { t } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const { isOwner } = useRole();
   const [exportError, setExportError] = useState<string | null>(null);
@@ -775,7 +807,7 @@ function PrivacySettings() {
       setShowDeleteConfirm(false);
       setConfirmText('');
       setReason('');
-      setActionMsg('Deletion scheduled. You can cancel within 30 days.');
+      setActionMsg(t('settings.privacy.deletion_scheduled_msg'));
       queryClient.invalidateQueries({ queryKey: ['deletion-request'] });
     },
     onError: (err: Error) => setActionMsg(err.message),
@@ -784,7 +816,7 @@ function PrivacySettings() {
   const cancelDeletion = useMutation({
     mutationFn: (id: string) => api.delete(`/privacy/deletion-request/${id}`),
     onSuccess: () => {
-      setActionMsg('Deletion request cancelled.');
+      setActionMsg(t('settings.privacy.deletion_cancelled_msg'));
       queryClient.invalidateQueries({ queryKey: ['deletion-request'] });
     },
   });
@@ -800,7 +832,7 @@ function PrivacySettings() {
       });
       if (!res.ok) {
         const txt = await res.text();
-        throw new Error(`Export failed: ${res.status} ${txt}`);
+        throw new Error(`${t('settings.privacy.export_failed_prefix')} ${res.status} ${txt}`);
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -829,9 +861,9 @@ function PrivacySettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Privacy & Data</h2>
+        <h2 className="text-lg font-semibold text-text-primary">{t('settings.privacy.heading')}</h2>
         <p className="text-sm text-text-muted mt-0.5">
-          Exercise your data rights under GDPR, CCPA, and other privacy laws.
+          {t('settings.privacy.subheading')}
         </p>
       </div>
 
@@ -848,10 +880,9 @@ function PrivacySettings() {
             <Download className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-text-primary">Export your data</h3>
+            <h3 className="text-sm font-semibold text-text-primary">{t('settings.privacy.export_card_title')}</h3>
             <p className="text-sm text-text-muted mt-1 mb-4">
-              Download a JSON bundle containing your tenant configuration, users, agents, phone numbers,
-              call sessions (last 5,000), and audit logs (last 5,000). This action is recorded in your audit log.
+              {t('settings.privacy.export_card_body')}
             </p>
             {exportError && (
               <div className="bg-danger/10 text-danger text-xs px-3 py-2 rounded mb-3">{exportError}</div>
@@ -863,10 +894,10 @@ function PrivacySettings() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
-                {exporting ? 'Generating export…' : 'Export my data'}
+                {exporting ? t('settings.privacy.exporting') : t('settings.privacy.export_button')}
               </button>
             ) : (
-              <p className="text-xs text-text-muted">Only the account owner can request an export.</p>
+              <p className="text-xs text-text-muted">{t('settings.privacy.export_owner_only')}</p>
             )}
           </div>
         </div>
@@ -878,19 +909,20 @@ function PrivacySettings() {
             <Trash2 className="h-5 w-5 text-danger" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-text-primary">Delete account</h3>
+            <h3 className="text-sm font-semibold text-text-primary">{t('settings.privacy.delete_card_title')}</h3>
             <p className="text-sm text-text-muted mt-1 mb-4">
-              Schedule deletion of your QVO account and all associated data. Deletion takes effect after a
-              <strong> 30-day cool-off period</strong>, during which you can cancel. After deletion, data may
-              persist in encrypted backups for up to 30 additional days before being purged.
+              {t('settings.privacy.delete_card_body_prefix')}
+              <strong> {t('settings.privacy.delete_cool_off')}</strong>{t('settings.privacy.delete_card_body_suffix')}
             </p>
 
             {pending ? (
               <div className="bg-warning/10 border border-warning/30 rounded-lg p-4 mb-3">
-                <p className="text-sm font-medium text-text-primary mb-1">Deletion scheduled</p>
+                <p className="text-sm font-medium text-text-primary mb-1">{t('settings.privacy.deletion_scheduled_title')}</p>
                 <p className="text-xs text-text-muted mb-3">
-                  Requested {new Date(pending.requested_at).toLocaleString()} —
-                  scheduled for {new Date(pending.scheduled_for).toLocaleDateString()}.
+                  {t('settings.privacy.deletion_request_summary', {
+                    requested: new Date(pending.requested_at).toLocaleString(),
+                    scheduled: new Date(pending.scheduled_for).toLocaleDateString(),
+                  })}
                 </p>
                 {isOwner && (
                   <button
@@ -898,7 +930,7 @@ function PrivacySettings() {
                     disabled={cancelDeletion.isPending}
                     className="text-xs font-medium px-3 py-1.5 bg-surface border border-border rounded text-text-primary hover:bg-surface-hover"
                   >
-                    Cancel deletion request
+                    {t('settings.privacy.cancel_deletion')}
                   </button>
                 )}
               </div>
@@ -907,19 +939,19 @@ function PrivacySettings() {
                 <div className="bg-danger/5 border border-danger/30 rounded-lg p-4 space-y-3">
                   <div>
                     <label className="block text-xs font-medium text-text-primary mb-1">
-                      Reason (optional)
+                      {t('settings.privacy.reason_label')}
                     </label>
                     <textarea
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       rows={2}
                       className="w-full px-3 py-2 rounded border border-border bg-surface text-text-primary text-sm"
-                      placeholder="Help us improve…"
+                      placeholder={t('settings.privacy.reason_placeholder')}
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-primary mb-1">
-                      Type <span className="font-mono bg-surface-hover px-1.5 py-0.5 rounded">DELETE MY ACCOUNT</span> to confirm
+                      {t('settings.privacy.type_to_confirm_prefix')} <span className="font-mono bg-surface-hover px-1.5 py-0.5 rounded">{t('settings.privacy.type_to_confirm_token')}</span> {t('settings.privacy.type_to_confirm_suffix')}
                     </label>
                     <input
                       type="text"
@@ -934,16 +966,16 @@ function PrivacySettings() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => requestDeletion.mutate()}
-                      disabled={confirmText !== 'DELETE MY ACCOUNT' || requestDeletion.isPending}
+                      disabled={confirmText !== t('settings.privacy.type_to_confirm_token') || requestDeletion.isPending}
                       className="px-4 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg disabled:opacity-50"
                     >
-                      {requestDeletion.isPending ? 'Scheduling…' : 'Confirm deletion'}
+                      {requestDeletion.isPending ? t('settings.privacy.scheduling') : t('settings.privacy.confirm_deletion')}
                     </button>
                     <button
                       onClick={() => { setShowDeleteConfirm(false); setConfirmText(''); }}
                       className="px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg"
                     >
-                      Cancel
+                      {t('settings.privacy.cancel')}
                     </button>
                   </div>
                 </div>
@@ -953,11 +985,11 @@ function PrivacySettings() {
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface border border-danger/40 text-danger text-sm font-medium rounded-lg hover:bg-danger/5"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Delete my account
+                  {t('settings.privacy.delete_my_account')}
                 </button>
               )
             ) : (
-              <p className="text-xs text-text-muted">Only the account owner can request deletion.</p>
+              <p className="text-xs text-text-muted">{t('settings.privacy.delete_owner_only')}</p>
             )}
           </div>
         </div>
@@ -965,9 +997,9 @@ function PrivacySettings() {
 
       <div className="bg-surface-hover border border-border rounded-lg p-4">
         <p className="text-xs text-text-muted">
-          Need a Data Processing Addendum, sub-processor list, or other compliance documentation?
-          See our <a href="/security" target="_blank" rel="noreferrer" className="text-primary hover:underline">Security page</a> or
-          contact privacy@qvo.example.
+          {t('settings.privacy.footer_prefix')}{' '}
+          <a href="/security" target="_blank" rel="noreferrer" className="text-primary hover:underline">{t('settings.privacy.security_page')}</a>{' '}
+          {t('settings.privacy.footer_suffix')}
         </p>
       </div>
     </div>
@@ -990,37 +1022,41 @@ interface PreferencesResponse {
   channels: NotificationChannel[];
 }
 
-const CATEGORY_META: Record<NotificationCategory, { label: string; description: string }> = {
-  call: {
-    label: 'Calls',
-    description: 'Saved-view subscriptions, transcript-ready alerts, and other call activity.',
-  },
-  billing: {
-    label: 'Billing & usage',
-    description: 'Plan limit warnings, usage spikes, and account-status changes.',
-  },
-  sms: {
-    label: 'SMS alerts',
-    description: 'Outbound SMS escalations and text-channel incident alerts.',
-  },
-  integration: {
-    label: 'Integration failures',
-    description: 'Connector sync errors, OAuth re-auth requests, and integration outages.',
-  },
-  integration_recovery: {
-    label: 'Integration recoveries',
-    description: 'All-clear notifications when a previously-failing connector starts syncing again.',
-  },
-  escalation: {
-    label: 'Escalations',
-    description: 'High-priority operator escalations from agent runs and tickets.',
-  },
-};
+function getCategoryMeta(t: TFunction): Record<NotificationCategory, { label: string; description: string }> {
+  return {
+    call: {
+      label: t('settings.notifications.categories.call.label'),
+      description: t('settings.notifications.categories.call.description'),
+    },
+    billing: {
+      label: t('settings.notifications.categories.billing.label'),
+      description: t('settings.notifications.categories.billing.description'),
+    },
+    sms: {
+      label: t('settings.notifications.categories.sms.label'),
+      description: t('settings.notifications.categories.sms.description'),
+    },
+    integration: {
+      label: t('settings.notifications.categories.integration.label'),
+      description: t('settings.notifications.categories.integration.description'),
+    },
+    integration_recovery: {
+      label: t('settings.notifications.categories.integration_recovery.label'),
+      description: t('settings.notifications.categories.integration_recovery.description'),
+    },
+    escalation: {
+      label: t('settings.notifications.categories.escalation.label'),
+      description: t('settings.notifications.categories.escalation.description'),
+    },
+  };
+}
 
-const CHANNEL_LABELS: Record<NotificationChannel, string> = {
-  in_app: 'In-app inbox',
-  email: 'Email',
-};
+function getChannelLabels(t: TFunction): Record<NotificationChannel, string> {
+  return {
+    in_app: t('settings.notifications.channels.in_app'),
+    email: t('settings.notifications.channels.email'),
+  };
+}
 
 // ---- Connector alert preferences (per-tenant) ----
 
@@ -1064,12 +1100,13 @@ const PROVIDER_LABELS: Record<string, string> = {
   twilio: 'Twilio',
 };
 
-function providerLabel(provider: string | null | undefined): string {
-  if (!provider) return 'Integration';
+function providerLabel(provider: string | null | undefined, t: TFunction): string {
+  if (!provider) return t('settings.connector_alerts.provider_fallback');
   return PROVIDER_LABELS[provider.toLowerCase()] ?? provider;
 }
 
 function ConnectorAlertSettings() {
+  const { t } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const { isManager } = useRole();
   const [savedAt, setSavedAt] = useState(0);
@@ -1124,8 +1161,8 @@ function ConnectorAlertSettings() {
     }
     return Array.from(seen.entries())
       .map(([provider, items]) => ({ provider, items }))
-      .sort((a, b) => providerLabel(a.provider).localeCompare(providerLabel(b.provider)));
-  }, [connectors]);
+      .sort((a, b) => providerLabel(a.provider, t).localeCompare(providerLabel(b.provider, t)));
+  }, [connectors, t]);
 
   const dirty = useMemo(() => {
     if (!data) return false;
@@ -1150,7 +1187,7 @@ function ConnectorAlertSettings() {
     return (
       <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
         <AlertCircle className="h-4 w-4 shrink-0" />
-        <span>Couldn't load connector alert preferences. Please try again.</span>
+        <span>{t('settings.connector_alerts.load_error')}</span>
       </div>
     );
   }
@@ -1214,11 +1251,9 @@ function ConnectorAlertSettings() {
     <div className="space-y-5 mt-10">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-text-primary">Connector alert preferences</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t('settings.connector_alerts.heading')}</h2>
           <p className="text-sm text-text-muted mt-0.5">
-            Mute alerts for specific connectors, or batch every connector failure into a single
-            daily digest email instead of one per integration. The 24-hour in-app throttle still
-            applies on top of these settings.
+            {t('settings.connector_alerts.subheading')}
           </p>
         </div>
       </div>
@@ -1226,20 +1261,20 @@ function ConnectorAlertSettings() {
       {!isManager && (
         <div className="bg-amber-100/40 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          Only owners and managers can change these tenant-wide settings.
+          {t('settings.connector_alerts.owner_only')}
         </div>
       )}
 
       {mutation.error && (
         <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          {(mutation.error as Error).message || 'Failed to save preferences'}
+          {(mutation.error as Error).message || t('settings.connector_alerts.save_failed')}
         </div>
       )}
       {showSaved && (
         <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Preferences saved
+          {t('settings.connector_alerts.saved_msg')}
         </div>
       )}
 
@@ -1248,16 +1283,14 @@ function ConnectorAlertSettings() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-text-secondary" />
-              <span className="text-sm font-medium text-text-primary">Daily digest mode</span>
+              <span className="text-sm font-medium text-text-primary">{t('settings.connector_alerts.digest_label')}</span>
             </div>
             <p className="text-xs text-text-muted mt-1 max-w-md">
-              When on, connector failures stop sending one email per integration. Instead, every
-              admin gets a single summary email at most once per 24 hours that lists every
-              currently-failing connector. In-app notifications still fire normally.
+              {t('settings.connector_alerts.digest_help')}
             </p>
             {data.settings.digestLastSentAt && (
               <p className="text-[11px] text-text-muted mt-1.5">
-                Last digest sent: {new Date(data.settings.digestLastSentAt).toLocaleString()}
+                {t('settings.connector_alerts.digest_last_sent', { date: new Date(data.settings.digestLastSentAt).toLocaleString() })}
               </p>
             )}
           </div>
@@ -1285,17 +1318,16 @@ function ConnectorAlertSettings() {
           <div className="flex items-center gap-2">
             <BellOff className="h-4 w-4 text-text-secondary" />
             <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
-              Mute alerts
+              {t('settings.connector_alerts.mute_alerts_label')}
             </span>
           </div>
           <p className="text-xs text-text-muted mt-1">
-            Silence both email and in-app failure alerts for an entire provider, or a single
-            connected integration. Recovery and SMS alerts honour the same mute.
+            {t('settings.connector_alerts.mute_alerts_help')}
           </p>
         </div>
         {providersInUse.length === 0 ? (
           <div className="px-5 py-6 text-center text-sm text-text-muted">
-            You don't have any connected integrations yet.
+            {t('settings.connector_alerts.no_connectors')}
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -1306,16 +1338,14 @@ function ConnectorAlertSettings() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-text-primary">
-                        {providerLabel(provider)}
+                        {providerLabel(provider, t)}
                       </div>
                       <p className="text-xs text-text-muted mt-0.5">
-                        {items.length === 1
-                          ? '1 connected integration'
-                          : `${items.length} connected integrations`}
+                        {t('settings.connector_alerts.integrations_count', { count: items.length })}
                       </p>
                     </div>
                     <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
-                      <span>Mute provider</span>
+                      <span>{t('settings.connector_alerts.mute_provider')}</span>
                       <button
                         type="button"
                         role="switch"
@@ -1344,7 +1374,7 @@ function ConnectorAlertSettings() {
                             className="flex items-center justify-between gap-2 text-xs text-text-secondary"
                           >
                             <span className="truncate">
-                              {item.name?.trim() || providerLabel(item.provider)}
+                              {item.name?.trim() || providerLabel(item.provider, t)}
                             </span>
                             <button
                               type="button"
@@ -1381,7 +1411,7 @@ function ConnectorAlertSettings() {
               onClick={reset}
               className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary"
             >
-              Discard changes
+              {t('settings.connector_alerts.discard_changes')}
             </button>
           )}
           <button
@@ -1390,7 +1420,7 @@ function ConnectorAlertSettings() {
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            {mutation.isPending ? 'Saving…' : 'Save connector preferences'}
+            {mutation.isPending ? t('settings.connector_alerts.saving') : t('settings.connector_alerts.save_button')}
           </button>
         </div>
       )}
@@ -1399,6 +1429,7 @@ function ConnectorAlertSettings() {
 }
 
 function NotificationSettings() {
+  const { t } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<PreferenceMatrix | null>(null);
   const [savedAt, setSavedAt] = useState(0);
@@ -1438,7 +1469,7 @@ function NotificationSettings() {
     return (
       <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
         <AlertCircle className="h-4 w-4 shrink-0" />
-        <span>Couldn't load your notification preferences. Please try again.</span>
+        <span>{t('settings.notifications.load_error')}</span>
       </div>
     );
   }
@@ -1502,7 +1533,7 @@ interface NotificationCategoryMatrixProps {
 }
 
 function NotificationCategoryMatrix({
-  data,
+  data: _data,
   draft,
   categories,
   channels,
@@ -1514,39 +1545,41 @@ function NotificationCategoryMatrix({
   onReset,
   onSave,
 }: NotificationCategoryMatrixProps) {
+  const { t } = useTranslation('tenant');
+  const categoryMeta = useMemo(() => getCategoryMeta(t), [t]);
+  const channelLabels = useMemo(() => getChannelLabels(t), [t]);
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Notification preferences</h2>
+        <h2 className="text-lg font-semibold text-text-primary">{t('settings.notifications.heading')}</h2>
         <p className="text-sm text-text-muted mt-0.5">
-          Mute the categories you don't care about. Defaults are everything on, so changes only suppress
-          the rows you turn off — your teammates' inboxes are unaffected.
+          {t('settings.notifications.subheading')}
         </p>
       </div>
 
       {mutationError && (
         <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          {mutationError.message || 'Failed to save preferences'}
+          {mutationError.message || t('settings.notifications.save_failed')}
         </div>
       )}
       {showSaved && (
         <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Preferences saved
+          {t('settings.notifications.saved_msg')}
         </div>
       )}
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="grid grid-cols-[1fr_repeat(2,minmax(110px,auto))] gap-x-4 px-5 py-3 border-b border-border bg-surface-hover text-xs font-semibold text-text-secondary uppercase tracking-wide">
-          <div>Category</div>
+          <div>{t('settings.notifications.category_col')}</div>
           {channels.map((ch) => (
-            <div key={ch} className="text-center">{CHANNEL_LABELS[ch]}</div>
+            <div key={ch} className="text-center">{channelLabels[ch]}</div>
           ))}
         </div>
         <div className="divide-y divide-border">
           {categories.map((cat) => {
-            const meta = CATEGORY_META[cat] ?? { label: cat, description: '' };
+            const meta = categoryMeta[cat] ?? { label: cat, description: '' };
             const row = draft[cat] ?? { in_app: true, email: true };
             return (
               <div
@@ -1565,7 +1598,7 @@ function NotificationCategoryMatrix({
                         type="button"
                         role="switch"
                         aria-checked={enabled}
-                        aria-label={`${meta.label} — ${CHANNEL_LABELS[ch]}`}
+                        aria-label={t('settings.notifications.toggle_aria', { category: meta.label, channel: channelLabels[ch] })}
                         onClick={() => onToggle(cat, ch)}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                           enabled ? 'bg-primary' : 'bg-surface-hover border border-border'
@@ -1592,7 +1625,7 @@ function NotificationCategoryMatrix({
             onClick={onReset}
             className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary"
           >
-            Discard changes
+            {t('settings.notifications.discard_changes')}
           </button>
         )}
         <button
@@ -1601,7 +1634,7 @@ function NotificationCategoryMatrix({
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
         >
           <Save className="h-4 w-4" />
-          {isPending ? 'Saving…' : 'Save preferences'}
+          {isPending ? t('settings.notifications.saving') : t('settings.notifications.save_preferences')}
         </button>
       </div>
     </div>
@@ -1631,26 +1664,22 @@ interface CsatRecentResponse {
 // Labels intentionally mirror the SMS prompt format ("Reply 1-N (1=poor,
 // N=great)") that buildCsatSmsBody actually sends, so the picker, the
 // preview, and the customer's text match exactly.
-const CSAT_SCALE_OPTIONS = [
-  { value: 2, label: '1–2 (thumbs up/down)' },
-  { value: 3, label: '1–3' },
-  { value: 5, label: '1–5 (stars)' },
-  { value: 7, label: '1–7' },
-  { value: 10, label: '1–10 (NPS-style)' },
+const CSAT_SCALE_OPTION_KEYS: { value: number; key: string }[] = [
+  { value: 2, key: 'two' },
+  { value: 3, key: 'three' },
+  { value: 5, key: 'five' },
+  { value: 7, key: 'seven' },
+  { value: 10, key: 'ten' },
 ];
 
-const CSAT_CHANNEL_OPTIONS: { value: CsatSettingsPayload['channel']; label: string; helper: string }[] = [
-  { value: 'sms', label: 'SMS text', helper: 'Send a short text after the call asking for a rating reply.' },
-  { value: 'web', label: 'Web link', helper: 'Generate a per-call survey link surfaced via integrations or follow-ups.' },
-  { value: 'email', label: 'Email', helper: 'Include a survey link in a follow-up email (requires email integration).' },
-];
+const CSAT_CHANNEL_OPTION_VALUES: CsatSettingsPayload['channel'][] = ['sms', 'web', 'email'];
 
-function formatCsatChannel(channel: string | null): string {
+function formatCsatChannel(channel: string | null, t: TFunction): string {
   if (!channel) return '—';
-  if (channel === 'sms') return 'SMS';
-  if (channel === 'ivr') return 'IVR';
-  if (channel === 'web') return 'Web';
-  if (channel === 'email') return 'Email';
+  if (channel === 'sms') return t('settings.csat.channels.sms');
+  if (channel === 'ivr') return t('settings.csat.channels.ivr');
+  if (channel === 'web') return t('settings.csat.channels.web');
+  if (channel === 'email') return t('settings.csat.channels.email');
   return channel;
 }
 
@@ -1662,6 +1691,7 @@ function formatCsatTimestamp(value: string | null): string {
 }
 
 function CsatSettings() {
+  const { t } = useTranslation('tenant');
   const queryClient = useQueryClient();
   const { isOwner } = useRole();
   const [saved, setSaved] = useState(false);
@@ -1712,7 +1742,7 @@ function CsatSettings() {
       setTimeout(() => setSaved(false), 3000);
     },
     onError: (err) => {
-      setValidationError(err instanceof Error ? err.message : 'Failed to save CSAT settings');
+      setValidationError(err instanceof Error ? err.message : t('settings.csat.save_failed'));
     },
   });
 
@@ -1720,11 +1750,11 @@ function CsatSettings() {
     if (!isOwner) return;
     setValidationError(null);
     if (form.minDurationSeconds < 5 || form.minDurationSeconds > 600) {
-      setValidationError('Minimum call duration must be between 5 and 600 seconds.');
+      setValidationError(t('settings.csat.validation_min_duration'));
       return;
     }
     if (form.smsTemplate && form.smsTemplate.length > 320) {
-      setValidationError('SMS template must be 320 characters or fewer.');
+      setValidationError(t('settings.csat.validation_template_length'));
       return;
     }
     mutation.mutate({
@@ -1748,12 +1778,12 @@ function CsatSettings() {
     return (
       <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
         <AlertCircle className="h-4 w-4 shrink-0" />
-        <span>Failed to load CSAT settings. Please check your connection and try again.</span>
+        <span>{t('settings.csat.load_error')}</span>
         <button
           onClick={() => queryClient.invalidateQueries({ queryKey: ['csat-settings'] })}
           className="ml-auto text-xs font-medium underline hover:no-underline"
         >
-          Retry
+          {t('settings.csat.retry')}
         </button>
       </div>
     );
@@ -1761,17 +1791,16 @@ function CsatSettings() {
 
   const responses = responsesQuery.data?.responses ?? [];
   const previewRange = `1–${form.scale}`;
-  const channelHelper = CSAT_CHANNEL_OPTIONS.find((c) => c.value === form.channel)?.helper ?? '';
-  const templatePreview = (form.smsTemplate.trim() || 'Thanks for calling! How would you rate this call?')
-    + ` Reply ${previewRange} (1=poor, ${form.scale}=great). Reply STOP to opt out.`;
+  const channelHelper = t(`settings.csat.channel_options.${form.channel}.helper`);
+  const templatePreview = (form.smsTemplate.trim() || t('settings.csat.preview_default_intro'))
+    + ' ' + t('settings.csat.preview_suffix', { range: previewRange, scale: form.scale });
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Customer Satisfaction Surveys</h2>
+        <h2 className="text-lg font-semibold text-text-primary">{t('settings.csat.heading')}</h2>
         <p className="text-sm text-text-muted mt-0.5">
-          Automatically ask callers to rate their experience after a call. Responses feed your quality dashboard
-          and the cross-tenant CSAT benchmark.
+          {t('settings.csat.subheading')}
         </p>
       </div>
 
@@ -1785,17 +1814,16 @@ function CsatSettings() {
       {saved && (
         <div className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          CSAT settings saved successfully
+          {t('settings.csat.saved_success')}
         </div>
       )}
 
       <div className="bg-surface border border-border rounded-xl divide-y divide-border">
         <div className="p-6 flex items-start justify-between gap-4">
           <div className="flex-1">
-            <label className="block text-sm font-medium text-text-primary">Enable post-call surveys</label>
+            <label className="block text-sm font-medium text-text-primary">{t('settings.csat.enable_label')}</label>
             <p className="text-xs text-text-muted mt-1 max-w-xl">
-              When on, qualifying completed calls automatically dispatch a CSAT survey through the channel below.
-              Calls shorter than the minimum duration are skipped.
+              {t('settings.csat.enable_help')}
             </p>
           </div>
           <label className="inline-flex items-center cursor-pointer mt-1">
@@ -1805,48 +1833,48 @@ function CsatSettings() {
               checked={form.enabled}
               disabled={!isOwner}
               onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
-              aria-label="Enable post-call CSAT surveys"
+              aria-label={t('settings.csat.enable_aria')}
             />
             <span className="relative inline-block w-11 h-6 rounded-full bg-border peer-checked:bg-primary transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:bg-white after:rounded-full after:shadow after:transition-transform peer-checked:after:translate-x-5 peer-disabled:opacity-50" />
           </label>
         </div>
 
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">Survey channel</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">{t('settings.csat.channel_label')}</label>
           <select
             value={form.channel}
             onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value as CsatSettingsPayload['channel'] }))}
             disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {CSAT_CHANNEL_OPTIONS.map((c) => (
-              <option key={c.value} value={c.value}>{c.label}</option>
+            {CSAT_CHANNEL_OPTION_VALUES.map((value) => (
+              <option key={value} value={value}>{t(`settings.csat.channel_options.${value}.label`)}</option>
             ))}
           </select>
           <p className="text-xs text-text-muted mt-1.5 max-w-md">{channelHelper}</p>
         </div>
 
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">Rating scale</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">{t('settings.csat.scale_label')}</label>
           <select
             value={form.scale}
             onChange={(e) => setForm((f) => ({ ...f, scale: parseInt(e.target.value, 10) }))}
             disabled={!isOwner}
             className="w-full max-w-md px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {CSAT_SCALE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            {CSAT_SCALE_OPTION_KEYS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{t(`settings.csat.scale_options.${opt.key}`)}</option>
             ))}
           </select>
           <p className="text-xs text-text-muted mt-1.5 max-w-md">
-            Scores are normalized internally so you can compare across scales without re-rating prior responses.
+            {t('settings.csat.scale_help')}
           </p>
         </div>
 
         <div className="p-6">
           <label className="block text-sm font-medium text-text-primary mb-1.5">
             <Clock className="h-4 w-4 inline-block mr-1.5 -mt-0.5 text-text-muted" />
-            Minimum call duration
+            {t('settings.csat.min_duration_label')}
           </label>
           <div className="flex items-center gap-2 max-w-md">
             <input
@@ -1859,35 +1887,35 @@ function CsatSettings() {
               disabled={!isOwner}
               className="w-32 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed"
             />
-            <span className="text-sm text-text-muted">seconds</span>
+            <span className="text-sm text-text-muted">{t('settings.csat.min_duration_unit')}</span>
           </div>
           <p className="text-xs text-text-muted mt-1.5 max-w-md">
-            Calls shorter than this won't trigger a survey — avoids surveying hangups and misdials. 5–600 seconds.
+            {t('settings.csat.min_duration_help')}
           </p>
         </div>
 
         <div className="p-6">
-          <label className="block text-sm font-medium text-text-primary mb-1.5">SMS prompt template</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">{t('settings.csat.template_label')}</label>
           <textarea
             value={form.smsTemplate}
             onChange={(e) => setForm((f) => ({ ...f, smsTemplate: e.target.value }))}
             disabled={!isOwner || form.channel !== 'sms'}
             rows={3}
             maxLength={320}
-            placeholder="Thanks for calling! How would you rate this call?"
+            placeholder={t('settings.csat.template_placeholder')}
             className="w-full max-w-2xl px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed font-mono"
           />
           <div className="flex items-center justify-between max-w-2xl mt-1.5">
             <p className="text-xs text-text-muted">
               {form.channel === 'sms'
-                ? 'Customize the opening line. The rating prompt and STOP footer are appended automatically.'
-                : 'Only used when the survey channel is SMS.'}
+                ? t('settings.csat.template_help_sms')
+                : t('settings.csat.template_help_other')}
             </p>
-            <span className="text-xs text-text-muted">{form.smsTemplate.length}/320</span>
+            <span className="text-xs text-text-muted">{t('settings.csat.template_count', { count: form.smsTemplate.length })}</span>
           </div>
           {form.channel === 'sms' && (
             <div className="mt-3 max-w-2xl bg-surface-hover border border-border rounded-lg p-3">
-              <div className="text-xs uppercase tracking-wide text-text-muted mb-1">Preview</div>
+              <div className="text-xs uppercase tracking-wide text-text-muted mb-1">{t('settings.csat.preview_label')}</div>
               <div className="text-sm text-text-primary whitespace-pre-wrap">{templatePreview}</div>
             </div>
           )}
@@ -1902,11 +1930,11 @@ function CsatSettings() {
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg disabled:opacity-50"
           >
             {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {mutation.isPending ? 'Saving...' : 'Save CSAT Settings'}
+            {mutation.isPending ? t('settings.csat.saving') : t('settings.csat.save_button')}
           </button>
         </div>
       ) : (
-        <p className="text-sm text-text-muted">Contact your organization owner to change CSAT settings.</p>
+        <p className="text-sm text-text-muted">{t('settings.csat.owner_only')}</p>
       )}
 
       <div className="bg-surface border border-border rounded-xl">
@@ -1914,17 +1942,19 @@ function CsatSettings() {
           <div>
             <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
               <Star className="h-4 w-4 text-primary" />
-              Recent CSAT responses
+              {t('settings.csat.recent_heading')}
             </h3>
             <p className="text-xs text-text-muted mt-0.5">
-              Most recent {responses.length === 0 ? '20' : responses.length} customer ratings, newest first.
+              {responses.length === 0
+                ? t('settings.csat.recent_subheading_default')
+                : t('settings.csat.recent_subheading', { count: responses.length })}
             </p>
           </div>
           <button
             onClick={() => queryClient.invalidateQueries({ queryKey: ['csat-recent-responses'] })}
             className="text-xs font-medium text-primary hover:underline"
           >
-            Refresh
+            {t('settings.csat.refresh')}
           </button>
         </div>
 
@@ -1934,22 +1964,22 @@ function CsatSettings() {
           </div>
         ) : responsesQuery.error ? (
           <div className="p-6 text-sm text-danger flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" /> Failed to load recent responses.
+            <AlertCircle className="h-4 w-4" /> {t('settings.csat.responses_load_error')}
           </div>
         ) : responses.length === 0 ? (
           <div className="p-8 text-center text-sm text-text-muted">
-            No CSAT responses yet. Once surveys are enabled and customers reply, they'll show up here.
+            {t('settings.csat.no_responses')}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="px-5 py-2.5 text-text-secondary font-medium">When</th>
-                  <th className="px-5 py-2.5 text-text-secondary font-medium">Score</th>
-                  <th className="px-5 py-2.5 text-text-secondary font-medium">Channel</th>
-                  <th className="px-5 py-2.5 text-text-secondary font-medium">Comment</th>
-                  <th className="px-5 py-2.5 text-text-secondary font-medium">Call</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">{t('settings.csat.col_when')}</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">{t('settings.csat.col_score')}</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">{t('settings.csat.col_channel')}</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">{t('settings.csat.col_comment')}</th>
+                  <th className="px-5 py-2.5 text-text-secondary font-medium">{t('settings.csat.col_call')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1962,7 +1992,7 @@ function CsatSettings() {
                       ) : '—'}
                     </td>
                     <td className="px-5 py-2.5 text-text-muted whitespace-nowrap">
-                      {formatCsatChannel(r.responseChannel ?? r.requestChannel)}
+                      {formatCsatChannel(r.responseChannel ?? r.requestChannel, t)}
                     </td>
                     <td className="px-5 py-2.5 text-text-muted max-w-md">
                       {r.comment ? (
@@ -1976,7 +2006,7 @@ function CsatSettings() {
                         to={`/calls?highlight=${encodeURIComponent(r.callSessionId)}`}
                         className="text-primary hover:underline text-xs"
                       >
-                        View call
+                        {t('settings.csat.view_call')}
                       </Link>
                     </td>
                   </tr>
@@ -2110,30 +2140,31 @@ export default function Settings() {
 
         <div
           role="tablist"
-          aria-label="Settings sections"
+          aria-label={tenantT('settings.sections_aria')}
           className="flex flex-wrap gap-1 mb-6 border-b border-border"
         >
-          {TABS.map((t) => {
-            const isDirty = dirtyTabs.has(t.key);
+          {TABS.map((entry) => {
+            const isDirty = dirtyTabs.has(entry.key);
+            const label = tenantT(entry.labelKey);
             return (
               <button
-                key={t.key}
+                key={entry.key}
                 role="tab"
-                aria-selected={tab === t.key}
-                onClick={() => setTab(t.key)}
-                title={isDirty ? `${t.label} (unsaved changes)` : t.label}
+                aria-selected={tab === entry.key}
+                onClick={() => setTab(entry.key)}
+                title={isDirty ? tenantT('settings.tab_unsaved_title', { label }) : label}
                 className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                  tab === t.key
+                  tab === entry.key
                     ? 'border-primary text-primary'
                     : 'border-transparent text-text-muted hover:text-text-primary'
                 }`}
               >
-                <t.icon className="h-4 w-4" />
-                {t.label}
+                <entry.icon className="h-4 w-4" />
+                {label}
                 {isDirty && (
                   <span
-                    aria-label="unsaved changes"
-                    title="Unsaved changes"
+                    aria-label={tenantT('settings.tab_unsaved_aria')}
+                    title={tenantT('settings.tab_unsaved_tooltip')}
                     className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-primary"
                   />
                 )}

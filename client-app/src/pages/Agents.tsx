@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertTriangle } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
@@ -33,13 +34,6 @@ import {
 } from '../lib/agentBuilderI18n';
 import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
 
-/**
- * Maps the quick-create agent-type slug to an industry template key when one
- * exists. When the type maps to a template we seed the welcome greeting and
- * system prompt with the localized industry copy (falling back to English
- * with a hint when the language has no translation yet). Types not listed
- * here keep the generic localized defaults.
- */
 const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
   'medical-after-hours': 'medical',
   'dental': 'dental',
@@ -102,11 +96,6 @@ const AGENT_TYPES = [
   'technical-support', 'collections', 'real-estate', 'restaurant', 'salon',
 ];
 
-/**
- * Maps each agent-type slug to its localized label key in the Agent Builder
- * i18n table. Keeps the underlying slug intact for backend validation while
- * showing friendly, translated names in the dropdown.
- */
 const AGENT_TYPE_LABEL_KEYS: Record<string, AgentBuilderTKey> = {
   'general': 'agentTypeGeneral',
   'answering-service': 'agentTypeAnsweringService',
@@ -127,14 +116,14 @@ const AGENT_TYPE_LABEL_KEYS: Record<string, AgentBuilderTKey> = {
   'salon': 'agentTypeSalon',
 };
 
-const TOOL_LABELS: Record<string, string> = {
-  createServiceTicket: 'Create Service Ticket',
-  createAfterHoursTicket: 'Create After-Hours Ticket',
-  triageEscalate: 'Triage Escalation',
-  scheduleDentalAppointment: 'Schedule Dental Appointment',
-  scheduleConsultation: 'Schedule Legal Consultation',
-  submitMaintenanceRequest: 'Submit Maintenance Request',
-  bookServiceAppointment: 'Book Service Appointment',
+const TOOL_LABEL_KEYS: Record<string, string> = {
+  createServiceTicket: 'agents.tools_section.tool_create_service_ticket',
+  createAfterHoursTicket: 'agents.tools_section.tool_create_after_hours_ticket',
+  triageEscalate: 'agents.tools_section.tool_triage_escalate',
+  scheduleDentalAppointment: 'agents.tools_section.tool_schedule_dental_appointment',
+  scheduleConsultation: 'agents.tools_section.tool_schedule_consultation',
+  submitMaintenanceRequest: 'agents.tools_section.tool_submit_maintenance_request',
+  bookServiceAppointment: 'agents.tools_section.tool_book_service_appointment',
 };
 
 interface AgentFormData {
@@ -177,11 +166,11 @@ function fetchSchedulingConnectors(): Promise<SchedulingConnectorOption[]> {
     });
 }
 
-function ToolsConfigSection({ agentId }: { agentId: string }) {
+function ToolsConfigSection({ agentId, t }: { agentId: string; t: TFunction }) {
   const [tools, setTools] = useState<AgentToolInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     api.get<AgentToolsResponse>(`/agents/${agentId}/tools`).then((res) => {
@@ -192,8 +181,8 @@ function ToolsConfigSection({ agentId }: { agentId: string }) {
 
   const handleToggle = (toolName: string) => {
     setTools((prev) =>
-      prev.map((t) =>
-        t.name === toolName ? { ...t, enabled: !t.enabled, hasOverride: true } : t,
+      prev.map((tool) =>
+        tool.name === toolName ? { ...tool, enabled: !tool.enabled, hasOverride: true } : tool,
       ),
     );
     setSaveMessage(null);
@@ -203,71 +192,75 @@ function ToolsConfigSection({ agentId }: { agentId: string }) {
     setSaving(true);
     setSaveMessage(null);
     try {
-      const overrides = tools.map((t) => ({ toolName: t.name, enabled: t.enabled }));
+      const overrides = tools.map((tool) => ({ toolName: tool.name, enabled: tool.enabled }));
       await api.patch(`/agents/${agentId}/tools`, { overrides });
-      setSaveMessage('Tool permissions saved');
-      setTools((prev) => prev.map((t) => ({ ...t, hasOverride: true })));
+      setSaveMessage({ kind: 'success', text: t('agents.tools_section.save_success') });
+      setTools((prev) => prev.map((tool) => ({ ...tool, hasOverride: true })));
     } catch (err) {
-      setSaveMessage('Failed to save tool permissions');
+      setSaveMessage({ kind: 'error', text: t('agents.tools_section.save_error') });
     }
     setSaving(false);
   };
 
   if (loading) {
-    return <div className="text-sm text-text-secondary py-2">Loading tools...</div>;
+    return <div className="text-sm text-text-secondary py-2">{t('agents.tools_section.loading')}</div>;
   }
 
   if (tools.length === 0) {
-    return <div className="text-sm text-text-secondary py-2">No tools available for this agent type.</div>;
+    return <div className="text-sm text-text-secondary py-2">{t('agents.tools_section.empty')}</div>;
   }
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-text-primary">Tool Permissions</label>
+        <label className="block text-sm font-medium text-text-primary">{t('agents.tools_section.label')}</label>
         <button
           type="button"
           onClick={handleSave}
           disabled={saving}
           className="text-xs font-medium text-primary hover:text-primary-hover transition disabled:opacity-50"
         >
-          {saving ? 'Saving...' : 'Save Tools'}
+          {saving ? t('agents.tools_section.saving') : t('agents.tools_section.save_button')}
         </button>
       </div>
       <div className="space-y-1">
-        {tools.map((t) => (
-          <div
-            key={t.name}
-            className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover transition"
-          >
-            <div className="flex-1 min-w-0">
-              <span className="text-sm text-text-primary">{TOOL_LABELS[t.name] ?? t.name}</span>
-              {t.allowedByTemplate && !t.hasOverride && (
-                <span className="ml-2 text-xs text-green-600 dark:text-green-400">(template default)</span>
-              )}
-              {t.hasOverride && (
-                <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">(custom)</span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => handleToggle(t.name)}
-              className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                t.enabled ? 'bg-primary' : 'bg-gray-300'
-              }`}
+        {tools.map((tool) => {
+          const labelKey = TOOL_LABEL_KEYS[tool.name];
+          const label = labelKey ? t(labelKey) : tool.name;
+          return (
+            <div
+              key={tool.name}
+              className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover transition"
             >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface shadow ring-0 transition duration-200 ease-in-out ${
-                  t.enabled ? 'translate-x-4' : 'translate-x-0'
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-text-primary">{label}</span>
+                {tool.allowedByTemplate && !tool.hasOverride && (
+                  <span className="ml-2 text-xs text-green-600 dark:text-green-400">{t('agents.tools_section.template_default')}</span>
+                )}
+                {tool.hasOverride && (
+                  <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">{t('agents.tools_section.custom')}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggle(tool.name)}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  tool.enabled ? 'bg-primary' : 'bg-gray-300'
                 }`}
-              />
-            </button>
-          </div>
-        ))}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface shadow ring-0 transition duration-200 ease-in-out ${
+                    tool.enabled ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          );
+        })}
       </div>
       {saveMessage && (
-        <p className={`text-xs ${saveMessage.includes('Failed') ? 'text-danger' : 'text-green-600 dark:text-green-400'}`}>
-          {saveMessage}
+        <p className={`text-xs ${saveMessage.kind === 'error' ? 'text-danger' : 'text-green-600 dark:text-green-400'}`}>
+          {saveMessage.text}
         </p>
       )}
     </div>
@@ -287,6 +280,7 @@ function AgentModal({
   onClose: () => void;
   onSaved: (newAgentId?: string) => void;
 }) {
+  const { t } = useTranslation('tenant');
   const tenantPrimaryLanguage = useTenantPrimaryLanguage();
   const [form, setForm] = useState<AgentFormData>(() => {
     const initialLanguage = agentId ? DEFAULT_AGENT_LANGUAGE : tenantPrimaryLanguage;
@@ -304,10 +298,6 @@ function AgentModal({
   });
   const [loaded, setLoaded] = useState(!agentId);
 
-  // For new agents, sync the default language (and the localized greeting /
-  // system prompt) once the tenant's primary language resolves — the initial
-  // value may have been the English fallback if the tenant query was still
-  // in-flight on first render.
   useEffect(() => {
     if (agentId) return;
     setForm((f) => {
@@ -385,9 +375,6 @@ function AgentModal({
         if (isNewAgent) {
           next.voice = getDefaultVoiceForLanguage(newLang);
         }
-        // If the agent type maps to an industry template, prefer the
-        // industry-localized copy so the greeting and prompt stay aligned
-        // with the chosen language and template.
         const templateKey = AGENT_TYPE_TO_TEMPLATE[f.type];
         if (templateKey) {
           const copy = getIndustryTemplateCopy(newLang, templateKey);
@@ -443,17 +430,19 @@ function AgentModal({
 
   if (!loaded) {
     return (
-      <Modal open onClose={onClose} ariaLabel="Loading agent" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-8 text-center text-text-secondary">
-        Loading agent...
+      <Modal open onClose={onClose} ariaLabel={t('agents.modal.loading_aria')} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-8 text-center text-text-secondary">
+        {t('agents.modal.loading')}
       </Modal>
     );
   }
 
+  const modalTitle = agentId ? t('agents.modal.edit_title') : t('agents.modal.create_title');
+
   return (
-    <Modal open onClose={onClose} ariaLabel={agentId ? 'Edit Agent' : 'Create Agent'} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <Modal open onClose={onClose} ariaLabel={modalTitle} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-text-primary">{agentId ? 'Edit Agent' : 'Create Agent'}</h2>
-          <button onClick={onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
+          <h2 className="text-lg font-semibold text-text-primary">{modalTitle}</h2>
+          <button onClick={onClose} aria-label={t('agents.modal.close_aria')} className="text-text-secondary hover:text-text-primary"><X className="h-5 w-5" /></button>
         </div>
 
         {agentId && (
@@ -467,7 +456,7 @@ function AgentModal({
                   : 'border-transparent text-text-secondary hover:text-text-primary'
               }`}
             >
-              General
+              {t('agents.modal.tab_general')}
             </button>
             <button
               type="button"
@@ -478,7 +467,7 @@ function AgentModal({
                   : 'border-transparent text-text-secondary hover:text-text-primary'
               }`}
             >
-              <Wrench className="h-3.5 w-3.5" /> Tools
+              <Wrench className="h-3.5 w-3.5" /> {t('agents.modal.tab_tools')}
             </button>
           </div>
         )}
@@ -489,13 +478,13 @@ function AgentModal({
             className="p-5 space-y-4"
           >
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Name</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_name')}</label>
               <input value={form.name} onChange={(e) => set('name', e.target.value)} required
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Type</label>
+                <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_type')}</label>
                 <select value={form.type} onChange={(e) => set('type', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
                   {AGENT_TYPES.map((slug) => {
@@ -506,7 +495,7 @@ function AgentModal({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Language</label>
+                <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_language')}</label>
                 <select value={form.language} onChange={(e) => set('language', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
                   {AGENT_LANGUAGES.map((l) => (
@@ -518,7 +507,7 @@ function AgentModal({
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Model</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_model')}</label>
               <select value={form.model} onChange={(e) => set('model', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
                 {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -530,12 +519,12 @@ function AgentModal({
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">System Prompt</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_system_prompt')}</label>
               <textarea value={form.system_prompt} onChange={(e) => set('system_prompt', e.target.value)} rows={6}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Welcome Greeting</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_welcome_greeting')}</label>
               <input value={form.welcome_greeting} onChange={(e) => set('welcome_greeting', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
@@ -547,19 +536,19 @@ function AgentModal({
               labelClassName="block text-sm font-medium text-text-primary mb-1"
             />
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Temperature: {form.temperature}</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_temperature', { value: form.temperature })}</label>
               <input type="range" min="0" max="1" step="0.1" value={form.temperature}
                 onChange={(e) => set('temperature', parseFloat(e.target.value))}
                 className="w-full" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Scheduling Calendar</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_scheduling_calendar')}</label>
               <select
                 value={form.scheduling_provider}
                 onChange={(e) => set('scheduling_provider', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                <option value="">Tenant default (any enabled)</option>
+                <option value="">{t('agents.modal.scheduling_default_option')}</option>
                 {schedulingOptions.map((opt) => (
                   <option key={opt.provider} value={opt.provider}>
                     {opt.name}
@@ -568,27 +557,27 @@ function AgentModal({
                 {form.scheduling_provider &&
                   !schedulingOptions.some((o) => o.provider === form.scheduling_provider) && (
                     <option value={form.scheduling_provider}>
-                      {formatSchedulingProvider(form.scheduling_provider)} (not connected)
+                      {t('agents.modal.scheduling_not_connected_suffix', { provider: formatSchedulingProvider(form.scheduling_provider) })}
                     </option>
                   )}
               </select>
               <p className="mt-1 text-xs text-text-secondary">
-                Appointments booked by this agent are sent only to the chosen calendar. Phone-number setting overrides this.
+                {t('agents.modal.scheduling_help')}
               </p>
             </div>
             {mutation.error && <p className="text-danger text-sm">{(mutation.error as Error).message}</p>}
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-lg border border-border hover:bg-surface-hover transition">Cancel</button>
+                className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary rounded-lg border border-border hover:bg-surface-hover transition">{t('agents.modal.cancel')}</button>
               <button type="submit" disabled={mutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition disabled:opacity-50">
-                {mutation.isPending ? 'Saving...' : agentId ? 'Update' : 'Create'}
+                {mutation.isPending ? t('agents.modal.saving') : agentId ? t('agents.modal.update') : t('agents.modal.create')}
               </button>
             </div>
           </form>
         ) : (
           <div className="p-5">
-            {agentId && <ToolsConfigSection agentId={agentId} />}
+            {agentId && <ToolsConfigSection agentId={agentId} t={t} />}
           </div>
         )}
     </Modal>
@@ -667,7 +656,7 @@ export default function Agents() {
       for (let i = 0; i < targets.length; i += BULK_FIX_CONCURRENCY) {
         const slice = targets.slice(i, i + BULK_FIX_CONCURRENCY);
         const results = await Promise.allSettled(
-          slice.map((t) => api.patch(`/agents/${t.id}`, { voice: t.recommendedVoice })),
+          slice.map((target) => api.patch(`/agents/${target.id}`, { voice: target.recommendedVoice })),
         );
         failureCount += results.filter((r) => r.status === 'rejected').length;
       }
@@ -679,7 +668,11 @@ export default function Agents() {
       if (failureCount > 0) {
         setBulkFixState({
           status: 'error',
-          message: `Updated ${total - failureCount} of ${total} agents. ${failureCount} failed — please retry.`,
+          message: tenantT('agents.bulk_voice_fix.error_partial', {
+            success: total - failureCount,
+            total,
+            failed: failureCount,
+          }),
         });
       } else {
         setBulkFixState({ status: 'idle' });
@@ -687,7 +680,7 @@ export default function Agents() {
     },
     onError: (err: unknown) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      const message = err instanceof Error ? err.message : 'Bulk fix failed';
+      const message = err instanceof Error ? err.message : tenantT('agents.bulk_voice_fix.error_default');
       setBulkFixState({ status: 'error', message });
     },
   });
@@ -695,9 +688,7 @@ export default function Agents() {
   const handleBulkFixVoices = () => {
     if (mismatchedAgents.length === 0) return;
     const confirmed = window.confirm(
-      mismatchedAgents.length === 1
-        ? `Switch 1 agent to its recommended voice?`
-        : `Switch all ${mismatchedAgents.length} agents to their recommended voices?`,
+      tenantT('agents.bulk_voice_fix.confirm', { count: mismatchedAgents.length }),
     );
     if (!confirmed) return;
     bulkFixMutation.mutate(
@@ -713,13 +704,13 @@ export default function Agents() {
         actions={isManager ? (
           <TooltipWalkthrough
             tooltipKey="agents-create"
-            title="Create Your First Agent"
-            description="Start by creating an AI voice agent. Choose a template that matches your business type, then customize the greeting, tools, and escalation rules."
+            title={tenantT('agents.walkthrough.title')}
+            description={tenantT('agents.walkthrough.description')}
             position="left"
           >
             <button onClick={() => setEditingId('new')}
               className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-              <Plus className="h-4 w-4" /> New Agent
+              <Plus className="h-4 w-4" /> {tenantT('agents.new_agent')}
             </button>
           </TooltipWalkthrough>
         ) : undefined}
@@ -729,8 +720,8 @@ export default function Agents() {
         <SchedulingDriftBanner
           count={agentsWithDisconnectedCalendar.length}
           disconnectedProviders={disconnectedAgentProviders}
-          subjectSingular="agent"
-          subjectPlural="agents"
+          subjectSingular={tenantT('agents.scheduling_drift.subject_singular')}
+          subjectPlural={tenantT('agents.scheduling_drift.subject_plural')}
           storageKey="agents"
         />
       )}
@@ -744,9 +735,7 @@ export default function Agents() {
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
               <p className="font-medium">
-                {mismatchedAgents.length === 1
-                  ? '1 agent is using a voice not recommended for its language.'
-                  : `${mismatchedAgents.length} agents are using a voice not recommended for their language.`}
+                {tenantT('agents.bulk_voice_fix.title', { count: mismatchedAgents.length })}
               </p>
               {bulkFixState.status === 'error' && (
                 <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
@@ -762,8 +751,8 @@ export default function Agents() {
             className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {bulkFixState.status === 'running'
-              ? 'Switching voices…'
-              : 'Switch all to recommended voices'}
+              ? tenantT('agents.bulk_voice_fix.fix_button_running')
+              : tenantT('agents.bulk_voice_fix.fix_button')}
           </button>
         </div>
       )}
@@ -774,10 +763,10 @@ export default function Agents() {
         <div className="bg-surface border border-border rounded-xl">
           <EmptyState
             icon={Bot}
-            title="No agents yet"
-            description="Create your first agent to start handling calls."
+            title={tenantT('agents.empty_state.title')}
+            description={tenantT('agents.empty_state.description')}
             primaryAction={{
-              label: 'New Agent',
+              label: tenantT('agents.new_agent'),
               icon: Plus,
               onClick: () => setEditingId('new'),
             }}
@@ -815,25 +804,25 @@ export default function Agents() {
                       type="button"
                       onClick={openVoiceFix}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition cursor-pointer"
-                      title={`"${agent.voice}" isn't recommended for ${languageLabel}. Click to switch to "${recommendedVoice}".`}
-                      aria-label={`Voice ${agent.voice} not recommended for ${languageLabel}. Switch to ${recommendedVoice}.`}
+                      title={tenantT('agents.card.voice_mismatch_tooltip_action', { voice: agent.voice, language: languageLabel, recommended: recommendedVoice })}
+                      aria-label={tenantT('agents.card.voice_mismatch_aria', { voice: agent.voice, language: languageLabel, recommended: recommendedVoice })}
                     >
                       <AlertTriangle className="h-3 w-3" />
-                      Voice mismatch
+                      {tenantT('agents.card.voice_mismatch_label')}
                     </button>
                   )}
                   {voiceMismatch && !isManager && (
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50"
-                      title={`"${agent.voice}" isn't recommended for ${languageLabel}. Recommended: "${recommendedVoice}".`}
+                      title={tenantT('agents.card.voice_mismatch_tooltip_static', { voice: agent.voice, language: languageLabel, recommended: recommendedVoice })}
                     >
                       <AlertTriangle className="h-3 w-3" />
-                      Voice mismatch
+                      {tenantT('agents.card.voice_mismatch_label')}
                     </span>
                   )}
                   {isFederated && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                      <Globe className="h-3 w-3" /> External
+                      <Globe className="h-3 w-3" /> {tenantT('agents.card.external_label')}
                     </span>
                   )}
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-surface-hover text-text-secondary'}`}>
@@ -844,7 +833,16 @@ export default function Agents() {
               {isFederated && (
                 <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 mb-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-800/30">
                   <Globe className="h-3.5 w-3.5 shrink-0" />
-                  <span>Managed externally via {agent.remote_system ?? 'remote system'}{agent.last_sync_at ? ` · Last sync: ${new Date(agent.last_sync_at).toLocaleDateString()}` : ''}</span>
+                  <span>
+                    {agent.last_sync_at
+                      ? tenantT('agents.card.external_managed_with_sync', {
+                          system: agent.remote_system ?? tenantT('agents.card.external_remote_default'),
+                          date: new Date(agent.last_sync_at).toLocaleDateString(),
+                        })
+                      : tenantT('agents.card.external_managed', {
+                          system: agent.remote_system ?? tenantT('agents.card.external_remote_default'),
+                        })}
+                  </span>
                 </div>
               )}
               <div className="flex items-center gap-2 mb-3">
@@ -860,10 +858,10 @@ export default function Agents() {
                           navigate(`/connectors?provider=${encodeURIComponent(provider)}`)
                         }
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition cursor-pointer"
-                        title={`${formatSchedulingProvider(provider)} is no longer connected. Click to reconnect this calendar in Integrations.`}
+                        title={tenantT('agents.card.scheduling_disconnected_tooltip', { provider: formatSchedulingProvider(provider) })}
                       >
                         <AlertTriangle className="h-3 w-3" />
-                        {formatSchedulingProvider(provider)} (not connected)
+                        {tenantT('agents.card.scheduling_disconnected_label', { provider: formatSchedulingProvider(provider) })}
                       </button>
                     );
                   }
@@ -872,12 +870,12 @@ export default function Agents() {
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
                       title={
                         provider
-                          ? `Books appointments into ${formatSchedulingProvider(provider)}`
-                          : 'Uses the tenant default scheduling calendar'
+                          ? tenantT('agents.card.scheduling_books_into', { provider: formatSchedulingProvider(provider) })
+                          : tenantT('agents.card.scheduling_uses_default')
                       }
                     >
                       <Calendar className="h-3 w-3" />
-                      {provider ? formatSchedulingProvider(provider) : 'Default'}
+                      {provider ? formatSchedulingProvider(provider) : tenantT('agents.card.scheduling_default')}
                     </span>
                   );
                 })()}
@@ -891,13 +889,12 @@ export default function Agents() {
                     )
                   }
                   className="w-full text-left flex items-start gap-2 text-xs mb-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/25 transition"
-                  title="Open Integrations to reconnect this calendar"
+                  title={tenantT('agents.card.scheduling_drift_open_tooltip')}
                 >
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                   <span className="text-amber-800 dark:text-amber-200">
-                    {formatSchedulingProvider(agent.scheduling_provider!)} isn't connected.
-                    Appointments booked by this agent won't sync until you reconnect it.
-                    <span className="ml-1 font-semibold underline">Reconnect →</span>
+                    {tenantT('agents.card.scheduling_drift_message', { provider: formatSchedulingProvider(agent.scheduling_provider!) })}
+                    <span className="ml-1 font-semibold underline">{tenantT('agents.card.scheduling_drift_reconnect_link')}</span>
                   </span>
                 </button>
               )}
@@ -907,20 +904,24 @@ export default function Agents() {
               {isManager && !isFederated && (
                 <div className="flex items-center gap-2 pt-2 border-t border-border">
                   <button onClick={() => navigate(`/agents/${agent.id}/builder`)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
-                    <Pencil className="h-3.5 w-3.5" /> Edit
+                    <Pencil className="h-3.5 w-3.5" /> {tenantT('agents.card.edit')}
                   </button>
                   <button onClick={() => setEditingId(agent.id)} className="text-text-secondary hover:text-primary text-xs font-medium inline-flex items-center gap-1 transition">
-                    <Workflow className="h-3.5 w-3.5" /> Quick Settings
+                    <Workflow className="h-3.5 w-3.5" /> {tenantT('agents.card.quick_settings')}
                   </button>
-                  <button onClick={() => { if (confirm('Delete this agent?')) deleteMut.mutate(agent.id); }}
+                  <button onClick={() => { if (confirm(tenantT('agents.card.delete_confirm'))) deleteMut.mutate(agent.id); }}
                     className="text-text-secondary hover:text-danger text-xs font-medium inline-flex items-center gap-1 transition ml-auto">
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                    <Trash2 className="h-3.5 w-3.5" /> {tenantT('agents.card.delete')}
                   </button>
                 </div>
               )}
               {isFederated && (
                 <div className="pt-2 border-t border-border">
-                  <p className="text-xs text-text-muted">Analytics and call logs are available. Agent configuration is managed in {agent.remote_system ?? 'the remote system'}.</p>
+                  <p className="text-xs text-text-muted">
+                    {tenantT('agents.card.external_config_note', {
+                      system: agent.remote_system ?? tenantT('agents.card.external_config_note_default'),
+                    })}
+                  </p>
                 </div>
               )}
             </div>
