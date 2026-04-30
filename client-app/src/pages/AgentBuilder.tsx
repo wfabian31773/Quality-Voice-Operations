@@ -1,6 +1,6 @@
 import '../styles/tw-app.css';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ReactFlow,
@@ -59,6 +59,7 @@ import {
 } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import VoicePicker from '../components/VoicePicker';
+import Modal from '../components/Modal';
 import { PageHeader } from '../components/ui';
 
 type BuilderT = (key: AgentBuilderTKey, params?: Record<string, string | number>) => string;
@@ -2501,6 +2502,41 @@ function AgentBuilderInner() {
     },
   });
 
+  // Mirror the unsaved-changes guard added to Settings (task #1037): warn on
+  // browser-level unloads (close tab, refresh, address-bar navigation) and
+  // intercept in-app router navigation away from the builder when there are
+  // pending edits. The router was migrated to a data router in task #1039 so
+  // useBlocker works app-wide.
+  useEffect(() => {
+    if (!hasChanges) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers ignore the returned string and show their own
+      // localized prompt, but a non-empty `returnValue` is still required
+      // to actually trigger the dialog.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasChanges]);
+
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (!hasChanges) return false;
+    // Don't prompt for no-op same-path navigations (e.g. updating query
+    // params on the builder route itself).
+    if (currentLocation.pathname === nextLocation.pathname) return false;
+    return true;
+  });
+
+  // If a save clears `hasChanges` while the prompt is already on screen, just
+  // let the pending navigation through instead of stranding the user behind a
+  // no-longer-needed dialog.
+  useEffect(() => {
+    if (blocker.state === 'blocked' && !hasChanges) {
+      blocker.proceed();
+    }
+  }, [blocker, hasChanges]);
+
   const rollbackMutation = useMutation({
     mutationFn: (version: number) => api.post(`/agents/${id}/rollback`, { version }),
     onSuccess: () => {
@@ -3784,8 +3820,24 @@ function AgentBuilderInner() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={(changes) => { onNodesChange(changes); setHasChanges(true); }}
-            onEdgesChange={(changes) => { onEdgesChange(changes); setHasChanges(true); }}
+            // Only persisted change types should mark the canvas dirty.
+            // React Flow also emits `select` (clicking a node) and
+            // `dimensions` (initial measurement) events that don't change
+            // anything saved on the agent — flagging those would enable the
+            // Save button on a fresh load and pop the leave-confirm modal
+            // when the operator just clicked around without editing.
+            onNodesChange={(changes) => {
+              onNodesChange(changes);
+              if (changes.some((c) => c.type === 'position' || c.type === 'add' || c.type === 'remove' || c.type === 'replace')) {
+                setHasChanges(true);
+              }
+            }}
+            onEdgesChange={(changes) => {
+              onEdgesChange(changes);
+              if (changes.some((c) => c.type === 'add' || c.type === 'remove' || c.type === 'replace')) {
+                setHasChanges(true);
+              }
+            }}
             onConnect={onConnect}
             onDrop={onDrop}
             onDragOver={onDragOver}
@@ -4058,6 +4110,53 @@ function AgentBuilderInner() {
       {shortcutsHelpOpen && (
         <BuilderShortcutsModal onClose={() => setShortcutsHelpOpen(false)} t={t} />
       )}
+      <Modal
+        open={blocker.state === 'blocked'}
+        onClose={() => {
+          if (blocker.state === 'blocked') blocker.reset();
+        }}
+        labelledBy="builder-leave-confirm-title"
+      >
+        <div className="p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+            </div>
+            <div className="flex-1">
+              <h2
+                id="builder-leave-confirm-title"
+                className="text-base font-semibold text-text-primary"
+              >
+                Leave with unsaved changes?
+              </h2>
+              <p className="text-sm text-text-muted mt-1">
+                You have unsaved agent edits. If you leave now, your changes
+                will be lost.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (blocker.state === 'blocked') blocker.reset();
+              }}
+              className="inline-flex items-center px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-surface-hover"
+            >
+              Stay on page
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (blocker.state === 'blocked') blocker.proceed();
+              }}
+              className="inline-flex items-center px-4 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg"
+            >
+              Leave anyway
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
