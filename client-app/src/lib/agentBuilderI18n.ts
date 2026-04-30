@@ -163,6 +163,7 @@ export type AgentBuilderTKey =
   | 'tplRealEstate'
   | 'tplRestaurant'
   | 'tplSalon'
+  | 'tplPropertyManagement'
   | 'tplMedicalDesc'
   | 'tplDentalDesc'
   | 'tplHvacDesc'
@@ -171,6 +172,7 @@ export type AgentBuilderTKey =
   | 'tplRealEstateDesc'
   | 'tplRestaurantDesc'
   | 'tplSalonDesc'
+  | 'tplPropertyManagementDesc'
   | 'agentTypeGeneral'
   | 'agentTypeAnsweringService'
   | 'agentTypeMedicalAfterHours'
@@ -281,6 +283,8 @@ export type AgentBuilderTKey =
   | 'edgeLabelCallback'
   | 'edgeLabelAvailable'
   | 'edgeLabelWaitlist'
+  | 'edgeLabelMaintenance'
+  | 'edgeLabelTour'
   | 'edgeLabelYes'
   | 'edgeLabelNo'
   | 'unsavedLeaveTitle'
@@ -445,6 +449,7 @@ const EN: Record<AgentBuilderTKey, string> = {
   tplRealEstate: 'Real Estate Lead',
   tplRestaurant: 'Restaurant Reservations',
   tplSalon: 'Salon & Spa',
+  tplPropertyManagement: 'Property Management',
   tplMedicalDesc: 'Triage urgent vs. routine medical calls and book follow-ups',
   tplDentalDesc: 'Book cleanings, confirm patient details, and send reminders',
   tplHvacDesc: 'Dispatch emergency repairs and schedule routine service visits',
@@ -453,6 +458,7 @@ const EN: Record<AgentBuilderTKey, string> = {
   tplRealEstateDesc: 'Qualify property leads and book showings with agents',
   tplRestaurantDesc: 'Take reservations or add callers to the waitlist',
   tplSalonDesc: 'Book stylist appointments and confirm the day before',
+  tplPropertyManagementDesc: 'Route residents, prospects, and vendors — log maintenance and book tours',
   agentTypeGeneral: 'General',
   agentTypeAnsweringService: 'Answering Service',
   agentTypeMedicalAfterHours: 'Medical After-Hours',
@@ -563,6 +569,8 @@ const EN: Record<AgentBuilderTKey, string> = {
   edgeLabelCallback: 'Callback',
   edgeLabelAvailable: 'Available',
   edgeLabelWaitlist: 'Waitlist',
+  edgeLabelMaintenance: 'Maintenance',
+  edgeLabelTour: 'Tour',
   edgeLabelYes: 'Yes',
   edgeLabelNo: 'No',
   unsavedLeaveTitle: 'Leave with unsaved changes?',
@@ -716,6 +724,7 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'Captación inmobiliaria',
   tplRestaurant: 'Reservas de restaurante',
   tplSalon: 'Salón y spa',
+  tplPropertyManagement: 'Administración de propiedades',
   tplMedicalDesc: 'Clasifica llamadas médicas urgentes y agenda seguimientos',
   tplDentalDesc: 'Reserva limpiezas, confirma datos del paciente y envía recordatorios',
   tplHvacDesc: 'Despacha reparaciones urgentes y agenda visitas de mantenimiento',
@@ -724,6 +733,7 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'Califica leads inmobiliarios y agenda visitas con agentes',
   tplRestaurantDesc: 'Toma reservas o añade clientes a la lista de espera',
   tplSalonDesc: 'Reserva citas con estilistas y confirma el día antes',
+  tplPropertyManagementDesc: 'Enruta residentes, prospectos y proveedores: registra mantenimiento y agenda visitas',
   agentTypeGeneral: 'General',
   agentTypeAnsweringService: 'Servicio de respuesta',
   agentTypeMedicalAfterHours: 'Atención médica fuera de horario',
@@ -846,6 +856,8 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'Devolver llamada',
   edgeLabelAvailable: 'Disponible',
   edgeLabelWaitlist: 'Lista de espera',
+  edgeLabelMaintenance: 'Mantenimiento',
+  edgeLabelTour: 'Visita',
   edgeLabelYes: 'Sí',
   edgeLabelNo: 'No',
   unsavedLeaveTitle: '¿Salir con cambios sin guardar?',
@@ -999,6 +1011,7 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'Lead immobilier',
   tplRestaurant: 'Réservations de restaurant',
   tplSalon: 'Salon & spa',
+  tplPropertyManagement: 'Gestion immobilière',
   tplMedicalDesc: 'Triez les appels urgents et planifiez les suivis médicaux',
   tplDentalDesc: 'Planifiez les détartrages, confirmez les patients et envoyez des rappels',
   tplHvacDesc: 'Dispatchez les urgences et planifiez les visites d\'entretien',
@@ -1007,6 +1020,7 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'Qualifiez les pistes immobilières et planifiez les visites',
   tplRestaurantDesc: 'Prenez des réservations ou ajoutez à la liste d\'attente',
   tplSalonDesc: 'Planifiez les rendez-vous et confirmez la veille',
+  tplPropertyManagementDesc: "Orientez résidents, prospects et prestataires : enregistrez l'entretien et planifiez les visites",
   agentTypeGeneral: 'Général',
   agentTypeAnsweringService: "Service de réception d'appels",
   agentTypeMedicalAfterHours: 'Médical hors heures',
@@ -1129,6 +1143,8 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'Rappel',
   edgeLabelAvailable: 'Disponible',
   edgeLabelWaitlist: "Liste d'attente",
+  edgeLabelMaintenance: 'Entretien',
+  edgeLabelTour: 'Visite',
   edgeLabelYes: 'Oui',
   edgeLabelNo: 'Non',
   unsavedLeaveTitle: 'Quitter sans enregistrer les modifications ?',
@@ -1282,6 +1298,7 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'Immobilien-Lead',
   tplRestaurant: 'Restaurantreservierungen',
   tplSalon: 'Salon & Spa',
+  tplPropertyManagement: 'Hausverwaltung',
   tplMedicalDesc: 'Notfälle priorisieren und Folgetermine buchen',
   tplDentalDesc: 'Reinigungen buchen, Patientendaten bestätigen und erinnern',
   tplHvacDesc: 'Notdienste disponieren und Wartungstermine vergeben',
@@ -1290,6 +1307,7 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'Immobilien-Leads qualifizieren und Besichtigungen buchen',
   tplRestaurantDesc: 'Reservierungen aufnehmen oder auf die Warteliste setzen',
   tplSalonDesc: 'Termine buchen und am Vortag bestätigen',
+  tplPropertyManagementDesc: 'Mieter, Interessenten und Dienstleister leiten – Reparaturen erfassen und Besichtigungen buchen',
   agentTypeGeneral: 'Allgemein',
   agentTypeAnsweringService: 'Anrufannahme',
   agentTypeMedicalAfterHours: 'Medizinischer Notdienst',
@@ -1412,6 +1430,8 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'Rückruf',
   edgeLabelAvailable: 'Verfügbar',
   edgeLabelWaitlist: 'Warteliste',
+  edgeLabelMaintenance: 'Reparatur',
+  edgeLabelTour: 'Besichtigung',
   edgeLabelYes: 'Ja',
   edgeLabelNo: 'Nein',
   unsavedLeaveTitle: 'Mit ungespeicherten Änderungen verlassen?',
@@ -1565,6 +1585,7 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'Lead imobiliário',
   tplRestaurant: 'Reservas de restaurante',
   tplSalon: 'Salão e spa',
+  tplPropertyManagement: 'Administração de imóveis',
   tplMedicalDesc: 'Triagem de chamadas urgentes e agendamento de retornos',
   tplDentalDesc: 'Agende limpezas, confirme dados do paciente e envie lembretes',
   tplHvacDesc: 'Despache emergências e agende visitas de manutenção',
@@ -1573,6 +1594,7 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'Qualifique leads de imóveis e agende visitas',
   tplRestaurantDesc: 'Receba reservas ou coloque na lista de espera',
   tplSalonDesc: 'Agende atendimentos e confirme no dia anterior',
+  tplPropertyManagementDesc: 'Encaminhe moradores, prospects e fornecedores — registre manutenção e agende visitas',
   agentTypeGeneral: 'Geral',
   agentTypeAnsweringService: 'Atendimento telefônico',
   agentTypeMedicalAfterHours: 'Plantão médico',
@@ -1695,6 +1717,8 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'Retornar ligação',
   edgeLabelAvailable: 'Disponível',
   edgeLabelWaitlist: 'Lista de espera',
+  edgeLabelMaintenance: 'Manutenção',
+  edgeLabelTour: 'Visita',
   edgeLabelYes: 'Sim',
   edgeLabelNo: 'Não',
   unsavedLeaveTitle: 'Sair com alterações não salvas?',
@@ -1848,6 +1872,7 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'Lead immobiliare',
   tplRestaurant: 'Prenotazioni ristorante',
   tplSalon: 'Salone e spa',
+  tplPropertyManagement: 'Gestione immobiliare',
   tplMedicalDesc: 'Smista urgenze mediche e prenota i follow-up',
   tplDentalDesc: 'Prenota igiene, conferma i dati del paziente e invia promemoria',
   tplHvacDesc: 'Smista emergenze e pianifica interventi di manutenzione',
@@ -1856,6 +1881,7 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'Qualifica lead immobiliari e fissa visite con gli agenti',
   tplRestaurantDesc: 'Prendi prenotazioni o aggiungi alla lista d\'attesa',
   tplSalonDesc: 'Prenota appuntamenti e conferma il giorno prima',
+  tplPropertyManagementDesc: 'Indirizza residenti, prospect e fornitori — registra la manutenzione e prenota le visite',
   agentTypeGeneral: 'Generale',
   agentTypeAnsweringService: 'Servizio risposta',
   agentTypeMedicalAfterHours: 'Servizio medico fuori orario',
@@ -1978,6 +2004,8 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'Richiamo',
   edgeLabelAvailable: 'Disponibile',
   edgeLabelWaitlist: "Lista d'attesa",
+  edgeLabelMaintenance: 'Manutenzione',
+  edgeLabelTour: 'Visita',
   edgeLabelYes: 'Sì',
   edgeLabelNo: 'No',
   unsavedLeaveTitle: 'Uscire con modifiche non salvate?',
@@ -2131,6 +2159,7 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'Vastgoedlead',
   tplRestaurant: 'Restaurantreserveringen',
   tplSalon: 'Salon & spa',
+  tplPropertyManagement: 'Vastgoedbeheer',
   tplMedicalDesc: 'Triëer urgente oproepen en plan medische follow-ups',
   tplDentalDesc: 'Plan controles, bevestig patiëntgegevens en stuur herinneringen',
   tplHvacDesc: 'Stuur spoedklussen door en plan onderhoudsbezoeken',
@@ -2139,6 +2168,7 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'Kwalificeer vastgoedleads en plan bezichtigingen',
   tplRestaurantDesc: 'Neem reserveringen op of zet bellers op de wachtlijst',
   tplSalonDesc: 'Boek afspraken en bevestig de dag ervoor',
+  tplPropertyManagementDesc: 'Route bewoners, kandidaat-huurders en leveranciers — leg onderhoud vast en plan bezichtigingen',
   agentTypeGeneral: 'Algemeen',
   agentTypeAnsweringService: 'Telefoonbeantwoording',
   agentTypeMedicalAfterHours: 'Medische nachtdienst',
@@ -2261,6 +2291,8 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'Terugbellen',
   edgeLabelAvailable: 'Beschikbaar',
   edgeLabelWaitlist: 'Wachtlijst',
+  edgeLabelMaintenance: 'Onderhoud',
+  edgeLabelTour: 'Bezichtiging',
   edgeLabelYes: 'Ja',
   edgeLabelNo: 'Nee',
   unsavedLeaveTitle: 'Pagina verlaten met niet-opgeslagen wijzigingen?',
@@ -2414,6 +2446,7 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: '房地产线索',
   tplRestaurant: '餐厅预订',
   tplSalon: '美容美发 / 水疗',
+  tplPropertyManagement: '物业管理',
   tplMedicalDesc: '分诊紧急医疗来电并安排后续预约',
   tplDentalDesc: '预约洁牙、确认患者信息并发送提醒',
   tplHvacDesc: '派遣紧急维修并安排常规上门服务',
@@ -2422,6 +2455,7 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: '筛选房产线索并安排带看',
   tplRestaurantDesc: '接受预订或加入等候名单',
   tplSalonDesc: '预约造型师并在前一天确认',
+  tplPropertyManagementDesc: '分流租户、潜在租客和供应商,登记报修并预约看房',
   agentTypeGeneral: '通用',
   agentTypeAnsweringService: '接听服务',
   agentTypeMedicalAfterHours: '医疗值班',
@@ -2544,6 +2578,8 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: '回拨',
   edgeLabelAvailable: '可用',
   edgeLabelWaitlist: '等候名单',
+  edgeLabelMaintenance: '维修',
+  edgeLabelTour: '看房',
   edgeLabelYes: '是',
   edgeLabelNo: '否',
   unsavedLeaveTitle: '要离开吗?有未保存的更改',
@@ -2697,6 +2733,7 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: '不動産リード',
   tplRestaurant: 'レストラン予約',
   tplSalon: 'サロン & スパ',
+  tplPropertyManagement: '不動産管理',
   tplMedicalDesc: '緊急通話を仕分けし、フォローアップを予約します',
   tplDentalDesc: 'クリーニング予約、患者情報の確認、リマインド送信を行います',
   tplHvacDesc: '緊急対応を割り当て、定期点検を予約します',
@@ -2705,6 +2742,7 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: '物件リードを精査し、内覧を予約します',
   tplRestaurantDesc: '予約を受け付けるか、ウェイトリストに追加します',
   tplSalonDesc: 'スタイリストの予約を取り、前日に確認します',
+  tplPropertyManagementDesc: '入居者・入居検討者・業者を振り分け、修繕依頼の登録と内見予約を行います',
   agentTypeGeneral: '一般',
   agentTypeAnsweringService: '電話応対サービス',
   agentTypeMedicalAfterHours: '医療時間外対応',
@@ -2827,6 +2865,8 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: '折り返し',
   edgeLabelAvailable: '利用可能',
   edgeLabelWaitlist: 'ウェイトリスト',
+  edgeLabelMaintenance: '修繕',
+  edgeLabelTour: '内見',
   edgeLabelYes: 'はい',
   edgeLabelNo: 'いいえ',
   unsavedLeaveTitle: '未保存の変更があります。本当に移動しますか?',
@@ -2980,6 +3020,7 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: '부동산 리드',
   tplRestaurant: '레스토랑 예약',
   tplSalon: '살롱 & 스파',
+  tplPropertyManagement: '부동산 관리',
   tplMedicalDesc: '긴급/일반 진료 통화를 분류하고 후속 예약을 잡습니다',
   tplDentalDesc: '스케일링을 예약하고 환자 정보를 확인하며 리마인더를 보냅니다',
   tplHvacDesc: '긴급 수리를 배차하고 정기 방문 일정을 잡습니다',
@@ -2988,6 +3029,7 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: '부동산 리드를 검증하고 매물 방문 일정을 잡습니다',
   tplRestaurantDesc: '예약을 받거나 대기 명단에 추가합니다',
   tplSalonDesc: '디자이너 예약을 잡고 전날 확인 연락을 보냅니다',
+  tplPropertyManagementDesc: '입주자·임대 희망자·협력업체를 분류하고, 수리 요청을 등록하며 임대 내방 예약을 잡습니다',
   agentTypeGeneral: '일반',
   agentTypeAnsweringService: '전화 응대 서비스',
   agentTypeMedicalAfterHours: '의료 시간외 응대',
@@ -3110,6 +3152,8 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: '콜백',
   edgeLabelAvailable: '가능',
   edgeLabelWaitlist: '대기 목록',
+  edgeLabelMaintenance: '수리',
+  edgeLabelTour: '내방',
   edgeLabelYes: '예',
   edgeLabelNo: '아니오',
   unsavedLeaveTitle: '저장하지 않은 변경 사항이 있습니다. 페이지를 떠나시겠습니까?',
@@ -3263,6 +3307,7 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'عميل عقاري',
   tplRestaurant: 'حجوزات المطعم',
   tplSalon: 'صالون وسبا',
+  tplPropertyManagement: 'إدارة العقارات',
   tplMedicalDesc: 'افرز المكالمات الطبية العاجلة واحجز مواعيد المتابعة',
   tplDentalDesc: 'احجز جلسات تنظيف الأسنان وأكّد بيانات المريض وأرسل التذكيرات',
   tplHvacDesc: 'أرسل فرق الطوارئ واحجز زيارات الصيانة الدورية',
@@ -3271,6 +3316,7 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'أهّل عملاء العقارات واحجز مواعيد المعاينة',
   tplRestaurantDesc: 'استقبل الحجوزات أو أضِف المتصلين إلى قائمة الانتظار',
   tplSalonDesc: 'احجز مواعيد التصفيف وأكدها قبل يوم',
+  tplPropertyManagementDesc: 'وجّه الساكنين والمستأجرين المحتملين والمزودين، وسجّل طلبات الصيانة واحجز جولات التأجير',
   agentTypeGeneral: 'عام',
   agentTypeAnsweringService: 'خدمة الرد على المكالمات',
   agentTypeMedicalAfterHours: 'الخدمات الطبية خارج الدوام',
@@ -3393,6 +3439,8 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'إعادة الاتصال',
   edgeLabelAvailable: 'متاح',
   edgeLabelWaitlist: 'قائمة الانتظار',
+  edgeLabelMaintenance: 'صيانة',
+  edgeLabelTour: 'جولة',
   edgeLabelYes: 'نعم',
   edgeLabelNo: 'لا',
   unsavedLeaveTitle: 'هل تريد المغادرة مع وجود تغييرات لم تُحفظ؟',
@@ -3546,6 +3594,7 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstate: 'रियल एस्टेट लीड',
   tplRestaurant: 'रेस्तरां आरक्षण',
   tplSalon: 'सैलून और स्पा',
+  tplPropertyManagement: 'प्रॉपर्टी मैनेजमेंट',
   tplMedicalDesc: 'अत्यावश्यक और सामान्य कॉल छाँटें और फ़ॉलो-अप शेड्यूल करें',
   tplDentalDesc: 'क्लीनिंग बुक करें, मरीज़ की जानकारी पुष्ट करें और रिमाइंडर भेजें',
   tplHvacDesc: 'आपातकालीन कॉल भेजें और नियमित सर्विस विज़िट शेड्यूल करें',
@@ -3554,6 +3603,7 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   tplRealEstateDesc: 'प्रॉपर्टी लीड्स क्वालिफ़ाई करें और शोइंग बुक करें',
   tplRestaurantDesc: 'रिज़र्वेशन लें या कॉलर्स को वेटलिस्ट में जोड़ें',
   tplSalonDesc: 'स्टाइलिस्ट अपॉइंटमेंट बुक करें और एक दिन पहले पुष्टि करें',
+  tplPropertyManagementDesc: 'निवासियों, संभावित किरायेदारों और वेंडर को रूट करें — मेंटेनेंस लॉग करें और टूर बुक करें',
   agentTypeGeneral: 'सामान्य',
   agentTypeAnsweringService: 'कॉल आंसरिंग सेवा',
   agentTypeMedicalAfterHours: 'मेडिकल आफ्टर-हावर्स',
@@ -3676,6 +3726,8 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelCallback: 'कॉलबैक',
   edgeLabelAvailable: 'उपलब्ध',
   edgeLabelWaitlist: 'प्रतीक्षा सूची',
+  edgeLabelMaintenance: 'मेंटेनेंस',
+  edgeLabelTour: 'टूर',
   edgeLabelYes: 'हाँ',
   edgeLabelNo: 'नहीं',
   unsavedLeaveTitle: 'बिना सहेजे बदलावों के साथ छोड़ें?',
@@ -5258,94 +5310,174 @@ const INDUSTRY_TEMPLATE_COPY: Record<
       },
     },
   },
-  // No matching entry exists in INDUSTRY_TEMPLATES_RAW for property management,
-  // so node copy is intentionally empty — the welcome greeting + system prompt
-  // suffix are what get applied during onboarding when a tenant picks the
-  // Property Management template.
   propertymanagement: {
     en: {
       welcomeGreeting:
         'Thanks for calling. Are you a current resident, looking to lease, or following up on a maintenance request?',
       systemPromptSuffix:
         'You are a property management front desk assistant.\n- Identify whether the caller is a current resident, prospective tenant, or vendor.\n- For maintenance requests, capture the unit number, the issue, and the urgency before logging the work order.\n- Treat floods, gas leaks, no heat or AC, and lockouts as emergencies and escalate immediately.\n- Never quote rent or release lease terms — book a tour or callback with the leasing office instead.',
-      nodes: {},
+      nodes: {
+        '1': { label: 'Front Desk Greeting', prompt: 'Warmly greet the caller and identify the property by name.' },
+        '2': { label: 'Caller Type & Need', prompt: 'Ask whether the caller is a current resident, prospective tenant, or vendor. If a resident, capture the unit number, the maintenance issue, and how urgent it is (emergency vs. routine). If a prospect, ask which floor plan or community they want to tour.' },
+        '3': { label: 'Maintenance vs. Tour' },
+        '4': { label: 'Submit Maintenance Request', toolConfig: 'Open a work order with unit number, issue summary, and urgency. Mark floods, gas leaks, no heat/AC, and lockouts as EMERGENCY and page the on-call maintenance lead.' },
+        '5': { label: 'Book Leasing Tour', toolConfig: 'Schedule a tour with the leasing office for the requested floor plan and time window.' },
+        '6': { label: 'SMS Confirmation', toolConfig: 'Text the caller a confirmation with the work order number or tour time, plus the office callback number.' },
+      },
     },
     es: {
       welcomeGreeting:
         'Gracias por llamar. ¿Es residente actual, busca alquilar o hace seguimiento a una solicitud de mantenimiento?',
       systemPromptSuffix:
         'Eres asistente de recepción de una administración de propiedades.\n- Identifica si quien llama es residente actual, posible inquilino o proveedor.\n- En solicitudes de mantenimiento, registra el número de unidad, el problema y la urgencia antes de abrir la orden de trabajo.\n- Trata como emergencias las inundaciones, fugas de gas, falta de calefacción o aire acondicionado y los bloqueos de cerradura, y escala de inmediato.\n- Nunca cotices el alquiler ni divulgues los términos del contrato; ofrece agendar una visita o que la oficina de alquileres devuelva la llamada.',
-      nodes: {},
+      nodes: {
+        '1': { label: 'Saludo de recepción', prompt: 'Saluda cordialmente y menciona el nombre de la propiedad.' },
+        '2': { label: 'Tipo de llamada y necesidad', prompt: 'Pregunta si quien llama es residente actual, posible inquilino o proveedor. Si es residente, registra el número de unidad, el problema y la urgencia (emergencia o rutina). Si es prospecto, pregunta qué plano o comunidad desea visitar.' },
+        '3': { label: 'Mantenimiento o visita' },
+        '4': { label: 'Registrar solicitud de mantenimiento', toolConfig: 'Crea una orden de trabajo con número de unidad, resumen del problema y urgencia. Marca como EMERGENCIA inundaciones, fugas de gas, falta de calefacción/AC y bloqueos, y avisa al encargado de mantenimiento de guardia.' },
+        '5': { label: 'Agendar visita', toolConfig: 'Reserva una visita con la oficina de alquileres para el plano y la franja horaria solicitados.' },
+        '6': { label: 'Confirmación por SMS', toolConfig: 'Envía al llamante un mensaje con el número de orden o la hora de la visita y el teléfono de contacto.' },
+      },
     },
     fr: {
       welcomeGreeting:
         "Merci de votre appel. Êtes-vous résident actuel, à la recherche d'une location, ou souhaitez-vous suivre une demande d'entretien ?",
       systemPromptSuffix:
         "Vous êtes l'assistant d'accueil d'une société de gestion immobilière.\n- Identifiez si l'appelant est résident actuel, locataire potentiel ou prestataire.\n- Pour les demandes d'entretien, notez le numéro de logement, le problème et l'urgence avant de créer l'ordre de travail.\n- Traitez les inondations, fuites de gaz, panne de chauffage ou de climatisation et clés enfermées comme des urgences, et faites remonter immédiatement.\n- Ne donnez jamais le loyer ni les conditions du bail ; proposez plutôt une visite ou un rappel par le service location.",
-      nodes: {},
+      nodes: {
+        '1': { label: "Accueil de l'immeuble", prompt: "Saluez chaleureusement et nommez l'immeuble." },
+        '2': { label: "Type d'appelant et besoin", prompt: "Demandez si l'appelant est résident actuel, locataire potentiel ou prestataire. Pour un résident, relevez le numéro de logement, la nature du problème et l'urgence (urgence ou routine). Pour un prospect, demandez quel plan ou quelle résidence il souhaite visiter." },
+        '3': { label: 'Entretien ou visite' },
+        '4': { label: "Créer la demande d'entretien", toolConfig: "Ouvrez un ordre de travail avec numéro de logement, résumé du problème et urgence. Marquez comme URGENCE les inondations, fuites de gaz, panne de chauffage/clim et clés enfermées et alertez le responsable d'astreinte." },
+        '5': { label: 'Planifier une visite', toolConfig: 'Réservez une visite avec le service location pour le plan et le créneau demandés.' },
+        '6': { label: 'Confirmation SMS', toolConfig: "Envoyez au demandeur un SMS avec le numéro d'ordre ou l'heure de la visite, ainsi que le numéro de l'agence." },
+      },
     },
     de: {
       welcomeGreeting:
         'Danke für Ihren Anruf. Sind Sie aktueller Mieter, möchten Sie mieten oder verfolgen Sie eine Reparaturanfrage?',
       systemPromptSuffix:
         'Sie sind die Empfangsassistenz einer Hausverwaltung.\n- Klären Sie, ob der Anrufer aktueller Mieter, Mietinteressent oder Dienstleister ist.\n- Erfassen Sie bei Reparaturanfragen die Wohnungsnummer, das Problem und die Dringlichkeit, bevor Sie den Auftrag anlegen.\n- Behandeln Sie Überschwemmungen, Gaslecks, Ausfall von Heizung oder Klimaanlage und Aussperrungen als Notfälle und eskalieren Sie sofort.\n- Nennen Sie nie Miete oder Mietvertragsbedingungen; bieten Sie stattdessen eine Besichtigung oder einen Rückruf vom Vermietungsbüro an.',
-      nodes: {},
+      nodes: {
+        '1': { label: 'Empfangsbegrüßung', prompt: 'Begrüßen Sie den Anrufer freundlich und nennen Sie das Objekt.' },
+        '2': { label: 'Anrufertyp & Anliegen', prompt: 'Fragen Sie, ob der Anrufer aktueller Mieter, Mietinteressent oder Dienstleister ist. Bei Mietern: Wohnungsnummer, Problem und Dringlichkeit erfassen (Notfall oder Routine). Bei Interessenten: Grundriss bzw. Objekt für die gewünschte Besichtigung erfragen.' },
+        '3': { label: 'Reparatur oder Besichtigung' },
+        '4': { label: 'Reparaturauftrag anlegen', toolConfig: 'Auftrag mit Wohnungsnummer, Problembeschreibung und Dringlichkeit anlegen. Überschwemmungen, Gaslecks, Heizungs-/Klimaausfall und Aussperrungen als NOTFALL markieren und Bereitschaftsleitung benachrichtigen.' },
+        '5': { label: 'Besichtigung buchen', toolConfig: 'Besichtigung beim Vermietungsbüro für gewünschten Grundriss und Zeitfenster reservieren.' },
+        '6': { label: 'SMS-Bestätigung', toolConfig: 'Anrufer eine SMS mit Auftragsnummer oder Besichtigungstermin und Rückrufnummer der Verwaltung senden.' },
+      },
     },
     pt: {
       welcomeGreeting:
         'Obrigado por ligar. Você é morador atual, procura alugar ou está acompanhando uma solicitação de manutenção?',
       systemPromptSuffix:
         'Você é o assistente de recepção de uma administradora de imóveis.\n- Identifique se quem liga é morador atual, possível inquilino ou fornecedor.\n- Para solicitações de manutenção, registre o número da unidade, o problema e a urgência antes de abrir a ordem de serviço.\n- Trate como emergências as inundações, vazamentos de gás, falta de aquecimento ou ar-condicionado e arrombamentos, e encaminhe imediatamente.\n- Nunca informe o valor do aluguel nem as condições do contrato; ofereça agendar uma visita ou um retorno do escritório de locação.',
-      nodes: {},
+      nodes: {
+        '1': { label: 'Saudação da recepção', prompt: 'Cumprimente o cliente com cordialidade e identifique o empreendimento pelo nome.' },
+        '2': { label: 'Tipo de chamada e necessidade', prompt: 'Pergunte se quem liga é morador atual, possível inquilino ou fornecedor. Para moradores, registre o número da unidade, o problema e a urgência (emergência ou rotina). Para prospects, pergunte qual planta ou empreendimento deseja visitar.' },
+        '3': { label: 'Manutenção ou visita' },
+        '4': { label: 'Abrir solicitação de manutenção', toolConfig: 'Crie ordem de serviço com unidade, descrição do problema e urgência. Marque como EMERGÊNCIA inundações, vazamentos de gás, falta de aquecimento/ar-condicionado e arrombamentos e acione o líder de manutenção de plantão.' },
+        '5': { label: 'Agendar visita', toolConfig: 'Reserve uma visita com a equipe de locação para a planta e a janela de horário solicitadas.' },
+        '6': { label: 'Confirmação por SMS', toolConfig: 'Envie ao cliente um SMS com o número da OS ou o horário da visita e o telefone do escritório.' },
+      },
     },
     it: {
       welcomeGreeting:
         'Grazie per la chiamata. È un residente attuale, cerca un affitto o sta seguendo una richiesta di manutenzione?',
       systemPromptSuffix:
         "Sei l'assistente di reception di una società di gestione immobiliare.\n- Identifica se chi chiama è un residente attuale, un potenziale inquilino o un fornitore.\n- Per le richieste di manutenzione, annota il numero dell'unità, il problema e l'urgenza prima di aprire l'ordine di lavoro.\n- Tratta come emergenze allagamenti, fughe di gas, assenza di riscaldamento o aria condizionata e blocchi della serratura, ed escala immediatamente.\n- Non comunicare mai il canone né le condizioni del contratto; offri invece una visita o un richiamo dell'ufficio locazioni.",
-      nodes: {},
+      nodes: {
+        '1': { label: 'Saluto in reception', prompt: "Saluta cordialmente l'interlocutore e indica il nome dell'immobile." },
+        '2': { label: 'Tipo di chiamata e necessità', prompt: "Chiedi se chi chiama è un residente attuale, un potenziale inquilino o un fornitore. Per i residenti registra numero dell'unità, problema e urgenza (emergenza o ordinaria). Per i prospect chiedi quale planimetria o residenza vorrebbe visitare." },
+        '3': { label: 'Manutenzione o visita' },
+        '4': { label: 'Apri richiesta di manutenzione', toolConfig: "Apri un ordine di lavoro con numero unità, descrizione del problema e urgenza. Segna come EMERGENZA allagamenti, fughe di gas, mancanza di riscaldamento/condizionamento e blocchi della serratura e avvisa subito il referente di manutenzione." },
+        '5': { label: 'Prenota visita', toolConfig: 'Pianifica una visita con l\'ufficio locazioni per la planimetria e la fascia oraria richieste.' },
+        '6': { label: 'Conferma SMS', toolConfig: 'Invia al chiamante un SMS con numero ordine o orario della visita e numero di richiamo dell\'ufficio.' },
+      },
     },
     nl: {
       welcomeGreeting:
         'Bedankt voor uw oproep. Bent u huidige bewoner, zoekt u een woning of belt u over een onderhoudsverzoek?',
       systemPromptSuffix:
         'Je bent de receptie-assistent van een vastgoedbeheerder.\n- Bepaal of de beller huidige bewoner, mogelijke huurder of leverancier is.\n- Noteer bij onderhoudsverzoeken het unitnummer, het probleem en de urgentie voordat je de werkorder aanmaakt.\n- Behandel overstromingen, gaslekken, uitval van verwarming of airco en buitengesloten bewoners als noodgevallen en escaleer direct.\n- Noem nooit de huurprijs of de huurvoorwaarden; bied in plaats daarvan een bezichtiging of terugbelafspraak met de verhuurafdeling aan.',
-      nodes: {},
+      nodes: {
+        '1': { label: 'Receptiebegroeting', prompt: 'Begroet de beller hartelijk en noem de naam van het complex.' },
+        '2': { label: 'Type beller en behoefte', prompt: 'Vraag of de beller huidige bewoner, kandidaat-huurder of leverancier is. Voor bewoners: noteer unitnummer, probleem en urgentie (spoed of regulier). Voor prospects: vraag welke plattegrond of locatie ze willen bezichtigen.' },
+        '3': { label: 'Onderhoud of bezichtiging' },
+        '4': { label: 'Onderhoudsverzoek aanmaken', toolConfig: 'Maak een werkorder met unitnummer, probleemomschrijving en urgentie. Markeer overstromingen, gaslekken, uitval van verwarming/airco en buitengesloten bewoners als SPOED en waarschuw de wachtdienst direct.' },
+        '5': { label: 'Bezichtiging plannen', toolConfig: 'Plan een bezichtiging bij de verhuurafdeling voor de gewenste plattegrond en tijdsblok.' },
+        '6': { label: 'SMS-bevestiging', toolConfig: 'Stuur de beller een sms met het werkordernummer of de afspraaktijd en het kantoornummer.' },
+      },
     },
     zh: {
       welcomeGreeting:
         '感谢您来电。请问您是现住租户、想要租房,还是想跟进一笔报修?',
       systemPromptSuffix:
         '您是物业管理前台助理。\n- 先判别来电者是现住租户、潜在租客还是供应商。\n- 处理报修请求时,先记录房号、故障描述和紧急程度,再创建工单。\n- 漏水、漏气、暖气或空调故障以及反锁等情况按紧急事件处理并立即上报。\n- 切勿报价租金或泄露租约条款,改为邀请安排看房或由租赁办公室回拨。',
-      nodes: {},
+      nodes: {
+        '1': { label: '前台问候', prompt: '热情问候来电者并报出物业名称。' },
+        '2': { label: '来电身份与需求', prompt: '询问对方是现住租户、潜在租客还是供应商。若是租户,记录房号、故障描述以及紧急程度(紧急或常规)。若是潜在租客,询问希望看哪种户型或哪个社区。' },
+        '3': { label: '维修还是看房' },
+        '4': { label: '提交报修工单', toolConfig: '使用房号、故障摘要与紧急程度创建工单。漏水、漏气、暖气/空调故障与反锁标记为「紧急」,并立即呼叫值班维修主管。' },
+        '5': { label: '预约看房', toolConfig: '与租赁办公室预约对应户型和时间段的看房。' },
+        '6': { label: '短信确认', toolConfig: '向来电者发送短信,告知工单号或看房时间,并附上办公室回拨号码。' },
+      },
     },
     ja: {
       welcomeGreeting:
         'お電話ありがとうございます。現在の入居者の方ですか?ご入居をご検討中ですか?それとも修繕依頼のフォローアップでしょうか?',
       systemPromptSuffix:
         'あなたは不動産管理会社の窓口アシスタントです。\n- 入居者・入居検討者・業者のいずれであるかを最初に確認してください。\n- 修繕依頼では、部屋番号・症状・緊急度を聞き取ったうえで作業オーダーを作成してください。\n- 漏水・ガス漏れ・暖房や冷房の故障・締め出しは緊急扱いとし、直ちにエスカレーションしてください。\n- 家賃や賃貸条件は決して提示せず、内見予約または賃貸窓口からの折り返しを提案してください。',
-      nodes: {},
+      nodes: {
+        '1': { label: 'フロント挨拶', prompt: '丁寧に挨拶し、物件名を伝えてください。' },
+        '2': { label: '発信者種別と用件', prompt: '発信者が入居者・入居検討者・業者のいずれかを確認してください。入居者の場合は部屋番号・症状・緊急度(緊急/通常)を聞き取ります。検討者の場合は希望の間取りや物件の内見希望を確認します。' },
+        '3': { label: '修繕か内見か' },
+        '4': { label: '修繕依頼を登録', toolConfig: '部屋番号・症状の概要・緊急度を入力して作業オーダーを作成。漏水・ガス漏れ・暖房や冷房の停止・締め出しは「緊急」として登録し、当番の修繕担当に直ちに通知。' },
+        '5': { label: '内見予約', toolConfig: '希望の間取り・時間帯で賃貸窓口の内見枠を予約します。' },
+        '6': { label: 'SMS確認', toolConfig: '発信者に作業オーダー番号または内見時刻、事務所の折り返し番号をSMSで送信します。' },
+      },
     },
     ko: {
       welcomeGreeting:
         '전화 주셔서 감사합니다. 현재 입주자이신가요? 임대 문의이신가요? 아니면 수리 요청 후속 연락이신가요?',
       systemPromptSuffix:
         '당신은 부동산 관리 회사의 안내 어시스턴트입니다.\n- 통화자가 현재 입주자, 임대 희망자, 협력업체 중 누구인지 먼저 확인하세요.\n- 수리 요청은 호수, 증상, 긴급도를 확인한 뒤 작업 지시를 등록하세요.\n- 누수, 가스 누출, 난방·냉방 고장, 잠금 사고는 긴급으로 처리하고 즉시 에스컬레이션하세요.\n- 임대료나 계약 조건은 절대 안내하지 말고, 임대 오피스의 방문 예약 또는 콜백을 제안하세요.',
-      nodes: {},
+      nodes: {
+        '1': { label: '프런트 인사', prompt: '통화자를 정중히 맞이하고 단지 이름을 알려주세요.' },
+        '2': { label: '통화자 유형 및 용건', prompt: '통화자가 현재 입주자, 임대 희망자, 협력업체 중 누구인지 확인하세요. 입주자라면 호수, 증상, 긴급도(긴급/일반)를 기록합니다. 희망자라면 보고 싶은 평면도나 단지를 묻습니다.' },
+        '3': { label: '수리 또는 내방' },
+        '4': { label: '수리 요청 등록', toolConfig: '호수, 증상 요약, 긴급도로 작업 지시를 생성합니다. 누수, 가스 누출, 난방/냉방 고장, 잠금 사고는 「긴급」으로 표시하고 당직 수리 책임자에게 즉시 호출합니다.' },
+        '5': { label: '임대 내방 예약', toolConfig: '임대 사무실에 원하는 평면도와 시간대로 내방을 예약합니다.' },
+        '6': { label: 'SMS 확인', toolConfig: '통화자에게 작업 지시 번호 또는 내방 시간과 사무실 회신 번호를 SMS로 전송합니다.' },
+      },
     },
     ar: {
       welcomeGreeting:
         'شكرًا لاتصالك. هل أنت ساكن حالي، أم تبحث عن إيجار، أم تتابع طلب صيانة؟',
       systemPromptSuffix:
         'أنت مساعد استقبال في إدارة عقارات.\n- حدّد ما إذا كان المتصل ساكنًا حاليًا أو مستأجرًا محتملاً أو مزودًا.\n- في طلبات الصيانة، سجّل رقم الوحدة، والمشكلة، ودرجة الإلحاح قبل إنشاء أمر العمل.\n- اعتبر الفيضانات وتسرب الغاز وتعطل التدفئة أو التكييف وحالات الإغلاق خارج المنزل حالات طارئة وصعّدها فورًا.\n- لا تحدد قيمة الإيجار أو شروط العقد أبدًا، واقترح بدلًا من ذلك حجز جولة أو معاودة الاتصال من مكتب التأجير.',
-      nodes: {},
+      nodes: {
+        '1': { label: 'ترحيب الاستقبال', prompt: 'رحّب بالمتصل بحرارة واذكر اسم العقار.' },
+        '2': { label: 'نوع المتصل والاحتياج', prompt: 'اسأل إذا كان المتصل ساكنًا حاليًا أو مستأجرًا محتملاً أو مزودًا. إن كان ساكنًا فدوّن رقم الوحدة والمشكلة ودرجة الإلحاح (طارئة أو روتينية). وإن كان مستأجرًا محتملاً فاسأل عن المخطط أو المجمع الذي يرغب بزيارته.' },
+        '3': { label: 'صيانة أم جولة' },
+        '4': { label: 'تسجيل طلب صيانة', toolConfig: 'افتح أمر عمل بالوحدة وملخص العطل ودرجة الإلحاح. سجّل الفيضانات وتسرب الغاز وتعطل التدفئة/التكييف وحالات الإغلاق كحالات طارئة وأبلغ مسؤول الصيانة المناوب فورًا.' },
+        '5': { label: 'حجز جولة تأجير', toolConfig: 'احجز جولة لدى مكتب التأجير وفق المخطط والفترة الزمنية المطلوبة.' },
+        '6': { label: 'تأكيد عبر SMS', toolConfig: 'أرسل للمتصل رسالة SMS تتضمن رقم أمر العمل أو موعد الجولة ورقم اتصال المكتب.' },
+      },
     },
     hi: {
       welcomeGreeting:
         'कॉल करने के लिए धन्यवाद। क्या आप मौजूदा निवासी हैं, किराया लेना चाहते हैं, या किसी मेंटेनेंस रिक्वेस्ट का फ़ॉलो-अप कर रहे हैं?',
       systemPromptSuffix:
         'आप एक प्रॉपर्टी मैनेजमेंट फ्रंट डेस्क असिस्टेंट हैं।\n- पहले पहचानें कि कॉलर मौजूदा निवासी हैं, संभावित किरायेदार हैं या वेंडर।\n- मेंटेनेंस रिक्वेस्ट के लिए वर्क ऑर्डर बनाने से पहले यूनिट नंबर, समस्या और अर्जेंसी दर्ज करें।\n- बाढ़, गैस लीक, हीटिंग या एसी ख़राब होना और लॉकआउट को आपातकाल मानें और तुरंत एस्केलेट करें।\n- किराया या लीज़ की शर्तें कभी न बताएं — इसके बजाय शोइंग या लीज़िंग ऑफ़िस से कॉलबैक का प्रस्ताव दें।',
-      nodes: {},
+      nodes: {
+        '1': { label: 'फ्रंट डेस्क अभिवादन', prompt: 'कॉलर का गर्मजोशी से स्वागत करें और प्रॉपर्टी का नाम बताएं।' },
+        '2': { label: 'कॉलर प्रकार और ज़रूरत', prompt: 'पूछें कि कॉलर मौजूदा निवासी हैं, संभावित किरायेदार हैं या वेंडर। निवासी हों तो यूनिट नंबर, समस्या और अर्जेंसी (आपात या सामान्य) दर्ज करें। संभावित किरायेदार हों तो पूछें कि कौन-सा फ्लोर प्लान या समुदाय देखना चाहते हैं।' },
+        '3': { label: 'मेंटेनेंस या टूर' },
+        '4': { label: 'मेंटेनेंस रिक्वेस्ट दर्ज करें', toolConfig: 'यूनिट नंबर, समस्या के सारांश और अर्जेंसी के साथ वर्क ऑर्डर बनाएं। बाढ़, गैस लीक, हीटिंग/एसी की ख़राबी और लॉकआउट को EMERGENCY मार्क करें और ऑन-कॉल मेंटेनेंस लीड को तुरंत बुलाएं।' },
+        '5': { label: 'लीज़िंग टूर बुक करें', toolConfig: 'अनुरोधित फ्लोर प्लान और समय स्लॉट के लिए लीज़िंग ऑफ़िस के साथ टूर शेड्यूल करें।' },
+        '6': { label: 'SMS पुष्टि', toolConfig: 'कॉलर को वर्क ऑर्डर नंबर या टूर समय और ऑफ़िस का कॉलबैक नंबर SMS से भेजें।' },
+      },
     },
   },
 };

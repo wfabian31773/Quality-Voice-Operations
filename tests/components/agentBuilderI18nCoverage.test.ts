@@ -35,6 +35,8 @@ const ALL_KEYS: AgentBuilderTKey[] = [
   'toneWarm', 'toneDirect', 'tplMedical', 'tplDental', 'tplHvac', 'tplLegal', 'tplSupport',
   'tplRealEstate', 'tplRestaurant', 'tplSalon', 'tplMedicalDesc', 'tplDentalDesc', 'tplHvacDesc',
   'tplLegalDesc', 'tplSupportDesc', 'tplRealEstateDesc', 'tplRestaurantDesc', 'tplSalonDesc',
+  'tplPropertyManagement', 'tplPropertyManagementDesc',
+  'edgeLabelMaintenance', 'edgeLabelTour',
   'agentTypeGeneral', 'agentTypeAnsweringService', 'agentTypeMedicalAfterHours',
   'agentTypeOutboundScheduling', 'agentTypeAppointmentConfirmation', 'agentTypeCustom',
   'agentTypeDental', 'agentTypePropertyManagement', 'agentTypeHomeServices', 'agentTypeLegal',
