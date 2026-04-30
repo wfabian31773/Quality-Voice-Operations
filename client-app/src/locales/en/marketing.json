@@ -2082,5 +2082,87 @@
       "metaTitle": "AI Voice Agents for Hotels & Restaurants | QVO",
       "metaDescription": "Take reservations, answer guest questions, and handle requests in 30+ languages with AI voice agents built for hospitality."
     }
+  },
+  "catalog_categories": {
+    "Product": "Product",
+    "Industries": "Industries",
+    "Resources": "Resources"
+  },
+  "catalog": {
+    "platform-overview": {
+      "title": "Platform overview",
+      "description": "How QVO's voice operations platform works — agents, calls, workflows, and analytics in one place.",
+      "keywords": "platform overview voice operations product"
+    },
+    "features": {
+      "title": "Features",
+      "description": "The full feature set: agent builder, telephony, integrations, observability, autopilot, and more.",
+      "keywords": "features capabilities product"
+    },
+    "integrations": {
+      "title": "Integrations",
+      "description": "Connect QVO to HubSpot, Calendar, Slack, helpdesks, webhooks, and more.",
+      "keywords": "integrations hubspot salesforce slack connectors"
+    },
+    "pricing": {
+      "title": "Pricing",
+      "description": "Plans for solo operators, growing teams, and multi-location enterprises.",
+      "keywords": "pricing plans cost billing"
+    },
+    "ai-agents": {
+      "title": "AI agents",
+      "description": "Showcase of QVO's production AI voice agents and what they can do on a live call.",
+      "keywords": "ai agents voice showcase"
+    },
+    "federated-ingest": {
+      "title": "Federated Ingest API",
+      "description": "Bring your own voice agent. Ingest call events, transcripts, and tickets into QVO from any external voice stack via authenticated REST endpoints with idempotency and 7-day live + 30-day backfill windows.",
+      "keywords": "federated ingest api byo bring your own developer webhooks rest endpoints idempotency backfill integration"
+    },
+    "global-intelligence-network": {
+      "title": "Global Intelligence Network",
+      "description": "Cross-tenant benchmarks for answer rate, AHT, conversion, and CSAT — see how your operation stacks up against the median and top quartile in your vertical, with privacy-first aggregation.",
+      "keywords": "global intelligence gin benchmarks cross-tenant cohort median top quartile vertical analytics comparison"
+    },
+    "vertical-agents": {
+      "title": "Vertical agents",
+      "description": "Pre-built voice agents tuned for specific industries — Azul Vision (field service), Medical Front Desk, Dental, Legal Intake, Real Estate, and more, ready to deploy in minutes.",
+      "keywords": "vertical agents azul vision medical dental field service legal real estate templates industry"
+    },
+    "healthcare": {
+      "title": "Healthcare",
+      "description": "HIPAA-aware voice AI for patient scheduling, intake, refills, and after-hours triage.",
+      "keywords": "healthcare medical hipaa patient clinic"
+    },
+    "dental": {
+      "title": "Dental",
+      "description": "Voice agents for dental practices — appointment scheduling, recall outreach, and insurance triage.",
+      "keywords": "dental dentist practice appointments"
+    },
+    "legal": {
+      "title": "Legal",
+      "description": "Intake automation for law firms — qualified lead capture, conflict checks, and routing to the right attorney.",
+      "keywords": "legal law firm intake attorney"
+    },
+    "real-estate": {
+      "title": "Real estate",
+      "description": "AI agents for brokerages — listing inquiries, showing scheduling, and lead qualification.",
+      "keywords": "real estate brokerage listings agent"
+    },
+    "home-services": {
+      "title": "Home services",
+      "description": "Dispatch and booking automation for HVAC, plumbing, electrical, and field-service trades.",
+      "keywords": "home services hvac plumbing field service trades"
+    },
+    "docs": {
+      "title": "Documentation",
+      "description": "Guides, API reference, and troubleshooting for QVO.",
+      "keywords": "docs documentation guides api"
+    },
+    "demo": {
+      "title": "Live demo",
+      "description": "Try a live QVO voice agent in your browser — no signup required.",
+      "keywords": "demo try live voice"
+    }
   }
 }

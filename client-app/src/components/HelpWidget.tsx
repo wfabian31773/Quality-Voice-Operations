@@ -5,8 +5,11 @@ import {
   Sparkles, Keyboard, Command, ArrowRight, Map, ExternalLink, Globe,
 } from 'lucide-react';
 import { docArticles, type DocArticle, type DocBlock } from '../data/docs';
-import { searchMarketingPages, type MarketingPage } from '../data/marketingPages';
 import { useSearchDocs, useTranslatedArticles } from '../lib/translateDoc';
+import {
+  useSearchMarketingPages,
+  type TranslatedMarketingPage,
+} from '../lib/translateMarketingPage';
 
 function extractText(block: DocBlock): string {
   if (block.type === 'p' || block.type === 'h2' || block.type === 'h3') return block.text;
@@ -100,9 +103,10 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
     [query, searchDocs, fallbackArticles],
   );
 
-  const marketingResults = useMemo<MarketingPage[]>(
-    () => (query.trim() ? searchMarketingPages(query).slice(0, 6) : []),
-    [query],
+  const searchMarketing = useSearchMarketingPages();
+  const marketingResults = useMemo<TranslatedMarketingPage[]>(
+    () => (query.trim() ? searchMarketing(query).slice(0, 6) : []),
+    [query, searchMarketing],
   );
 
   const totalResults = results.length + marketingResults.length;
@@ -250,7 +254,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                                 {highlight(m.description, query)}
                               </p>
                               <p className="text-[10px] text-text-muted/70 uppercase tracking-wider mt-1">
-                                {m.category} · opens in new tab
+                                {m.categoryLabel} · opens in new tab
                               </p>
                             </div>
                           </a>

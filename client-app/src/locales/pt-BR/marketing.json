@@ -2082,5 +2082,87 @@
       "metaTitle": "Agentes de voz IA para hotéis e restaurantes | QVO",
       "metaDescription": "Receba reservas, responda perguntas de hóspedes e atenda solicitações em mais de 30 idiomas com agentes de voz IA criados para hospitalidade."
     }
+  },
+  "catalog_categories": {
+    "Product": "Produto",
+    "Industries": "Indústrias",
+    "Resources": "Recursos"
+  },
+  "catalog": {
+    "platform-overview": {
+      "title": "Visão geral da plataforma",
+      "description": "Como funciona a plataforma de operações de voz da QVO — agentes, chamadas, fluxos e analítica em um só lugar.",
+      "keywords": "plataforma visão geral voz operações produto"
+    },
+    "features": {
+      "title": "Funcionalidades",
+      "description": "O conjunto completo de recursos: construtor de agentes, telefonia, integrações, observabilidade, autopiloto e mais.",
+      "keywords": "funcionalidades recursos capacidades produto"
+    },
+    "integrations": {
+      "title": "Integrações",
+      "description": "Conecte a QVO ao HubSpot, Calendar, Slack, helpdesks, webhooks e mais.",
+      "keywords": "integrações hubspot salesforce slack conectores"
+    },
+    "pricing": {
+      "title": "Preços",
+      "description": "Planos para operadores individuais, equipes em crescimento e empresas com várias unidades.",
+      "keywords": "preços planos custo cobrança"
+    },
+    "ai-agents": {
+      "title": "Agentes de IA",
+      "description": "Vitrine dos agentes de voz com IA da QVO em produção e o que conseguem fazer em uma chamada ao vivo.",
+      "keywords": "ia agentes voz vitrine"
+    },
+    "federated-ingest": {
+      "title": "API Federated Ingest",
+      "description": "Traga seu próprio agente de voz. Envie eventos de chamada, transcrições e tickets para a QVO a partir de qualquer stack externa de voz por endpoints REST autenticados, com idempotência e janelas de 7 dias ao vivo + 30 dias de backfill.",
+      "keywords": "federated ingest api byo traga o seu desenvolvedor webhooks rest endpoints idempotência backfill integração"
+    },
+    "global-intelligence-network": {
+      "title": "Rede Global de Inteligência",
+      "description": "Benchmarks entre tenants de taxa de atendimento, AHT, conversão e CSAT — veja como sua operação se compara à mediana e ao quartil superior do seu vertical, com agregação que prioriza a privacidade.",
+      "keywords": "rede global inteligência gin benchmarks entre tenants coorte mediana quartil superior vertical analítica comparação"
+    },
+    "vertical-agents": {
+      "title": "Agentes verticais",
+      "description": "Agentes de voz prontos, ajustados para indústrias específicas — Azul Vision (serviço em campo), recepção médica, odontológico, admissão jurídica, imobiliário e mais, prontos para implantar em minutos.",
+      "keywords": "vertical agentes azul vision médico odontológico serviço em campo jurídico imobiliário modelos indústria"
+    },
+    "healthcare": {
+      "title": "Saúde",
+      "description": "IA de voz compatível com HIPAA para agendamento de pacientes, admissão, renovações e triagem fora do horário.",
+      "keywords": "saúde médico hipaa paciente clínica"
+    },
+    "dental": {
+      "title": "Odontológico",
+      "description": "Agentes de voz para consultórios odontológicos — agendamento de consultas, lembretes e triagem de convênios.",
+      "keywords": "odontológico dental dentista consultório consultas"
+    },
+    "legal": {
+      "title": "Jurídico",
+      "description": "Automação de admissão para escritórios de advocacia — captura qualificada de leads, verificação de conflitos e roteamento para o advogado certo.",
+      "keywords": "jurídico legal escritório advocacia admissão advogado"
+    },
+    "real-estate": {
+      "title": "Imobiliário",
+      "description": "Agentes de IA para imobiliárias — consultas sobre imóveis, agendamento de visitas e qualificação de leads.",
+      "keywords": "imobiliário corretora imóveis agente"
+    },
+    "home-services": {
+      "title": "Serviços domésticos",
+      "description": "Despacho e agendamento automatizados para HVAC, encanamento, elétrica e serviços em campo.",
+      "keywords": "serviços domésticos hvac encanamento serviço em campo ofícios"
+    },
+    "docs": {
+      "title": "Documentação",
+      "description": "Guias, referência de API e solução de problemas para a QVO.",
+      "keywords": "docs documentação guias api"
+    },
+    "demo": {
+      "title": "Demo ao vivo",
+      "description": "Experimente um agente de voz da QVO ao vivo no seu navegador — sem cadastro.",
+      "keywords": "demo experimentar ao vivo voz"
+    }
   }
 }

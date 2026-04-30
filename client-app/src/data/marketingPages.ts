@@ -171,11 +171,7 @@ export const marketingPages: MarketingPage[] = [
   },
 ];
 
-export function searchMarketingPages(query: string): MarketingPage[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  return marketingPages.filter((p) => {
-    const hay = [p.title, p.description, p.category, ...p.keywords].join(' ').toLowerCase();
-    return hay.includes(q);
-  });
-}
+// Locale-aware search lives in `client-app/src/lib/translateMarketingPage.ts`
+// (see `useSearchMarketingPages` / `searchMarketingPagesLocalized`). The old
+// English-only helper was removed because it could not match translated
+// marketing copy.

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, ArrowRight, BookOpen, Clock, Compass } from 'lucide-react';
 import RevealSection from '../../components/RevealSection';
 import { guides, categories, type GuideCategory } from '../../data/guides';
-import { searchMarketingPages } from '../../data/marketingPages';
+import { useSearchMarketingPages } from '../../lib/translateMarketingPage';
 
 export default function Resources() {
   const { t } = useTranslation();
@@ -22,7 +22,8 @@ export default function Resources() {
     return matchesCategory && matchesSearch;
   });
 
-  const marketingMatches = search.trim() ? searchMarketingPages(search) : [];
+  const searchMarketing = useSearchMarketingPages();
+  const marketingMatches = search.trim() ? searchMarketing(search) : [];
 
   return (
     <div>
@@ -115,7 +116,7 @@ export default function Resources() {
                           <Icon className="h-4 w-4 text-text-primary" />
                         </div>
                         <span className="text-[11px] text-text-primary bg-surface-muted px-2 py-0.5 rounded-full font-medium uppercase tracking-wider">
-                          {page.category}
+                          {page.categoryLabel}
                         </span>
                       </div>
                       <h3 className="font-display text-base font-semibold text-text-primary mb-1 group-hover:text-primary transition-colors">

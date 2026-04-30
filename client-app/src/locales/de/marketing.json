@@ -2082,5 +2082,87 @@
       "metaTitle": "KI-Sprachagenten für Hotels und Restaurants | QVO",
       "metaDescription": "Nehmen Sie Reservierungen entgegen, beantworten Sie Gästefragen und bearbeiten Sie Anfragen in über 30 Sprachen mit KI-Sprachagenten für das Gastgewerbe."
     }
+  },
+  "catalog_categories": {
+    "Product": "Produkt",
+    "Industries": "Branchen",
+    "Resources": "Ressourcen"
+  },
+  "catalog": {
+    "platform-overview": {
+      "title": "Plattformüberblick",
+      "description": "So funktioniert die Sprachoperationsplattform von QVO – Agenten, Anrufe, Workflows und Analytik an einem Ort.",
+      "keywords": "plattform überblick sprache operationen produkt"
+    },
+    "features": {
+      "title": "Funktionen",
+      "description": "Der vollständige Funktionsumfang: Agentenbuilder, Telefonie, Integrationen, Observability, Autopilot und mehr.",
+      "keywords": "funktionen merkmale fähigkeiten produkt"
+    },
+    "integrations": {
+      "title": "Integrationen",
+      "description": "Verbinde QVO mit HubSpot, Kalender, Slack, Helpdesks, Webhooks und mehr.",
+      "keywords": "integrationen hubspot salesforce slack konnektoren"
+    },
+    "pricing": {
+      "title": "Preise",
+      "description": "Pläne für Einzelnutzer, wachsende Teams und Unternehmen mit mehreren Standorten.",
+      "keywords": "preise pläne kosten abrechnung"
+    },
+    "ai-agents": {
+      "title": "KI-Agenten",
+      "description": "Schaufenster der produktiven KI-Sprachagenten von QVO und was sie in einem Live-Anruf leisten.",
+      "keywords": "ki agenten sprache showcase"
+    },
+    "federated-ingest": {
+      "title": "Federated Ingest API",
+      "description": "Bringe deinen eigenen Sprachagenten mit. Sende Anrufereignisse, Transkripte und Tickets aus jedem externen Sprach-Stack über authentifizierte REST-Endpunkte mit Idempotenz sowie 7 Tagen Live- + 30 Tagen Backfill-Fenster an QVO.",
+      "keywords": "federated ingest api byo bring your own entwickler webhooks rest endpunkte idempotenz backfill integration"
+    },
+    "global-intelligence-network": {
+      "title": "Globales Intelligenznetzwerk",
+      "description": "Tenantübergreifende Benchmarks für Antwortrate, AHT, Conversion und CSAT – sieh, wie deine Operation gegenüber dem Median und dem oberen Quartil deiner Branche abschneidet, mit datenschutzorientierter Aggregation.",
+      "keywords": "globales intelligenznetzwerk gin benchmarks tenantübergreifend kohorte median oberes quartil vertikale branche analytik vergleich"
+    },
+    "vertical-agents": {
+      "title": "Vertikale Agenten",
+      "description": "Vorgefertigte Sprachagenten, abgestimmt auf bestimmte Branchen – Azul Vision (Außendienst), medizinischer Empfang, Dental, juristische Aufnahme, Immobilien und mehr, in Minuten einsatzbereit.",
+      "keywords": "vertikal agenten azul vision medizin dental außendienst recht immobilien vorlagen branche"
+    },
+    "healthcare": {
+      "title": "Gesundheitswesen",
+      "description": "HIPAA-bewusste Sprach-KI für Patiententerminvergabe, Aufnahme, Rezeptverlängerungen und Triage außerhalb der Sprechzeiten.",
+      "keywords": "gesundheitswesen medizin hipaa patient klinik"
+    },
+    "dental": {
+      "title": "Dental",
+      "description": "Sprachagenten für Zahnarztpraxen – Terminvergabe, Erinnerungsanrufe und Versicherungstriage.",
+      "keywords": "dental zahnarzt praxis termine"
+    },
+    "legal": {
+      "title": "Recht",
+      "description": "Aufnahmeautomatisierung für Anwaltskanzleien – qualifizierte Lead-Erfassung, Konfliktprüfungen und Weiterleitung an den richtigen Anwalt.",
+      "keywords": "recht juristisch kanzlei aufnahme anwalt"
+    },
+    "real-estate": {
+      "title": "Immobilien",
+      "description": "KI-Agenten für Maklerunternehmen – Anfragen zu Inseraten, Terminierung von Besichtigungen und Qualifizierung von Leads.",
+      "keywords": "immobilien makler inserate agent"
+    },
+    "home-services": {
+      "title": "Hausdienste",
+      "description": "Disposition und Buchungsautomatisierung für HLK, Sanitär, Elektrik und andere Außendienstgewerke.",
+      "keywords": "hausdienste hlk hvac sanitär außendienst gewerke"
+    },
+    "docs": {
+      "title": "Dokumentation",
+      "description": "Anleitungen, API-Referenz und Fehlerbehebung für QVO.",
+      "keywords": "docs dokumentation anleitungen api"
+    },
+    "demo": {
+      "title": "Live-Demo",
+      "description": "Probiere einen QVO-Sprachagenten live in deinem Browser – ohne Registrierung.",
+      "keywords": "demo ausprobieren live sprache"
+    }
   }
 }

@@ -2082,5 +2082,87 @@
       "metaTitle": "Agents vocaux IA pour hôtels et restaurants | QVO",
       "metaDescription": "Prenez les réservations, répondez aux questions des clients et traitez les demandes dans plus de 30 langues avec des agents vocaux IA conçus pour l'hôtellerie."
     }
+  },
+  "catalog_categories": {
+    "Product": "Produit",
+    "Industries": "Secteurs",
+    "Resources": "Ressources"
+  },
+  "catalog": {
+    "platform-overview": {
+      "title": "Vue d’ensemble de la plateforme",
+      "description": "Comment fonctionne la plateforme d'opérations vocales de QVO — agents, appels, workflows et analytique au même endroit.",
+      "keywords": "plateforme vue d’ensemble voix opérations produit"
+    },
+    "features": {
+      "title": "Fonctionnalités",
+      "description": "L'ensemble des fonctionnalités : créateur d'agents, téléphonie, intégrations, observabilité, autopilote et plus encore.",
+      "keywords": "fonctionnalités capacités produit"
+    },
+    "integrations": {
+      "title": "Intégrations",
+      "description": "Connectez QVO à HubSpot, Calendar, Slack, helpdesks, webhooks et plus encore.",
+      "keywords": "intégrations hubspot salesforce slack connecteurs"
+    },
+    "pricing": {
+      "title": "Tarifs",
+      "description": "Forfaits pour opérateurs solos, équipes en croissance et entreprises multi-sites.",
+      "keywords": "tarifs prix forfaits coût facturation"
+    },
+    "ai-agents": {
+      "title": "Agents IA",
+      "description": "Vitrine des agents vocaux IA de QVO en production et de ce qu’ils peuvent faire en appel réel.",
+      "keywords": "ia agents voix vitrine"
+    },
+    "federated-ingest": {
+      "title": "API Federated Ingest",
+      "description": "Apportez votre propre agent vocal. Envoyez événements d'appel, transcriptions et tickets vers QVO depuis n'importe quelle stack vocale externe via des endpoints REST authentifiés, avec idempotence et fenêtres de 7 jours en direct + 30 jours de backfill.",
+      "keywords": "federated ingest api byo apportez le vôtre développeur webhooks rest endpoints idempotence backfill intégration"
+    },
+    "global-intelligence-network": {
+      "title": "Réseau d’Intelligence Globale",
+      "description": "Benchmarks inter-tenants pour le taux de réponse, l’AHT, la conversion et le CSAT — voyez comment votre opération se positionne face à la médiane et au quartile supérieur de votre secteur, avec une agrégation respectueuse de la vie privée.",
+      "keywords": "réseau intelligence globale gin benchmarks inter-tenants cohorte médiane quartile supérieur vertical secteur analytique comparaison"
+    },
+    "vertical-agents": {
+      "title": "Agents verticaux",
+      "description": "Agents vocaux préconstruits adaptés à des secteurs spécifiques — Azul Vision (services sur site), accueil médical, dentaire, accueil juridique, immobilier et plus, prêts à déployer en quelques minutes.",
+      "keywords": "vertical agents azul vision médical dentaire services sur site juridique immobilier modèles secteur"
+    },
+    "healthcare": {
+      "title": "Santé",
+      "description": "IA vocale compatible HIPAA pour la prise de rendez-vous, l’accueil patient, les renouvellements et le triage en dehors des heures.",
+      "keywords": "santé médical hipaa patient clinique"
+    },
+    "dental": {
+      "title": "Dentaire",
+      "description": "Agents vocaux pour cabinets dentaires — prise de rendez-vous, rappels et triage des assurances.",
+      "keywords": "dentaire dentiste cabinet rendez-vous"
+    },
+    "legal": {
+      "title": "Juridique",
+      "description": "Automatisation de l'accueil pour cabinets d'avocats — capture de leads qualifiés, vérification des conflits et orientation vers l'avocat adéquat.",
+      "keywords": "juridique légal cabinet accueil avocat"
+    },
+    "real-estate": {
+      "title": "Immobilier",
+      "description": "Agents IA pour agences immobilières — demandes d'annonces, planification de visites et qualification de leads.",
+      "keywords": "immobilier agence annonces agent"
+    },
+    "home-services": {
+      "title": "Services à domicile",
+      "description": "Dispatch et réservation automatisés pour CVC, plomberie, électricité et métiers d’intervention.",
+      "keywords": "services à domicile cvc hvac plomberie services sur site métiers"
+    },
+    "docs": {
+      "title": "Documentation",
+      "description": "Guides, référence API et dépannage pour QVO.",
+      "keywords": "docs documentation guides api"
+    },
+    "demo": {
+      "title": "Démo en direct",
+      "description": "Essayez un agent vocal QVO en direct dans votre navigateur — sans inscription.",
+      "keywords": "démo essayer en direct voix"
+    }
   }
 }
