@@ -415,13 +415,61 @@ describe('Billing page upgrade interval toggle', () => {
     expect(screen.queryByTestId('billing-upgrade-savings-enterprise')).toBeNull();
 
     fireEvent.click(screen.getByTestId('billing-upgrade-interval-annual'));
-    // Pro: $399 monthly → $319.20 annual, savings = (39900-31920)*12 = $957.60/yr → $958.
+    // Pro: $399 monthly → $319 annual (rounded whole dollars, matching the
+    // /pricing card and the in-page MinutesPricingCalculator), savings =
+    // ($399 − $319) × 12 = $960/yr. Rounding in dollars (not cents) is what
+    // makes the savings line reconcile to the displayed $319 price next to
+    // it instead of carrying the .20¢ remainder through to "$958".
     const proSavings = await waitFor(() => screen.getByTestId('billing-upgrade-savings-pro'));
-    expect(proSavings.textContent ?? '').toMatch(/Saves \$958\/yr/);
+    expect(proSavings.textContent ?? '').toMatch(/Saves \$960\/yr/);
     expect(proSavings.textContent ?? '').toMatch(/vs monthly billing/i);
-    // Enterprise: $999 monthly → $799.20 annual, savings = (99900-79920)*12 = $2,397.60/yr → $2,398.
+    // Enterprise: $999 monthly → $799 annual, savings = ($999 − $799) × 12
+    // = $2,400/yr.
     const entSavings = screen.getByTestId('billing-upgrade-savings-enterprise');
-    expect(entSavings.textContent ?? '').toMatch(/Saves \$2,398\/yr/);
+    expect(entSavings.textContent ?? '').toMatch(/Saves \$2,400\/yr/);
+  });
+
+  it('reconciles in-app upgrade-card savings to the /pricing card amounts', async () => {
+    // Regression guard for the "$238 savings next to $79/mo" inconsistency:
+    // the in-app upgrade cards must render the same per-tier annual savings
+    // as the public /pricing tier card and the in-page
+    // MinutesPricingCalculator. Both surfaces feed the displayed monthly
+    // price through `getDiscountedAnnualMonthlyDollars` and project the
+    // gap × 12 — so these are the canonical figures.
+    const { getDiscountedAnnualMonthlyDollars, getPlanMonthlyPriceWholeDollars } =
+      await import('../../shared/billing/planCatalog');
+    const expectedSavings = (tier: 'starter' | 'pro' | 'enterprise') => {
+      const monthly = getPlanMonthlyPriceWholeDollars(tier);
+      const annualMonthly = getDiscountedAnnualMonthlyDollars(monthly);
+      return (monthly - annualMonthly) * 12;
+    };
+    expect(expectedSavings('starter')).toBe(240);
+    expect(expectedSavings('pro')).toBe(960);
+    expect(expectedSavings('enterprise')).toBe(2400);
+
+    loginAsOwner();
+    await renderBilling();
+
+    await waitFor(() => screen.getByTestId('billing-upgrade-card-pro'));
+    fireEvent.click(screen.getByTestId('billing-upgrade-interval-annual'));
+    await waitFor(() => screen.getByTestId('billing-upgrade-savings-pro'));
+
+    expect(screen.getByTestId('billing-upgrade-savings-pro').textContent ?? '')
+      .toMatch(new RegExp(`Saves \\$${expectedSavings('pro').toLocaleString('en-US')}\\/yr`));
+    expect(screen.getByTestId('billing-upgrade-savings-enterprise').textContent ?? '')
+      .toMatch(new RegExp(`Saves \\$${expectedSavings('enterprise').toLocaleString('en-US')}\\/yr`));
+
+    // Starter only renders a savings line as a switch-to-annual card for
+    // a Starter monthly tenant — exercise that path so all three catalog
+    // tiers are covered against the canonical /pricing-derived figures.
+    cleanup();
+    setSubscription('starter', 'monthly');
+    await renderBilling();
+    await waitFor(() => screen.getByTestId('billing-upgrade-interval-annual'));
+    fireEvent.click(screen.getByTestId('billing-upgrade-interval-annual'));
+    await waitFor(() => screen.getByTestId('billing-upgrade-savings-starter'));
+    expect(screen.getByTestId('billing-upgrade-savings-starter').textContent ?? '')
+      .toMatch(new RegExp(`Saves \\$${expectedSavings('starter').toLocaleString('en-US')}\\/yr`));
   });
 
   it('shows a downgrade card for an Enterprise tenant with renewal copy and confirmation', async () => {

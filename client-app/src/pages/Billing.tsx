@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
-import { formatCents as formatCentsHelper, formatCurrency } from '../lib/formatCurrency';
+import { formatCents as formatCentsHelper, formatCurrency, dollarsToCents } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import BillingEstimator, {
   type TrailingWindow,
@@ -12,10 +12,14 @@ import BillingEstimator, {
 } from '../components/BillingEstimator';
 import {
   ANNUAL_DISCOUNT,
-  getDiscountedBasePrice,
   type BillingPeriod,
 } from '../components/MinutesPricingCalculator';
-import { getPlanMonthlyPriceCents, type PlanTier } from '../../../shared/billing/planCatalog';
+import {
+  centsToWholeDollars,
+  getDiscountedAnnualMonthlyDollars,
+  getPlanMonthlyPriceCents,
+  type PlanTier,
+} from '../../../shared/billing/planCatalog';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight, ArrowDownRight,
@@ -1176,17 +1180,18 @@ export default function Billing() {
                       const baseMonthlyCents = getPlanMonthlyPriceCents(tier);
                       const cardIsAnnual = kind === 'switch_annual' ? true : isAnnual;
                       const cardInterval: BillingPeriod = cardIsAnnual ? 'annual' : 'monthly';
-                      const effectiveMonthlyCents = Math.round(
-                        getDiscountedBasePrice(baseMonthlyCents, cardInterval),
-                      );
-                      // Mirror the marketing pricing calculator: yearly savings =
-                      // (catalog monthly base − discounted monthly base) × 12.
-                      // Only meaningful on annual cards; monthly cards have no
-                      // savings line. We pass the rounded discounted figure
-                      // through *12 so the displayed savings reconcile to the
-                      // displayed per-month price.
+                      // Round in whole dollars (via the shared helper)
+                      // before converting back to cents so the displayed
+                      // per-month price and the savings line stay on the
+                      // same rounding basis, matching the /pricing card
+                      // and the in-page MinutesPricingCalculator.
+                      const baseMonthlyDollars = centsToWholeDollars(baseMonthlyCents);
+                      const effectiveMonthlyDollars = cardIsAnnual
+                        ? getDiscountedAnnualMonthlyDollars(baseMonthlyDollars)
+                        : baseMonthlyDollars;
+                      const effectiveMonthlyCents = dollarsToCents(effectiveMonthlyDollars);
                       const annualSavingsCents = cardIsAnnual
-                        ? (baseMonthlyCents - effectiveMonthlyCents) * 12
+                        ? dollarsToCents((baseMonthlyDollars - effectiveMonthlyDollars) * 12)
                         : 0;
                       const summary =
                         tier === 'starter'
