@@ -707,6 +707,13 @@ export default function Billing() {
         overageRatePerMinute: number;
         basePriceSource: 'stripe' | 'catalog';
         overagePriceSource: 'stripe' | 'catalog';
+        // Stripe price ids backing the quoted base / overage rates when
+        // the corresponding source is `'stripe'`. Surfaced through the
+        // BillingEstimator's "Live Stripe rate" badge as a
+        // `data-overage-price-id` attribute so QA / support can confirm
+        // exactly which Stripe price drove the upgrade quote.
+        basePriceId?: string | null;
+        overagePriceId?: string | null;
         // Customer-level coupon / promotion-code metadata that explains
         // why the quoted base price came in below the published catalog
         // rate. Surfaced to the tenant as a small badge on the "Next
@@ -1202,6 +1209,21 @@ export default function Billing() {
                   // coupons do not (the server already applied that rule).
                   overageRatePerMinute:
                     upgradePreviewData.upgrade.overageRatePerMinute,
+                  // Provenance flags drive the "Live Stripe rate" badge
+                  // on the upgrade card. Mirrors the convention the
+                  // current-tier card already uses via `rateOverride`,
+                  // so a tenant on a metered-price override sees the
+                  // same badge on both cards (and a tenant on the
+                  // catalog fallback sees neither).
+                  basePriceSource: upgradePreviewData.upgrade.basePriceSource,
+                  overagePriceSource:
+                    upgradePreviewData.upgrade.overagePriceSource,
+                  // Optional Stripe price id backing the overage rate —
+                  // surfaced as a data attribute on the badge for QA /
+                  // support diagnostics. Only rendered when the overage
+                  // actually came from Stripe.
+                  overagePriceId:
+                    upgradePreviewData.upgrade.overagePriceId ?? null,
                   // Coupon / promotion-code metadata so the comparison
                   // card can render a "25% off — PROMO25" badge that
                   // explains why the quote is below catalog. `null` when

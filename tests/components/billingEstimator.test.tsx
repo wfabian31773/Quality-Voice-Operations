@@ -258,6 +258,101 @@ describe('BillingEstimator', () => {
     });
   });
 
+  describe('upgrade-card "Live Stripe rate" provenance badge', () => {
+    it('renders the badge on the upgrade card when overagePriceSource === "stripe"', () => {
+      // Mirrors the current-tier convention: a Stripe-sourced overage
+      // (or base) on the upgrade quote engages the same badge that the
+      // current-tier card renders, so the customer can tell at a glance
+      // that the per-minute rate they'd be invoiced after upgrading
+      // came from a live Stripe metered price (e.g. a per-tenant
+      // override) rather than the published catalog default.
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 39_900,
+            overageRatePerMinute: 0.10,
+            basePriceSource: 'catalog',
+            overagePriceSource: 'stripe',
+            overagePriceId: 'price_metered_pro_test',
+            discount: null,
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-source-pro');
+      expect(badge).toBeTruthy();
+      expect(badge.textContent ?? '').toMatch(/live stripe rate/i);
+      // The Stripe overage price id should ride along on the badge as a
+      // data attribute so QA / support can confirm exactly which
+      // metered price drove the upgrade quote.
+      expect(badge.getAttribute('data-overage-price-id')).toBe(
+        'price_metered_pro_test',
+      );
+    });
+
+    it('also renders the badge when only basePriceSource === "stripe"', () => {
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.15,
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            discount: null,
+          }}
+        />,
+      );
+      expect(screen.getByTestId('billing-estimator-source-pro')).toBeTruthy();
+    });
+
+    it('hides the badge when both sources are "catalog" (catalog fallback path)', () => {
+      // The upgrade-preview endpoint always sends post-discount cents/rate
+      // even on a catalog fallback. Without explicit source flags the
+      // legacy inference would have lit up the badge — gating on the
+      // explicit flags is what fixes that false positive.
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 39_900,
+            overageRatePerMinute: 0.15,
+            basePriceSource: 'catalog',
+            overagePriceSource: 'catalog',
+            discount: null,
+          }}
+        />,
+      );
+      expect(screen.queryByTestId('billing-estimator-source-pro')).toBeNull();
+    });
+
+    it('omits the data-overage-price-id attribute when the overage source is catalog', () => {
+      // Even if the upstream payload carried an overagePriceId, we
+      // should only expose it when the overage actually came from
+      // Stripe — otherwise support reading the DOM would draw the wrong
+      // conclusion about which price the quote was based on.
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.15,
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            overagePriceId: 'price_metered_should_be_dropped',
+            discount: null,
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-source-pro');
+      expect(badge.hasAttribute('data-overage-price-id')).toBe(false);
+    });
+  });
+
   describe('plan recommendation card', () => {
     it('hides the recommendation card when no trailing usage history is provided', () => {
       render(

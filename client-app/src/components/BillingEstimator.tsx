@@ -51,6 +51,32 @@ export interface BillingEstimatorRateOverride {
   /** Effective per-minute overage rate, in dollars (e.g. 0.12 = $0.12/min). */
   overageRatePerMinute?: number | null;
   /**
+   * Provenance of `basePriceCents`. `'stripe'` engages the
+   * "Live Stripe rate" badge on this tier card; `'catalog'` (or
+   * absent) renders without the badge so we don't falsely imply
+   * the catalog/env-default fallback is a Stripe-sourced number.
+   *
+   * Optional — when omitted, provenance is inferred from whether
+   * any cents/rate field is non-null (preserving the original
+   * convention used by the current-tier `rateOverride` call site,
+   * which gates fields to `null` when the source is catalog).
+   */
+  basePriceSource?: 'stripe' | 'catalog' | null;
+  /**
+   * Provenance of `overageRatePerMinute`. Same semantics as
+   * `basePriceSource` — `'stripe'` engages the "Live Stripe rate"
+   * badge, `'catalog'` (or absent) suppresses it.
+   */
+  overagePriceSource?: 'stripe' | 'catalog' | null;
+  /**
+   * Stripe price id backing `overageRatePerMinute` when the source
+   * is `'stripe'`. Surfaced as a `data-overage-price-id` attribute
+   * on the badge so QA / support can confirm exactly which metered
+   * price drove the quote without having to cross-check Stripe.
+   * Optional — only meaningful when `overagePriceSource === 'stripe'`.
+   */
+  overagePriceId?: string | null;
+  /**
    * Effective per-message SMS rate, in dollars (e.g. 0.025 = $0.025/msg).
    * Sourced from `/billing/effective-rate.smsRatePerMessage` so a tenant
    * on a custom / negotiated SMS price sees the rate that is actually
@@ -313,6 +339,13 @@ interface TierSpec {
    */
   sourcedFromStripe?: boolean;
   /**
+   * Stripe price id behind the per-minute overage rate when the override
+   * carried one. Surfaced as a `data-overage-price-id` attribute on the
+   * "Live Stripe rate" badge for QA / support diagnostics; never rendered
+   * in human-readable copy.
+   */
+  overagePriceId?: string | null;
+  /**
    * Customer-level discount that explains why this tier's `basePrice` came
    * in below the published catalog rate. Surfaced to the tenant via the
    * discount badge in the comparison card.
@@ -357,13 +390,50 @@ function toTierSpec(
       ? override.discount ?? null
       : null;
 
+  // Provenance signal for the "Live Stripe rate" badge.
+  //
+  // Two call-site conventions exist:
+  //   1. The current-tier `rateOverride` gates `basePriceCents` /
+  //      `overageRatePerMinute` to `null` when the source is `'catalog'`,
+  //      so non-null cents/rate already implies Stripe origin.
+  //   2. The upgrade-preview override always passes the post-discount
+  //      cents/rate even on a catalog fallback (so the discount the
+  //      server resolved isn't lost), and instead carries explicit
+  //      `basePriceSource` / `overagePriceSource` flags so the badge
+  //      can be gated correctly.
+  //
+  // Prefer the explicit flags when either is provided; otherwise fall
+  // back to the legacy "any field set" inference for backwards-compat
+  // with call sites that haven't been updated.
+  const explicitBaseSource =
+    override?.basePriceSource === 'stripe' || override?.basePriceSource === 'catalog'
+      ? override.basePriceSource
+      : null;
+  const explicitOverageSource =
+    override?.overagePriceSource === 'stripe' || override?.overagePriceSource === 'catalog'
+      ? override.overagePriceSource
+      : null;
+  const hasExplicitSources = explicitBaseSource !== null || explicitOverageSource !== null;
+  const sourcedFromStripe = hasExplicitSources
+    ? explicitBaseSource === 'stripe' || explicitOverageSource === 'stripe'
+    : overrideBaseCents != null || overrideOverage != null;
+
+  // Only carry the overage price id forward when the overage actually
+  // came from Stripe — exposing the id alongside a catalog rate would
+  // be misleading for support/QA reading the DOM.
+  const overagePriceId =
+    explicitOverageSource === 'stripe' && typeof override?.overagePriceId === 'string'
+      ? override.overagePriceId
+      : null;
+
   return {
     key: plan.key,
     name: plan.name,
     basePrice,
     includedMinutes: plan.includedMinutes,
     overageRate,
-    sourcedFromStripe: overrideBaseCents != null || overrideOverage != null,
+    sourcedFromStripe,
+    overagePriceId,
     discount,
   };
 }
@@ -607,6 +677,9 @@ function TierEstimate({
       {tier.sourcedFromStripe && (
         <div
           data-testid={`billing-estimator-source-${tier.key}`}
+          {...(tier.overagePriceId
+            ? { 'data-overage-price-id': tier.overagePriceId }
+            : {})}
           className="mb-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
           title="Pulled from your live Stripe subscription — overrides published catalog rates"
         >
