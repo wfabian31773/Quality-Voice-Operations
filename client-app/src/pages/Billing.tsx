@@ -945,6 +945,15 @@ export default function Billing() {
             onTrailingWindowChange={setTrailingWindow}
             availableTrailingWindows={TRAILING_WINDOW_OPTIONS}
             onRecommendationEvent={handleRecommendationEvent}
+            // Forward the tenant's current Stripe billing interval so the
+            // recommendation card's "already on the cheapest plan" variant
+            // can decide whether to surface the annual-savings pitch (only
+            // shown when the tenant is currently on monthly billing).
+            // Coerced to the BillingPeriod union; anything else is treated
+            // as already-on-annual and suppresses the pitch.
+            currentBillingInterval={
+              sub?.billing_interval === 'monthly' ? 'monthly' : 'annual'
+            }
             trailingMonthlyAiMinutes={
               // Only feed the recommendation card when at least one of
               // the trailing months actually had AI usage. A brand-new

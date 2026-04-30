@@ -204,6 +204,18 @@ interface BillingEstimatorProps {
    * the spec for this component).
    */
   availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
+  /**
+   * The tenant's *current* Stripe billing interval. Used by the
+   * recommendation card's "already on the cheapest plan" variant to
+   * decide whether to surface an annual-savings pitch — a tenant on
+   * monthly billing who is otherwise on the right tier still benefits
+   * from committing to annual at a 20%-off-base rate. Pass `'annual'`
+   * (or omit) to suppress that pitch. The pitch is independently
+   * suppressed when the current tier's pricing was sourced from a
+   * Stripe override (we have no way to fabricate an annual quote on a
+   * negotiated rate).
+   */
+  currentBillingInterval?: BillingPeriod;
 }
 
 /**
@@ -790,6 +802,7 @@ function RecommendationCard({
   onRecommendationEvent,
   trailingMonthlyBreakdown,
   trailingMonthlyPriorYearBreakdown,
+  currentBillingInterval,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
@@ -809,6 +822,7 @@ function RecommendationCard({
     month: string;
     aiMinutes: number | null;
   }>;
+  currentBillingInterval?: BillingPeriod;
 }) {
   const {
     current,
@@ -921,11 +935,34 @@ function RecommendationCard({
     : null;
 
   if (isAlreadyOptimal) {
+    // Annual pitch: surfaces the 20%-off-base savings for tenants who
+    // are on the right tier but still paying monthly. Suppressed when
+    //   - the tenant is already on annual billing (nothing to pitch),
+    //   - the current tier was sourced from a Stripe override (we have
+    //     no way to project a custom/negotiated price onto a different
+    //     billing interval, so the discount would be a fabrication),
+    //   - or the projected savings collapse to zero (defensive — the
+    //     `sourcedFromStripe` guard already covers this case via
+    //     `annualOption`'s zeroing in the optimal branch, but we
+    //     re-check so the badge never reads "$0/yr").
+    const showAnnualPitch =
+      currentBillingInterval === 'monthly'
+      && !recommended.sourcedFromStripe
+      && annualOption.monthlySavings > 0;
+    const isSwitchingToAnnual = switchingPlan === recommended.tier;
+    const annualPitchSavingsCents = Math.max(
+      0,
+      Math.round(annualOption.monthlySavings * 100),
+    );
+    const annualCtaLabel = isSwitchingToAnnual
+      ? 'Redirecting...'
+      : 'Switch to annual billing';
     return (
       <div
         data-testid="billing-estimator-recommendation"
         data-recommendation-state="optimal"
         data-recommendation-window={trailingWindow ?? undefined}
+        data-annual-pitch={showAnnualPitch ? 'true' : 'false'}
         className="mb-5 rounded-lg border border-success/40 bg-success/[0.06] p-4"
       >
         <div className="flex items-start gap-3">
@@ -942,6 +979,67 @@ function RecommendationCard({
               <span className="font-medium text-text-primary">{formatMoney(current.monthlyCost)}/mo</span>.
               No change needed.
             </p>
+            {showAnnualPitch && (
+              <div
+                data-testid="billing-estimator-recommendation-annual-pitch"
+                className="mt-3 pt-3 border-t border-success/30 flex items-start gap-3 flex-wrap"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-text-primary">
+                    Lock in{' '}
+                    <span className="text-success font-semibold">
+                      {Math.round(ANNUAL_DISCOUNT * 100)}% off base
+                    </span>{' '}
+                    by committing to annual billing — about{' '}
+                    <span
+                      data-testid="billing-estimator-recommendation-annual-pitch-monthly-savings"
+                      className="font-semibold text-text-primary"
+                    >
+                      {formatMoney(annualOption.monthlySavings)}/mo
+                    </span>{' '}
+                    (
+                    <span
+                      data-testid="billing-estimator-recommendation-annual-pitch-annual-savings"
+                      className="font-medium text-text-primary"
+                    >
+                      {formatMoney(annualOption.annualSavings)}/yr
+                    </span>
+                    ) back in your pocket on{' '}
+                    <span className="font-medium text-text-primary">{recommended.name}</span>.
+                  </p>
+                </div>
+                {onSwitchPlan && (
+                  <button
+                    type="button"
+                    data-testid="billing-estimator-recommendation-annual-pitch-cta"
+                    data-recommendation-cta-tier={recommended.tier}
+                    data-recommendation-cta-interval="annual"
+                    onClick={() => {
+                      const attribution: RecommendationAttribution = {
+                        currentTier: current.tier,
+                        recommendedTier: recommended.tier,
+                        monthlySavingsCents: annualPitchSavingsCents,
+                        trailingWindowMonths: trailingWindow,
+                      };
+                      if (onRecommendationEvent) {
+                        onRecommendationEvent({ type: 'click', ...attribution });
+                      }
+                      onSwitchPlan(recommended.tier, 'annual', attribution);
+                    }}
+                    disabled={isSwitchingToAnnual}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-success hover:bg-success/90 text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                    title={`Switch your ${recommended.name} plan to annual billing and save ${Math.round(ANNUAL_DISCOUNT * 100)}% on the base price`}
+                  >
+                    {isSwitchingToAnnual ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                    )}
+                    {annualCtaLabel}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           {windowToggle && <div className="shrink-0">{windowToggle}</div>}
         </div>
@@ -1136,6 +1234,7 @@ export default function BillingEstimator({
   onTrailingWindowChange,
   availableTrailingWindows,
   onRecommendationEvent,
+  currentBillingInterval,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
@@ -1312,6 +1411,7 @@ export default function BillingEstimator({
           onRecommendationEvent={onRecommendationEvent}
           trailingMonthlyBreakdown={trailingMonthlyBreakdown}
           trailingMonthlyPriorYearBreakdown={trailingMonthlyPriorYearBreakdown}
+          currentBillingInterval={currentBillingInterval}
         />
       )}
 
