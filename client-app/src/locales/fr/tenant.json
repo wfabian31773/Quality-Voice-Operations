@@ -779,7 +779,17 @@
       "next_invoice": "Prochaine facture",
       "payment_method": "Mode de paiement",
       "manage_subscription": "Gérer l'abonnement",
-      "view_invoices": "Voir les factures"
+      "view_invoices": "Voir les factures",
+      "tier_upgrade_banner": {
+        "title": "Vous êtes maintenant sur {{plan}}",
+        "body": "Vos limites d'utilisation viennent d'augmenter. Bienvenue sur {{plan}}.",
+        "dismiss_aria": "Ignorer la confirmation de mise à niveau"
+      },
+      "downgrade_completion_banner": {
+        "title": "Votre passage à {{plan}} est maintenant actif",
+        "body": "Votre rétrogradation planifiée a été appliquée. Vous êtes maintenant sur le plan {{plan}} avec ses nouvelles limites et tarifs.",
+        "dismiss_aria": "Ignorer la confirmation de rétrogradation"
+      }
     },
     "team": {
       "invite": "Inviter un membre",

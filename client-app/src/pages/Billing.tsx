@@ -1554,10 +1554,10 @@ export default function Billing() {
             <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-success">
-                You're now on {newPlanLabel}
+                {tenantT('billing.tier_upgrade_banner.title', { plan: newPlanLabel })}
               </p>
               <p className="text-sm mt-0.5 text-text-muted">
-                Your usage limits just expanded. Welcome to {newPlanLabel}.
+                {tenantT('billing.tier_upgrade_banner.body', { plan: newPlanLabel })}
               </p>
             </div>
             <button
@@ -1565,7 +1565,7 @@ export default function Billing() {
               onClick={dismissTierUpgradeBanner}
               data-testid="billing-tier-upgrade-success-dismiss"
               className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-              aria-label="Dismiss tier upgrade confirmation"
+              aria-label={tenantT('billing.tier_upgrade_banner.dismiss_aria')}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -1600,10 +1600,10 @@ export default function Billing() {
             <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-success">
-                Your downgrade to {newPlanLabel} is now active
+                {tenantT('billing.downgrade_completion_banner.title', { plan: newPlanLabel })}
               </p>
               <p className="text-sm mt-0.5 text-text-muted">
-                Your scheduled downgrade has applied. You're now on the {newPlanLabel} plan with its updated limits and pricing.
+                {tenantT('billing.downgrade_completion_banner.body', { plan: newPlanLabel })}
               </p>
             </div>
             <button
@@ -1611,7 +1611,7 @@ export default function Billing() {
               onClick={dismissDowngradeCompletionBanner}
               data-testid="billing-downgrade-completion-dismiss"
               className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-              aria-label="Dismiss downgrade confirmation"
+              aria-label={tenantT('billing.downgrade_completion_banner.dismiss_aria')}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>

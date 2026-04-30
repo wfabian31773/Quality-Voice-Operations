@@ -779,7 +779,17 @@
       "next_invoice": "Próxima fatura",
       "payment_method": "Forma de pagamento",
       "manage_subscription": "Gerenciar assinatura",
-      "view_invoices": "Ver faturas"
+      "view_invoices": "Ver faturas",
+      "tier_upgrade_banner": {
+        "title": "Você agora está no {{plan}}",
+        "body": "Seus limites de uso acabaram de aumentar. Bem-vindo ao {{plan}}.",
+        "dismiss_aria": "Dispensar confirmação de upgrade de plano"
+      },
+      "downgrade_completion_banner": {
+        "title": "Sua mudança para {{plan}} está ativa",
+        "body": "Seu downgrade agendado foi aplicado. Você agora está no plano {{plan}} com seus novos limites e preços.",
+        "dismiss_aria": "Dispensar confirmação de downgrade"
+      }
     },
     "team": {
       "invite": "Convidar membro",

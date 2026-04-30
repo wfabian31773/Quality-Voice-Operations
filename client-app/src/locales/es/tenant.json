@@ -779,7 +779,17 @@
       "next_invoice": "Próxima factura",
       "payment_method": "Método de pago",
       "manage_subscription": "Administrar suscripción",
-      "view_invoices": "Ver facturas"
+      "view_invoices": "Ver facturas",
+      "tier_upgrade_banner": {
+        "title": "Ahora estás en {{plan}}",
+        "body": "Tus límites de uso acaban de ampliarse. Bienvenido a {{plan}}.",
+        "dismiss_aria": "Descartar confirmación de mejora de plan"
+      },
+      "downgrade_completion_banner": {
+        "title": "Tu cambio a {{plan}} ya está activo",
+        "body": "Tu reducción de plan programada se ha aplicado. Ahora estás en el plan {{plan}} con sus límites y precios actualizados.",
+        "dismiss_aria": "Descartar confirmación de cambio de plan"
+      }
     },
     "team": {
       "invite": "Invitar miembro",

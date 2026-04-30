@@ -779,7 +779,17 @@
       "next_invoice": "Next invoice",
       "payment_method": "Payment method",
       "manage_subscription": "Manage subscription",
-      "view_invoices": "View invoices"
+      "view_invoices": "View invoices",
+      "tier_upgrade_banner": {
+        "title": "You're now on {{plan}}",
+        "body": "Your usage limits just expanded. Welcome to {{plan}}.",
+        "dismiss_aria": "Dismiss tier upgrade confirmation"
+      },
+      "downgrade_completion_banner": {
+        "title": "Your downgrade to {{plan}} is now active",
+        "body": "Your scheduled downgrade has applied. You're now on the {{plan}} plan with its updated limits and pricing.",
+        "dismiss_aria": "Dismiss downgrade confirmation"
+      }
     },
     "team": {
       "invite": "Invite member",

@@ -779,7 +779,17 @@
       "next_invoice": "Nächste Rechnung",
       "payment_method": "Zahlungsmethode",
       "manage_subscription": "Abonnement verwalten",
-      "view_invoices": "Rechnungen ansehen"
+      "view_invoices": "Rechnungen ansehen",
+      "tier_upgrade_banner": {
+        "title": "Du bist jetzt auf {{plan}}",
+        "body": "Deine Nutzungslimits wurden gerade erweitert. Willkommen bei {{plan}}.",
+        "dismiss_aria": "Bestätigung des Plan-Upgrades schließen"
+      },
+      "downgrade_completion_banner": {
+        "title": "Dein Wechsel zu {{plan}} ist jetzt aktiv",
+        "body": "Dein geplanter Wechsel wurde durchgeführt. Du bist jetzt im {{plan}}-Plan mit den aktualisierten Limits und Preisen.",
+        "dismiss_aria": "Bestätigung des Plan-Wechsels schließen"
+      }
     },
     "team": {
       "invite": "Mitglied einladen",
