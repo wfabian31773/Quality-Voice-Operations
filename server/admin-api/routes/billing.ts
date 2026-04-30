@@ -7,6 +7,7 @@ import {
   getTenantDowngradePreview,
   isPlanTier,
   loadActiveCustomerDiscount,
+  loadActiveSubscriptionDiscounts,
   nextUpgradeTier,
   normalizeDiscount,
   type UpgradeDiscount,
@@ -35,6 +36,7 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
 
   let subscriptionRow: Record<string, unknown> | null = null;
   let stripeCustomerId: string | null = null;
+  let stripeSubscriptionId: string | null = null;
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
@@ -42,7 +44,7 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
       `SELECT plan, status, billing_interval, current_period_start, current_period_end,
               trial_end, cancelled_at, monthly_call_limit, monthly_sms_limit,
               monthly_ai_minute_limit, overage_enabled, stripe_customer_id,
-              created_at, updated_at
+              stripe_subscription_id, created_at, updated_at
        FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
@@ -53,7 +55,9 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
     }
     const row = rows[0] as Record<string, unknown>;
     stripeCustomerId = (row.stripe_customer_id as string | null) ?? null;
+    stripeSubscriptionId = (row.stripe_subscription_id as string | null) ?? null;
     delete row.stripe_customer_id;
+    delete row.stripe_subscription_id;
     subscriptionRow = row;
   } catch (err) {
     await client.query('ROLLBACK');
@@ -63,24 +67,58 @@ router.get('/billing/subscription', requireAuth, async (req, res) => {
     client.release();
   }
 
+  // `discount` is the legacy single (customer-level) field; `discounts`
+  // is the full list (customer chip first, then subscription stack),
+  // de-duped so a coupon attached to both surfaces only renders once.
   let discount: UpgradeDiscount | null = null;
-  if (stripeCustomerId) {
+  let subscriptionDiscounts: UpgradeDiscount[] = [];
+  if (stripeCustomerId || stripeSubscriptionId) {
     try {
       const { getStripeClient } = await import('../../../platform/billing/stripe/client');
       const stripe = getStripeClient();
-      discount = await loadActiveCustomerDiscount(stripe, stripeCustomerId, {
-        tenantId,
-        surface: 'subscription_panel',
-      });
+      const [customerDiscount, subDiscounts] = await Promise.all([
+        stripeCustomerId
+          ? loadActiveCustomerDiscount(stripe, stripeCustomerId, {
+              tenantId,
+              surface: 'subscription_panel',
+            })
+          : Promise.resolve(null),
+        stripeSubscriptionId
+          ? loadActiveSubscriptionDiscounts(stripe, stripeSubscriptionId, {
+              tenantId,
+              surface: 'subscription_panel',
+            })
+          : Promise.resolve([] as UpgradeDiscount[]),
+      ]);
+      discount = customerDiscount;
+      subscriptionDiscounts = subDiscounts;
     } catch (err) {
-      logger.warn('Could not resolve customer discount for subscription panel', {
+      logger.warn('Could not resolve discounts for subscription panel', {
         tenantId,
         error: String(err),
       });
     }
   }
 
-  return res.json({ subscription: { ...subscriptionRow, discount } });
+  const discounts: UpgradeDiscount[] = [];
+  const seenKeys = new Set<string>();
+  const pushIfFresh = (d: UpgradeDiscount): void => {
+    // Fall back through coupon id, promotion code id, then name+code so
+    // we still de-dup when only one side carries an id. Truly anonymous
+    // coupons (no id/code/name) bypass dedup so legitimate distinct
+    // anonymous stacks aren't collapsed.
+    const key =
+      d.couponId
+      ?? d.promotionCodeId
+      ?? (d.name || d.promotionCode ? `name:${d.name ?? ''}|code:${d.promotionCode ?? ''}` : '');
+    if (key && seenKeys.has(key)) return;
+    if (key) seenKeys.add(key);
+    discounts.push(d);
+  };
+  if (discount) pushIfFresh(discount);
+  for (const d of subscriptionDiscounts) pushIfFresh(d);
+
+  return res.json({ subscription: { ...subscriptionRow, discount, discounts } });
 });
 
 router.get('/billing/usage', requireAuth, async (req, res) => {

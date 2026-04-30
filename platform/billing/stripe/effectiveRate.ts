@@ -1024,6 +1024,55 @@ export async function loadActiveCustomerDiscount(
   }
 }
 
+interface SubscriptionWithDiscountsLike {
+  discounts?: Array<DiscountLike | null> | null;
+  discount?: DiscountLike | null;
+}
+
+/**
+ * Fetch every active discount on `subscription.discounts`, normalised into
+ * `UpgradeDiscount[]`. Returns `[]` on any failure (mirrors the
+ * `loadActiveCustomerDiscount` no-throw posture). Falls back to the legacy
+ * single `subscription.discount` field when the array is empty so older
+ * Stripe API versions still yield a chip.
+ */
+export async function loadActiveSubscriptionDiscounts(
+  stripe: Stripe,
+  subscriptionId: string,
+  ctx: { tenantId: string; surface: string },
+): Promise<UpgradeDiscount[]> {
+  // Only expand the modern `discounts` array — `discount.promotion_code`
+  // was removed from later Stripe API versions and would throw the whole
+  // retrieve. The legacy unexpanded `discount` (a `promo_*` id string)
+  // is still handled by `normalizeDiscount`.
+  let sub: SubscriptionWithDiscountsLike;
+  try {
+    sub = (await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ['discounts.promotion_code'],
+    })) as unknown as SubscriptionWithDiscountsLike;
+  } catch (err) {
+    logger.warn('Failed to retrieve subscription discounts', {
+      tenantId: ctx.tenantId,
+      surface: ctx.surface,
+      subscriptionId,
+      error: String(err),
+    });
+    return [];
+  }
+
+  const out: UpgradeDiscount[] = [];
+  for (const d of Array.isArray(sub?.discounts) ? sub.discounts : []) {
+    if (!d || typeof d !== 'object') continue;
+    const normalized = normalizeDiscount(d);
+    if (normalized) out.push(normalized);
+  }
+  if (out.length === 0 && sub?.discount) {
+    const normalized = normalizeDiscount(sub.discount);
+    if (normalized) out.push(normalized);
+  }
+  return out;
+}
+
 export function isPlanTier(value: unknown): value is PlanTier {
   return typeof value === 'string' && (PLAN_TIERS as string[]).includes(value);
 }

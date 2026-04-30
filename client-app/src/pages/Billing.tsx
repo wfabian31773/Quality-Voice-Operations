@@ -74,7 +74,10 @@ interface Subscription {
   overage_enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** Legacy single-discount field (customer-level). Prefer `discounts`. */
   discount?: BillingDiscountSummary | null;
+  /** Full list of discounts active on the subscription, de-duped server-side. */
+  discounts?: BillingDiscountSummary[];
 }
 
 interface Invoice {
@@ -1300,16 +1303,35 @@ export default function Billing() {
                 )}
               </div>
 
-              {sub?.discount && (
-                <div
-                  data-testid="billing-subscription-discount-badge"
-                  className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
-                  title="Active discount applied to your subscription. Shown on Stripe Checkout and on every invoice this discount applies to."
-                >
-                  <Sparkles className="h-3 w-3" aria-hidden="true" />
-                  <span>Active discount: {formatDiscountLabel(sub.discount, currency)}</span>
-                </div>
-              )}
+              {(() => {
+                // Prefer `discounts`; fall back to legacy `discount` when
+                // talking to an older server build.
+                const list: BillingDiscountSummary[] =
+                  sub?.discounts && sub.discounts.length > 0
+                    ? sub.discounts
+                    : sub?.discount
+                      ? [sub.discount]
+                      : [];
+                if (list.length === 0) return null;
+                const tooltip = list.length > 1
+                  ? `${list.length} discounts are stacked on your subscription. Each is shown on Stripe Checkout and on every invoice it applies to.`
+                  : 'Active discount applied to your subscription. Shown on Stripe Checkout and on every invoice this discount applies to.';
+                return (
+                  <div className="mb-4 flex flex-wrap items-center gap-1.5">
+                    {list.map((d, idx) => (
+                      <div
+                        key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
+                        data-testid="billing-subscription-discount-badge"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                        title={tooltip}
+                      >
+                        <Sparkles className="h-3 w-3" aria-hidden="true" />
+                        <span>Active discount: {formatDiscountLabel(d, currency)}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
