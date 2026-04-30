@@ -51,6 +51,39 @@ export interface BillingEstimatorRateOverride {
   overageRatePerMinute?: number | null;
 }
 
+/**
+ * Customer-level discount (coupon or promotion-code redemption) returned by
+ * `/billing/upgrade-preview`. This is what *explains* a comparison-tier
+ * quote that came in below the published catalog price — Sales attaches a
+ * coupon to the tenant's Stripe customer record and the upgrade preview
+ * applies it on top of the catalog base.
+ *
+ * Field semantics mirror Stripe's `Coupon` shape:
+ *   - `percentOff` is a 0–100 number when set (mutually exclusive with
+ *     `amountOffCents`).
+ *   - `amountOffCents` is in the smallest currency unit (e.g. cents).
+ *   - `promotionCode` is the human-readable code Sales/Support shares with
+ *     the tenant; absent when the discount was attached as a raw coupon
+ *     without a published promotion code.
+ */
+export interface BillingEstimatorDiscount {
+  name?: string | null;
+  percentOff?: number | null;
+  amountOffCents?: number | null;
+  currency?: string | null;
+  promotionCode?: string | null;
+}
+
+/**
+ * Comparison-tier override carrying both the post-discount rate AND the
+ * discount metadata that explains why it differs from the published
+ * catalog. Extends `BillingEstimatorRateOverride` so the upgrade-preview
+ * call site stays a drop-in replacement for the previous rate-only shape.
+ */
+export interface BillingEstimatorUpgradePreview extends BillingEstimatorRateOverride {
+  discount?: BillingEstimatorDiscount | null;
+}
+
 interface BillingEstimatorProps {
   currentPlan: PlanTier | string;
   monthToDateAiMinutes: number;
@@ -70,7 +103,7 @@ interface BillingEstimatorProps {
    * comparison direction is "down" (downgrade card) since downgrade
    * pricing is just the published catalog floor.
    */
-  upgradePreview?: BillingEstimatorRateOverride;
+  upgradePreview?: BillingEstimatorUpgradePreview;
   /**
    * Multiplier used to project end-of-month minutes from MTD usage.
    * Computed by the parent as `daysInMonth / dayOfMonth`.
@@ -183,6 +216,12 @@ interface TierSpec {
    * tenant's live Stripe subscription rather than the catalog defaults.
    */
   sourcedFromStripe?: boolean;
+  /**
+   * Customer-level discount that explains why this tier's `basePrice` came
+   * in below the published catalog rate. Surfaced to the tenant via the
+   * discount badge in the comparison card.
+   */
+  discount?: BillingEstimatorDiscount | null;
 }
 
 type ComparisonDirection = 'up' | 'down';
@@ -193,7 +232,7 @@ const STEP_MINUTES = 50;
 
 function toTierSpec(
   key: PlanTier,
-  override?: BillingEstimatorRateOverride,
+  override?: BillingEstimatorRateOverride | BillingEstimatorUpgradePreview,
 ): TierSpec {
   const plan = PLAN_CATALOG[key];
   // Coerce the override fields once: anything non-finite or nullish falls
@@ -215,6 +254,13 @@ function toTierSpec(
     ? overrideOverage
     : plan.overageRatePerMinute;
 
+  // Only the upgrade-preview shape carries `discount`; rate-only overrides
+  // pass through as `undefined` here, leaving the badge hidden.
+  const discount =
+    override && 'discount' in override
+      ? override.discount ?? null
+      : null;
+
   return {
     key: plan.key,
     name: plan.name,
@@ -222,6 +268,7 @@ function toTierSpec(
     includedMinutes: plan.includedMinutes,
     overageRate,
     sourcedFromStripe: overrideBaseCents != null || overrideOverage != null,
+    discount,
   };
 }
 
@@ -254,6 +301,72 @@ function makeFormatPerMinute(currency: string) {
 function clampMinutes(value: number): number {
   if (!Number.isFinite(value)) return MIN_MINUTES;
   return Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, Math.round(value)));
+}
+
+/**
+ * Format a percent-off value for the discount badge. Stripe stores
+ * `percent_off` as a number that's usually integral (`25`, `50`) but can
+ * carry a fractional component (`12.5`). We render integers as-is and
+ * trim trailing zeros on fractions so the badge stays compact.
+ */
+function formatPercentOff(percentOff: number): string {
+  if (!Number.isFinite(percentOff)) return '';
+  if (Number.isInteger(percentOff)) return String(percentOff);
+  // Single decimal place is plenty — Stripe's UI uses the same precision.
+  return percentOff.toFixed(1).replace(/\.0$/, '');
+}
+
+/**
+ * Build the badge label + tooltip for a customer-level discount. Returns
+ * `null` when the discount carries neither a percent nor an amount off
+ * (defensive — the upgrade-preview API already drops these).
+ *
+ * Label examples:
+ *   - `25% off — PROMO25`
+ *   - `12.5% off coupon`
+ *   - `$50 off — SUMMER`
+ *   - `€20 off coupon`
+ *
+ * The tooltip surfaces the coupon name and (when present) the promotion
+ * code so Sales/Support can confirm the exact promo a tenant is asking
+ * about without leaving the page.
+ */
+function buildDiscountBadge(
+  discount: BillingEstimatorDiscount,
+  formatMoney: (value: number) => string,
+): { label: string; tooltip: string } | null {
+  let offPart: string | null = null;
+  if (discount.percentOff != null && Number.isFinite(discount.percentOff)) {
+    offPart = `${formatPercentOff(discount.percentOff)}% off`;
+  } else if (
+    discount.amountOffCents != null
+    && Number.isFinite(discount.amountOffCents)
+  ) {
+    // amountOffCents is in the smallest currency unit; convert to whole
+    // currency for the badge. Prefer the coupon's own currency over the
+    // estimator default — Stripe `amount_off` coupons are tied to a
+    // specific currency, so a USD coupon shown to a EUR-defaulted card
+    // should still render as "$50 off", not "€50 off". Falls back to the
+    // estimator's `formatMoney` (i.e. tenant billing currency) when the
+    // coupon currency is missing.
+    const couponCurrency = discount.currency?.trim().toUpperCase();
+    const formatter = couponCurrency
+      ? makeFormatMoney(couponCurrency)
+      : formatMoney;
+    offPart = `${formatter(discount.amountOffCents / 100)} off`;
+  }
+  if (!offPart) return null;
+
+  const promo = discount.promotionCode?.trim();
+  const label = promo ? `${offPart} — ${promo}` : `${offPart} coupon`;
+
+  const couponName = discount.name?.trim();
+  const tooltipParts: string[] = [];
+  tooltipParts.push(couponName ? `Coupon: ${couponName}` : 'Active discount applied');
+  if (promo) tooltipParts.push(`Promotion code: ${promo}`);
+  const tooltip = tooltipParts.join(' · ');
+
+  return { label, tooltip };
 }
 
 function TierEstimate({
@@ -339,6 +452,28 @@ function TierEstimate({
           Live Stripe rate
         </div>
       )}
+
+      {tier.discount && (() => {
+        // Mirrors the "Live Stripe rate" pill style for visual consistency
+        // (same shape, sizing, uppercase tracking) but uses the primary
+        // accent so the discount stands out as a separate signal —
+        // tenants need to recognise *why* the upgrade quote is below
+        // catalog at a glance.
+        const badge = buildDiscountBadge(tier.discount, formatMoney);
+        if (!badge) return null;
+        return (
+          <div
+            data-testid={`billing-estimator-discount-${tier.key}`}
+            data-discount-label={badge.label}
+            className={`mb-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full${
+              tier.sourcedFromStripe ? ' ml-2' : ''
+            }`}
+            title={badge.tooltip}
+          >
+            {badge.label}
+          </div>
+        );
+      })()}
 
       <div
         data-testid={`billing-estimator-effective-${tier.key}`}

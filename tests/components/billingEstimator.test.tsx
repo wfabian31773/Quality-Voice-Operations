@@ -117,6 +117,147 @@ describe('BillingEstimator', () => {
     expect(monthlyStarter).toContain('$');
   });
 
+  describe('upgrade discount badge', () => {
+    it('renders a percent-off badge with the promotion code on the comparison card', () => {
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 29_900,
+            overageRatePerMinute: 0.09,
+            discount: {
+              name: 'Spring promo 25',
+              percentOff: 25,
+              amountOffCents: null,
+              currency: 'usd',
+              promotionCode: 'PROMO25',
+            },
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-discount-pro');
+      expect(badge).toBeTruthy();
+      expect(badge.textContent ?? '').toContain('25% off');
+      expect(badge.textContent ?? '').toContain('PROMO25');
+      // Tooltip should surface the coupon name AND the promotion code.
+      const tooltip = badge.getAttribute('title') ?? '';
+      expect(tooltip).toContain('Spring promo 25');
+      expect(tooltip).toContain('PROMO25');
+      // Discount badge should NOT render on the current-plan card —
+      // the upgrade discount only applies to the upgrade quote.
+      expect(screen.queryByTestId('billing-estimator-discount-starter')).toBeNull();
+    });
+
+    it('renders an amount-off badge with the coupon suffix when no promotion code is attached', () => {
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.12,
+            discount: {
+              name: 'Loyalty $50 credit',
+              percentOff: null,
+              amountOffCents: 5_000,
+              currency: 'usd',
+              promotionCode: null,
+            },
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-discount-pro');
+      expect(badge).toBeTruthy();
+      const text = badge.textContent ?? '';
+      expect(text).toContain('$50 off');
+      // Without a promotion code, fall back to the "coupon" suffix per
+      // the task spec ("$50 off coupon").
+      expect(text).toContain('coupon');
+      const tooltip = badge.getAttribute('title') ?? '';
+      expect(tooltip).toContain('Loyalty $50 credit');
+      expect(tooltip).not.toContain('Promotion code');
+    });
+
+    it('hides the discount badge when upgradePreview.discount is null', () => {
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 39_900,
+            overageRatePerMinute: 0.12,
+            discount: null,
+          }}
+        />,
+      );
+      expect(screen.queryByTestId('billing-estimator-discount-pro')).toBeNull();
+      expect(screen.queryByTestId('billing-estimator-discount-starter')).toBeNull();
+    });
+
+    it('hides the discount badge entirely when no upgradePreview is provided', () => {
+      render(
+        <BillingEstimator currentPlan="starter" monthToDateAiMinutes={500} />,
+      );
+      expect(screen.queryByTestId('billing-estimator-discount-pro')).toBeNull();
+    });
+
+    it('renders the amount-off badge in the coupon currency when set', () => {
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          currency="EUR"
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.12,
+            discount: {
+              name: 'EU promo',
+              percentOff: null,
+              amountOffCents: 2_000,
+              currency: 'eur',
+              promotionCode: 'EU20',
+            },
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-discount-pro');
+      const text = (badge.textContent ?? '').replace(/\u00a0/g, ' ');
+      expect(text).toContain('€20 off');
+      expect(text).toContain('EU20');
+      expect(text).not.toContain('$');
+    });
+
+    it('prefers the coupon currency over the estimator currency for amount-off badges', () => {
+      // Estimator is configured for EUR but the Stripe coupon is a
+      // USD-denominated amount_off — the badge should show "$50 off",
+      // not "€50 off", because Stripe applies amount_off only to
+      // invoices in the matching currency.
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          currency="EUR"
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.12,
+            discount: {
+              name: 'USD loyalty credit',
+              percentOff: null,
+              amountOffCents: 5_000,
+              currency: 'usd',
+              promotionCode: null,
+            },
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-discount-pro');
+      const text = (badge.textContent ?? '').replace(/\u00a0/g, ' ');
+      expect(text).toContain('$50 off');
+      expect(text).not.toContain('€');
+    });
+  });
+
   describe('plan recommendation card', () => {
     it('hides the recommendation card when no trailing usage history is provided', () => {
       render(

@@ -359,6 +359,21 @@ export default function Billing() {
         overageRatePerMinute: number;
         basePriceSource: 'stripe' | 'catalog';
         overagePriceSource: 'stripe' | 'catalog';
+        // Customer-level coupon / promotion-code metadata that explains
+        // why the quoted base price came in below the published catalog
+        // rate. Surfaced to the tenant as a small badge on the "Next
+        // tier up" card so Sales/Support don't have to field "is the
+        // discount still applied?" calls. `null` when the tenant has no
+        // active discount or when the upgrade-preview lookup degraded
+        // to catalog defaults.
+        discount: {
+          couponId: string | null;
+          name: string | null;
+          percentOff: number | null;
+          amountOffCents: number | null;
+          currency: string | null;
+          promotionCode: string | null;
+        } | null;
       } | null;
     }>('/billing/upgrade-preview'),
     // Same staleness model as /billing/effective-rate — the discount
@@ -594,6 +609,11 @@ export default function Billing() {
                   // coupons do not (the server already applied that rule).
                   overageRatePerMinute:
                     upgradePreviewData.upgrade.overageRatePerMinute,
+                  // Coupon / promotion-code metadata so the comparison
+                  // card can render a "25% off — PROMO25" badge that
+                  // explains why the quote is below catalog. `null` when
+                  // no customer-level discount is active.
+                  discount: upgradePreviewData.upgrade.discount,
                 }
               : undefined}
             projectionMultiplier={projectionMultiplier}
