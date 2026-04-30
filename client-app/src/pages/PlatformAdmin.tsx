@@ -3984,6 +3984,24 @@ export default function PlatformAdmin() {
     refetchInterval: 60_000,
   });
 
+  // 30d funnel for the BillingEstimator recommendation banner.
+  const { data: recommendationStats, isLoading: recommendationStatsLoading } =
+    useQuery({
+      queryKey: ['platform-billing-recommendations'],
+      queryFn: () =>
+        api.get<{
+          windowDays: number;
+          impressions: number;
+          clicks: number;
+          completedSwitches: number;
+          tenantsClicked: number;
+          tenantsSwitched: number;
+          clickThroughRate: number;
+          completionRate: number;
+        }>('/platform/billing-recommendations'),
+      refetchInterval: 60_000,
+    });
+
   const { data: tenantsData, isLoading: tenantsLoading } = useQuery({
     queryKey: ['platform-tenants'],
     queryFn: () => api.get<{ tenants: Tenant[] }>('/platform/tenants'),
@@ -4039,7 +4057,7 @@ export default function PlatformAdmin() {
 
       <OperationsAlertsBanner />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard
           icon={Building2}
           label={adminT('platform_admin.stats.active_tenants')}
@@ -4099,6 +4117,24 @@ export default function PlatformAdmin() {
               }, 0);
             });
           }}
+        />
+        {/* 30d funnel for the BillingEstimator recommendation banner. */}
+        <StatCard
+          icon={TrendingUp}
+          label={adminT('platform_admin.stats.recommendation_label')}
+          value={
+            recommendationStatsLoading
+              ? '...'
+              : String(recommendationStats?.completedSwitches ?? 0)
+          }
+          sub={
+            recommendationStatsLoading
+              ? ''
+              : adminT('platform_admin.stats.recommendation_sub', {
+                  impressions: recommendationStats?.impressions ?? 0,
+                  clicks: recommendationStats?.clicks ?? 0,
+                })
+          }
         />
       </div>
 

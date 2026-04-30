@@ -1508,4 +1508,71 @@ router.put('/platform/demo-scheduler-settings', requireAuth, requirePlatformAdmi
   }
 });
 
+// Trailing-30-day funnel for the BillingEstimator recommendation
+// banner. Counts are sourced from `billing_recommendation_events`:
+// impressions/clicks come from the tenant-facing route, switch_completed
+// is written by the Stripe webhook for server-attributed conversions.
+router.get(
+  '/platform/billing-recommendations',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const { rows } = await withPrivilegedClient(async (client) => {
+        return client.query(
+          `SELECT event_type, COUNT(*)::bigint AS count
+             FROM billing_recommendation_events
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY event_type`,
+        );
+      });
+
+      let impressions = 0;
+      let clicks = 0;
+      let completedSwitches = 0;
+      for (const row of rows as Array<{ event_type: string; count: string }>) {
+        const count = Number(row.count) || 0;
+        if (row.event_type === 'impression') impressions = count;
+        else if (row.event_type === 'click') clicks = count;
+        else if (row.event_type === 'switch_completed') completedSwitches = count;
+      }
+
+      // Unique-tenant counts let the tile show how many distinct tenants
+      // engaged, not just total event volume.
+      const { rows: tenantRows } = await withPrivilegedClient(async (client) => {
+        return client.query(
+          `SELECT
+             COUNT(DISTINCT tenant_id) FILTER (WHERE event_type = 'click')::bigint
+               AS tenants_clicked,
+             COUNT(DISTINCT tenant_id) FILTER (WHERE event_type = 'switch_completed')::bigint
+               AS tenants_switched
+             FROM billing_recommendation_events
+            WHERE created_at >= NOW() - INTERVAL '30 days'`,
+        );
+      });
+      const tenantsClicked = Number(tenantRows[0]?.tenants_clicked ?? 0) || 0;
+      const tenantsSwitched = Number(tenantRows[0]?.tenants_switched ?? 0) || 0;
+
+      return res.json({
+        windowDays: 30,
+        impressions,
+        clicks,
+        completedSwitches,
+        tenantsClicked,
+        tenantsSwitched,
+        // Computed server-side so consumers agree on divide-by-zero handling.
+        clickThroughRate: impressions > 0 ? clicks / impressions : 0,
+        completionRate: clicks > 0 ? completedSwitches / clicks : 0,
+      });
+    } catch (err) {
+      logger.error('Failed to load billing recommendation metrics', {
+        error: String(err),
+      });
+      return res.status(500).json({
+        error: 'Failed to load billing recommendation metrics',
+      });
+    }
+  },
+);
+
 export default router;

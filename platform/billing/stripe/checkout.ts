@@ -7,6 +7,13 @@ import type { TenantId } from '../../core/types';
 
 const logger = createLogger('STRIPE_CHECKOUT');
 
+export interface CheckoutRecommendationAttribution {
+  currentTier: PlanTier;
+  recommendedTier: PlanTier;
+  monthlySavingsCents: number;
+  trailingWindowMonths?: number;
+}
+
 export async function createCheckoutSession(params: {
   tenantId: TenantId;
   plan: PlanTier;
@@ -14,8 +21,9 @@ export async function createCheckoutSession(params: {
   successUrl: string;
   cancelUrl: string;
   customerEmail?: string;
+  recommendation?: CheckoutRecommendationAttribution;
 }): Promise<{ sessionId: string; url: string }> {
-  const { tenantId, plan, interval, successUrl, cancelUrl, customerEmail } = params;
+  const { tenantId, plan, interval, successUrl, cancelUrl, customerEmail, recommendation } = params;
   const stripe = getStripeClient();
 
   const pool = getPlatformPool();
@@ -34,6 +42,22 @@ export async function createCheckoutSession(params: {
 
     const priceId = getPlanPriceId(plan, interval);
 
+    // Stripe metadata values must be strings. Stamping the recommendation
+    // snapshot here is what makes switch_completed attribution
+    // server-authoritative — the webhook reads it back instead of
+    // trusting client-side state.
+    const recommendationMetadata: Record<string, string> = recommendation
+      ? {
+          recommendationSource: 'billing_estimator_recommendation',
+          recommendationCurrentTier: recommendation.currentTier,
+          recommendationRecommendedTier: recommendation.recommendedTier,
+          recommendationMonthlySavingsCents: String(recommendation.monthlySavingsCents),
+          ...(recommendation.trailingWindowMonths !== undefined
+            ? { recommendationTrailingWindowMonths: String(recommendation.trailingWindowMonths) }
+            : {}),
+        }
+      : {};
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -42,7 +66,7 @@ export async function createCheckoutSession(params: {
       cancel_url: cancelUrl,
       customer: existingCustomerId ?? undefined,
       customer_email: existingCustomerId ? undefined : customerEmail,
-      metadata: { tenantId, plan, interval },
+      metadata: { tenantId, plan, interval, ...recommendationMetadata },
       subscription_data: {
         metadata: { tenantId, plan },
         trial_period_days: plan === 'starter' ? 14 : undefined,

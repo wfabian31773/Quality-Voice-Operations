@@ -956,7 +956,9 @@
       "revenue_30d": "Revenue (30d)",
       "revenue_total_sub": "{{amount}} total",
       "bounced_label": "Recipients ever hard-bounced",
-      "bounced_sub": "+{{week}} in 7d · +{{month}} in 30d"
+      "bounced_sub": "+{{week}} in 7d · +{{month}} in 30d",
+      "recommendation_label": "Plan switches from banner (30d)",
+      "recommendation_sub": "{{impressions}} impressions · {{clicks}} clicks"
     },
     "aria_tablist": "Platform admin sections",
     "common_loading": "Loading...",

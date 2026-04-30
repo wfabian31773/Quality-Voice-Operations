@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
 import { formatCents as formatCentsHelper, formatCurrency } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import BillingEstimator, { type TrailingWindow } from '../components/BillingEstimator';
+import BillingEstimator, {
+  type TrailingWindow,
+  type RecommendationEvent,
+  type RecommendationAttribution,
+} from '../components/BillingEstimator';
 import {
   ANNUAL_DISCOUNT,
   getDiscountedBasePrice,
@@ -231,36 +235,42 @@ export default function Billing() {
   const currency = useTenantCurrency();
   const formatCents = (cents: number | string | bigint | null | undefined) => formatCentsHelper(cents, { currency });
 
-  // Stripe Checkout redirects back to /billing?checkout=success after a
-  // successful upgrade. The trial-status query is cached aggressively
-  // (30 minutes, no implicit refetch) to keep the TrialBanner from spamming
-  // /tenants/me/trial-status across every tenant page, so we have to
-  // explicitly drop the cached "still on trial" snapshot whenever the user
-  // returns from a successful checkout.
+  // Stripe Checkout redirects back to /billing?checkout=success.
+  // Drop cached billing snapshots so the page reflects the new plan.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('checkout') === 'success') {
       queryClient.invalidateQueries({ queryKey: ['trial-status'] });
       queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
-      // The Stripe price attached to the subscription just changed (new
-      // checkout = new subscription items), so the catalog override cached
-      // by the BillingEstimator is now stale even though our 30-minute
-      // staleTime would otherwise keep it.
       queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
-      // Plan switch also resets the "cheapest plan" baseline — the
-      // recommendation card needs to recompute against the new current
-      // plan rather than the previous one. Invalidate every cached
-      // trailing window (3/6/12) so a tenant who's previously toggled
-      // the window doesn't see a stale recommendation on return.
       queryClient.invalidateQueries({
         predicate: (query) => query.queryKey[0] === 'billing-usage-trailing',
       });
-      // The upgrade-preview cache key is keyed off the tenant's CURRENT
-      // plan, which just changed — drop it so the "Next tier up" card
-      // re-fetches against the new starting tier on first render.
       queryClient.invalidateQueries({ queryKey: ['billing-upgrade-preview'] });
     }
   }, [queryClient]);
+
+  // Records impression / click events from the BillingEstimator banner.
+  // Completion is attributed server-side from the Stripe webhook, so
+  // we don't write anything here for switch_completed.
+  const handleRecommendationEvent = useCallback(
+    (event: RecommendationEvent) => {
+      api
+        .post('/billing/recommendation-event', {
+          eventType: event.type,
+          currentTier: event.currentTier,
+          recommendedTier: event.recommendedTier,
+          monthlySavingsCents: event.monthlySavingsCents,
+          ...(event.trailingWindowMonths !== undefined
+            ? { trailingWindowMonths: event.trailingWindowMonths }
+            : {}),
+        })
+        .catch(() => {
+          // Analytics failures must not block the upgrade flow.
+        });
+    },
+    [],
+  );
 
   const { data: subData, isLoading: subLoading, error: subError } = useQuery({
     queryKey: ['billing-subscription'],
@@ -365,20 +375,29 @@ export default function Billing() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: (params: { plan: string; interval: string }) =>
+    mutationFn: (params: {
+      plan: string;
+      interval: string;
+      recommendation?: RecommendationAttribution;
+    }) =>
       api.post<{ url: string }>('/billing/checkout', {
         plan: params.plan,
         interval: params.interval,
         successUrl: `${window.location.origin}/billing?checkout=success`,
         cancelUrl: `${window.location.origin}/billing?checkout=cancelled`,
+        ...(params.recommendation ? { recommendation: params.recommendation } : {}),
       }),
     onSuccess: (data) => { window.location.href = data.url; },
     onError: () => setUpgradeLoading(null),
   });
 
-  const handleUpgrade = (plan: string, interval: string = 'monthly') => {
+  const handleUpgrade = (
+    plan: string,
+    interval: string = 'monthly',
+    recommendation?: RecommendationAttribution,
+  ) => {
     setUpgradeLoading(plan);
-    checkoutMutation.mutate({ plan, interval });
+    checkoutMutation.mutate({ plan, interval, recommendation });
   };
 
   const sub = subData?.subscription;
@@ -572,21 +591,21 @@ export default function Billing() {
               : undefined}
             projectionMultiplier={projectionMultiplier}
             currency={currency}
-            // The recommendation banner's "Switch to <Plan>" CTA reuses
-            // the same Stripe Checkout flow as the upgrade cards below,
-            // pre-selected to monthly billing — that matches the interval
-            // the recommendation arithmetic uses (catalog monthly price)
-            // so a tenant lands in checkout at the exact $/mo we just
-            // promised. Gated on `isAdmin` so read-only roles never even
-            // see the button — the BillingEstimator hides the CTA when
-            // `onSwitchPlan` is omitted.
+            // Recommendation banner reuses the same Stripe Checkout
+            // flow as the upgrade cards, pre-selected to monthly billing
+            // (the interval the recommendation math uses). The
+            // recommendation snapshot is forwarded so checkout can stamp
+            // it into Stripe metadata for server-side attribution.
+            // Gated on `isAdmin` so read-only roles don't see the CTA —
+            // BillingEstimator hides it when `onSwitchPlan` is omitted.
             onSwitchPlan={isAdmin
-              ? (tier) => handleUpgrade(tier, 'monthly')
+              ? (tier, recommendation) => handleUpgrade(tier, 'monthly', recommendation)
               : undefined}
             switchingPlan={(upgradeLoading as PlanTier | null) ?? null}
             trailingWindow={trailingWindow}
             onTrailingWindowChange={setTrailingWindow}
             availableTrailingWindows={TRAILING_WINDOW_OPTIONS}
+            onRecommendationEvent={handleRecommendationEvent}
             trailingMonthlyAiMinutes={
               // Only feed the recommendation card when at least one of
               // the trailing months actually had AI usage. A brand-new

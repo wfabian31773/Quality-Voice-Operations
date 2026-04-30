@@ -83,14 +83,23 @@ router.get('/billing/usage', requireAuth, async (req, res) => {
 
 const VALID_PLANS = new Set(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set(['monthly', 'annual']);
+const RECOMMENDATION_TIERS = new Set(['starter', 'pro', 'enterprise']);
+const RECOMMENDATION_WINDOWS = new Set([3, 6, 12]);
+const RECOMMENDATION_EVENT_TYPES = new Set(['impression', 'click']);
 
 router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, email } = req.user!;
-  const { plan = 'pro', interval = 'monthly', successUrl, cancelUrl } = req.body as {
+  const { plan = 'pro', interval = 'monthly', successUrl, cancelUrl, recommendation } = req.body as {
     plan?: string;
     interval?: string;
     successUrl?: string;
     cancelUrl?: string;
+    recommendation?: {
+      currentTier?: unknown;
+      recommendedTier?: unknown;
+      monthlySavingsCents?: unknown;
+      trailingWindowMonths?: unknown;
+    };
   };
 
   if (!VALID_PLANS.has(plan)) {
@@ -98,6 +107,39 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
   }
   if (!VALID_INTERVALS.has(interval)) {
     return res.status(400).json({ error: `Invalid interval: ${interval}. Must be monthly or annual` });
+  }
+
+  // Validate the optional recommendation attribution so a malformed or
+  // mismatched payload from a stale client doesn't poison Stripe metadata
+  // (and, downstream, the switch_completed funnel). The recommended tier
+  // must match the plan actually being purchased — otherwise the banner
+  // "credit" wouldn't reflect what the tenant is buying, so we drop the
+  // attribution rather than stamping misleading metadata.
+  let validatedRecommendation: undefined | {
+    currentTier: 'starter' | 'pro' | 'enterprise';
+    recommendedTier: 'starter' | 'pro' | 'enterprise';
+    monthlySavingsCents: number;
+    trailingWindowMonths?: number;
+  };
+  if (recommendation && typeof recommendation === 'object') {
+    const ct = recommendation.currentTier;
+    const rt = recommendation.recommendedTier;
+    if (
+      typeof ct === 'string' && RECOMMENDATION_TIERS.has(ct) &&
+      typeof rt === 'string' && RECOMMENDATION_TIERS.has(rt) &&
+      rt === plan
+    ) {
+      const savings = Number(recommendation.monthlySavingsCents);
+      const window = Number(recommendation.trailingWindowMonths);
+      validatedRecommendation = {
+        currentTier: ct as 'starter' | 'pro' | 'enterprise',
+        recommendedTier: rt as 'starter' | 'pro' | 'enterprise',
+        monthlySavingsCents: Number.isFinite(savings) && savings >= 0 ? Math.round(savings) : 0,
+        ...(Number.isFinite(window) && RECOMMENDATION_WINDOWS.has(window)
+          ? { trailingWindowMonths: window }
+          : {}),
+      };
+    }
   }
 
   const baseUrl = `${req.protocol}://${req.hostname}`;
@@ -110,6 +152,7 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
       successUrl: successUrl ?? `${baseUrl}/dashboard?checkout=success`,
       cancelUrl: cancelUrl ?? `${baseUrl}/dashboard?checkout=cancelled`,
       customerEmail: email,
+      recommendation: validatedRecommendation,
     });
     await writeAuditLog({
       tenantId,
@@ -307,6 +350,102 @@ router.get('/billing/upgrade-preview', requireAuth, async (req, res) => {
       error: String(err),
     });
     return res.status(500).json({ error: 'Failed to resolve upgrade preview' });
+  }
+});
+
+// Records 'impression' / 'click' events from the recommendation banner.
+// 'switch_completed' is intentionally not accepted here — completion is
+// server-attributed from the Stripe webhook (see webhook.ts) so a
+// tenant cannot inflate the conversion count by hitting this endpoint.
+router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const body = (req.body ?? {}) as {
+    eventType?: unknown;
+    currentTier?: unknown;
+    recommendedTier?: unknown;
+    monthlySavingsCents?: unknown;
+    trailingWindowMonths?: unknown;
+    metadata?: unknown;
+  };
+
+  const eventType = typeof body.eventType === 'string' ? body.eventType : '';
+  const currentTier =
+    typeof body.currentTier === 'string' ? body.currentTier : '';
+  const recommendedTier =
+    typeof body.recommendedTier === 'string' ? body.recommendedTier : '';
+
+  if (!RECOMMENDATION_EVENT_TYPES.has(eventType)) {
+    return res.status(400).json({
+      error: `Invalid eventType. Must be one of: impression, click`,
+    });
+  }
+  if (!RECOMMENDATION_TIERS.has(currentTier)) {
+    return res.status(400).json({
+      error: `Invalid currentTier. Must be one of: starter, pro, enterprise`,
+    });
+  }
+  if (!RECOMMENDATION_TIERS.has(recommendedTier)) {
+    return res.status(400).json({
+      error: `Invalid recommendedTier. Must be one of: starter, pro, enterprise`,
+    });
+  }
+
+  const rawSavings = Number(body.monthlySavingsCents);
+  const monthlySavingsCents =
+    Number.isFinite(rawSavings) && rawSavings >= 0 ? Math.round(rawSavings) : null;
+
+  const rawWindow = Number(body.trailingWindowMonths);
+  const trailingWindowMonths =
+    Number.isFinite(rawWindow) && RECOMMENDATION_WINDOWS.has(rawWindow)
+      ? rawWindow
+      : null;
+
+  // Cap metadata at 4KB so a misbehaving client can't flood the table.
+  let metadata: Record<string, unknown> = {};
+  if (body.metadata && typeof body.metadata === 'object') {
+    try {
+      const serialised = JSON.stringify(body.metadata);
+      if (serialised.length <= 4096) {
+        metadata = body.metadata as Record<string, unknown>;
+      }
+    } catch {
+      metadata = {};
+    }
+  }
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    await client.query(
+      `INSERT INTO billing_recommendation_events
+         (tenant_id, event_type, current_tier, recommended_tier,
+          monthly_savings_cents, trailing_window_months, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      [
+        tenantId,
+        eventType,
+        currentTier,
+        recommendedTier,
+        monthlySavingsCents,
+        trailingWindowMonths,
+        JSON.stringify(metadata),
+      ],
+    );
+    await client.query('COMMIT');
+    return res.status(204).end();
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // Non-fatal: don't surface analytics failures to the tenant.
+    logger.warn('Failed to record recommendation event', {
+      tenantId,
+      eventType,
+      error: String(err),
+    });
+    return res.status(204).end();
+  } finally {
+    client.release();
   }
 });
 

@@ -90,12 +90,23 @@ interface BillingEstimatorProps {
   trailingMonthlyAiMinutes?: ReadonlyArray<number>;
   /**
    * Invoked when the tenant clicks the recommendation banner's
-   * "Switch to <Plan>" CTA. The parent is expected to kick off a Stripe
-   * Checkout flow for the recommended tier (monthly interval). When this
-   * callback is omitted the CTA is hidden — that's how we gate the action
-   * for read-only roles without leaking it into the markup.
+   * "Switch to <Plan>" CTA. The parent kicks off a Stripe Checkout flow
+   * for the recommended tier (monthly interval). The recommendation
+   * snapshot is passed alongside so the parent can stamp it into the
+   * Stripe session metadata for server-side attribution.
+   * When this callback is omitted the CTA is hidden — that's how we
+   * gate the action for read-only roles.
    */
-  onSwitchPlan?: (tier: PlanTier) => void;
+  onSwitchPlan?: (tier: PlanTier, recommendation: RecommendationAttribution) => void;
+  /**
+   * Invoked when the banner generates an instrumentation event:
+   *   - `impression`: fired once per (currentTier, recommendedTier,
+   *     savings) combo per browser tab.
+   *   - `click`: fired on every CTA press.
+   * Completion is attributed server-side from the Stripe webhook, not
+   * via a `switch_completed` callback.
+   */
+  onRecommendationEvent?: (event: RecommendationEvent) => void;
   /**
    * When set to a tier, the recommendation card renders its CTA in a
    * loading/disabled state for that tier. Wired to the parent's existing
@@ -135,6 +146,21 @@ interface BillingEstimatorProps {
  */
 export type TrailingWindow = 3 | 6 | 12;
 const DEFAULT_TRAILING_WINDOWS: ReadonlyArray<TrailingWindow> = [3, 6, 12];
+
+/**
+ * Recommendation snapshot passed both to the analytics callback and to
+ * `onSwitchPlan` so the parent can stamp it into Stripe session metadata.
+ */
+export interface RecommendationAttribution {
+  currentTier: PlanTier;
+  recommendedTier: PlanTier;
+  monthlySavingsCents: number;
+  trailingWindowMonths?: TrailingWindow;
+}
+
+export interface RecommendationEvent extends RecommendationAttribution {
+  type: 'impression' | 'click';
+}
 
 interface TierSpec {
   key: PlanTier;
@@ -410,17 +436,54 @@ function RecommendationCard({
   trailingWindow,
   onTrailingWindowChange,
   availableTrailingWindows,
+  onRecommendationEvent,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
   formatMoney: (value: number) => string;
-  onSwitchPlan?: (tier: PlanTier) => void;
+  onSwitchPlan?: (tier: PlanTier, recommendation: RecommendationAttribution) => void;
   switchingPlan?: PlanTier | null;
   trailingWindow?: TrailingWindow;
   onTrailingWindowChange?: (months: TrailingWindow) => void;
   availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
+  onRecommendationEvent?: (event: RecommendationEvent) => void;
 }) {
   const { current, recommended, monthlySavings, annualSavings, isAlreadyOptimal, averageMinutes } = recommendation;
+  // Math.round guards against floating-point drift since the
+  // recommendation math operates in dollars.
+  const monthlySavingsCents = Math.max(0, Math.round(monthlySavings * 100));
+
+  // Dedup impressions per (currentTier, recommendedTier, savings) per
+  // browser tab so re-renders from slider / window toggles don't get
+  // counted as new views.
+  useEffect(() => {
+    if (isAlreadyOptimal) return;
+    if (!onRecommendationEvent) return;
+    const dedupKey = `billing.rec.impression.${current.tier}.${recommended.tier}.${monthlySavingsCents}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem(dedupKey)) return;
+        window.sessionStorage.setItem(dedupKey, String(Date.now()));
+      }
+    } catch {
+      // sessionStorage unavailable (privacy mode) — fire anyway.
+    }
+    onRecommendationEvent({
+      type: 'impression',
+      currentTier: current.tier,
+      recommendedTier: recommended.tier,
+      monthlySavingsCents,
+      trailingWindowMonths: trailingWindow,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isAlreadyOptimal,
+    current.tier,
+    recommended.tier,
+    monthlySavingsCents,
+    trailingWindow,
+  ]);
+
   const monthsLabel = monthsConsidered === 1
     ? 'last complete month'
     : `last ${monthsConsidered} complete months`;
@@ -521,7 +584,18 @@ function RecommendationCard({
               type="button"
               data-testid="billing-estimator-recommendation-cta"
               data-recommendation-cta-tier={recommended.tier}
-              onClick={() => onSwitchPlan(recommended.tier)}
+              onClick={() => {
+                const attribution: RecommendationAttribution = {
+                  currentTier: current.tier,
+                  recommendedTier: recommended.tier,
+                  monthlySavingsCents,
+                  trailingWindowMonths: trailingWindow,
+                };
+                if (onRecommendationEvent) {
+                  onRecommendationEvent({ type: 'click', ...attribution });
+                }
+                onSwitchPlan(recommended.tier, attribution);
+              }}
               disabled={isSwitchingThisTier}
               className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title={`${isDowngrade ? 'Downgrade' : 'Switch'} to the ${recommended.name} plan (monthly billing)`}
@@ -555,6 +629,7 @@ export default function BillingEstimator({
   trailingWindow,
   onTrailingWindowChange,
   availableTrailingWindows,
+  onRecommendationEvent,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
@@ -728,6 +803,7 @@ export default function BillingEstimator({
           trailingWindow={trailingWindow}
           onTrailingWindowChange={onTrailingWindowChange}
           availableTrailingWindows={availableTrailingWindows}
+          onRecommendationEvent={onRecommendationEvent}
         />
       )}
 

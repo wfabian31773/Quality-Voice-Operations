@@ -193,6 +193,52 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripeE
       billingInterval,
       stripePriceId,
     }, stripeEventId);
+
+    // Server-authoritative attribution for the BillingEstimator's
+    // "Switch to <Plan>" recommendation banner. The recommendation
+    // snapshot is stamped into Stripe metadata when checkout is created
+    // (see createCheckoutSession), so a row here is only written when
+    // Stripe itself confirms the checkout completed for a session that
+    // originated from the banner.
+    if (session.metadata?.recommendationSource === 'billing_estimator_recommendation') {
+      const recCurrent = session.metadata?.recommendationCurrentTier;
+      const recRecommended = session.metadata?.recommendationRecommendedTier;
+      const recSavings = Number(session.metadata?.recommendationMonthlySavingsCents);
+      const recWindow = Number(session.metadata?.recommendationTrailingWindowMonths);
+      if (
+        (recCurrent === 'starter' || recCurrent === 'pro' || recCurrent === 'enterprise') &&
+        (recRecommended === 'starter' || recRecommended === 'pro' || recRecommended === 'enterprise')
+      ) {
+        try {
+          await client.query(
+            `INSERT INTO billing_recommendation_events
+               (tenant_id, event_type, current_tier, recommended_tier,
+                monthly_savings_cents, trailing_window_months, metadata)
+             VALUES ($1, 'switch_completed', $2, $3, $4, $5, $6::jsonb)`,
+            [
+              tenantId,
+              recCurrent,
+              recRecommended,
+              Number.isFinite(recSavings) && recSavings >= 0 ? Math.round(recSavings) : null,
+              Number.isFinite(recWindow) && (recWindow === 3 || recWindow === 6 || recWindow === 12)
+                ? recWindow
+                : null,
+              JSON.stringify({
+                stripeSessionId: session.id,
+                stripeEventId,
+                source: 'stripe_webhook',
+              }),
+            ],
+          );
+        } catch (err) {
+          logger.warn('Failed to record recommendation switch_completed event', {
+            tenantId,
+            sessionId: session.id,
+            error: String(err),
+          });
+        }
+      }
+    }
   });
 
   logger.info('Subscription activated from checkout', { tenantId, plan, billingInterval });
