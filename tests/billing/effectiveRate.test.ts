@@ -99,6 +99,9 @@ beforeEach(() => {
   delete process.env.STRIPE_PRICE_PRO_ANNUAL;
   delete process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY;
   delete process.env.STRIPE_PRICE_ENTERPRISE_ANNUAL;
+  delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
 });
 
 afterEach(() => {
@@ -112,6 +115,9 @@ afterEach(() => {
   delete process.env.STRIPE_PRICE_PRO_ANNUAL;
   delete process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY;
   delete process.env.STRIPE_PRICE_ENTERPRISE_ANNUAL;
+  delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
 });
 
 describe('getTenantEffectiveRate — Stripe subscription overrides', () => {
@@ -706,5 +712,260 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     expect(result.annualBasePriceCents).toBe(
       Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
     );
+  });
+});
+
+/**
+ * Regression coverage for the per-tier metered AI-minutes Stripe price
+ * resolution that powers the public pricing page's overage column.
+ * Contract:
+ *   - When `STRIPE_PRICE_<TIER>_AI_MINUTES` is configured AND the
+ *     tenant's live subscription has no metered AI line, the env-keyed
+ *     metered Stripe price wins over the catalog rate (with sub-cent
+ *     precision preserved). `overagePriceSource` flips to `'stripe'`
+ *     so the public pricing payload — which the marketing page consumes
+ *     via the same field — surfaces the same per-minute rate the
+ *     tenant will actually be invoiced.
+ *   - When the env var is unset OR the configured price isn't actually
+ *     a metered line OR the retrieve throws, we silently fall back to
+ *     the catalog overage so the calculator never renders NaN.
+ *   - Mirrors the same resolution `getTenantUpgradePreview` already
+ *     does for the upgrade-preview card so the two surfaces stay in
+ *     lock-step.
+ */
+describe('getTenantEffectiveRate — per-tier metered AI-minutes env override', () => {
+  it('uses STRIPE_PRICE_<TIER>_AI_MINUTES when the subscription has no metered AI line', async () => {
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_minutes_metered';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_no_ai_line',
+      stripe_price_id: 'price_pro_base',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockImplementation(async (priceId: string) => {
+      if (priceId === 'price_pro_ai_minutes_metered') {
+        return {
+          id: 'price_pro_ai_minutes_metered',
+          unit_amount: 8, // would lossily round 7.5 → 8
+          unit_amount_decimal: '7.5', // sub-cent precision must survive
+          currency: 'usd',
+          recurring: { usage_type: 'metered', interval: 'month', interval_count: 1 },
+          metadata: { metric: 'ai_minutes' },
+        };
+      }
+      throw new Error(`unexpected prices.retrieve(${priceId})`);
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(pricesRetrieve).toHaveBeenCalledWith('price_pro_ai_minutes_metered');
+    // Sub-cent precision preserved — $0.075/min, NOT rounded to $0.08.
+    expect(result.overageRatePerMinute).toBeCloseTo(0.075, 6);
+    // The public pricing page consumes this field directly.
+    expect(result.overagePriceSource).toBe('stripe');
+    expect(result.overagePriceId).toBe('price_pro_ai_minutes_metered');
+    // Base came from sub, overage from env → both stripe → 'stripe'.
+    expect(result.basePriceSource).toBe('stripe');
+    expect(result.source).toBe('stripe');
+  });
+
+  it('uses STRIPE_PRICE_<TIER>_AI_MINUTES even when the tenant has no Stripe subscription', async () => {
+    // Tenants without an active Stripe subscription still browse the
+    // public pricing page — the env-keyed metered price should drive
+    // the per-minute quote so they see the same rate they'll be
+    // invoiced once they pick up the metered line.
+    process.env.STRIPE_PRICE_STARTER_AI_MINUTES = 'price_starter_ai_minutes_metered';
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: null,
+      stripe_price_id: null,
+    });
+    pricesRetrieve.mockResolvedValueOnce({
+      id: 'price_starter_ai_minutes_metered',
+      unit_amount: 12,
+      unit_amount_decimal: '12',
+      currency: 'usd',
+      recurring: { usage_type: 'metered', interval: 'month', interval_count: 1 },
+      metadata: { metric: 'ai_minutes' },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(subscriptionsRetrieve).not.toHaveBeenCalled();
+    expect(pricesRetrieve).toHaveBeenCalledWith('price_starter_ai_minutes_metered');
+    expect(result.overageRatePerMinute).toBeCloseTo(0.12, 6);
+    expect(result.overagePriceSource).toBe('stripe');
+    expect(result.overagePriceId).toBe('price_starter_ai_minutes_metered');
+    // Base stays catalog-sourced (no sub) → mixed.
+    expect(result.basePriceSource).toBe('catalog');
+    expect(result.source).toBe('mixed');
+  });
+
+  it('falls back to catalog when STRIPE_PRICE_<TIER>_AI_MINUTES is unset', async () => {
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_no_env',
+      stripe_price_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // No env-keyed lookup → no extra prices.retrieve call.
+    expect(pricesRetrieve).not.toHaveBeenCalled();
+    expect(result.overagePriceSource).toBe('catalog');
+    expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
+  });
+
+  it('rejects a configured AI-minutes price that is not actually metered (defence-in-depth)', async () => {
+    // Operator misconfigures the env var to point at a *licensed*
+    // (non-metered) price. Without the guardrail, we'd quote that
+    // unit_amount as a per-minute overage (e.g. "$399/min"), which is
+    // catastrophic for the estimator.
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_oops_licensed';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_no_ai_line',
+      stripe_price_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockResolvedValueOnce({
+      id: 'price_oops_licensed',
+      unit_amount: 39_900,
+      unit_amount_decimal: '39900',
+      currency: 'usd',
+      // ⚠ wrong shape — env var named _AI_MINUTES but price is licensed.
+      recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+      metadata: {},
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // Misconfiguration rejected → overage stays catalog.
+    expect(result.overagePriceSource).toBe('catalog');
+    expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
+  });
+
+  it('degrades to catalog overage when the per-tier price retrieve throws', async () => {
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_broken';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_no_ai_line',
+      stripe_price_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockRejectedValueOnce(new Error('Stripe 503'));
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(result.overagePriceSource).toBe('catalog');
+    expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
+  });
+
+  it('keeps the metered AI line from the subscription when both it and the env var are present', async () => {
+    // A grandfathered tenant with a custom AI-minutes line on their
+    // subscription should keep that negotiated rate — the env-keyed
+    // published price is only a fallback when the sub doesn't already
+    // carry one.
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_published';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_with_ai_line',
+      stripe_price_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+          {
+            price: {
+              id: 'price_ai_minutes_negotiated',
+              unit_amount: 5,
+              unit_amount_decimal: '5',
+              currency: 'usd',
+              recurring: { usage_type: 'metered', interval: 'month', interval_count: 1 },
+              metadata: { metric: 'ai_minutes' },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // No env-keyed lookup happens — the sub already had a metered line.
+    expect(pricesRetrieve).not.toHaveBeenCalled();
+    expect(result.overagePriceId).toBe('price_ai_minutes_negotiated');
+    expect(result.overageRatePerMinute).toBeCloseTo(0.05, 6);
+    expect(result.overagePriceSource).toBe('stripe');
   });
 });

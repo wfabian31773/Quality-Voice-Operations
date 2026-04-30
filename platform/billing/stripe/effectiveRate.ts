@@ -380,7 +380,41 @@ export async function getTenantEffectiveRate(
   const fallback = catalogFor(inferredPlan);
 
   if (!subRow?.stripe_subscription_id) {
-    return fallback;
+    // Even without an active subscription we still try the per-tier
+    // metered AI price (`STRIPE_PRICE_<TIER>_AI_MINUTES`) so the public
+    // pricing page renders the same Stripe-sourced overage rate the
+    // tenant will be invoiced once they pick up the metered line — no
+    // mismatch between the marketing quote and the upgrade-preview
+    // quote when the env vars are set in production. Mirrors the
+    // resolution `getTenantUpgradePreview` already does for the
+    // BillingEstimator's "Next tier up" card.
+    if (!getPlanAiMinutesPriceId(inferredPlan)) return fallback;
+    let stripeForOverage: Stripe;
+    try {
+      stripeForOverage = getStripeClient();
+    } catch (err) {
+      logger.info('Stripe client unavailable — using catalog defaults for per-tier overage', {
+        tenantId,
+        plan: inferredPlan,
+        error: String(err),
+      });
+      return fallback;
+    }
+    const resolved = await resolvePerTierAiMinutesPrice(
+      stripeForOverage,
+      inferredPlan,
+      tenantId,
+    );
+    if (!resolved) return fallback;
+    return {
+      ...fallback,
+      overageRatePerMinute: resolved.ratePerMinute,
+      overagePriceSource: 'stripe',
+      overagePriceId: resolved.id,
+      // Base/SMS/Twilio still catalog-sourced, so this is a `mixed`
+      // result — only the AI overage came from live Stripe data.
+      source: 'mixed',
+    };
   }
 
   let stripe: Stripe;
@@ -478,6 +512,26 @@ export async function getTenantEffectiveRate(
       overageRatePerMinute = dollarsPerMin;
       overagePriceSource = 'stripe';
       overagePriceId = overagePrice.id;
+    }
+  }
+
+  // No metered AI line on the live subscription (or it didn't yield a
+  // usable amount) — fall back to the per-tier published metered price
+  // wired in via `STRIPE_PRICE_<TIER>_AI_MINUTES`. This keeps the
+  // public pricing page's Stripe-sourced overage in lock-step with the
+  // upgrade-preview path (`getTenantUpgradePreview`) so a tenant
+  // browsing `/pricing` sees the same per-minute rate they'd be quoted
+  // in their portal once the env vars are wired in production.
+  if (overagePriceSource === 'catalog') {
+    const resolved = await resolvePerTierAiMinutesPrice(
+      stripe,
+      inferredPlan,
+      tenantId,
+    );
+    if (resolved) {
+      overageRatePerMinute = resolved.ratePerMinute;
+      overagePriceSource = 'stripe';
+      overagePriceId = resolved.id;
     }
   }
 
@@ -657,6 +711,72 @@ async function resolvePublishedIntervalPrice(
       plan,
       interval,
       priceId,
+      error: String(err),
+    });
+    return null;
+  }
+}
+
+/**
+ * Resolve the per-tier metered AI-minutes Stripe price wired in via
+ * `STRIPE_PRICE_<TIER>_AI_MINUTES` and translate its `unit_amount`
+ * (with `unit_amount_decimal` sub-cent precision) into a per-minute
+ * dollar rate. Returns `null` when the env var is not set, when Stripe
+ * returns no usable amount, when the configured price is not actually
+ * a metered line (defence-in-depth against operator misconfiguration),
+ * or when the API call throws — every failure path degrades silently
+ * so the caller can keep its catalog fallback intact.
+ *
+ * Used by `getTenantEffectiveRate` to power the public pricing page's
+ * per-tier overage column. Mirrors — but does not currently share code
+ * with — the equivalent inline resolution inside
+ * `getTenantUpgradePreview` (see `platform/billing/stripe/upgradePreview.ts`).
+ * Keeping the contract identical here ensures a tenant browsing
+ * `/pricing` sees the same Stripe-sourced per-minute rate they'd be
+ * quoted in their portal upgrade preview; if the upgrade-preview path
+ * is ever refactored to call this helper directly, both surfaces will
+ * stay locked together by construction.
+ */
+async function resolvePerTierAiMinutesPrice(
+  stripe: Stripe,
+  plan: PlanTier,
+  tenantId: string,
+): Promise<{ ratePerMinute: number; id: string } | null> {
+  const meteredPriceId = getPlanAiMinutesPriceId(plan);
+  if (!meteredPriceId) return null;
+  try {
+    const meteredPrice = (await stripe.prices.retrieve(meteredPriceId)) as unknown as PriceLike;
+    // Defence-in-depth: the env value is operator-controlled, so confirm
+    // the retrieved price is actually a metered line before we trust its
+    // unit_amount as a per-minute rate. A licensed/recurring monthly
+    // price wired here by mistake would otherwise be quoted as an
+    // *overage* (e.g. "$399/min"), which is catastrophic for the
+    // estimator. Mirrors the same guardrail `getTenantUpgradePreview`
+    // applies to the same env var.
+    const { isMetered } = classifyPrice(meteredPrice);
+    const dollarsPerMin = isMetered
+      ? unitAmountToDollarsPerMinute(meteredPrice)
+      : null;
+    if (dollarsPerMin == null) {
+      if (!isMetered) {
+        logger.warn('Configured per-tier AI-minutes Stripe price is not metered — ignoring', {
+          tenantId,
+          plan,
+          priceId: meteredPriceId,
+          usageType: meteredPrice.recurring?.usage_type ?? null,
+        });
+      }
+      return null;
+    }
+    return {
+      ratePerMinute: dollarsPerMin,
+      id: meteredPrice.id ?? meteredPriceId,
+    };
+  } catch (err) {
+    logger.warn('Failed to retrieve per-tier AI-minutes Stripe price', {
+      tenantId,
+      plan,
+      priceId: meteredPriceId,
       error: String(err),
     });
     return null;
