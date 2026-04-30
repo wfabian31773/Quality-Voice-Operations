@@ -759,21 +759,30 @@
       "feat3_desc": "Ne ratez plus jamais un appel"
     }
   },
-  "resources_page": {
+  "resources": {
     "seo_title": "Ressources — Guides et documentation",
+    "seo_description": "Guides pas à pas, tutoriels d'intégration et bonnes pratiques pour tirer le meilleur de QVO.",
     "hero": {
       "eyebrow": "Ressources",
       "title": "Guides et documentation.",
       "description": "Guides pas à pas, tutoriels d'intégration et bonnes pratiques pour tirer le meilleur de QVO."
     },
-    "categories": {
-      "title": "Parcourez par catégorie"
+    "browse_by_category": "Parcourez par catégorie",
+    "all_guides": "Tous les guides",
+    "show_all": "Tout afficher",
+    "no_guides": "Aucun guide ne correspond à votre recherche.",
+    "read_guide": "Lire le guide",
+    "showing": "Affichage de {{count}} sur {{total}}",
+    "minutes": "{{count}} min de lecture",
+    "api_card": {
+      "title": "Vous cherchez la référence de l'API ?",
+      "desc": "Référence complète des endpoints, exemples de requête et de réponse et guides d'authentification — pour les équipes qui construisent sur QVO.",
+      "cta": "Ouvrir la documentation"
     },
-    "guides": {
-      "title": "Tous les guides",
-      "showing": "Affichage de {{count}} sur {{total}}",
-      "no_results": "Aucun guide ne correspond à votre recherche.",
-      "minutes": "{{count}} min de lecture"
+    "bottom_cta": {
+      "title": "Vous ne trouvez pas ce que vous cherchez ?",
+      "subtitle": "Notre équipe vous orientera vers le bon guide, la bonne intégration ou le bon expert.",
+      "cta": "Nous contacter"
     }
   },
   "contact": {

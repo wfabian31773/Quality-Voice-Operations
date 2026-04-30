@@ -759,21 +759,30 @@
       "feat3_desc": "Nunca vuelvas a perder una llamada"
     }
   },
-  "resources_page": {
+  "resources": {
     "seo_title": "Recursos — Guías y documentación",
+    "seo_description": "Guías paso a paso, tutoriales de integración y mejores prácticas para sacar el máximo de QVO.",
     "hero": {
       "eyebrow": "Recursos",
       "title": "Guías y documentación.",
       "description": "Guías paso a paso, tutoriales de integración y mejores prácticas para sacar el máximo de QVO."
     },
-    "categories": {
-      "title": "Explora por categoría"
+    "browse_by_category": "Explora por categoría",
+    "all_guides": "Todas las guías",
+    "show_all": "Mostrar todas",
+    "no_guides": "Ninguna guía coincide con tu búsqueda.",
+    "read_guide": "Leer guía",
+    "showing": "Mostrando {{count}} de {{total}}",
+    "minutes": "{{count}} min de lectura",
+    "api_card": {
+      "title": "¿Buscas la referencia de la API?",
+      "desc": "Referencia completa de endpoints, ejemplos de petición y respuesta y guías de autenticación — para quienes desarrollan sobre QVO.",
+      "cta": "Abrir la documentación"
     },
-    "guides": {
-      "title": "Todas las guías",
-      "showing": "Mostrando {{count}} de {{total}}",
-      "no_results": "Ninguna guía coincide con tu búsqueda.",
-      "minutes": "{{count}} min de lectura"
+    "bottom_cta": {
+      "title": "¿No encuentras lo que buscas?",
+      "subtitle": "Nuestro equipo te orientará hacia la guía, integración o experto adecuado.",
+      "cta": "Contáctanos"
     }
   },
   "contact": {

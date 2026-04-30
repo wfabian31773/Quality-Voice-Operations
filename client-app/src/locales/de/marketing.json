@@ -759,21 +759,30 @@
       "feat3_desc": "Verpassen Sie nie wieder einen Anruf"
     }
   },
-  "resources_page": {
+  "resources": {
     "seo_title": "Ressourcen — Anleitungen und Dokumentation",
+    "seo_description": "Schritt-für-Schritt-Anleitungen, Integrations-Tutorials und Best Practices, mit denen Sie das Beste aus QVO holen.",
     "hero": {
       "eyebrow": "Ressourcen",
       "title": "Anleitungen und Dokumentation.",
       "description": "Schritt-für-Schritt-Anleitungen, Integrations-Tutorials und Best Practices, mit denen Sie das Beste aus QVO holen."
     },
-    "categories": {
-      "title": "Nach Kategorie stöbern"
+    "browse_by_category": "Nach Kategorie stöbern",
+    "all_guides": "Alle Anleitungen",
+    "show_all": "Alle anzeigen",
+    "no_guides": "Keine Anleitung passt zu Ihrer Suche.",
+    "read_guide": "Anleitung lesen",
+    "showing": "Zeige {{count}} von {{total}}",
+    "minutes": "{{count}} Min Lesezeit",
+    "api_card": {
+      "title": "Suchen Sie die API-Referenz?",
+      "desc": "Vollständige Endpunkt-Referenz, Request- und Response-Beispiele sowie Authentifizierungs-Anleitungen — für Entwicklerteams, die auf QVO aufbauen.",
+      "cta": "Dokumentation öffnen"
     },
-    "guides": {
-      "title": "Alle Anleitungen",
-      "showing": "Zeige {{count}} von {{total}}",
-      "no_results": "Keine Anleitung passt zu Ihrer Suche.",
-      "minutes": "{{count}} Min Lesezeit"
+    "bottom_cta": {
+      "title": "Sie finden nicht, was Sie brauchen?",
+      "subtitle": "Unser Team verweist Sie auf die passende Anleitung, Integration oder Ansprechperson.",
+      "cta": "Kontakt aufnehmen"
     }
   },
   "contact": {
