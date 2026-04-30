@@ -126,6 +126,16 @@ same validators against real CRM sandboxes to catch upstream drift
 missing record, Salesforce key-prefix changes, etc.) before it silently
 disables proactive cleanup.
 
+A sibling suite, `appointmentBooked.integration.test.ts`, mirrors that
+pattern for the **write side** of the auto-promote contract above: it
+exercises each adapter's `appointment.booked` `execute()` path against
+the same sandboxes (booking a synthetic appointment with a unique caller
+phone + company per run), asserts the resulting Deal/Opportunity exists
+in the configured pipeline/stage, and deletes every fixture record it
+created. Both suites are gated on the same per-provider sandbox secrets
+and ride the same daily GitHub Actions workflow — see
+[Wiring it into CI](#wiring-it-into-ci) below for the workflow layout.
+
 The integration suite is `describe.skipIf`-gated per provider, so each
 provider can be enabled independently — `vitest run` skips any block whose
 env vars are missing. To enable a provider, set its env vars in the CI job
@@ -170,18 +180,61 @@ silently masking a broken validator), but it also means the test starts
 failing the moment the sandbox token expires (HubSpot / Salesforce:
 ~hours, Zoho: ~1h).
 
-### Optional: auto-refresh sandbox access tokens
+### Per-provider env vars (appointment.booked auto-promote suite)
+
+`appointmentBooked.integration.test.ts` reuses the *same* sandbox access
+tokens (and refresh-grant fallbacks) as the validator suite — that is
+the contract that lets each provider ship one set of secrets and get
+both read- and write-side drift coverage. The booking suite does **not**
+need any of the `*_DELETED_*_ID` fixture-record env vars (it creates and
+tears down its own fixtures per run, in its own namespace — see the
+[Appendix](../../../../docs/runbooks/crm-sandbox-credentials.md#appendix--why-we-dont-share-fixture-sandboxes-across-other-test-suites) of the runbook).
+
+Two optional per-provider env vars let the booking suite additionally
+assert the auto-promoted Deal/Opportunity landed in a specific
+pipeline/stage. When unset, the suite still asserts the Deal was
+created — it just skips the stage assertion. (Salesforce has no
+analogue: the auto-promote path runs `convertLead` rather than placing
+a Deal into a configured stage, so there are no Salesforce-specific
+booking env vars.)
+
+| Provider     | Optional booking env vars                                                              |
+| ------------ | -------------------------------------------------------------------------------------- |
+| HubSpot      | `HUBSPOT_SANDBOX_APPOINTMENT_PIPELINE_ID`, `HUBSPOT_SANDBOX_APPOINTMENT_STAGE_ID`      |
+| Salesforce   | _none_ (auto-promote = `convertLead`)                                                  |
+| Pipedrive    | `PIPEDRIVE_SANDBOX_APPOINTMENT_PIPELINE_ID`, `PIPEDRIVE_SANDBOX_APPOINTMENT_STAGE_ID`  |
+| Zoho         | `ZOHO_SANDBOX_APPOINTMENT_PIPELINE_ID` (Layout id), `ZOHO_SANDBOX_APPOINTMENT_STAGE_ID` (Stage display name) |
+
+The booking suite intentionally requires **write** scopes on each
+sandbox token (Contact/Company/Deal/Note create + delete; Salesforce
+also needs `LeadConvert`). The validator suite is read-only. If you
+provisioned the sandbox token in read-only mode for the validator suite
+already, broaden its scopes per the runbook before enabling the booking
+suite for that provider.
+
+### Optional: auto-refresh sandbox access tokens (validator suite only)
 
 To keep CI green across token expiry without a human babysitting secret
 rotations, additionally set the per-provider refresh token below. When
-the suite sees the refresh token *and* the production OAuth client
-credentials (the same env vars `tokenRefresh.ts` reads in production),
-it stamps a stale `token_expires_at` on the synthetic config so the
-validator's internal `ensureFreshOAuthToken` call exchanges the refresh
-token for a fresh access token via the production refresh path before
-hitting the validator. The persistence side of that refresh is stubbed
-out in the test so the rotated credentials are never written back to the
-platform DB against the synthetic `tenant-integration-test` row.
+the **validator suite** sees the refresh token *and* the production
+OAuth client credentials (the same env vars `tokenRefresh.ts` reads in
+production), it stamps a stale `token_expires_at` on the synthetic
+config so the validator's internal `ensureFreshOAuthToken` call
+exchanges the refresh token for a fresh access token via the production
+refresh path before hitting the validator. The persistence side of that
+refresh is stubbed out in the test so the rotated credentials are never
+written back to the platform DB against the synthetic
+`tenant-integration-test` row.
+
+The **booking suite** intentionally does not implement an in-test
+refresh dance. The CI workflow already mints fresh access tokens for
+short-lived providers (Salesforce password flow, Zoho refresh-token
+grant) at the top of each run, and the booking suite never sets
+`token_expires_at` on its synthetic config so the adapter's internal
+`ensureFreshOAuthToken` returns the supplied config unchanged. Cleanup
+helpers therefore see the same access token the adapter is using. For
+local runs against an expired sandbox token, mint a fresh token by
+hand per the runbook.
 
 | Provider     | Optional refresh-grant env vars                                                                                                              |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -199,7 +252,10 @@ and is unaffected by these refresh vars.
 
 This is automated via the
 [`CRM cached-identity validators (live sandbox drift)`](../../../../.github/workflows/crm-cached-identity-validators.yml)
-GitHub Actions workflow. It runs the integration suite:
+GitHub Actions workflow. It runs **both** integration suites
+(cached-identity validators *and* `appointment.booked` auto-promote)
+back-to-back as separate vitest invocations, so a failure in one path
+doesn't mask drift in the other:
 
 - **Daily** at 04:23 UTC, against whichever providers have their secrets
   configured at the time.
@@ -233,9 +289,13 @@ Provisioning each sandbox, producing the hard-deleted fixture records,
 storing the resulting secrets, and rotating before token expiry is
 documented in detail in the runbook
 [`docs/runbooks/crm-sandbox-credentials.md`](../../../../docs/runbooks/crm-sandbox-credentials.md).
-Run the suite locally the same way the CI step does — export the env
+Run either suite locally the same way the CI steps do — export the env
 vars listed above into your shell and:
 
 ```sh
+# Read-side parser drift (cached-identity validators):
 npx vitest run platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts
+
+# Write-side auto-promote drift (appointment.booked execute path):
+npx vitest run platform/integrations/connectors/adapters/appointmentBooked.integration.test.ts
 ```

@@ -1,10 +1,21 @@
 name: CRM cached-identity validators (live sandbox drift)
 
-# Daily drift check for `validateCachedIdentity.integration.test.ts` against
-# the real HubSpot, Salesforce, Pipedrive, and Zoho sandboxes. The unit suite
-# (`validateCachedIdentity.test.ts`) covers our parser; this job catches
-# upstream shape changes before they silently disable
-# `CrmCallerIdentityRevalidationScheduler` in production.
+# Daily drift check for two opt-in integration suites against the real
+# HubSpot, Salesforce, Pipedrive, and Zoho sandboxes:
+#
+#   1. `validateCachedIdentity.integration.test.ts` — the
+#      `CrmCallerIdentityRevalidationScheduler`'s parsers; catches
+#      upstream "missing record" shape changes that would silently
+#      disable proactive cleanup in production.
+#   2. `appointmentBooked.integration.test.ts` — each first-party CRM
+#      adapter's `appointment.booked` `execute()` path; catches upstream
+#      auto-promote shape changes that would silently break pipeline
+#      reporting on the booking handoff. Mirrors the validator suite's
+#      per-provider gating so each provider can ship independently.
+#
+# The two suites run as separate vitest invocations so a failure in one
+# can be triaged without re-running the other, and so the run summary
+# distinguishes drift in the read path from drift in the write path.
 #
 # Provisioning, fixture-record creation, secret naming, and rotation are
 # documented in docs/runbooks/crm-sandbox-credentials.md.
@@ -20,6 +31,7 @@ on:
       - "platform/integrations/connectors/adapters/pipedrive.ts"
       - "platform/integrations/connectors/adapters/zoho.ts"
       - "platform/integrations/connectors/adapters/validateCachedIdentity*.ts"
+      - "platform/integrations/connectors/adapters/appointmentBooked.integration.test.ts"
       - "platform/integrations/connectors/types.ts"
       - ".github/workflows/crm-cached-identity-validators.yml"
   workflow_dispatch:
@@ -46,6 +58,11 @@ jobs:
       HUBSPOT_SANDBOX_DELETED_CONTACT_ID: ${{ secrets.HUBSPOT_SANDBOX_DELETED_CONTACT_ID }}
       HUBSPOT_SANDBOX_DELETED_COMPANY_ID: ${{ secrets.HUBSPOT_SANDBOX_DELETED_COMPANY_ID }}
       HUBSPOT_SANDBOX_DELETED_DEAL_ID: ${{ secrets.HUBSPOT_SANDBOX_DELETED_DEAL_ID }}
+      # Optional: when set, the appointment.booked suite asserts the
+      # auto-promoted Deal lands in this pipeline/stage. When unset, it
+      # only asserts the Deal was created.
+      HUBSPOT_SANDBOX_APPOINTMENT_PIPELINE_ID: ${{ secrets.HUBSPOT_SANDBOX_APPOINTMENT_PIPELINE_ID }}
+      HUBSPOT_SANDBOX_APPOINTMENT_STAGE_ID: ${{ secrets.HUBSPOT_SANDBOX_APPOINTMENT_STAGE_ID }}
 
       # Salesforce — short-lived access token, minted per run from these
       # credentials so the daily cron can't outlive the session policy. The
@@ -69,6 +86,10 @@ jobs:
       PIPEDRIVE_SANDBOX_DELETED_PERSON_ID: ${{ secrets.PIPEDRIVE_SANDBOX_DELETED_PERSON_ID }}
       PIPEDRIVE_SANDBOX_DELETED_ORG_ID: ${{ secrets.PIPEDRIVE_SANDBOX_DELETED_ORG_ID }}
       PIPEDRIVE_SANDBOX_DELETED_DEAL_ID: ${{ secrets.PIPEDRIVE_SANDBOX_DELETED_DEAL_ID }}
+      # Optional: when set, the appointment.booked suite asserts the
+      # auto-promoted Deal lands in this pipeline/stage.
+      PIPEDRIVE_SANDBOX_APPOINTMENT_PIPELINE_ID: ${{ secrets.PIPEDRIVE_SANDBOX_APPOINTMENT_PIPELINE_ID }}
+      PIPEDRIVE_SANDBOX_APPOINTMENT_STAGE_ID: ${{ secrets.PIPEDRIVE_SANDBOX_APPOINTMENT_STAGE_ID }}
 
       # Zoho — access tokens expire after ~1 hour, so we store the long-lived
       # refresh token + OAuth app credentials and mint per run. The mint step
@@ -81,6 +102,11 @@ jobs:
       ZOHO_SANDBOX_DELETED_CONTACT_ID: ${{ secrets.ZOHO_SANDBOX_DELETED_CONTACT_ID }}
       ZOHO_SANDBOX_DELETED_ACCOUNT_ID: ${{ secrets.ZOHO_SANDBOX_DELETED_ACCOUNT_ID }}
       ZOHO_SANDBOX_DELETED_DEAL_ID: ${{ secrets.ZOHO_SANDBOX_DELETED_DEAL_ID }}
+      # Optional: when set, the appointment.booked suite asserts the
+      # auto-promoted Deal lands in this Layout (`appointment_pipeline_id`)
+      # and Stage name (`appointment_stage_id`).
+      ZOHO_SANDBOX_APPOINTMENT_PIPELINE_ID: ${{ secrets.ZOHO_SANDBOX_APPOINTMENT_PIPELINE_ID }}
+      ZOHO_SANDBOX_APPOINTMENT_STAGE_ID: ${{ secrets.ZOHO_SANDBOX_APPOINTMENT_STAGE_ID }}
 
     steps:
       - name: Check out repository
@@ -176,7 +202,7 @@ jobs:
             echo "Provider rotation runbook: \`docs/runbooks/crm-sandbox-credentials.md\`"
           } | tee -a "$GITHUB_STEP_SUMMARY" > .ci-out/providers.md
 
-      - name: Run live-sandbox integration suite
+      - name: Run live-sandbox integration suite (cached-identity validators)
         id: vitest
         run: |
           mkdir -p .ci-out
@@ -185,6 +211,25 @@ jobs:
             --reporter=default \
             --reporter=json \
             --outputFile=.ci-out/vitest.json
+
+      # Sibling suite: exercises each adapter's `appointment.booked`
+      # `execute()` against the same sandboxes (write path, with cleanup).
+      # Runs as a separate vitest invocation so a failure in the read-side
+      # parser drift suite doesn't mask drift in the auto-promote write
+      # path (and vice versa). `if: always()` ensures the second suite
+      # still runs even when the first one failed, so a single CI run
+      # gives complete drift coverage instead of stopping at the first
+      # red provider.
+      - name: Run live-sandbox integration suite (appointment.booked auto-promote)
+        id: vitest_appointment_booked
+        if: always()
+        run: |
+          mkdir -p .ci-out
+          npx vitest run \
+            platform/integrations/connectors/adapters/appointmentBooked.integration.test.ts \
+            --reporter=default \
+            --reporter=json \
+            --outputFile=.ci-out/vitest-appointment-booked.json
 
       # When zero blocks ran (no provider secrets configured yet), surface a
       # warning instead of failing — operations brings each provider online
@@ -197,22 +242,28 @@ jobs:
       # `passed >= EXPECTED_PROVIDER_COUNT`, so drift coverage cannot silently
       # regress back to zero if a secret store gets wiped.
       - name: Warn if zero provider blocks ran
-        if: always() && steps.vitest.outcome == 'success'
+        if: always() && (steps.vitest.outcome == 'success' || steps.vitest_appointment_booked.outcome == 'success')
         run: |
-          if [ ! -f .ci-out/vitest.json ]; then
-            echo "::warning::vitest.json missing — could not verify how many blocks ran."
-            exit 0
-          fi
-          node -e '
-            const j = JSON.parse(require("fs").readFileSync(".ci-out/vitest.json","utf8"));
-            const passed = j.numPassedTests ?? 0;
-            const failed = j.numFailedTests ?? 0;
-            const pending = j.numPendingTests ?? 0;
-            console.log(`vitest: passed=${passed} failed=${failed} pending(skipped)=${pending}`);
-            if (passed === 0 && failed === 0) {
-              console.log("::warning::Zero CRM cached-identity validator blocks ran — every provider is currently skipped. See docs/runbooks/crm-sandbox-credentials.md to wire the first provider.");
-            }
-          '
+          summarise() {
+            local label="$1" path="$2"
+            if [ ! -f "$path" ]; then
+              echo "::warning::$label: vitest output missing — could not verify how many blocks ran."
+              return
+            fi
+            node -e '
+              const [label, path] = process.argv.slice(1);
+              const j = JSON.parse(require("fs").readFileSync(path,"utf8"));
+              const passed = j.numPassedTests ?? 0;
+              const failed = j.numFailedTests ?? 0;
+              const pending = j.numPendingTests ?? 0;
+              console.log(`vitest [${label}]: passed=${passed} failed=${failed} pending(skipped)=${pending}`);
+              if (passed === 0 && failed === 0) {
+                console.log(`::warning::Zero ${label} blocks ran — every provider is currently skipped. See docs/runbooks/crm-sandbox-credentials.md to wire the first provider.`);
+              }
+            ' "$label" "$path"
+          }
+          summarise "cached-identity validators"        .ci-out/vitest.json
+          summarise "appointment.booked auto-promote"   .ci-out/vitest-appointment-booked.json
 
       # ─── Alert the on-call channel on failure ─────────────────────────────
       # Vitest itself fails the job on a real provider failure (upstream shape
@@ -237,30 +288,46 @@ jobs:
         run: |
           mkdir -p .ci-out
           {
-            echo "The daily live CRM sandbox validator suite failed."
+            echo "The daily live CRM sandbox suite failed."
             echo
-            echo "This means at least one provider's \`validate*CachedIdentity\` parser disagrees with what its CRM sandbox is actually returning right now, **or** the workflow's per-run access-token mint step (Salesforce / Zoho) couldn't exchange the long-lived inputs for a fresh access token. Until this clears, \`CrmCallerIdentityRevalidationScheduler\` may stop scrubbing deleted records for the affected provider in production — tenants will start seeing reactivated stale contact links in their pipelines."
+            echo "Two suites run back-to-back against each provider's sandbox; either or both may have failed. Until this clears, the corresponding production behaviour for the affected provider is at risk:"
+            echo
+            echo "- **Cached-identity validators** (\`validateCachedIdentity.integration.test.ts\`) — drift here means \`CrmCallerIdentityRevalidationScheduler\` may stop scrubbing deleted records, so tenants will start seeing reactivated stale contact links in their pipelines."
+            echo "- **\`appointment.booked\` auto-promote** (\`appointmentBooked.integration.test.ts\`) — drift here means a booked appointment may stop creating the Deal/Opportunity (or land it in the wrong pipeline/stage), so pipeline reports go quiet on the booking handoff."
+            echo
+            echo "Failures can also originate upstream of vitest — the per-run access-token mint step (Salesforce / Zoho) failing means the long-lived inputs are stale and need rotation."
             echo
             echo "**First responder checklist** (full runbook: \`docs/runbooks/crm-sandbox-credentials.md\`):"
             echo
-            echo "1. Open the workflow run linked below and identify which step failed."
+            echo "1. Open the workflow run linked below and identify which step failed (mint, validator vitest, or booking vitest)."
             echo "2. **Mint step failed** (Salesforce / Zoho) → rotate the corresponding long-lived credential per the provider's section in the runbook and re-run."
             echo "3. **Vitest 401 / token-expired** (HubSpot / Pipedrive) → rotate the static sandbox token per the runbook and re-run."
-            echo "4. **Vitest parser mismatch** (e.g. HubSpot 404 body shape moved, Zoho 200-wrapper changed, Salesforce key prefix changed) → patch the corresponding \`validate*CachedIdentity\` function in \`platform/integrations/connectors/adapters/\` and add a regression case to \`validateCachedIdentity.test.ts\`."
-            echo "5. **Vitest reports the deleted fixture as alive** → the fixture was reseeded or undeleted; re-delete it (and purge from the Recycle Bin for Salesforce) per the runbook."
+            echo "4. **Validator vitest parser mismatch** (e.g. HubSpot 404 body shape moved, Zoho 200-wrapper changed, Salesforce key prefix changed) → patch the corresponding \`validate*CachedIdentity\` function in \`platform/integrations/connectors/adapters/\` and add a regression case to \`validateCachedIdentity.test.ts\`."
+            echo "5. **Booking vitest stage/pipeline assertion failed** → the provider silently moved its default deal stage; either update \`*_SANDBOX_APPOINTMENT_PIPELINE_ID\` / \`_STAGE_ID\` to the new stage or patch the auto-promote contract in the corresponding adapter."
+            echo "6. **Booking vitest cleanup warnings in log** → check the sandbox for leftover \`Apt Booked Co\` / \`+1555\` fixtures; the in-suite namespace sweep tries to mop these up but a partial network failure may leak rows."
+            echo "7. **Validator vitest reports the deleted fixture as alive** → the fixture was reseeded or undeleted; re-delete it (and purge from the Recycle Bin for Salesforce) per the runbook."
             echo
-            echo "## Vitest step outcome"
+            echo "## Vitest step outcomes"
             echo
-            echo "\`steps.vitest.outcome\` = \`${{ steps.vitest.outcome }}\` (\`skipped\` means the failure was upstream of vitest, e.g. the mint step)."
+            echo "- \`steps.vitest.outcome\` (cached-identity validators) = \`${{ steps.vitest.outcome }}\`"
+            echo "- \`steps.vitest_appointment_booked.outcome\` (appointment.booked auto-promote) = \`${{ steps.vitest_appointment_booked.outcome }}\`"
+            echo
+            echo "(\`skipped\` means the failure was upstream of that vitest step, e.g. the mint step.)"
             echo
             echo "## Provider pre-flight"
             echo
             cat .ci-out/providers.md 2>/dev/null || echo "_(provider pre-flight summary unavailable)_"
             echo
-            echo "## vitest summary"
+            echo "## vitest summary — cached-identity validators"
             echo
             echo '```json'
             cat .ci-out/vitest.json 2>/dev/null || echo "(vitest.json missing — see workflow log for raw output; this is expected when the failure happened before vitest ran)"
+            echo '```'
+            echo
+            echo "## vitest summary — appointment.booked auto-promote"
+            echo
+            echo '```json'
+            cat .ci-out/vitest-appointment-booked.json 2>/dev/null || echo "(vitest-appointment-booked.json missing — see workflow log for raw output; this is expected when the failure happened before that step ran)"
             echo '```'
             echo
             echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -338,34 +405,40 @@ jobs:
             }
 
       - name: Auto-close tracking issue when suite is back in sync
-        if: success() && steps.vitest.outcome == 'success'
+        if: success() && steps.vitest.outcome == 'success' && steps.vitest_appointment_booked.outcome == 'success'
         uses: actions/github-script@v7
         with:
           script: |
-            // When vitest succeeds we close any open tracking issue from
-            // a previous drift run so on-call isn't left chasing an
-            // already-resolved alert. Comment first so the audit trail
-            // links to the run that verified the fix.
+            // When both vitest steps succeed we close any open tracking
+            // issue from a previous drift run so on-call isn't left
+            // chasing an already-resolved alert. Comment first so the
+            // audit trail links to the run that verified the fix.
             //
             // Guard: a "successful" vitest run with zero passed tests
-            // means every provider block was skipped (no sandbox secrets
-            // configured) — that is NOT evidence the drift is resolved,
-            // so we must not auto-close in that case. The "Warn if zero
-            // provider blocks ran" step already surfaces the
-            // zero-coverage condition; auto-closing on top of it would
-            // hide a real, still-failing parser behind a green-because-
-            // skipped run.
+            // across both suites means every provider block was skipped
+            // (no sandbox secrets configured) — that is NOT evidence the
+            // drift is resolved, so we must not auto-close in that case.
+            // We sum passed tests from both JSON outputs so green-because-
+            // -one-suite-ran-the-other-was-skipped still auto-closes.
             const fs = require('fs');
-            let passed = 0;
-            try {
-              const j = JSON.parse(fs.readFileSync('.ci-out/vitest.json', 'utf8'));
-              passed = j.numPassedTests ?? 0;
-            } catch (err) {
-              core.warning(`Could not read vitest.json to verify provider coverage: ${err.message}. Skipping auto-close as a precaution.`);
+            const readPassed = (path) => {
+              try {
+                const j = JSON.parse(fs.readFileSync(path, 'utf8'));
+                return j.numPassedTests ?? 0;
+              } catch (err) {
+                core.warning(`Could not read ${path}: ${err.message}.`);
+                return null;
+              }
+            };
+            const validatorPassed = readPassed('.ci-out/vitest.json');
+            const bookingPassed = readPassed('.ci-out/vitest-appointment-booked.json');
+            if (validatorPassed === null && bookingPassed === null) {
+              core.warning('Could not read either vitest output to verify provider coverage. Skipping auto-close as a precaution.');
               return;
             }
-            if (passed === 0) {
-              core.warning('Vitest succeeded but zero provider blocks ran — refusing to auto-close any open `crm-cached-identity-drift` tracking issue, since "green because skipped" is not evidence the drift is resolved.');
+            const totalPassed = (validatorPassed ?? 0) + (bookingPassed ?? 0);
+            if (totalPassed === 0) {
+              core.warning('Both vitest suites succeeded but zero provider blocks ran — refusing to auto-close any open `crm-cached-identity-drift` tracking issue, since "green because skipped" is not evidence the drift is resolved.');
               return;
             }
             const label = 'crm-cached-identity-drift';

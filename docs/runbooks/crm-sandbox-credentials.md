@@ -2,17 +2,29 @@
 
 Audience: Platform / integrations on-call
 Surface: GitHub Actions workflow `CRM cached-identity validators (live sandbox drift)` (`.github/workflows/crm-cached-identity-validators.yml`)
-Code under test: `platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts`
+Code under test:
+- `platform/integrations/connectors/adapters/validateCachedIdentity.integration.test.ts` (read-side parser drift)
+- `platform/integrations/connectors/adapters/appointmentBooked.integration.test.ts` (write-side `appointment.booked` auto-promote drift)
 Per-provider env-var matrix: [`platform/integrations/connectors/adapters/README.md`](../../platform/integrations/connectors/adapters/README.md#per-provider-env-vars)
 
 ## TL;DR
 
-The CI job `CRM cached-identity validators (live sandbox drift)` runs the
-opt-in `validateCachedIdentity.integration.test.ts` suite against the real
-HubSpot, Salesforce, Pipedrive, and Zoho sandboxes daily (and on every push
-to `main` that touches the validators). Each provider's block is
-`describe.skipIf`-gated on a sandbox token + at least one **hard-deleted**
-fixture record ID. This runbook is the operations playbook for:
+The CI job `CRM cached-identity validators (live sandbox drift)` runs **two**
+opt-in integration suites against the real HubSpot, Salesforce, Pipedrive,
+and Zoho sandboxes daily (and on every push to `main` that touches the
+adapters). Each provider's block in each suite is `describe.skipIf`-gated
+independently:
+
+- **`validateCachedIdentity.integration.test.ts`** — read-side parser drift.
+  Each block needs a sandbox token + at least one **hard-deleted** fixture
+  record ID.
+- **`appointmentBooked.integration.test.ts`** — write-side `appointment.booked`
+  auto-promote drift. Each block needs the same sandbox token (with **write**
+  scopes broadened, see each provider's §2 below). It does **not** need any
+  pre-existing fixture record IDs — it creates and deletes its own per-run
+  fixtures in a separate namespace (see the [Appendix](#appendix--why-we-dont-share-fixture-sandboxes-across-other-test-suites)).
+
+This runbook is the operations playbook for:
 
 - Standing up the per-provider sandbox the first time.
 - Producing the hard-deleted fixture record(s) the validator probes against.
@@ -522,11 +534,64 @@ job goes green without waiting for the next cron tick.
 ## Appendix — Why we don't share fixture sandboxes across other test suites
 
 The validator suite is read-only and idempotent: it asks "is this ID
-deleted?" against records we have explicitly hard-deleted. Other
-integration tests we add later may want to write into the same sandbox
-(e.g. exercising the `appointment.booked` auto-promote path). That's fine,
-but **do not** reuse this suite's deleted-fixture IDs for write tests —
-re-creating a record with the same ID is impossible in every CRM here, and
-re-creating it with a *different* ID will silently invalidate the secret
-without the suite noticing until the next cron tick. Use a separate
-fixture-record namespace per test suite.
+deleted?" against records we have explicitly hard-deleted. The
+`appointment.booked` auto-promote suite that ships in the same workflow
+is **write**-side — it creates a Contact / Company-or-Account / Deal /
+Note (and, for Salesforce, converts a Lead) per run, asserts the
+auto-promoted Deal/Opportunity is in the configured pipeline/stage, and
+deletes every fixture record it created in `afterEach`. Both suites can
+share the same sandbox tenant safely as long as you keep their
+fixture-record namespaces disjoint:
+
+- **Read suite (`validateCachedIdentity.integration.test.ts`):** the
+  hard-deleted records you provisioned in step 3 of each provider's
+  section above. Their IDs go into `*_SANDBOX_DELETED_*_ID` secrets.
+  Never recreate them, never delete them again.
+- **Write suite (`appointmentBooked.integration.test.ts`):** a
+  unique-per-run namespace generated at test time
+  (`+1555xxxxxxx` synthetic phone, `Apt Booked Co <suffix>` company
+  name, `apt-booked-<suffix>@example.invalid` email). The suite tears
+  down everything it created, but a crash mid-test can leak fixtures —
+  search the sandbox by the `Apt Booked Co` prefix or the `+1555` phone
+  prefix once a quarter and bulk-delete leftovers (cheap, idempotent).
+
+Specifically, **do not** reuse the validator suite's deleted-fixture IDs
+in any write test — re-creating a record with the same ID is impossible
+in every CRM here, and re-creating it with a *different* ID will silently
+invalidate the secret without the suite noticing until the next cron tick.
+
+If you ever add a third integration suite against these sandboxes, give
+it its own fixture-record namespace too (e.g. its own caller-phone
+prefix, its own company-name prefix) so the quarterly sweep can tell
+which suite leaked which row.
+
+### Optional booking-suite env vars (per provider)
+
+The booking suite always asserts the Deal/Opportunity was created. To
+*also* assert it landed in a specific pipeline/stage (catching drift
+where a provider silently moves new deals to a different default stage),
+set the optional env vars below. They are read by the booking suite only
+— the validator suite ignores them.
+
+| Provider     | Optional env vars (booking suite only)                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
+| HubSpot      | `HUBSPOT_SANDBOX_APPOINTMENT_PIPELINE_ID`, `HUBSPOT_SANDBOX_APPOINTMENT_STAGE_ID`                            |
+| Salesforce   | _none_ (auto-promote runs `convertLead`, not stage placement)                                                |
+| Pipedrive    | `PIPEDRIVE_SANDBOX_APPOINTMENT_PIPELINE_ID`, `PIPEDRIVE_SANDBOX_APPOINTMENT_STAGE_ID`                        |
+| Zoho         | `ZOHO_SANDBOX_APPOINTMENT_PIPELINE_ID` (Layout id), `ZOHO_SANDBOX_APPOINTMENT_STAGE_ID` (Stage display name) |
+
+### Sandbox token scopes — read suite vs write suite
+
+Each provider's §2 above describes the **read-only** scopes the
+validator suite needs. The booking suite additionally needs **write**
+scopes on the same token. If you wired the validator suite first with a
+read-only token, broaden it before enabling the booking-suite block for
+that provider — otherwise the booking suite will fail with HTTP 403 on
+the first create call.
+
+| Provider     | Validator scopes (read-only)                                                                            | Additional booking-suite scopes (write)                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| HubSpot      | `crm.objects.contacts.read`, `..companies.read`, `..deals.read`                                          | `crm.objects.contacts.write`, `..companies.write`, `..deals.write`, `crm.objects.notes.write`                                    |
+| Salesforce   | `Manage user data via APIs (api)`, `Perform requests at any time (refresh_token, offline_access)`        | Same scope (`api`) — the connected app already grants read+write together. The integration user's profile must permit `Lead.Convert`. |
+| Pipedrive    | Personal API token (full-access) or OAuth `read`                                                         | If using OAuth, also include `write` (or use a personal API token, which is full-access by default).                             |
+| Zoho         | `ZohoCRM.modules.contacts.READ`, `..accounts.READ`, `..deals.READ`                                       | `ZohoCRM.modules.contacts.ALL`, `..accounts.ALL`, `..deals.ALL`, `ZohoCRM.modules.notes.ALL`                                     |
