@@ -63,12 +63,21 @@ interface PageCheck {
   slug: string;
   /**
    * One of:
-   *   - { kind: 'heading'; text: string }   waits for an <h1>/<h2> with the
-   *       given text content.
-   *   - { kind: 'testid'; testid: string }  waits for [data-testid="..."].
-   * The first matching shape wins; if both are provided, both must appear.
+   *   - { kind: 'heading'; text: string }       waits for an <h1>/<h2> with
+   *       the given text content.
+   *   - { kind: 'testid'; testid: string }      waits for [data-testid="..."].
+   *   - { kind: 'displayValue'; value: string } waits for a form control
+   *       (input/textarea/select) whose displayed value equals the string.
+   *       Use this when the page's heading is an editable input so the
+   *       sentinel proves *both* the shell rendered AND the data fetch that
+   *       populates the input actually resolved (a missing/404'd fetch
+   *       would leave the input on its empty initial state, while a testid
+   *       on the shell would falsely pass).
    */
-  expect: { kind: 'heading'; text: string } | { kind: 'testid'; testid: string };
+  expect:
+    | { kind: 'heading'; text: string }
+    | { kind: 'testid'; testid: string }
+    | { kind: 'displayValue'; value: string };
 }
 
 const PAGES: PageCheck[] = [
@@ -131,6 +140,33 @@ const PAGES: PageCheck[] = [
   // management; pulls from multiple endpoints (appointments, types,
   // reminders) on mount.
   { path: '/scheduling', slug: 'tenant-scheduling', expect: { kind: 'heading', text: 'Scheduling' } },
+
+  // Agent Builder — the heaviest agent surface. Loads its own lazy chunk
+  // and fans out to several /api/agents/* fetches on mount, so it has
+  // historically been a silent-failure hotspot (any one of those fetches
+  // returning the wrong shape can leave the builder stuck on its loading
+  // spinner, or render the shell with empty defaults if /api/agents/:id
+  // 404s). Like Ticket Detail, the route requires a real id, so
+  // scripts/seed-admin.ts seeds a fixture agent with a stable id
+  // ("admin-org-smoke-agent" / name "Smoke Test Agent") on the admin-org
+  // tenant — keep the values here in sync with that script.
+  //
+  // The page header's "title" is an editable <input> bound to
+  // agentSettings.name, which is populated from the GET /api/agents/:id
+  // response (see useEffect on agentData in AgentBuilder.tsx). Asserting
+  // a heading by the agent name doesn't work (the input's aria-label
+  // wins for the heading's accessible name), and asserting a testid on
+  // the rendered shell would falsely pass even if the GET 404'd
+  // (isLoading would still flip to false and the shell would mount with
+  // an empty name). So we sentinel on the input's display value: that
+  // assertion fails closed when the seeded fixture row is missing OR
+  // when the primary agent fetch returns the wrong shape, which is the
+  // exact regression class this entry exists to catch.
+  {
+    path: '/agents/admin-org-smoke-agent/builder',
+    slug: 'tenant-agent-builder',
+    expect: { kind: 'displayValue', value: 'Smoke Test Agent' },
+  },
 ];
 
 const ERROR_BOUNDARY_TEXT = 'An unexpected error occurred';
@@ -206,16 +242,22 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
       // Wait for the expected sentinel. We use locator.first().waitFor() so
       // duplicate matches (e.g. h1 + breadcrumb) don't fail the strict
       // "exactly one match" rule that page.waitForSelector imposes.
-      const locator =
-        check.expect.kind === 'heading'
-          ? page.getByRole('heading', { name: check.expect.text }).first()
-          : page.locator(`[data-testid="${check.expect.testid}"]`).first();
+      let locator;
+      let sentinelDescription: string;
+      if (check.expect.kind === 'heading') {
+        locator = page.getByRole('heading', { name: check.expect.text }).first();
+        sentinelDescription = `heading "${check.expect.text}"`;
+      } else if (check.expect.kind === 'testid') {
+        locator = page.locator(`[data-testid="${check.expect.testid}"]`).first();
+        sentinelDescription = `[data-testid="${check.expect.testid}"]`;
+      } else {
+        locator = page.getByDisplayValue(check.expect.value).first();
+        sentinelDescription = `form control with displayed value "${check.expect.value}"`;
+      }
       try {
         await locator.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
       } catch (err) {
-        reason = `expected ${
-          check.expect.kind === 'heading' ? `heading "${check.expect.text}"` : `[data-testid="${check.expect.testid}"]`
-        } never appeared (${(err as Error).message})`;
+        reason = `expected ${sentinelDescription} never appeared (${(err as Error).message})`;
       }
     }
 

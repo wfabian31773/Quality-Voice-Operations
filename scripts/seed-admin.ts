@@ -10,6 +10,13 @@ const ADMIN_TENANT_SLUG = 'admin-org';
 const SMOKE_TICKET_ID = 'admin-org-smoke-ticket';
 const SMOKE_TICKET_SUBJECT = 'Smoke Test Ticket';
 
+// Stable id+name for the fixture agent used by
+// tests/e2e/tenantPagesSmoke.spec.ts (Agent Builder page check).
+// /agents/:id/builder needs a real id to load, so we seed one with a
+// known id here. Keep these strings in sync with PAGES in that spec.
+const SMOKE_AGENT_ID = 'admin-org-smoke-agent';
+const SMOKE_AGENT_NAME = 'Smoke Test Agent';
+
 async function main() {
   const env = process.env.APP_ENV ?? 'development';
 
@@ -120,6 +127,23 @@ async function main() {
         SMOKE_TICKET_SUBJECT,
         'Auto-created by seed-admin for tenantPagesSmoke.spec.ts. Safe to delete in production.',
       ],
+    );
+
+    // Seed a fixture agent for tenantPagesSmoke.spec.ts to hit
+    // /agents/:id/builder with a stable, known id+name. Like the smoke
+    // ticket above, this avoids the need to scrape the Agents list for
+    // a usable id (brittle against ordering / list-fetch changes). The
+    // builder fetches /api/agents/:id on mount, so the row must exist
+    // on the admin-org tenant.
+    console.log('[SEED-ADMIN] Upserting smoke-test fixture agent...');
+    await client.query(
+      `INSERT INTO agents (id, tenant_id, name, type, status)
+       VALUES ($1, $2, $3, 'general', 'active')
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         status = 'active',
+         updated_at = NOW()`,
+      [SMOKE_AGENT_ID, ADMIN_TENANT_ID, SMOKE_AGENT_NAME],
     );
 
     await client.query('COMMIT');
