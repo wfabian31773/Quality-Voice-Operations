@@ -8,6 +8,16 @@ import {
   listScenarios as listSimEngineScenarios,
 } from '../simulation/SimulationEngine';
 import type { OperationalSnapshot } from './DigitalTwinModelService';
+import {
+  registerSimulation,
+  updateSimulationPhase,
+  isSimulationCancelled,
+  markSimulationCompleted,
+  markSimulationCancelled,
+  markSimulationFailed,
+  SimulationCancelledError,
+  type SimulationPhase,
+} from './SimulationProgressTracker';
 
 const logger = createLogger('OPERATIONAL_SIMULATOR');
 
@@ -188,15 +198,128 @@ export async function runSimulation(
     pool, tenantId, modelId, scenarioId, name, parameterOverrides,
   );
 
+  return executeSimulationWithProgress(
+    pool, tenantId, runRow, snapshot, mergedParams, scenarioType,
+  );
+}
+
+/**
+ * Kicks off a simulation in the background and returns the runId immediately
+ * so callers can poll for progress via SimulationProgressTracker. Cancellation
+ * requests submitted between phases are honored.
+ */
+export async function startSimulationAsync(
+  tenantId: string,
+  modelId: string,
+  scenarioId: string,
+  name?: string,
+  parameterOverrides?: Partial<ScenarioParameters>,
+): Promise<{ runId: string; total: number }> {
+  const pool = getPlatformPool();
+
+  const { snapshot, mergedParams, scenarioType, runRow } = await initSimulationRun(
+    pool, tenantId, modelId, scenarioId, name, parameterOverrides,
+  );
+
+  const runId = runRow.id as string;
+  const total = computePhaseTotal(scenarioType);
+  registerSimulation(runId, tenantId, total);
+  updateSimulationPhase(runId, 'initializing', 1);
+
+  void executeSimulationWithProgress(pool, tenantId, runRow, snapshot, mergedParams, scenarioType)
+    .then(() => {
+      markSimulationCompleted(runId);
+    })
+    .catch(async (err) => {
+      if (err instanceof SimulationCancelledError) {
+        markSimulationCancelled(runId);
+        try {
+          await markRunStatus(pool, tenantId, runId, 'cancelled');
+        } catch (dbErr) {
+          logger.error('Failed to persist cancelled status', {
+            tenantId, runId, error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+          });
+        }
+        logger.info('Simulation cancelled', { tenantId, runId });
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        markSimulationFailed(runId, msg);
+        try {
+          await markRunStatus(pool, tenantId, runId, 'failed');
+        } catch (dbErr) {
+          logger.error('Failed to persist failed status', {
+            tenantId, runId, error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+          });
+        }
+        logger.error('Background simulation failed', { tenantId, runId, error: msg });
+      }
+    });
+
+  return { runId, total };
+}
+
+function computePhaseTotal(scenarioType: string): number {
+  // Phases: initializing, computing_baseline, computing_simulated, finalizing.
+  // Conversation comparison adds two longer phases (baseline + variant runs).
+  return scenarioType === 'prompt_ab' || scenarioType === 'workflow' ? 6 : 4;
+}
+
+async function markRunStatus(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  runId: string,
+  status: 'cancelled' | 'failed' | 'completed',
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await withTenantContext(client, tenantId, async () => {
+      await client.query(
+        `UPDATE digital_twin_simulation_runs SET status = $1, completed_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+        [status, runId, tenantId],
+      );
+    });
+  } finally {
+    client.release();
+  }
+}
+
+async function executeSimulationWithProgress(
+  pool: ReturnType<typeof getPlatformPool>,
+  tenantId: string,
+  runRow: Record<string, unknown>,
+  snapshot: OperationalSnapshot,
+  mergedParams: ScenarioParameters,
+  scenarioType: string,
+): Promise<{ run: SimulationRun; result: SimulationResult }> {
+  const runId = runRow.id as string;
+  const checkpoint = (phase: SimulationPhase, processed: number) => {
+    if (isSimulationCancelled(runId)) {
+      throw new SimulationCancelledError(runId);
+    }
+    updateSimulationPhase(runId, phase, processed);
+  };
+
+  checkpoint('computing_baseline', 2);
   const baseline = computeBaselineMetrics(snapshot);
+
+  checkpoint('computing_simulated', 3);
   const simulated = computeSimulatedMetrics(snapshot, mergedParams);
 
+  const hasConversationPhase = scenarioType === 'prompt_ab' || scenarioType === 'workflow';
   let conversationQuality: ConversationQualityResults | null = null;
-  if (scenarioType === 'prompt_ab' || scenarioType === 'workflow') {
-    conversationQuality = await runConversationComparison(tenantId, mergedParams, scenarioType);
+  if (hasConversationPhase) {
+    checkpoint('baseline_conversations', 4);
+    conversationQuality = await runConversationComparison(
+      tenantId, mergedParams, scenarioType,
+      (phase, processed) => checkpoint(phase, processed),
+    );
   }
 
-  return finalizeSimulationRun(pool, tenantId, runRow, scenarioType, baseline, simulated, mergedParams, conversationQuality);
+  checkpoint('finalizing', hasConversationPhase ? 6 : 4);
+
+  return finalizeSimulationRun(
+    pool, tenantId, runRow, scenarioType, baseline, simulated, mergedParams, conversationQuality,
+  );
 }
 
 async function initSimulationRun(
@@ -332,6 +455,7 @@ async function runConversationComparison(
   tenantId: string,
   params: ScenarioParameters,
   scenarioType: string,
+  onPhase?: (phase: SimulationPhase, processed: number) => void,
 ): Promise<ConversationQualityResults> {
   const agentId = params.agentId;
   if (!agentId) {
@@ -365,6 +489,7 @@ async function runConversationComparison(
     );
 
     await execSimEngineRun(tenantId, baselineRun.id);
+    onPhase?.('variant_conversations', 5);
 
     let variantAgentId = agentId;
     let ephemeralAgentId: string | null = null;

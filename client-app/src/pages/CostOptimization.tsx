@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper, dollarsToCents } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import { PageHeader } from '../components/ui';
+import { PageHeader, OperationStatusPanel, type OperationStatus } from '../components/ui';
 import {
   DollarSign, TrendingDown, Database,
-  ArrowDown, ArrowUp, Settings2, Save, Loader2, BarChart3,
+  ArrowDown, ArrowUp, Settings2, Save, Loader2, BarChart3, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -137,13 +137,43 @@ export default function CostOptimization() {
   const [range, setRange] = useState<Range>('30d');
   const queryClient = useQueryClient();
 
-  const { data: analytics, isLoading } = useQuery({
+  const {
+    data: analytics,
+    isLoading,
+    isFetching,
+    isError,
+    error: analyticsError,
+    dataUpdatedAt,
+    refetch,
+  } = useQuery({
     queryKey: ['cost-optimization-analytics', range],
     queryFn: () => api.get<CostAnalytics & { currency?: string }>(`/cost-optimization/analytics?range=${range}`),
   });
 
   const currency = useTenantCurrency(analytics?.currency);
   const formatCents = makeFormatCents(currency);
+
+  // Track when the current recompute kicked off so the panel can show
+  // elapsed time and so we can display a stable "ran in Xs" once it
+  // settles. We can't get this from react-query alone — `dataUpdatedAt`
+  // is the *finish* time, not the start.
+  const [recomputeStartedAt, setRecomputeStartedAt] = useState<number | null>(null);
+  const wasFetchingRef = useRef(false);
+  useEffect(() => {
+    if (isFetching && !wasFetchingRef.current) {
+      setRecomputeStartedAt(Date.now());
+    }
+    wasFetchingRef.current = isFetching;
+  }, [isFetching]);
+
+  // Tick once per second while the recompute is in flight so the
+  // OperationStatusPanel's elapsed timer updates without re-fetching.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!isFetching) return;
+    const t = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [isFetching]);
 
   const { data: budget } = useQuery({
     queryKey: ['cost-optimization-budget'],
@@ -173,14 +203,6 @@ export default function CostOptimization() {
     queryKey: ['cost-optimization-conversations', range],
     queryFn: () => api.get<ConversationsResponse>(`/cost-optimization/conversations?range=${range}&limit=20`),
   });
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="animate-spin text-text-muted" size={32} />
-      </div>
-    );
-  }
 
   const a = analytics ?? {
     totalConversations: 0,
@@ -213,31 +235,115 @@ export default function CostOptimization() {
     { name: 'Compression Savings', value: a.savingsBreakdown.compressionSavingsCents },
   ].filter(d => d.value > 0);
 
+  // Map react-query state into the OperationStatusPanel vocabulary so the
+  // ops console shows a consistent "running / failed / completed" pill for
+  // the recompute, instead of the bare spinner that used to gate the page.
+  const opStatus: OperationStatus = isFetching
+    ? 'running'
+    : isError
+      ? 'failed'
+      : analytics
+        ? 'success'
+        : 'idle';
+  const recomputeFinishedAt = !isFetching && dataUpdatedAt > 0 ? dataUpdatedAt : null;
+  const elapsedMs = recomputeStartedAt
+    ? (recomputeFinishedAt ?? Date.now()) - recomputeStartedAt
+    : null;
+  const errorMessage = isError
+    ? (analyticsError instanceof Error ? analyticsError.message : 'Failed to recompute cost analytics.')
+    : null;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Cost Optimization"
         description="Track, analyze, and reduce AI conversation costs"
         actions={
-          <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
-            {(['7d', '30d', '90d'] as Range[]).map(r => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={clsx(
-                  'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  range === r
-                    ? 'bg-surface text-text-primary shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                )}
-              >
-                {r}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 bg-surface-hover rounded-lg p-1">
+              {(['7d', '30d', '90d'] as Range[]).map(r => (
+                <button
+                  key={r}
+                  onClick={() => setRange(r)}
+                  className={clsx(
+                    'px-3 py-1.5 text-sm rounded-md transition-colors',
+                    range === r
+                      ? 'bg-surface text-text-primary shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={clsx('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+              Recompute
+            </button>
           </div>
         }
       />
 
+      <OperationStatusPanel
+        title="Cost recompute"
+        description={
+          isFetching
+            ? `Aggregating ${range} of conversation costs from the billing pipeline.`
+            : isError
+              ? 'The most recent cost recompute failed. Use Recompute to retry.'
+              : analytics
+                ? `Latest recompute aggregated ${analytics.totalConversations.toLocaleString()} conversation${analytics.totalConversations === 1 ? '' : 's'} across the last ${range}.`
+                : 'No cost analytics have been computed yet.'
+        }
+        status={opStatus}
+        progress={isFetching ? undefined : analytics ? 1 : undefined}
+        eta={isFetching && elapsedMs !== null ? `Elapsed ${formatElapsedSeconds(elapsedMs)}` : undefined}
+        meta={analytics ? [
+          { label: 'Range', value: range },
+          { label: 'Conversations', value: analytics.totalConversations.toLocaleString() },
+          { label: 'Total cost', value: formatCents(analytics.totalCostCents) },
+          {
+            label: isFetching ? 'Started' : 'Last finished',
+            value: isFetching && recomputeStartedAt
+              ? new Date(recomputeStartedAt).toLocaleTimeString()
+              : dataUpdatedAt > 0
+                ? new Date(dataUpdatedAt).toLocaleTimeString()
+                : '—',
+          },
+        ] : undefined}
+        actions={
+          !isFetching && (isError || (analytics && elapsedMs !== null)) ? (
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-primary/40 bg-primary-light text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Run again
+            </button>
+          ) : undefined
+        }
+        error={errorMessage}
+        updatedAt={
+          !isFetching && dataUpdatedAt > 0
+            ? `${new Date(dataUpdatedAt).toLocaleTimeString()}${elapsedMs !== null ? ` · took ${formatElapsedSeconds(elapsedMs)}` : ''}`
+            : undefined
+        }
+        testId="cost-recompute-panel"
+      />
+
+      {isLoading && !analytics && (
+        <div className="flex items-center justify-center h-40 bg-surface border border-border rounded-xl">
+          <Loader2 className="animate-spin text-text-muted" size={32} />
+        </div>
+      )}
+
+      {!isLoading && (
+      <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total Cost"
@@ -534,6 +640,16 @@ export default function CostOptimization() {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
+}
+
+function formatElapsedSeconds(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
 }

@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import {
   Cpu, Plus, Play, BarChart3, TrendingUp, Clock, ChevronDown, ChevronRight,
   Layers, Zap, AlertTriangle, CheckCircle, ArrowUpRight, ArrowDownRight,
-  RefreshCw, Trash2, Eye, Activity, DollarSign, Users, PhoneCall,
+  RefreshCw, Trash2, Eye, Activity, DollarSign, Users, PhoneCall, StopCircle,
 } from 'lucide-react';
 import TourLauncher from '../components/TourLauncher';
 import { digitalTwinTour } from '../components/tours';
-import { PageHeader } from '../components/ui';
+import { PageHeader, OperationStatusPanel, type OperationStatus } from '../components/ui';
 import Modal from '../components/Modal';
 
 interface DigitalTwinModel {
@@ -136,6 +136,30 @@ export default function DigitalTwin() {
   const [forecastLoading, setForecastLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [simStatus, setSimStatus] = useState<OperationStatus>('idle');
+  const [simContext, setSimContext] = useState<{ scenarioName: string; modelName: string } | null>(null);
+  const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
+  const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [simProcessed, setSimProcessed] = useState(0);
+  const [simTotal, setSimTotal] = useState(0);
+  const [simPhase, setSimPhase] = useState<string | null>(null);
+  const [simRunId, setSimRunId] = useState<string | null>(null);
+  const simPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    if (simStatus !== 'running') return;
+    const t = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [simStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (simPollRef.current) clearInterval(simPollRef.current);
+    };
+  }, []);
+
   const loadModels = useCallback(async () => {
     try {
       const data = await api.get<{ models: DigitalTwinModel[] }>('/digital-twin/models');
@@ -218,24 +242,151 @@ export default function DigitalTwin() {
     }
   };
 
-  const runSimulation = async (scenarioId: string, name?: string) => {
-    if (!selectedModel) return;
-    setSimRunning(true);
-    setError(null);
-    try {
-      const data = await api.post<{ run: SimulationRun; result: SimulationResult }>('/digital-twin/simulate', {
-        modelId: selectedModel.id, scenarioId, name,
-      });
-      setRuns(prev => [data.run, ...prev]);
-      setSelectedResult(data.result);
-      setShowRunSim(false);
-      setTab('results');
-    } catch (err) {
-      setError('Simulation failed. Please try again.');
-    } finally {
-      setSimRunning(false);
+  const stopPolling = () => {
+    if (simPollRef.current) {
+      clearInterval(simPollRef.current);
+      simPollRef.current = null;
     }
   };
+
+  const startPolling = useCallback((runId: string) => {
+    stopPolling();
+    simPollRef.current = setInterval(async () => {
+      try {
+        const status = await api.get<{
+          status: 'running' | 'completed' | 'failed' | 'cancelled';
+          phase: string;
+          processed: number;
+          total: number;
+          error: string | null;
+        }>(`/digital-twin/runs/${runId}/status`);
+
+        setSimProcessed(status.processed);
+        setSimTotal(status.total);
+        setSimPhase(status.phase);
+
+        if (status.status === 'running') return;
+
+        stopPolling();
+        setSimRunning(false);
+        setSimFinishedAt(Date.now());
+
+        if (status.status === 'completed') {
+          try {
+            const [runResp, resultsResp] = await Promise.all([
+              api.get<{ run: SimulationRun }>(`/digital-twin/runs/${runId}`),
+              api.get<{ results: SimulationResult[] }>(`/digital-twin/runs/${runId}/results`),
+            ]);
+            setRuns(prev => [runResp.run, ...prev.filter(r => r.id !== runResp.run.id)]);
+            if (resultsResp.results.length > 0) {
+              setSelectedResult(resultsResp.results[0]);
+            }
+            setShowRunSim(false);
+            setTab('results');
+            setSimStatus('success');
+          } catch {
+            setSimStatus('failed');
+            setSimError('Simulation completed but results could not be loaded.');
+          }
+        } else if (status.status === 'cancelled') {
+          setSimStatus('cancelled');
+          loadRuns();
+        } else {
+          setSimStatus('failed');
+          setSimError(status.error ?? 'Simulation failed');
+          setError('Simulation failed. Please try again.');
+        }
+      } catch {
+        // Transient polling error — keep trying until the next tick or cancel.
+      }
+    }, 1000);
+  }, [loadRuns]);
+
+  const runSimulation = async (scenarioId: string, name?: string) => {
+    if (!selectedModel) return;
+    const scenario = scenarios.find((s) => s.id === scenarioId);
+    setSimRunning(true);
+    setSimStatus('running');
+    setSimContext({
+      scenarioName: scenario?.name ?? scenarioId,
+      modelName: selectedModel.name,
+    });
+    setSimStartedAt(Date.now());
+    setSimFinishedAt(null);
+    setSimError(null);
+    setSimProcessed(0);
+    setSimTotal(0);
+    setSimPhase('queued');
+    setSimRunId(null);
+    setError(null);
+    stopPolling();
+
+    let runId: string;
+    let total: number;
+    try {
+      const startResp = await api.post<{ runId: string; total: number }>(
+        '/digital-twin/simulate',
+        { modelId: selectedModel.id, scenarioId, name, async: true },
+      );
+      runId = startResp.runId;
+      total = startResp.total;
+      setSimRunId(runId);
+      setSimTotal(total);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Simulation failed';
+      setSimStatus('failed');
+      setSimError(msg);
+      setSimFinishedAt(Date.now());
+      setError('Simulation failed. Please try again.');
+      setSimRunning(false);
+      return;
+    }
+
+    startPolling(runId);
+  };
+
+  const cancelSimulation = async () => {
+    if (!simRunId || simStatus !== 'running') return;
+    try {
+      await api.post(`/digital-twin/runs/${simRunId}/cancel`, {});
+    } catch {
+      // The polling loop will still surface the final status.
+    }
+  };
+
+  const dismissSimPanel = () => {
+    if (simStatus === 'running') return;
+    setSimStatus('idle');
+    setSimContext(null);
+    setSimStartedAt(null);
+    setSimFinishedAt(null);
+    setSimError(null);
+    setSimProcessed(0);
+    setSimTotal(0);
+    setSimPhase(null);
+    setSimRunId(null);
+  };
+
+  useEffect(() => {
+    if (!selectedModel || simStatus === 'running') return;
+    const inFlight = runs.find((r) => r.status === 'running');
+    if (!inFlight || inFlight.id === simRunId) return;
+    const scenario = scenarios.find((s) => s.id === inFlight.scenarioId);
+    setSimRunning(true);
+    setSimStatus('running');
+    setSimContext({
+      scenarioName: scenario?.name ?? inFlight.name ?? inFlight.scenarioId,
+      modelName: selectedModel.name,
+    });
+    setSimStartedAt(inFlight.startedAt ? new Date(inFlight.startedAt).getTime() : Date.now());
+    setSimFinishedAt(null);
+    setSimError(null);
+    setSimProcessed(0);
+    setSimTotal(0);
+    setSimPhase('running');
+    setSimRunId(inFlight.id);
+    startPolling(inFlight.id);
+  }, [runs, scenarios, selectedModel, simStatus, simRunId, startPolling]);
 
   const generateForecast = async (forecastType: string, horizonDays: number = 30) => {
     if (!selectedModel) return;
@@ -320,6 +471,21 @@ export default function DigitalTwin() {
 
           {selectedModel && (
             <>
+              {(simStatus === 'running' || simStatus === 'success' || simStatus === 'failed' || simStatus === 'cancelled') && simContext && simStartedAt && (
+                <SimulationProgressPanel
+                  status={simStatus}
+                  context={simContext}
+                  startedAt={simStartedAt}
+                  finishedAt={simFinishedAt}
+                  error={simError}
+                  processed={simProcessed}
+                  total={simTotal}
+                  phase={simPhase}
+                  onCancel={cancelSimulation}
+                  onDismiss={dismissSimPanel}
+                />
+              )}
+
               <div className="flex gap-1 bg-surface-hover rounded-lg p-1" data-tour="twin-tabs">
                 {(['overview', 'scenarios', 'results', 'forecasts'] as TabType[]).map(t => (
                   <button
@@ -370,6 +536,90 @@ export default function DigitalTwin() {
         />
       )}
     </div>
+  );
+}
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
+function formatPhase(phase: string | null): string {
+  if (!phase) return '—';
+  return phase
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function SimulationProgressPanel({
+  status, context, startedAt, finishedAt, error, processed, total, phase, onCancel, onDismiss,
+}: {
+  status: OperationStatus;
+  context: { scenarioName: string; modelName: string };
+  startedAt: number;
+  finishedAt: number | null;
+  error: string | null;
+  processed: number;
+  total: number;
+  phase: string | null;
+  onCancel: () => void;
+  onDismiss: () => void;
+}) {
+  const endTime = finishedAt ?? Date.now();
+  const elapsedMs = endTime - startedAt;
+  const phaseLabel = formatPhase(phase);
+  const description =
+    status === 'running'
+      ? `Running scenario "${context.scenarioName}" against ${context.modelName}.`
+      : status === 'success'
+        ? `Scenario "${context.scenarioName}" completed. The latest result is shown below in the Results tab.`
+        : status === 'cancelled'
+          ? `Scenario "${context.scenarioName}" was cancelled.`
+          : `Scenario "${context.scenarioName}" failed before producing a result.`;
+
+  const ratio = total > 0 ? Math.min(1, processed / total) : undefined;
+
+  return (
+    <OperationStatusPanel
+      title="Digital Twin simulation"
+      description={description}
+      status={status}
+      processed={status === 'running' ? processed : undefined}
+      total={status === 'running' ? total : undefined}
+      progress={status === 'running' ? ratio : status === 'success' ? 1 : undefined}
+      eta={status === 'running' ? `Elapsed ${formatElapsed(elapsedMs)}` : undefined}
+      meta={[
+        { label: 'Scenario', value: context.scenarioName },
+        { label: 'Model', value: context.modelName },
+        { label: 'Phase', value: phaseLabel },
+        { label: 'Elapsed', value: formatElapsed(elapsedMs) },
+      ]}
+      error={error ?? undefined}
+      actions={
+        status === 'running' ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-warning/40 bg-warning-light text-warning text-xs font-medium hover:bg-warning/10 transition-colors"
+          >
+            <StopCircle className="h-3.5 w-3.5" /> Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-text-secondary text-xs font-medium hover:bg-surface-hover transition-colors"
+          >
+            Dismiss
+          </button>
+        )
+      }
+      testId="digital-twin-sim-panel"
+    />
   );
 }
 

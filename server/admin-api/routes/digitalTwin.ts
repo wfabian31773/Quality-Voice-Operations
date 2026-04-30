@@ -13,12 +13,17 @@ import {
   listScenarios,
   getScenario,
   runSimulation,
+  startSimulationAsync,
   getSimulationRun,
   listSimulationRuns,
   getSimulationResults,
   compareScenarios,
   seedPredefinedScenarios,
 } from '../../../platform/digital-twin/OperationalSimulator';
+import {
+  getSimulationProgress,
+  requestSimulationCancel,
+} from '../../../platform/digital-twin/SimulationProgressTracker';
 import {
   generateForecast,
   getForecasts,
@@ -139,13 +144,17 @@ router.post('/digital-twin/scenarios', requireAuth, requireRole('manager'), asyn
 
 router.post('/digital-twin/simulate', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
-  const { modelId, scenarioId, name, parameters } = req.body;
+  const { modelId, scenarioId, name, parameters, async: asyncMode } = req.body;
 
   if (!modelId || !scenarioId) {
     return res.status(400).json({ error: 'modelId and scenarioId are required' });
   }
 
   try {
+    if (asyncMode) {
+      const { runId, total } = await startSimulationAsync(tenantId, modelId, scenarioId, name, parameters);
+      return res.status(202).json({ runId, total });
+    }
     const result = await runSimulation(tenantId, modelId, scenarioId, name, parameters);
     return res.status(201).json(result);
   } catch (err) {
@@ -155,6 +164,52 @@ router.post('/digital-twin/simulate', requireAuth, requireRole('manager'), async
     }
     logger.error('Failed to run simulation', { tenantId, error: msg });
     return res.status(500).json({ error: 'Failed to run simulation' });
+  }
+});
+
+router.get('/digital-twin/runs/:id/status', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const runId = req.params.id;
+
+  try {
+    const run = await getSimulationRun(tenantId, runId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+
+    const progress = getSimulationProgress(runId);
+    const status = progress?.status ?? (run.status as 'running' | 'completed' | 'failed' | 'cancelled');
+    return res.json({
+      runId,
+      status,
+      phase: progress?.phase ?? status,
+      processed: progress?.processed ?? (status === 'completed' ? 1 : 0),
+      total: progress?.total ?? 1,
+      error: progress?.error ?? null,
+      startedAt: progress?.startedAt ?? null,
+      finishedAt: progress?.finishedAt ?? null,
+    });
+  } catch (err) {
+    logger.error('Failed to get simulation status', { tenantId, runId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to get simulation status' });
+  }
+});
+
+router.post('/digital-twin/runs/:id/cancel', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const runId = req.params.id;
+
+  try {
+    const run = await getSimulationRun(tenantId, runId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    if (run.tenantId !== tenantId) return res.status(404).json({ error: 'Run not found' });
+
+    const ok = requestSimulationCancel(runId);
+    if (!ok) {
+      return res.status(409).json({ error: 'Simulation is no longer running' });
+    }
+    return res.json({ runId, cancelRequested: true });
+  } catch (err) {
+    logger.error('Failed to cancel simulation', { tenantId, runId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to cancel simulation' });
   }
 });
 

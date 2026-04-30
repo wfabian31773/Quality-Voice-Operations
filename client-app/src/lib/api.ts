@@ -35,6 +35,10 @@ function fallbackMessageForStatus(status: number): string {
   return GENERIC_ERROR_MESSAGE;
 }
 
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const tokenAtStart = token;
   const headers: Record<string, string> = {
@@ -103,12 +107,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
-  put: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
-  patch: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  get: <T>(path: string, opts?: RequestOptions) => request<T>(path, { signal: opts?.signal }),
+  post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined, signal: opts?.signal }),
+  put: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined, signal: opts?.signal }),
+  patch: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined, signal: opts?.signal }),
+  delete: <T>(path: string, opts?: RequestOptions) => request<T>(path, { method: 'DELETE', signal: opts?.signal }),
 };

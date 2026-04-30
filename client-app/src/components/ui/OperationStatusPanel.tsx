@@ -17,6 +17,7 @@ export interface OperationStatusPanelProps {
   meta?: { label: string; value: ReactNode }[];
   error?: string | null;
   className?: string;
+  testId?: string;
 }
 
 const STATUS_TONE: Record<OperationStatus, { label: string; bar: string; pill: string; icon: ReactNode }> = {
@@ -71,6 +72,7 @@ export default function OperationStatusPanel({
   meta,
   error,
   className,
+  testId,
 }: OperationStatusPanelProps) {
   const tone = STATUS_TONE[status];
   const showBar = progress !== undefined || status === 'running';
@@ -88,6 +90,7 @@ export default function OperationStatusPanel({
         className,
       )}
       aria-live="polite"
+      data-testid={testId ?? 'operation-status-panel'}
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">

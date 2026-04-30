@@ -76,6 +76,8 @@ interface PageCheck {
    * The first matching shape wins; if both are provided, both must appear.
    */
   expect: { kind: 'heading'; text: string } | { kind: 'testid'; testid: string };
+  /** Optional follow-up testid that must also be visible. */
+  alsoExpectTestId?: string;
 }
 
 // One entry per link in OpsLayout.tsx's `opsLinks`. Heading text below
@@ -107,7 +109,14 @@ const PAGES: PageCheck[] = [
   { path: '/ops/integration-diagnostics', slug: 'ops-integration-diagnostics', expect: { kind: 'heading', text: 'Integration Diagnostics' } },
 
   // Cost — CostOptimization.tsx PageHeader title="Cost Optimization".
-  { path: '/ops/cost', slug: 'ops-cost', expect: { kind: 'heading', text: 'Cost Optimization' } },
+  // The recompute panel renders alongside the analytics fetch, so its
+  // testid must be visible on every load.
+  {
+    path: '/ops/cost',
+    slug: 'ops-cost',
+    expect: { kind: 'heading', text: 'Cost Optimization' },
+    alsoExpectTestId: 'cost-recompute-panel',
+  },
 
   // Digital Twin — DigitalTwin.tsx PageHeader title contains "Digital
   // Twin" wrapped in a span with a tour launcher; getByRole('heading')
@@ -197,6 +206,15 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
         reason = `expected ${
           check.expect.kind === 'heading' ? `heading "${check.expect.text}"` : `[data-testid="${check.expect.testid}"]`
         } never appeared (${(err as Error).message})`;
+      }
+    }
+
+    if (!reason && check.alsoExpectTestId) {
+      const secondary = page.locator(`[data-testid="${check.alsoExpectTestId}"]`).first();
+      try {
+        await secondary.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
+      } catch (err) {
+        reason = `expected secondary [data-testid="${check.alsoExpectTestId}"] never appeared (${(err as Error).message})`;
       }
     }
 
