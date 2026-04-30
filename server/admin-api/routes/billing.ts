@@ -149,6 +149,91 @@ router.post('/billing/portal', requireAuth, requireRole('manager'), async (req, 
   }
 });
 
+/**
+ * Trailing N-month AI minute usage, returned newest-first. Used by the
+ * BillingEstimator's plan-recommendation card to suggest the cheapest
+ * tier based on actual trailing usage rather than month-to-date only.
+ *
+ * The current (in-progress) calendar month is intentionally excluded so
+ * the recommendation reflects *complete* historical periods. `months`
+ * is clamped to [1, 12] to keep the query bounded; values outside that
+ * range silently fall back to the default of 3.
+ *
+ * Months with no `usage_metrics` row are zero-filled via `generate_series`
+ * (LEFT JOIN'd against the aggregated rows). This is critical: a tenant
+ * that ran 0 AI minutes in a given month will not have a row in
+ * `usage_metrics` for that month, and skipping those months would inflate
+ * their trailing-3-month average and produce a misleading "downgrade"
+ * recommendation. With zero-fill, a tenant with 0 / 0 / 300 across the
+ * last three months averages to 100, not 300.
+ */
+router.get('/billing/usage/trailing', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const requested = Number.parseInt(String(req.query.months ?? '3'), 10);
+  const months = Number.isFinite(requested) && requested >= 1 && requested <= 12
+    ? requested
+    : 3;
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `WITH window_months AS (
+         SELECT generate_series(
+           date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month'),
+           date_trunc('month', NOW()) - INTERVAL '1 month',
+           INTERVAL '1 month'
+         ) AS month_start
+       ),
+       monthly_totals AS (
+         SELECT
+           date_trunc('month', period_start) AS month_start,
+           SUM(quantity)::bigint AS minutes
+         FROM usage_metrics
+         WHERE tenant_id = $1
+           AND metric_type = 'ai_minutes'
+           AND period_start >= date_trunc('month', NOW()) - ($2::int * INTERVAL '1 month')
+           AND period_start < date_trunc('month', NOW())
+         GROUP BY date_trunc('month', period_start)
+       )
+       SELECT
+         to_char(w.month_start, 'YYYY-MM') AS month,
+         COALESCE(t.minutes, 0)::bigint AS minutes
+       FROM window_months w
+       LEFT JOIN monthly_totals t ON t.month_start = w.month_start
+       ORDER BY w.month_start DESC`,
+      [tenantId, months],
+    );
+    await client.query('COMMIT');
+
+    const monthly = rows.map((r) => ({
+      month: r.month as string,
+      aiMinutes: Number(r.minutes),
+    }));
+    // Always average over the full requested window (zero-filled), not
+    // just the months that happened to have rows in usage_metrics — see
+    // the doc-comment above for why.
+    const total = monthly.reduce((acc, m) => acc + m.aiMinutes, 0);
+    const average = monthly.length > 0 ? total / monthly.length : 0;
+    const monthsWithData = monthly.filter((m) => m.aiMinutes > 0).length;
+
+    return res.json({
+      months,
+      monthsWithData,
+      monthly,
+      averageAiMinutes: average,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to get trailing usage', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to retrieve trailing usage' });
+  } finally {
+    client.release();
+  }
+});
+
 router.get('/billing/effective-rate', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   try {

@@ -6,6 +6,8 @@ import {
   Sparkles,
   TrendingUp,
   AlertTriangle,
+  Lightbulb,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   PLAN_CATALOG,
@@ -14,6 +16,11 @@ import {
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
+import {
+  averageTrailingMinutes,
+  recommendCheapestPlan,
+  type PlanRateOverride,
+} from '../../../shared/billing/planRecommendation';
 import {
   calculateMonthlyCost,
   calculateEffectiveRate,
@@ -58,6 +65,13 @@ interface BillingEstimatorProps {
    * call sites that don't yet plumb the tenant currency keep rendering.
    */
   currency?: string;
+  /**
+   * Trailing complete-month AI-minute totals (newest-first or any order)
+   * used to drive the "cheapest plan" recommendation banner. When omitted
+   * or empty the recommendation card is hidden — we don't want to nudge
+   * a tenant toward a plan change based on a single MTD data point.
+   */
+  trailingMonthlyAiMinutes?: ReadonlyArray<number>;
 }
 
 interface TierSpec {
@@ -283,16 +297,116 @@ function TierEstimate({
   );
 }
 
+function RecommendationCard({
+  recommendation,
+  monthsConsidered,
+  formatMoney,
+}: {
+  recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
+  monthsConsidered: number;
+  formatMoney: (value: number) => string;
+}) {
+  const { current, recommended, monthlySavings, annualSavings, isAlreadyOptimal, averageMinutes } = recommendation;
+  const monthsLabel = monthsConsidered === 1
+    ? 'last complete month'
+    : `last ${monthsConsidered} complete months`;
+
+  if (isAlreadyOptimal) {
+    return (
+      <div
+        data-testid="billing-estimator-recommendation"
+        data-recommendation-state="optimal"
+        className="mb-5 flex items-start gap-3 rounded-lg border border-success/40 bg-success/[0.06] p-4"
+      >
+        <div className="w-9 h-9 rounded-lg bg-success/15 flex items-center justify-center shrink-0">
+          <CheckCircle2 className="h-4 w-4 text-success" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text-primary">
+            You&rsquo;re already on the cheapest plan for your usage.
+          </p>
+          <p className="text-xs text-text-muted mt-0.5">
+            Based on your {monthsLabel} ({averageMinutes.toLocaleString()} AI min/mo on average), your{' '}
+            <span className="font-medium text-text-primary">{current.name}</span> plan is the best fit at{' '}
+            <span className="font-medium text-text-primary">{formatMoney(current.monthlyCost)}/mo</span>.
+            No change needed.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="billing-estimator-recommendation"
+      data-recommendation-state="switch"
+      data-recommended-tier={recommended.tier}
+      className="mb-5 flex items-start gap-3 rounded-lg border border-primary/40 bg-primary/[0.06] p-4"
+    >
+      <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+        <Lightbulb className="h-4 w-4 text-primary" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-text-primary">
+          You&rsquo;d save{' '}
+          <span
+            data-testid="billing-estimator-recommendation-savings"
+            className="text-primary"
+          >
+            {formatMoney(monthlySavings)}/mo
+          </span>{' '}
+          on{' '}
+          <span data-testid="billing-estimator-recommendation-tier" className="text-primary">
+            {recommended.name}
+          </span>{' '}
+          based on your {monthsLabel}.
+        </p>
+        <p className="text-xs text-text-muted mt-0.5">
+          You averaged {averageMinutes.toLocaleString()} AI min/mo. {current.name} would have billed{' '}
+          {formatMoney(current.monthlyCost)}/mo at that volume; {recommended.name} comes out to{' '}
+          {formatMoney(recommended.monthlyCost)}/mo — about{' '}
+          <span className="font-medium text-text-primary">{formatMoney(annualSavings)}/yr</span>{' '}
+          back in your pocket.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function BillingEstimator({
   currentPlan,
   monthToDateAiMinutes,
   rateOverride,
   projectionMultiplier,
   currency = 'USD',
+  trailingMonthlyAiMinutes,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
   const currentTierKey = normalizePlan(currentPlan);
+
+  // Defer averaging + filtering to the shared helper so the UI and
+  // server-side consumers stay drift-free. Override shape is mapped to
+  // PlanRateOverride here (BillingEstimatorRateOverride is the same shape
+  // but the props type predates the shared helper).
+  const recommendation = useMemo(() => {
+    if (!trailingMonthlyAiMinutes || trailingMonthlyAiMinutes.length === 0) return null;
+    const valid = trailingMonthlyAiMinutes.filter(
+      (n) => Number.isFinite(n) && n >= 0,
+    );
+    if (valid.length === 0) return null;
+    const avg = averageTrailingMinutes(valid);
+    const override: PlanRateOverride | undefined = rateOverride
+      ? {
+          basePriceCents: rateOverride.basePriceCents ?? null,
+          overageRatePerMinute: rateOverride.overageRatePerMinute ?? null,
+        }
+      : undefined;
+    return {
+      monthsConsidered: valid.length,
+      result: recommendCheapestPlan(currentTierKey, avg, override),
+    };
+  }, [trailingMonthlyAiMinutes, currentTierKey, rateOverride]);
   // Only the current tier gets the Stripe override — the comparison-tier card
   // has to use catalog defaults because we have no way to know what Stripe
   // would quote that tenant on a plan they aren't subscribed to (whether
@@ -407,6 +521,14 @@ export default function BillingEstimator({
           </button>
         </div>
       </div>
+
+      {recommendation?.result && (
+        <RecommendationCard
+          recommendation={recommendation.result}
+          monthsConsidered={recommendation.monthsConsidered}
+          formatMoney={formatMoney}
+        />
+      )}
 
       <div className="space-y-3 mb-5">
         <div className="flex items-center justify-between gap-4">

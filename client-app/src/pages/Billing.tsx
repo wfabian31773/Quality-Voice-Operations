@@ -184,6 +184,10 @@ export default function Billing() {
       // by the BillingEstimator is now stale even though our 30-minute
       // staleTime would otherwise keep it.
       queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
+      // Plan switch also resets the "cheapest plan" baseline — the
+      // recommendation card needs to recompute against the new current
+      // plan rather than the previous one.
+      queryClient.invalidateQueries({ queryKey: ['billing-usage-trailing', 3] });
     }
   }, [queryClient]);
 
@@ -208,6 +212,22 @@ export default function Billing() {
     queryKey: ['billing-invoices'],
     queryFn: () => api.get<{ invoices: Invoice[] }>('/billing/invoices'),
     enabled: isAdmin,
+  });
+
+  // Trailing complete-month AI minute totals (default: 3 months) used by
+  // the BillingEstimator's plan-recommendation banner. Excludes the
+  // in-progress month so we recommend off finalized data, not a partial
+  // MTD slice. Cached for an hour because last-month totals don't shift
+  // intra-day; the recommendation just needs to be fresh-ish, not live.
+  const { data: trailingUsageData } = useQuery({
+    queryKey: ['billing-usage-trailing', 3],
+    queryFn: () => api.get<{
+      months: number;
+      monthsWithData: number;
+      monthly: Array<{ month: string; aiMinutes: number }>;
+      averageAiMinutes: number;
+    }>('/billing/usage/trailing?months=3'),
+    staleTime: 60 * 60 * 1000,
   });
 
   // Live per-minute overage + base price sourced from the tenant's actual
@@ -429,6 +449,17 @@ export default function Billing() {
               : undefined}
             projectionMultiplier={projectionMultiplier}
             currency={currency}
+            trailingMonthlyAiMinutes={
+              // Only feed the recommendation card when at least one of
+              // the trailing months actually had AI usage. A brand-new
+              // tenant whose entire trailing window is zero-filled would
+              // otherwise see "Switch to Starter, save $300/mo!" before
+              // they've ever placed a call — the recommendation needs
+              // *some* signal to be actionable.
+              trailingUsageData && trailingUsageData.monthsWithData > 0
+                ? trailingUsageData.monthly.map((m) => m.aiMinutes)
+                : undefined
+            }
           />
 
           {sub && isAdmin && (

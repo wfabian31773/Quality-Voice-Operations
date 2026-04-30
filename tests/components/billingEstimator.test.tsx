@@ -116,4 +116,108 @@ describe('BillingEstimator', () => {
       screen.getByTestId('billing-estimator-monthly-starter').textContent ?? '';
     expect(monthlyStarter).toContain('$');
   });
+
+  describe('plan recommendation card', () => {
+    it('hides the recommendation card when no trailing usage history is provided', () => {
+      render(
+        <BillingEstimator currentPlan="pro" monthToDateAiMinutes={300} />,
+      );
+      expect(screen.queryByTestId('billing-estimator-recommendation')).toBeNull();
+    });
+
+    it('hides the recommendation card when the trailing series is empty', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[]}
+        />,
+      );
+      expect(screen.queryByTestId('billing-estimator-recommendation')).toBeNull();
+    });
+
+    it('renders a downgrade recommendation when a Pro tenant has averaged well under Pro included minutes', () => {
+      // Trailing avg = 300 min: Starter $99/mo vs. Pro $399/mo → save $300/mo.
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[280, 320, 300]}
+        />,
+      );
+      const card = screen.getByTestId('billing-estimator-recommendation');
+      expect(card.getAttribute('data-recommendation-state')).toBe('switch');
+      expect(card.getAttribute('data-recommended-tier')).toBe('starter');
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-tier').textContent,
+      ).toContain('Starter');
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-savings').textContent,
+      ).toContain('$300');
+      expect(card.textContent).toMatch(/last 3 complete months/i);
+      expect(card.textContent).toContain('$3,600');
+    });
+
+    it('renders the "already optimal" variant when the current plan is the cheapest', () => {
+      // Starter tenant averaging 100 min/mo — Starter is cheapest.
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+        />,
+      );
+      const card = screen.getByTestId('billing-estimator-recommendation');
+      expect(card.getAttribute('data-recommendation-state')).toBe('optimal');
+      expect(card.textContent).toMatch(/already on the cheapest plan/i);
+      expect(screen.queryByTestId('billing-estimator-recommendation-savings')).toBeNull();
+    });
+
+    it('uses singular phrasing when only one trailing month is available', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300]}
+        />,
+      );
+      const card = screen.getByTestId('billing-estimator-recommendation');
+      expect(card.textContent).toMatch(/last complete month/i);
+      expect(card.textContent).not.toMatch(/last 1 complete months/i);
+    });
+
+    it('honors the Stripe rate override on the current plan when computing savings', () => {
+      // Pro tenant on a $299 negotiated base, trailing avg 300 min.
+      // Starter @ 300 min = $99, discounted Pro = $299 → save $200/mo.
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+          rateOverride={{
+            basePriceCents: 29_900,
+            overageRatePerMinute: 0.12,
+          }}
+        />,
+      );
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-savings').textContent,
+      ).toContain('$200');
+    });
+
+    it('renders the recommendation savings in the tenant billing currency', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+          currency="EUR"
+        />,
+      );
+      const savings =
+        screen.getByTestId('billing-estimator-recommendation-savings').textContent ?? '';
+      expect(savings).toContain('€');
+      expect(savings).not.toContain('$');
+    });
+  });
 });
