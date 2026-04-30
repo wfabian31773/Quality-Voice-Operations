@@ -24,31 +24,49 @@ import { formatDollars } from '../../lib/formatCurrency';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
 
-interface EffectiveRateResponse {
+export interface EffectiveRateResponse {
   plan: PlanTier;
   basePriceCents: number;
   overageRatePerMinute: number;
   basePriceSource: 'stripe' | 'catalog';
   overagePriceSource: 'stripe' | 'catalog';
+  // Interval-specific quotes added in #1209. Optional for backward
+  // compat with older API responses; the calculator falls back to
+  // catalog rates on whichever side is missing.
+  monthlyBasePriceCents?: number;
+  monthlyBasePriceSource?: 'stripe' | 'catalog';
+  annualBasePriceCents?: number;
+  annualBasePriceSource?: 'stripe' | 'catalog';
 }
 
-function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverride | undefined {
+export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverride | undefined {
   if (!(PLAN_TIERS as readonly string[]).includes(payload.plan)) return undefined;
+  // Prefer the interval-specific monthly quote when present — it's the
+  // apples-to-apples monthly Stripe price for the tenant's tier. The
+  // legacy `basePriceCents` is interval-agnostic (it's the monthly
+  // equivalent of whichever interval the tenant's sub is on), which
+  // would render the wrong number in monthly mode for a tenant
+  // currently on annual.
+  const monthlyCents = payload.monthlyBasePriceCents ?? payload.basePriceCents;
+  const monthlySource = payload.monthlyBasePriceSource ?? payload.basePriceSource;
   // No point passing an override that's pure catalog — that's exactly what
   // anonymous visitors already see, and would render a misleading
   // "Live Stripe rate" badge on the current tier card.
   if (
-    payload.basePriceSource !== 'stripe'
+    monthlySource !== 'stripe'
     && payload.overagePriceSource !== 'stripe'
+    && payload.annualBasePriceSource !== 'stripe'
   ) {
     return undefined;
   }
   return {
     tier: payload.plan,
-    basePriceCents: payload.basePriceCents,
+    basePriceCents: monthlyCents,
     overageRatePerMinute: payload.overageRatePerMinute,
-    basePriceSource: payload.basePriceSource,
+    basePriceSource: monthlySource,
     overagePriceSource: payload.overagePriceSource,
+    annualBasePriceCents: payload.annualBasePriceCents,
+    annualBasePriceSource: payload.annualBasePriceSource,
   };
 }
 

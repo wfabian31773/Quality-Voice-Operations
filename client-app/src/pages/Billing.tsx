@@ -561,6 +561,13 @@ export default function Billing() {
           <BillingEstimator
             currentPlan={plan}
             monthToDateAiMinutes={aiMinutesUsed}
+            // BillingEstimator models the *current invoice* — what the
+            // tenant is being billed right now — so we use the
+            // interval-agnostic `basePriceCents` (already normalised to
+            // a monthly equivalent of the tenant's actual subscription).
+            // The new `monthlyBasePriceCents`/`annualBasePriceCents`
+            // fields are intentionally not consumed here; they exist for
+            // the public pricing calculator's monthly/annual toggle.
             rateOverride={effectiveRateData
               ? {
                   basePriceCents:

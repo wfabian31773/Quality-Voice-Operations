@@ -247,3 +247,103 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     expect(screen.queryByTestId('calc-source-pro')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildOverride contract — see task #1209.
+//
+// /billing/effective-rate's `basePriceCents` is interval-agnostic (it's the
+// monthly equivalent of whatever interval the tenant's subscription is on).
+// For a tenant on annual, `basePriceCents` is the annual monthly-equivalent
+// (e.g. $300 for a $3,600/yr Pro plan), NOT the published monthly Pro price
+// ($399). The calculator's monthly mode must render the latter, which the
+// API now provides via `monthlyBasePriceCents`. These tests pin down the
+// mapping in `buildOverride()` so an annual tenant flipping the calculator
+// to monthly mode sees the correct $399 published rate, not their own
+// $300 annual-equivalent.
+// ---------------------------------------------------------------------------
+describe('buildOverride / EffectiveRateResponse mapping', () => {
+  it('uses monthlyBasePriceCents for the calculator override on an annual-tenant payload', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      // Tenant is on annual — `basePriceCents` is monthly equivalent of
+      // their annual price ($3,600/yr -> $300/mo equivalent).
+      basePriceCents: 30000,
+      overageRatePerMinute: 0.07,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      // Backend resolved the monthly side from STRIPE_PRICE_PRO_MONTHLY.
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'stripe',
+      // Annual side reuses the sub-derived value.
+      annualBasePriceCents: 30000,
+      annualBasePriceSource: 'stripe',
+    });
+    expect(override).toBeDefined();
+    // Calculator's monthly mode must see the published monthly price, not
+    // the tenant's annual monthly-equivalent.
+    expect(override?.basePriceCents).toBe(39900);
+    expect(override?.basePriceSource).toBe('stripe');
+    // Annual mode passthrough.
+    expect(override?.annualBasePriceCents).toBe(30000);
+    expect(override?.annualBasePriceSource).toBe('stripe');
+  });
+
+  it('falls back to legacy basePriceCents when monthlyBasePriceCents is absent', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    // Older API responses (or partial Stripe configuration) won't carry
+    // the new field. Calculator should still render the legacy value
+    // rather than crashing or dropping the override entirely.
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 34900,
+      overageRatePerMinute: 0.08,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(override?.basePriceCents).toBe(34900);
+    expect(override?.basePriceSource).toBe('stripe');
+    expect(override?.annualBasePriceCents).toBeUndefined();
+  });
+
+  it('engages the override when only the annual side is Stripe-sourced', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    // Tenant on monthly with no per-tenant negotiated rate, but the
+    // backend resolved an annual quote from STRIPE_PRICE_PRO_ANNUAL —
+    // the calculator's annual mode should still get a Stripe-sourced
+    // override (and the badge) even though monthly+overage are catalog.
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.08,
+      basePriceSource: 'catalog',
+      overagePriceSource: 'catalog',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'catalog',
+      annualBasePriceCents: 31900,
+      annualBasePriceSource: 'stripe',
+    });
+    expect(override).toBeDefined();
+    expect(override?.basePriceSource).toBe('catalog');
+    expect(override?.annualBasePriceSource).toBe('stripe');
+    expect(override?.annualBasePriceCents).toBe(31900);
+  });
+
+  it('returns undefined when every interval is catalog-sourced', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    // No live Stripe quote anywhere — fall through to anonymous-visitor
+    // catalog rendering rather than mounting a misleading badge.
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.08,
+      basePriceSource: 'catalog',
+      overagePriceSource: 'catalog',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'catalog',
+      annualBasePriceCents: 31900,
+      annualBasePriceSource: 'catalog',
+    });
+    expect(override).toBeUndefined();
+  });
+});

@@ -26,11 +26,10 @@ interface CalculatorTier {
  * overridden; the other tier cards keep catalog rates because Stripe
  * can't quote unsubscribed plans for that tenant.
  *
- * The override is only applied while the calculator is in monthly mode.
- * In annual mode the catalog rates and the standard 20% annual discount
- * stay in force, since `/billing/effective-rate` returns the rate the
- * tenant pays right now and we have no way to project it onto a
- * different billing interval.
+ * `basePriceCents` drives monthly mode (the per-month price for the
+ * tenant's tier billed monthly). `annualBasePriceCents` drives annual
+ * mode and is the monthly-equivalent of the same tier billed annually.
+ * Per-minute overage is interval-agnostic.
  */
 export interface CurrentPlanOverride {
   tier: PlanTier;
@@ -38,6 +37,8 @@ export interface CurrentPlanOverride {
   overageRatePerMinute?: number | null;
   basePriceSource?: 'stripe' | 'catalog';
   overagePriceSource?: 'stripe' | 'catalog';
+  annualBasePriceCents?: number | null;
+  annualBasePriceSource?: 'stripe' | 'catalog';
 }
 
 export type BillingPeriod = 'monthly' | 'annual';
@@ -111,20 +112,35 @@ export default function MinutesPricingCalculator({
 
   const results = useMemo(() => {
     const safeMinutes = Math.max(0, Math.min(MAX_MINUTES, Math.round(minutes)));
-    // We only apply the Stripe override in monthly mode — the override
-    // represents the rate the tenant pays *right now* and we have no way
-    // to project it onto a different billing interval.
-    const overrideActive =
-      !!currentPlanOverride && billingPeriod === 'monthly';
-    const overrideBaseCents =
-      overrideActive
-        && currentPlanOverride?.basePriceSource === 'stripe'
+    // In annual mode we ONLY engage the override when a Stripe-sourced
+    // annual quote is present; without it we have no way to project a
+    // custom monthly rate onto an annual interval, so we fall back
+    // entirely to catalog (preserving pre-feature behaviour).
+    const overrideActive = !!currentPlanOverride;
+    const isAnnualMode = billingPeriod === 'annual';
+    const annualOverrideUsable =
+      isAnnualMode
+      && overrideActive
+      && currentPlanOverride?.annualBasePriceSource === 'stripe'
+      && currentPlanOverride.annualBasePriceCents != null
+      && Number.isFinite(currentPlanOverride.annualBasePriceCents);
+    const overrideEngaged = isAnnualMode ? annualOverrideUsable : overrideActive;
+    const overrideBaseCents = (() => {
+      if (!overrideEngaged) return null;
+      if (isAnnualMode) {
+        return currentPlanOverride!.annualBasePriceCents ?? null;
+      }
+      if (
+        currentPlanOverride?.basePriceSource === 'stripe'
         && currentPlanOverride.basePriceCents != null
         && Number.isFinite(currentPlanOverride.basePriceCents)
-        ? currentPlanOverride.basePriceCents
-        : null;
+      ) {
+        return currentPlanOverride.basePriceCents;
+      }
+      return null;
+    })();
     const overrideOverage =
-      overrideActive
+      overrideEngaged
         && currentPlanOverride?.overagePriceSource === 'stripe'
         && currentPlanOverride.overageRatePerMinute != null
         && Number.isFinite(currentPlanOverride.overageRatePerMinute)
@@ -135,10 +151,6 @@ export default function MinutesPricingCalculator({
       const isOverriddenTier =
         overrideActive && currentPlanOverride?.tier === tier.key;
 
-      // The current-tier card sourced from Stripe takes the live invoiced
-      // rate as-is — no annual discount, since the override IS the rate
-      // the tenant pays. Other cards (and the same card when no override
-      // applies) keep catalog rates plus the standard annual discount.
       const baseFromOverride = isOverriddenTier && overrideBaseCents != null
         ? centsToWholeDollars(overrideBaseCents)
         : null;
@@ -330,7 +342,7 @@ export default function MinutesPricingCalculator({
                   <div
                     data-testid={`calc-source-${tier.key}`}
                     className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
-                    title="Pulled from your live Stripe subscription — overrides published catalog rates for your current plan"
+                    title="Live Stripe price for your current plan — pulled from your subscription when available, otherwise from the published Stripe price for this billing interval. Overrides the catalog default."
                   >
                     Live Stripe rate
                   </div>

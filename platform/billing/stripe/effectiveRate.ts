@@ -28,6 +28,12 @@ export interface TenantEffectiveRate {
    * Monthly base price in cents that the tenant is actually billed for the
    * licensed (non-metered) recurring item on their Stripe subscription. Falls
    * back to the catalog `monthlyPriceCents` when no Stripe override exists.
+   *
+   * NOTE: this field is interval-agnostic — it always reports the monthly
+   * equivalent of whatever interval the tenant's subscription is on. For an
+   * apples-to-apples comparison between billing intervals (used by the
+   * public pricing calculator's monthly/annual toggle) consume
+   * `monthlyBasePriceCents` and `annualBasePriceCents` instead.
    */
   basePriceCents: number;
   /**
@@ -56,6 +62,31 @@ export interface TenantEffectiveRate {
   /** Stripe price ids that drove the override (when applicable). */
   basePriceId: string | null;
   overagePriceId: string | null;
+  /**
+   * Per-month price the tenant would pay billed *monthly*, in cents.
+   * Resolved from the tenant's subscription when their subscription is
+   * already on a monthly licensed price, otherwise from the published
+   * `STRIPE_PRICE_<TIER>_MONTHLY` env var. Falls back to the catalog
+   * `monthlyPriceCents` when neither yields data.
+   */
+  monthlyBasePriceCents: number;
+  monthlyBasePriceSource: 'stripe' | 'catalog';
+  monthlyBasePriceId: string | null;
+  /**
+   * Per-month *equivalent* of the annual billing price for the tenant's
+   * tier, in cents (i.e. annual_total / 12). Resolved from the tenant's
+   * subscription when their subscription is already on an annual licensed
+   * price, otherwise from the published `STRIPE_PRICE_<TIER>_ANNUAL` env
+   * var. Falls back to the catalog `monthlyPriceCents * (1 - 0.20)` when
+   * neither yields data — which mirrors the marketing "Save 20%" badge.
+   *
+   * Lets the public pricing calculator render the live Stripe rate (with
+   * the same badge) when the tenant flips the calculator to Annual,
+   * instead of silently falling back to the catalog discount.
+   */
+  annualBasePriceCents: number;
+  annualBasePriceSource: 'stripe' | 'catalog';
+  annualBasePriceId: string | null;
 }
 
 interface SubscriptionRow {
@@ -70,6 +101,21 @@ function normalizePlan(plan: string | null | undefined): PlanTier {
   return 'starter';
 }
 
+/**
+ * Annual discount marketing has been promising on the public pricing page
+ * (and in `MinutesPricingCalculator.ANNUAL_DISCOUNT`). Used as the
+ * catalog-fallback floor for `annualBasePriceCents` when neither the
+ * tenant's subscription nor the published `STRIPE_PRICE_<TIER>_ANNUAL`
+ * env var yields a Stripe price. Kept in lock-step with the marketing
+ * constant by exporting it for tests; do not change without coordinating
+ * with the public pricing UI.
+ */
+export const CATALOG_ANNUAL_DISCOUNT = 0.2;
+
+function catalogAnnualEquivalentCents(monthlyCents: number): number {
+  return Math.round(monthlyCents * (1 - CATALOG_ANNUAL_DISCOUNT));
+}
+
 function catalogFor(plan: PlanTier): TenantEffectiveRate {
   const entry = PLAN_CATALOG[plan];
   return {
@@ -82,6 +128,12 @@ function catalogFor(plan: PlanTier): TenantEffectiveRate {
     overagePriceSource: 'catalog',
     basePriceId: null,
     overagePriceId: null,
+    monthlyBasePriceCents: entry.monthlyPriceCents,
+    monthlyBasePriceSource: 'catalog',
+    monthlyBasePriceId: null,
+    annualBasePriceCents: catalogAnnualEquivalentCents(entry.monthlyPriceCents),
+    annualBasePriceSource: 'catalog',
+    annualBasePriceId: null,
   };
 }
 
@@ -292,12 +344,14 @@ export async function getTenantEffectiveRate(
   let basePriceCents = fallback.basePriceCents;
   let basePriceSource: 'stripe' | 'catalog' = 'catalog';
   let basePriceId: string | null = null;
+  let baseInterval: string | null = null;
   if (basePrice) {
     const raw = pickBasePriceCents(basePrice);
     if (raw != null) {
       basePriceCents = normalizeBaseToMonthly(basePrice, raw);
       basePriceSource = 'stripe';
       basePriceId = basePrice.id;
+      baseInterval = basePrice.recurring?.interval ?? null;
     }
   }
 
@@ -328,6 +382,59 @@ export async function getTenantEffectiveRate(
     source = 'catalog';
   }
 
+  // Resolve the per-interval base prices that power the public pricing
+  // calculator's monthly/annual toggle. The interval that matches the
+  // tenant's actual subscription reuses the sub-derived value we already
+  // resolved above (so a custom-priced grandfathered tenant keeps their
+  // negotiated rate). The other interval is fetched from the published
+  // `STRIPE_PRICE_<TIER>_<INTERVAL>` env var so the calculator can show
+  // the live Stripe rate (with the same badge) on either side of the
+  // toggle instead of falling back to the catalog.
+  const subIsMonthly = baseInterval === 'month' && basePriceSource === 'stripe';
+  const subIsAnnual = baseInterval === 'year' && basePriceSource === 'stripe';
+
+  let monthlyBasePriceCents = fallback.monthlyBasePriceCents;
+  let monthlyBasePriceSource: 'stripe' | 'catalog' = 'catalog';
+  let monthlyBasePriceId: string | null = null;
+  if (subIsMonthly) {
+    monthlyBasePriceCents = basePriceCents;
+    monthlyBasePriceSource = 'stripe';
+    monthlyBasePriceId = basePriceId;
+  } else {
+    const monthlyResolved = await resolvePublishedIntervalPrice(
+      stripe,
+      inferredPlan,
+      'monthly',
+      tenantId,
+    );
+    if (monthlyResolved) {
+      monthlyBasePriceCents = monthlyResolved.cents;
+      monthlyBasePriceSource = 'stripe';
+      monthlyBasePriceId = monthlyResolved.id;
+    }
+  }
+
+  let annualBasePriceCents = fallback.annualBasePriceCents;
+  let annualBasePriceSource: 'stripe' | 'catalog' = 'catalog';
+  let annualBasePriceId: string | null = null;
+  if (subIsAnnual) {
+    annualBasePriceCents = basePriceCents;
+    annualBasePriceSource = 'stripe';
+    annualBasePriceId = basePriceId;
+  } else {
+    const annualResolved = await resolvePublishedIntervalPrice(
+      stripe,
+      inferredPlan,
+      'annual',
+      tenantId,
+    );
+    if (annualResolved) {
+      annualBasePriceCents = annualResolved.cents;
+      annualBasePriceSource = 'stripe';
+      annualBasePriceId = annualResolved.id;
+    }
+  }
+
   return {
     plan: inferredPlan,
     basePriceCents,
@@ -338,7 +445,72 @@ export async function getTenantEffectiveRate(
     overagePriceSource,
     basePriceId,
     overagePriceId,
+    monthlyBasePriceCents,
+    monthlyBasePriceSource,
+    monthlyBasePriceId,
+    annualBasePriceCents,
+    annualBasePriceSource,
+    annualBasePriceId,
   };
+}
+
+/**
+ * Look up the published Stripe price for `<tier>/<interval>` via the
+ * `STRIPE_PRICE_<TIER>_<INTERVAL>` env var, fetch it from Stripe, and
+ * normalise its `unit_amount` to a per-month figure. Returns `null` when
+ * the env var is not set, when Stripe returns no usable amount, or when
+ * the API call throws — every failure path degrades silently so the
+ * caller can keep its catalog fallback intact (the calculator must
+ * always render *something*).
+ */
+async function resolvePublishedIntervalPrice(
+  stripe: Stripe,
+  plan: PlanTier,
+  interval: 'monthly' | 'annual',
+  tenantId: string,
+): Promise<{ cents: number; id: string } | null> {
+  const envKey = `STRIPE_PRICE_${plan.toUpperCase()}_${interval.toUpperCase()}`;
+  const priceId = process.env[envKey] ?? null;
+  if (!priceId) return null;
+
+  try {
+    const stripePrice = (await stripe.prices.retrieve(priceId)) as unknown as PriceLike;
+    // Defence in depth: the env var convention assumes `_MONTHLY` points
+    // at a `recurring.interval === 'month'` price and `_ANNUAL` at
+    // `'year'`. A misconfigured env var that crosses the wires would,
+    // post-`normalizeBaseToMonthly`, surface as a wrong dollar value
+    // (e.g. an annual $3,600 price wired to `_MONTHLY` would normalise
+    // to $300/mo and be shown as the "live monthly Stripe quote"). Fail
+    // closed and let the catalog fallback take over instead.
+    const expectedInterval = interval === 'monthly' ? 'month' : 'year';
+    const actualInterval = stripePrice.recurring?.interval ?? null;
+    if (actualInterval !== expectedInterval) {
+      logger.warn('Published interval price has unexpected recurring.interval', {
+        tenantId,
+        plan,
+        envKey,
+        priceId,
+        expectedInterval,
+        actualInterval,
+      });
+      return null;
+    }
+    const raw = pickBasePriceCents(stripePrice);
+    if (raw == null) return null;
+    return {
+      cents: normalizeBaseToMonthly(stripePrice, raw),
+      id: stripePrice.id ?? priceId,
+    };
+  } catch (err) {
+    logger.warn('Failed to retrieve published interval price for effective rate', {
+      tenantId,
+      plan,
+      interval,
+      priceId,
+      error: String(err),
+    });
+    return null;
+  }
 }
 
 /**

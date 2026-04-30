@@ -16,6 +16,7 @@ type QueryHandler = (
 
 let queryHandler: QueryHandler = async () => ({ rows: [] });
 const subscriptionsRetrieve = vi.fn();
+const pricesRetrieve = vi.fn();
 let stripeClientShouldThrow = false;
 
 vi.mock('../../platform/db', () => ({
@@ -56,6 +57,9 @@ vi.mock('../../platform/billing/stripe/client', () => ({
       subscriptions: {
         retrieve: subscriptionsRetrieve,
       },
+      prices: {
+        retrieve: pricesRetrieve,
+      },
     };
   },
 }));
@@ -83,13 +87,26 @@ function setSubRow(row: SubRow | null) {
 
 beforeEach(() => {
   subscriptionsRetrieve.mockReset();
+  pricesRetrieve.mockReset();
   stripeClientShouldThrow = false;
   queryHandler = async () => ({ rows: [] });
   delete process.env.STRIPE_METER_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_STARTER_MONTHLY;
+  delete process.env.STRIPE_PRICE_STARTER_ANNUAL;
+  delete process.env.STRIPE_PRICE_PRO_MONTHLY;
+  delete process.env.STRIPE_PRICE_PRO_ANNUAL;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_ANNUAL;
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  delete process.env.STRIPE_PRICE_STARTER_MONTHLY;
+  delete process.env.STRIPE_PRICE_STARTER_ANNUAL;
+  delete process.env.STRIPE_PRICE_PRO_MONTHLY;
+  delete process.env.STRIPE_PRICE_PRO_ANNUAL;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_ANNUAL;
 });
 
 describe('getTenantEffectiveRate — Stripe subscription overrides', () => {
@@ -342,5 +359,253 @@ describe('getTenantEffectiveRate — catalog fallback', () => {
     expect(result.overagePriceSource).toBe('stripe');
     expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
     expect(result.overageRatePerMinute).toBeCloseTo(0.07, 6);
+  });
+});
+
+/**
+ * Regression coverage for the monthly/annual interval resolution that
+ * powers the public pricing calculator's annual-mode badge. Contract:
+ *   - The interval that matches the tenant's subscription reuses the
+ *     sub-derived value (so a custom-priced grandfathered tenant keeps
+ *     their negotiated rate on that side of the toggle).
+ *   - The opposite interval is fetched from
+ *     `STRIPE_PRICE_<TIER>_<INTERVAL>` so the calculator can render a
+ *     live Stripe rate (with badge) on either side instead of falling
+ *     back to the catalog discount.
+ *   - Every degraded path (env var unset, fetch throws, sub absent)
+ *     silently falls back to catalog defaults — same contract as the
+ *     existing fields.
+ */
+describe('getTenantEffectiveRate — monthly/annual interval resolution', () => {
+  it('quotes annual from the published Stripe price for a tenant on a custom monthly sub', async () => {
+    process.env.STRIPE_PRICE_PRO_ANNUAL = 'price_pro_annual_published';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_custom_monthly',
+      stripe_price_id: 'price_pro_custom_monthly',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_custom_monthly',
+              unit_amount: 25_000, // $250/mo (negotiated discount off $399)
+              unit_amount_decimal: '25000',
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockResolvedValueOnce({
+      id: 'price_pro_annual_published',
+      unit_amount: 3_828_00, // $3,828/yr → $319/mo equivalent
+      unit_amount_decimal: '382800',
+      currency: 'usd',
+      recurring: { usage_type: 'licensed', interval: 'year', interval_count: 1 },
+      metadata: {},
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(pricesRetrieve).toHaveBeenCalledWith('price_pro_annual_published');
+    // Existing field unchanged — still the sub-derived monthly rate.
+    expect(result.basePriceCents).toBe(25_000);
+    // Monthly side reuses the sub-derived custom price.
+    expect(result.monthlyBasePriceCents).toBe(25_000);
+    expect(result.monthlyBasePriceSource).toBe('stripe');
+    expect(result.monthlyBasePriceId).toBe('price_pro_custom_monthly');
+    // Annual side comes from the published env-var price, normalised to
+    // a per-month figure ($3,828 / 12 = $319).
+    expect(result.annualBasePriceCents).toBe(31_900);
+    expect(result.annualBasePriceSource).toBe('stripe');
+    expect(result.annualBasePriceId).toBe('price_pro_annual_published');
+  });
+
+  it('quotes monthly from the published Stripe price for a tenant on an annual sub', async () => {
+    process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY = 'price_ent_monthly_published';
+    setSubRow({
+      plan: 'enterprise',
+      stripe_subscription_id: 'sub_ent_annual',
+      stripe_price_id: 'price_ent_annual_custom',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_ent_annual_custom',
+              unit_amount: 1_200_000, // $12,000/yr → $1,000/mo
+              unit_amount_decimal: '1200000',
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'year', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockResolvedValueOnce({
+      id: 'price_ent_monthly_published',
+      unit_amount: 99_900, // $999/mo
+      unit_amount_decimal: '99900',
+      currency: 'usd',
+      recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+      metadata: {},
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(pricesRetrieve).toHaveBeenCalledWith('price_ent_monthly_published');
+    // Annual side reuses the sub-derived value (already monthly-equiv).
+    expect(result.annualBasePriceCents).toBe(100_000);
+    expect(result.annualBasePriceSource).toBe('stripe');
+    expect(result.annualBasePriceId).toBe('price_ent_annual_custom');
+    // Monthly side comes from published env-var price.
+    expect(result.monthlyBasePriceCents).toBe(99_900);
+    expect(result.monthlyBasePriceSource).toBe('stripe');
+    expect(result.monthlyBasePriceId).toBe('price_ent_monthly_published');
+  });
+
+  it('falls back to catalog for the opposite interval when env var is unset', async () => {
+    // Only monthly env var configured → annual resolves to the catalog
+    // 20%-off floor so the calculator still renders a sensible number.
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: 'sub_starter',
+      stripe_price_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_starter_monthly',
+              unit_amount: PLAN_CATALOG.starter.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.starter.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(pricesRetrieve).not.toHaveBeenCalled();
+    expect(result.monthlyBasePriceSource).toBe('stripe');
+    expect(result.monthlyBasePriceCents).toBe(PLAN_CATALOG.starter.monthlyPriceCents);
+    expect(result.annualBasePriceSource).toBe('catalog');
+    // Catalog-fallback annual = monthly × 0.8 (20% off).
+    expect(result.annualBasePriceCents).toBe(
+      Math.round(PLAN_CATALOG.starter.monthlyPriceCents * 0.8),
+    );
+    expect(result.annualBasePriceId).toBeNull();
+  });
+
+  it('degrades to catalog annual when the published price retrieve throws', async () => {
+    process.env.STRIPE_PRICE_PRO_ANNUAL = 'price_pro_annual_broken';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_monthly',
+      stripe_price_id: 'price_pro_monthly_sub',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_monthly_sub',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month' },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockRejectedValueOnce(new Error('Stripe 503'));
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // Annual silently falls back to catalog so the UI never renders NaN.
+    expect(result.annualBasePriceSource).toBe('catalog');
+    expect(result.annualBasePriceCents).toBe(
+      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
+    );
+    expect(result.annualBasePriceId).toBeNull();
+  });
+
+  it('rejects a published price whose recurring.interval crosses the wires', async () => {
+    // Defence-in-depth: STRIPE_PRICE_PRO_ANNUAL is misconfigured to point
+    // at a `recurring.interval === 'month'` price. Without the interval
+    // check, this would normalise as a $X/mo "live annual quote" and
+    // mislead tenants. Fail closed and use the catalog instead.
+    process.env.STRIPE_PRICE_PRO_ANNUAL = 'price_pro_misconfigured';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_monthly',
+      stripe_price_id: 'price_pro_monthly_sub',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_monthly_sub',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month' },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    pricesRetrieve.mockResolvedValueOnce({
+      id: 'price_pro_misconfigured',
+      unit_amount: 39_900,
+      unit_amount_decimal: '39900',
+      currency: 'usd',
+      // ⚠ wrong interval — env var named _ANNUAL but price is monthly.
+      recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+      metadata: {},
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // Wired-wrong env var rejected → annual side falls back to catalog.
+    expect(result.annualBasePriceSource).toBe('catalog');
+    expect(result.annualBasePriceCents).toBe(
+      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
+    );
+    expect(result.annualBasePriceId).toBeNull();
+  });
+
+  it('returns catalog monthly + annual when there is no subscription at all', async () => {
+    // Even with both env vars set, the absence of a sub short-circuits
+    // before the Stripe client is even constructed (consistent with the
+    // existing catalog-fallback contract).
+    process.env.STRIPE_PRICE_PRO_MONTHLY = 'price_pro_monthly_published';
+    process.env.STRIPE_PRICE_PRO_ANNUAL = 'price_pro_annual_published';
+    setSubRow({ plan: 'pro', stripe_subscription_id: null, stripe_price_id: null });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(pricesRetrieve).not.toHaveBeenCalled();
+    expect(result.monthlyBasePriceSource).toBe('catalog');
+    expect(result.monthlyBasePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
+    expect(result.annualBasePriceSource).toBe('catalog');
+    expect(result.annualBasePriceCents).toBe(
+      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
+    );
   });
 });

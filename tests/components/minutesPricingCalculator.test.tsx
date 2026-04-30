@@ -230,4 +230,109 @@ describe('MinutesPricingCalculator currentPlanOverride (logged-in tenant teaser)
     expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
     expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$399');
   });
+
+  describe('annual-mode override (Stripe annual quote)', () => {
+    // Tenant on a custom Pro monthly sub at $250 with the published Pro
+    // annual price ($319/mo equivalent) returned alongside, so the
+    // calculator can keep showing a live Stripe rate when the user
+    // toggles to Annual instead of falling back to the catalog discount.
+    const proWithAnnual: CurrentPlanOverride = {
+      tier: 'pro',
+      basePriceCents: 25_000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      annualBasePriceCents: 31_900,
+      annualBasePriceSource: 'stripe',
+    };
+
+    it('renders the live Stripe annual rate (with badge) on the matching tier in annual mode', () => {
+      render(<MinutesPricingCalculator currentPlanOverride={proWithAnnual} />);
+      const input = document.getElementById('minutes-input') as HTMLInputElement;
+      // 400 min — within Pro's 2,500 included so monthly cost == base price.
+      fireEvent.change(input, { target: { value: '400' } });
+
+      // Sanity: monthly mode shows the negotiated $250 with badge
+      expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$250');
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+
+      // Flip to annual — badge MUST stay on (Stripe-sourced annual quote)
+      fireEvent.click(screen.getByTestId('calc-billing-annual'));
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+      // Annual mode shows the Stripe annual quote ($319), not the
+      // catalog 20%-off-of-$250 = $200 (which would be a fictitious
+      // projection of the negotiated rate onto annual billing).
+      expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$319');
+      // And not the published-catalog-of-$399 minus 20% = $319 either —
+      // it just happens to equal that here, which is exactly the point:
+      // the calculator stops needing to know which one to compute.
+    });
+
+    it('does not show the override on other tiers in annual mode (only the matching tier)', () => {
+      render(<MinutesPricingCalculator currentPlanOverride={proWithAnnual} />);
+      const input = document.getElementById('minutes-input') as HTMLInputElement;
+      // Pin minutes to 400 — within all three tiers' included so monthly
+      // cost == base price only and the override isolation is the only
+      // thing under test.
+      fireEvent.change(input, { target: { value: '400' } });
+      fireEvent.click(screen.getByTestId('calc-billing-annual'));
+      // Starter & Enterprise still use catalog 20%-off rates ($79, $799)
+      expect(screen.getByTestId('calc-monthly-starter').textContent).toContain('$79');
+      expect(screen.getByTestId('calc-monthly-enterprise').textContent).toContain('$799');
+      expect(screen.queryByTestId('calc-source-starter')).toBeNull();
+      expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
+    });
+
+    it('shows the same teaser in monthly and annual mode for tenants on annual subs', () => {
+      // Tenant currently on Pro annual at $300/mo equivalent. Monthly
+      // side comes from the published $399 monthly Stripe price.
+      const proAnnualTenant: CurrentPlanOverride = {
+        tier: 'pro',
+        basePriceCents: 39_900,
+        overageRatePerMinute: 0.10,
+        basePriceSource: 'stripe',
+        overagePriceSource: 'stripe',
+        annualBasePriceCents: 30_000,
+        annualBasePriceSource: 'stripe',
+      };
+      render(<MinutesPricingCalculator currentPlanOverride={proAnnualTenant} />);
+      const input = document.getElementById('minutes-input') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '400' } });
+
+      // Monthly mode: badge present, $399 published monthly
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+      expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$399');
+
+      // Annual mode: badge STILL present, $300 sub-derived annual
+      fireEvent.click(screen.getByTestId('calc-billing-annual'));
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+      expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$300');
+    });
+
+    it('falls back to catalog (no badge) in annual mode when annualBasePriceSource is catalog', () => {
+      render(
+        <MinutesPricingCalculator
+          currentPlanOverride={{
+            tier: 'pro',
+            basePriceCents: 25_000,
+            overageRatePerMinute: 0.05,
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            annualBasePriceCents: 31_900,
+            annualBasePriceSource: 'catalog',
+          }}
+        />,
+      );
+      const input = document.getElementById('minutes-input') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '400' } });
+
+      // Monthly mode: live badge stays
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+
+      fireEvent.click(screen.getByTestId('calc-billing-annual'));
+      // Annual mode: catalog-sourced annual → no badge, catalog $319
+      expect(screen.queryByTestId('calc-source-pro')).toBeNull();
+      expect(screen.getByTestId('calc-monthly-pro').textContent).toContain('$319');
+    });
+  });
 });
