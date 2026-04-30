@@ -32,9 +32,14 @@ import { formatDollars } from '../lib/formatCurrency';
  * Stripe subscription (`/billing/effective-rate`). When provided, these
  * values take precedence over the static `PLAN_CATALOG` for the *current*
  * tier so the estimate matches what Stripe will actually invoice for a
- * tenant on a custom / negotiated / grandfathered price. The next-tier-up
- * card always uses the published catalog price because we don't know what
- * Stripe will quote that tenant for an upgrade.
+ * tenant on a custom / negotiated / grandfathered price.
+ *
+ * The same shape is also used for the comparison-tier card via
+ * `upgradePreview` — there it carries the tenant-specific quote returned
+ * by `/billing/upgrade-preview` (i.e. catalog list price minus any active
+ * customer-level coupon/promotion code). When that prop is omitted the
+ * comparison card falls back to the published catalog rate, matching the
+ * pre-upgrade-preview behaviour.
  */
 export interface BillingEstimatorRateOverride {
   /** Effective monthly base price, in cents. */
@@ -53,6 +58,16 @@ interface BillingEstimatorProps {
    * the API responds.
    */
   rateOverride?: BillingEstimatorRateOverride;
+  /**
+   * Tenant-specific upgrade quote for the comparison card. When the
+   * comparison direction is "up" (i.e. the next-tier-up card is showing)
+   * this override replaces the catalog list price so the card reflects any
+   * customer-level coupon, promotion code, or sales-attached discount the
+   * tenant would actually be billed at after upgrading. Ignored when the
+   * comparison direction is "down" (downgrade card) since downgrade
+   * pricing is just the published catalog floor.
+   */
+  upgradePreview?: BillingEstimatorRateOverride;
   /**
    * Multiplier used to project end-of-month minutes from MTD usage.
    * Computed by the parent as `daysInMonth / dayOfMonth`.
@@ -377,6 +392,7 @@ export default function BillingEstimator({
   currentPlan,
   monthToDateAiMinutes,
   rateOverride,
+  upgradePreview,
   projectionMultiplier,
   currency = 'USD',
   trailingMonthlyAiMinutes,
@@ -407,10 +423,10 @@ export default function BillingEstimator({
       result: recommendCheapestPlan(currentTierKey, avg, override),
     };
   }, [trailingMonthlyAiMinutes, currentTierKey, rateOverride]);
-  // Only the current tier gets the Stripe override — the comparison-tier card
-  // has to use catalog defaults because we have no way to know what Stripe
-  // would quote that tenant on a plan they aren't subscribed to (whether
-  // that's a next-tier-up upgrade or a next-tier-down downgrade).
+  // Current-tier override is sourced from the tenant's actual subscription
+  // items via /billing/effective-rate; comparison-tier override (when
+  // direction === 'up') comes from /billing/upgrade-preview, which factors
+  // in customer-level coupons/promotion codes Sales attached to the tenant.
   const currentTier = useMemo(
     () => toTierSpec(currentTierKey, rateOverride),
     [currentTierKey, rateOverride],
@@ -427,8 +443,15 @@ export default function BillingEstimator({
     [currentTierKey, comparisonDirection],
   );
   const comparisonTier = useMemo(
-    () => (comparisonTierKey ? toTierSpec(comparisonTierKey) : null),
-    [comparisonTierKey],
+    () => {
+      if (!comparisonTierKey) return null;
+      // Downgrade pricing always uses the published catalog floor — there
+      // is no tenant-specific quote to apply when stepping DOWN to a tier
+      // they aren't currently on.
+      const override = comparisonDirection === 'up' ? upgradePreview : undefined;
+      return toTierSpec(comparisonTierKey, override);
+    },
+    [comparisonTierKey, comparisonDirection, upgradePreview],
   );
 
   const mtdMinutes = useMemo(

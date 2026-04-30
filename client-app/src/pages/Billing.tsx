@@ -196,6 +196,10 @@ export default function Billing() {
       // recommendation card needs to recompute against the new current
       // plan rather than the previous one.
       queryClient.invalidateQueries({ queryKey: ['billing-usage-trailing', 3] });
+      // The upgrade-preview cache key is keyed off the tenant's CURRENT
+      // plan, which just changed — drop it so the "Next tier up" card
+      // re-fetches against the new starting tier on first render.
+      queryClient.invalidateQueries({ queryKey: ['billing-upgrade-preview'] });
     }
   }, [queryClient]);
 
@@ -265,6 +269,30 @@ export default function Billing() {
     setBillingPeriod(interval === 'annual' ? 'annual' : 'monthly');
     setBillingPeriodInitialized(true);
   }, [subData, billingPeriodInitialized]);
+
+  // Tenant-specific upgrade quote for the BillingEstimator's "Next tier
+  // up" card. The endpoint applies any active customer-level coupon /
+  // promotion code attached in Stripe so the card matches what Sales
+  // negotiated, instead of showing the published catalog list price. The
+  // server returns `{ upgrade: null }` when the tenant is already on the
+  // top tier (Enterprise) — we leave the prop undefined in that case so
+  // the component falls back to its existing top-tier placeholder.
+  const { data: upgradePreviewData } = useQuery({
+    queryKey: ['billing-upgrade-preview'],
+    queryFn: () => api.get<{
+      upgrade: {
+        plan: string;
+        basePriceCents: number;
+        overageRatePerMinute: number;
+        basePriceSource: 'stripe' | 'catalog';
+        overagePriceSource: 'stripe' | 'catalog';
+      } | null;
+    }>('/billing/upgrade-preview'),
+    // Same staleness model as /billing/effective-rate — the discount
+    // attached to a customer record changes rarely (Sales applies it
+    // manually) and is invalidated below on a successful checkout.
+    staleTime: 30 * 60 * 1000,
+  });
 
   const portalMutation = useMutation({
     mutationFn: () => api.post<{ url: string }>('/billing/portal', {
@@ -461,6 +489,22 @@ export default function Billing() {
                     effectiveRateData.overagePriceSource === 'stripe'
                       ? effectiveRateData.overageRatePerMinute
                       : null,
+                }
+              : undefined}
+            upgradePreview={upgradePreviewData?.upgrade
+              ? {
+                  // The upgrade endpoint always quotes the post-discount
+                  // base, even when the underlying price came from the
+                  // catalog (because the discount applies on top). So we
+                  // pass it through unconditionally — `null` would let
+                  // the component snap back to the catalog and undo the
+                  // discount we just resolved.
+                  basePriceCents: upgradePreviewData.upgrade.basePriceCents,
+                  // Overage on the comparison card matches the upgrade
+                  // quote: percent_off coupons get reflected, amount_off
+                  // coupons do not (the server already applied that rule).
+                  overageRatePerMinute:
+                    upgradePreviewData.upgrade.overageRatePerMinute,
                 }
               : undefined}
             projectionMultiplier={projectionMultiplier}

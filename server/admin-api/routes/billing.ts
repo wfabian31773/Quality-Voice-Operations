@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import { createCheckoutSession, createPortalSession } from '../../../platform/billing/stripe/checkout';
 import { constructStripeEvent, handleStripeEvent } from '../../../platform/billing/stripe/webhook';
-import { getTenantEffectiveRate } from '../../../platform/billing/stripe/effectiveRate';
+import {
+  getTenantEffectiveRate,
+  getTenantUpgradePreview,
+  isPlanTier,
+  nextUpgradeTier,
+} from '../../../platform/billing/stripe/effectiveRate';
+import type { PlanTier } from '../../../shared/billing/planCatalog';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
@@ -245,6 +251,62 @@ router.get('/billing/effective-rate', requireAuth, async (req, res) => {
     // it but still avoid leaking internals to the client.
     logger.error('Effective rate lookup failed', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to resolve effective rate' });
+  }
+});
+
+/**
+ * Tenant-specific upgrade quote for the BillingEstimator's "Next tier up"
+ * card. The optional `plan` query param picks an explicit tier; when
+ * omitted, we infer the tier directly above the tenant's current plan from
+ * the Stripe-reported effective rate (which is what the estimator already
+ * uses to know which card to render).
+ *
+ * Always returns 200 — when there is no upgrade tier available (the tenant
+ * is already on Enterprise) the response is `{ upgrade: null }` so the
+ * client can render the "you're on the top plan" placeholder without
+ * special-casing 404s.
+ */
+router.get('/billing/upgrade-preview', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const requested = typeof req.query.plan === 'string' ? req.query.plan : null;
+
+  let targetPlan: PlanTier | null;
+  if (requested) {
+    if (!isPlanTier(requested)) {
+      return res.status(400).json({
+        error: `Invalid plan: ${requested}. Must be one of: starter, pro, enterprise`,
+      });
+    }
+    targetPlan = requested;
+  } else {
+    // No explicit target — derive "next tier up" from the tenant's actual
+    // current plan so a single call answers the estimator's question.
+    try {
+      const current = await getTenantEffectiveRate(tenantId);
+      targetPlan = nextUpgradeTier(current.plan);
+    } catch (err) {
+      logger.error('Failed to resolve current plan for upgrade preview', {
+        tenantId,
+        error: String(err),
+      });
+      return res.status(500).json({ error: 'Failed to resolve upgrade preview' });
+    }
+  }
+
+  if (!targetPlan) {
+    return res.json({ upgrade: null });
+  }
+
+  try {
+    const upgrade = await getTenantUpgradePreview(tenantId, targetPlan);
+    return res.json({ upgrade });
+  } catch (err) {
+    logger.error('Upgrade preview lookup failed', {
+      tenantId,
+      targetPlan,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to resolve upgrade preview' });
   }
 });
 

@@ -5,6 +5,7 @@ import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
   PLAN_CATALOG,
+  PLAN_TIERS,
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
 import {
@@ -61,6 +62,7 @@ interface SubscriptionRow {
   plan: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
+  stripe_customer_id: string | null;
 }
 
 function normalizePlan(plan: string | null | undefined): PlanTier {
@@ -181,7 +183,7 @@ async function loadSubscriptionRow(tenantId: string): Promise<SubscriptionRow | 
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query<SubscriptionRow>(
-      `SELECT plan, stripe_subscription_id, stripe_price_id
+      `SELECT plan, stripe_subscription_id, stripe_price_id, stripe_customer_id
        FROM subscriptions
        WHERE tenant_id = $1
        LIMIT 1`,
@@ -336,5 +338,343 @@ export async function getTenantEffectiveRate(
     overagePriceSource,
     basePriceId,
     overagePriceId,
+  };
+}
+
+/**
+ * Discount we resolved off the tenant's Stripe customer record (or, in the
+ * case of a single-shot promotion code redemption, off the Stripe `Coupon`
+ * itself). All amounts here are *as Stripe stored them* — `percentOff` is a
+ * 0–100 number, `amountOffCents` is in the smallest currency unit. The UI
+ * is responsible for rendering it.
+ */
+export interface UpgradeDiscount {
+  couponId: string | null;
+  name: string | null;
+  percentOff: number | null;
+  amountOffCents: number | null;
+  currency: string | null;
+  promotionCode: string | null;
+}
+
+/**
+ * Tenant-specific upgrade quote for a single target tier. Returned by
+ * `getTenantUpgradePreview` and consumed by `GET /billing/upgrade-preview`.
+ *
+ * Mirrors the field set on `TenantEffectiveRate` so the BillingEstimator
+ * can render the comparison-tier card with the same accent ("Live Stripe
+ * rate") and provenance breadcrumbs as the current-tier card. The extra
+ * `discount` field surfaces *why* the preview differs from the published
+ * catalog, which Sales/Support need when a tenant questions the quote.
+ */
+export interface TenantUpgradePreview {
+  /** The tier this preview is for (the value the caller asked about). */
+  plan: PlanTier;
+  /**
+   * Effective monthly base price (in cents) the tenant would pay AFTER any
+   * customer-level discount/coupon/promotion code is applied. Falls back to
+   * the catalog `monthlyPriceCents` when no Stripe price/customer data is
+   * available.
+   */
+  basePriceCents: number;
+  /**
+   * Per-minute overage rate (in dollars) the tenant would pay on the target
+   * tier. We don't have a per-tier metered price configured yet, so this
+   * starts from the catalog rate for the target tier and applies any
+   * `percent_off` from the customer's discount (Stripe applies percentage
+   * coupons to the entire invoice, including metered usage). `amount_off`
+   * coupons only apply once to the invoice total and do NOT change the
+   * per-minute rate, so we leave the overage untouched in that case.
+   */
+  overageRatePerMinute: number;
+  currency: string;
+  source: EffectiveRateSource;
+  basePriceSource: 'stripe' | 'catalog';
+  overagePriceSource: 'stripe' | 'catalog';
+  /** Stripe price id we used for the base (when applicable). */
+  basePriceId: string | null;
+  /** Discount we resolved off the customer record (when applicable). */
+  discount: UpgradeDiscount | null;
+}
+
+function catalogUpgradeFor(plan: PlanTier): TenantUpgradePreview {
+  const entry = PLAN_CATALOG[plan];
+  return {
+    plan,
+    basePriceCents: entry.monthlyPriceCents,
+    overageRatePerMinute: entry.overageRatePerMinute,
+    currency: 'usd',
+    source: 'catalog',
+    basePriceSource: 'catalog',
+    overagePriceSource: 'catalog',
+    basePriceId: null,
+    discount: null,
+  };
+}
+
+interface CouponLike {
+  id?: string | null;
+  name?: string | null;
+  percent_off?: number | null;
+  amount_off?: number | null;
+  currency?: string | null;
+  valid?: boolean | null;
+}
+
+interface PromotionCodeLike {
+  id?: string | null;
+  code?: string | null;
+  active?: boolean | null;
+}
+
+interface DiscountLike {
+  coupon?: CouponLike | null;
+  promotion_code?: string | PromotionCodeLike | null;
+  end?: number | null;
+}
+
+interface CustomerLike {
+  id?: string | null;
+  deleted?: boolean | null;
+  discount?: DiscountLike | null;
+  currency?: string | null;
+}
+
+/**
+ * Translate a Stripe `Discount` (off `customer.discount`) into our compact
+ * `UpgradeDiscount` shape. Returns `null` when the discount has expired or
+ * the underlying coupon is no longer valid so the preview never quotes a
+ * stale promo.
+ */
+function normalizeDiscount(
+  discount: DiscountLike | null | undefined,
+): UpgradeDiscount | null {
+  if (!discount) return null;
+  const coupon = discount.coupon;
+  if (!coupon) return null;
+  // Skip coupons Stripe has already invalidated (expired, max redemptions,
+  // manually deleted). `valid` is `true` when the coupon is currently
+  // redeemable; `undefined` means we couldn't read it (rare) — treat as
+  // usable to avoid false negatives.
+  if (coupon.valid === false) return null;
+  // Discount-end is a unix timestamp in seconds (or null/0 for forever).
+  if (discount.end && discount.end > 0 && discount.end * 1000 < Date.now()) {
+    return null;
+  }
+  const percentOff =
+    coupon.percent_off != null && Number.isFinite(coupon.percent_off)
+      ? coupon.percent_off
+      : null;
+  const amountOffCents =
+    coupon.amount_off != null && Number.isFinite(coupon.amount_off)
+      ? coupon.amount_off
+      : null;
+  // Both null = pure-metadata coupon = no actual savings to surface.
+  if (percentOff == null && amountOffCents == null) return null;
+
+  let promotionCode: string | null = null;
+  const promo = discount.promotion_code;
+  if (typeof promo === 'string') {
+    promotionCode = promo;
+  } else if (promo && typeof promo === 'object') {
+    promotionCode = promo.code ?? promo.id ?? null;
+  }
+
+  return {
+    couponId: coupon.id ?? null,
+    name: coupon.name ?? null,
+    percentOff,
+    amountOffCents,
+    currency: (coupon.currency ?? null)?.toLowerCase() ?? null,
+    promotionCode,
+  };
+}
+
+/**
+ * Apply the discount to a base price expressed in cents. `percent_off` wins
+ * over `amount_off` when both are present (Stripe treats these as mutually
+ * exclusive on a single coupon, but defensive code is cheap). Returns the
+ * post-discount base price, clamped to >= 0.
+ */
+function applyDiscountToBaseCents(
+  baseCents: number,
+  discount: UpgradeDiscount | null,
+): number {
+  if (!discount) return baseCents;
+  if (discount.percentOff != null) {
+    const factor = Math.max(0, Math.min(100, discount.percentOff)) / 100;
+    return Math.max(0, Math.round(baseCents * (1 - factor)));
+  }
+  if (discount.amountOffCents != null) {
+    return Math.max(0, baseCents - discount.amountOffCents);
+  }
+  return baseCents;
+}
+
+function applyDiscountToPerMinute(
+  ratePerMinute: number,
+  discount: UpgradeDiscount | null,
+): number {
+  if (!discount) return ratePerMinute;
+  if (discount.percentOff != null) {
+    const factor = Math.max(0, Math.min(100, discount.percentOff)) / 100;
+    return Math.max(0, ratePerMinute * (1 - factor));
+  }
+  // `amount_off` is a flat invoice credit, not a per-minute discount, so we
+  // intentionally leave the metered rate alone here. The estimator already
+  // shows the discounted base, which is where the credit gets reflected.
+  return ratePerMinute;
+}
+
+export function isPlanTier(value: unknown): value is PlanTier {
+  return typeof value === 'string' && (PLAN_TIERS as string[]).includes(value);
+}
+
+/**
+ * Resolve the next tier ABOVE the tenant's current plan. Returns `null`
+ * when the tenant is already on the top published tier (Enterprise) so the
+ * caller can short-circuit without quoting a non-existent upgrade.
+ */
+export function nextUpgradeTier(currentPlan: PlanTier): PlanTier | null {
+  const idx = PLAN_TIERS.indexOf(currentPlan);
+  if (idx < 0 || idx >= PLAN_TIERS.length - 1) return null;
+  return PLAN_TIERS[idx + 1];
+}
+
+/**
+ * Quote what a tenant would pay if they upgraded to `targetPlan`.
+ *
+ * Resolution order for the base price:
+ *   1. Look up the published `STRIPE_PRICE_<TIER>_MONTHLY` price id, retrieve
+ *      it from Stripe, and use its `unit_amount` (normalized to monthly).
+ *   2. Fall back to the catalog `monthlyPriceCents`.
+ *
+ * After we have the published base, we look at the tenant's Stripe customer
+ * record for an active `discount` (a coupon or promotion-code redemption)
+ * and apply it to the base. This is what lets Sales attach a custom
+ * percent-off coupon to a tenant's customer in Stripe and have the bill
+ * estimator show the *actual* upgrade quote instead of the catalog list
+ * price.
+ *
+ * Like `getTenantEffectiveRate`, this function NEVER throws — every Stripe
+ * error degrades to the catalog defaults so the comparison-tier card
+ * always renders.
+ */
+export async function getTenantUpgradePreview(
+  tenantId: string,
+  targetPlan: PlanTier,
+): Promise<TenantUpgradePreview> {
+  const fallback = catalogUpgradeFor(targetPlan);
+
+  const subRow = await loadSubscriptionRow(tenantId);
+  const customerId = subRow?.stripe_customer_id ?? null;
+
+  let stripe: Stripe;
+  try {
+    stripe = getStripeClient();
+  } catch (err) {
+    logger.info('Stripe client unavailable — using catalog defaults for upgrade preview', {
+      tenantId,
+      targetPlan,
+      error: String(err),
+    });
+    return fallback;
+  }
+
+  // 1. Try to resolve the published Stripe price id for the target tier.
+  //    `getPlanPriceId` throws when the env var is missing; we treat that as
+  //    a soft failure (fall back to catalog) so the endpoint stays useful in
+  //    dev environments that haven't wired every tier up.
+  let priceEnvKey: string | null = null;
+  let publishedPriceId: string | null = null;
+  try {
+    // Inline read so we don't import `getPlanPriceId` (which throws) and
+    // can keep the soft-fail behavior local.
+    priceEnvKey = `STRIPE_PRICE_${targetPlan.toUpperCase()}_MONTHLY`;
+    publishedPriceId = process.env[priceEnvKey] ?? null;
+  } catch {
+    publishedPriceId = null;
+  }
+
+  let basePriceCents = fallback.basePriceCents;
+  let basePriceSource: 'stripe' | 'catalog' = 'catalog';
+  let basePriceId: string | null = null;
+  let currency: string = fallback.currency;
+
+  if (publishedPriceId) {
+    try {
+      const stripePrice = (await stripe.prices.retrieve(publishedPriceId)) as unknown as PriceLike;
+      const raw = pickBasePriceCents(stripePrice);
+      if (raw != null) {
+        basePriceCents = normalizeBaseToMonthly(stripePrice, raw);
+        basePriceSource = 'stripe';
+        basePriceId = stripePrice.id ?? publishedPriceId;
+        if (stripePrice.currency) currency = stripePrice.currency.toLowerCase();
+      }
+    } catch (err) {
+      logger.warn('Failed to retrieve upgrade target price from Stripe', {
+        tenantId,
+        targetPlan,
+        priceId: publishedPriceId,
+        error: String(err),
+      });
+    }
+  }
+
+  // 2. Fetch the tenant's Stripe customer to read any active discount.
+  //    `customer.discount.promotion_code` can be a string id or an inline
+  //    object — we expand it so we can surface the human-readable code.
+  let discount: UpgradeDiscount | null = null;
+  if (customerId) {
+    try {
+      const customer = (await stripe.customers.retrieve(customerId, {
+        expand: ['discount.promotion_code'],
+      })) as unknown as CustomerLike;
+      if (customer && customer.deleted !== true) {
+        discount = normalizeDiscount(customer.discount);
+        if (customer.currency && currency === fallback.currency) {
+          currency = customer.currency.toLowerCase();
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to retrieve customer for upgrade preview discount', {
+        tenantId,
+        targetPlan,
+        customerId,
+        error: String(err),
+      });
+    }
+  }
+
+  const discountedBase = applyDiscountToBaseCents(basePriceCents, discount);
+  const discountedOverage = applyDiscountToPerMinute(
+    fallback.overageRatePerMinute,
+    discount,
+  );
+
+  // The published catalog rate is the only thing we have for the metered
+  // line, so its source stays `catalog` even when we discount it — the
+  // discount provenance is surfaced separately via the `discount` field.
+  const overagePriceSource: 'stripe' | 'catalog' = 'catalog';
+
+  let source: EffectiveRateSource;
+  if (basePriceSource === 'stripe' && discount) {
+    source = 'stripe';
+  } else if (basePriceSource === 'stripe' || discount) {
+    source = basePriceSource === 'stripe' ? 'stripe' : 'mixed';
+  } else {
+    source = 'catalog';
+  }
+
+  return {
+    plan: targetPlan,
+    basePriceCents: discountedBase,
+    overageRatePerMinute: discountedOverage,
+    currency,
+    source,
+    basePriceSource,
+    overagePriceSource,
+    basePriceId,
+    discount,
   };
 }
