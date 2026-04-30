@@ -163,6 +163,15 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // see it.
     expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
 
+    // The per-message SMS rate row (task #1265 / #1314) is gated on a
+    // logged-in tenant with an SMS override on the effective-rate
+    // payload. Anonymous visitors must NOT see an SMS line — they have
+    // no negotiated rate to surface and we don't want to leak the
+    // existence of an authed-only SMS price field on the marketing page.
+    expect(screen.queryByTestId('calc-sms-rate')).toBeNull();
+    expect(screen.queryByTestId('calc-sms-rate-value')).toBeNull();
+    expect(screen.queryByTestId('calc-sms-source')).toBeNull();
+
     // No /billing/* fetches for an anonymous visitor.
     expect(
       fetchUrls.some((u) => u.includes('/billing/')),
@@ -214,6 +223,176 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // Exactly one /billing/effective-rate call was made.
     const billingHits = fetchUrls.filter((u) => u.includes('/billing/effective-rate'));
     expect(billingHits.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Task #1314: a logged-in tenant on a custom Stripe SMS price must see
+  // their negotiated $/msg rate on the public /pricing calculator with the
+  // "Live Stripe rate" badge. Locks the SMS-rendered case end-to-end so a
+  // future regression in the buildOverride → MinutesPricingCalculator
+  // wiring (or in the calc-sms-rate render gate) surfaces here.
+  // -------------------------------------------------------------------------
+  it('renders the negotiated SMS rate with the "Live Stripe rate" badge for a logged-in tenant on a custom Stripe SMS price (task #1314)', async () => {
+    mockUser = { tenantId: 'tenant-sms-negotiated' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Catalog AI/base/overage on Pro — the only Stripe-sourced
+            // override is on the SMS side. This is the exact scenario
+            // task #1314 calls out: a tenant on a published AI plan
+            // who has separately negotiated a custom per-message SMS
+            // rate must still see that SMS rate (and badge) surface
+            // on the public calculator.
+            basePriceCents: 39900,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'catalog',
+            basePriceSource: 'catalog',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'catalog',
+            annualBasePriceCents: 31920,
+            annualBasePriceSource: 'catalog',
+            // Negotiated $0.0075/msg vs typical env default ~$0.01/msg.
+            // Picked deliberately so a regression that fell back to a
+            // catalog default (or dropped the override entirely) would
+            // surface as a wrong rendered dollar value rather than a
+            // silently-passing assertion on a coincidental match.
+            smsRatePerMessage: 0.0075,
+            smsPriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    // SMS row mounts on the calculator.
+    const smsRow = await waitFor(() => screen.getByTestId('calc-sms-rate'));
+    expect(smsRow.getAttribute('data-sms-source')).toBe('stripe');
+
+    // Rendered $/msg matches the negotiated rate, formatted to four
+    // fraction digits per MinutesPricingCalculator.formatPerMessage so
+    // a sub-cent rate is never quietly truncated to "$0.01".
+    const valueEl = screen.getByTestId('calc-sms-rate-value');
+    const valueText = valueEl.textContent ?? '';
+    expect(valueText).toContain('$0.0075');
+    expect(valueText).toContain('/msg');
+
+    // "Live Stripe rate" badge engages because smsPriceSource === 'stripe'.
+    const badge = screen.getByTestId('calc-sms-source');
+    expect(badge.textContent ?? '').toMatch(/live stripe rate/i);
+
+    // The AI side stayed on catalog — none of the per-tier "Live Stripe
+    // rate" badges should have mounted just because SMS was Stripe-sourced.
+    expect(screen.queryByTestId('calc-source-starter')).toBeNull();
+    expect(screen.queryByTestId('calc-source-pro')).toBeNull();
+    expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
+  });
+
+  it('renders the SMS row WITHOUT the "Live Stripe rate" badge when the SMS price is catalog-sourced (task #1314)', async () => {
+    // Counterpart to the positive test: a tenant on a Stripe-sourced AI
+    // plan whose SMS rate IS present on the payload but flagged
+    // smsPriceSource === 'catalog' (i.e. the env-default fallback the
+    // backend resolved when the tenant has no negotiated Stripe SMS
+    // price). MinutesPricingCalculator's render gate is keyed on the
+    // numeric rate being present — so the row mounts — but the
+    // "Live Stripe rate" badge MUST stay hidden so we don't falsely
+    // imply the env-default fallback was a negotiated rate.
+    mockUser = { tenantId: 'tenant-sms-catalog' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            basePriceCents: 34900,
+            overageRatePerMinute: 0.07,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            // SMS rate value is present (env default), but provenance
+            // is catalog. Picked at $0.01/msg so a regression that
+            // started rendering the badge for catalog-sourced SMS
+            // would surface here instead of silently passing.
+            smsRatePerMessage: 0.01,
+            smsPriceSource: 'catalog',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    // Wait for the AI-side override to engage so we know the page has
+    // finished its effective-rate fetch before asserting on the SMS row.
+    await waitFor(() => {
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+    });
+
+    // Row mounts because the rate value is present, but data-sms-source
+    // reflects the catalog provenance and the badge is suppressed.
+    const smsRow = screen.getByTestId('calc-sms-rate');
+    expect(smsRow.getAttribute('data-sms-source')).toBe('catalog');
+    expect(screen.queryByTestId('calc-sms-source')).toBeNull();
+
+    // Rendered $/msg still shows the env-default value so the calculator
+    // isn't lying about what the tenant pays — it just isn't claiming
+    // the rate came from a negotiated Stripe price.
+    const valueText = screen.getByTestId('calc-sms-rate-value').textContent ?? '';
+    expect(valueText).toContain('$0.0100');
+    expect(valueText).toContain('/msg');
+  });
+
+  it('does NOT render the SMS row at all when the override carries no SMS rate value (task #1314)', async () => {
+    // Separate guard for the "no SMS rate at all" case (e.g. a tenant
+    // whose backend response simply omits smsRatePerMessage). The
+    // MinutesPricingCalculator gate is keyed on the numeric value, so
+    // missing rate => row is suppressed entirely, regardless of source.
+    mockUser = { tenantId: 'tenant-sms-missing' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            basePriceCents: 34900,
+            overageRatePerMinute: 0.07,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            // No smsRatePerMessage / smsPriceSource fields at all.
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId('calc-sms-rate')).toBeNull();
+    expect(screen.queryByTestId('calc-sms-rate-value')).toBeNull();
+    expect(screen.queryByTestId('calc-sms-source')).toBeNull();
   });
 
   it('shows the custom-rate callout above the calculator when the tenant pays LESS than catalog (task #1210)', async () => {
