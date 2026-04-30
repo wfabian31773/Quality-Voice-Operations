@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
-import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, ArrowLeft, Sparkles, AlertTriangle } from 'lucide-react';
 import { type IndustryTemplateKey, getIndustryTemplateCopy } from '../lib/agentBuilderI18n';
 import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
 
@@ -73,6 +73,9 @@ export default function Onboarding() {
   const [provisioningStatus, setProvisioningStatus] = useState<ProvisioningStatus | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState('answering-service');
   const [updatingAgent, setUpdatingAgent] = useState(false);
+  // Set when PATCH /agents/:id fails during template confirm so the
+  // wizard can show a retry-able error instead of silently advancing.
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const verifyAttempted = useRef(false);
@@ -242,11 +245,13 @@ export default function Onboarding() {
 
   const handleTemplateConfirm = async () => {
     if (selectedTemplate === 'answering-service') {
+      setTemplateError(null);
       advanceTo(3);
       return;
     }
 
     setUpdatingAgent(true);
+    setTemplateError(null);
     try {
       const agents = await api.get<{ agents: Array<{ id: string }> }>('/agents');
       if (agents.agents.length > 0) {
@@ -268,8 +273,17 @@ export default function Onboarding() {
         await api.patch(`/agents/${agents.agents[0].id}`, updates);
       }
       advanceTo(3);
-    } catch {
-      advanceTo(3);
+    } catch (err) {
+      // Surface the failure on step 2 instead of advancing — otherwise
+      // the user lands on step 3 with the generic answering-service
+      // prompt still in place and no signal their pick didn't apply.
+      const detail =
+        err instanceof Error && err.message ? err.message : '';
+      setTemplateError(
+        detail
+          ? t('onboarding.template.update_failed_with_detail', { detail })
+          : t('onboarding.template.update_failed'),
+      );
     } finally {
       setUpdatingAgent(false);
     }
@@ -409,7 +423,11 @@ export default function Onboarding() {
                       name="template"
                       value={value}
                       checked={selectedTemplate === value}
-                      onChange={() => setSelectedTemplate(value)}
+                      onChange={() => {
+                        setSelectedTemplate(value);
+                        // Clear any stale error from the previous pick.
+                        setTemplateError(null);
+                      }}
                       className="mt-1 accent-primary"
                     />
                     <div>
@@ -419,6 +437,20 @@ export default function Onboarding() {
                   </label>
                 ))}
               </div>
+
+              {templateError && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                >
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  <div>
+                    <div className="font-medium">{t('onboarding.template.update_failed_title')}</div>
+                    <div className="text-xs mt-0.5">{templateError}</div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <button
@@ -437,6 +469,10 @@ export default function Onboarding() {
                   {updatingAgent ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" /> {t('onboarding.template.updating')}
+                    </>
+                  ) : templateError ? (
+                    <>
+                      {t('onboarding.template.try_again')} <ArrowRight className="h-4 w-4" />
                     </>
                   ) : (
                     <>

@@ -677,7 +677,11 @@
       "subtitle": "Selecione o modelo que melhor se ajusta ao seu negócio. Você poderá personalizá-lo depois.",
       "back": "Voltar",
       "continue": "Continuar",
-      "updating": "Atualizando..."
+      "updating": "Atualizando...",
+      "try_again": "Tentar novamente",
+      "update_failed_title": "Não foi possível aplicar este modelo",
+      "update_failed": "Não conseguimos atualizar seu agente com o modelo escolhido. Verifique sua conexão e tente novamente.",
+      "update_failed_with_detail": "Não conseguimos atualizar seu agente com o modelo escolhido: {{detail}}. Tente novamente."
     },
     "phone": {
       "title": "Adicione o seu primeiro número de telefone",

@@ -677,7 +677,11 @@
       "subtitle": "Wählen Sie die Vorlage, die am besten zu Ihrem Unternehmen passt. Sie können sie später anpassen.",
       "back": "Zurück",
       "continue": "Weiter",
-      "updating": "Wird aktualisiert..."
+      "updating": "Wird aktualisiert...",
+      "try_again": "Erneut versuchen",
+      "update_failed_title": "Vorlage konnte nicht angewendet werden",
+      "update_failed": "Wir konnten Ihren Agenten nicht mit der gewählten Vorlage aktualisieren. Bitte überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "update_failed_with_detail": "Wir konnten Ihren Agenten nicht mit der gewählten Vorlage aktualisieren: {{detail}}. Bitte versuchen Sie es erneut."
     },
     "phone": {
       "title": "Fügen Sie Ihre erste Telefonnummer hinzu",

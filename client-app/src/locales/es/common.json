@@ -677,7 +677,11 @@
       "subtitle": "Selecciona la plantilla que mejor se adapte a tu negocio. Podrás personalizarla después.",
       "back": "Atrás",
       "continue": "Continuar",
-      "updating": "Actualizando..."
+      "updating": "Actualizando...",
+      "try_again": "Reintentar",
+      "update_failed_title": "No se pudo aplicar esa plantilla",
+      "update_failed": "No pudimos actualizar tu agente con la plantilla elegida. Comprueba tu conexión e inténtalo de nuevo.",
+      "update_failed_with_detail": "No pudimos actualizar tu agente con la plantilla elegida: {{detail}}. Inténtalo de nuevo."
     },
     "phone": {
       "title": "Añade tu primer número de teléfono",
