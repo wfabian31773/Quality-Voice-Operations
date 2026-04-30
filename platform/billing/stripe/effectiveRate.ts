@@ -881,10 +881,21 @@ interface PromotionCodeLike {
   active?: boolean | null;
 }
 
+interface DiscountSourceLike {
+  type?: string | null;
+  coupon?: string | CouponLike | null;
+  promotion_code?: string | PromotionCodeLike | null;
+}
+
+// Stripe API versions >= 2025-04-30.basil moved the coupon/promotion
+// code references off the discount root and into `discount.source`.
+// Older versions still populate the top-level fields. The normalizer
+// reads whichever is present.
 interface DiscountLike {
   coupon?: CouponLike | null;
   promotion_code?: string | PromotionCodeLike | null;
   end?: number | null;
+  source?: DiscountSourceLike | null;
 }
 
 interface CustomerLike {
@@ -909,7 +920,16 @@ export function normalizeDiscount(
   discount: DiscountLike | null | undefined,
 ): UpgradeDiscount | null {
   if (!discount) return null;
-  const coupon = discount.coupon;
+  // Modern source shape needs an expanded coupon object — a bare id is
+  // not enough to surface percent_off / amount_off, so we treat it as
+  // "no usable coupon".
+  let coupon: CouponLike | null | undefined = discount.coupon;
+  if (!coupon && discount.source) {
+    const sourceCoupon = discount.source.coupon;
+    if (sourceCoupon && typeof sourceCoupon === 'object') {
+      coupon = sourceCoupon;
+    }
+  }
   if (!coupon) return null;
   // Skip coupons Stripe has already invalidated (expired, max redemptions,
   // manually deleted). `valid` is `true` when the coupon is currently
@@ -933,7 +953,7 @@ export function normalizeDiscount(
 
   let promotionCode: string | null = null;
   let promotionCodeId: string | null = null;
-  const promo = discount.promotion_code;
+  const promo = discount.promotion_code ?? discount.source?.promotion_code;
   if (typeof promo === 'string') {
     // Unexpanded — Stripe returns just the `promo_*` id. Use it as the
     // forwardable id; we don't have the human label.
@@ -1008,11 +1028,20 @@ export async function loadActiveCustomerDiscount(
   ctx: { tenantId: string; surface: string },
 ): Promise<UpgradeDiscount | null> {
   try {
+    // Expand both the legacy and modern shapes; Stripe ignores expand
+    // paths that don't apply to the active API version.
+    // `discount.source.promotion_code` is intentionally NOT here —
+    // Stripe rejects that expand path; we hydrate it below if needed.
     const customer = (await stripe.customers.retrieve(customerId, {
-      expand: ['discount.promotion_code'],
+      expand: ['discount.promotion_code', 'discount.source.coupon'],
     })) as unknown as CustomerLike;
     if (!customer || customer.deleted === true) return null;
-    return normalizeDiscount(customer.discount);
+    const hydrated = await hydrateDiscountSource(
+      stripe,
+      customer.discount,
+      ctx,
+    );
+    return normalizeDiscount(hydrated);
   } catch (err) {
     logger.warn('Failed to retrieve customer discount', {
       tenantId: ctx.tenantId,
@@ -1021,6 +1050,56 @@ export async function loadActiveCustomerDiscount(
       error: String(err),
     });
     return null;
+  }
+}
+
+/**
+ * When a discount comes back with only a bare `source.promotion_code`
+ * id (the modern shape, applied via promotion code, where neither the
+ * top-level `promotion_code` nor `source.coupon` carries usable data),
+ * fetch the promotion code separately to recover the human label and
+ * the underlying coupon. No-op for every other shape; failures degrade
+ * to the input discount so the caller still sees whatever data it had.
+ */
+async function hydrateDiscountSource(
+  stripe: Stripe,
+  discount: DiscountLike | null | undefined,
+  ctx: { tenantId: string; surface: string },
+): Promise<DiscountLike | null | undefined> {
+  if (!discount?.source) return discount;
+  const sourcePromo = discount.source.promotion_code;
+  if (typeof sourcePromo !== 'string') return discount;
+  const haveCoupon =
+    (discount.coupon && typeof discount.coupon === 'object')
+    || (discount.source.coupon && typeof discount.source.coupon === 'object');
+  const havePromoLabel =
+    (typeof discount.promotion_code === 'object' && discount.promotion_code !== null)
+    || (typeof discount.source.promotion_code === 'object'
+      && discount.source.promotion_code !== null);
+  if (haveCoupon && havePromoLabel) return discount;
+  try {
+    const promo = (await stripe.promotionCodes.retrieve(sourcePromo, {
+      expand: ['coupon'],
+    })) as unknown as PromotionCodeLike & { coupon?: CouponLike | null };
+    return {
+      ...discount,
+      promotion_code: discount.promotion_code ?? promo,
+      source: {
+        ...discount.source,
+        coupon:
+          (discount.source.coupon && typeof discount.source.coupon === 'object'
+            ? discount.source.coupon
+            : promo.coupon) ?? discount.source.coupon,
+      },
+    };
+  } catch (err) {
+    logger.warn('Failed to hydrate discount.source.promotion_code', {
+      tenantId: ctx.tenantId,
+      surface: ctx.surface,
+      promotionCodeId: sourcePromo,
+      error: String(err),
+    });
+    return discount;
   }
 }
 
@@ -1041,14 +1120,12 @@ export async function loadActiveSubscriptionDiscounts(
   subscriptionId: string,
   ctx: { tenantId: string; surface: string },
 ): Promise<UpgradeDiscount[]> {
-  // Only expand the modern `discounts` array — `discount.promotion_code`
-  // was removed from later Stripe API versions and would throw the whole
-  // retrieve. The legacy unexpanded `discount` (a `promo_*` id string)
-  // is still handled by `normalizeDiscount`.
+  // Expand legacy `promotion_code` and modern `source.coupon` shapes;
+  // bare `source.promotion_code` ids are hydrated below if needed.
   let sub: SubscriptionWithDiscountsLike;
   try {
     sub = (await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ['discounts.promotion_code'],
+      expand: ['discounts.promotion_code', 'discounts.source.coupon'],
     })) as unknown as SubscriptionWithDiscountsLike;
   } catch (err) {
     logger.warn('Failed to retrieve subscription discounts', {
@@ -1063,11 +1140,13 @@ export async function loadActiveSubscriptionDiscounts(
   const out: UpgradeDiscount[] = [];
   for (const d of Array.isArray(sub?.discounts) ? sub.discounts : []) {
     if (!d || typeof d !== 'object') continue;
-    const normalized = normalizeDiscount(d);
+    const hydrated = await hydrateDiscountSource(stripe, d, ctx);
+    const normalized = normalizeDiscount(hydrated);
     if (normalized) out.push(normalized);
   }
   if (out.length === 0 && sub?.discount) {
-    const normalized = normalizeDiscount(sub.discount);
+    const hydrated = await hydrateDiscountSource(stripe, sub.discount, ctx);
+    const normalized = normalizeDiscount(hydrated);
     if (normalized) out.push(normalized);
   }
   return out;

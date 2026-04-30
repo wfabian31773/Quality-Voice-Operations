@@ -1,0 +1,115 @@
+name: Billing portal discount headline (Stripe live) e2e
+
+# Runs tests/e2e/billingPortalDiscountHeadline.spec.ts against live
+# Stripe test mode when STRIPE_SECRET_KEY is configured; skips cleanly
+# otherwise. Failure artifacts uploaded from .ci-logs/.
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: billing-portal-discount-headline-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  billing-portal-discount-headline-e2e:
+    name: Billing portal discount headline (Stripe live) e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: voiceaihub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      APP_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/voiceaihub_test
+      E2E_ARTIFACT_DIR: .ci-logs/screenshots
+      DISABLE_PHI_LOGGING: "true"
+
+    steps:
+      - name: Determine whether to run the live Stripe spec
+        id: gate
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          run_spec="false"
+          reason=""
+          if [ -z "${STRIPE_SECRET_KEY}" ]; then
+            reason="STRIPE_SECRET_KEY is not configured"
+          elif [ "${STRIPE_SECRET_KEY#sk_test_}" = "${STRIPE_SECRET_KEY}" ]; then
+            echo "::error::STRIPE_SECRET_KEY is configured but is not a test-mode key (sk_test_…). Refusing to run live Stripe e2e against a non-test key."
+            exit 1
+          else
+            run_spec="true"
+          fi
+          echo "run_spec=${run_spec}" >> "$GITHUB_OUTPUT"
+          if [ "${run_spec}" = "true" ]; then
+            echo "::notice::Live Stripe billing creds detected — running billingPortalDiscountHeadline.spec.ts."
+          else
+            echo "::notice::Skipping billingPortalDiscountHeadline.spec.ts: ${reason}. Configure STRIPE_SECRET_KEY (sk_test_…) in repo secrets to enable this check."
+          fi
+
+      - name: Check out repository
+        if: steps.gate.outputs.run_spec == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.run_spec == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install root dependencies
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install Playwright Chromium browser
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run database migrations
+        if: steps.gate.outputs.run_spec == 'true'
+        run: npx tsx scripts/run-migrations.ts
+
+      - name: Seed admin tenant
+        if: steps.gate.outputs.run_spec == 'true'
+        env:
+          ADMIN_EMAIL: admin@voiceaihub.dev
+          ADMIN_PASSWORD: test-password-123
+        run: npx tsx scripts/seed-admin.ts
+
+      - name: Run billing portal discount headline e2e
+        id: spec
+        if: steps.gate.outputs.run_spec == 'true'
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs/screenshots
+          npm run test:e2e:billing-portal-discount-headline 2>&1 \
+            | tee .ci-logs/billing-portal-discount-headline.log
+
+      - name: Upload spec logs and screenshots on failure
+        if: failure() && steps.gate.outputs.run_spec == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: billing-portal-discount-headline-e2e-artifacts
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7

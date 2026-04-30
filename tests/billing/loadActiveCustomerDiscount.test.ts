@@ -127,7 +127,7 @@ describe('loadActiveCustomerDiscount', () => {
     expect(result).toBeNull();
   });
 
-  it('expands the promotion code on retrieval', async () => {
+  it('expands both legacy and modern discount shapes on retrieval', async () => {
     const retrieve = vi.fn(async () => ({
       id: 'cus_expand',
       discount: {
@@ -143,7 +143,93 @@ describe('loadActiveCustomerDiscount', () => {
     });
 
     expect(retrieve).toHaveBeenCalledWith('cus_expand', {
-      expand: ['discount.promotion_code'],
+      expand: ['discount.promotion_code', 'discount.source.coupon'],
     });
+  });
+
+  it('normalizes the modern discount.source shape (>= 2025-04-30.basil)', async () => {
+    const retrieve = vi.fn(async () => ({
+      id: 'cus_modern',
+      discount: {
+        source: {
+          type: 'coupon',
+          coupon: { id: 'coup_modern', percent_off: 25, valid: true, name: 'WELCOME25' },
+        },
+      },
+    }));
+    const stripe = makeStripe(retrieve);
+
+    const result = await loadActiveCustomerDiscount(stripe, 'cus_modern', {
+      tenantId: 'tenant-h',
+      surface: 'test',
+    });
+
+    expect(result).toEqual({
+      couponId: 'coup_modern',
+      name: 'WELCOME25',
+      percentOff: 25,
+      amountOffCents: null,
+      currency: null,
+      promotionCode: null,
+      promotionCodeId: null,
+    });
+  });
+
+  it('hydrates a bare source.promotion_code id by retrieving the promotion code', async () => {
+    const retrieve = vi.fn(async () => ({
+      id: 'cus_promo_source',
+      discount: {
+        source: { type: 'promotion_code', promotion_code: 'promo_bare' },
+      },
+    }));
+    const promotionCodesRetrieve = vi.fn(async () => ({
+      id: 'promo_bare',
+      code: 'WELCOME30',
+      coupon: { id: 'coup_h', percent_off: 30, valid: true, name: 'WELCOME30' },
+    }));
+    const stripe = {
+      customers: { retrieve },
+      promotionCodes: { retrieve: promotionCodesRetrieve },
+    } as unknown as Parameters<typeof loadActiveCustomerDiscount>[0];
+
+    const result = await loadActiveCustomerDiscount(stripe, 'cus_promo_source', {
+      tenantId: 'tenant-i',
+      surface: 'test',
+    });
+
+    expect(promotionCodesRetrieve).toHaveBeenCalledWith('promo_bare', {
+      expand: ['coupon'],
+    });
+    expect(result).toEqual({
+      couponId: 'coup_h',
+      name: 'WELCOME30',
+      percentOff: 30,
+      amountOffCents: null,
+      currency: null,
+      promotionCode: 'WELCOME30',
+      promotionCodeId: 'promo_bare',
+    });
+  });
+
+  it('returns null (and warns) when the promotion-code hydration fetch fails', async () => {
+    const retrieve = vi.fn(async () => ({
+      id: 'cus_fail_hydrate',
+      discount: {
+        source: { type: 'promotion_code', promotion_code: 'promo_dead' },
+      },
+    }));
+    const promotionCodesRetrieve = vi.fn(async () => {
+      throw new Error('promotion code not found');
+    });
+    const stripe = {
+      customers: { retrieve },
+      promotionCodes: { retrieve: promotionCodesRetrieve },
+    } as unknown as Parameters<typeof loadActiveCustomerDiscount>[0];
+
+    const result = await loadActiveCustomerDiscount(stripe, 'cus_fail_hydrate', {
+      tenantId: 'tenant-j',
+      surface: 'test',
+    });
+    expect(result).toBeNull();
   });
 });
