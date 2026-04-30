@@ -121,7 +121,7 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
   }
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripeEventId: string): Promise<void> {
+export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripeEventId: string): Promise<void> {
   const tenantId = session.metadata?.tenantId;
   if (!tenantId) {
     logger.warn('checkout.session.completed missing tenantId metadata', { sessionId: session.id });
