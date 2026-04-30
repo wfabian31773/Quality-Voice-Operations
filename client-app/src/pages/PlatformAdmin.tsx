@@ -1711,16 +1711,29 @@ interface BillingPriceCheckResult {
   message?: string;
 }
 
+interface BillingConfigHealthSummary {
+  total: number;
+  ok: number;
+  failed: number;
+  status: 'ok' | 'failed' | 'no-stripe-key';
+  message?: string;
+}
+
+interface BillingScheduledRunSnapshot {
+  ranAt: string;
+  source: 'scheduled' | 'manual';
+  summary: BillingConfigHealthSummary;
+  lastOkAt: string | null;
+  lastFailureAt: string | null;
+  regressed: boolean;
+  slackNotified: boolean;
+}
+
 interface BillingConfigHealthResponse {
-  summary: {
-    total: number;
-    ok: number;
-    failed: number;
-    status: 'ok' | 'failed' | 'no-stripe-key';
-    message?: string;
-  };
+  summary: BillingConfigHealthSummary;
   results: BillingPriceCheckResult[];
   generatedAt: string;
+  lastScheduledRun: BillingScheduledRunSnapshot | null;
 }
 
 function fmtCentsAsUsd(cents: number | null | undefined): string {
@@ -1773,7 +1786,7 @@ function BillingConfigHealthPanel() {
     );
   }
 
-  const { summary, results, generatedAt } = data;
+  const { summary, results, generatedAt, lastScheduledRun } = data;
   const generated = new Date(generatedAt).toLocaleString();
 
   const summaryTone =
@@ -1790,6 +1803,34 @@ function BillingConfigHealthPanel() {
         ? AlertTriangle
         : XCircle;
 
+  const scheduled = lastScheduledRun;
+  const scheduledRanAt = scheduled ? new Date(scheduled.ranAt).toLocaleString() : null;
+  const scheduledStatus = scheduled?.summary.status ?? null;
+  const scheduledTone =
+    scheduledStatus === 'ok'
+      ? 'text-success'
+      : scheduledStatus === 'no-stripe-key'
+        ? 'text-warning'
+        : scheduledStatus
+          ? 'text-danger'
+          : 'text-text-muted';
+  const ScheduledIcon =
+    scheduledStatus === 'ok'
+      ? CheckCircle
+      : scheduledStatus === 'no-stripe-key'
+        ? AlertTriangle
+        : scheduledStatus
+          ? XCircle
+          : Clock;
+  const scheduledLabel =
+    scheduledStatus === 'ok'
+      ? 'All prices healthy'
+      : scheduledStatus === 'no-stripe-key'
+        ? 'Stripe key not set'
+        : scheduledStatus
+          ? `${scheduled?.summary.failed ?? 0} failed`
+          : 'No scheduled run yet';
+
   return (
     <div className="space-y-4">
       <div className="bg-surface border border-border rounded-xl p-4 flex items-start justify-between gap-3">
@@ -1805,6 +1846,17 @@ function BillingConfigHealthPanel() {
           </p>
           <p className="text-[11px] text-text-muted mt-1">
             Last checked: {generated}
+          </p>
+          <p className="text-[11px] mt-1 flex items-center gap-1.5">
+            <ScheduledIcon className={`h-3 w-3 ${scheduledTone}`} />
+            <span className="text-text-muted">Last scheduled run:</span>
+            <span className={`${scheduledTone} font-medium`}>{scheduledLabel}</span>
+            {scheduledRanAt && (
+              <span className="text-text-muted">· {scheduledRanAt}</span>
+            )}
+            {scheduled?.slackNotified && (
+              <span className="text-text-muted">· Slack alert sent</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">

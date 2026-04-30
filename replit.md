@@ -37,3 +37,4 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **CAPTCHA:** Cloudflare Turnstile.
 - **Frontend Libraries:** Zustand, `@tanstack/react-query`, `@xyflow/react`.
 - **Scheduling:** Cal.com or Calendly (via webhooks).
+- **Stripe price drift detector:** `platform/billing/StripePriceVerificationScheduler.ts` re-runs `verifyStripePrices()` hourly on the Admin API host and posts an ops-Slack alert (`OPS_SLACK_WEBHOOK_URL`) when the verifier transitions from `ok` to `failed` (and a one-shot recovery message on `failed → ok`). Latest snapshot is exposed via the `/platform/billing-config-health` admin route as `lastScheduledRun` and rendered in the Platform Admin "Billing config health" tile.
