@@ -12,6 +12,7 @@
     "test:e2e:tenant-status-badge-axe": "tsx tests/e2e/tenantStatusBadgeAxe.spec.ts",
     "test:e2e:onboarding-dismiss-restart": "tsx tests/e2e/onboardingDismissRestart.spec.ts",
     "test:e2e:onboarding-resume-saved-step": "tsx tests/e2e/onboardingResumeSavedStep.spec.ts",
+    "test:e2e:onboarding-progress-dots-back-nav": "tsx tests/e2e/onboardingProgressDotsBackNav.spec.ts",
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"widget/**/*.{js,ts,tsx}\" \"server/**/*.{ts,tsx}\" \"shared/**/*.{ts,tsx}\"",
     "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs && node tools/eslint-rules/no-dollars-times-100.test.cjs && node tools/eslint-rules/no-literal-cta-name.test.cjs && node tools/eslint-rules/no-literal-analytics-label.test.cjs",
