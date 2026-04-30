@@ -46,6 +46,24 @@ async function withPrivilegedClient<T>(fn: (client: import('pg').PoolClient) => 
   }
 }
 
+/**
+ * Normalize a raw Stripe `recurring.interval` value (`'month'` / `'year'`)
+ * to the shape our Postgres `billing_interval` enum accepts
+ * (`'monthly'` / `'annual'`). Returns `null` for anything we don't
+ * recognize so callers can decide to leave the column unchanged rather
+ * than blow up the INSERT/UPDATE on the enum cast.
+ *
+ * Used by both `handleCheckoutCompleted` (initial subscription
+ * creation) and `handleSubscriptionUpdated` (Subscription Schedule
+ * phase transitions for downgrades) so the two paths can never drift.
+ */
+function normalizeBillingInterval(raw: string | undefined | null): 'monthly' | 'annual' | null {
+  if (!raw) return null;
+  if (raw === 'year' || raw === 'annual') return 'annual';
+  if (raw === 'month' || raw === 'monthly') return 'monthly';
+  return null;
+}
+
 async function isEventProcessed(eventId: string): Promise<boolean> {
   return withPrivilegedClient(async (client) => {
     const { rows } = await client.query(
@@ -153,7 +171,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripeE
       const recurringRaw = priceRaw?.recurring as Record<string, unknown> | undefined;
       const interval = (recurringRaw?.interval as string | undefined)
         ?? (priceRaw?.recurring_interval as string | undefined);
-      if (interval) billingInterval = interval;
+      // Normalize Stripe's 'month'/'year' to the local billing_interval
+      // enum's 'monthly'/'annual' BEFORE storing — otherwise the
+      // `$6::billing_interval` cast in the INSERT below blows up on a
+      // raw 'year' value and the whole checkout webhook fails.
+      billingInterval = normalizeBillingInterval(interval);
     } catch (err) {
       logger.warn('Could not fetch subscription period from Stripe', { error: String(err) });
     }
@@ -339,6 +361,23 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
   const plan = priceId ? getPlanFromPriceId(priceId) : undefined;
   const limits = plan ? PLAN_LIMITS[plan] : undefined;
 
+  // Pull billing interval off the active price so a scheduled
+  // monthly→annual or annual→monthly downgrade actually flips the
+  // local `billing_interval` + `stripe_price_id` columns when Stripe
+  // transitions schedule phases. Without this, the Billing UI would
+  // show the OLD interval after a phase transition even though Stripe
+  // is now charging the new cadence.
+  const priceRaw = item?.price as unknown as Record<string, unknown> | undefined;
+  const recurringRaw = priceRaw?.recurring as Record<string, unknown> | undefined;
+  const stripeIntervalRaw =
+    (recurringRaw?.interval as string | undefined)
+    ?? (priceRaw?.recurring_interval as string | undefined);
+  // Same Stripe-interval normalization as handleCheckoutCompleted —
+  // the two paths must always store identical values into the
+  // `billing_interval` enum column or the Billing UI desyncs after a
+  // scheduled phase transition.
+  const billingInterval = normalizeBillingInterval(stripeIntervalRaw) ?? undefined;
+
   await withTenant(tenantId, async (client) => {
     const updateFields: string[] = ['updated_at = NOW()'];
     const values: unknown[] = [tenantId];
@@ -349,6 +388,11 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
       values.push(limits.monthlySmsLimit); updateFields.push(`monthly_sms_limit = $${values.length}`);
       values.push(limits.monthlyAiMinuteLimit); updateFields.push(`monthly_ai_minute_limit = $${values.length}`);
       values.push(limits.overageEnabled); updateFields.push(`overage_enabled = $${values.length}`);
+    }
+    if (priceId) { values.push(priceId); updateFields.push(`stripe_price_id = $${values.length}`); }
+    if (billingInterval) {
+      values.push(billingInterval);
+      updateFields.push(`billing_interval = $${values.length}::billing_interval`);
     }
 
     const rawSub = sub as unknown as Record<string, unknown>;

@@ -7,6 +7,11 @@ import {
   isPlanTier,
   nextUpgradeTier,
 } from '../../../platform/billing/stripe/effectiveRate';
+import {
+  scheduleDowngrade,
+  loadTenantSubscription,
+  isStrictDowngrade,
+} from '../../../platform/billing/stripe/planChange';
 import type { PlanTier } from '../../../shared/billing/planCatalog';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
@@ -142,6 +147,41 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
     }
   }
 
+  // Refuse strict downgrades through Checkout. Checkout always creates a
+  // NEW Stripe subscription, so a downgrade routed here would (a) leave
+  // the tenant with two parallel subscriptions and (b) flip the local
+  // `subscriptions` row to the lower plan immediately on
+  // checkout.session.completed — both of which contradict the
+  // "takes effect at next renewal" promise we make in the UI. Any
+  // legitimate downgrade must go through `/billing/schedule-downgrade`.
+  if (isPlanTier(plan)) {
+    try {
+      const existing = await loadTenantSubscription(tenantId);
+      if (existing.currentPlan && isStrictDowngrade(existing.currentPlan, plan)) {
+        return res.status(400).json({
+          error: `Cannot downgrade from ${existing.currentPlan} to ${plan} via /billing/checkout. Use POST /billing/schedule-downgrade so the change takes effect at the end of the current billing period.`,
+          code: 'DOWNGRADE_REQUIRES_SCHEDULE',
+        });
+      }
+    } catch (err) {
+      // Fail CLOSED: the entire purpose of this guard is to prevent a
+      // tenant from accidentally creating a parallel Stripe subscription
+      // (and silently double-billing themselves) when they meant to
+      // downgrade. If we can't determine the current plan we MUST NOT
+      // hand them a checkout link — refuse the request and let them
+      // retry. Falling open here would re-introduce the exact bug the
+      // /billing/schedule-downgrade endpoint was created to fix.
+      logger.error('Could not load existing subscription for checkout downgrade guard; refusing checkout', {
+        tenantId,
+        error: String(err),
+      });
+      return res.status(503).json({
+        error: 'Could not verify current subscription. Please try again in a moment.',
+        code: 'DOWNGRADE_GUARD_UNAVAILABLE',
+      });
+    }
+  }
+
   const baseUrl = `${req.protocol}://${req.hostname}`;
 
   try {
@@ -169,6 +209,95 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
   } catch (err) {
     logger.error('Checkout session creation failed', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+/**
+ * Schedule a plan DOWNGRADE for the end of the tenant's current paid
+ * billing period. Distinct from `/billing/checkout` because:
+ *
+ * - Checkout always creates a NEW Stripe subscription, which would leave
+ *   the tenant with two parallel subscriptions (the existing higher tier
+ *   AND the new lower tier) and would update the local `subscriptions`
+ *   row to the new plan immediately on `checkout.session.completed`,
+ *   contradicting the "takes effect at next renewal" promise the UI
+ *   makes for downgrades.
+ * - This endpoint instead uses Stripe Subscription Schedules to pin the
+ *   current paid phase through `current_period_end` and queue a
+ *   follow-up phase that swaps in the lower-tier price afterwards. The
+ *   change is invisible to the customer until the existing period
+ *   actually ends.
+ *
+ * Server-side guards:
+ * - Plan + interval are validated against the same allowlist as
+ *   `/billing/checkout` so a malicious caller can't smuggle through an
+ *   arbitrary price ID.
+ * - We require the target tier to be STRICTLY below the tenant's current
+ *   tier — upgrades and same-tier "moves" still go through checkout so
+ *   we don't inadvertently downgrade a customer who clicked the wrong
+ *   button.
+ */
+router.post('/billing/schedule-downgrade', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { plan, interval = 'monthly' } = req.body as { plan?: string; interval?: string };
+
+  if (!plan || !VALID_PLANS.has(plan)) {
+    return res.status(400).json({ error: `Invalid plan: ${plan}. Must be one of: starter, pro, enterprise` });
+  }
+  if (!VALID_INTERVALS.has(interval)) {
+    return res.status(400).json({ error: `Invalid interval: ${interval}. Must be monthly or annual` });
+  }
+
+  let currentPlan: PlanTier | null = null;
+  try {
+    const sub = await loadTenantSubscription(tenantId);
+    if (!sub.stripeSubscriptionId || !sub.currentPlan) {
+      return res.status(400).json({ error: 'No active paid subscription to downgrade from' });
+    }
+    currentPlan = sub.currentPlan;
+  } catch (err) {
+    logger.error('Failed to load tenant subscription for downgrade', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to load current subscription' });
+  }
+
+  if (!isPlanTier(plan)) {
+    return res.status(400).json({ error: `Invalid plan: ${plan}` });
+  }
+  if (!isStrictDowngrade(currentPlan, plan)) {
+    return res.status(400).json({
+      error: `Target plan ${plan} is not a downgrade from ${currentPlan}. Use /billing/checkout for upgrades or interval changes.`,
+    });
+  }
+
+  try {
+    const result = await scheduleDowngrade({
+      tenantId,
+      targetPlan: plan,
+      targetInterval: interval as 'monthly' | 'annual',
+    });
+
+    await writeAuditLog({
+      tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'billing.downgrade_scheduled',
+      resourceType: 'billing',
+      changes: {
+        fromPlan: currentPlan,
+        toPlan: plan,
+        interval,
+        effectiveAt: result.scheduledFor,
+        scheduleId: result.scheduleId,
+      },
+      severity: 'warning',
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({ scheduled: result });
+  } catch (err) {
+    logger.error('Schedule downgrade failed', { tenantId, plan, interval, error: String(err) });
+    return res.status(500).json({ error: 'Failed to schedule downgrade' });
   }
 });
 

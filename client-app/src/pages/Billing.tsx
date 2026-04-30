@@ -18,7 +18,7 @@ import {
 import { getPlanMonthlyPriceCents, type PlanTier } from '../../../shared/billing/planCatalog';
 import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
-  Phone, MessageSquare, Brain, Zap, ArrowUpRight,
+  Phone, MessageSquare, Brain, Zap, ArrowUpRight, ArrowDownRight,
   FileText, Download, Clock, CheckCircle2, XCircle,
   Sparkles, AlertTriangle, FileEdit, MinusCircle, Loader2,
 } from 'lucide-react';
@@ -406,6 +406,37 @@ export default function Billing() {
     onError: () => setUpgradeLoading(null),
   });
 
+  // Downgrades go through a dedicated server endpoint that uses Stripe
+  // Subscription Schedules to defer the plan swap until `current_period_end`.
+  // Reusing /billing/checkout would create a parallel subscription AND
+  // flip the local subscriptions row to the lower plan immediately on
+  // checkout completion, both of which contradict the "takes effect at
+  // next renewal" copy on the downgrade card.
+  const [downgradeNotice, setDowngradeNotice] = useState<{
+    plan: string;
+    scheduledFor: string;
+  } | null>(null);
+
+  const downgradeMutation = useMutation({
+    mutationFn: (params: { plan: string; interval: string }) =>
+      api.post<{ scheduled: { scheduleId: string; scheduledFor: string; targetPlan: string; targetInterval: string } }>(
+        '/billing/schedule-downgrade',
+        { plan: params.plan, interval: params.interval },
+      ),
+    onSuccess: (data) => {
+      setUpgradeLoading(null);
+      setDowngradeNotice({
+        plan: data.scheduled.targetPlan,
+        scheduledFor: data.scheduled.scheduledFor,
+      });
+      // Refresh the subscription view so any UI surfaces that key off
+      // the latest record (e.g. Estimated Cost) recompute against the
+      // server's view of the schedule.
+      queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+    },
+    onError: () => setUpgradeLoading(null),
+  });
+
   const handleUpgrade = (
     plan: string,
     interval: string = 'monthly',
@@ -413,6 +444,20 @@ export default function Billing() {
   ) => {
     setUpgradeLoading(plan);
     checkoutMutation.mutate({ plan, interval, recommendation });
+  };
+
+  const handleDowngrade = (targetPlan: string, interval: string = 'monthly') => {
+    const currentLabel = PLAN_LABELS[plan] ?? plan;
+    const targetLabel = PLAN_LABELS[targetPlan] ?? targetPlan;
+    const renewalCopy = sub?.current_period_end
+      ? ` The change takes effect at the end of your current billing period (${formatDate(sub.current_period_end)}).`
+      : ' The change takes effect at the end of your current billing period.';
+    const ok = window.confirm(
+      `Downgrade from ${currentLabel} to ${targetLabel}?${renewalCopy} You will keep ${currentLabel} access and limits until then.`,
+    );
+    if (!ok) return;
+    setUpgradeLoading(targetPlan);
+    downgradeMutation.mutate({ plan: targetPlan, interval });
   };
 
   const sub = subData?.subscription;
@@ -465,6 +510,17 @@ export default function Billing() {
         <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
           Failed to load subscription: {subError.message}
+        </div>
+      )}
+
+      {downgradeNotice && (
+        <div
+          role="status"
+          className="bg-success/10 text-success text-sm px-4 py-3 rounded-lg flex items-center gap-2"
+          data-testid="downgrade-scheduled-notice"
+        >
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          Downgrade to {PLAN_LABELS[downgradeNotice.plan] ?? downgradeNotice.plan} scheduled for {formatDate(downgradeNotice.scheduledFor)}. You will keep your current plan until then.
         </div>
       )}
 
@@ -823,16 +879,22 @@ export default function Billing() {
                 )}
               </div>
               {isAdmin ? (() => {
-                type CardKind = 'upgrade' | 'switch_annual';
-                interface UpgradeCard { tier: PlanTier; kind: CardKind }
+                type CardKind = 'upgrade' | 'downgrade' | 'switch_annual';
+                interface PlanCard { tier: PlanTier; kind: CardKind }
                 const TIER_ORDER: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2 };
                 const ALL_TIERS: PlanTier[] = ['starter', 'pro', 'enterprise'];
                 const currentRank = TIER_ORDER[plan as PlanTier] ?? 0;
                 const isAnnual = billingPeriod === 'annual';
                 const onMonthlySub = sub?.billing_interval === 'monthly';
-                const cards: UpgradeCard[] = ALL_TIERS.flatMap((tier): UpgradeCard[] => {
+                // Downgrade cards only render when the tenant actually has a
+                // paid subscription — there is nothing to downgrade FROM on
+                // the free tier, and a "Downgrade to Starter" card on a brand
+                // new tenant would be misleading.
+                const canDowngrade = !!sub && status !== 'none';
+                const cards: PlanCard[] = ALL_TIERS.flatMap((tier): PlanCard[] => {
                   const rank = TIER_ORDER[tier];
                   if (rank > currentRank) return [{ tier, kind: 'upgrade' }];
+                  if (rank < currentRank && canDowngrade) return [{ tier, kind: 'downgrade' }];
                   // Same-tier card only appears so a monthly tenant can
                   // move to annual on the plan they already pay for.
                   if (tier === plan && onMonthlySub && isAnnual) {
@@ -856,6 +918,15 @@ export default function Billing() {
                       const effectiveMonthlyCents = Math.round(
                         getDiscountedBasePrice(baseMonthlyCents, cardInterval),
                       );
+                      // Mirror the marketing pricing calculator: yearly savings =
+                      // (catalog monthly base − discounted monthly base) × 12.
+                      // Only meaningful on annual cards; monthly cards have no
+                      // savings line. We pass the rounded discounted figure
+                      // through *12 so the displayed savings reconcile to the
+                      // displayed per-month price.
+                      const annualSavingsCents = cardIsAnnual
+                        ? (baseMonthlyCents - effectiveMonthlyCents) * 12
+                        : 0;
                       const summary =
                         tier === 'starter'
                           ? '500 calls · 250 AI min · 2 agents'
@@ -863,12 +934,20 @@ export default function Billing() {
                             ? '5,000 calls · 2,500 AI min · 10 agents'
                             : 'Unlimited calls · Unlimited AI min · Unlimited agents';
                       const label = tier === 'starter' ? 'Starter' : tier === 'pro' ? 'Pro' : 'Enterprise';
+                      const isLoading = upgradeLoading === tier;
                       const cta =
-                        upgradeLoading === tier
+                        isLoading
                           ? 'Redirecting...'
                           : kind === 'switch_annual'
                             ? 'Switch to annual'
-                            : 'Upgrade';
+                            : kind === 'downgrade'
+                              ? 'Downgrade'
+                              : 'Upgrade';
+                      const onClick = () =>
+                        kind === 'downgrade'
+                          ? handleDowngrade(tier, cardInterval)
+                          : handleUpgrade(tier, cardInterval);
+                      const CtaIcon = kind === 'downgrade' ? ArrowDownRight : ArrowUpRight;
                       return (
                         <div
                           key={`${tier}-${kind}`}
@@ -882,6 +961,11 @@ export default function Billing() {
                               {kind === 'switch_annual' && (
                                 <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-1.5 py-0.5 rounded-full">
                                   Save {Math.round(ANNUAL_DISCOUNT * 100)}%
+                                </span>
+                              )}
+                              {kind === 'downgrade' && (
+                                <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted bg-surface border border-border px-1.5 py-0.5 rounded-full">
+                                  Downgrade
                                 </span>
                               )}
                             </p>
@@ -915,15 +999,35 @@ export default function Billing() {
                                 </>
                               )}
                             </p>
+                            {cardIsAnnual && annualSavingsCents > 0 && (
+                              <p
+                                data-testid={`billing-upgrade-savings-${tier}`}
+                                className="text-[11px] text-success font-medium mt-1"
+                              >
+                                Saves {formatCentsHelper(annualSavingsCents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })}/yr vs monthly billing
+                              </p>
+                            )}
+                            {kind === 'downgrade' && (
+                              <p
+                                data-testid={`billing-downgrade-note-${tier}`}
+                                className="text-[11px] text-text-muted mt-1"
+                              >
+                                Takes effect at next renewal{sub?.current_period_end ? ` on ${formatDate(sub.current_period_end)}` : ''}
+                              </p>
+                            )}
                           </div>
                           <button
                             data-testid={`billing-upgrade-button-${tier}`}
-                            onClick={() => handleUpgrade(tier, cardInterval)}
-                            disabled={upgradeLoading === tier}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-medium rounded-lg disabled:opacity-50 shrink-0"
+                            onClick={onClick}
+                            disabled={isLoading}
+                            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg disabled:opacity-50 shrink-0 ${
+                              kind === 'downgrade'
+                                ? 'bg-surface border border-border text-text-primary hover:bg-surface-hover'
+                                : 'bg-primary hover:bg-primary-hover text-white'
+                            }`}
                           >
                             {cta}
-                            <ArrowUpRight className="h-3 w-3" />
+                            <CtaIcon className="h-3 w-3" />
                           </button>
                         </div>
                       );
