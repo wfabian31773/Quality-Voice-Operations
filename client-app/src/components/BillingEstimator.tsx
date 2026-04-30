@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Loader2,
   MessageSquare,
+  Phone,
 } from 'lucide-react';
 import {
   PLAN_CATALOG,
@@ -95,6 +96,37 @@ export interface BillingEstimatorRateOverride {
    * imply the env-default fallback is a Stripe-sourced number.
    */
   smsPriceSource?: 'stripe' | 'catalog' | null;
+  /**
+   * Effective per-minute Twilio (carrier) rate, in dollars
+   * (e.g. 0.013 = $0.013/min). Sourced from
+   * `/billing/effective-rate.twilioRatePerMinute` so a tenant on a
+   * custom / negotiated Twilio carrier rate sees the rate that is
+   * actually driving their telephony line on the invoice. The rate is
+   * tenant-wide and does not vary by AI tier, so it's surfaced once
+   * below the tier cards rather than inside each tier card — same
+   * convention `smsRatePerMessage` follows.
+   *
+   * Optional — when omitted (or nullish) the Twilio rate row is hidden
+   * so call sites that don't yet plumb the rate keep rendering
+   * unchanged.
+   */
+  twilioRatePerMinute?: number | null;
+  /**
+   * Provenance of `twilioRatePerMinute`. `'stripe'` engages the
+   * "Live Stripe rate" badge next to the Twilio rate; `'catalog'` (or
+   * absent) renders the rate without the badge so we don't falsely
+   * imply the env-default fallback (`TWILIO_COST_PER_MINUTE_CENTS`)
+   * is a Stripe-sourced number.
+   */
+  twilioPriceSource?: 'stripe' | 'catalog' | null;
+  /**
+   * Stripe price id backing `twilioRatePerMinute` when the source
+   * is `'stripe'`. Surfaced as a `data-twilio-price-id` attribute
+   * on the badge so QA / support can confirm exactly which metered
+   * price drove the quote without having to cross-check Stripe.
+   * Optional — only meaningful when `twilioPriceSource === 'stripe'`.
+   */
+  twilioPriceId?: string | null;
 }
 
 /**
@@ -1542,6 +1574,26 @@ export default function BillingEstimator({
       : null;
   const smsFromStripe = rateOverride?.smsPriceSource === 'stripe';
 
+  // Per-minute Twilio (carrier) rate is also tenant-wide, so it's
+  // surfaced once below the tier cards alongside the SMS rate row.
+  // Same provenance gating as SMS — a catalog/env-default rate
+  // renders without the "Live Stripe rate" badge so we don't falsely
+  // imply the `TWILIO_COST_PER_MINUTE_CENTS` fallback came from
+  // Stripe. The price id is surfaced as a data attribute on the
+  // badge for QA / support diagnostics, mirroring the AI-overage
+  // convention.
+  const twilioRate =
+    rateOverride?.twilioRatePerMinute != null
+    && Number.isFinite(rateOverride.twilioRatePerMinute)
+    && rateOverride.twilioRatePerMinute >= 0
+      ? rateOverride.twilioRatePerMinute
+      : null;
+  const twilioFromStripe = rateOverride?.twilioPriceSource === 'stripe';
+  const twilioPriceId =
+    twilioFromStripe && typeof rateOverride?.twilioPriceId === 'string'
+      ? rateOverride.twilioPriceId
+      : null;
+
   // Defer averaging + filtering to the shared helper so the UI and
   // server-side consumers stay drift-free. Override shape is mapped to
   // PlanRateOverride here (BillingEstimatorRateOverride is the same shape
@@ -1860,6 +1912,46 @@ export default function BillingEstimator({
                 data-testid="billing-estimator-sms-source"
                 className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
                 title="Pulled from your live Stripe subscription — overrides the env-default SMS rate"
+              >
+                Live Stripe rate
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {twilioRate != null && (
+        <div
+          data-testid="billing-estimator-twilio-rate"
+          data-twilio-source={twilioFromStripe ? 'stripe' : 'catalog'}
+          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-hover/40 px-4 py-3"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+              <Phone className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Per-minute Twilio rate
+              </div>
+              <div className="text-xs text-text-muted/80 mt-0.5">
+                Carrier (Twilio) per-minute charge — same rate posted to your Stripe metered usage.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              data-testid="billing-estimator-twilio-rate-value"
+              className="text-sm font-semibold text-text-primary"
+            >
+              {formatPerMinute(twilioRate)}/min
+            </span>
+            {twilioFromStripe && (
+              <span
+                data-testid="billing-estimator-twilio-source"
+                data-twilio-price-id={twilioPriceId ?? undefined}
+                className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+                title="Pulled from your live Stripe subscription — overrides the env-default Twilio carrier rate"
               >
                 Live Stripe rate
               </span>

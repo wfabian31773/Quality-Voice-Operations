@@ -649,6 +649,14 @@ export default function Billing() {
       // missing rather than rendering a misleading "$0.00/msg".
       smsRatePerMessage?: number;
       smsPriceSource?: 'stripe' | 'catalog';
+      // Per-minute Twilio (carrier) rate (in dollars), its provenance,
+      // and the Stripe price id backing it. Optional for backward-compat
+      // with older API responses — the BillingEstimator hides the Twilio
+      // rate row when the field is missing rather than rendering a
+      // misleading "$0.00/min" line.
+      twilioRatePerMinute?: number;
+      twilioPriceSource?: 'stripe' | 'catalog';
+      twilioPriceId?: string | null;
     }>('/billing/effective-rate'),
     // The Stripe subscription rate is stable across a billing period, so a
     // 30-minute stale window keeps every page navigation from re-hitting
@@ -1220,6 +1228,18 @@ export default function Billing() {
                   // badge (matching the AI-overage convention).
                   smsRatePerMessage: effectiveRateData.smsRatePerMessage ?? null,
                   smsPriceSource: effectiveRateData.smsPriceSource ?? null,
+                  // Twilio (carrier) per-minute rate follows the same
+                  // convention as SMS — always pass the rate when present
+                  // so a tenant on a catalog/env-default rate still sees
+                  // what's driving their telephony line on the invoice.
+                  // The "Live Stripe rate" badge is gated separately on
+                  // `twilioPriceSource === 'stripe'` (matching the
+                  // AI-overage / SMS conventions). The Stripe price id is
+                  // forwarded so the badge can expose it as a data attribute
+                  // for QA / support diagnostics.
+                  twilioRatePerMinute: effectiveRateData.twilioRatePerMinute ?? null,
+                  twilioPriceSource: effectiveRateData.twilioPriceSource ?? null,
+                  twilioPriceId: effectiveRateData.twilioPriceId ?? null,
                 }
               : undefined}
             upgradePreview={upgradePreviewData?.upgrade
