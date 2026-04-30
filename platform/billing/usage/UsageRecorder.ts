@@ -1,5 +1,6 @@
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
+import { getCachedTenantEffectiveRate } from '../stripe/effectiveRateCache';
 
 const logger = createLogger('USAGE_RECORDER');
 
@@ -30,25 +31,49 @@ export function estimateCallCost(durationSeconds: number): CallCostEstimate {
   };
 }
 
+// Resolve the per-minute AI rate from the tenant's live Stripe
+// subscription as cents-per-minute (may be fractional to preserve
+// sub-cent Stripe precision). Falls back to the env default if the
+// resolver throws so call teardown never blocks on Stripe.
+async function resolveAiRateCentsPerMinute(tenantId: string): Promise<number> {
+  try {
+    const rate = await getCachedTenantEffectiveRate(tenantId);
+    // eslint-disable-next-line local/no-dollars-times-100 -- dollars→cents conversion; sub-cent precision must survive into the aggregate `total_cost_cents` rounding below.
+    const centsPerMin = rate.overageRatePerMinute * 100;
+    if (Number.isFinite(centsPerMin) && centsPerMin >= 0) return centsPerMin;
+  } catch (err) {
+    logger.warn('Falling back to env AI rate for usage cost', {
+      tenantId,
+      error: String(err),
+    });
+  }
+  return AI_PER_MINUTE_CENTS;
+}
+
 export async function recordCallUsage(
   tenantId: string,
   direction: 'inbound' | 'outbound',
   durationSeconds: number,
   aiMinutes?: number,
 ): Promise<void> {
+  const { periodStart, periodEnd } = getHourBucket();
+  const metricType = direction === 'inbound' ? 'calls_inbound' : 'calls_outbound';
+  const callMinutes = Math.ceil(durationSeconds / 60);
+  const estimatedAiMinutes = aiMinutes ?? callMinutes;
+  const costEstimate = estimateCallCost(durationSeconds);
+  const callCostCents = costEstimate.twilioCostCents;
+
+  // Resolve the AI rate before opening the DB transaction so an
+  // uncached Stripe round-trip never holds a Postgres connection open.
+  const aiRateCentsPerMin = estimatedAiMinutes > 0
+    ? await resolveAiRateCentsPerMinute(tenantId)
+    : 0;
+
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
-
-    const { periodStart, periodEnd } = getHourBucket();
-    const metricType = direction === 'inbound' ? 'calls_inbound' : 'calls_outbound';
-    const callMinutes = Math.ceil(durationSeconds / 60);
-    const estimatedAiMinutes = aiMinutes ?? callMinutes;
-    const costEstimate = estimateCallCost(durationSeconds);
-
-    const callCostCents = costEstimate.twilioCostCents;
 
     await client.query(
       `INSERT INTO usage_metrics (id, tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
@@ -62,6 +87,10 @@ export async function recordCallUsage(
     );
 
     if (estimatedAiMinutes > 0) {
+      // Round the aggregate (not the per-minute rate) so sub-cent Stripe
+      // pricing matches what Stripe will actually invoice.
+      const aiTotalCents = Math.round(aiRateCentsPerMin * estimatedAiMinutes);
+      const aiUnitCents = Math.round(aiRateCentsPerMin);
       await client.query(
         `INSERT INTO usage_metrics (id, tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
          VALUES (gen_random_uuid(), $1, 'ai_minutes'::usage_metric_type, $2, $3, $4, $5, $6)
@@ -71,7 +100,7 @@ export async function recordCallUsage(
            total_cost_cents = COALESCE(usage_metrics.total_cost_cents, 0) + EXCLUDED.total_cost_cents,
            updated_at = NOW()`,
         [tenantId, periodStart.toISOString(), periodEnd.toISOString(),
-         estimatedAiMinutes, AI_PER_MINUTE_CENTS, estimatedAiMinutes * AI_PER_MINUTE_CENTS],
+         estimatedAiMinutes, aiUnitCents, aiTotalCents],
       );
     }
 
@@ -82,6 +111,7 @@ export async function recordCallUsage(
       direction,
       durationSeconds,
       aiMinutes: estimatedAiMinutes,
+      aiRateCentsPerMin,
       metricType,
       hourBucket: periodStart.toISOString(),
     });
