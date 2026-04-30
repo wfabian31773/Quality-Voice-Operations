@@ -6,6 +6,7 @@ import {
   Calendar, RefreshCw, Target, RotateCcw, Timer, Filter,
 } from 'lucide-react';
 import { PageHeader } from '../components/ui';
+import { EmptyState, PageSkeleton } from '../components/state';
 
 interface TeamMember { id: string; email: string; }
 
@@ -66,7 +67,16 @@ function formatDuration(seconds: number | null): string {
   return `${(seconds / 86400).toFixed(1)}d`;
 }
 
-function BarChartSimple({ data, maxVal, color }: { data: { label: string; value: number }[]; maxVal: number; color?: string }) {
+function BarChartSimple({ data, maxVal, color, emptyTitle }: { data: { label: string; value: number }[]; maxVal: number; color?: string; emptyTitle?: string }) {
+  if (data.length === 0) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title={emptyTitle ?? 'No data in this window'}
+        variant="compact"
+      />
+    );
+  }
   return (
     <div className="space-y-1.5">
       {data.map((d, i) => (
@@ -86,7 +96,15 @@ function BarChartSimple({ data, maxVal, color }: { data: { label: string; value:
 }
 
 function MiniLineChart({ data }: { data: { date: string; value: number }[] }) {
-  if (data.length === 0) return <div className="text-xs text-muted text-center py-4">No data</div>;
+  if (data.length === 0) {
+    return (
+      <EmptyState
+        icon={TrendingUp}
+        title="No data in this window"
+        variant="compact"
+      />
+    );
+  }
   const max = Math.max(...data.map(d => d.value), 1);
   const points = data.map((d, i) => ({
     x: (i / Math.max(data.length - 1, 1)) * 100,
@@ -165,11 +183,7 @@ export default function TicketReporting() {
   const hasActiveFilters = filterAssignee || filterDepartment || filterPriority || dateFrom || dateTo;
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   if (error || !data) {
@@ -379,6 +393,7 @@ export default function TicketReporting() {
             }))}
             maxVal={Math.max(...(data.responseTimeByPriority || []).map(d => Math.round(parseFloat(d.avg_response_seconds || '0') / 60)), 1)}
             color="#06b6d4"
+            emptyTitle="No response time samples by priority"
           />
           <div className="text-[9px] text-muted mt-1 text-right">minutes</div>
         </div>
@@ -412,6 +427,7 @@ export default function TicketReporting() {
             }))}
             maxVal={Math.max(...(data.resolutionTimeByPriority || []).map(d => Math.round(parseFloat(d.avg_resolution_seconds || '0') / 3600)), 1)}
             color="#14b8a6"
+            emptyTitle="No resolution time samples by priority"
           />
           <div className="text-[9px] text-muted mt-1 text-right">hours</div>
         </div>
@@ -424,6 +440,7 @@ export default function TicketReporting() {
             data={data.byPriority.map(d => ({ label: d.priority, value: parseInt(d.count) }))}
             maxVal={priorityMax}
             color="#6366f1"
+            emptyTitle="No tickets by priority"
           />
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
@@ -432,6 +449,7 @@ export default function TicketReporting() {
             data={data.byCategory.map(d => ({ label: d.category, value: parseInt(d.count) }))}
             maxVal={categoryMax}
             color="#8b5cf6"
+            emptyTitle="No tickets by category"
           />
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
@@ -445,6 +463,7 @@ export default function TicketReporting() {
             ]}
             maxVal={Math.max(parseInt(data.backlogAging?.today || '0'), parseInt(data.backlogAging?.this_week || '0'), parseInt(data.backlogAging?.this_month || '0'), parseInt(data.backlogAging?.older || '0'), 1)}
             color="#f59e0b"
+            emptyTitle="No backlog in this window"
           />
         </div>
       </div>
@@ -455,7 +474,11 @@ export default function TicketReporting() {
             <Users className="h-4 w-4 text-primary" /> Agent Workload
           </h3>
           {data.agentWorkload.length === 0 ? (
-            <p className="text-sm text-muted text-center py-4">No agent data</p>
+            <EmptyState
+              icon={Users}
+              title="No agent activity yet"
+              variant="compact"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -494,7 +517,11 @@ export default function TicketReporting() {
             <Timer className="h-4 w-4 text-cyan-500" /> Response Time by Agent
           </h3>
           {(data.responseTimeByAgent || []).length === 0 ? (
-            <p className="text-sm text-muted text-center py-4">No response data</p>
+            <EmptyState
+              icon={Timer}
+              title="No response time samples yet"
+              variant="compact"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">

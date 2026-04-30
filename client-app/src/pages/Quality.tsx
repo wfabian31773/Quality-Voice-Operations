@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { TrendingUp, AlertTriangle, History, RotateCcw, Star, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { TrendingUp, AlertTriangle, History, RotateCcw, Star, ChevronDown, ChevronUp, ExternalLink, BarChart3, PhoneCall } from 'lucide-react';
 import { PageHeader } from '../components/ui';
+import { EmptyState, PageSkeleton } from '../components/state';
 
 interface QualityTrend {
   date: string;
@@ -136,11 +137,7 @@ export default function Quality() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (
@@ -204,7 +201,12 @@ export default function Quality() {
       <div className="bg-surface border border-border rounded-lg p-4">
         <h2 className="font-semibold text-heading mb-4">Quality Score Trend (14 days)</h2>
         {dailyTrendData.length === 0 ? (
-          <p className="text-sm text-muted text-center py-8">No quality data yet. Scores appear after calls are processed.</p>
+          <EmptyState
+            icon={BarChart3}
+            title="No quality data yet"
+            description="Scores appear after calls are processed."
+            variant="compact"
+          />
         ) : (
           <div className="flex items-end gap-1 h-40">
             {dailyTrendData.map((d) => (
@@ -244,8 +246,13 @@ export default function Quality() {
           <tbody>
             {lowestScoring.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted">
-                  No scored calls yet
+                <td colSpan={6}>
+                  <EmptyState
+                    icon={PhoneCall}
+                    title="No scored calls yet"
+                    description="Quality scores appear here after calls are graded."
+                    variant="compact"
+                  />
                 </td>
               </tr>
             ) : (
@@ -314,9 +321,12 @@ export default function Quality() {
         </div>
 
         {promptVersions.length === 0 ? (
-          <p className="text-sm text-muted text-center py-8">
-            No prompt versions archived yet. Edit an agent's system prompt to create version history.
-          </p>
+          <EmptyState
+            icon={History}
+            title="No prompt versions archived yet"
+            description="Edit an agent's system prompt to create version history."
+            variant="compact"
+          />
         ) : (
           <div className="space-y-2">
             {promptVersions.map((pv) => (

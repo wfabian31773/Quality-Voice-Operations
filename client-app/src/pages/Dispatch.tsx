@@ -8,7 +8,7 @@ import {
   MessageSquare, Calendar, Activity, TrendingUp, Clipboard, Bell, Shield,
   Layers, ArrowLeftRight, Download, Loader2, RotateCw, Mail,
 } from 'lucide-react';
-import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
+import { EmptyState, PageSkeleton, Skeleton, SkeletonRows } from '../components/state';
 import { PageHeader, StatCard, StatusBadge as SharedStatusBadge, type BadgeTone } from '../components/ui';
 import { Navigation as NavigationIcon, ShieldAlert, Flag } from 'lucide-react';
 import Modal from '../components/Modal';
@@ -1070,9 +1070,7 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
     return (
       <div className="border-t border-border pt-3">
         <div className="text-[10px] font-medium text-muted mb-1.5">Recent exports</div>
-        <div className="text-xs text-muted flex items-center gap-2">
-          <Loader2 className="h-3 w-3 animate-spin" /> Loading recent exports…
-        </div>
+        <SkeletonRows count={2} rowClassName="h-10" gap="sm" />
       </div>
     );
   }
@@ -1081,9 +1079,12 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
     return (
       <div className="border-t border-border pt-3">
         <div className="text-[10px] font-medium text-muted mb-1.5">Recent exports</div>
-        <div className="text-xs text-muted">
-          No background exports yet — queue one with "Email me the archive".
-        </div>
+        <EmptyState
+          icon={Download}
+          title="No background exports yet"
+          description={'Queue one with "Email me the archive".'}
+          variant="compact"
+        />
       </div>
     );
   }
@@ -2549,7 +2550,9 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
       <div className="rounded-xl border border-border overflow-hidden bg-surface">
         <div ref={containerRef} style={{ height: 520, width: '100%' }}>
           {loadingMap && (
-            <div className="h-full w-full flex items-center justify-center text-sm text-muted">Loading map…</div>
+            <div className="h-full w-full p-4" aria-busy="true" aria-live="polite">
+              <Skeleton className="h-full w-full rounded-md" />
+            </div>
           )}
         </div>
       </div>
@@ -2577,8 +2580,12 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
       </div>
 
       {locations.length === 0 && !loadingMap && (
-        <div className="bg-surface border border-border rounded-xl p-6 text-center text-sm text-muted">
-          No live technician locations yet. Markers appear here as soon as a tech accepts a job and marks it en route.
+        <div className="bg-surface border border-border rounded-xl">
+          <EmptyState
+            icon={MapPin}
+            title="No live technician locations yet"
+            description="Markers appear here as soon as a tech accepts a job and marks it en route."
+          />
         </div>
       )}
 
@@ -2590,22 +2597,18 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
         isn't stuck staring at an empty viewport.
       */}
       {locations.length > 0 && filteredLocations.length === 0 && filterActive && !loadingMap && (
-        <div className="bg-surface border border-border rounded-xl p-6 text-center text-sm">
-          <div className="text-heading font-medium mb-1">
-            {offTargetFilter === 'bad'
+        <div className="bg-surface border border-border rounded-xl">
+          <EmptyState
+            icon={Filter}
+            title={offTargetFilter === 'bad'
               ? 'No off-target visits in the current window'
               : 'No amber or off-target visits in the current window'}
-          </div>
-          <p className="text-muted">
-            Every tech reporting in the last {Math.round(staleness / 60)} minute{staleness === 60 ? '' : 's'} is within {offTargetFilter === 'bad' ? `${CLOSEST_APPROACH_BAD_M} m` : `${CLOSEST_APPROACH_WARN_M} m`} of their job address.
-          </p>
-          <button
-            type="button"
-            onClick={() => setOffTargetFilter('all')}
-            className="mt-3 px-3 py-1.5 rounded border border-border bg-surface text-heading hover:bg-surface-secondary text-xs font-medium"
-          >
-            Clear filter to see all {locations.length} tech{locations.length === 1 ? '' : 's'}
-          </button>
+            description={`Every tech reporting in the last ${Math.round(staleness / 60)} minute${staleness === 60 ? '' : 's'} is within ${offTargetFilter === 'bad' ? `${CLOSEST_APPROACH_BAD_M} m` : `${CLOSEST_APPROACH_WARN_M} m`} of their job address.`}
+            primaryAction={{
+              label: `Clear filter to see all ${locations.length} tech${locations.length === 1 ? '' : 's'}`,
+              onClick: () => setOffTargetFilter('all'),
+            }}
+          />
         </div>
       )}
     </div>
@@ -3145,7 +3148,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-semibold text-heading mb-3">Exception Breakdown</h3>
           {data.exceptionBreakdown.length === 0 ? (
-            <p className="text-xs text-muted">No exceptions recorded</p>
+            <EmptyState icon={AlertTriangle} title="No exceptions recorded" variant="compact" />
           ) : (
             <div className="space-y-2">
               {data.exceptionBreakdown.map(e => (
@@ -3166,7 +3169,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-semibold text-heading mb-3">Territory Performance</h3>
           {data.territoryPerformance.length === 0 ? (
-            <p className="text-xs text-muted">No territory data</p>
+            <EmptyState icon={MapPin} title="No territory data" variant="compact" />
           ) : (
             <div className="space-y-2">
               {data.territoryPerformance.map(t => (
@@ -3188,7 +3191,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
       <div className="bg-surface border border-border rounded-xl p-4">
         <h3 className="text-sm font-semibold text-heading mb-3">Resource Performance</h3>
         {data.resourcePerformance.length === 0 ? (
-          <p className="text-xs text-muted">No resource data</p>
+          <EmptyState icon={Users} title="No resource data" variant="compact" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -3226,7 +3229,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
       <div className="bg-surface border border-border rounded-xl p-4">
         <h3 className="text-sm font-semibold text-heading mb-3">Daily Trend</h3>
         {data.dailyTrend.length === 0 ? (
-          <p className="text-xs text-muted">No trend data</p>
+          <EmptyState icon={TrendingUp} title="No trend data" variant="compact" />
         ) : (
           <div className="flex items-end gap-1 h-32">
             {data.dailyTrend.slice(-30).map(d => {
@@ -3275,11 +3278,16 @@ function ApproachQualityCard({
           <h3 className="text-sm font-semibold text-heading">Visit-the-Right-House Score</h3>
           <span className="text-[10px] text-muted">Closest GPS ping vs. address</span>
         </div>
-        <p className="text-xs text-muted">
-          {approach && approach.no_data > 0
-            ? `No completed jobs in this window had both an address geocode and technician GPS breadcrumbs (${approach.no_data} skipped).`
-            : 'No completed jobs in this window yet.'}
-        </p>
+        <EmptyState
+          icon={MapPin}
+          title={approach && approach.no_data > 0
+            ? 'No measurable jobs in this window'
+            : 'No completed jobs in this window yet'}
+          description={approach && approach.no_data > 0
+            ? `${approach.no_data} completed job${approach.no_data === 1 ? '' : 's'} skipped — missing address geocode or technician GPS breadcrumbs.`
+            : undefined}
+          variant="compact"
+        />
       </div>
     );
   }
@@ -3377,7 +3385,7 @@ function ApproachQualityCard({
           <span className="text-[10px] text-muted">{approachTrend.length} day{approachTrend.length === 1 ? '' : 's'}</span>
         </div>
         {approachTrend.length === 0 ? (
-          <p className="text-[11px] text-muted">No trend data in this window.</p>
+          <EmptyState icon={TrendingUp} title="No trend data in this window" variant="compact" />
         ) : (
           <ApproachTrendSparkline points={approachTrend} trendMax={trendMax} />
         )}
@@ -4736,7 +4744,9 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
 
           {detailTab === 'timeline' && (
             <div className="space-y-3">
-              {events.length === 0 ? <p className="text-sm text-muted text-center py-4">No events recorded</p> : (
+              {events.length === 0 ? (
+                <EmptyState icon={Activity} title="No events recorded" variant="compact" />
+              ) : (
                 <div className="relative">
                   <div className="absolute left-3 top-0 bottom-0 w-px bg-border" />
                   {events.map(e => {
@@ -4835,13 +4845,17 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                 </div>
               )}
               {visibleExceptions.length === 0 ? (
-                <p className="text-sm text-muted text-center py-4">
-                  {exceptions.length === 0
-                    ? 'No exceptions'
-                    : exceptionSource === 'auto'
-                      ? 'No auto-flagged exceptions'
-                      : 'No human-reported exceptions'}
-                </p>
+                <EmptyState
+                  icon={AlertTriangle}
+                  title={
+                    exceptions.length === 0
+                      ? 'No exceptions'
+                      : exceptionSource === 'auto'
+                        ? 'No auto-flagged exceptions'
+                        : 'No human-reported exceptions'
+                  }
+                  variant="compact"
+                />
               ) : (
                 visibleExceptions.map(e => {
                   // Render a distinct amber "Auto" pill (with a tooltip naming
@@ -4912,7 +4926,9 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   </div>
                 </div>
               )}
-              {attachments.length === 0 ? <p className="text-sm text-muted text-center py-4">No attachments</p> : (
+              {attachments.length === 0 ? (
+                <EmptyState icon={FileText} title="No attachments" variant="compact" />
+              ) : (
                 attachments.map(a => {
                   const isImage = (a.mime_type ?? '').startsWith('image/');
                   const fileUrl = a.object_path ? `/api/dispatch/attachments/${a.id}/file` : a.file_url;
@@ -5273,7 +5289,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   const elapsedMs = replay ? replay.endMs - replay.startMs : 0;
 
   if (loading) {
-    return <p className="text-sm text-muted text-center py-6">Loading route…</p>;
+    return <SkeletonRows count={3} rowClassName="h-16" />;
   }
   if (error) {
     return (
@@ -5284,12 +5300,11 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   }
   if (!hasPoints || !replay || !scrubPosition) {
     return (
-      <div className="bg-surface-secondary border border-border rounded-xl p-6 text-center text-sm text-muted">
-        No GPS pings were recorded for this job.
-        <p className="text-[11px] mt-2">
-          Location data is only collected from the technician&apos;s mobile app while a job is en route, on site, or in progress.
-        </p>
-      </div>
+      <EmptyState
+        icon={MapPin}
+        title="No GPS pings were recorded for this job"
+        description="Location data is only collected from the technician's mobile app while a job is en route, on site, or in progress."
+      />
     );
   }
 
@@ -5347,7 +5362,9 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
       <div className="rounded-xl border border-border overflow-hidden bg-surface">
         <div ref={containerRef} style={{ height: 360, width: '100%' }}>
           {!mapReady && (
-            <div className="h-full w-full flex items-center justify-center text-sm text-muted">Loading map…</div>
+            <div className="h-full w-full p-4" aria-busy="true" aria-live="polite">
+              <Skeleton className="h-full w-full rounded-md" />
+            </div>
           )}
         </div>
       </div>

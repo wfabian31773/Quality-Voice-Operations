@@ -13,6 +13,7 @@ import {
   Activity, Clock, PhoneCall, PhoneMissed, Voicemail, SkipForward,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import { PageSkeleton, Skeleton, SkeletonRows } from '../components/state';
 import Modal from '../components/Modal';
 import { PageHeader, StatCard } from '../components/ui';
 
@@ -541,9 +542,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
                 }}
               />
             ) : (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" />
-              </div>
+              <SkeletonRows count={4} rowClassName="h-16" />
             )}
             <div className="flex justify-end pt-2">
               <button
@@ -982,8 +981,8 @@ function SmsQuietHoursOverrideEditor() {
 
   if (isLoading || !data) {
     return (
-      <div className="mt-3 rounded-md border border-border bg-surface-hover px-3 py-2 text-xs text-text-muted">
-        Loading SMS quiet-hours settings…
+      <div className="mt-3" aria-busy="true" aria-live="polite">
+        <Skeleton className="h-12 w-full rounded-md" />
       </div>
     );
   }
@@ -1094,9 +1093,15 @@ function CompliancePanel({
 
   if (isLoading) {
     return (
-      <div className="bg-surface border border-border rounded-lg p-4 flex items-center gap-3">
-        <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-        <span className="text-sm text-text-muted">{tenantT('campaigns.compliance.checking')}</span>
+      <div
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
+        aria-label={tenantT('campaigns.compliance.checking')}
+        className="bg-surface border border-border rounded-lg p-4"
+      >
+        <Skeleton className="h-4 w-1/3 mb-2" />
+        <Skeleton className="h-3 w-2/3" />
       </div>
     );
   }
@@ -1363,7 +1368,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
     },
   });
 
-  if (loadingCampaign) return <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
+  if (loadingCampaign) return <PageSkeleton />;
   if (!campaign) return <div className="text-center py-20 text-text-muted">{tenantT('campaigns.detail.not_found')}</div>;
 
   const config = campaign.config;
@@ -1659,7 +1664,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
               <p className="text-xs text-text-muted mt-1">{contactsError.message}</p>
             </div>
           ) : loadingContacts || !contactsData ? (
-            <div className="flex items-center justify-center py-12"><div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" /></div>
+            <SkeletonRows count={5} rowClassName="h-12" />
           ) : contactsData.contacts.length === 0 ? (
             <EmptyState
               icon={Users}
@@ -1798,7 +1803,7 @@ function DncPanel() {
           <p className="text-xs text-text-muted mt-1">{dncError.message}</p>
         </div>
       ) : isLoading ? (
-        <div className="flex items-center justify-center py-12"><div className="animate-spin h-6 w-6 border-3 border-primary border-t-transparent rounded-full" /></div>
+        <SkeletonRows count={5} rowClassName="h-12" />
       ) : !dncData || dncData.entries.length === 0 ? (
         <EmptyState
           icon={ShieldOff}
@@ -1931,7 +1936,7 @@ export default function Campaigns() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
+        <SkeletonRows count={6} rowClassName="h-14" />
       ) : campaigns.length === 0 ? (
         <EmptyState
           icon={Megaphone}

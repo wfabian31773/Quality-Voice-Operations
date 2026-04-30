@@ -452,9 +452,9 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           {tab === 'transcript' && (
             <>
               {transcriptLoading ? (
-                <p className="text-sm text-text-secondary">{t('calls.detail.transcript_loading')}</p>
+                <SkeletonRows count={4} rowClassName="h-12" />
               ) : transcript.length === 0 ? (
-                <p className="text-sm text-text-secondary">{t('calls.detail.transcript_empty')}</p>
+                <EmptyState icon={PhoneCall} title={t('calls.detail.transcript_empty')} variant="compact" />
               ) : (
                 <div className="space-y-3">
                   {transcript.map((entry) => (
@@ -477,9 +477,9 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           {tab === 'events' && (
             <>
               {eventsLoading ? (
-                <p className="text-sm text-text-secondary">{t('calls.detail.events_loading')}</p>
+                <SkeletonRows count={4} rowClassName="h-12" />
               ) : events.length === 0 ? (
-                <p className="text-sm text-text-secondary">{t('calls.detail.events_empty')}</p>
+                <EmptyState icon={Circle} title={t('calls.detail.events_empty')} variant="compact" />
               ) : (
                 <div className="relative">
                   <div className="absolute left-3 top-0 bottom-0 w-px bg-border" />
@@ -552,9 +552,9 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
           {tab === 'tools' && (
             <>
               {toolExecLoading ? (
-                <p className="text-sm text-text-secondary">{t('calls.detail.tools_loading')}</p>
+                <SkeletonRows count={4} rowClassName="h-12" />
               ) : toolExecutions.length === 0 ? (
-                <p className="text-sm text-text-secondary">{t('calls.detail.tools_empty')}</p>
+                <EmptyState icon={ClipboardCheck} title={t('calls.detail.tools_empty')} variant="compact" />
               ) : (
                 <div className="space-y-3">
                   {toolExecutions.map((exec) => (
@@ -980,7 +980,7 @@ export default function Calls() {
               </button>
             </div>
             {subs.length === 0 ? (
-              <p className="text-sm text-text-secondary">{tenantT('calls.subscribers_panel.empty')}</p>
+              <EmptyState icon={Mail} title={tenantT('calls.subscribers_panel.empty')} variant="compact" />
             ) : (
               <ul className="flex flex-wrap gap-2">
                 {subs.map((email) => (
