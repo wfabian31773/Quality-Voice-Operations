@@ -971,7 +971,9 @@
       "bounced_label": "Empfänger mit Hard-Bounce",
       "bounced_sub": "+{{week}} in 7 T. · +{{month}} in 30 T.",
       "recommendation_label": "Tarifwechsel über Banner (30 T.)",
-      "recommendation_sub": "{{impressions}} Aufrufe · {{clicks}} Klicks"
+      "recommendation_sub": "{{impressions}} Aufrufe · {{clicks}} Klicks",
+      "discount_label": "Wechsel über Rabatt-Badge (30 T.)",
+      "discount_sub": "{{impressions}} Aufrufe · {{clicks}} Klicks"
     },
     "recommendation_breakdown": {
       "title": "Empfehlungs-Funnel nach Tarif (30 T.)",
@@ -989,6 +991,19 @@
       "pair_heading": "Wichtigste Wechselpfade",
       "pair_row": "{{from}} → {{to}}: {{count}} Wechsel, {{amount}}/Monat gespart",
       "empty_pairs": "Noch keine abgeschlossenen Wechsel in den letzten 30 Tagen."
+    },
+    "discount_breakdown": {
+      "title": "Rabatt-Badge-Funnel nach Coupon (30 T.)",
+      "subtitle": "Aufrufe, Klicks und abgeschlossene Wechsel je Coupon in den letzten {{days}} Tagen",
+      "toggle_close": "Details ausblenden",
+      "col_discount": "Rabatt",
+      "col_impressions": "Aufrufe",
+      "col_clicks": "Klicks",
+      "col_completed": "Abgeschlossen",
+      "col_tenants": "Mandanten",
+      "tenants_cell": "{{clicked}} geklickt · {{switched}} gewechselt",
+      "totals_label": "Gesamt",
+      "empty": "Noch keine Rabatt-Badge-Ereignisse in den letzten 30 Tagen."
     },
     "aria_tablist": "Bereiche der Plattformverwaltung",
     "common_loading": "Wird geladen...",

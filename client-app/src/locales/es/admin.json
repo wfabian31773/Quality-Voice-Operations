@@ -971,7 +971,9 @@
       "bounced_label": "Destinatarios con rebote duro",
       "bounced_sub": "+{{week}} en 7 d · +{{month}} en 30 d",
       "recommendation_label": "Cambios de plan desde el banner (30 d)",
-      "recommendation_sub": "{{impressions}} impresiones · {{clicks}} clics"
+      "recommendation_sub": "{{impressions}} impresiones · {{clicks}} clics",
+      "discount_label": "Cambios desde la insignia de descuento (30 d)",
+      "discount_sub": "{{impressions}} impresiones · {{clicks}} clics"
     },
     "recommendation_breakdown": {
       "title": "Embudo de recomendación por plan (30 d)",
@@ -989,6 +991,19 @@
       "pair_heading": "Principales rutas de conversión",
       "pair_row": "{{from}} → {{to}}: {{count}} cambios, {{amount}}/mes ahorrados",
       "empty_pairs": "Aún no hay cambios completados en los últimos 30 días."
+    },
+    "discount_breakdown": {
+      "title": "Embudo de la insignia de descuento por cupón (30 d)",
+      "subtitle": "Impresiones, clics y cambios completados por cupón en los últimos {{days}} días",
+      "toggle_close": "Ocultar detalle",
+      "col_discount": "Descuento",
+      "col_impressions": "Impresiones",
+      "col_clicks": "Clics",
+      "col_completed": "Completados",
+      "col_tenants": "Inquilinos",
+      "tenants_cell": "{{clicked}} hicieron clic · {{switched}} cambiaron",
+      "totals_label": "Totales",
+      "empty": "Aún no hay eventos de la insignia de descuento en los últimos 30 días."
     },
     "aria_tablist": "Secciones de administración de la plataforma",
     "common_loading": "Cargando...",

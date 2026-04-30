@@ -120,11 +120,43 @@ const VALID_PLANS = new Set(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set(['monthly', 'annual']);
 const RECOMMENDATION_TIERS = new Set(['starter', 'pro', 'enterprise']);
 const RECOMMENDATION_WINDOWS = new Set([3, 6, 12]);
-const RECOMMENDATION_EVENT_TYPES = new Set(['impression', 'click']);
+// Tenant-facing event writes. The `discount_*` variants mirror the
+// recommendation-banner contract for the upgrade-card discount badge —
+// see migration 105. The corresponding `*_switch_completed` variants
+// are intentionally excluded here; conversions are server-attributed
+// from the Stripe webhook so a tenant can't inflate the funnel by
+// hitting this endpoint.
+const RECOMMENDATION_EVENT_TYPES = new Set([
+  'impression',
+  'click',
+  'discount_impression',
+  'discount_click',
+]);
+const DISCOUNT_EVENT_TYPES = new Set(['discount_impression', 'discount_click']);
+
+// Stripe's `cou_*` ids and promotion codes are short by design. Cap both
+// to a defensive length so a malformed client can't push a multi-KB
+// blob into a row that's only meant to carry a coupon identifier.
+const MAX_COUPON_ID_LEN = 255;
+const MAX_PROMOTION_CODE_LEN = 64;
+
+function sanitiseCouponId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_COUPON_ID_LEN) return null;
+  return trimmed;
+}
+
+function sanitisePromotionCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_PROMOTION_CODE_LEN) return null;
+  return trimmed;
+}
 
 router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId, email } = req.user!;
-  const { plan = 'pro', interval = 'monthly', successUrl, cancelUrl, recommendation } = req.body as {
+  const { plan = 'pro', interval = 'monthly', successUrl, cancelUrl, recommendation, discount } = req.body as {
     plan?: string;
     interval?: string;
     successUrl?: string;
@@ -134,6 +166,10 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
       recommendedTier?: unknown;
       monthlySavingsCents?: unknown;
       trailingWindowMonths?: unknown;
+    };
+    discount?: {
+      couponId?: unknown;
+      promotionCode?: unknown;
     };
   };
 
@@ -174,6 +210,24 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
           ? { trailingWindowMonths: window }
           : {}),
       };
+    }
+  }
+
+  // Optional discount snapshot from the upgrade-card discount badge. Only
+  // forwarded when at least one of (couponId, promotionCode) sanitises to
+  // a non-empty string; otherwise the badge wasn't actually showing a
+  // discount and stamping empty metadata would create noise rows in the
+  // Stripe webhook on completion. Mirrors the recommendation snapshot's
+  // "drop on malformed" posture rather than 400ing.
+  let validatedDiscount: undefined | {
+    couponId: string | null;
+    promotionCode: string | null;
+  };
+  if (discount && typeof discount === 'object') {
+    const couponId = sanitiseCouponId(discount.couponId);
+    const promotionCode = sanitisePromotionCode(discount.promotionCode);
+    if (couponId || promotionCode) {
+      validatedDiscount = { couponId, promotionCode };
     }
   }
 
@@ -247,6 +301,7 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
       cancelUrl: cancelUrl ?? `${baseUrl}/dashboard?checkout=cancelled`,
       customerEmail: email,
       recommendation: validatedRecommendation,
+      discount: validatedDiscount,
     });
     const direction = classifyCheckoutDirection(
       currentPlan,
@@ -675,10 +730,19 @@ router.get('/billing/downgrade-preview', requireAuth, async (req, res) => {
   }
 });
 
-// Records 'impression' / 'click' events from the recommendation banner.
-// 'switch_completed' is intentionally not accepted here — completion is
-// server-attributed from the Stripe webhook (see webhook.ts) so a
-// tenant cannot inflate the conversion count by hitting this endpoint.
+// Records analytics events from the BillingEstimator. Two surfaces:
+//
+//   * Recommendation banner — 'impression' / 'click'. Coupon columns are
+//     ignored on these (the banner is plan-only).
+//   * Upgrade-card discount badge — 'discount_impression' /
+//     'discount_click'. These additionally carry the resolved Stripe
+//     coupon id / promotion code so the admin report can answer "which
+//     active discounts have been seen / clicked".
+//
+// 'switch_completed' / 'discount_switch_completed' are intentionally not
+// accepted here — completions are server-attributed from the Stripe
+// webhook (see webhook.ts) so a tenant cannot inflate the conversion
+// counts by hitting this endpoint.
 router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const body = (req.body ?? {}) as {
@@ -688,6 +752,8 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
     monthlySavingsCents?: unknown;
     trailingWindowMonths?: unknown;
     metadata?: unknown;
+    couponId?: unknown;
+    promotionCode?: unknown;
   };
 
   const eventType = typeof body.eventType === 'string' ? body.eventType : '';
@@ -698,7 +764,7 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
 
   if (!RECOMMENDATION_EVENT_TYPES.has(eventType)) {
     return res.status(400).json({
-      error: `Invalid eventType. Must be one of: impression, click`,
+      error: `Invalid eventType. Must be one of: impression, click, discount_impression, discount_click`,
     });
   }
   if (!RECOMMENDATION_TIERS.has(currentTier)) {
@@ -709,6 +775,22 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
   if (!RECOMMENDATION_TIERS.has(recommendedTier)) {
     return res.status(400).json({
       error: `Invalid recommendedTier. Must be one of: starter, pro, enterprise`,
+    });
+  }
+
+  const isDiscountEvent = DISCOUNT_EVENT_TYPES.has(eventType);
+  const couponId = isDiscountEvent ? sanitiseCouponId(body.couponId) : null;
+  const promotionCode = isDiscountEvent
+    ? sanitisePromotionCode(body.promotionCode)
+    : null;
+
+  // A discount event without ANY coupon identity is meaningless — the
+  // whole point is to attribute the funnel to a specific coupon. Reject
+  // 400 rather than writing an unattributable row that would just pad
+  // the discount-report rollup with NULL/NULL noise.
+  if (isDiscountEvent && !couponId && !promotionCode) {
+    return res.status(400).json({
+      error: 'Discount events require at least one of couponId or promotionCode',
     });
   }
 
@@ -743,8 +825,9 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
     await client.query(
       `INSERT INTO billing_recommendation_events
          (tenant_id, event_type, current_tier, recommended_tier,
-          monthly_savings_cents, trailing_window_months, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+          monthly_savings_cents, trailing_window_months, metadata,
+          coupon_id, promotion_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
       [
         tenantId,
         eventType,
@@ -753,6 +836,8 @@ router.post('/billing/recommendation-event', requireAuth, async (req, res) => {
         monthlySavingsCents,
         trailingWindowMonths,
         JSON.stringify(metadata),
+        couponId,
+        promotionCode,
       ],
     );
     await client.query('COMMIT');

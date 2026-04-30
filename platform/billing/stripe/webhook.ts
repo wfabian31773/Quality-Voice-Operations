@@ -182,6 +182,27 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   }
 
   await withTenant(tenantId, async (client) => {
+    // Capture the prior plan BEFORE the UPSERT below overwrites it. We
+    // need this for the 'discount_switch_completed' attribution row
+    // when the tenant upgraded straight from a discounted card without
+    // also clicking the recommendation banner (in which case the
+    // session metadata wouldn't carry recommendationCurrentTier). Once
+    // the UPSERT runs, subscriptions.plan equals the *new* plan and
+    // the prior tier is lost.
+    let priorPlanForDiscount: string | null = null;
+    try {
+      const { rows: priorRows } = await client.query(
+        `SELECT plan FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        [tenantId],
+      );
+      const prior = priorRows[0]?.plan;
+      if (prior === 'starter' || prior === 'pro' || prior === 'enterprise') {
+        priorPlanForDiscount = prior;
+      }
+    } catch {
+      priorPlanForDiscount = null;
+    }
+
     await client.query(
       `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
          stripe_price_id, billing_interval,
@@ -254,6 +275,69 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
           );
         } catch (err) {
           logger.warn('Failed to record recommendation switch_completed event', {
+            tenantId,
+            sessionId: session.id,
+            error: String(err),
+          });
+        }
+      }
+    }
+
+    // Server-authoritative attribution for the upgrade-card discount
+    // badge. The discount snapshot (couponId / promotionCode) is stamped
+    // into Stripe metadata when checkout is created (see
+    // createCheckoutSession), so a 'discount_switch_completed' row here
+    // means Stripe itself confirmed the conversion for a session that
+    // originated from a discounted upgrade CTA. Independent of the
+    // recommendation banner — both rows can be written for the same
+    // session if the tenant clicked a recommended tier that also had
+    // an active discount badge.
+    const discountCouponId = session.metadata?.upgradeDiscountCouponId ?? null;
+    const discountPromotionCode = session.metadata?.upgradeDiscountPromotionCode ?? null;
+    if (discountCouponId || discountPromotionCode) {
+      // current_tier prefers the recommendation snapshot (if the tenant
+      // also clicked through the banner) and falls back to the prior
+      // plan we captured BEFORE the UPSERT. This keeps "X → Y under
+      // coupon Z" rollups in the discount report accurate even when
+      // the recommendation banner wasn't involved.
+      const recCurrentForDiscount = session.metadata?.recommendationCurrentTier;
+      const currentTierForDiscount: string | null =
+        recCurrentForDiscount === 'starter' ||
+        recCurrentForDiscount === 'pro' ||
+        recCurrentForDiscount === 'enterprise'
+          ? recCurrentForDiscount
+          : priorPlanForDiscount;
+      const recommendedTierForDiscount = plan;
+      if (
+        (currentTierForDiscount === 'starter' ||
+          currentTierForDiscount === 'pro' ||
+          currentTierForDiscount === 'enterprise') &&
+        (recommendedTierForDiscount === 'starter' ||
+          recommendedTierForDiscount === 'pro' ||
+          recommendedTierForDiscount === 'enterprise')
+      ) {
+        try {
+          await client.query(
+            `INSERT INTO billing_recommendation_events
+               (tenant_id, event_type, current_tier, recommended_tier,
+                monthly_savings_cents, trailing_window_months, metadata,
+                coupon_id, promotion_code)
+             VALUES ($1, 'discount_switch_completed', $2, $3, NULL, NULL, $4::jsonb, $5, $6)`,
+            [
+              tenantId,
+              currentTierForDiscount,
+              recommendedTierForDiscount,
+              JSON.stringify({
+                stripeSessionId: session.id,
+                stripeEventId,
+                source: 'stripe_webhook',
+              }),
+              discountCouponId,
+              discountPromotionCode,
+            ],
+          );
+        } catch (err) {
+          logger.warn('Failed to record discount_switch_completed event', {
             tenantId,
             sessionId: session.id,
             error: String(err),

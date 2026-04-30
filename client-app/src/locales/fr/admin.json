@@ -971,7 +971,9 @@
       "bounced_label": "Destinataires ayant déjà rebondi (hard bounce)",
       "bounced_sub": "+{{week}} sur 7 j · +{{month}} sur 30 j",
       "recommendation_label": "Changements de plan via la bannière (30 j)",
-      "recommendation_sub": "{{impressions}} impressions · {{clicks}} clics"
+      "recommendation_sub": "{{impressions}} impressions · {{clicks}} clics",
+      "discount_label": "Changements via le badge de remise (30 j)",
+      "discount_sub": "{{impressions}} impressions · {{clicks}} clics"
     },
     "recommendation_breakdown": {
       "title": "Entonnoir de la recommandation par offre (30 j)",
@@ -989,6 +991,19 @@
       "pair_heading": "Principaux parcours de conversion",
       "pair_row": "{{from}} → {{to}} : {{count}} changements, {{amount}}/mois économisés",
       "empty_pairs": "Aucun changement terminé sur les 30 derniers jours."
+    },
+    "discount_breakdown": {
+      "title": "Entonnoir du badge de remise par coupon (30 j)",
+      "subtitle": "Impressions, clics et changements terminés par coupon sur les {{days}} derniers jours",
+      "toggle_close": "Masquer le détail",
+      "col_discount": "Remise",
+      "col_impressions": "Impressions",
+      "col_clicks": "Clics",
+      "col_completed": "Terminés",
+      "col_tenants": "Locataires",
+      "tenants_cell": "{{clicked}} ont cliqué · {{switched}} ont changé",
+      "totals_label": "Totaux",
+      "empty": "Aucun événement du badge de remise sur les 30 derniers jours."
     },
     "aria_tablist": "Sections d’administration de la plateforme",
     "common_loading": "Chargement...",

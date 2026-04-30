@@ -996,6 +996,7 @@
         "platform_admin.cost_monitoring.trend_header_date",
         "platform_admin.cost_monitoring.trend_header_minutes",
         "platform_admin.create_version_form.version_label",
+        "platform_admin.discount_breakdown.col_impressions",
         "platform_admin.docs_feedback.hard_bounce_label",
         "platform_admin.docs_feedback.header_actions",
         "platform_admin.docs_feedback.header_article",

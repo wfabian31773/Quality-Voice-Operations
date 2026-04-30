@@ -10,6 +10,7 @@ import BillingEstimator, {
   type TrailingWindow,
   type RecommendationEvent,
   type RecommendationAttribution,
+  type DiscountEvent,
 } from '../components/BillingEstimator';
 import {
   ANNUAL_DISCOUNT,
@@ -547,6 +548,22 @@ export default function Billing() {
     [],
   );
 
+  // Discount badge impression / click. Fire-and-forget; completion is
+  // attributed server-side from the Stripe webhook.
+  const handleDiscountEvent = useCallback((event: DiscountEvent) => {
+    api
+      .post('/billing/recommendation-event', {
+        eventType: event.type,
+        currentTier: event.currentTier,
+        recommendedTier: event.tier,
+        ...(event.couponId ? { couponId: event.couponId } : {}),
+        ...(event.promotionCode ? { promotionCode: event.promotionCode } : {}),
+      })
+      .catch(() => {
+        // Analytics failures must not block the upgrade flow.
+      });
+  }, []);
+
   const { data: subData, isLoading: subLoading, error: subError } = useQuery({
     queryKey: ['billing-subscription'],
     queryFn: () => api.get<{ subscription: Subscription | null; plan?: string; status?: string }>('/billing/subscription'),
@@ -725,6 +742,7 @@ export default function Billing() {
       plan: string;
       interval: string;
       recommendation?: RecommendationAttribution;
+      discount?: { couponId: string | null; promotionCode: string | null };
     }) =>
       api.post<{ url: string }>('/billing/checkout', {
         plan: params.plan,
@@ -732,6 +750,7 @@ export default function Billing() {
         successUrl: `${window.location.origin}/billing?checkout=success`,
         cancelUrl: `${window.location.origin}/billing?checkout=cancelled`,
         ...(params.recommendation ? { recommendation: params.recommendation } : {}),
+        ...(params.discount ? { discount: params.discount } : {}),
       }),
     onSuccess: (data) => { window.location.href = data.url; },
     onError: () => setUpgradeLoading(null),
@@ -775,9 +794,10 @@ export default function Billing() {
     plan: string,
     interval: string = 'monthly',
     recommendation?: RecommendationAttribution,
+    discount?: { couponId: string | null; promotionCode: string | null },
   ) => {
     setUpgradeLoading(plan);
-    checkoutMutation.mutate({ plan, interval, recommendation });
+    checkoutMutation.mutate({ plan, interval, recommendation, discount });
   };
 
   const handleDowngrade = (
@@ -1211,6 +1231,13 @@ export default function Billing() {
             onTrailingWindowChange={setTrailingWindow}
             availableTrailingWindows={TRAILING_WINDOW_OPTIONS}
             onRecommendationEvent={handleRecommendationEvent}
+            // Discount badge analytics. Impression fires from
+            // BillingEstimator when the badge renders; the matching
+            // click is fired below from the upgrade CTA. Tenant id
+            // scopes the impression dedup so a tab reused across
+            // tenants still attributes correctly.
+            onDiscountEvent={handleDiscountEvent}
+            tenantId={user?.tenantId ?? null}
             // Forward the tenant's current Stripe billing interval so the
             // recommendation card's "already on the cheapest plan" variant
             // can decide whether to surface the annual-savings pitch (only
@@ -1497,10 +1524,47 @@ export default function Billing() {
                       const downgradePreview = kind === 'downgrade'
                         ? downgradePreviews.get(`${tier}|${cardInterval}`) ?? null
                         : null;
-                      const onClick = () =>
-                        kind === 'downgrade'
-                          ? handleDowngrade(tier, cardInterval, downgradePreview)
-                          : handleUpgrade(tier, cardInterval);
+                      // Only the upgrade card matching the resolved
+                      // upgrade-preview target carries discount attribution
+                      // (downgrades / annual-switches / non-target tiers
+                      // skip it).
+                      const upgradePreview = upgradePreviewData?.upgrade ?? null;
+                      const previewMatches =
+                        upgradePreview != null
+                        && upgradePreview.plan === tier
+                        && upgradePreview.discount != null
+                        && (
+                          (upgradePreview.discount.couponId?.trim().length ?? 0) > 0
+                          || (upgradePreview.discount.promotionCode?.trim().length ?? 0) > 0
+                        );
+                      const upgradeDiscountPayload =
+                        kind === 'upgrade' && previewMatches && upgradePreview?.discount
+                          ? {
+                              couponId: upgradePreview.discount.couponId ?? null,
+                              promotionCode: upgradePreview.discount.promotionCode ?? null,
+                            }
+                          : undefined;
+                      const onClick = () => {
+                        if (kind === 'downgrade') {
+                          handleDowngrade(tier, cardInterval, downgradePreview);
+                          return;
+                        }
+                        if (upgradeDiscountPayload) {
+                          handleDiscountEvent({
+                            type: 'discount_click',
+                            tier: tier as PlanTier,
+                            currentTier: plan as PlanTier,
+                            couponId: upgradeDiscountPayload.couponId,
+                            promotionCode: upgradeDiscountPayload.promotionCode,
+                          });
+                        }
+                        handleUpgrade(
+                          tier,
+                          cardInterval,
+                          undefined,
+                          upgradeDiscountPayload,
+                        );
+                      };
                       const CtaIcon = kind === 'downgrade' ? ArrowDownRight : ArrowUpRight;
                       return (
                         <div

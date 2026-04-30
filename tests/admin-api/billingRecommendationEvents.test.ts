@@ -226,6 +226,101 @@ describe('POST /billing/recommendation-event', () => {
     expect(params[5]).toBeNull();
   });
 
+  it('writes a discount_impression with sanitised coupon identity', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'discount_impression',
+        currentTier: 'starter',
+        recommendedTier: 'pro',
+        couponId: '  cou_promo20  ',
+        promotionCode: 'PROMO20',
+      });
+
+    expect(res.status).toBe(204);
+    const insertCall = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(insertCall).toBeDefined();
+    const [, params] = insertCall as [string, unknown[]];
+    expect(params[1]).toBe('discount_impression');
+    expect(params[2]).toBe('starter');
+    expect(params[3]).toBe('pro');
+    // coupon_id and promotion_code are the last two positional params and
+    // must be trimmed (whitespace from sloppy clients shouldn't leak into
+    // the rollup-by-coupon SQL key).
+    expect(params[7]).toBe('cou_promo20');
+    expect(params[8]).toBe('PROMO20');
+  });
+
+  it('writes a discount_click when only promotionCode is provided', async () => {
+    // Either identity field is sufficient; the missing side becomes NULL.
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'discount_click',
+        currentTier: 'starter',
+        recommendedTier: 'pro',
+        promotionCode: 'BLACKFRIDAY',
+      });
+
+    expect(res.status).toBe(204);
+    const insertCall = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(insertCall).toBeDefined();
+    const [, params] = insertCall as [string, unknown[]];
+    expect(params[1]).toBe('discount_click');
+    expect(params[7]).toBeNull();
+    expect(params[8]).toBe('BLACKFRIDAY');
+  });
+
+  it('rejects a discount event with neither couponId nor promotionCode (400)', async () => {
+    // Unattributable rows would just pad the rollup with NULL/NULL groups.
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'discount_impression',
+        currentTier: 'starter',
+        recommendedTier: 'pro',
+      });
+
+    expect(res.status).toBe(400);
+    const insertCall = queryMock.mock.calls.find(([sql]) =>
+      /INSERT INTO billing_recommendation_events/i.test(String(sql)),
+    );
+    expect(insertCall).toBeUndefined();
+  });
+
+  it('rejects discount_switch_completed via this endpoint (server-attributed only)', async () => {
+    // The Stripe webhook is the only writer for completion events.
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'discount_switch_completed',
+        currentTier: 'starter',
+        recommendedTier: 'pro',
+        couponId: 'cou_promo20',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('drops oversize couponId / promotionCode values to NULL and 400s when both end up empty', async () => {
+    // Sanitisers cap couponId at 255 chars and promotionCode at 64.
+    const res = await request(buildBillingApp())
+      .post('/billing/recommendation-event')
+      .send({
+        eventType: 'discount_impression',
+        currentTier: 'starter',
+        recommendedTier: 'pro',
+        couponId: 'x'.repeat(300),
+        promotionCode: 'y'.repeat(100),
+      });
+
+    expect(res.status).toBe(400);
+  });
+
   it('still returns 204 on a DB failure so analytics does not surface a tenant-facing error', async () => {
     queryMock.mockImplementation(async (sql: string) => {
       if (/INSERT INTO billing_recommendation_events/i.test(sql)) {
@@ -555,5 +650,176 @@ describe('POST /billing/checkout — recommendation attribution validation', () 
     expect(createCheckoutSessionMock).toHaveBeenCalledTimes(1);
     const args = createCheckoutSessionMock.mock.calls[0]![0] as Record<string, unknown>;
     expect(args.recommendation).toBeUndefined();
+  });
+
+  it('forwards a sanitised discount snapshot when at least one identity field is present', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/checkout')
+      .send({
+        plan: 'pro',
+        interval: 'monthly',
+        discount: {
+          couponId: '  cou_promo20  ',
+          promotionCode: 'PROMO20',
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(createCheckoutSessionMock).toHaveBeenCalledTimes(1);
+    const args = createCheckoutSessionMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(args.discount).toEqual({
+      couponId: 'cou_promo20',
+      promotionCode: 'PROMO20',
+    });
+  });
+
+  it('forwards a discount payload with promotionCode only (couponId nulled)', async () => {
+    const res = await request(buildBillingApp())
+      .post('/billing/checkout')
+      .send({
+        plan: 'pro',
+        interval: 'monthly',
+        discount: {
+          promotionCode: 'BLACKFRIDAY',
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const args = createCheckoutSessionMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(args.discount).toEqual({
+      couponId: null,
+      promotionCode: 'BLACKFRIDAY',
+    });
+  });
+
+  it('drops the discount payload entirely when neither field sanitises to a non-empty string', async () => {
+    // No metadata stamping when both sides sanitise to null.
+    const res = await request(buildBillingApp())
+      .post('/billing/checkout')
+      .send({
+        plan: 'pro',
+        interval: 'monthly',
+        discount: {
+          couponId: '   ',
+          promotionCode: '',
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const args = createCheckoutSessionMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(args.discount).toBeUndefined();
+  });
+});
+
+describe('GET /platform/billing-discount-events', () => {
+  beforeEach(() => {
+    queryMock.mockReset();
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+  });
+
+  it('rolls up trailing-30-day funnel by (couponId, promotionCode)', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/GROUP BY coupon_id, promotion_code/i.test(String(sql))) {
+        return {
+          rows: [
+            {
+              coupon_id: 'cou_promo20',
+              promotion_code: 'PROMO20',
+              impressions: '40',
+              clicks: '10',
+              completed_switches: '4',
+              tenants_clicked: '7',
+              tenants_switched: '3',
+              last_seen_at: new Date('2026-04-29T12:00:00Z'),
+            },
+            {
+              coupon_id: null,
+              promotion_code: 'BLACKFRIDAY',
+              impressions: '20',
+              clicks: '5',
+              completed_switches: '1',
+              tenants_clicked: '4',
+              tenants_switched: '1',
+              last_seen_at: '2026-04-28T09:00:00.000Z',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-discount-events',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.windowDays).toBe(30);
+    expect(res.body.impressions).toBe(60);
+    expect(res.body.clicks).toBe(15);
+    expect(res.body.completedSwitches).toBe(5);
+    // CTR = 15 / 60 = 0.25; completion = 5 / 15 ≈ 0.333
+    expect(res.body.clickThroughRate).toBeCloseTo(0.25, 5);
+    expect(res.body.completionRate).toBeCloseTo(5 / 15, 5);
+    expect(res.body.byDiscount).toEqual([
+      {
+        couponId: 'cou_promo20',
+        promotionCode: 'PROMO20',
+        impressions: 40,
+        clicks: 10,
+        completedSwitches: 4,
+        tenantsClicked: 7,
+        tenantsSwitched: 3,
+        clickThroughRate: 10 / 40,
+        completionRate: 4 / 10,
+        lastSeenAt: '2026-04-29T12:00:00.000Z',
+      },
+      {
+        couponId: null,
+        promotionCode: 'BLACKFRIDAY',
+        impressions: 20,
+        clicks: 5,
+        completedSwitches: 1,
+        tenantsClicked: 4,
+        tenantsSwitched: 1,
+        clickThroughRate: 5 / 20,
+        completionRate: 1 / 5,
+        lastSeenAt: '2026-04-28T09:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('returns zeros and an empty breakdown when no discount events have been recorded', async () => {
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-discount-events',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      windowDays: 30,
+      impressions: 0,
+      clicks: 0,
+      completedSwitches: 0,
+      clickThroughRate: 0,
+      completionRate: 0,
+      byDiscount: [],
+    });
+  });
+
+  it('queries only the trailing-30-day window and only the three discount event types', async () => {
+    await request(buildPlatformAdminApp()).get(
+      '/platform/billing-discount-events',
+    );
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    const discountSqls = sqls.filter(
+      (s) =>
+        /billing_recommendation_events/i.test(s)
+        && /GROUP BY coupon_id, promotion_code/i.test(s),
+    );
+    expect(discountSqls.length).toBe(1);
+    const sql = discountSqls[0]!;
+    expect(sql).toMatch(/NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i);
+    expect(sql).toMatch(/discount_impression/);
+    expect(sql).toMatch(/discount_click/);
+    expect(sql).toMatch(/discount_switch_completed/);
   });
 });

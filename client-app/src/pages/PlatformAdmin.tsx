@@ -4152,6 +4152,173 @@ function RecommendationBreakdownPanel({
   );
 }
 
+// Shape returned by GET /platform/billing-discount-events. Mirrors the
+// recommendation-funnel shape but rolled up by (couponId, promotionCode)
+// so admins can see "which active discounts moved the needle in the
+// last 30d" — the row the discount badge tracking exists to answer.
+interface DiscountStatsShape {
+  windowDays: number;
+  impressions: number;
+  clicks: number;
+  completedSwitches: number;
+  clickThroughRate: number;
+  completionRate: number;
+  byDiscount: Array<{
+    couponId: string | null;
+    promotionCode: string | null;
+    impressions: number;
+    clicks: number;
+    completedSwitches: number;
+    tenantsClicked: number;
+    tenantsSwitched: number;
+    clickThroughRate: number;
+    completionRate: number;
+    lastSeenAt: string | null;
+  }>;
+}
+
+// Drawer rendered just below the platform stats grid when an admin
+// clicks the discount tile. One row per (couponId, promotionCode) with
+// the funnel + last-seen so we can answer "which active discounts have
+// been seen / clicked / completed in the last 30 days".
+function DiscountBreakdownPanel({
+  stats,
+  loading,
+  onClose,
+}: {
+  stats: DiscountStatsShape | undefined;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const { t: adminT } = useTranslation('admin');
+  const rows = stats?.byDiscount ?? [];
+
+  return (
+    <section
+      className="bg-surface border border-border rounded-xl p-5 shadow-[var(--elevation-1)]"
+      aria-label={adminT('platform_admin.discount_breakdown.title')}
+      data-testid="discount-breakdown-panel"
+    >
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">
+            {adminT('platform_admin.discount_breakdown.title')}
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            {loading
+              ? adminT('platform_admin.common_loading')
+              : adminT('platform_admin.discount_breakdown.subtitle', {
+                  days: stats?.windowDays ?? 30,
+                })}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs font-medium text-text-muted hover:text-text-primary inline-flex items-center gap-1"
+          aria-label={adminT('platform_admin.discount_breakdown.toggle_close')}
+        >
+          <XCircle className="h-4 w-4" />
+          {adminT('platform_admin.discount_breakdown.toggle_close')}
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="text-xs text-text-muted">
+          {adminT('platform_admin.discount_breakdown.empty')}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
+                <th className="py-2 pr-4 font-medium">
+                  {adminT('platform_admin.discount_breakdown.col_discount')}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT('platform_admin.discount_breakdown.col_impressions')}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT('platform_admin.discount_breakdown.col_clicks')}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT('platform_admin.discount_breakdown.col_completed')}
+                </th>
+                <th className="py-2 pr-0 font-medium text-right">
+                  {adminT('platform_admin.discount_breakdown.col_tenants')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                // Stable row key: a coupon may have a null promotion code
+                // (raw coupon attached) and vice-versa, so the pair joins
+                // both keys with a separator that can't appear inside
+                // either value.
+                const rowKey = `${row.couponId ?? ''}|${row.promotionCode ?? ''}`;
+                // Display label prefers the human-readable promo code,
+                // falls back to the cou_* id when only the raw coupon
+                // was stamped.
+                const label = row.promotionCode ?? row.couponId ?? '—';
+                const sub =
+                  row.promotionCode && row.couponId
+                    ? row.couponId
+                    : null;
+                return (
+                  <tr
+                    key={rowKey}
+                    className="border-b border-border last:border-b-0"
+                    data-testid={`discount-row-${rowKey}`}
+                  >
+                    <td className="py-2 pr-4 font-medium text-text-primary">
+                      <div>{label}</div>
+                      {sub && (
+                        <div className="text-xs text-text-muted font-normal">
+                          {sub}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                      {row.impressions}
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                      {row.clicks}
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-text-primary">
+                      {row.completedSwitches}
+                    </td>
+                    <td className="py-2 pr-0 text-right tabular-nums text-text-secondary">
+                      {adminT('platform_admin.discount_breakdown.tenants_cell', {
+                        clicked: row.tenantsClicked,
+                        switched: row.tenantsSwitched,
+                      })}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="text-text-primary font-semibold">
+                <td className="py-2 pr-4">
+                  {adminT('platform_admin.discount_breakdown.totals_label')}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums">
+                  {stats?.impressions ?? 0}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums">
+                  {stats?.clicks ?? 0}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums">
+                  {stats?.completedSwitches ?? 0}
+                </td>
+                <td className="py-2 pr-0 text-right tabular-nums">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: typeof Building2 }[] = [
   { key: 'tenants', labelKey: 'platform_admin.tabs.tenants', icon: Building2 },
   { key: 'templates', labelKey: 'platform_admin.tabs.templates', icon: Package },
@@ -4229,6 +4396,18 @@ export default function PlatformAdmin() {
     });
   const [showRecommendationDetails, setShowRecommendationDetails] =
     useState(false);
+
+  // 30d discount-badge funnel rolled up by (couponId, promotionCode).
+  // Independent of the recommendation banner above — same shape, but
+  // the question this answers is "which active discounts moved the
+  // needle?", not "which recommended tier converted?".
+  const { data: discountStats, isLoading: discountStatsLoading } = useQuery({
+    queryKey: ['platform-billing-discount-events'],
+    queryFn: () =>
+      api.get<DiscountStatsShape>('/platform/billing-discount-events'),
+    refetchInterval: 60_000,
+  });
+  const [showDiscountDetails, setShowDiscountDetails] = useState(false);
 
   const { data: tenantsData, isLoading: tenantsLoading } = useQuery({
     queryKey: ['platform-tenants'],
@@ -4368,6 +4547,28 @@ export default function PlatformAdmin() {
           }
           onClick={() => setShowRecommendationDetails((v) => !v)}
         />
+        {/* 30d funnel for the upgrade-card discount badge. Tile shows
+            completed-discount-switches as the headline number; click
+            toggles the per-coupon breakdown so an admin can see which
+            promo is actually pulling weight. */}
+        <StatCard
+          icon={DollarSign}
+          label={adminT('platform_admin.stats.discount_label')}
+          value={
+            discountStatsLoading
+              ? '...'
+              : String(discountStats?.completedSwitches ?? 0)
+          }
+          sub={
+            discountStatsLoading
+              ? ''
+              : adminT('platform_admin.stats.discount_sub', {
+                  impressions: discountStats?.impressions ?? 0,
+                  clicks: discountStats?.clicks ?? 0,
+                })
+          }
+          onClick={() => setShowDiscountDetails((v) => !v)}
+        />
       </div>
 
       {showRecommendationDetails && (
@@ -4375,6 +4576,14 @@ export default function PlatformAdmin() {
           stats={recommendationStats}
           loading={recommendationStatsLoading}
           onClose={() => setShowRecommendationDetails(false)}
+        />
+      )}
+
+      {showDiscountDetails && (
+        <DiscountBreakdownPanel
+          stats={discountStats}
+          loading={discountStatsLoading}
+          onClose={() => setShowDiscountDetails(false)}
         />
       )}
 

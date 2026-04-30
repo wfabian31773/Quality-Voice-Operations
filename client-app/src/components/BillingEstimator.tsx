@@ -87,6 +87,14 @@ export interface BillingEstimatorRateOverride {
  *     without a published promotion code.
  */
 export interface BillingEstimatorDiscount {
+  /**
+   * Stripe `cou_*` id for the underlying coupon. Carried through so the
+   * upgrade-card discount badge analytics callback (`onDiscountEvent`)
+   * can attribute impressions / clicks to a specific coupon, not just
+   * to a (potentially-reused) promotion code. May be `null` when the
+   * server only had a promotion code to expose.
+   */
+  couponId?: string | null;
   name?: string | null;
   percentOff?: number | null;
   amountOffCents?: number | null;
@@ -195,6 +203,21 @@ interface BillingEstimatorProps {
    */
   onRecommendationEvent?: (event: RecommendationEvent) => void;
   /**
+   * Invoked when the upgrade-card discount badge becomes visible
+   * (impression). Click attribution lives in the parent (which owns
+   * the upgrade CTA); completion is attributed server-side from the
+   * Stripe webhook.
+   */
+  onDiscountEvent?: (event: DiscountEvent) => void;
+  /**
+   * Tenant id used to scope the per-(tier, couponId, promotionCode)
+   * impression dedup key. Required for accurate attribution when a
+   * single browser tab is reused across tenant switches — without it,
+   * the second tenant's impression on the same discount would be
+   * suppressed and never reach the server.
+   */
+  tenantId?: string | null;
+  /**
    * When set to a tier, the recommendation card renders its CTA in a
    * loading/disabled state for that tier. Wired to the parent's existing
    * `upgradeLoading` state so the slot card and the banner button stay in
@@ -259,6 +282,23 @@ export interface RecommendationAttribution {
 
 export interface RecommendationEvent extends RecommendationAttribution {
   type: 'impression' | 'click';
+}
+
+/**
+ * Discount-badge analytics event. Mirrors `RecommendationEvent` but
+ * carries the resolved coupon identity so the admin discount report
+ * can roll the funnel up by (couponId, promotionCode). At least one
+ * of the two is always set — the badge can't render without an
+ * identifying field, so the impression/click producer guarantees it.
+ */
+export interface DiscountEvent {
+  type: 'discount_impression' | 'discount_click';
+  /** Tier the discount badge was rendered on. */
+  tier: PlanTier;
+  /** Tenant's current tier — needed by the server-side row schema. */
+  currentTier: PlanTier;
+  couponId: string | null;
+  promotionCode: string | null;
 }
 
 interface TierSpec {
@@ -444,6 +484,9 @@ function TierEstimate({
   direction,
   formatMoney,
   formatPerMinute,
+  currentPlan,
+  tenantId,
+  onDiscountEvent,
 }: {
   tier: TierSpec;
   minutes: number;
@@ -452,12 +495,63 @@ function TierEstimate({
   direction?: ComparisonDirection;
   formatMoney: (value: number) => string;
   formatPerMinute: (value: number) => string;
+  currentPlan?: PlanTier;
+  tenantId?: string | null;
+  onDiscountEvent?: (event: DiscountEvent) => void;
 }) {
   const monthlyCost = calculateMonthlyCost(tier, minutes);
   const overageMinutes = Math.max(0, minutes - tier.includedMinutes);
   const overageCost = overageMinutes * tier.overageRate;
   const effectiveRate = minutes > 0 ? calculateEffectiveRate(tier, minutes) : 0;
   const showDowngradeWarning = direction === 'down' && overageMinutes > 0;
+
+  // buildDiscountBadge returns null when the discount has no
+  // off-amount / off-percent; in that case the badge isn't rendered
+  // and no impression event should fire for it.
+  const discountBadge = tier.discount
+    ? buildDiscountBadge(tier.discount, formatMoney)
+    : null;
+  const discountCouponId = tier.discount?.couponId ?? null;
+  const discountPromotionCode = tier.discount?.promotionCode ?? null;
+  const hasDiscountIdentity = Boolean(discountCouponId || discountPromotionCode);
+
+  useEffect(() => {
+    if (!onDiscountEvent) return;
+    if (!discountBadge) return;
+    if (!hasDiscountIdentity) return;
+    if (!currentPlan) return;
+    if (!tenantId) return;
+    // Per-(tenant, tier, couponId, promoCode) sessionStorage dedup.
+    // Tenant scope matters: a single tab can be reused across tenant
+    // switches, and the second tenant's impression on the same coupon
+    // must still reach the server.
+    const dedupKey = `billing.discount.impression.${tenantId}.${tier.key}.${discountCouponId ?? ''}.${discountPromotionCode ?? ''}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem(dedupKey)) return;
+        window.sessionStorage.setItem(dedupKey, '1');
+      }
+    } catch {
+      // sessionStorage may be unavailable (private mode, SSR); fall
+      // through and fire the impression rather than swallowing it.
+    }
+    onDiscountEvent({
+      type: 'discount_impression',
+      tier: tier.key,
+      currentTier: currentPlan,
+      couponId: discountCouponId,
+      promotionCode: discountPromotionCode,
+    });
+  }, [
+    onDiscountEvent,
+    discountBadge,
+    hasDiscountIdentity,
+    currentPlan,
+    tenantId,
+    tier.key,
+    discountCouponId,
+    discountPromotionCode,
+  ]);
 
   const badgeClass =
     direction === 'down'
@@ -1265,6 +1359,8 @@ export default function BillingEstimator({
   onTrailingWindowChange,
   availableTrailingWindows,
   onRecommendationEvent,
+  onDiscountEvent,
+  tenantId,
   currentBillingInterval,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
@@ -1530,6 +1626,9 @@ export default function BillingEstimator({
             highlight
             formatMoney={formatMoney}
             formatPerMinute={formatPerMinute}
+            currentPlan={currentTierKey}
+            tenantId={tenantId}
+            onDiscountEvent={onDiscountEvent}
           />
         ) : (
           <div

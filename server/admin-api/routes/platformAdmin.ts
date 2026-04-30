@@ -1811,4 +1811,112 @@ router.get(
   },
 );
 
+// Trailing-30-day funnel for the BillingEstimator's *upgrade-card
+// discount badge*. Mirrors the recommendation funnel above but rolls
+// up by the resolved (coupon_id, promotion_code) pair so admins can
+// answer "which active discounts have been seen / clicked /
+// completed?" — the source-of-truth question for whether a promo is
+// pulling weight or just sitting in the coupon catalogue.
+//
+// Like the recommendation funnel, completions are server-attributed
+// from the Stripe webhook (see webhook.ts) — the tenant route refuses
+// 'discount_switch_completed', so a row of that type is always real.
+router.get(
+  '/platform/billing-discount-events',
+  requireAuth,
+  requirePlatformAdmin,
+  async (_req, res) => {
+    try {
+      const { rows: discountRows } = await withPrivilegedClient(async (client) => {
+        return client.query(
+          `SELECT
+             coupon_id,
+             promotion_code,
+             COUNT(*) FILTER (WHERE event_type = 'discount_impression')::bigint
+               AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'discount_click')::bigint
+               AS clicks,
+             COUNT(*) FILTER (WHERE event_type = 'discount_switch_completed')::bigint
+               AS completed_switches,
+             COUNT(DISTINCT tenant_id) FILTER (WHERE event_type = 'discount_click')::bigint
+               AS tenants_clicked,
+             COUNT(DISTINCT tenant_id) FILTER (WHERE event_type = 'discount_switch_completed')::bigint
+               AS tenants_switched,
+             MAX(created_at) AS last_seen_at
+             FROM billing_recommendation_events
+            WHERE event_type IN (
+              'discount_impression',
+              'discount_click',
+              'discount_switch_completed'
+            )
+              AND created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY coupon_id, promotion_code
+            ORDER BY impressions DESC, clicks DESC, last_seen_at DESC`,
+        );
+      });
+
+      const byDiscount = (discountRows as Array<{
+        coupon_id: string | null;
+        promotion_code: string | null;
+        impressions: string;
+        clicks: string;
+        completed_switches: string;
+        tenants_clicked: string;
+        tenants_switched: string;
+        last_seen_at: Date | string | null;
+      }>).map((r) => {
+        const impressions = Number(r.impressions) || 0;
+        const clicks = Number(r.clicks) || 0;
+        const completedSwitches = Number(r.completed_switches) || 0;
+        return {
+          couponId: r.coupon_id,
+          promotionCode: r.promotion_code,
+          impressions,
+          clicks,
+          completedSwitches,
+          tenantsClicked: Number(r.tenants_clicked) || 0,
+          tenantsSwitched: Number(r.tenants_switched) || 0,
+          // Computed server-side so consumers agree on divide-by-zero.
+          clickThroughRate: impressions > 0 ? clicks / impressions : 0,
+          completionRate: clicks > 0 ? completedSwitches / clicks : 0,
+          lastSeenAt:
+            r.last_seen_at instanceof Date
+              ? r.last_seen_at.toISOString()
+              : r.last_seen_at ?? null,
+        };
+      });
+
+      const totals = byDiscount.reduce(
+        (acc, row) => ({
+          impressions: acc.impressions + row.impressions,
+          clicks: acc.clicks + row.clicks,
+          completedSwitches: acc.completedSwitches + row.completedSwitches,
+        }),
+        { impressions: 0, clicks: 0, completedSwitches: 0 },
+      );
+
+      return res.json({
+        windowDays: 30,
+        impressions: totals.impressions,
+        clicks: totals.clicks,
+        completedSwitches: totals.completedSwitches,
+        clickThroughRate:
+          totals.impressions > 0 ? totals.clicks / totals.impressions : 0,
+        completionRate:
+          totals.clicks > 0
+            ? totals.completedSwitches / totals.clicks
+            : 0,
+        byDiscount,
+      });
+    } catch (err) {
+      logger.error('Failed to load billing discount metrics', {
+        error: String(err),
+      });
+      return res.status(500).json({
+        error: 'Failed to load billing discount metrics',
+      });
+    }
+  },
+);
+
 export default router;

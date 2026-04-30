@@ -971,7 +971,9 @@
       "bounced_label": "Recipients ever hard-bounced",
       "bounced_sub": "+{{week}} in 7d · +{{month}} in 30d",
       "recommendation_label": "Plan switches from banner (30d)",
-      "recommendation_sub": "{{impressions}} impressions · {{clicks}} clicks"
+      "recommendation_sub": "{{impressions}} impressions · {{clicks}} clicks",
+      "discount_label": "Switches from discount badge (30d)",
+      "discount_sub": "{{impressions}} impressions · {{clicks}} clicks"
     },
     "recommendation_breakdown": {
       "title": "Recommendation funnel by tier (30d)",
@@ -989,6 +991,19 @@
       "pair_heading": "Top conversion paths",
       "pair_row": "{{from}} → {{to}}: {{count}} switches, {{amount}}/mo saved",
       "empty_pairs": "No completed switches in the last 30 days yet."
+    },
+    "discount_breakdown": {
+      "title": "Discount badge funnel by coupon (30d)",
+      "subtitle": "Per-coupon impressions, clicks, and completed switches over the last {{days}} days",
+      "toggle_close": "Hide breakdown",
+      "col_discount": "Discount",
+      "col_impressions": "Impressions",
+      "col_clicks": "Clicks",
+      "col_completed": "Completed",
+      "col_tenants": "Tenants",
+      "tenants_cell": "{{clicked}} clicked · {{switched}} switched",
+      "totals_label": "Totals",
+      "empty": "No discount badge events in the last 30 days yet."
     },
     "aria_tablist": "Platform admin sections",
     "common_loading": "Loading...",
