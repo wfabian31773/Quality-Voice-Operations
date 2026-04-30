@@ -229,6 +229,7 @@ interface TenantDetail {
   phone_number_count: string;
   total_calls: string;
   total_cost_cents: string;
+  last_downgrade_at: string | null;
 }
 
 interface TemplateListItem {
@@ -553,7 +554,7 @@ function TenantDetailPanel({ tenantId }: { tenantId: string }) {
   const owners = onboardingData?.owners ?? [];
   return (
     <div className="bg-surface-secondary/50">
-      <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+      <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4 text-sm">
         <div>
           <span className="text-text-muted">Agents</span>
           <div className="font-medium">{t.agent_count}</div>
@@ -569,6 +570,14 @@ function TenantDetailPanel({ tenantId }: { tenantId: string }) {
         <div>
           <span className="text-text-muted">Total Spend</span>
           <div className="font-medium">{formatCents(t.total_cost_cents)}</div>
+        </div>
+        <div>
+          <span className="text-text-muted">Last downgrade</span>
+          <div className="font-medium whitespace-nowrap">
+            {t.last_downgrade_at
+              ? new Date(t.last_downgrade_at).toLocaleString()
+              : 'Never'}
+          </div>
         </div>
       </div>
       <div className="px-6 pb-4">

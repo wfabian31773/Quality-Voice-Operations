@@ -114,7 +114,14 @@ router.get('/platform/tenants/:id', requireAuth, requirePlatformAdmin, async (re
           (SELECT COUNT(*) FROM agents a WHERE a.tenant_id = t.id) AS agent_count,
           (SELECT COUNT(*) FROM phone_numbers pn WHERE pn.tenant_id = t.id) AS phone_number_count,
           (SELECT COUNT(*) FROM call_sessions cs WHERE cs.tenant_id = t.id) AS total_calls,
-          (SELECT COALESCE(SUM(cs.total_cost_cents), 0) FROM call_sessions cs WHERE cs.tenant_id = t.id) AS total_cost_cents
+          (SELECT COALESCE(SUM(cs.total_cost_cents), 0) FROM call_sessions cs WHERE cs.tenant_id = t.id) AS total_cost_cents,
+          (
+            SELECT MAX(al.occurred_at)
+            FROM audit_logs al
+            WHERE al.tenant_id = t.id
+              AND al.action IN ('billing.checkout_created', 'billing.downgrade_scheduled')
+              AND al.changes->>'direction' = 'downgrade'
+          ) AS last_downgrade_at
         FROM tenants t
         WHERE t.id = $1
       `, [id]);
