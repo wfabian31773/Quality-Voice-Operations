@@ -712,6 +712,15 @@ export default function Billing() {
                 ? trailingUsageData.monthly.map((m) => m.aiMinutes)
                 : undefined
             }
+            trailingMonthlyBreakdown={
+              // Same gating as `trailingMonthlyAiMinutes` — no recommendation
+              // card means no chart either. The full breakdown (including
+              // zero-usage months) is forwarded as-is so seasonal lulls
+              // remain visible in the bar chart inside the card.
+              trailingUsageData && trailingUsageData.monthsWithData > 0
+                ? trailingUsageData.monthly
+                : undefined
+            }
           />
 
           {sub && isAdmin && (

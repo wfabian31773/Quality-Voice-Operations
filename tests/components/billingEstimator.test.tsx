@@ -635,6 +635,162 @@ describe('BillingEstimator', () => {
       });
     });
 
+    describe('monthly usage chart', () => {
+      it('renders one bar per trailing month with the month + minute total in the tooltip', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        expect(chart).toBeTruthy();
+        const bars = chart.querySelectorAll(
+          '[data-testid^="billing-estimator-recommendation-chart-bar-"]',
+        );
+        expect(bars.length).toBe(3);
+        // Bars for each month carry the raw value as a data attribute and
+        // a "Mon YYYY: N AI min" tooltip.
+        const jan = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-01"]',
+        ) as HTMLElement;
+        expect(jan).toBeTruthy();
+        expect(jan.getAttribute('data-ai-minutes')).toBe('300');
+        expect(jan.getAttribute('title')).toBe('Jan 2026: 300 AI min');
+      });
+
+      it('orders bars chronologically (oldest → newest, left → right)', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingMonthlyBreakdown={[
+              // Backend order: newest-first.
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+          />,
+        );
+        const bars = Array.from(
+          screen
+            .getByTestId('billing-estimator-recommendation-chart')
+            .querySelectorAll('[data-month]'),
+        ).map((el) => el.getAttribute('data-month'));
+        expect(bars).toEqual(['2026-01', '2026-02', '2026-03']);
+      });
+
+      it('still renders zero-usage months as bars so seasonal lulls remain visible', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[0, 0, 300]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 0 },
+              { month: '2026-02', aiMinutes: 0 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+          />,
+        );
+        const chart = screen.getByTestId('billing-estimator-recommendation-chart');
+        const bars = chart.querySelectorAll('[data-month]');
+        expect(bars.length).toBe(3);
+        const feb = chart.querySelector(
+          '[data-testid="billing-estimator-recommendation-chart-bar-2026-02"]',
+        ) as HTMLElement;
+        expect(feb).toBeTruthy();
+        expect(feb.getAttribute('data-zero')).toBe('true');
+        expect(feb.getAttribute('data-ai-minutes')).toBe('0');
+        expect(feb.getAttribute('title')).toBe('Feb 2026: 0 AI min');
+      });
+
+      it('updates the chart in place when the trailing window changes', () => {
+        const { rerender } = render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+            trailingWindow={3}
+            onTrailingWindowChange={() => undefined}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+            ]}
+          />,
+        );
+        let bars = screen
+          .getByTestId('billing-estimator-recommendation-chart')
+          .querySelectorAll('[data-month]');
+        expect(bars.length).toBe(3);
+
+        // Simulate the parent swapping in the 6-month series.
+        rerender(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300, 240, 260, 290]}
+            trailingWindow={6}
+            onTrailingWindowChange={() => undefined}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 280 },
+              { month: '2026-02', aiMinutes: 320 },
+              { month: '2026-01', aiMinutes: 300 },
+              { month: '2025-12', aiMinutes: 240 },
+              { month: '2025-11', aiMinutes: 260 },
+              { month: '2025-10', aiMinutes: 290 },
+            ]}
+          />,
+        );
+        bars = screen
+          .getByTestId('billing-estimator-recommendation-chart')
+          .querySelectorAll('[data-month]');
+        expect(bars.length).toBe(6);
+      });
+
+      it('renders the chart on the "already optimal" variant too', () => {
+        render(
+          <BillingEstimator
+            currentPlan="starter"
+            monthToDateAiMinutes={50}
+            trailingMonthlyAiMinutes={[80, 120, 100]}
+            trailingMonthlyBreakdown={[
+              { month: '2026-03', aiMinutes: 80 },
+              { month: '2026-02', aiMinutes: 120 },
+              { month: '2026-01', aiMinutes: 100 },
+            ]}
+          />,
+        );
+        const card = screen.getByTestId('billing-estimator-recommendation');
+        expect(card.getAttribute('data-recommendation-state')).toBe('optimal');
+        expect(
+          screen.getByTestId('billing-estimator-recommendation-chart'),
+        ).toBeTruthy();
+      });
+
+      it('omits the chart when no breakdown prop is supplied (recommendation card still renders)', () => {
+        render(
+          <BillingEstimator
+            currentPlan="pro"
+            monthToDateAiMinutes={300}
+            trailingMonthlyAiMinutes={[280, 320, 300]}
+          />,
+        );
+        expect(screen.getByTestId('billing-estimator-recommendation')).toBeTruthy();
+        expect(
+          screen.queryByTestId('billing-estimator-recommendation-chart'),
+        ).toBeNull();
+      });
+    });
+
     it('honors a custom availableTrailingWindows prop', () => {
       render(
         <BillingEstimator

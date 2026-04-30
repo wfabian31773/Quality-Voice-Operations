@@ -124,6 +124,21 @@ interface BillingEstimatorProps {
    */
   trailingMonthlyAiMinutes?: ReadonlyArray<number>;
   /**
+   * Per-month breakdown that powers the inline sparkline/bar chart inside
+   * the recommendation card. Each entry carries an ISO month tag (e.g.
+   * `"2025-03"`) plus that month's AI-minute total. The backend's
+   * `/billing/usage/trailing` endpoint returns this series newest-first;
+   * the chart re-orders it chronologically (oldest → newest, left → right)
+   * so the eye reads the trend the same way it reads time.
+   *
+   * Optional and decoupled from `trailingMonthlyAiMinutes` so existing
+   * call sites that only supply the flat number array (and the
+   * recommendation math that depends on it) keep working unchanged. When
+   * this prop is omitted the recommendation card still renders the
+   * headline copy, just without the visual trend.
+   */
+  trailingMonthlyBreakdown?: ReadonlyArray<{ month: string; aiMinutes: number }>;
+  /**
    * Invoked when the tenant clicks the recommendation banner's
    * "Switch to <Plan>" CTA. The parent kicks off a Stripe Checkout flow
    * for the recommended tier on the chosen billing interval. The
@@ -530,6 +545,125 @@ function TierEstimate({
   );
 }
 
+/**
+ * Format an ISO month tag (`"YYYY-MM"`) as a short, locale-friendly
+ * label suitable for the chart tooltip and axis hints. Falls back to
+ * the raw input when the tag isn't parseable so we never render
+ * "Invalid Date" — defensive, since the backend already validates.
+ */
+function formatMonthLabel(monthIso: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthIso);
+  if (!match) return monthIso;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isFinite(year) || month < 1 || month > 12) return monthIso;
+  // UTC anchor + UTC formatter so the label doesn't drift across
+  // timezones (the backend tags months in tenant-anchored UTC already).
+  const date = new Date(Date.UTC(year, month - 1, 1));
+  try {
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+  } catch {
+    return monthIso;
+  }
+}
+
+/**
+ * Inline bar chart that visualises the trailing monthly AI-minute usage
+ * behind the recommendation. Bars are scaled against the largest month
+ * in the window so even a flat-but-low series is legible. Zero-usage
+ * months render as an empty dashed slot so seasonal lulls stay visible
+ * — the recommendation copy already explains the average, this chart
+ * is what lets a tenant sanity-check the *shape*.
+ *
+ * Hovering a bar surfaces "Mon YYYY: N AI min" via the native title
+ * tooltip. We deliberately stay native-tooltip-only here to keep the
+ * component dependency-free and to match the rest of the estimator's
+ * lightweight UI vocabulary.
+ */
+function TrailingMonthlyChart({
+  data,
+}: {
+  data: ReadonlyArray<{ month: string; aiMinutes: number }>;
+}) {
+  // Backend returns newest-first; flip to chronological so the chart
+  // reads left-to-right like a calendar timeline.
+  const ordered = useMemo(() => [...data].reverse(), [data]);
+  const maxMinutes = useMemo(
+    () => ordered.reduce((acc, m) => Math.max(acc, m.aiMinutes), 0),
+    [ordered],
+  );
+
+  if (ordered.length === 0) return null;
+
+  const firstLabel = formatMonthLabel(ordered[0].month);
+  const lastLabel = formatMonthLabel(ordered[ordered.length - 1].month);
+
+  return (
+    <div
+      data-testid="billing-estimator-recommendation-chart"
+      className="mt-3 pt-3 border-t border-primary/20"
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+          AI minutes per month
+        </span>
+        <span className="text-[10px] text-text-muted">
+          peak {maxMinutes.toLocaleString()} min
+        </span>
+      </div>
+      <div
+        className="flex items-end gap-1 h-14"
+        role="img"
+        aria-label={`Monthly AI minutes from ${firstLabel} to ${lastLabel}`}
+      >
+        {ordered.map((entry) => {
+          const isZero = entry.aiMinutes <= 0;
+          // Scale to a percent of the window's peak. The 6% floor keeps
+          // a non-zero bar visible even when it's tiny relative to the
+          // peak; zero bars render as a flat dashed slot instead so the
+          // visual distinction (had-usage vs. didn't) stays sharp.
+          const heightPct = isZero
+            ? 0
+            : maxMinutes > 0
+              ? Math.max(6, Math.round((entry.aiMinutes / maxMinutes) * 100))
+              : 6;
+          const monthLabel = formatMonthLabel(entry.month);
+          const tooltip = `${monthLabel}: ${entry.aiMinutes.toLocaleString()} AI min`;
+          return (
+            <div
+              key={entry.month}
+              data-testid={`billing-estimator-recommendation-chart-bar-${entry.month}`}
+              data-month={entry.month}
+              data-ai-minutes={entry.aiMinutes}
+              data-zero={isZero ? 'true' : 'false'}
+              title={tooltip}
+              aria-label={tooltip}
+              className="group relative flex-1 min-w-[6px] h-full flex items-end"
+            >
+              {isZero ? (
+                <div className="w-full h-1.5 rounded-sm border border-dashed border-primary/30 bg-primary/[0.04] group-hover:bg-primary/10 transition-colors" />
+              ) : (
+                <div
+                  className="w-full rounded-sm bg-primary/50 group-hover:bg-primary transition-colors"
+                  style={{ height: `${heightPct}%` }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-between text-[10px] text-text-muted mt-1">
+        <span>{firstLabel}</span>
+        {ordered.length > 1 && <span>{lastLabel}</span>}
+      </div>
+    </div>
+  );
+}
+
 function TrailingWindowToggle({
   value,
   onChange,
@@ -582,6 +716,7 @@ function RecommendationCard({
   onTrailingWindowChange,
   availableTrailingWindows,
   onRecommendationEvent,
+  trailingMonthlyBreakdown,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
@@ -596,6 +731,7 @@ function RecommendationCard({
   onTrailingWindowChange?: (months: TrailingWindow) => void;
   availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
   onRecommendationEvent?: (event: RecommendationEvent) => void;
+  trailingMonthlyBreakdown?: ReadonlyArray<{ month: string; aiMinutes: number }>;
 }) {
   const {
     current,
@@ -693,6 +829,13 @@ function RecommendationCard({
     />
   ) : null;
 
+  // Reuse the same chart in both card variants so tenants get the same
+  // visual context whether they're being nudged to switch plans or
+  // reassured they're already on the cheapest one.
+  const chart = trailingMonthlyBreakdown && trailingMonthlyBreakdown.length > 0
+    ? <TrailingMonthlyChart data={trailingMonthlyBreakdown} />
+    : null;
+
   if (isAlreadyOptimal) {
     return (
       <div
@@ -718,6 +861,7 @@ function RecommendationCard({
           </div>
           {windowToggle && <div className="shrink-0">{windowToggle}</div>}
         </div>
+        {chart}
       </div>
     );
   }
@@ -818,6 +962,7 @@ function RecommendationCard({
           )}
         </div>
       </div>
+      {chart}
     </div>
   );
 }
@@ -899,6 +1044,7 @@ export default function BillingEstimator({
   projectionMultiplier,
   currency = 'USD',
   trailingMonthlyAiMinutes,
+  trailingMonthlyBreakdown,
   onSwitchPlan,
   switchingPlan,
   trailingWindow,
@@ -1079,6 +1225,7 @@ export default function BillingEstimator({
           onTrailingWindowChange={onTrailingWindowChange}
           availableTrailingWindows={availableTrailingWindows}
           onRecommendationEvent={onRecommendationEvent}
+          trailingMonthlyBreakdown={trailingMonthlyBreakdown}
         />
       )}
 
