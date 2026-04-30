@@ -1074,9 +1074,7 @@
       "downgrade_plan_with_date": "¿Bajar de {{current}} a {{target}}? El cambio se aplicará al final de tu periodo de facturación actual ({{date}}). Conservarás el acceso y los límites de {{current}} hasta entonces.",
       "downgrade_plan": "¿Bajar de {{current}} a {{target}}? El cambio se aplicará al final de tu periodo de facturación actual. Conservarás el acceso y los límites de {{current}} hasta entonces.",
       "downgrade_next_invoice_with_date": "Tu próxima factura será de {{amount}} el {{date}}.",
-      "downgrade_next_invoice": "Tu próxima factura será de {{amount}}.",
-      "downgrade_credit_with_date": "Recibirás un crédito de {{amount}} el {{date}} por la parte no utilizada de tu periodo actual.",
-      "downgrade_credit": "Recibirás un crédito de {{amount}} por la parte no utilizada de tu periodo actual."
+      "downgrade_next_invoice": "Tu próxima factura será de {{amount}}."
     }
   },
   "scheduling_drift_banner": {

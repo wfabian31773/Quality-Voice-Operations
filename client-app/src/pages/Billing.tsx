@@ -1003,14 +1003,13 @@ export default function Billing() {
   // Downgrade preview shape returned by `GET /billing/downgrade-preview`.
   // Used to quote the next-invoice total Stripe will produce on the
   // new tier (which differs from catalog when the tenant has a
-  // customer-level coupon). `prorationCreditCents` is currently always
-  // 0 with the deferred-swap scheduler in `planChange.ts` and is
-  // surfaced only conditionally; future work to switch the scheduler
-  // to immediate proration will light up the credit copy automatically.
+  // customer-level coupon). The downgrade scheduler defers the price
+  // swap to `current_period_end`, so there is no unused time on the
+  // higher tier to credit — the response intentionally has no
+  // `prorationCreditCents` field.
   type DowngradePreviewResp = {
     plan: string;
     interval: 'monthly' | 'annual';
-    prorationCreditCents: number;
     nextInvoiceTotalCents: number;
     nextInvoiceAt: string | null;
     basePriceCents: number;
@@ -1204,10 +1203,10 @@ export default function Billing() {
           current: currentLabel,
           target: targetLabel,
         });
-    // Append the next-invoice quote (always meaningful when we have a
-    // preview) and the prorated-credit copy (only when Stripe quoted a
-    // non-zero credit — with the current deferred-swap apply path the
-    // credit is 0, but the gate keeps us honest if that changes).
+    // Append the next-invoice quote when we have a preview. The
+    // downgrade scheduler defers the price swap to `current_period_end`,
+    // so the tenant pays for the full higher-tier period and there is
+    // no proration credit to surface alongside this line.
     const nextInvoiceCopy = preview && preview.nextInvoiceTotalCents != null
       ? ' ' + (preview.nextInvoiceAt
           ? tenantT('common.confirms.downgrade_next_invoice_with_date', {
@@ -1218,24 +1217,13 @@ export default function Billing() {
               amount: formatCentsHelper(preview.nextInvoiceTotalCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
             }))
       : '';
-    const creditDateIso = preview?.nextInvoiceAt ?? sub?.current_period_end ?? null;
-    const creditCopy = preview && preview.prorationCreditCents > 0
-      ? ' ' + (creditDateIso
-          ? tenantT('common.confirms.downgrade_credit_with_date', {
-              amount: formatCentsHelper(preview.prorationCreditCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
-              date: formatDate(creditDateIso),
-            })
-          : tenantT('common.confirms.downgrade_credit', {
-              amount: formatCentsHelper(preview.prorationCreditCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
-            }))
-      : '';
     // Banner-driven downgrades skip the window.confirm step — clicking
     // the BillingEstimator's "Switch to <Plan>" CTA is itself the
     // explicit consent (the banner shows the same monthly-savings copy
     // that this confirm dialog would show, and is the user-facing entry
     // point we're attributing the conversion to).
     if (!recommendation) {
-      const ok = window.confirm(`${baseMessage}${nextInvoiceCopy}${creditCopy}`);
+      const ok = window.confirm(`${baseMessage}${nextInvoiceCopy}`);
       if (!ok) return;
     }
     setUpgradeLoading(targetPlan);
@@ -2457,34 +2445,6 @@ export default function Billing() {
                                 {downgradePreview.discount.name ? ` (${downgradePreview.discount.name})` : ''}
                               </p>
                             )}
-                            {kind === 'downgrade' && downgradePreview && downgradePreview.prorationCreditCents > 0 && (() => {
-                              // Mirrors the credit copy in handleDowngrade's
-                              // window.confirm message so the value the
-                              // tenant sees on the card and the value they
-                              // confirm in the dialog can never drift. Same
-                              // i18n keys, same date fallback chain
-                              // (preview.nextInvoiceAt → sub.current_period_end).
-                              const creditDateIso = downgradePreview.nextInvoiceAt ?? sub?.current_period_end ?? null;
-                              const amount = formatCentsHelper(downgradePreview.prorationCreditCents, {
-                                currency: downgradePreview.currency || currency,
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              });
-                              const text = creditDateIso
-                                ? tenantT('common.confirms.downgrade_credit_with_date', {
-                                    amount,
-                                    date: formatDate(creditDateIso),
-                                  })
-                                : tenantT('common.confirms.downgrade_credit', { amount });
-                              return (
-                                <p
-                                  data-testid={`billing-downgrade-credit-${tier}`}
-                                  className="text-[11px] text-success font-medium mt-1"
-                                >
-                                  {text}
-                                </p>
-                              );
-                            })()}
                           </div>
                           <button
                             data-testid={`billing-upgrade-button-${tier}`}

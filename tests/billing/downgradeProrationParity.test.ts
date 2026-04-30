@@ -1,8 +1,10 @@
 /**
- * Parity coverage for Task #1305. The `proration_behavior` value the
- * preview hands to `stripe.invoices.createPreview` and the value the
- * scheduler stamps on the lower-tier phase must stay identical so the
- * UI can never quote a credit Stripe wouldn't issue at apply time.
+ * Parity coverage for Task #1305 (updated #1367). The
+ * `proration_behavior` value the preview hands to
+ * `stripe.invoices.createPreview` and the value the scheduler stamps
+ * on the lower-tier phase must stay identical so the UI can never
+ * quote a next-invoice total Stripe wouldn't actually generate at
+ * apply time.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -306,58 +308,4 @@ describe('downgrade preview ↔ scheduleDowngrade proration parity', () => {
     );
   });
 
-  it('extracts proration:true negative lines as the prorationCreditCents the UI displays', async () => {
-    setSubRow({
-      plan: 'enterprise',
-      stripe_subscription_id: 'sub_parity_credit',
-      stripe_price_id: null,
-      stripe_customer_id: 'cus_parity_credit',
-      billing_interval: 'monthly',
-    });
-    pricesRetrieve.mockResolvedValueOnce({
-      id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
-      currency: 'usd',
-      recurring: { usage_type: 'licensed', interval: 'month' },
-      metadata: {},
-    });
-    customersRetrieve.mockResolvedValueOnce({
-      id: 'cus_parity_credit',
-      deleted: false,
-      discount: null,
-    });
-    subscriptionsRetrieve.mockResolvedValueOnce({
-      id: 'sub_parity_credit',
-      items: {
-        data: [
-          {
-            id: 'si_licensed_ent',
-            price: { id: 'price_ent_monthly', recurring: { usage_type: 'licensed' } },
-          },
-        ],
-      },
-    });
-    // Stripe response includes a proration:true negative line (e.g.
-    // from a customer balance, coupon, or future change to the
-    // shared constant). The preview must surface it as the credit.
-    invoicesCreatePreview.mockResolvedValueOnce({
-      total: 9_900,
-      amount_due: 9_900,
-      currency: 'usd',
-      next_payment_attempt: 1_770_000_000,
-      period_end: 1_770_000_000,
-      lines: {
-        data: [
-          { amount: 39_900, proration: false },
-          { amount: -30_000, proration: true },
-        ],
-      },
-    });
-
-    const result = await getTenantDowngradePreview(TENANT, 'pro', 'monthly');
-
-    expect(result.prorationCreditCents).toBe(30_000);
-    expect(result.nextInvoiceTotalCents).toBe(9_900);
-  });
 });

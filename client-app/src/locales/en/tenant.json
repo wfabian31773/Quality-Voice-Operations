@@ -1074,9 +1074,7 @@
       "downgrade_plan_with_date": "Downgrade from {{current}} to {{target}}? The change takes effect at the end of your current billing period ({{date}}). You will keep {{current}} access and limits until then.",
       "downgrade_plan": "Downgrade from {{current}} to {{target}}? The change takes effect at the end of your current billing period. You will keep {{current}} access and limits until then.",
       "downgrade_next_invoice_with_date": "Your next invoice will be {{amount}} on {{date}}.",
-      "downgrade_next_invoice": "Your next invoice will be {{amount}}.",
-      "downgrade_credit_with_date": "You'll receive a {{amount}} credit on {{date}} for the unused portion of your current period.",
-      "downgrade_credit": "You'll receive a {{amount}} credit for the unused portion of your current period."
+      "downgrade_next_invoice": "Your next invoice will be {{amount}}."
     }
   },
   "scheduling_drift_banner": {

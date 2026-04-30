@@ -1316,20 +1316,18 @@ export async function getTenantUpgradePreview(
  * by `getTenantDowngradePreview` and consumed by
  * `GET /billing/downgrade-preview`. Both the preview and
  * `scheduleDowngrade` import `DOWNGRADE_PRORATION_BEHAVIOR` from
- * `planChange.ts`, so `prorationCreditCents` cannot diverge from the
- * credit Stripe issues on apply.
+ * `planChange.ts`, so the next-invoice total quoted here cannot
+ * diverge from what Stripe generates on apply.
+ *
+ * NOTE: there is no `prorationCreditCents` field. The downgrade
+ * scheduler defers the price swap to `current_period_end`, so the
+ * new (lower) phase begins with no unused time on the higher tier
+ * to credit. The tenant gets full value for what they paid for the
+ * current period and renews on the lower tier afterwards.
  */
 export interface TenantDowngradePreview {
   plan: PlanTier;
   interval: 'monthly' | 'annual';
-  /**
-   * Sum (cents, >= 0) of `proration === true` negative lines Stripe
-   * returns on the preview invoice. Today the shared constant is
-   * `'none'` and the deferred phase swap has no time-overlap, so
-   * this is 0; the field stays so the UI keeps its existing guard
-   * if the constant is ever flipped to `'create_prorations'`.
-   */
-  prorationCreditCents: number;
   /**
    * Total (in cents) of the next invoice Stripe will produce after the
    * downgrade takes effect. Falls back to the catalog price for the
@@ -1370,7 +1368,6 @@ function catalogDowngradeFor(
   return {
     plan,
     interval,
-    prorationCreditCents: 0,
     nextInvoiceTotalCents: nextInvoiceCents,
     nextInvoiceAt: null,
     basePriceCents: monthlyCents,
@@ -1382,18 +1379,12 @@ function catalogDowngradeFor(
   };
 }
 
-interface PreviewLineItemLike {
-  amount?: number | null;
-  proration?: boolean | null;
-}
-
 interface PreviewInvoiceLike {
   total?: number | null;
   amount_due?: number | null;
   currency?: string | null;
   next_payment_attempt?: number | null;
   period_end?: number | null;
-  lines?: { data?: PreviewLineItemLike[] } | null;
 }
 
 interface SubscriptionItemPriceLike {
@@ -1543,7 +1534,8 @@ export async function getTenantDowngradePreview(
 
   // Preview invoice with the new price swapped in. Shares
   // `DOWNGRADE_PRORATION_BEHAVIOR` with `scheduleDowngrade` so the
-  // quoted credit cannot diverge from what Stripe issues at apply.
+  // next-invoice total cannot diverge from what Stripe will generate
+  // when the schedule transitions.
   let preview: PreviewInvoiceLike | null = null;
   try {
     preview = (await stripe.invoices.createPreview({
@@ -1552,7 +1544,6 @@ export async function getTenantDowngradePreview(
         items: [{ id: licensedItem.id, price: publishedPriceId }],
         proration_behavior: DOWNGRADE_PRORATION_BEHAVIOR,
       },
-      expand: ['lines.data'],
     })) as unknown as PreviewInvoiceLike;
   } catch (err) {
     logger.warn('Failed to create Stripe invoice preview for downgrade', {
@@ -1576,19 +1567,6 @@ export async function getTenantDowngradePreview(
     };
   }
 
-  // Sum prorated credit lines only — `proration === true` AND amount<0.
-  // We deliberately ignore unrelated negative invoice items (manual
-  // credit notes, refunds for other line items) so the value we
-  // surface is strictly the downgrade-driven credit, not whatever
-  // negative balance the customer happens to have queued.
-  const lines = preview.lines?.data ?? [];
-  let prorationCreditCents = 0;
-  for (const line of lines) {
-    if (line.proration !== true) continue;
-    const amt = typeof line.amount === 'number' ? line.amount : 0;
-    if (amt < 0) prorationCreditCents += -amt;
-  }
-
   const nextInvoiceTotalCents = typeof preview.total === 'number'
     ? preview.total
     : typeof preview.amount_due === 'number'
@@ -1607,7 +1585,6 @@ export async function getTenantDowngradePreview(
   return {
     plan: targetPlan,
     interval: targetInterval,
-    prorationCreditCents,
     nextInvoiceTotalCents,
     nextInvoiceAt,
     basePriceCents: discountedBase,

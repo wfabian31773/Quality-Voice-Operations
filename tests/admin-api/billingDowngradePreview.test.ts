@@ -188,8 +188,7 @@ describe('GET /billing/downgrade-preview', () => {
     getTenantDowngradePreviewMock.mockResolvedValueOnce({
       plan: 'pro',
       interval: 'monthly',
-      prorationCreditCents: 50_000,
-      nextInvoiceTotalCents: -30_000,
+      nextInvoiceTotalCents: 39_900,
       nextInvoiceAt: '2026-06-01T00:00:00.000Z',
       basePriceCents: 39_900,
       currency: 'usd',
@@ -208,8 +207,7 @@ describe('GET /billing/downgrade-preview', () => {
     expect(res.body.downgrade).toMatchObject({
       plan: 'pro',
       interval: 'monthly',
-      prorationCreditCents: 50_000,
-      nextInvoiceTotalCents: -30_000,
+      nextInvoiceTotalCents: 39_900,
       nextInvoiceAt: '2026-06-01T00:00:00.000Z',
       basePriceCents: 39_900,
     });
@@ -220,8 +218,7 @@ describe('GET /billing/downgrade-preview', () => {
     getTenantDowngradePreviewMock.mockResolvedValueOnce({
       plan: 'pro',
       interval: 'annual',
-      prorationCreditCents: 33_040,
-      nextInvoiceTotalCents: 350_000,
+      nextInvoiceTotalCents: 383_040,
       nextInvoiceAt: '2026-06-15T00:00:00.000Z',
       basePriceCents: 31_920,
       currency: 'usd',
@@ -238,7 +235,7 @@ describe('GET /billing/downgrade-preview', () => {
     expect(res.status).toBe(200);
     expect(getTenantDowngradePreviewMock).toHaveBeenCalledWith('tenant-1', 'pro', 'annual');
     expect(res.body.downgrade.interval).toBe('annual');
-    expect(res.body.downgrade.prorationCreditCents).toBe(33_040);
+    expect(res.body.downgrade.nextInvoiceTotalCents).toBe(383_040);
   });
 
   it('surfaces an active customer-level discount on the response so the UI can render the same Sales-coupon breadcrumb the upgrade card shows', async () => {
@@ -246,8 +243,7 @@ describe('GET /billing/downgrade-preview', () => {
     getTenantDowngradePreviewMock.mockResolvedValueOnce({
       plan: 'pro',
       interval: 'monthly',
-      prorationCreditCents: 37_500,
-      nextInvoiceTotalCents: -22_500,
+      nextInvoiceTotalCents: 29_925,
       nextInvoiceAt: '2026-06-01T00:00:00.000Z',
       basePriceCents: 29_925,
       currency: 'usd',

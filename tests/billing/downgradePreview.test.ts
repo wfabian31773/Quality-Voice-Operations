@@ -1,14 +1,18 @@
 /**
- * Unit coverage for `getTenantDowngradePreview` (Task #1257).
+ * Unit coverage for `getTenantDowngradePreview` (Task #1257, updated #1367).
  *
  * The preview powers `GET /billing/downgrade-preview`. It shares
  * `DOWNGRADE_PRORATION_BEHAVIOR` with `scheduleDowngrade` so the
  * `proration_behavior` value handed to Stripe in both paths cannot
  * drift. Asserts:
  *   - the preview hands Stripe the shared constant
- *   - only `proration: true` negative lines count toward the credit
  *   - `nextInvoiceTotalCents` honors any customer-level coupon
  *   - Stripe errors degrade to the catalog fallback
+ *
+ * Note: the response intentionally has no `prorationCreditCents`
+ * field. `scheduleDowngrade` defers the price swap to
+ * `current_period_end`, so there is no unused time on the higher
+ * tier to credit.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -191,7 +195,6 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
 
     expect(result.plan).toBe('pro');
     expect(result.interval).toBe('monthly');
-    expect(result.prorationCreditCents).toBe(0);
     expect(result.nextInvoiceTotalCents).toBe(39_900);
     expect(result.nextInvoiceAt).toBe(new Date(1_770_000_000 * 1000).toISOString());
     expect(result.basePriceCents).toBe(39_900);
@@ -265,9 +268,6 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     );
     expect(result.basePriceCents).toBe(29_925);
     expect(result.nextInvoiceTotalCents).toBe(29_925);
-    // Coupon discount line is negative but `proration: false`, so it
-    // must NOT count as downgrade credit.
-    expect(result.prorationCreditCents).toBe(0);
     expect(result.discount).toMatchObject({
       couponId: 'coupon_pro_25',
       percentOff: 25,
@@ -327,7 +327,6 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     );
 
     expect(result.interval).toBe('annual');
-    expect(result.prorationCreditCents).toBe(0);
     expect(result.nextInvoiceTotalCents).toBe(383_040);
     // Falls back to period_end when next_payment_attempt is null.
     expect(result.nextInvoiceAt).toBe(new Date(1_780_000_000 * 1000).toISOString());
@@ -335,62 +334,10 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     expect(result.basePriceCents).toBe(31_920);
   });
 
-  it('only counts proration:true negative lines toward prorationCreditCents (so unrelated credit notes are not surfaced as downgrade credit)', async () => {
-    setSubRow({
-      plan: 'enterprise',
-      stripe_subscription_id: 'sub_ent',
-      stripe_price_id: null,
-      stripe_customer_id: 'cus_ent',
-    });
-    pricesRetrieve.mockResolvedValueOnce({
-      id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
-      currency: 'usd',
-      recurring: { usage_type: 'licensed', interval: 'month' },
-      metadata: {},
-    });
-    customersRetrieve.mockResolvedValueOnce({
-      id: 'cus_ent',
-      deleted: false,
-      discount: null,
-    });
-    subscriptionsRetrieve.mockResolvedValueOnce({
-      id: 'sub_ent',
-      items: {
-        data: [
-          {
-            id: 'si_licensed_ent',
-            price: { id: 'price_ent_monthly', recurring: { usage_type: 'licensed' } },
-          },
-        ],
-      },
-    });
-    invoicesCreatePreview.mockResolvedValueOnce({
-      total: 19_900,
-      amount_due: 19_900,
-      currency: 'usd',
-      next_payment_attempt: 1_770_000_000,
-      period_end: 1_770_000_000,
-      lines: {
-        data: [
-          { amount: 39_900, proration: false },
-          { amount: -20_000, proration: false }, // unrelated credit note, must be ignored
-          { amount: -10_000, proration: true }, // legitimate proration credit, would count
-        ],
-      },
-    });
-
-    const result = await getTenantDowngradePreview(TENANT, 'pro', 'monthly');
-
-    // Only the `proration: true` negative line counts toward credit.
-    expect(result.prorationCreditCents).toBe(10_000);
-    expect(result.nextInvoiceTotalCents).toBe(19_900);
-  });
 });
 
 describe('getTenantDowngradePreview — graceful degradation', () => {
-  it('returns catalog defaults with $0 credit when the Stripe client cannot be constructed', async () => {
+  it('returns catalog defaults when the Stripe client cannot be constructed', async () => {
     setSubRow({
       plan: 'enterprise',
       stripe_subscription_id: 'sub_ent',
@@ -402,13 +349,12 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
     const result = await getTenantDowngradePreview(TENANT, 'pro', 'monthly');
 
     expect(invoicesCreatePreview).not.toHaveBeenCalled();
-    expect(result.prorationCreditCents).toBe(0);
     expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
     expect(result.nextInvoiceTotalCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
     expect(result.source).toBe('catalog');
   });
 
-  it('returns $0 credit when the tenant has no Stripe subscription to preview against', async () => {
+  it('quotes the catalog next-invoice when the tenant has no Stripe subscription to preview against', async () => {
     setSubRow({
       plan: 'starter',
       stripe_subscription_id: null,
@@ -432,7 +378,6 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
     const result = await getTenantDowngradePreview(TENANT, 'starter', 'monthly');
 
     expect(invoicesCreatePreview).not.toHaveBeenCalled();
-    expect(result.prorationCreditCents).toBe(0);
     expect(result.basePriceCents).toBe(9_900);
     expect(result.basePriceSource).toBe('stripe');
   });
@@ -472,7 +417,6 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
 
     const result = await getTenantDowngradePreview(TENANT, 'pro', 'monthly');
 
-    expect(result.prorationCreditCents).toBe(0);
     expect(result.basePriceCents).toBe(39_900);
     expect(result.basePriceSource).toBe('stripe');
     expect(result.nextInvoiceTotalCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);

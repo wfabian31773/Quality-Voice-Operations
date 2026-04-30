@@ -1074,9 +1074,7 @@
       "downgrade_plan_with_date": "Von {{current}} auf {{target}} herabstufen? Die Änderung wird am Ende Ihres aktuellen Abrechnungszeitraums ({{date}}) wirksam. Bis dahin behalten Sie den Zugriff und die Limits von {{current}}.",
       "downgrade_plan": "Von {{current}} auf {{target}} herabstufen? Die Änderung wird am Ende Ihres aktuellen Abrechnungszeitraums wirksam. Bis dahin behalten Sie den Zugriff und die Limits von {{current}}.",
       "downgrade_next_invoice_with_date": "Ihre nächste Rechnung beträgt {{amount}} am {{date}}.",
-      "downgrade_next_invoice": "Ihre nächste Rechnung beträgt {{amount}}.",
-      "downgrade_credit_with_date": "Sie erhalten am {{date}} eine Gutschrift von {{amount}} für den ungenutzten Teil Ihres aktuellen Zeitraums.",
-      "downgrade_credit": "Sie erhalten eine Gutschrift von {{amount}} für den ungenutzten Teil Ihres aktuellen Zeitraums."
+      "downgrade_next_invoice": "Ihre nächste Rechnung beträgt {{amount}}."
     }
   },
   "scheduling_drift_banner": {

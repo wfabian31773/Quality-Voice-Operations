@@ -34,14 +34,17 @@ export interface ScheduleDowngradeRecommendation {
  * `proration_behavior` used on both the downgrade preview
  * (`getTenantDowngradePreview`) and the schedule's lower-tier phase
  * (`scheduleDowngrade`). Importing the same constant in both call
- * sites prevents the preview from quoting a credit Stripe wouldn't
- * actually issue at phase transition.
+ * sites guarantees the preview quotes the same next-invoice total
+ * Stripe will actually generate when the schedule transitions.
  *
  * Why `'none'`: scheduleDowngrade defers the price swap to
  * `current_period_end`, so the new phase starts with no time-overlap
  * against the higher tier — there is no unused time to prorate.
- * `'create_prorations'` would not change that, so we hold both sides
- * at `'none'` and the UI's credit line stays at 0.
+ * `'create_prorations'` would not change that (Stripe would still
+ * compute zero unused time at the phase boundary). The downgrade UX
+ * promises "Takes effect at next renewal", which means the tenant
+ * gets the full value of what they already paid — there is, by
+ * design, no credit to issue here.
  */
 export const DOWNGRADE_PRORATION_BEHAVIOR: 'create_prorations' | 'none' = 'none';
 
