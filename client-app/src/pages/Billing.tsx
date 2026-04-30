@@ -1743,6 +1743,34 @@ export default function Billing() {
                                 {downgradePreview.discount.name ? ` (${downgradePreview.discount.name})` : ''}
                               </p>
                             )}
+                            {kind === 'downgrade' && downgradePreview && downgradePreview.prorationCreditCents > 0 && (() => {
+                              // Mirrors the credit copy in handleDowngrade's
+                              // window.confirm message so the value the
+                              // tenant sees on the card and the value they
+                              // confirm in the dialog can never drift. Same
+                              // i18n keys, same date fallback chain
+                              // (preview.nextInvoiceAt → sub.current_period_end).
+                              const creditDateIso = downgradePreview.nextInvoiceAt ?? sub?.current_period_end ?? null;
+                              const amount = formatCentsHelper(downgradePreview.prorationCreditCents, {
+                                currency: downgradePreview.currency || currency,
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              });
+                              const text = creditDateIso
+                                ? tenantT('common.confirms.downgrade_credit_with_date', {
+                                    amount,
+                                    date: formatDate(creditDateIso),
+                                  })
+                                : tenantT('common.confirms.downgrade_credit', { amount });
+                              return (
+                                <p
+                                  data-testid={`billing-downgrade-credit-${tier}`}
+                                  className="text-[11px] text-success font-medium mt-1"
+                                >
+                                  {text}
+                                </p>
+                              );
+                            })()}
                           </div>
                           <button
                             data-testid={`billing-upgrade-button-${tier}`}
