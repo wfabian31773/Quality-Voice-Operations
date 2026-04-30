@@ -1,4 +1,5 @@
 import { getPlatformPool } from '../db';
+import { VOICES } from '../../client-app/src/lib/agentVoices';
 
 export interface FieldSchema {
   key: string;
@@ -15,16 +16,15 @@ export interface TemplateCustomizationSchema {
   lockedFields: FieldSchema[];
 }
 
-const VALID_VOICES = new Set([
-  'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse',
-]);
+// Derived from the canonical `VOICES` list in `client-app/src/lib/agentVoices.ts`
+// so adding/removing a voice there is reflected here automatically. Exported for
+// the parity test in `tests/marketplace/customizationSchemaSupportedVoices.test.ts`.
+export const VALID_VOICES: ReadonlySet<string> = new Set<string>(VOICES);
 
-const VOICE_OPTIONS = [
-  { value: 'alloy', label: 'Alloy' }, { value: 'ash', label: 'Ash' }, { value: 'ballad', label: 'Ballad' },
-  { value: 'coral', label: 'Coral' }, { value: 'echo', label: 'Echo' }, { value: 'fable', label: 'Fable' },
-  { value: 'onyx', label: 'Onyx' }, { value: 'nova', label: 'Nova' }, { value: 'sage', label: 'Sage' },
-  { value: 'shimmer', label: 'Shimmer' }, { value: 'verse', label: 'Verse' },
-];
+const VOICE_OPTIONS = VOICES.map((value) => ({
+  value,
+  label: value.charAt(0).toUpperCase() + value.slice(1),
+}));
 
 const ALL_FIELDS: FieldSchema[] = [
   { key: 'name', label: 'Display Name', type: 'text', locked: false, group: 'general' },
