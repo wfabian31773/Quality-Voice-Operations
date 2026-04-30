@@ -81,6 +81,22 @@ This checks all required variables are set and validates the database connection
 
 The validation also runs automatically on server startup. In production, it will **exit the process** if any required variable is missing.
 
+### Stripe Price ID Spot-Check
+
+After setting the `STRIPE_PRICE_<TIER>_<INTERVAL>` env vars (six total — STARTER/PRO/ENTERPRISE × MONTHLY/ANNUAL), verify each one resolves to a Stripe price with the expected `recurring.interval` so the live-rate badge engages on the public pricing calculator and the in-app billing estimator:
+
+```bash
+STRIPE_SECRET_KEY="sk_live_..." \
+STRIPE_PRICE_STARTER_MONTHLY="price_..." STRIPE_PRICE_STARTER_ANNUAL="price_..." \
+STRIPE_PRICE_PRO_MONTHLY="price_..." STRIPE_PRICE_PRO_ANNUAL="price_..." \
+STRIPE_PRICE_ENTERPRISE_MONTHLY="price_..." STRIPE_PRICE_ENTERPRISE_ANNUAL="price_..." \
+npm run verify:stripe-prices
+```
+
+Each row prints the resolved Stripe price, its `unit_amount`, the monthly-equivalent (annual ÷ 12), and the catalog comparison. The script exits non-zero if any env var is missing, points at a price with the wrong interval (e.g. `_ANNUAL` wired to a monthly price), or fails to retrieve.
+
+A clean run proves the env vars and Stripe prices that `effectiveRate.ts` reads are well-formed, which is the prerequisite for the live-rate badge. It does **not** by itself prove the running API is wired up — after deploy, also hit `GET /billing/effective-rate` as a tenant on a monthly Pro sub and confirm the response includes `annualBasePriceSource: "stripe"` (and the symmetric `monthlyBasePriceSource: "stripe"` for a tenant on an annual sub). Capture both the script output and the endpoint response in the deploy ticket as evidence.
+
 ## 3. Database Setup (Supabase)
 
 ### Connection String

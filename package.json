@@ -36,6 +36,7 @@
     "db:migrate": "tsx scripts/run-migrations.ts",
     "db:seed": "tsx scripts/seed-demo.ts",
     "db:verify-rls": "tsx scripts/verify-rls.ts",
+    "verify:stripe-prices": "tsx scripts/verify-stripe-prices.ts",
     "analyze": "npm --prefix client-app run analyze",
     "analyze:json": "npm --prefix client-app run analyze:json"
   },
