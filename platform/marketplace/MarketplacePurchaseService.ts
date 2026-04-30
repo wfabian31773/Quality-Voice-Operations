@@ -82,6 +82,7 @@ export async function createMarketplacePurchase(input: PurchaseInput): Promise<{
     let checkoutUrl = '';
     try {
       const { getStripeClient } = await import('../billing/stripe/client');
+      const { loadActiveCustomerDiscount } = await import('../billing/stripe/effectiveRate');
       const stripe = getStripeClient();
 
       const { rows: subRows } = await client.query(
@@ -89,6 +90,28 @@ export async function createMarketplacePurchase(input: PurchaseInput): Promise<{
         [tenantId],
       );
       const customerId = subRows[0]?.stripe_customer_id as string | undefined;
+
+      // Forward the buyer's existing customer-level Stripe discount (if
+      // any) so the marketplace hosted page shows the same coupon the
+      // tenant already sees on their subscription invoices. Mirrors the
+      // subscription Checkout path in
+      // `platform/billing/stripe/checkout.ts`. Stripe rejects sessions
+      // that combine `discounts` with `allow_promotion_codes`, so the
+      // session-shape branch below drops `allow_promotion_codes` when a
+      // discount is being forwarded.
+      let sessionDiscounts: Array<{ coupon?: string; promotion_code?: string }> | undefined;
+      if (customerId) {
+        const customerDiscount = await loadActiveCustomerDiscount(
+          stripe,
+          customerId,
+          { tenantId, surface: 'marketplace_checkout_session' },
+        );
+        if (customerDiscount?.promotionCodeId) {
+          sessionDiscounts = [{ promotion_code: customerDiscount.promotionCodeId }];
+        } else if (customerDiscount?.couponId) {
+          sessionDiscounts = [{ coupon: customerDiscount.couponId }];
+        }
+      }
 
       const allowedOrigin = process.env.APP_URL
         ? process.env.APP_URL
@@ -108,17 +131,23 @@ export async function createMarketplacePurchase(input: PurchaseInput): Promise<{
         payment_method_types: ['card'],
         success_url: safeSuccessUrl,
         cancel_url: safeCancelUrl,
+        metadata: { tenantId, templateId, purchaseId, type: 'marketplace_purchase' },
+      };
+
+      if (sessionDiscounts) {
+        // Stripe rejects sessions that combine `discounts` with
+        // `allow_promotion_codes`, so we omit the manual-entry box
+        // when forwarding an existing discount.
+        sessionParams.discounts = sessionDiscounts;
+      } else {
         // Let buyers redeem a Stripe-managed promo code at the marketplace
         // checkout. Combined with the `invoice_creation` block below, this
         // is what makes the coupon-aware "Discount applied" badge from the
         // `invoice.finalized` webhook (see Task #1311) actually fire on
         // one-off marketplace purchases — without an invoice, Stripe never
-        // emits the event the badge stamper hooks. Subscription-mode
-        // sessions already auto-create invoices, so this just unblocks the
-        // one-off path.
-        allow_promotion_codes: true,
-        metadata: { tenantId, templateId, purchaseId, type: 'marketplace_purchase' },
-      };
+        // emits the event the badge stamper hooks.
+        sessionParams.allow_promotion_codes = true;
+      }
 
       // For one-off marketplace purchases (mode: 'payment') Stripe does
       // NOT create an invoice by default — only a Charge + receipt email.
