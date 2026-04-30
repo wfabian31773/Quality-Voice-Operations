@@ -129,6 +129,13 @@ jobs:
           set -o pipefail
           npm run test:e2e:tenant-pages-smoke 2>&1 | tee .ci-logs/tenant-pages-smoke.log
 
+      - name: Run Ops pages smoke e2e
+        id: spec-ops-pages-smoke
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e:ops-pages-smoke 2>&1 | tee .ci-logs/ops-pages-smoke.log
+
       - name: Run Onboarding dismiss/restart e2e
         id: spec-onboarding-dismiss-restart
         continue-on-error: true
@@ -173,7 +180,7 @@ jobs:
           fi
 
       - name: Upload Platform Dev + spec logs and screenshots on failure
-        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure'
+        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: admin-e2e-artifacts
@@ -196,12 +203,13 @@ jobs:
       # spec failed. Without it, `continue-on-error: true` above would make
       # the whole job pass even though specs broke.
       - name: Fail job if any spec failed
-        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure'
+        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure'
         run: |
           echo "::error::One or more admin e2e specs failed:"
           echo "  sales-inbox-filters:              ${{ steps.spec-sales-inbox-filters.outcome }}"
           echo "  admin-pages-smoke:                ${{ steps.spec-admin-pages-smoke.outcome }}"
           echo "  tenant-pages-smoke:               ${{ steps.spec-tenant-pages-smoke.outcome }}"
+          echo "  ops-pages-smoke:                  ${{ steps.spec-ops-pages-smoke.outcome }}"
           echo "  onboarding-dismiss-restart:       ${{ steps.spec-onboarding-dismiss-restart.outcome }}"
           echo "  onboarding-resume-saved-step:     ${{ steps.spec-onboarding-resume-saved-step.outcome }}"
           echo "  onboarding-progress-dots-back-nav:${{ steps.spec-onboarding-progress-dots-back-nav.outcome }}"

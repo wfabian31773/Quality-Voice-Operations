@@ -1,42 +1,49 @@
 /**
- * Browser-level smoke test for high-traffic Tenant Portal pages.
+ * Browser-level smoke test for high-traffic Operations Console pages.
  *
- * Sibling of `tests/e2e/adminPagesSmoke.spec.ts`. The admin spec catches
- * regressions in the Platform Admin surface; this spec does the same for
- * the tenant-side pages most likely to break silently between PRs
- * (Dispatch Center, Calls/Conversations, Reliability, Agents, Workflows,
- * Dashboard).
+ * Sibling of `tests/e2e/tenantPagesSmoke.spec.ts` and
+ * `tests/e2e/adminPagesSmoke.spec.ts`. Until task #1153 the Ops surface
+ * was only being smoke-checked through the single Reliability route that
+ * the tenant spec piggy-backed on. The remaining Ops Console pages
+ * (Live Monitor, Debugger, Integration Diagnostics, Cost, Digital Twin,
+ * Backfill calls) only got caught by manual clicking when a backend
+ * route changed shape. This spec walks every link in
+ * `client-app/src/components/OpsLayout.tsx`'s `opsLinks` so that a
+ * regression in any of them fails CI before merge.
  *
  * For each page it asserts (hard fails):
  *
  *   1. The page navigates without redirecting back to /login (auth still
- *      works for the seeded admin-org tenant owner).
- *   2. The expected `<h1>` (or test-id sentinel) renders within the timeout
- *      — i.e. the route resolved, the lazy chunk loaded, and the top-level
- *      component rendered without throwing into the ErrorBoundary.
+ *      works for the seeded admin-org tenant owner) and without bouncing
+ *      out of the Ops Console (OpsGuard regression).
+ *   2. The expected `<h1>` (or test-id sentinel) renders within the
+ *      timeout — i.e. the route resolved, the lazy chunk loaded, and the
+ *      top-level component rendered without throwing into the
+ *      ErrorBoundary.
  *   3. The ErrorBoundary fallback ("An unexpected error occurred", from
  *      `client-app/src/pages/ServerError.tsx`) is NOT visible.
- *   4. The RoleGuard's AccessDenied panel is NOT visible (would mean the
- *      seeded tenant_owner role on admin-org somehow regressed).
+ *   4. The OpsGuard / RoleGuard AccessDenied panel is NOT visible (would
+ *      mean the seeded role on admin-org somehow regressed).
  *   5. No uncaught page errors fired during navigation.
  *
  * It also surfaces (soft warnings, no fail) any 5xx responses from /api/*
- * during the page load. We don't fail on those because individual cards on
- * a page are expected to handle their own empty/error states gracefully —
- * if a 5xx took down the whole page, assertions 2-4 will catch it. The
- * warnings still land in the spec log for triagers.
+ * during the page load. We don't fail on those because individual cards
+ * on a page are expected to handle their own empty/error states
+ * gracefully — if a 5xx took down the whole page, assertions 2-4 will
+ * catch it. The warnings still land in the spec log for triagers.
  *
  * Runs against a real Chromium browser via the `playwright` runtime API
  * (no @playwright/test dependency required). Standalone — no test runner.
  *
- *   npx tsx tests/e2e/tenantPagesSmoke.spec.ts
+ *   npx tsx tests/e2e/opsPagesSmoke.spec.ts
  *
- * Pre-requisites (same as the admin smoke spec):
+ * Pre-requisites (same as the sibling smoke specs):
  *   - Platform Dev workflow is running (admin API on :3002, vite on :5000).
- *   - `ADMIN_PASSWORD=<known-password> npx tsx scripts/seed-admin.ts` has been
- *     run, so the platform-admin login below succeeds. The seed script also
- *     gives that user a `tenant_owner` role on admin-org, which is what
- *     unlocks the tenant routes (RoleGuard manager+, Dispatch, etc).
+ *   - `ADMIN_PASSWORD=<known-password> npx tsx scripts/seed-admin.ts` has
+ *     been run, so the platform-admin login below succeeds. The seed
+ *     script also gives that user a `tenant_owner` role on admin-org,
+ *     which clears OpsGuard (platform_admin OR tenant_owner OR
+ *     operations_manager) for every Ops Console route.
  *   - Playwright browsers installed: `npx playwright install chromium`.
  *
  * Env vars (all optional):
@@ -54,10 +61,10 @@ const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@voiceaihub.dev';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'test-password-123';
 const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR ?? '.ci-logs/screenshots';
 
-const SPEC_NAME = 'tenant-pages-smoke';
+const SPEC_NAME = 'ops-pages-smoke';
 
 interface PageCheck {
-  /** Path under BASE_URL — e.g. `/dispatch`. */
+  /** Path under BASE_URL — e.g. `/ops/monitor`. */
   path: string;
   /** Human-friendly slug used for screenshot filenames. */
   slug: string;
@@ -71,52 +78,41 @@ interface PageCheck {
   expect: { kind: 'heading'; text: string } | { kind: 'testid'; testid: string };
 }
 
+// One entry per link in OpsLayout.tsx's `opsLinks`. Heading text below
+// must match the literal `<h1>` / PageHeader title rendered by the route's
+// page component — keep this list in sync when a heading is renamed.
 const PAGES: PageCheck[] = [
-  // Dashboard — first page most tenant users see after login. Heading comes
-  // from the i18n key `tenant:dashboard.page_title` ("Dashboard").
-  { path: '/dashboard', slug: 'tenant-dashboard', expect: { kind: 'heading', text: 'Dashboard' } },
+  // Live Monitor — Operations.tsx PageHeader title="Operations". This
+  // page also subscribes to the live agent feed on mount, so a regression
+  // in /api/operations/* routes typically blows up the top-level render
+  // before the heading paints.
+  { path: '/ops/monitor', slug: 'ops-monitor', expect: { kind: 'heading', text: 'Operations' } },
 
-  // Agents — `tenant:agents.page_title` ("Agents"). Heavy lazy chunk.
-  { path: '/agents', slug: 'tenant-agents', expect: { kind: 'heading', text: 'Agents' } },
+  // Reliability — ToolHealth.tsx PageHeader title="Platform Reliability".
+  // Previously covered by tenantPagesSmoke; relocated here so the Ops
+  // surface owns its own coverage.
+  { path: '/ops/reliability', slug: 'ops-reliability', expect: { kind: 'heading', text: 'Platform Reliability' } },
 
-  // Calls / Conversations — `tenant:calls.page_title` is "Conversations".
-  // The page also kicks off a /api/calls list fetch on mount, which is the
-  // most common backend regression vector.
-  { path: '/calls', slug: 'tenant-calls', expect: { kind: 'heading', text: 'Conversations' } },
+  // Backfill calls — admin/BackfillCalls.tsx <h1> "Backfill calls". Form
+  // page that also hydrates the tenant context on mount.
+  { path: '/ops/backfill-calls', slug: 'ops-backfill-calls', expect: { kind: 'heading', text: 'Backfill calls' } },
 
-  // Workflows — RoleGuard minRole="manager"; the admin-org tenant_owner
-  // seeded by seed-admin clears that bar. PageHeader title="Workflows".
-  { path: '/workflows', slug: 'tenant-workflows', expect: { kind: 'heading', text: 'Workflows' } },
+  // Debugger — CallDebug.tsx PageHeader title="Call Debugging". Heaviest
+  // lazy chunk in the Ops Console (search + replay + live tabs).
+  { path: '/ops/call-debug', slug: 'ops-call-debug', expect: { kind: 'heading', text: 'Call Debugging' } },
 
-  // Dispatch Center — PageHeader title="Dispatch Center". Field-service
-  // page with a wide map + table that has historically been brittle when
-  // a single backend route changes shape.
-  { path: '/dispatch', slug: 'tenant-dispatch', expect: { kind: 'heading', text: 'Dispatch Center' } },
+  // Integration Diagnostics — IntegrationDiagnostics.tsx <h1>
+  // "Integration Diagnostics". Pulls webhook/outbox status on mount, so
+  // /api/integration-diagnostics regressions surface here first.
+  { path: '/ops/integration-diagnostics', slug: 'ops-integration-diagnostics', expect: { kind: 'heading', text: 'Integration Diagnostics' } },
 
-  // NOTE: /ops/reliability used to live in this list because it was the
-  // only Ops Console page covered anywhere in CI. As of task #1153 the
-  // entire Ops surface (including Reliability) is owned by
-  // `tests/e2e/opsPagesSmoke.spec.ts`, so it has been removed here to
-  // avoid double-coverage and to keep this spec scoped to tenant routes.
+  // Cost — CostOptimization.tsx PageHeader title="Cost Optimization".
+  { path: '/ops/cost', slug: 'ops-cost', expect: { kind: 'heading', text: 'Cost Optimization' } },
 
-  // SMS Inbox — PageHeader title="SMS Console". The customer-flow messaging
-  // workspace fetches conversation lists on mount and has historically broken
-  // silently when the /api/sms/* response shape changed.
-  { path: '/sms-inbox', slug: 'tenant-sms-inbox', expect: { kind: 'heading', text: 'SMS Console' } },
-
-  // Tickets — PageHeader title="Tickets". High-traffic for home-services and
-  // legal verticals; the list-fetch endpoint has changed shape before.
-  { path: '/tickets', slug: 'tenant-tickets', expect: { kind: 'heading', text: 'Tickets' } },
-
-  // Tickets Reporting — renders an explicit `<h1>Ticket Reports</h1>` (no
-  // PageHeader). Charts/aggregations are fed by their own /api/tickets/*
-  // analytics endpoints.
-  { path: '/tickets/reporting', slug: 'tenant-tickets-reporting', expect: { kind: 'heading', text: 'Ticket Reports' } },
-
-  // Scheduling — PageHeader title="Scheduling". Enterprise appointment
-  // management; pulls from multiple endpoints (appointments, types,
-  // reminders) on mount.
-  { path: '/scheduling', slug: 'tenant-scheduling', expect: { kind: 'heading', text: 'Scheduling' } },
+  // Digital Twin — DigitalTwin.tsx PageHeader title contains "Digital
+  // Twin" wrapped in a span with a tour launcher; getByRole('heading')
+  // matches on accessible name, which still resolves to "Digital Twin".
+  { path: '/ops/digital-twin', slug: 'ops-digital-twin', expect: { kind: 'heading', text: 'Digital Twin' } },
 ];
 
 const ERROR_BOUNDARY_TEXT = 'An unexpected error occurred';
@@ -178,14 +174,13 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
     });
 
     // Auth check: the global redirect bounces logged-out users to /login,
-    // and OpsGuard/RoleGuard would push us off-route if the seeded role
-    // ever stops including tenant_owner.
+    // and OpsGuard would push us to /dashboard if the seeded role ever
+    // stops including tenant_owner / platform_admin / operations_manager.
     const landed = page.url();
     if (/\/login(\?|$)/.test(landed)) {
       reason = `redirected to /login (lost session?) — landed at ${landed}`;
     } else if (!landed.includes(check.path) && !landed.includes(check.path.split('?')[0])) {
-      // OpsGuard-style redirect to /dashboard would land us off-route.
-      reason = `redirected away from ${check.path}, landed at ${landed}`;
+      reason = `redirected away from ${check.path}, landed at ${landed} (OpsGuard regression?)`;
     }
 
     if (!reason) {
@@ -218,8 +213,9 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
       }
     }
 
-    // RoleGuard renders an AccessDenied panel inside the layout instead of
-    // redirecting, so a missing role wouldn't trip the URL check above.
+    // OpsGuard / RoleGuard renders an AccessDenied panel inside the
+    // layout instead of redirecting, so a missing role wouldn't trip the
+    // URL check above.
     if (!reason) {
       const accessDeniedVisible = await page
         .getByText(ACCESS_DENIED_TEXT, { exact: false })
@@ -227,7 +223,7 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
         .isVisible()
         .catch(() => false);
       if (accessDeniedVisible) {
-        reason = `RoleGuard AccessDenied rendered ("${ACCESS_DENIED_TEXT}") — seeded tenant_owner role missing?`;
+        reason = `AccessDenied rendered ("${ACCESS_DENIED_TEXT}") — seeded ops role missing?`;
       }
     }
 
@@ -242,8 +238,8 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
 
   // Soft-warn on 5xx /api responses regardless of pass/fail. These are
   // useful triage info but don't fail the spec on their own — a card with
-  // an empty/error state on a page that otherwise rendered shouldn't block
-  // the PR.
+  // an empty/error state on a page that otherwise rendered shouldn't
+  // block the PR.
   if (serverErrors.length > 0) {
     console.warn(
       `[e2e] WARN ${check.path}: ${serverErrors.length} 5xx response(s) from /api/*: ${serverErrors
@@ -319,14 +315,14 @@ async function run(): Promise<void> {
   }
 
   if (failures.length > 0) {
-    console.error(`[e2e] ${failures.length} of ${PAGES.length} tenant page(s) failed:`);
+    console.error(`[e2e] ${failures.length} of ${PAGES.length} ops page(s) failed:`);
     for (const f of failures) {
       console.error(`[e2e]   - ${f.page.path}: ${f.reason}`);
     }
-    assert(false, `${failures.length} tenant page smoke check(s) failed`);
+    assert(false, `${failures.length} ops page smoke check(s) failed`);
   }
 
-  console.log(`[e2e] PASS — all ${PAGES.length} tenant pages rendered cleanly`);
+  console.log(`[e2e] PASS — all ${PAGES.length} ops pages rendered cleanly`);
 }
 
 run().catch((err) => {
