@@ -31,6 +31,7 @@
     "test:e2e:billing-portal-subscription-discount-headline": "tsx tests/e2e/billingPortalSubscriptionDiscountHeadline.spec.ts",
     "test:e2e:billing-invoice-stacked-discounts": "tsx tests/e2e/billingInvoiceStackedDiscounts.spec.ts",
     "test:e2e:billing-subscription-stacked-discounts": "tsx tests/e2e/billingSubscriptionStackedDiscounts.spec.ts",
+    "test:e2e:billing-annual-switch-success-stacked-discounts": "tsx tests/e2e/billingAnnualSwitchSuccessStackedDiscounts.spec.ts",
     "test:e2e:marketplace-purchase-discount-badge": "tsx tests/e2e/marketplacePurchaseDiscountBadge.spec.ts",
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "test:e2e:pricing-live-rate-badge": "tsx tests/e2e/pricingLiveRateBadge.spec.ts",
