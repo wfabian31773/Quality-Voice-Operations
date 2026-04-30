@@ -75,6 +75,35 @@ async function resolveAiRateCentsPerMinute(tenantId: string): Promise<number> {
   return AI_PER_MINUTE_CENTS;
 }
 
+function envDefaultSmsRateCents(): number {
+  const raw = parseInt(process.env.SMS_COST_PER_MESSAGE_CENTS ?? '1', 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 1;
+}
+
+// Resolve the per-message SMS rate from the tenant's live Stripe
+// subscription as cents-per-message (may be fractional to preserve
+// sub-cent Stripe precision). Falls back to the env default if the
+// resolver throws or the rate is missing — `recordSmsUsage` must never
+// block on Stripe just to insert a usage row.
+async function resolveSmsRateCentsPerMessage(tenantId: string): Promise<number> {
+  try {
+    const rate = await getCachedTenantEffectiveRate(tenantId);
+    if (rate.smsRatePerMessage != null) {
+      // eslint-disable-next-line local/no-dollars-times-100 -- dollars→cents conversion; sub-cent precision must survive into the aggregate `total_cost_cents` rounding below.
+      const centsPerMessage = rate.smsRatePerMessage * 100;
+      if (Number.isFinite(centsPerMessage) && centsPerMessage >= 0) {
+        return centsPerMessage;
+      }
+    }
+  } catch (err) {
+    logger.warn('Falling back to env SMS rate for usage cost', {
+      tenantId,
+      error: String(err),
+    });
+  }
+  return envDefaultSmsRateCents();
+}
+
 export async function recordCallUsage(
   tenantId: string,
   direction: 'inbound' | 'outbound',
@@ -219,14 +248,26 @@ export async function recordSmsUsage(
   tenantId: string,
   count: number = 1,
 ): Promise<void> {
+  const { periodStart, periodEnd } = getHourBucket();
+
+  // Resolve the SMS rate before opening the DB transaction so an uncached
+  // Stripe round-trip never holds a Postgres connection open. The cache
+  // (`getCachedTenantEffectiveRate`) prevents one Stripe call per SMS for
+  // SMS-heavy tenants — see `effectiveRateCache.ts`.
+  const smsRateCentsPerMessage = count > 0
+    ? await resolveSmsRateCentsPerMessage(tenantId)
+    : 0;
+
+  // Round the aggregate (not the per-message rate) so sub-cent Stripe
+  // pricing matches what Stripe will actually invoice.
+  const totalCostCents = Math.round(smsRateCentsPerMessage * count);
+  const unitCostCents = Math.round(smsRateCentsPerMessage);
+
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
-
-    const { periodStart, periodEnd } = getHourBucket();
-    const perSmsCents = parseInt(process.env.SMS_COST_PER_MESSAGE_CENTS ?? '1', 10);
 
     await client.query(
       `INSERT INTO usage_metrics (id, tenant_id, metric_type, period_start, period_end, quantity, unit_cost_cents, total_cost_cents)
@@ -237,12 +278,17 @@ export async function recordSmsUsage(
          total_cost_cents = COALESCE(usage_metrics.total_cost_cents, 0) + EXCLUDED.total_cost_cents,
          updated_at = NOW()`,
       [tenantId, periodStart.toISOString(), periodEnd.toISOString(),
-       count, perSmsCents, count * perSmsCents],
+       count, unitCostCents, totalCostCents],
     );
 
     await client.query('COMMIT');
 
-    logger.info('SMS usage recorded', { tenantId, count, hourBucket: periodStart.toISOString() });
+    logger.info('SMS usage recorded', {
+      tenantId,
+      count,
+      smsRateCentsPerMessage,
+      hourBucket: periodStart.toISOString(),
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to record SMS usage', { tenantId, error: String(err) });

@@ -44,6 +44,18 @@ export interface TenantEffectiveRate {
    * override exists.
    */
   overageRatePerMinute: number;
+  /**
+   * Per-message SMS rate in dollars. Sourced from the `unit_amount` on the
+   * metered SMS price line on the tenant's Stripe subscription (a price
+   * tagged with `metadata.metric === 'sms_sent'` or matched against
+   * `STRIPE_METER_SMS_SENT`). Falls back to the env-default SMS rate
+   * (`SMS_COST_PER_MESSAGE_CENTS`) when no Stripe override exists.
+   *
+   * Optional so existing test fixtures and downstream consumers that only
+   * care about call/AI rates remain compatible — `recordSmsUsage` falls
+   * back to the env default when this field is absent.
+   */
+  smsRatePerMessage?: number;
   /** Lower-case ISO currency code for the Stripe price (e.g. `usd`). */
   currency: string;
   /**
@@ -51,6 +63,10 @@ export interface TenantEffectiveRate {
    * from live Stripe data; `mixed` means at least one came from Stripe and
    * the other from the catalog; `catalog` means we found nothing on Stripe
    * and used catalog defaults end-to-end.
+   *
+   * Note: `source` reflects only the base + AI-overage resolution so we
+   * don't break backward-compat with the BillingEstimator UI. Use
+   * `smsPriceSource` for the SMS-line provenance.
    */
   source: EffectiveRateSource;
   /**
@@ -59,9 +75,13 @@ export interface TenantEffectiveRate {
    */
   basePriceSource: 'stripe' | 'catalog';
   overagePriceSource: 'stripe' | 'catalog';
+  /** SMS-line provenance — `stripe` when a tagged metered SMS price was found. */
+  smsPriceSource?: 'stripe' | 'catalog';
   /** Stripe price ids that drove the override (when applicable). */
   basePriceId: string | null;
   overagePriceId: string | null;
+  /** Stripe price id for the metered SMS line (when applicable). */
+  smsPriceId?: string | null;
   /**
    * Per-month price the tenant would pay billed *monthly*, in cents.
    * Resolved from the tenant's subscription when their subscription is
@@ -87,6 +107,18 @@ export interface TenantEffectiveRate {
   annualBasePriceCents: number;
   annualBasePriceSource: 'stripe' | 'catalog';
   annualBasePriceId: string | null;
+}
+
+/**
+ * Default per-message SMS price in cents. Read at call time so a test
+ * that mutates `process.env.SMS_COST_PER_MESSAGE_CENTS` after import is
+ * still honoured (mirrors the same approach `recordSmsUsage` uses).
+ */
+function defaultSmsRatePerMessageDollars(): number {
+  const raw = parseInt(process.env.SMS_COST_PER_MESSAGE_CENTS ?? '1', 10);
+  const cents = Number.isFinite(raw) && raw >= 0 ? raw : 1;
+  // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars conversion for parity with the dollar-denominated `overageRatePerMinute` / `smsRatePerMessage` fields.
+  return cents / 100;
 }
 
 interface SubscriptionRow {
@@ -122,12 +154,15 @@ function catalogFor(plan: PlanTier): TenantEffectiveRate {
     plan,
     basePriceCents: entry.monthlyPriceCents,
     overageRatePerMinute: entry.overageRatePerMinute,
+    smsRatePerMessage: defaultSmsRatePerMessageDollars(),
     currency: 'usd',
     source: 'catalog',
     basePriceSource: 'catalog',
     overagePriceSource: 'catalog',
+    smsPriceSource: 'catalog',
     basePriceId: null,
     overagePriceId: null,
+    smsPriceId: null,
     monthlyBasePriceCents: entry.monthlyPriceCents,
     monthlyBasePriceSource: 'catalog',
     monthlyBasePriceId: null,
@@ -157,34 +192,43 @@ interface ItemLike {
 
 /**
  * Decide whether a Stripe price represents a metered overage line and, if so,
- * whether it is for AI minutes (the only metric the bill estimator visualises
- * today).
+ * which metric it covers (AI minutes or SMS).
  *
  * We match in this order so that a tenant with a custom price metadata set
  * always wins over the env-configured meter id, but a generic metered price
- * still gets picked up as the overage source if nothing else matches:
- *   1. `price.metadata.metric === 'ai_minutes'`
- *   2. `price.recurring.meter === STRIPE_METER_AI_MINUTES`
- *   3. `price.recurring.usage_type === 'metered'`
+ * still gets picked up as the AI-overage source if nothing else matches:
+ *   1. `price.metadata.metric === 'ai_minutes'` / `'sms_sent'`
+ *   2. `price.recurring.meter === STRIPE_METER_AI_MINUTES` / `STRIPE_METER_SMS_SENT`
+ *   3. `price.recurring.usage_type === 'metered'` (AI fallback only — we do
+ *      NOT default a generic metered line to SMS to avoid double-counting
+ *      it as both AI and SMS).
  */
 function classifyPrice(price: PriceLike | null | undefined): {
   isMetered: boolean;
   isAiMinutes: boolean;
+  isSms: boolean;
   isLicensedRecurring: boolean;
 } {
   if (!price) {
-    return { isMetered: false, isAiMinutes: false, isLicensedRecurring: false };
+    return { isMetered: false, isAiMinutes: false, isSms: false, isLicensedRecurring: false };
   }
   const usageType = price.recurring?.usage_type ?? null;
   const isMetered = usageType === 'metered';
   const isLicensedRecurring = !!price.recurring && (usageType === 'licensed' || usageType == null);
 
-  const aiMeterEnv = process.env.STRIPE_METER_AI_MINUTES ?? null;
-  const meterMatches = aiMeterEnv && price.recurring?.meter === aiMeterEnv;
-  const metricMetaMatches = (price.metadata?.metric ?? '').toLowerCase() === 'ai_minutes';
-  const isAiMinutes = isMetered && (metricMetaMatches || !!meterMatches);
+  const metricMeta = (price.metadata?.metric ?? '').toLowerCase();
 
-  return { isMetered, isAiMinutes, isLicensedRecurring };
+  const aiMeterEnv = process.env.STRIPE_METER_AI_MINUTES ?? null;
+  const aiMeterMatches = aiMeterEnv && price.recurring?.meter === aiMeterEnv;
+  const aiMetaMatches = metricMeta === 'ai_minutes';
+  const isAiMinutes = isMetered && (aiMetaMatches || !!aiMeterMatches);
+
+  const smsMeterEnv = process.env.STRIPE_METER_SMS_SENT ?? null;
+  const smsMeterMatches = smsMeterEnv && price.recurring?.meter === smsMeterEnv;
+  const smsMetaMatches = metricMeta === 'sms_sent' || metricMeta === 'sms';
+  const isSms = isMetered && (smsMetaMatches || !!smsMeterMatches);
+
+  return { isMetered, isAiMinutes, isSms, isLicensedRecurring };
 }
 
 function unitAmountToDollarsPerMinute(price: PriceLike): number | null {
@@ -325,21 +369,27 @@ export async function getTenantEffectiveRate(
 
   let basePrice: PriceLike | null = null;
   let aiMinutesPrice: PriceLike | null = null;
-  let firstMeteredPrice: PriceLike | null = null;
+  let smsPrice: PriceLike | null = null;
+  // Generic metered fallback for the AI-overage rate. We deliberately
+  // SKIP SMS-tagged metered lines here so a tenant with an SMS price
+  // configured but no AI price configured doesn't get the SMS rate
+  // misquoted as their AI overage.
+  let firstMeteredAiCandidate: PriceLike | null = null;
 
   for (const item of items) {
     const price = item.price;
     if (!price) continue;
-    const { isMetered, isAiMinutes, isLicensedRecurring } = classifyPrice(price);
+    const { isMetered, isAiMinutes, isSms, isLicensedRecurring } = classifyPrice(price);
     if (isAiMinutes && !aiMinutesPrice) aiMinutesPrice = price;
-    if (isMetered && !firstMeteredPrice) firstMeteredPrice = price;
+    if (isSms && !smsPrice) smsPrice = price;
+    if (isMetered && !isSms && !firstMeteredAiCandidate) firstMeteredAiCandidate = price;
     if (isLicensedRecurring && !basePrice) basePrice = price;
   }
 
   // Prefer the explicitly-tagged AI minutes meter, fall back to whatever
   // metered line is on the subscription so a custom-priced grandfathered
   // tenant still wins over the catalog defaults.
-  const overagePrice = aiMinutesPrice ?? firstMeteredPrice;
+  const overagePrice = aiMinutesPrice ?? firstMeteredAiCandidate;
 
   let basePriceCents = fallback.basePriceCents;
   let basePriceSource: 'stripe' | 'catalog' = 'catalog';
@@ -367,12 +417,28 @@ export async function getTenantEffectiveRate(
     }
   }
 
+  let smsRatePerMessage = fallback.smsRatePerMessage ?? defaultSmsRatePerMessageDollars();
+  let smsPriceSource: 'stripe' | 'catalog' = 'catalog';
+  let smsPriceId: string | null = null;
+  if (smsPrice) {
+    const dollarsPerMessage = stripeUnitAmountToDollars(smsPrice);
+    if (dollarsPerMessage != null) {
+      smsRatePerMessage = dollarsPerMessage;
+      smsPriceSource = 'stripe';
+      smsPriceId = smsPrice.id;
+    }
+  }
+
   const currency = (
     basePrice?.currency
     ?? overagePrice?.currency
+    ?? smsPrice?.currency
     ?? fallback.currency
   ).toLowerCase();
 
+  // `source` intentionally only reflects the base + AI-overage axes so the
+  // BillingEstimator UI keeps its existing meaning. SMS provenance is
+  // surfaced via `smsPriceSource` instead.
   let source: EffectiveRateSource;
   if (basePriceSource === 'stripe' && overagePriceSource === 'stripe') {
     source = 'stripe';
@@ -439,12 +505,15 @@ export async function getTenantEffectiveRate(
     plan: inferredPlan,
     basePriceCents,
     overageRatePerMinute,
+    smsRatePerMessage,
     currency,
     source,
     basePriceSource,
     overagePriceSource,
+    smsPriceSource,
     basePriceId,
     overagePriceId,
+    smsPriceId,
     monthlyBasePriceCents,
     monthlyBasePriceSource,
     monthlyBasePriceId,
