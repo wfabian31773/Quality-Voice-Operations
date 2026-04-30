@@ -1,12 +1,57 @@
+import type Stripe from 'stripe';
 import { getStripeClient } from './client';
 import { getPlanPriceId } from './plans';
 import type { PlanTier } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import type { TenantId } from '../../core/types';
-import { loadActiveCustomerDiscount } from './effectiveRate';
+import { loadActiveCustomerDiscount, type UpgradeDiscount } from './effectiveRate';
 
 const logger = createLogger('STRIPE_CHECKOUT');
+
+/**
+ * Stripe limits `business_profile.headline` (the message shown at the top
+ * of the hosted billing portal page) to 60 characters. We mirror that cap
+ * here so the headline builder can degrade gracefully — dropping the
+ * promo-code tail before it would overflow — instead of having Stripe
+ * reject the configuration create call.
+ */
+const PORTAL_HEADLINE_MAX_CHARS = 60;
+
+/**
+ * Process-local cache of `billing_portal.configurations` ids keyed by
+ * `<defaultConfigId>::<headline>`. Lets us reuse the same Stripe-side
+ * configuration for repeated portal opens with the same active coupon
+ * (e.g. a tenant on `PROMO25` who returns to manage their plan a second
+ * time) instead of spawning a fresh configuration every session — Stripe
+ * configurations are persistent objects, and creating thousands of them
+ * for one coupon would clutter the dashboard.
+ *
+ * Including the *default configuration id* in the key invalidates the
+ * cache automatically when an admin swaps the default portal
+ * configuration in the Stripe dashboard (for example, to tighten which
+ * customer fields can be edited). Without that prefix, a long-running
+ * process would keep handing tenants a stale clone of the previous
+ * default's feature toggles until the next restart.
+ *
+ * The cache deliberately resets on process restart; the worst case is
+ * one extra create call per (process, key) pair.
+ */
+const portalConfigByHeadline = new Map<string, string>();
+
+/**
+ * In-flight create/lookup promises keyed the same way as
+ * `portalConfigByHeadline`. If two portal-open requests with the same
+ * coupon land in the same process before the first finishes its Stripe
+ * configuration create, the second one awaits the first instead of
+ * creating a duplicate Stripe configuration. Entries are cleared once
+ * settled.
+ */
+const portalConfigInFlight = new Map<string, Promise<string | null>>();
+
+function portalCacheKey(defaultConfigId: string, headline: string): string {
+  return `${defaultConfigId}::${headline}`;
+}
 
 export interface CheckoutRecommendationAttribution {
   currentTier: PlanTier;
@@ -138,6 +183,221 @@ export async function createCheckoutSession(params: {
   }
 }
 
+/**
+ * Build the customer-facing headline shown at the top of the Stripe
+ * hosted billing portal when the tenant is on a discounted subscription.
+ * Mirrors the wording the in-app subscription card uses
+ * (`Active discount: 25% off — PROMO25`) so a tenant who clicks "Manage
+ * subscription" lands on a portal page that visibly confirms the same
+ * coupon they see in the app and on every receipt PDF — the gap this
+ * helper closes is the customer-portal surface, the only one that
+ * previously had no badge at all.
+ *
+ * Returns `null` when the discount carries no usable percent / amount-off
+ * (defensive — `loadActiveCustomerDiscount` already drops these). The
+ * result is capped at Stripe's 60-character `business_profile.headline`
+ * limit; when the combined "Active discount: <amount> — <code>" form
+ * would overflow, the promo-code tail is dropped first so the customer
+ * still sees the dollar/percent figure rather than a truncated mid-word.
+ */
+export function buildPortalDiscountHeadline(
+  discount: UpgradeDiscount | null | undefined,
+): string | null {
+  if (!discount) return null;
+
+  let offPart: string | null = null;
+  if (discount.percentOff != null && Number.isFinite(discount.percentOff)) {
+    const pct = Number.isInteger(discount.percentOff)
+      ? discount.percentOff
+      : Number(discount.percentOff.toFixed(1));
+    offPart = `${pct}% off`;
+  } else if (
+    discount.amountOffCents != null
+    && Number.isFinite(discount.amountOffCents)
+  ) {
+    // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars formatting for the human-readable headline shown on the Stripe billing portal page; mirrors the receipt PDF footer wording.
+    const dollars = (discount.amountOffCents / 100).toFixed(2);
+    const cur = (discount.currency ?? 'usd').toUpperCase();
+    offPart = `${cur} ${dollars} off`;
+  }
+  if (!offPart) return null;
+
+  const labelTail = (discount.promotionCode ?? discount.name ?? '').trim();
+  const withTail = labelTail
+    ? `Active discount: ${offPart} — ${labelTail}`
+    : `Active discount: ${offPart}`;
+  if (withTail.length <= PORTAL_HEADLINE_MAX_CHARS) return withTail;
+
+  // Drop the promo-code/name tail first so the customer still sees the
+  // numeric amount-off rather than a mid-word slice.
+  const withoutTail = `Active discount: ${offPart}`;
+  if (withoutTail.length <= PORTAL_HEADLINE_MAX_CHARS) return withoutTail;
+  return withoutTail.slice(0, PORTAL_HEADLINE_MAX_CHARS);
+}
+
+interface PortalConfigurationFeaturesLike {
+  customer_update?: Stripe.BillingPortal.Configuration.Features.CustomerUpdate | null;
+  invoice_history?: Stripe.BillingPortal.Configuration.Features.InvoiceHistory | null;
+  payment_method_update?: Stripe.BillingPortal.Configuration.Features.PaymentMethodUpdate | null;
+  subscription_cancel?: Stripe.BillingPortal.Configuration.Features.SubscriptionCancel | null;
+  subscription_update?: Stripe.BillingPortal.Configuration.Features.SubscriptionUpdate | null;
+}
+
+/**
+ * Translate a Stripe-returned `Configuration.Features` object into the
+ * shape `configurations.create` expects. The two are nearly identical,
+ * but the response carries a handful of nullable optional slots
+ * (`subscription_update.billing_cycle_anchor`, etc.) that the create
+ * params type rejects, so we round-trip through JSON to strip any `null`
+ * values to `undefined`. The cast back to the create-params type is safe
+ * because we only ever pass back well-formed Stripe-sourced data.
+ */
+function clonePortalFeatures(
+  features: Stripe.BillingPortal.Configuration.Features,
+): Stripe.BillingPortal.ConfigurationCreateParams.Features {
+  const src = features as PortalConfigurationFeaturesLike;
+  const out: Record<string, unknown> = {};
+  if (src.customer_update) out.customer_update = stripNulls(src.customer_update);
+  if (src.invoice_history) out.invoice_history = stripNulls(src.invoice_history);
+  if (src.payment_method_update) out.payment_method_update = stripNulls(src.payment_method_update);
+  if (src.subscription_cancel) out.subscription_cancel = stripNulls(src.subscription_cancel);
+  if (src.subscription_update) out.subscription_update = stripNulls(src.subscription_update);
+  return out as Stripe.BillingPortal.ConfigurationCreateParams.Features;
+}
+
+/**
+ * Recursively replace `null` values with `undefined` (and drop the keys
+ * entirely from the resulting object). Used when forwarding a Stripe
+ * response object back into a create-params type — the response type
+ * marks several fields as `T | null`, while the create-params type
+ * marks the same fields as `T | undefined`, which TypeScript treats as
+ * incompatible.
+ */
+function stripNulls<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => stripNulls(v)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === null) continue;
+      out[k] = stripNulls(v);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
+
+/**
+ * Resolve a Stripe portal configuration id to use for the customer's
+ * billing-portal session whose `business_profile.headline` carries the
+ * discount badge. Lazily creates a configuration that clones the
+ * tenant's account-level default (so feature toggles like "allow plan
+ * change" / "show invoice history" stay consistent with the dashboard
+ * settings) but overrides the headline.
+ *
+ * Returns `null` when:
+ *   - the discount yields no usable headline,
+ *   - the account has no default portal configuration to clone (legacy
+ *     accounts that drive the portal entirely from implicit defaults),
+ *   - or any Stripe call along the way throws.
+ *
+ * In every null case the caller falls back to creating the session
+ * without a configuration, so the portal still opens — the badge just
+ * isn't surfaced. Discount visibility is a polish feature; we never let
+ * it break the "Manage subscription" button.
+ */
+async function resolveDiscountedPortalConfigId(
+  stripe: Stripe,
+  discount: UpgradeDiscount | null,
+  ctx: { tenantId: TenantId },
+): Promise<string | null> {
+  const headline = buildPortalDiscountHeadline(discount);
+  if (!headline) return null;
+
+  let defaultConfig: Stripe.BillingPortal.Configuration | null = null;
+  try {
+    const list = await stripe.billingPortal.configurations.list({
+      is_default: true,
+      limit: 1,
+    });
+    defaultConfig = list.data[0] ?? null;
+  } catch (err) {
+    logger.warn('Failed to look up default portal configuration; opening portal without discount headline', {
+      tenantId: ctx.tenantId,
+      error: String(err),
+    });
+    return null;
+  }
+  if (!defaultConfig) {
+    logger.info('No default portal configuration to clone; opening portal without discount headline', {
+      tenantId: ctx.tenantId,
+    });
+    return null;
+  }
+
+  // Cache lookup happens *after* we know the current default config id so
+  // a dashboard-level switch of the default invalidates entries that
+  // were cloned from the old default.
+  const cacheKey = portalCacheKey(defaultConfig.id, headline);
+  const cached = portalConfigByHeadline.get(cacheKey);
+  if (cached) return cached;
+
+  // Coalesce concurrent first-opens for the same coupon: if another
+  // request is already mid-create, await it instead of issuing a second
+  // Stripe configuration create that would just produce a duplicate.
+  const inFlight = portalConfigInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const createPromise = (async () => {
+    try {
+      const business = defaultConfig.business_profile;
+      const created = await stripe.billingPortal.configurations.create({
+        features: clonePortalFeatures(defaultConfig.features),
+        business_profile: {
+          headline,
+          ...(business?.privacy_policy_url
+            ? { privacy_policy_url: business.privacy_policy_url }
+            : {}),
+          ...(business?.terms_of_service_url
+            ? { terms_of_service_url: business.terms_of_service_url }
+            : {}),
+        },
+        metadata: {
+          purpose: 'discount_headline',
+          // Truncate to Stripe's 500-char metadata-value cap. Headline is
+          // already <= 60 chars so this is just defensive.
+          headline: headline.slice(0, 500),
+          defaultConfigId: defaultConfig.id,
+        },
+      });
+      portalConfigByHeadline.set(cacheKey, created.id);
+      return created.id;
+    } catch (err) {
+      logger.warn('Failed to create discounted portal configuration; opening portal without discount headline', {
+        tenantId: ctx.tenantId,
+        error: String(err),
+      });
+      return null;
+    } finally {
+      portalConfigInFlight.delete(cacheKey);
+    }
+  })();
+  portalConfigInFlight.set(cacheKey, createPromise);
+  return createPromise;
+}
+
+/**
+ * Test-only escape hatch so the in-process configuration cache doesn't
+ * leak between vitest cases that all share the same module instance.
+ * Not part of the public API; the export name is deliberately verbose
+ * to discourage runtime callers.
+ */
+export function __resetPortalConfigCacheForTests(): void {
+  portalConfigByHeadline.clear();
+  portalConfigInFlight.clear();
+}
+
 export async function createPortalSession(params: {
   tenantId: TenantId;
   returnUrl: string;
@@ -162,9 +422,24 @@ export async function createPortalSession(params: {
       throw new Error('No Stripe customer found for this tenant');
     }
 
+    // Resolve the active customer-level discount and, if present, the
+    // portal configuration that surfaces it as a headline. Both calls
+    // degrade silently (loadActiveCustomerDiscount already swallows its
+    // own errors and returns null) — a tenant must always be able to
+    // open their billing portal even when the discount lookup or
+    // configuration creation fails.
+    const discount = await loadActiveCustomerDiscount(stripe, customerId, {
+      tenantId,
+      surface: 'portal_session',
+    });
+    const configurationId = await resolveDiscountedPortalConfigId(stripe, discount, {
+      tenantId,
+    });
+
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: returnUrl,
+      ...(configurationId ? { configuration: configurationId } : {}),
     });
 
     return { url: session.url };
