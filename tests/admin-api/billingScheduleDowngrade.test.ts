@@ -83,6 +83,7 @@ vi.mock('../../platform/billing/stripe/webhook', () => ({
 vi.mock('../../platform/billing/stripe/effectiveRate', () => ({
   getTenantEffectiveRate: vi.fn(),
   getTenantUpgradePreview: vi.fn(),
+  getTenantDowngradePreview: vi.fn(),
   isPlanTier: (s: unknown): s is 'starter' | 'pro' | 'enterprise' =>
     s === 'starter' || s === 'pro' || s === 'enterprise',
   nextUpgradeTier: vi.fn(),

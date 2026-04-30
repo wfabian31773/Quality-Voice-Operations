@@ -1072,7 +1072,11 @@
       "delete_booking": "Supprimer cette réservation ?",
       "delete_verified_caller": "Supprimer l'identifiant d'appelant vérifié {{phone}} ?",
       "downgrade_plan_with_date": "Rétrograder de {{current}} à {{target}} ? Le changement prendra effet à la fin de votre période de facturation actuelle ({{date}}). Vous conserverez l'accès et les limites de {{current}} jusque-là.",
-      "downgrade_plan": "Rétrograder de {{current}} à {{target}} ? Le changement prendra effet à la fin de votre période de facturation actuelle. Vous conserverez l'accès et les limites de {{current}} jusque-là."
+      "downgrade_plan": "Rétrograder de {{current}} à {{target}} ? Le changement prendra effet à la fin de votre période de facturation actuelle. Vous conserverez l'accès et les limites de {{current}} jusque-là.",
+      "downgrade_next_invoice_with_date": "Votre prochaine facture sera de {{amount}} le {{date}}.",
+      "downgrade_next_invoice": "Votre prochaine facture sera de {{amount}}.",
+      "downgrade_credit_with_date": "Vous recevrez un crédit de {{amount}} le {{date}} pour la partie non utilisée de votre période actuelle.",
+      "downgrade_credit": "Vous recevrez un crédit de {{amount}} pour la partie non utilisée de votre période actuelle."
     }
   },
   "scheduling_drift_banner": {

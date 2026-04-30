@@ -1140,3 +1140,324 @@ export async function getTenantUpgradePreview(
     discount,
   };
 }
+
+/**
+ * Tenant-specific downgrade quote for a single target tier. Returned by
+ * `getTenantDowngradePreview` and consumed by `GET /billing/downgrade-preview`.
+ *
+ * Mirrors what `scheduleDowngrade` (in `planChange.ts`) actually does
+ * to a tenant's Stripe subscription: a deferred phase swap that
+ * happens at `current_period_end` with `proration_behavior: 'none'`.
+ * Because the swap is at the period boundary there is no time-overlap
+ * to credit, so `prorationCreditCents` is always 0 today. The preview
+ * is still useful: it surfaces the actual `nextInvoiceTotalCents`
+ * Stripe will produce on the new tier (which differs from the public
+ * catalog when the tenant has a customer-level coupon attached).
+ */
+export interface TenantDowngradePreview {
+  plan: PlanTier;
+  interval: 'monthly' | 'annual';
+  /**
+   * Absolute value (in cents, >= 0) of the prorated credit Stripe will
+   * issue for the unused portion of the current paid period. Sum of
+   * the `proration === true` negative lines on the Stripe preview
+   * invoice. With the deferred-swap scheduler this is 0 in practice;
+   * if the scheduler is ever switched to immediate proration the
+   * preview will start surfacing a real value automatically.
+   */
+  prorationCreditCents: number;
+  /**
+   * Total (in cents) of the next invoice Stripe will produce after the
+   * downgrade takes effect. Falls back to the catalog price for the
+   * target tier (in the requested interval) when the Stripe preview
+   * isn't available.
+   */
+  nextInvoiceTotalCents: number;
+  /**
+   * ISO timestamp (UTC) of when the next invoice is expected — Stripe's
+   * `next_payment_attempt` when present, otherwise `period_end`.
+   */
+  nextInvoiceAt: string | null;
+  /**
+   * Effective monthly base price (in cents) on the new tier, after any
+   * customer-level discount is applied.
+   */
+  basePriceCents: number;
+  currency: string;
+  source: EffectiveRateSource;
+  basePriceSource: 'stripe' | 'catalog';
+  basePriceId: string | null;
+  discount: UpgradeDiscount | null;
+}
+
+function catalogDowngradeFor(
+  plan: PlanTier,
+  interval: 'monthly' | 'annual',
+): TenantDowngradePreview {
+  const entry = PLAN_CATALOG[plan];
+  // For annual cadence the "next invoice" is the published annual list
+  // price; we apply the marketing-side ANNUAL_DISCOUNT to the per-month
+  // figure and multiply by 12 so the catalog fallback matches what the
+  // public pricing page advertises.
+  const monthlyCents = entry.monthlyPriceCents;
+  const nextInvoiceCents = interval === 'annual'
+    ? catalogAnnualEquivalentCents(monthlyCents) * 12
+    : monthlyCents;
+  return {
+    plan,
+    interval,
+    prorationCreditCents: 0,
+    nextInvoiceTotalCents: nextInvoiceCents,
+    nextInvoiceAt: null,
+    basePriceCents: monthlyCents,
+    currency: 'usd',
+    source: 'catalog',
+    basePriceSource: 'catalog',
+    basePriceId: null,
+    discount: null,
+  };
+}
+
+interface PreviewLineItemLike {
+  amount?: number | null;
+  proration?: boolean | null;
+}
+
+interface PreviewInvoiceLike {
+  total?: number | null;
+  amount_due?: number | null;
+  currency?: string | null;
+  next_payment_attempt?: number | null;
+  period_end?: number | null;
+  lines?: { data?: PreviewLineItemLike[] } | null;
+}
+
+interface SubscriptionItemPriceLike {
+  price?: { id?: string | null; recurring?: { usage_type?: string | null } | null } | null;
+  id?: string | null;
+}
+
+/**
+ * Quote what a tenant would pay on their next invoice if they
+ * downgraded to `targetPlan` on the requested billing `interval`.
+ *
+ * Calls `stripe.invoices.createPreview` with `proration_behavior: 'none'`
+ * so the preview reflects what `scheduleDowngrade` actually does
+ * (swap to the lower price at `current_period_end`, no mid-period
+ * proration). Any active customer-level coupon is automatically
+ * applied by Stripe to the previewed next invoice. Never throws —
+ * every Stripe error degrades to a catalog fallback so the downgrade
+ * card always renders.
+ */
+export async function getTenantDowngradePreview(
+  tenantId: string,
+  targetPlan: PlanTier,
+  targetInterval: 'monthly' | 'annual' = 'monthly',
+): Promise<TenantDowngradePreview> {
+  const fallback = catalogDowngradeFor(targetPlan, targetInterval);
+
+  const subRow = await loadSubscriptionRow(tenantId);
+  const customerId = subRow?.stripe_customer_id ?? null;
+  const subscriptionId = subRow?.stripe_subscription_id ?? null;
+
+  let stripe: Stripe;
+  try {
+    stripe = getStripeClient();
+  } catch (err) {
+    logger.info('Stripe client unavailable — using catalog defaults for downgrade preview', {
+      tenantId,
+      targetPlan,
+      targetInterval,
+      error: String(err),
+    });
+    return fallback;
+  }
+
+  // Resolve the published price id for the target (tier + interval).
+  const priceEnvKey = `STRIPE_PRICE_${targetPlan.toUpperCase()}_${targetInterval.toUpperCase()}`;
+  const publishedPriceId = process.env[priceEnvKey] ?? null;
+
+  let basePriceCents = fallback.basePriceCents;
+  let basePriceSource: 'stripe' | 'catalog' = 'catalog';
+  let basePriceId: string | null = null;
+  let currency: string = fallback.currency;
+
+  if (publishedPriceId) {
+    try {
+      const stripePrice = (await stripe.prices.retrieve(publishedPriceId)) as unknown as PriceLike;
+      const raw = pickBasePriceCents(stripePrice);
+      if (raw != null) {
+        basePriceCents = normalizeBaseToMonthly(stripePrice, raw);
+        basePriceSource = 'stripe';
+        basePriceId = stripePrice.id ?? publishedPriceId;
+        if (stripePrice.currency) currency = stripePrice.currency.toLowerCase();
+      }
+    } catch (err) {
+      logger.warn('Failed to retrieve downgrade target price from Stripe', {
+        tenantId,
+        targetPlan,
+        targetInterval,
+        priceId: publishedPriceId,
+        error: String(err),
+      });
+    }
+  }
+
+  // Resolve the customer-level discount so we can both surface it on
+  // the response AND let Stripe honor it on the preview (the preview
+  // inherits discounts attached to the subscription/customer when we
+  // don't pass an explicit `discounts` list).
+  let discount: UpgradeDiscount | null = null;
+  if (customerId) {
+    try {
+      const customer = (await stripe.customers.retrieve(customerId, {
+        expand: ['discount.promotion_code'],
+      })) as unknown as CustomerLike;
+      if (customer && customer.deleted !== true) {
+        discount = normalizeDiscount(customer.discount);
+        if (customer.currency && currency === fallback.currency) {
+          currency = customer.currency.toLowerCase();
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to retrieve customer for downgrade preview discount', {
+        tenantId,
+        targetPlan,
+        targetInterval,
+        customerId,
+        error: String(err),
+      });
+    }
+  }
+
+  // We need both a published target price id AND an active subscription
+  // to ask Stripe for a real preview. If either is missing, return the
+  // catalog-based numbers with the discount applied locally.
+  const discountedBase = applyDiscountToBaseCents(basePriceCents, discount);
+  if (!publishedPriceId || !subscriptionId) {
+    return {
+      ...fallback,
+      basePriceCents: discountedBase,
+      basePriceSource,
+      basePriceId,
+      currency,
+      discount,
+      source: discount ? 'mixed' : basePriceSource === 'stripe' ? 'stripe' : 'catalog',
+    };
+  }
+
+  // Retrieve the current subscription so we know which licensed item
+  // id to swap in the preview.
+  let subscription: { items?: { data?: SubscriptionItemPriceLike[] } } | null = null;
+  try {
+    subscription = (await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ['items.data.price'],
+    })) as unknown as { items?: { data?: SubscriptionItemPriceLike[] } };
+  } catch (err) {
+    logger.warn('Failed to retrieve subscription for downgrade preview', {
+      tenantId,
+      subscriptionId,
+      error: String(err),
+    });
+  }
+
+  const items = subscription?.items?.data ?? [];
+  // Replace the licensed recurring item; metered overage items stay
+  // put so we don't disturb the AI-minutes meter when previewing a
+  // base-plan swap.
+  const licensedItem = items.find((it) => {
+    const ut = it.price?.recurring?.usage_type ?? null;
+    return ut === 'licensed' || ut == null;
+  }) ?? items[0] ?? null;
+
+  if (!licensedItem?.id) {
+    return {
+      ...fallback,
+      basePriceCents: discountedBase,
+      basePriceSource,
+      basePriceId,
+      currency,
+      discount,
+      source: basePriceSource === 'stripe' || discount ? 'mixed' : 'catalog',
+    };
+  }
+
+  // Ask Stripe for the preview invoice with the new price swapped in.
+  // `proration_behavior: 'none'` matches scheduleDowngrade — the swap
+  // happens at period_end with no mid-period proration, so the next
+  // invoice is just the new tier's recurring charge (with any
+  // customer-level coupon applied).
+  let preview: PreviewInvoiceLike | null = null;
+  try {
+    preview = (await stripe.invoices.createPreview({
+      subscription: subscriptionId,
+      subscription_details: {
+        items: [{ id: licensedItem.id, price: publishedPriceId }],
+        proration_behavior: 'none',
+      },
+      expand: ['lines.data'],
+    })) as unknown as PreviewInvoiceLike;
+  } catch (err) {
+    logger.warn('Failed to create Stripe invoice preview for downgrade', {
+      tenantId,
+      subscriptionId,
+      targetPlan,
+      targetInterval,
+      error: String(err),
+    });
+  }
+
+  if (!preview) {
+    return {
+      ...fallback,
+      basePriceCents: discountedBase,
+      basePriceSource,
+      basePriceId,
+      currency,
+      discount,
+      source: basePriceSource === 'stripe' || discount ? 'mixed' : 'catalog',
+    };
+  }
+
+  // Sum prorated credit lines only — `proration === true` AND amount<0.
+  // We deliberately ignore unrelated negative invoice items (manual
+  // credit notes, refunds for other line items) so the value we
+  // surface is strictly the downgrade-driven credit, not whatever
+  // negative balance the customer happens to have queued.
+  const lines = preview.lines?.data ?? [];
+  let prorationCreditCents = 0;
+  for (const line of lines) {
+    if (line.proration !== true) continue;
+    const amt = typeof line.amount === 'number' ? line.amount : 0;
+    if (amt < 0) prorationCreditCents += -amt;
+  }
+
+  const nextInvoiceTotalCents = typeof preview.total === 'number'
+    ? preview.total
+    : typeof preview.amount_due === 'number'
+      ? preview.amount_due
+      : fallback.nextInvoiceTotalCents;
+
+  const nextInvoiceAtUnix = preview.next_payment_attempt ?? preview.period_end ?? null;
+  const nextInvoiceAt = nextInvoiceAtUnix
+    ? new Date(nextInvoiceAtUnix * 1000).toISOString()
+    : null;
+
+  if (preview.currency) currency = preview.currency.toLowerCase();
+
+  const source: EffectiveRateSource = basePriceSource === 'stripe' ? 'stripe' : 'mixed';
+
+  return {
+    plan: targetPlan,
+    interval: targetInterval,
+    prorationCreditCents,
+    nextInvoiceTotalCents,
+    nextInvoiceAt,
+    basePriceCents: discountedBase,
+    currency,
+    source,
+    basePriceSource,
+    basePriceId,
+    discount,
+  };
+}

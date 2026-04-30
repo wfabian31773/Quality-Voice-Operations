@@ -4,6 +4,7 @@ import { constructStripeEvent, handleStripeEvent } from '../../../platform/billi
 import {
   getTenantEffectiveRate,
   getTenantUpgradePreview,
+  getTenantDowngradePreview,
   isPlanTier,
   loadActiveCustomerDiscount,
   nextUpgradeTier,
@@ -597,6 +598,80 @@ router.get('/billing/upgrade-preview', requireAuth, async (req, res) => {
       error: String(err),
     });
     return res.status(500).json({ error: 'Failed to resolve upgrade preview' });
+  }
+});
+
+/**
+ * `GET /billing/downgrade-preview?plan=…&interval=…`
+ *
+ * Preview the prorated credit + next-invoice total Stripe will produce
+ * when the tenant downgrades to the requested tier on the requested
+ * billing interval. Surfaces the dollar value of the unused portion of
+ * the current paid period (the "credit") so the Billing page downgrade
+ * card and the confirmation dialog can quote it instead of just
+ * promising "takes effect at next renewal".
+ *
+ * Always returns 200 — when the requested plan is invalid, isn't a
+ * strict downgrade from the tenant's current plan, or the tenant has no
+ * paid subscription, the response is `{ downgrade: null }` so the
+ * client can suppress the credit copy without special-casing 404s.
+ */
+router.get('/billing/downgrade-preview', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const requested = typeof req.query.plan === 'string' ? req.query.plan : null;
+  const requestedInterval = typeof req.query.interval === 'string' ? req.query.interval : 'monthly';
+
+  if (!requested || !isPlanTier(requested)) {
+    return res.status(400).json({
+      error: `Invalid plan: ${requested ?? '(missing)'}. Must be one of: starter, pro, enterprise`,
+    });
+  }
+  if (requestedInterval !== 'monthly' && requestedInterval !== 'annual') {
+    return res.status(400).json({
+      error: `Invalid interval: ${requestedInterval}. Must be one of: monthly, annual`,
+    });
+  }
+  const targetPlan: PlanTier = requested;
+  const targetInterval: 'monthly' | 'annual' = requestedInterval;
+
+  // Refuse to quote a downgrade that isn't actually a downgrade — the
+  // estimator card / confirmation copy would be nonsensical and Stripe's
+  // preview would surface a positive (charge) instead of a credit.
+  let currentPlan: PlanTier | null = null;
+  try {
+    const lookup = await loadTenantSubscription(tenantId);
+    if (!lookup.stripeSubscriptionId) {
+      // Free-tier tenant — there is no paid subscription to downgrade
+      // FROM. Surface a `null` quote so the UI suppresses the credit
+      // line; this mirrors the upgrade-preview "you're on the top
+      // plan" placeholder behavior.
+      return res.json({ downgrade: null });
+    }
+    currentPlan = lookup.currentPlan;
+  } catch (err) {
+    logger.error('Failed to resolve current plan for downgrade preview', {
+      tenantId,
+      targetPlan,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to resolve downgrade preview' });
+  }
+
+  if (!currentPlan || !isStrictDowngrade(currentPlan, targetPlan)) {
+    return res.json({ downgrade: null });
+  }
+
+  try {
+    const downgrade = await getTenantDowngradePreview(tenantId, targetPlan, targetInterval);
+    return res.json({ downgrade });
+  } catch (err) {
+    logger.error('Downgrade preview lookup failed', {
+      tenantId,
+      targetPlan,
+      targetInterval,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to resolve downgrade preview' });
   }
 });
 

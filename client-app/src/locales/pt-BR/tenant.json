@@ -1072,7 +1072,11 @@
       "delete_booking": "Excluir este agendamento?",
       "delete_verified_caller": "Excluir o ID do chamador verificado {{phone}}?",
       "downgrade_plan_with_date": "Fazer downgrade de {{current}} para {{target}}? A alteração entrará em vigor no fim do seu período de cobrança atual ({{date}}). Você manterá o acesso e os limites de {{current}} até lá.",
-      "downgrade_plan": "Fazer downgrade de {{current}} para {{target}}? A alteração entrará em vigor no fim do seu período de cobrança atual. Você manterá o acesso e os limites de {{current}} até lá."
+      "downgrade_plan": "Fazer downgrade de {{current}} para {{target}}? A alteração entrará em vigor no fim do seu período de cobrança atual. Você manterá o acesso e os limites de {{current}} até lá.",
+      "downgrade_next_invoice_with_date": "Sua próxima fatura será de {{amount}} em {{date}}.",
+      "downgrade_next_invoice": "Sua próxima fatura será de {{amount}}.",
+      "downgrade_credit_with_date": "Você receberá um crédito de {{amount}} em {{date}} pela parte não utilizada do seu período atual.",
+      "downgrade_credit": "Você receberá um crédito de {{amount}} pela parte não utilizada do seu período atual."
     }
   },
   "scheduling_drift_banner": {

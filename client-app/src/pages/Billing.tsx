@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
@@ -653,6 +653,34 @@ export default function Billing() {
   // server returns `{ upgrade: null }` when the tenant is already on the
   // top tier (Enterprise) — we leave the prop undefined in that case so
   // the component falls back to its existing top-tier placeholder.
+  // Downgrade preview shape returned by `GET /billing/downgrade-preview`.
+  // Used to quote the next-invoice total Stripe will produce on the
+  // new tier (which differs from catalog when the tenant has a
+  // customer-level coupon). `prorationCreditCents` is currently always
+  // 0 with the deferred-swap scheduler in `planChange.ts` and is
+  // surfaced only conditionally; future work to switch the scheduler
+  // to immediate proration will light up the credit copy automatically.
+  type DowngradePreviewResp = {
+    plan: string;
+    interval: 'monthly' | 'annual';
+    prorationCreditCents: number;
+    nextInvoiceTotalCents: number;
+    nextInvoiceAt: string | null;
+    basePriceCents: number;
+    currency: string;
+    source: 'stripe' | 'catalog' | 'mixed';
+    basePriceSource: 'stripe' | 'catalog';
+    basePriceId: string | null;
+    discount: {
+      couponId: string | null;
+      name: string | null;
+      percentOff: number | null;
+      amountOffCents: number | null;
+      currency: string | null;
+      promotionCode: string | null;
+    } | null;
+  };
+
   const { data: upgradePreviewData } = useQuery({
     queryKey: ['billing-upgrade-preview'],
     queryFn: () => api.get<{
@@ -734,8 +762,11 @@ export default function Billing() {
       });
       // Refresh the subscription view so any UI surfaces that key off
       // the latest record (e.g. Estimated Cost) recompute against the
-      // server's view of the schedule.
+      // server's view of the schedule. Also drop the cached downgrade
+      // previews — the credit + next-invoice numbers depend on the
+      // current paid period, which the schedule update just changed.
       queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-downgrade-preview'] });
     },
     onError: () => setUpgradeLoading(null),
   });
@@ -749,10 +780,14 @@ export default function Billing() {
     checkoutMutation.mutate({ plan, interval, recommendation });
   };
 
-  const handleDowngrade = (targetPlan: string, interval: string = 'monthly') => {
+  const handleDowngrade = (
+    targetPlan: string,
+    interval: string = 'monthly',
+    preview?: DowngradePreviewResp | null,
+  ) => {
     const currentLabel = PLAN_LABELS[plan] ?? plan;
     const targetLabel = PLAN_LABELS[targetPlan] ?? targetPlan;
-    const message = sub?.current_period_end
+    const baseMessage = sub?.current_period_end
       ? tenantT('common.confirms.downgrade_plan_with_date', {
           current: currentLabel,
           target: targetLabel,
@@ -762,7 +797,32 @@ export default function Billing() {
           current: currentLabel,
           target: targetLabel,
         });
-    const ok = window.confirm(message);
+    // Append the next-invoice quote (always meaningful when we have a
+    // preview) and the prorated-credit copy (only when Stripe quoted a
+    // non-zero credit — with the current deferred-swap apply path the
+    // credit is 0, but the gate keeps us honest if that changes).
+    const nextInvoiceCopy = preview && preview.nextInvoiceTotalCents != null
+      ? ' ' + (preview.nextInvoiceAt
+          ? tenantT('common.confirms.downgrade_next_invoice_with_date', {
+              amount: formatCentsHelper(preview.nextInvoiceTotalCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+              date: formatDate(preview.nextInvoiceAt),
+            })
+          : tenantT('common.confirms.downgrade_next_invoice', {
+              amount: formatCentsHelper(preview.nextInvoiceTotalCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+            }))
+      : '';
+    const creditDateIso = preview?.nextInvoiceAt ?? sub?.current_period_end ?? null;
+    const creditCopy = preview && preview.prorationCreditCents > 0
+      ? ' ' + (creditDateIso
+          ? tenantT('common.confirms.downgrade_credit_with_date', {
+              amount: formatCentsHelper(preview.prorationCreditCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+              date: formatDate(creditDateIso),
+            })
+          : tenantT('common.confirms.downgrade_credit', {
+              amount: formatCentsHelper(preview.prorationCreditCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+            }))
+      : '';
+    const ok = window.confirm(`${baseMessage}${nextInvoiceCopy}${creditCopy}`);
     if (!ok) return;
     setUpgradeLoading(targetPlan);
     downgradeMutation.mutate({ plan: targetPlan, interval });
@@ -773,6 +833,42 @@ export default function Billing() {
   const status = sub?.status ?? subData?.status ?? 'none';
   const usage = usageData?.usage ?? {};
   const budget = budgetData;
+
+  // Tiers strictly below the tenant's current plan, paired with the
+  // interval shown on the toggle. Empty when the tenant has no paid
+  // subscription so `useQueries` below stays a no-op.
+  const downgradeCandidates = useMemo<Array<{ tier: PlanTier; interval: BillingPeriod }>>(() => {
+    const TIER_ORDER: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2 };
+    const ALL: PlanTier[] = ['starter', 'pro', 'enterprise'];
+    const currentRank = TIER_ORDER[plan as PlanTier] ?? 0;
+    const canDowngrade = !!sub && status !== 'none';
+    if (!canDowngrade) return [];
+    return ALL
+      .filter((t) => (TIER_ORDER[t] ?? 0) < currentRank)
+      .map((tier) => ({ tier, interval: billingPeriod }));
+  }, [plan, sub, status, billingPeriod]);
+
+  // One query per (tier, interval) candidate. Cached 30m; explicitly
+  // invalidated on a successful schedule change below.
+  const downgradePreviewQueries = useQueries({
+    queries: downgradeCandidates.map(({ tier, interval }) => ({
+      queryKey: ['billing-downgrade-preview', tier, interval],
+      queryFn: () => api.get<{ downgrade: DowngradePreviewResp | null }>(
+        `/billing/downgrade-preview?plan=${encodeURIComponent(tier)}&interval=${encodeURIComponent(interval)}`,
+      ),
+      staleTime: 30 * 60 * 1000,
+    })),
+  });
+
+  const downgradePreviews = useMemo(() => {
+    const m = new Map<string, DowngradePreviewResp | null>();
+    downgradeCandidates.forEach((c, idx) => {
+      const data = downgradePreviewQueries[idx]?.data?.downgrade ?? null;
+      m.set(`${c.tier}|${c.interval}`, data);
+    });
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downgradeCandidates, downgradePreviewQueries]);
 
   const callsUsed = budget?.usage.callsUsed ?? (usage.calls_inbound ?? 0) + (usage.calls_outbound ?? 0);
   const callLimit = budget?.usage.callLimit ?? sub?.monthly_call_limit ?? 500;
@@ -1398,9 +1494,12 @@ export default function Billing() {
                             : kind === 'downgrade'
                               ? 'Downgrade'
                               : 'Upgrade';
+                      const downgradePreview = kind === 'downgrade'
+                        ? downgradePreviews.get(`${tier}|${cardInterval}`) ?? null
+                        : null;
                       const onClick = () =>
                         kind === 'downgrade'
-                          ? handleDowngrade(tier, cardInterval)
+                          ? handleDowngrade(tier, cardInterval, downgradePreview)
                           : handleUpgrade(tier, cardInterval);
                       const CtaIcon = kind === 'downgrade' ? ArrowDownRight : ArrowUpRight;
                       return (
@@ -1468,6 +1567,19 @@ export default function Billing() {
                                 className="text-[11px] text-text-muted mt-1"
                               >
                                 Takes effect at next renewal{sub?.current_period_end ? ` on ${formatDate(sub.current_period_end)}` : ''}
+                              </p>
+                            )}
+                            {kind === 'downgrade' && downgradePreview && downgradePreview.discount && (
+                              <p
+                                data-testid={`billing-downgrade-next-invoice-${tier}`}
+                                className="text-[11px] text-success font-medium mt-1"
+                              >
+                                Next invoice: {formatCentsHelper(downgradePreview.nextInvoiceTotalCents, {
+                                  currency: downgradePreview.currency || currency,
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 2,
+                                })}
+                                {downgradePreview.discount.name ? ` (${downgradePreview.discount.name})` : ''}
                               </p>
                             )}
                           </div>
