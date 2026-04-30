@@ -4,33 +4,41 @@
  * recommendation banner against a real Stripe test-mode account.
  *
  * The upgrade variant works end-to-end through `/api/billing/checkout`
- * because the route only refuses strict downgrades. Here the fixture
- * tenant is intentionally seeded ON enterprise (with a real Stripe
- * customer + subscription) so the banner flips to "Switch to Starter".
- * The downgrade guard would 400 with `DOWNGRADE_REQUIRES_SCHEDULE`
- * if the click went through, so the spec intercepts
- * `/api/billing/checkout` and instead drives the same
- * `createCheckoutSession` path the route would have invoked — which
- * stamps the banner-attributed `recommendation*` keys onto the Stripe
- * session metadata. From there the flow is identical to the upgrade
- * spec: assert metadata via the Stripe API, replay
- * `checkout.session.completed` through `handleStripeEvent`, and
- * verify the resulting `billing_recommendation_events` switch_completed
- * row carries the same attribution.
+ * because Stripe Checkout supports immediate plan changes for
+ * upgrades / interval-changes. Strict downgrades (e.g. Enterprise →
+ * Starter) cannot be expressed as a Checkout Session at all — Stripe
+ * Checkout has no notion of a deferred swap at period end — so the
+ * checkout route refuses them with `DOWNGRADE_REQUIRES_SCHEDULE` and
+ * the BillingEstimator routes those banner clicks to
+ * `/api/billing/schedule-downgrade` instead.
+ *
+ * This spec drives that downgrade route end-to-end:
+ *   1. Seed admin-org onto a real Stripe Enterprise subscription so
+ *      the banner flips to "Switch to Starter".
+ *   2. Click the banner CTA and let the real `/api/billing/schedule-
+ *      downgrade` request through (no interception). The route forwards
+ *      the recommendation snapshot into `scheduleDowngrade`, which
+ *      stamps it onto the Stripe Subscription Schedule's metadata and
+ *      writes a `switch_completed` row directly (no checkout webhook is
+ *      involved on the downgrade path — the schedule update IS the
+ *      "switch", and there's no checkout.session.completed event for
+ *      the funnel to wait on).
+ *   3. Verify the Stripe SubscriptionSchedule carries the recommendation*
+ *      keys, and that the matching `billing_recommendation_events` row
+ *      was written with the same attribution and a metadata.source of
+ *      `schedule_downgrade`.
  *
  * Skips when STRIPE_SECRET_KEY / STRIPE_PRICE_ENTERPRISE_MONTHLY /
  * STRIPE_PRICE_STARTER_MONTHLY are absent.
  * Run: npm run test:e2e:billing-recommendation-checkout-downgrade-stripe
  */
-import { chromium, type Browser, type Page, type Route } from 'playwright';
+import { chromium, type Browser, type Page, type Response } from 'playwright';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { mkdir } from 'fs/promises';
 import path from 'path';
 import Stripe from 'stripe';
-import { handleStripeEvent } from '../../platform/billing/stripe/webhook';
-import { createCheckoutSession } from '../../platform/billing/stripe/checkout';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5000';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -40,8 +48,8 @@ const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR ?? '.ci-logs/screenshots';
 const SPEC_NAME = 'billing-recommendation-checkout-downgrade-stripe';
 const STRIPE_API_VERSION = '2026-02-25.clover' as const;
 
-// Mirrors platform/db/index.ts:getPoolUrl — webhook handler reads
-// from the same env var the spec must seed against.
+// Mirrors platform/db/index.ts:getPoolUrl — server reads from the same
+// env var the spec must seed against.
 const DB_URL = (() => {
   const env = process.env.APP_ENV ?? 'development';
   return env === 'development'
@@ -91,10 +99,9 @@ interface SeedResult {
   subscriptionSnapshot: SubscriptionSnapshot | null;
   stripeCustomerId: string;
   stripeSubscriptionId: string;
-  stripeEventId: string;
 }
 
-interface CheckoutRequestBody {
+interface ScheduleDowngradeRequestBody {
   plan?: string;
   interval?: string;
   recommendation?: {
@@ -102,6 +109,16 @@ interface CheckoutRequestBody {
     recommendedTier?: string;
     monthlySavingsCents?: number;
     trailingWindowMonths?: number;
+    pitch?: string;
+  };
+}
+
+interface ScheduleDowngradeResponseBody {
+  scheduled?: {
+    scheduleId?: string;
+    scheduledFor?: string;
+    targetPlan?: string;
+    targetInterval?: string;
   };
 }
 
@@ -148,8 +165,8 @@ async function upsertFixtureUser(
  * subscriptions row at it. This is the critical setup that
  * differentiates this spec from the upgrade variant: the downgrade
  * route refuses unless the tenant is on a paid plan with a live Stripe
- * subscription, and `createCheckoutSession` reads the customer id back
- * out of the local row when stamping metadata.
+ * subscription, and `scheduleDowngrade` reads the subscription id back
+ * out of the local row when materializing the schedule.
  */
 async function snapshotAndSeedEnterprise(
   pool: pg.Pool,
@@ -235,7 +252,6 @@ async function snapshotAndSeedEnterprise(
 async function seed(pool: pg.Pool, stripe: Stripe): Promise<SeedResult> {
   const runId = randomUUID().slice(0, 8);
   const fixtureEmail = `billing-rec-down-stripe-e2e-${runId}@voiceaihub.dev`;
-  const stripeEventId = `evt_e2e_down_stripe_${runId}`;
   const passwordHash = await bcrypt.hash(FIXTURE_PASSWORD, 12);
 
   const fixtureUserId = await upsertFixtureUser(pool, {
@@ -288,7 +304,6 @@ async function seed(pool: pg.Pool, stripe: Stripe): Promise<SeedResult> {
     subscriptionSnapshot: snapshot,
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscriptionId,
-    stripeEventId,
   };
 }
 
@@ -317,10 +332,22 @@ async function cleanup(
   pool: pg.Pool,
   seedData: SeedResult,
   stripe: Stripe,
-  stripeSessionId: string | null,
+  stripeScheduleId: string | null,
 ): Promise<void> {
-  // Cancel the seeded Stripe subscription FIRST so a delete on the
-  // customer doesn't fail on an attached active subscription.
+  // Cancel (release) the schedule first so cancelling the subscription
+  // doesn't trip on the bound schedule.
+  if (stripe && stripeScheduleId) {
+    await stripe.subscriptionSchedules
+      .release(stripeScheduleId)
+      .catch((err) =>
+        console.warn(
+          `[e2e] cleanup: stripe schedule release failed (${stripeScheduleId}):`,
+          (err as Error).message,
+        ),
+      );
+  }
+  // Cancel the seeded Stripe subscription so a delete on the customer
+  // doesn't fail on an attached active subscription.
   if (stripe && seedData.stripeSubscriptionId) {
     await stripe.subscriptions
       .cancel(seedData.stripeSubscriptionId)
@@ -341,42 +368,23 @@ async function cleanup(
         ),
       );
   }
-  if (stripe && stripeSessionId) {
-    await stripe.checkout.sessions
-      .expire(stripeSessionId)
-      .catch((err) =>
-        console.warn(`[e2e] cleanup: stripe session expire failed (${stripeSessionId}):`, (err as Error).message),
-      );
-  }
-
-  if (stripeSessionId) {
-    await pool
-      .query(
-        `DELETE FROM website_conversion_events WHERE visitor_id = $1`,
-        [`stripe_${stripeSessionId}`],
-      )
-      .catch((err) => console.warn('[e2e] cleanup conversion event failed:', err));
-  }
 
   // Scope deletes to rows uniquely tied to this run so concurrent
-  // admin-org test data is unaffected.
+  // admin-org test data is unaffected. The downgrade arm writes the
+  // switch_completed row with metadata.stripeScheduleId (no checkout
+  // session is involved), so the cleanup match key changes accordingly.
   const cleanupClient = await pool.connect();
   try {
     await cleanupClient.query('BEGIN');
     await cleanupClient.query('SET LOCAL row_security = off');
-    if (stripeSessionId) {
+    if (stripeScheduleId) {
       await cleanupClient.query(
         `DELETE FROM billing_recommendation_events
           WHERE tenant_id = $1
-            AND metadata->>'stripeSessionId' = $2`,
-        [ADMIN_TENANT_ID, stripeSessionId],
+            AND metadata->>'stripeScheduleId' = $2`,
+        [ADMIN_TENANT_ID, stripeScheduleId],
       );
     }
-    await cleanupClient.query(
-      `DELETE FROM billing_events
-        WHERE tenant_id = $1 AND stripe_event_id = $2`,
-      [ADMIN_TENANT_ID, seedData.stripeEventId],
-    );
     await cleanupClient.query('COMMIT');
   } catch (err) {
     await cleanupClient.query('ROLLBACK').catch(() => {});
@@ -385,11 +393,12 @@ async function cleanup(
     cleanupClient.release();
   }
 
-  // Restore admin-org's pre-test subscriptions row. The replayed
-  // checkout webhook UPSERTs to 'starter' with the seeded customer/
-  // subscription ids, both of which are gone after the Stripe-side
-  // cleanup above — without restore the local row would be left
-  // pointing at a deleted Stripe customer.
+  // Restore admin-org's pre-test subscriptions row. The downgrade path
+  // doesn't itself overwrite the local subscriptions row (the row
+  // updates when Stripe later fires the schedule's price-change
+  // webhook), but the seed pinned admin-org to the disposable Stripe
+  // customer/subscription that just got cleaned up — without restore
+  // the row would be left pointing at deleted Stripe ids.
   if (seedData.subscriptionSnapshot) {
     const s = seedData.subscriptionSnapshot;
     await pool
@@ -458,12 +467,13 @@ async function cleanup(
 async function readSwitchCompletedRow(
   pool: pg.Pool,
   tenantId: string,
-  stripeSessionId: string,
+  stripeScheduleId: string,
 ): Promise<{
   current_tier: string;
   recommended_tier: string;
   monthly_savings_cents: number | null;
   trailing_window_months: number | null;
+  pitch: string | null;
   metadata: Record<string, unknown>;
 } | null> {
   const client = await pool.connect();
@@ -472,14 +482,15 @@ async function readSwitchCompletedRow(
     await client.query('SET LOCAL row_security = off');
     const { rows } = await client.query(
       `SELECT current_tier::text, recommended_tier::text,
-              monthly_savings_cents, trailing_window_months, metadata
+              monthly_savings_cents, trailing_window_months,
+              pitch::text AS pitch, metadata
          FROM billing_recommendation_events
         WHERE tenant_id = $1
           AND event_type = 'switch_completed'
-          AND metadata->>'stripeSessionId' = $2
+          AND metadata->>'stripeScheduleId' = $2
         ORDER BY created_at DESC
         LIMIT 1`,
-      [tenantId, stripeSessionId],
+      [tenantId, stripeScheduleId],
     );
     await client.query('COMMIT');
     return rows[0] ?? null;
@@ -535,7 +546,7 @@ async function run(): Promise<void> {
   let browser: Browser | undefined;
   let tenantPage: Page | undefined;
   let seedData: SeedResult | undefined;
-  let createdSessionId: string | null = null;
+  let createdScheduleId: string | null = null;
 
   try {
     seedData = await seed(pool, stripe);
@@ -548,94 +559,6 @@ async function run(): Promise<void> {
     const tenantCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     tenantPage = await tenantCtx.newPage();
 
-    // Block the post-checkout redirect to checkout.stripe.com so the
-    // browser stays on /billing while the spec inspects the session.
-    await tenantCtx.route('**://checkout.stripe.com/**', (route) => route.abort());
-
-    // The downgrade route would 400 with DOWNGRADE_REQUIRES_SCHEDULE
-    // because the tenant is on enterprise. Intercept the request,
-    // capture the banner-attributed payload, and synthesize the
-    // {sessionId, url} response by calling `createCheckoutSession`
-    // directly — the same function the route would have invoked, so
-    // the recommendation* metadata stamping logic is still exercised
-    // end-to-end against real Stripe.
-    type Captured = {
-      status: number;
-      body: { sessionId?: string; url?: string } | null;
-      requestBody: CheckoutRequestBody | null;
-      synthError?: string;
-    };
-    const captureState: { value: Captured | null } = { value: null };
-    let captureResolve: (() => void) | null = null;
-    const captured$ = new Promise<void>((resolve) => {
-      captureResolve = resolve;
-    });
-    await tenantPage.route('**/api/billing/checkout', async (route: Route) => {
-      let requestBody: CheckoutRequestBody | null = null;
-      try {
-        const postData = route.request().postData();
-        if (postData) requestBody = JSON.parse(postData) as CheckoutRequestBody;
-      } catch {
-        requestBody = null;
-      }
-
-      const rec = requestBody?.recommendation;
-      const planRaw = requestBody?.plan;
-      const intervalRaw = requestBody?.interval ?? 'monthly';
-      try {
-        if (
-          (planRaw === 'starter' || planRaw === 'pro' || planRaw === 'enterprise') &&
-          (intervalRaw === 'monthly' || intervalRaw === 'annual') &&
-          rec &&
-          (rec.currentTier === 'starter' || rec.currentTier === 'pro' || rec.currentTier === 'enterprise') &&
-          (rec.recommendedTier === 'starter' || rec.recommendedTier === 'pro' || rec.recommendedTier === 'enterprise')
-        ) {
-          const session = await createCheckoutSession({
-            tenantId: ADMIN_TENANT_ID,
-            plan: planRaw,
-            interval: intervalRaw,
-            successUrl: `${BASE_URL}/billing?checkout=success`,
-            cancelUrl: `${BASE_URL}/billing?checkout=cancelled`,
-            recommendation: {
-              currentTier: rec.currentTier,
-              recommendedTier: rec.recommendedTier,
-              monthlySavingsCents: Number(rec.monthlySavingsCents) || 0,
-              ...(rec.trailingWindowMonths !== undefined
-                ? { trailingWindowMonths: Number(rec.trailingWindowMonths) }
-                : {}),
-              pitch: 'tier-switch',
-            },
-          });
-          const body = { sessionId: session.sessionId, url: session.url };
-          captureState.value = { status: 200, body, requestBody };
-          captureResolve?.();
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(body),
-          });
-        } else {
-          captureState.value = {
-            status: 0,
-            body: null,
-            requestBody,
-            synthError: `Refusing to synthesize checkout — invalid plan/recommendation in body: ${JSON.stringify(requestBody)}`,
-          };
-          captureResolve?.();
-          await route.abort();
-        }
-      } catch (err) {
-        captureState.value = {
-          status: 0,
-          body: null,
-          requestBody,
-          synthError: `createCheckoutSession threw: ${(err as Error).message}`,
-        };
-        captureResolve?.();
-        await route.abort();
-      }
-    });
-
     await login(tenantPage, seedData.fixtureEmail, FIXTURE_PASSWORD);
     await tenantPage.goto(`${BASE_URL}/billing`, { waitUntil: 'networkidle' });
     await tenantPage.waitForSelector(
@@ -644,27 +567,65 @@ async function run(): Promise<void> {
       { timeout: 20_000 },
     );
 
+    // Drive the real route end-to-end: click the banner CTA and wait
+    // for the matching /api/billing/schedule-downgrade response. No
+    // interception — the route fix under test is what makes this
+    // request go to schedule-downgrade in the first place (previously
+    // the BillingEstimator always POSTed to /api/billing/checkout,
+    // which would 400 with DOWNGRADE_REQUIRES_SCHEDULE).
+    const responsePromise: Promise<Response> = tenantPage.waitForResponse(
+      (resp) => /\/api\/billing\/schedule-downgrade$/.test(resp.url()) && resp.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
+
+    // The banner-attributed CTA must NOT trigger window.confirm — the
+    // banner click itself is the consent. Fail the test if a confirm
+    // dialog ever pops, since that would mean the BillingEstimator
+    // path is falling through to the legacy "scheduled downgrade card"
+    // confirm flow instead of the banner-attributed path.
+    tenantPage.on('dialog', async (dialog) => {
+      const message = `unexpected ${dialog.type()} dialog from banner CTA: ${dialog.message()}`;
+      console.error(`[e2e] ${message}`);
+      await dialog.dismiss().catch(() => undefined);
+      throw new Error(message);
+    });
+
     await tenantPage.click('[data-testid="billing-estimator-recommendation-cta"]');
-    await Promise.race([
-      captured$,
-      new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('Timed out waiting for /api/billing/checkout interception')), 30_000),
-      ),
-    ]);
-    const capture = captureState.value;
-    assert(capture, 'expected /api/billing/checkout capture to populate');
-    if (capture.synthError) {
-      throw new Error(capture.synthError);
+
+    const response = await responsePromise;
+    assert(response.status() === 200, `schedule-downgrade should return 200, got ${response.status()}`);
+
+    let requestBody: ScheduleDowngradeRequestBody | null = null;
+    try {
+      const postData = response.request().postData();
+      if (postData) requestBody = JSON.parse(postData) as ScheduleDowngradeRequestBody;
+    } catch {
+      requestBody = null;
     }
-    assert(capture.status === 200, `synthesized checkout response should be 200, got ${capture.status}`);
+    assert(requestBody, 'expected to capture schedule-downgrade request body');
+
+    const responseBody = (await response.json()) as ScheduleDowngradeResponseBody;
+    const scheduled = responseBody.scheduled;
+    assert(scheduled, `schedule-downgrade response missing 'scheduled': ${JSON.stringify(responseBody)}`);
+    assert(
+      typeof scheduled.scheduleId === 'string' && scheduled.scheduleId.startsWith('sub_sched_'),
+      `schedule-downgrade should return a Stripe scheduleId, got ${JSON.stringify(scheduled)}`,
+    );
+    assert(
+      scheduled.targetPlan === EXPECTED_RECOMMENDED_TIER,
+      `scheduled.targetPlan should be '${EXPECTED_RECOMMENDED_TIER}', got ${scheduled.targetPlan}`,
+    );
+    const scheduleId = scheduled.scheduleId;
+    createdScheduleId = scheduleId;
+    console.log(`[e2e] created Stripe subscription schedule ${scheduleId}`);
 
     // Banner attribution from the request body — source of truth for
     // downstream metadata / DB assertions (decouples the test from
     // tenant-specific catalog math and rate overrides).
-    const rec = capture.requestBody?.recommendation;
+    const rec = requestBody.recommendation;
     assert(
       rec != null,
-      `request body should include recommendation attribution, got ${JSON.stringify(capture.requestBody)}`,
+      `request body should include recommendation attribution, got ${JSON.stringify(requestBody)}`,
     );
     assert(
       rec.currentTier === EXPECTED_CURRENT_TIER,
@@ -685,36 +646,20 @@ async function run(): Promise<void> {
       `attributed trailingWindowMonths should be 3/6/12, got ${rec.trailingWindowMonths}`,
     );
     assert(
-      capture.requestBody?.plan === EXPECTED_RECOMMENDED_TIER,
-      `request body plan should be '${EXPECTED_RECOMMENDED_TIER}', got ${capture.requestBody?.plan}`,
+      requestBody.plan === EXPECTED_RECOMMENDED_TIER,
+      `request body plan should be '${EXPECTED_RECOMMENDED_TIER}', got ${requestBody.plan}`,
     );
-
-    const body = capture.body ?? {};
-    assert(
-      typeof body.sessionId === 'string' && body.sessionId.startsWith('cs_'),
-      `synthesized response should include a Stripe sessionId, got ${JSON.stringify(body)}`,
-    );
-    const sessionId: string = body.sessionId;
-    createdSessionId = sessionId;
-    console.log(`[e2e] created Stripe downgrade session ${sessionId}`);
 
     // Server-of-record check: Stripe holds the metadata stamped by
-    // createCheckoutSession.
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    // scheduleDowngrade. Mirrors the upgrade arm's session.metadata
+    // assertions but reads from the Subscription Schedule instead.
+    const stripeSchedule = await stripe.subscriptionSchedules.retrieve(scheduleId);
     assert(
-      session.livemode === false,
-      `refusing to proceed: retrieved session is livemode=true (id=${sessionId})`,
+      stripeSchedule.livemode === false,
+      `refusing to proceed: retrieved schedule is livemode=true (id=${scheduleId})`,
     );
-    const metadata = (session.metadata ?? {}) as Record<string, string>;
+    const metadata = (stripeSchedule.metadata ?? {}) as Record<string, string>;
 
-    assert(
-      metadata.tenantId === ADMIN_TENANT_ID,
-      `metadata.tenantId should be '${ADMIN_TENANT_ID}', got ${metadata.tenantId}`,
-    );
-    assert(
-      metadata.plan === EXPECTED_RECOMMENDED_TIER,
-      `metadata.plan should be '${EXPECTED_RECOMMENDED_TIER}', got ${metadata.plan}`,
-    );
     assert(
       metadata.recommendationSource === 'billing_estimator_recommendation',
       `metadata.recommendationSource mismatch, got ${metadata.recommendationSource}`,
@@ -735,24 +680,20 @@ async function run(): Promise<void> {
       Number(metadata.recommendationTrailingWindowMonths) === attributedWindow,
       `metadata.recommendationTrailingWindowMonths should equal attributed ${attributedWindow}, got ${metadata.recommendationTrailingWindowMonths}`,
     );
+    assert(
+      metadata.recommendationPitch === 'tier-switch',
+      `metadata.recommendationPitch should be 'tier-switch', got ${metadata.recommendationPitch}`,
+    );
 
-    // Replay a checkout.session.completed event through the webhook
-    // dispatcher, the same path Stripe would invoke in production.
-    const completedEvent = {
-      id: seedData.stripeEventId,
-      object: 'event',
-      api_version: STRIPE_API_VERSION,
-      created: Math.floor(Date.now() / 1000),
-      type: 'checkout.session.completed',
-      livemode: false,
-      pending_webhooks: 0,
-      request: { id: null, idempotency_key: null },
-      data: { object: session },
-    } as unknown as Stripe.Event;
-    await handleStripeEvent(completedEvent);
-
-    const switchRow = await readSwitchCompletedRow(pool, ADMIN_TENANT_ID, sessionId);
-    assert(switchRow, `no switch_completed row written for sessionId=${sessionId}`);
+    // Funnel attribution: scheduleDowngrade writes the
+    // switch_completed row directly (the upgrade arm writes it from
+    // the checkout webhook, but downgrades have no
+    // checkout.session.completed event to wait on — the schedule
+    // update IS the "switch" from the funnel's POV). The route
+    // returns synchronously after the row is written, so polling
+    // isn't necessary.
+    const switchRow = await readSwitchCompletedRow(pool, ADMIN_TENANT_ID, scheduleId);
+    assert(switchRow, `no switch_completed row written for scheduleId=${scheduleId}`);
     assert(
       switchRow.current_tier === EXPECTED_CURRENT_TIER &&
         switchRow.recommended_tier === EXPECTED_RECOMMENDED_TIER,
@@ -766,18 +707,31 @@ async function run(): Promise<void> {
       switchRow.trailing_window_months === attributedWindow,
       `switch_completed trailing_window_months should equal ${attributedWindow}, got ${switchRow.trailing_window_months}`,
     );
-    const meta = switchRow.metadata as { source?: string; stripeSessionId?: string; stripeEventId?: string };
     assert(
-      meta.source === 'stripe_webhook',
-      `switch_completed metadata.source should be 'stripe_webhook', got ${JSON.stringify(switchRow.metadata)}`,
+      switchRow.pitch === 'tier-switch',
+      `switch_completed pitch should be 'tier-switch', got ${switchRow.pitch}`,
+    );
+    const meta = switchRow.metadata as {
+      source?: string;
+      stripeScheduleId?: string;
+      stripeSubscriptionId?: string;
+      targetInterval?: string;
+    };
+    assert(
+      meta.source === 'schedule_downgrade',
+      `switch_completed metadata.source should be 'schedule_downgrade', got ${JSON.stringify(switchRow.metadata)}`,
     );
     assert(
-      meta.stripeSessionId === sessionId,
-      `switch_completed metadata.stripeSessionId should be '${sessionId}', got ${meta.stripeSessionId}`,
+      meta.stripeScheduleId === scheduleId,
+      `switch_completed metadata.stripeScheduleId should be '${scheduleId}', got ${meta.stripeScheduleId}`,
     );
     assert(
-      meta.stripeEventId === seedData.stripeEventId,
-      `switch_completed metadata.stripeEventId should be '${seedData.stripeEventId}', got ${meta.stripeEventId}`,
+      meta.stripeSubscriptionId === seedData.stripeSubscriptionId,
+      `switch_completed metadata.stripeSubscriptionId should be '${seedData.stripeSubscriptionId}', got ${meta.stripeSubscriptionId}`,
+    );
+    assert(
+      meta.targetInterval === 'monthly',
+      `switch_completed metadata.targetInterval should be 'monthly', got ${meta.targetInterval}`,
     );
 
     console.log('[e2e] PASS');
@@ -787,7 +741,7 @@ async function run(): Promise<void> {
   } finally {
     if (browser) await browser.close().catch(() => undefined);
     if (seedData) {
-      await cleanup(pool, seedData, stripe, createdSessionId).catch((err) =>
+      await cleanup(pool, seedData, stripe, createdScheduleId).catch((err) =>
         console.warn(`[e2e] cleanup failed for runId=${seedData?.runId}:`, err),
       );
     }

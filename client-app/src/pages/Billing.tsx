@@ -955,10 +955,18 @@ export default function Billing() {
   } | null>(null);
 
   const downgradeMutation = useMutation({
-    mutationFn: (params: { plan: string; interval: string }) =>
+    mutationFn: (params: {
+      plan: string;
+      interval: string;
+      recommendation?: RecommendationAttribution;
+    }) =>
       api.post<{ scheduled: { scheduleId: string; scheduledFor: string; targetPlan: string; targetInterval: string } }>(
         '/billing/schedule-downgrade',
-        { plan: params.plan, interval: params.interval },
+        {
+          plan: params.plan,
+          interval: params.interval,
+          ...(params.recommendation ? { recommendation: params.recommendation } : {}),
+        },
       ),
     onSuccess: (data) => {
       setUpgradeLoading(null);
@@ -1003,6 +1011,7 @@ export default function Billing() {
     targetPlan: string,
     interval: string = 'monthly',
     preview?: DowngradePreviewResp | null,
+    recommendation?: RecommendationAttribution,
   ) => {
     const currentLabel = PLAN_LABELS[plan] ?? plan;
     const targetLabel = PLAN_LABELS[targetPlan] ?? targetPlan;
@@ -1041,10 +1050,17 @@ export default function Billing() {
               amount: formatCentsHelper(preview.prorationCreditCents, { currency: preview.currency || currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }),
             }))
       : '';
-    const ok = window.confirm(`${baseMessage}${nextInvoiceCopy}${creditCopy}`);
-    if (!ok) return;
+    // Banner-driven downgrades skip the window.confirm step — clicking
+    // the BillingEstimator's "Switch to <Plan>" CTA is itself the
+    // explicit consent (the banner shows the same monthly-savings copy
+    // that this confirm dialog would show, and is the user-facing entry
+    // point we're attributing the conversion to).
+    if (!recommendation) {
+      const ok = window.confirm(`${baseMessage}${nextInvoiceCopy}${creditCopy}`);
+      if (!ok) return;
+    }
     setUpgradeLoading(targetPlan);
-    downgradeMutation.mutate({ plan: targetPlan, interval });
+    downgradeMutation.mutate({ plan: targetPlan, interval, recommendation });
   };
 
   const sub = subData?.subscription;
@@ -1611,7 +1627,29 @@ export default function Billing() {
             // hides the CTA (and the toggle) when `onSwitchPlan` is
             // omitted.
             onSwitchPlan={isAdmin
-              ? (tier, interval, recommendation) => handleUpgrade(tier, interval, recommendation)
+              ? (tier, interval, recommendation) => {
+                  // The recommendation banner can recommend any tier
+                  // — strict downgrades (e.g. Pro → Starter when the
+                  // tenant's trailing usage is under the lower tier's
+                  // cap) must NOT go through Stripe Checkout. The
+                  // checkout endpoint guards against this with a 400
+                  // (`DOWNGRADE_REQUIRES_SCHEDULE`) because Checkout
+                  // doesn't support deferred plan changes; route
+                  // banner-attributed downgrades to the schedule API
+                  // instead so they actually take effect at period end.
+                  const tierOrder: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2 };
+                  const currentRank = tierOrder[plan as PlanTier];
+                  const targetRank = tierOrder[tier];
+                  if (
+                    typeof currentRank === 'number' &&
+                    typeof targetRank === 'number' &&
+                    targetRank < currentRank
+                  ) {
+                    handleDowngrade(tier, interval, undefined, recommendation);
+                    return;
+                  }
+                  handleUpgrade(tier, interval, recommendation);
+                }
               : undefined}
             switchingPlan={(upgradeLoading as PlanTier | null) ?? null}
             trailingWindow={trailingWindow}

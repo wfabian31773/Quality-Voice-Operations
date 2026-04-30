@@ -416,7 +416,17 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
  */
 router.post('/billing/schedule-downgrade', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
-  const { plan, interval = 'monthly' } = req.body as { plan?: string; interval?: string };
+  const { plan, interval = 'monthly', recommendation } = req.body as {
+    plan?: string;
+    interval?: string;
+    recommendation?: {
+      currentTier?: unknown;
+      recommendedTier?: unknown;
+      monthlySavingsCents?: unknown;
+      trailingWindowMonths?: unknown;
+      pitch?: unknown;
+    };
+  };
 
   if (!plan || !VALID_PLANS.has(plan)) {
     return res.status(400).json({ error: `Invalid plan: ${plan}. Must be one of: starter, pro, enterprise` });
@@ -446,11 +456,67 @@ router.post('/billing/schedule-downgrade', requireAuth, requireRole('manager'), 
     });
   }
 
+  // Banner-attributed recommendation snapshot. Mirrors the validation
+  // posture of the `/billing/checkout` route: a malformed or mismatched
+  // payload from a stale client is silently dropped (rather than 400ing)
+  // so the downgrade itself still succeeds; only the funnel attribution
+  // is sacrificed. The recommended tier must match the plan actually
+  // being scheduled for the same reason the upgrade arm enforces it —
+  // otherwise the "switch_completed" row would attribute to a tier the
+  // tenant didn't actually move to.
+  let validatedRecommendation:
+    | undefined
+    | {
+        currentTier: PlanTier;
+        recommendedTier: PlanTier;
+        monthlySavingsCents: number;
+        trailingWindowMonths?: number;
+        pitch: 'tier-switch' | 'annual-only';
+      };
+  if (recommendation && typeof recommendation === 'object') {
+    const ct = recommendation.currentTier;
+    const rt = recommendation.recommendedTier;
+    if (
+      typeof ct === 'string' && RECOMMENDATION_TIERS.has(ct) &&
+      typeof rt === 'string' && RECOMMENDATION_TIERS.has(rt) &&
+      rt === plan &&
+      // Server-authoritative attribution: the snapshot's currentTier
+      // must match the tenant's actual current plan, not just whatever
+      // a (possibly stale) client claims. Without this guard a tab
+      // left open across a plan change could attribute the downgrade
+      // to a tier the tenant wasn't actually on at click time.
+      ct === currentPlan &&
+      // Defence-in-depth: the route already ensures `plan` is a strict
+      // downgrade from `currentPlan`. The recommendation snapshot must
+      // also describe a strict downgrade (current > recommended) — if a
+      // stale client happens to forward an upgrade snapshot here we'd
+      // rather drop the attribution than write a misleading row.
+      isStrictDowngrade(ct as PlanTier, rt as PlanTier)
+    ) {
+      const savings = Number(recommendation.monthlySavingsCents);
+      const window = Number(recommendation.trailingWindowMonths);
+      const rawPitch = typeof recommendation.pitch === 'string' ? recommendation.pitch : '';
+      const pitch = (RECOMMENDATION_PITCHES.has(rawPitch)
+        ? rawPitch
+        : DEFAULT_RECOMMENDATION_PITCH) as 'tier-switch' | 'annual-only';
+      validatedRecommendation = {
+        currentTier: ct as PlanTier,
+        recommendedTier: rt as PlanTier,
+        monthlySavingsCents: Number.isFinite(savings) && savings >= 0 ? Math.round(savings) : 0,
+        pitch,
+        ...(Number.isFinite(window) && RECOMMENDATION_WINDOWS.has(window)
+          ? { trailingWindowMonths: window }
+          : {}),
+      };
+    }
+  }
+
   try {
     const result = await scheduleDowngrade({
       tenantId,
       targetPlan: plan,
       targetInterval: interval as 'monthly' | 'annual',
+      recommendation: validatedRecommendation,
     });
 
     await writeAuditLog({
@@ -466,6 +532,9 @@ router.post('/billing/schedule-downgrade', requireAuth, requireRole('manager'), 
         interval,
         effectiveAt: result.scheduledFor,
         scheduleId: result.scheduleId,
+        ...(validatedRecommendation
+          ? { recommendationSource: 'billing_estimator_recommendation' }
+          : {}),
       },
       severity: 'warning',
       ipAddress: extractIp(req),

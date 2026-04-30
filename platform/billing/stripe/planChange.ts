@@ -15,6 +15,22 @@ export interface ScheduledDowngrade {
 }
 
 /**
+ * Banner-attributed recommendation snapshot forwarded from
+ * `/billing/schedule-downgrade` when the downgrade originates from the
+ * BillingEstimator's "Switch to <Plan>" CTA. Mirrors
+ * `CheckoutRecommendationAttribution` so the upgrade and downgrade
+ * surfaces stamp the same shape into Stripe metadata and the
+ * `billing_recommendation_events` table.
+ */
+export interface ScheduleDowngradeRecommendation {
+  currentTier: PlanTier;
+  recommendedTier: PlanTier;
+  monthlySavingsCents: number;
+  trailingWindowMonths?: number;
+  pitch: 'tier-switch' | 'annual-only';
+}
+
+/**
  * `proration_behavior` used on both the downgrade preview
  * (`getTenantDowngradePreview`) and the schedule's lower-tier phase
  * (`scheduleDowngrade`). Importing the same constant in both call
@@ -94,8 +110,24 @@ export async function scheduleDowngrade(params: {
   tenantId: string;
   targetPlan: PlanTier;
   targetInterval: 'monthly' | 'annual';
+  /**
+   * Optional banner-attributed recommendation snapshot forwarded from
+   * the BillingEstimator's "Switch to <Plan>" CTA. When present:
+   *   - It is stamped onto the Stripe Subscription Schedule's metadata
+   *     so a downstream operator inspecting the schedule can trace the
+   *     downgrade back to the recommendation banner the same way the
+   *     upgrade arm's checkout session metadata does.
+   *   - A `switch_completed` row is written to
+   *     `billing_recommendation_events` so the conversion funnel
+   *     captures downgrades. (For upgrades the equivalent row is
+   *     written when `checkout.session.completed` fires; downgrades
+   *     have no checkout step, so the row is written here at schedule
+   *     creation time — the user has taken the explicit "switch" action
+   *     and Stripe has accepted the schedule.)
+   */
+  recommendation?: ScheduleDowngradeRecommendation;
 }): Promise<ScheduledDowngrade> {
-  const { tenantId, targetPlan, targetInterval } = params;
+  const { tenantId, targetPlan, targetInterval, recommendation } = params;
   const stripe = getStripeClient();
 
   const { stripeSubscriptionId } = await loadTenantSubscription(tenantId);
@@ -144,6 +176,24 @@ export async function scheduleDowngrade(params: {
     quantity: item.quantity ?? 1,
   }));
 
+  // Banner-attributed recommendation snapshot, stamped onto the
+  // schedule's metadata so an operator inspecting the schedule in
+  // Stripe can trace it back to the recommendation banner the same
+  // way the upgrade arm's checkout session metadata does. Stripe
+  // metadata values must be strings.
+  const recommendationMetadata: Record<string, string> = recommendation
+    ? {
+        recommendationSource: 'billing_estimator_recommendation',
+        recommendationCurrentTier: recommendation.currentTier,
+        recommendationRecommendedTier: recommendation.recommendedTier,
+        recommendationMonthlySavingsCents: String(recommendation.monthlySavingsCents),
+        recommendationPitch: recommendation.pitch,
+        ...(recommendation.trailingWindowMonths !== undefined
+          ? { recommendationTrailingWindowMonths: String(recommendation.trailingWindowMonths) }
+          : {}),
+      }
+    : {};
+
   const updated = await stripe.subscriptionSchedules.update(schedule.id, {
     end_behavior: 'release',
     phases: [
@@ -164,6 +214,7 @@ export async function scheduleDowngrade(params: {
         proration_behavior: DOWNGRADE_PRORATION_BEHAVIOR,
       },
     ],
+    ...(recommendation ? { metadata: recommendationMetadata } : {}),
   });
 
   logger.info('Scheduled downgrade', {
@@ -172,7 +223,69 @@ export async function scheduleDowngrade(params: {
     targetInterval,
     scheduleId: updated.id,
     effectiveAt: new Date(phaseEndUnix * 1000).toISOString(),
+    recommended: recommendation ? true : false,
   });
+
+  // Server-authoritative attribution for the BillingEstimator's
+  // "Switch to <Plan>" recommendation banner — downgrade arm. The
+  // upgrade arm writes this row from the Stripe webhook on
+  // `checkout.session.completed`, but downgrades have no checkout
+  // step (the change is queued through a Subscription Schedule and
+  // doesn't fire `checkout.session.completed`). The user clicked the
+  // banner CTA and Stripe accepted the schedule update, so the
+  // "switch" is effectively complete from the funnel's point of view.
+  // Failures here are logged but do not roll back the schedule —
+  // attribution is best-effort once the billing change is locked in.
+  if (recommendation) {
+    try {
+      const pool = getPlatformPool();
+      const writeClient = await pool.connect();
+      try {
+        await writeClient.query('BEGIN');
+        await withTenantContext(writeClient, tenantId, async () => {});
+        await writeClient.query(
+          `INSERT INTO billing_recommendation_events
+             (tenant_id, event_type, current_tier, recommended_tier,
+              monthly_savings_cents, trailing_window_months, metadata,
+              pitch)
+           VALUES ($1, 'switch_completed', $2, $3, $4, $5, $6::jsonb, $7)`,
+          [
+            tenantId,
+            recommendation.currentTier,
+            recommendation.recommendedTier,
+            Number.isFinite(recommendation.monthlySavingsCents) && recommendation.monthlySavingsCents >= 0
+              ? Math.round(recommendation.monthlySavingsCents)
+              : null,
+            recommendation.trailingWindowMonths === 3
+              || recommendation.trailingWindowMonths === 6
+              || recommendation.trailingWindowMonths === 12
+              ? recommendation.trailingWindowMonths
+              : null,
+            JSON.stringify({
+              source: 'schedule_downgrade',
+              stripeScheduleId: updated.id,
+              stripeSubscriptionId,
+              scheduledFor: new Date(phaseEndUnix * 1000).toISOString(),
+              targetInterval,
+            }),
+            recommendation.pitch,
+          ],
+        );
+        await writeClient.query('COMMIT');
+      } catch (err) {
+        await writeClient.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        writeClient.release();
+      }
+    } catch (err) {
+      logger.warn('Failed to record recommendation switch_completed event for downgrade', {
+        tenantId,
+        scheduleId: updated.id,
+        error: String(err),
+      });
+    }
+  }
 
   return {
     scheduleId: updated.id,
