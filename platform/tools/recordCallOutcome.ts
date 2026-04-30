@@ -3,6 +3,7 @@ import { createLogger } from '../core/logger';
 import type { ToolDefinition, ToolContext } from './registry/types';
 import { recordConversionStage } from '../analytics/ConversionFunnelService';
 import type { FunnelStage } from '../analytics/ConversionFunnelService';
+import { CALL_FUNNEL_STAGE } from '../../shared/analytics/conversionStages';
 
 const logger = createLogger('TOOL_CALL_OUTCOME');
 
@@ -88,10 +89,18 @@ async function handler(input: unknown, context: ToolContext): Promise<unknown> {
       });
 
       const dispositionToStages: Record<string, FunnelStage[]> = {
-        resolved: ['qualified', 'appointment_offered', 'appointment_booked', 'confirmed'],
-        follow_up_needed: ['qualified'],
-        escalated: ['qualified'],
-        callback_requested: ['qualified', 'appointment_offered'],
+        resolved: [
+          CALL_FUNNEL_STAGE.QUALIFIED,
+          CALL_FUNNEL_STAGE.APPOINTMENT_OFFERED,
+          CALL_FUNNEL_STAGE.APPOINTMENT_BOOKED,
+          CALL_FUNNEL_STAGE.CONFIRMED,
+        ],
+        follow_up_needed: [CALL_FUNNEL_STAGE.QUALIFIED],
+        escalated: [CALL_FUNNEL_STAGE.QUALIFIED],
+        callback_requested: [
+          CALL_FUNNEL_STAGE.QUALIFIED,
+          CALL_FUNNEL_STAGE.APPOINTMENT_OFFERED,
+        ],
       };
 
       const stagesToRecord = dispositionToStages[args.disposition] ?? [];

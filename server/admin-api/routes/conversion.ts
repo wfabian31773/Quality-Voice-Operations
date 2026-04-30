@@ -8,14 +8,16 @@ import {
   getConversionTrends,
 } from '../../../platform/analytics/WebsiteConversionService';
 import type { ConversionStage } from '../../../platform/analytics/WebsiteConversionService';
+import { ALL_CONVERSION_STAGES } from '../../../shared/analytics/conversionStages';
 
 const router = Router();
 const logger = createLogger('CONVERSION_ROUTES');
 
-const VALID_STAGES: ConversionStage[] = [
-  'page_view', 'cta_click', 'demo_started', 'demo_completed',
-  'signup_started', 'signup_completed', 'trial_started', 'paid',
-];
+// Single source of truth — the request body's `stage` is validated
+// against the canonical list from
+// `shared/analytics/conversionStages.ts` so adding a new stage in
+// one place propagates to the API guard automatically.
+const VALID_STAGES: readonly ConversionStage[] = ALL_CONVERSION_STAGES;
 
 const conversionRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 60;

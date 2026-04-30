@@ -1,17 +1,30 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
+import {
+  CONVERSION_STAGE,
+  type ConversionStage as SharedConversionStage,
+} from '../../shared/analytics/conversionStages';
 
 const logger = createLogger('WEBSITE_CONVERSION');
 
-export type ConversionStage = 'page_view' | 'cta_click' | 'demo_started' | 'demo_completed' | 'signup_started' | 'signup_completed' | 'trial_started' | 'paid';
+// Re-exported for backwards-compatibility with callers that import
+// `ConversionStage` from this module. The single source of truth
+// for the union members lives in
+// `shared/analytics/conversionStages.ts`.
+export type ConversionStage = SharedConversionStage;
 
+// Funnel report ordering — a *subset* of `ALL_CONVERSION_STAGES`
+// (e.g. `demo_completed`, `demo_requested`, `roi_report_requested`,
+// `trial_started` are tracked but not part of the canonical
+// website-funnel waterfall in the admin report). Keep in sync with
+// `getWebsiteFunnel` below.
 export const WEBSITE_FUNNEL_STAGES: ConversionStage[] = [
-  'page_view',
-  'cta_click',
-  'demo_started',
-  'signup_started',
-  'signup_completed',
-  'paid',
+  CONVERSION_STAGE.PAGE_VIEW,
+  CONVERSION_STAGE.CTA_CLICK,
+  CONVERSION_STAGE.DEMO_STARTED,
+  CONVERSION_STAGE.SIGNUP_STARTED,
+  CONVERSION_STAGE.SIGNUP_COMPLETED,
+  CONVERSION_STAGE.PAID,
 ];
 
 export interface ConversionEvent {
@@ -129,7 +142,7 @@ export async function getWebsiteFunnel(from: Date, to: Date): Promise<WebsiteFun
       stageCounts.set(r.stage as string, r.count as number);
     }
 
-    const totalVisitors = stageCounts.get('page_view') ?? 0;
+    const totalVisitors = stageCounts.get(CONVERSION_STAGE.PAGE_VIEW) ?? 0;
 
     const stages = WEBSITE_FUNNEL_STAGES.map((stage, idx) => {
       const count = stageCounts.get(stage) ?? 0;
@@ -139,15 +152,20 @@ export async function getWebsiteFunnel(from: Date, to: Date): Promise<WebsiteFun
       return { stage, count, conversionRate, dropOffRate };
     });
 
-    const paidCount = stageCounts.get('paid') ?? 0;
+    const paidCount = stageCounts.get(CONVERSION_STAGE.PAID) ?? 0;
     const overallConversionRate = totalVisitors > 0 ? paidCount / totalVisitors : 0;
 
+    // Stage names below are interpolated from the canonical
+    // `CONVERSION_STAGE` constants (not user input) so they stay in
+    // lockstep with the writers and the funnel-report ordering. The
+    // surrounding query still uses parameterized bindings ($1, $2)
+    // for the date range.
     const { rows: landingRows } = await client.query(
       `SELECT
          landing_page,
-         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = 'page_view')::int AS visitors,
-         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = 'signup_completed')::int AS signups,
-         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = 'paid')::int AS paid
+         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = '${CONVERSION_STAGE.PAGE_VIEW}')::int AS visitors,
+         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = '${CONVERSION_STAGE.SIGNUP_COMPLETED}')::int AS signups,
+         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = '${CONVERSION_STAGE.PAID}')::int AS paid
        FROM website_conversion_events
        WHERE created_at >= $1 AND created_at < $2
        GROUP BY landing_page
@@ -169,9 +187,9 @@ export async function getWebsiteFunnel(from: Date, to: Date): Promise<WebsiteFun
     const { rows: sourceRows } = await client.query(
       `SELECT
          COALESCE(utm_source, 'direct') AS source,
-         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = 'page_view')::int AS visitors,
-         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = 'signup_completed')::int AS signups,
-         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = 'paid')::int AS paid
+         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = '${CONVERSION_STAGE.PAGE_VIEW}')::int AS visitors,
+         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = '${CONVERSION_STAGE.SIGNUP_COMPLETED}')::int AS signups,
+         COUNT(DISTINCT visitor_id) FILTER (WHERE stage = '${CONVERSION_STAGE.PAID}')::int AS paid
        FROM website_conversion_events
        WHERE created_at >= $1 AND created_at < $2
        GROUP BY COALESCE(utm_source, 'direct')

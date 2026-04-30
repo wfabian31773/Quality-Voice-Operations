@@ -3,6 +3,7 @@ import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import type { CallPersistenceAdapter } from '../../../platform/runtime/lifecycle/CallLifecycleCoordinator';
 import { recordConversionStage } from '../../../platform/analytics/ConversionFunnelService';
+import { CALL_FUNNEL_STAGE } from '../../../shared/analytics/conversionStages';
 import { encryptTranscript, encryptSensitiveField, decryptSensitiveField } from '../../../platform/security/FieldEncryption';
 
 const logger = createLogger('CALL_PERSISTENCE');
@@ -105,7 +106,7 @@ export async function createCallSession(
     agentId: params.agentId,
   });
 
-  recordConversionStage(params.tenantId, id, 'call_received', {
+  recordConversionStage(params.tenantId, id, CALL_FUNNEL_STAGE.CALL_RECEIVED, {
     direction: params.direction,
     agentId: params.agentId,
   }).catch((err) => {

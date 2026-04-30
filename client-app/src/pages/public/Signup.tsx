@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView, trackSignupConversion, trackCTAClick, trackConversionEvent, captureUtmOnLoad, getVisitorId } from '../../lib/analytics';
-import { SIGNUP_STEP } from '../../lib/analyticsLabels';
+import { SIGNUP_STEP, CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 import { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPricingCalculator';
@@ -54,7 +54,7 @@ export default function Signup() {
   useEffect(() => {
     trackPageView('/signup');
     captureUtmOnLoad();
-    trackConversionEvent('signup_started', '/signup');
+    trackConversionEvent(CONVERSION_STAGE.SIGNUP_STARTED, '/signup');
   }, []);
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export default function Signup() {
         setToken(res.token);
       }
       trackSignupConversion(plan, res.checkoutUrl ? SIGNUP_STEP.CHECKOUT : SIGNUP_STEP.ONBOARDING);
-      trackConversionEvent('signup_completed', '/signup', { plan, interval });
+      trackConversionEvent(CONVERSION_STAGE.SIGNUP_COMPLETED, '/signup', { plan, interval });
       if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {

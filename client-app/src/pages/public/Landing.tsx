@@ -26,6 +26,7 @@ import LiveTranscriptMock from '../../components/LiveTranscriptMock';
 import IndustryShowcase from '../../components/IndustryShowcase';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 
 function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
   const [count, setCount] = useState(reducedMotion ? end : 0);
@@ -67,7 +68,7 @@ export default function Landing() {
   useEffect(() => {
     trackPageView('/');
     captureUtmOnLoad();
-    trackConversionEvent('page_view', '/');
+    trackConversionEvent(CONVERSION_STAGE.PAGE_VIEW, '/');
   }, []);
 
   if (initialized && user) {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, Calculator, DollarSign, TrendingUp, Clock, Mail, CheckCircle2, Loader2 } from 'lucide-react';
 import { trackCTAClick, trackConversionEvent } from '../lib/analytics';
 import { CTA } from '../lib/analyticsCtas';
+import { CONVERSION_STAGE } from '../lib/analyticsLabels';
 import { formatDollars } from '../lib/formatCurrency';
 
 interface ROICalculatorProps {
@@ -82,7 +83,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Unable to send report.');
       }
-      trackConversionEvent('roi_report_requested', '/roi-calculator', { vertical, savings: Math.round(results.annualSavings) });
+      trackConversionEvent(CONVERSION_STAGE.ROI_REPORT_REQUESTED, '/roi-calculator', { vertical, savings: Math.round(results.annualSavings) });
       setEmailStatus('sent');
     } catch (err) {
       setEmailStatus('error');
@@ -351,7 +352,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
                 to="/signup"
-                onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, 'roi-calculator', 'results'); trackConversionEvent('cta_click', '/roi-calculator', { cta: 'signup_roi' }); }}
+                onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, 'roi-calculator', 'results'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, '/roi-calculator', { cta: 'signup_roi' }); }}
                 className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
               >
                 Start Free Trial <ArrowRight className="h-4 w-4" />

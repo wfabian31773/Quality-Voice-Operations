@@ -146,6 +146,40 @@ export default [
     },
     rules: {
       'local/no-literal-cta-name': 'error',
+    },
+  },
+  {
+    // Analytics-label literal guard — broader scope than the CTA rule.
+    // The conversion-funnel writers it covers
+    // (`trackConversionEvent`, `recordConversionEvent`,
+    // `recordConversionStage`) live on both the client (`client-app/`)
+    // and the server (`server/`, `platform/`), and the canonical
+    // stages module (`shared/analytics/conversionStages.ts`) is
+    // imported from all of them, so the rule has to run everywhere
+    // those helpers can be called from.
+    files: [
+      'client-app/src/**/*.{ts,tsx}',
+      'platform/**/*.{ts,tsx}',
+      'server/**/*.{ts,tsx}',
+      'shared/**/*.{ts,tsx}',
+    ],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: 'off',
+    },
+    plugins: {
+      local: localPlugin,
+      'react-hooks': reactHooksStub,
+      '@typescript-eslint': tsEslintStub,
+    },
+    rules: {
       'local/no-literal-analytics-label': 'error',
     },
   },

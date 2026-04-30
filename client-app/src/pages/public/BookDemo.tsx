@@ -4,6 +4,7 @@ import { Calendar, CheckCircle2, Clock, Users, Shield, ArrowRight, Loader2 } fro
 import SEO from '../../components/SEO';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 
 const benefits = [
   { icon: Clock, title: '30-minute walkthrough', desc: 'Live tour of the platform tailored to your industry and call volume.' },
@@ -95,7 +96,7 @@ export default function BookDemo() {
   useEffect(() => {
     trackPageView('/book-demo');
     captureUtmOnLoad();
-    trackConversionEvent('page_view', '/book-demo');
+    trackConversionEvent(CONVERSION_STAGE.PAGE_VIEW, '/book-demo');
   }, []);
 
   // Pull the live scheduler config from the admin-controlled
@@ -138,7 +139,7 @@ export default function BookDemo() {
         setLeadId(data.leadId);
       }
       trackCTAClick(CTA.BOOK_DEMO_SUBMIT, '/book-demo', 'form');
-      trackConversionEvent('demo_requested', '/book-demo', { teamSize: form.teamSize });
+      trackConversionEvent(CONVERSION_STAGE.DEMO_REQUESTED, '/book-demo', { teamSize: form.teamSize });
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');

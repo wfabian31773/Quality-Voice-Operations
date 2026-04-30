@@ -5,6 +5,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { StatCard } from '../../components/ui';
 import { trackPageView, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import { formatDollars } from '../../lib/formatCurrency';
 
 interface CaseStudyMetrics {
@@ -154,7 +155,7 @@ export default function CaseStudies() {
   useEffect(() => {
     trackPageView('/case-studies');
     captureUtmOnLoad();
-    trackConversionEvent('page_view', '/case-studies');
+    trackConversionEvent(CONVERSION_STAGE.PAGE_VIEW, '/case-studies');
   }, []);
 
   useEffect(() => {

@@ -11,7 +11,7 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
 import { trackPageView, trackVerticalEngagement, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
-import { VERTICAL_ACTION } from '../../lib/analyticsLabels';
+import { VERTICAL_ACTION, CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
 interface VerticalConfig {
@@ -141,7 +141,7 @@ export default function VerticalLanding() {
     if (config) {
       trackPageView(`/industries/${config.slug}`);
       trackVerticalEngagement(config.slug, VERTICAL_ACTION.PAGE_VIEW);
-      trackConversionEvent('page_view', `/industries/${config.slug}`);
+      trackConversionEvent(CONVERSION_STAGE.PAGE_VIEW, `/industries/${config.slug}`);
     }
   }, [config]);
 
@@ -223,14 +223,14 @@ export default function VerticalLanding() {
               <div className="flex flex-wrap gap-4">
                 <Link
                   to="/signup"
-                  onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'hero'); trackConversionEvent('cta_click', `/industries/${config.slug}`, { cta: 'signup' }); }}
+                  onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'hero'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, `/industries/${config.slug}`, { cta: 'signup' }); }}
                   className="btn-primary-glow inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-on-primary px-6 py-3 rounded-xl font-medium transition-colors duration-[var(--motion-base)] min-h-[44px]"
                 >
                   {t('vertical_page.hero.start_trial')} <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
                   to={`/demo?agent=${config.demoAgent}`}
-                  onClick={() => { trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'hero'); trackConversionEvent('demo_started', `/industries/${config.slug}`); }}
+                  onClick={() => { trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'hero'); trackConversionEvent(CONVERSION_STAGE.DEMO_STARTED, `/industries/${config.slug}`); }}
                   className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20"
                 >
                   {t('vertical_page.hero.try_demo')} <Phone className="h-4 w-4" />
@@ -431,7 +431,7 @@ export default function VerticalLanding() {
           <div className="flex flex-wrap justify-center gap-4">
             <Link
               to="/signup"
-              onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'bottom-cta'); trackConversionEvent('cta_click', `/industries/${config.slug}`, { cta: 'signup_bottom' }); }}
+              onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'bottom-cta'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, `/industries/${config.slug}`, { cta: 'signup_bottom' }); }}
               className="inline-flex items-center gap-2 bg-white text-primary hover:bg-white/90 px-8 py-3.5 rounded-xl font-semibold transition-colors"
             >
               {t('vertical_page.bottom_cta.start_trial')} <ArrowRight className="h-4 w-4" />

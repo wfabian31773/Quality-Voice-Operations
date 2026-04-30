@@ -11,10 +11,29 @@
  *   trackFeatureView(feature)         → arg 0 is canonical
  *   trackVerticalEngagement(v, action) → arg 1 (action) is canonical
  *   trackSignupConversion(plan, step) → arg 1 (step) is canonical
+ *   trackConversionEvent(stage, …)    → arg 0 (stage) is canonical
  *
  * Convention: snake_case identifiers — distinct from user-visible UI
  * copy, which is free to vary by section / locale.
+ *
+ * The conversion-funnel stage constants live in
+ * `shared/analytics/conversionStages.ts` so they can be imported
+ * from both the client and the server-side writers
+ * (`recordConversionEvent`, `recordConversionStage`); they are
+ * re-exported below so client-app pages can pick them up alongside
+ * the marketing-only constants without a second import.
  */
+
+export {
+  CONVERSION_STAGE,
+  ALL_CONVERSION_STAGES,
+  CALL_FUNNEL_STAGE,
+  CALL_FUNNEL_STAGES,
+} from '../../../shared/analytics/conversionStages';
+export type {
+  ConversionStage,
+  CallFunnelStage,
+} from '../../../shared/analytics/conversionStages';
 
 // trackFeatureView(feature) — feature is the entire label.
 export const FEATURE = {

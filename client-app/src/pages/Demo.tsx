@@ -29,6 +29,7 @@ import SystemActivityFeed from '../components/demo/SystemActivityFeed';
 import { useDemoSSE } from '../hooks/useDemoSSE';
 import { trackPageView, trackDemoInteraction, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../lib/analytics';
 import { CTA } from '../lib/analyticsCtas';
+import { CONVERSION_STAGE } from '../lib/analyticsLabels';
 
 const API_BASE = '/api';
 
@@ -356,7 +357,7 @@ export default function Demo() {
   useEffect(() => {
     trackPageView('/demo');
     captureUtmOnLoad();
-    trackConversionEvent('demo_started', '/demo');
+    trackConversionEvent(CONVERSION_STAGE.DEMO_STARTED, '/demo');
   }, []);
 
   useEffect(() => {
@@ -370,7 +371,7 @@ export default function Demo() {
       } else if (callStatus === 'ended' && (prev === 'connected' || prev === 'ringing')) {
         const callDuration = callStartTime ? Math.round((Date.now() - callStartTime) / 1000) : 0;
         trackDemoInteraction('call_completed', activeAgent?.name ?? 'unknown', callDuration);
-        trackConversionEvent('demo_completed', '/demo', { agent: activeAgent?.name });
+        trackConversionEvent(CONVERSION_STAGE.DEMO_COMPLETED, '/demo', { agent: activeAgent?.name });
         setCallStartTime(null);
         setShowCelebration(true);
         setTimeout(() => {

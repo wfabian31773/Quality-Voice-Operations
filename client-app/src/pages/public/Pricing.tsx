@@ -13,6 +13,7 @@ import MinutesPricingCalculator, {
 import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import {
   PLAN_CATALOG,
   PLAN_TIERS,
@@ -126,7 +127,7 @@ export default function Pricing() {
   useEffect(() => {
     trackPageView('/pricing');
     captureUtmOnLoad();
-    trackConversionEvent('page_view', '/pricing');
+    trackConversionEvent(CONVERSION_STAGE.PAGE_VIEW, '/pricing');
   }, []);
 
   // Logged-in tenants browsing the public pricing page get a teaser of

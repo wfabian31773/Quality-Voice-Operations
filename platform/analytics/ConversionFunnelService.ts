@@ -1,10 +1,20 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
+import {
+  CALL_FUNNEL_STAGE,
+  CALL_FUNNEL_STAGES,
+  type CallFunnelStage,
+} from '../../shared/analytics/conversionStages';
 
 const logger = createLogger('CONVERSION_FUNNEL');
 
-export const FUNNEL_STAGES = ['call_received', 'qualified', 'appointment_offered', 'appointment_booked', 'confirmed'] as const;
-export type FunnelStage = typeof FUNNEL_STAGES[number];
+// Funnel ordering matches `CALL_FUNNEL_STAGES` (which preserves the
+// `CALL_FUNNEL_STAGE` insertion order). Re-exported with the legacy
+// `FUNNEL_STAGES` / `FunnelStage` names so existing callers continue
+// to work; the single source of truth for the values lives in
+// `shared/analytics/conversionStages.ts`.
+export const FUNNEL_STAGES = CALL_FUNNEL_STAGES;
+export type FunnelStage = CallFunnelStage;
 
 export interface FunnelMetrics {
   stages: Array<{
@@ -88,7 +98,7 @@ export async function getConversionFunnel(
       stageCounts.set(r.stage as string, (r.count as number) ?? 0);
     }
 
-    stageCounts.set('call_received', totalCalls);
+    stageCounts.set(CALL_FUNNEL_STAGE.CALL_RECEIVED, totalCalls);
 
     const stages = FUNNEL_STAGES.map((stage, idx) => {
       const rawCount = stageCounts.get(stage) ?? 0;
@@ -99,7 +109,7 @@ export async function getConversionFunnel(
       return { stage, count, dropOffRate, conversionRate };
     });
 
-    const lastStageCount = stageCounts.get('confirmed') ?? 0;
+    const lastStageCount = stageCounts.get(CALL_FUNNEL_STAGE.CONFIRMED) ?? 0;
     const overallConversionRate = totalCalls > 0 ? lastStageCount / totalCalls : 0;
 
     return { stages, overallConversionRate, totalCalls };
