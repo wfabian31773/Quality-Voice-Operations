@@ -14,6 +14,21 @@ export interface ScheduledDowngrade {
   targetInterval: 'monthly' | 'annual';
 }
 
+/**
+ * `proration_behavior` used on both the downgrade preview
+ * (`getTenantDowngradePreview`) and the schedule's lower-tier phase
+ * (`scheduleDowngrade`). Importing the same constant in both call
+ * sites prevents the preview from quoting a credit Stripe wouldn't
+ * actually issue at phase transition.
+ *
+ * Why `'none'`: scheduleDowngrade defers the price swap to
+ * `current_period_end`, so the new phase starts with no time-overlap
+ * against the higher tier — there is no unused time to prorate.
+ * `'create_prorations'` would not change that, so we hold both sides
+ * at `'none'` and the UI's credit line stays at 0.
+ */
+export const DOWNGRADE_PRORATION_BEHAVIOR: 'create_prorations' | 'none' = 'none';
+
 interface SubscriptionLookup {
   stripeSubscriptionId: string | null;
   currentPlan: PlanTier | null;
@@ -136,6 +151,8 @@ export async function scheduleDowngrade(params: {
         items: currentItems,
         start_date: currentPhase.start_date,
         end_date: phaseEndUnix,
+        // Phase 0 = current paid period; no re-crediting time already
+        // consumed on the higher tier.
         proration_behavior: 'none',
       },
       {
@@ -144,7 +161,7 @@ export async function scheduleDowngrade(params: {
         // detaches the schedule and the subscription continues renewing on
         // the lower-tier price normally.
         duration: { interval_count: 1, interval: targetInterval === 'annual' ? 'year' : 'month' },
-        proration_behavior: 'none',
+        proration_behavior: DOWNGRADE_PRORATION_BEHAVIOR,
       },
     ],
   });

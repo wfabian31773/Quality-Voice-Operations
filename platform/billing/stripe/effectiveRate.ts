@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripeClient } from './client';
 import { getPlanFromPriceId, getPlanAiMinutesPriceId } from './plans';
+import { DOWNGRADE_PRORATION_BEHAVIOR } from './planChange';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
@@ -1262,28 +1263,22 @@ export async function getTenantUpgradePreview(
 }
 
 /**
- * Tenant-specific downgrade quote for a single target tier. Returned by
- * `getTenantDowngradePreview` and consumed by `GET /billing/downgrade-preview`.
- *
- * Mirrors what `scheduleDowngrade` (in `planChange.ts`) actually does
- * to a tenant's Stripe subscription: a deferred phase swap that
- * happens at `current_period_end` with `proration_behavior: 'none'`.
- * Because the swap is at the period boundary there is no time-overlap
- * to credit, so `prorationCreditCents` is always 0 today. The preview
- * is still useful: it surfaces the actual `nextInvoiceTotalCents`
- * Stripe will produce on the new tier (which differs from the public
- * catalog when the tenant has a customer-level coupon attached).
+ * Tenant-specific downgrade quote for a single target tier. Returned
+ * by `getTenantDowngradePreview` and consumed by
+ * `GET /billing/downgrade-preview`. Both the preview and
+ * `scheduleDowngrade` import `DOWNGRADE_PRORATION_BEHAVIOR` from
+ * `planChange.ts`, so `prorationCreditCents` cannot diverge from the
+ * credit Stripe issues on apply.
  */
 export interface TenantDowngradePreview {
   plan: PlanTier;
   interval: 'monthly' | 'annual';
   /**
-   * Absolute value (in cents, >= 0) of the prorated credit Stripe will
-   * issue for the unused portion of the current paid period. Sum of
-   * the `proration === true` negative lines on the Stripe preview
-   * invoice. With the deferred-swap scheduler this is 0 in practice;
-   * if the scheduler is ever switched to immediate proration the
-   * preview will start surfacing a real value automatically.
+   * Sum (cents, >= 0) of `proration === true` negative lines Stripe
+   * returns on the preview invoice. Today the shared constant is
+   * `'none'` and the deferred phase swap has no time-overlap, so
+   * this is 0; the field stays so the UI keeps its existing guard
+   * if the constant is ever flipped to `'create_prorations'`.
    */
   prorationCreditCents: number;
   /**
@@ -1360,14 +1355,9 @@ interface SubscriptionItemPriceLike {
 /**
  * Quote what a tenant would pay on their next invoice if they
  * downgraded to `targetPlan` on the requested billing `interval`.
- *
- * Calls `stripe.invoices.createPreview` with `proration_behavior: 'none'`
- * so the preview reflects what `scheduleDowngrade` actually does
- * (swap to the lower price at `current_period_end`, no mid-period
- * proration). Any active customer-level coupon is automatically
- * applied by Stripe to the previewed next invoice. Never throws —
- * every Stripe error degrades to a catalog fallback so the downgrade
- * card always renders.
+ * Uses `DOWNGRADE_PRORATION_BEHAVIOR` so the quote matches what
+ * `scheduleDowngrade` applies. Never throws — Stripe errors degrade
+ * to a catalog fallback so the downgrade card always renders.
  */
 export async function getTenantDowngradePreview(
   tenantId: string,
@@ -1502,18 +1492,16 @@ export async function getTenantDowngradePreview(
     };
   }
 
-  // Ask Stripe for the preview invoice with the new price swapped in.
-  // `proration_behavior: 'none'` matches scheduleDowngrade — the swap
-  // happens at period_end with no mid-period proration, so the next
-  // invoice is just the new tier's recurring charge (with any
-  // customer-level coupon applied).
+  // Preview invoice with the new price swapped in. Shares
+  // `DOWNGRADE_PRORATION_BEHAVIOR` with `scheduleDowngrade` so the
+  // quoted credit cannot diverge from what Stripe issues at apply.
   let preview: PreviewInvoiceLike | null = null;
   try {
     preview = (await stripe.invoices.createPreview({
       subscription: subscriptionId,
       subscription_details: {
         items: [{ id: licensedItem.id, price: publishedPriceId }],
-        proration_behavior: 'none',
+        proration_behavior: DOWNGRADE_PRORATION_BEHAVIOR,
       },
       expand: ['lines.data'],
     })) as unknown as PreviewInvoiceLike;

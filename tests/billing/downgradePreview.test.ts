@@ -1,16 +1,14 @@
 /**
  * Unit coverage for `getTenantDowngradePreview` (Task #1257).
  *
- * The preview powers `GET /billing/downgrade-preview`. It must mirror
- * what `scheduleDowngrade` actually does on apply: a deferred phase
- * swap at `current_period_end` with `proration_behavior: 'none'`. So:
- *   - prorationCreditCents = 0 in the happy path (no mid-period
- *     proration is generated)
- *   - any unrelated negative line items in the preview must NOT count
- *     as downgrade credit (we filter to `proration === true`)
- *   - nextInvoiceTotalCents comes from Stripe's preview (so a
- *     customer-level coupon is automatically applied)
- *   - every Stripe error degrades to a catalog-based fallback
+ * The preview powers `GET /billing/downgrade-preview`. It shares
+ * `DOWNGRADE_PRORATION_BEHAVIOR` with `scheduleDowngrade` so the
+ * `proration_behavior` value handed to Stripe in both paths cannot
+ * drift. Asserts:
+ *   - the preview hands Stripe the shared constant
+ *   - only `proration: true` negative lines count toward the credit
+ *   - `nextInvoiceTotalCents` honors any customer-level coupon
+ *   - Stripe errors degrade to the catalog fallback
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -70,6 +68,7 @@ vi.mock('../../platform/billing/stripe/client', () => ({
 }));
 
 import { getTenantDowngradePreview } from '../../platform/billing/stripe/effectiveRate';
+import { DOWNGRADE_PRORATION_BEHAVIOR } from '../../platform/billing/stripe/planChange';
 import { PLAN_CATALOG } from '../../shared/billing/planCatalog';
 
 const TENANT = 'tenant-downgrade-preview';
@@ -113,7 +112,7 @@ afterEach(() => {
 });
 
 describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () => {
-  it('asks Stripe for the preview with proration_behavior=none and surfaces invoice.total as the next-invoice quote', async () => {
+  it('asks Stripe for the preview with the shared DOWNGRADE_PRORATION_BEHAVIOR and surfaces invoice.total as the next-invoice quote', async () => {
     setSubRow({
       plan: 'enterprise',
       stripe_subscription_id: 'sub_ent',
@@ -184,9 +183,10 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     expect(previewCall.subscription_details.items).toEqual([
       { id: 'si_licensed_ent', price: 'price_pro_monthly_published' },
     ]);
-    // Critical: proration_behavior must match what scheduleDowngrade
-    // does on apply, otherwise we'd quote a credit Stripe never issues.
-    expect(previewCall.subscription_details.proration_behavior).toBe('none');
+    // Must match the value scheduleDowngrade applies to phase 1.
+    expect(previewCall.subscription_details.proration_behavior).toBe(
+      DOWNGRADE_PRORATION_BEHAVIOR,
+    );
     expect(previewCall.subscription_details.proration_date).toBeUndefined();
 
     expect(result.plan).toBe('pro');
@@ -322,7 +322,9 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
       subscription_details: { items: Array<{ price: string }>; proration_behavior: string };
     };
     expect(previewCall.subscription_details.items[0]!.price).toBe('price_pro_annual_published');
-    expect(previewCall.subscription_details.proration_behavior).toBe('none');
+    expect(previewCall.subscription_details.proration_behavior).toBe(
+      DOWNGRADE_PRORATION_BEHAVIOR,
+    );
 
     expect(result.interval).toBe('annual');
     expect(result.prorationCreditCents).toBe(0);

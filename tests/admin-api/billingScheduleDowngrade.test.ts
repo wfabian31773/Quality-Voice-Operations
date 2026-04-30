@@ -285,6 +285,9 @@ describe('POST /billing/schedule-downgrade', () => {
     // Phase 1 = lower tier, exactly one billing cycle, no proration.
     expect(updateArgs.phases[1].items[0].price).toBe('price_pro_monthly');
     expect(updateArgs.phases[1].duration).toEqual({ interval_count: 1, interval: 'month' });
+    // Both phases stay at 'none' so the deferred phase swap doesn't
+    // trigger an unused-time proration the preview wouldn't quote.
+    expect(updateArgs.phases[0].proration_behavior).toBe('none');
     expect(updateArgs.phases[1].proration_behavior).toBe('none');
   });
 
