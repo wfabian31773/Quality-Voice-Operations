@@ -1748,8 +1748,7 @@ interface BillingConfigHealthResponse {
 }
 
 function fmtCentsAsUsd(cents: number | null | undefined): string {
-  if (cents == null) return '—';
-  return `$${(cents / 100).toFixed(2)}`;
+  return formatCentsHelper(cents);
 }
 
 function billingStatusLabel(s: BillingPriceCheckStatus): string {

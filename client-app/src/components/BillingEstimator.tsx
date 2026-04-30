@@ -592,7 +592,7 @@ function buildDiscountBadge(
     const formatter = couponCurrency
       ? makeFormatMoney(couponCurrency)
       : formatMoney;
-    offPart = `${formatter(discount.amountOffCents / 100)} off`;
+    offPart = `${formatter(centsToWholeDollars(discount.amountOffCents))} off`;
   }
   if (!offPart) return null;
 
