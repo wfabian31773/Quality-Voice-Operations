@@ -509,6 +509,18 @@ export default function Billing() {
               : undefined}
             projectionMultiplier={projectionMultiplier}
             currency={currency}
+            // The recommendation banner's "Switch to <Plan>" CTA reuses
+            // the same Stripe Checkout flow as the upgrade cards below,
+            // pre-selected to monthly billing — that matches the interval
+            // the recommendation arithmetic uses (catalog monthly price)
+            // so a tenant lands in checkout at the exact $/mo we just
+            // promised. Gated on `isAdmin` so read-only roles never even
+            // see the button — the BillingEstimator hides the CTA when
+            // `onSwitchPlan` is omitted.
+            onSwitchPlan={isAdmin
+              ? (tier) => handleUpgrade(tier, 'monthly')
+              : undefined}
+            switchingPlan={(upgradeLoading as PlanTier | null) ?? null}
             trailingMonthlyAiMinutes={
               // Only feed the recommendation card when at least one of
               // the trailing months actually had AI usage. A brand-new

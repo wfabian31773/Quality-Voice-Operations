@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Lightbulb,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import {
   PLAN_CATALOG,
@@ -87,6 +88,21 @@ interface BillingEstimatorProps {
    * a tenant toward a plan change based on a single MTD data point.
    */
   trailingMonthlyAiMinutes?: ReadonlyArray<number>;
+  /**
+   * Invoked when the tenant clicks the recommendation banner's
+   * "Switch to <Plan>" CTA. The parent is expected to kick off a Stripe
+   * Checkout flow for the recommended tier (monthly interval). When this
+   * callback is omitted the CTA is hidden — that's how we gate the action
+   * for read-only roles without leaking it into the markup.
+   */
+  onSwitchPlan?: (tier: PlanTier) => void;
+  /**
+   * When set to a tier, the recommendation card renders its CTA in a
+   * loading/disabled state for that tier. Wired to the parent's existing
+   * `upgradeLoading` state so the slot card and the banner button stay in
+   * sync while Stripe Checkout is being created.
+   */
+  switchingPlan?: PlanTier | null;
 }
 
 interface TierSpec {
@@ -316,15 +332,30 @@ function RecommendationCard({
   recommendation,
   monthsConsidered,
   formatMoney,
+  onSwitchPlan,
+  switchingPlan,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
   formatMoney: (value: number) => string;
+  onSwitchPlan?: (tier: PlanTier) => void;
+  switchingPlan?: PlanTier | null;
 }) {
   const { current, recommended, monthlySavings, annualSavings, isAlreadyOptimal, averageMinutes } = recommendation;
   const monthsLabel = monthsConsidered === 1
     ? 'last complete month'
     : `last ${monthsConsidered} complete months`;
+  // Direction governs the verb: tenants who would save by moving to a
+  // smaller tier should see "Downgrade to" rather than the more neutral
+  // "Switch to" — matches the language used elsewhere in the estimator.
+  const currentRank = PLAN_TIERS.indexOf(current.tier);
+  const recommendedRank = PLAN_TIERS.indexOf(recommended.tier);
+  const isDowngrade = recommendedRank >= 0 && currentRank >= 0
+    && recommendedRank < currentRank;
+  const isSwitchingThisTier = switchingPlan === recommended.tier;
+  const ctaLabel = isSwitchingThisTier
+    ? 'Redirecting...'
+    : `${isDowngrade ? 'Downgrade to' : 'Switch to'} ${recommended.name}`;
 
   if (isAlreadyOptimal) {
     return (
@@ -384,6 +415,26 @@ function RecommendationCard({
           back in your pocket.
         </p>
       </div>
+      {onSwitchPlan && (
+        <button
+          type="button"
+          data-testid="billing-estimator-recommendation-cta"
+          data-recommendation-cta-tier={recommended.tier}
+          onClick={() => onSwitchPlan(recommended.tier)}
+          disabled={isSwitchingThisTier}
+          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title={`${isDowngrade ? 'Downgrade' : 'Switch'} to the ${recommended.name} plan (monthly billing)`}
+        >
+          {isSwitchingThisTier ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          ) : isDowngrade ? (
+            <ArrowDownRight className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+          )}
+          {ctaLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -396,6 +447,8 @@ export default function BillingEstimator({
   projectionMultiplier,
   currency = 'USD',
   trailingMonthlyAiMinutes,
+  onSwitchPlan,
+  switchingPlan,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
@@ -550,6 +603,8 @@ export default function BillingEstimator({
           recommendation={recommendation.result}
           monthsConsidered={recommendation.monthsConsidered}
           formatMoney={formatMoney}
+          onSwitchPlan={onSwitchPlan}
+          switchingPlan={switchingPlan}
         />
       )}
 
