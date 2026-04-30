@@ -497,8 +497,12 @@
     "override_callout": {
       "title_less": "Você tem uma tarifa personalizada abaixo do preço público atual",
       "title_more": "Você tem uma tarifa personalizada acima do preço público atual",
+      "title_overage_less": "Você tem uma tarifa de excedente personalizada abaixo do preço público atual",
+      "title_overage_more": "Você tem uma tarifa de excedente personalizada acima do preço público atual",
       "description_less": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a menos que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
       "description_more": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a mais que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
+      "overage_line_less": "Seu excedente do {{tierName}} é cobrado a {{currentRate}} — {{deltaRate}} a menos que a tarifa pública atual de {{catalogRate}}.",
+      "overage_line_more": "Seu excedente do {{tierName}} é cobrado a {{currentRate}} — {{deltaRate}} a mais que a tarifa pública atual de {{catalogRate}}.",
       "manage_link": "Gerenciar assinatura"
     },
     "compare": {

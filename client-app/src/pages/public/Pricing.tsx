@@ -66,15 +66,44 @@ export interface EffectiveRateResponse {
  * the matching side from the tenant's actual subscription and the
  * other side from the published `STRIPE_PRICE_<TIER>_<INTERVAL>` env
  * var).
+ *
+ * The base-price delta is the headline of the callout. The optional
+ * `overage` sub-delta surfaces a per-minute divergence on the same
+ * banner so a grandfathered tenant negotiating purely on overage can
+ * see the same kind of "you pay $X/min vs the published $Y/min"
+ * summary (task #1270).
  */
+export interface CustomRateOverageDelta {
+  /** Tenant's actual Stripe-invoiced overage rate, in dollars/minute. */
+  currentRatePerMinute: number;
+  /** Catalog (published) overage rate for the same tier, dollars/minute. */
+  catalogRatePerMinute: number;
+  /** Absolute difference between catalog and tenant rate, dollars/minute. */
+  deltaPerMinute: number;
+  /** True when the tenant pays *less* per minute than the published rate. */
+  isLess: boolean;
+}
+
 export interface CustomRateDelta {
   tier: PlanTier;
   tierName: string;
   currentMonthlyDollars: number;
   catalogMonthlyDollars: number;
+  /**
+   * Whole-dollar absolute base-price delta. `0` when the tenant base
+   * price matches catalog within rounding noise — in that case the
+   * callout renders only the overage section (when present) and skips
+   * the base sentence so it doesn't read as "$0/mo less than $399".
+   */
   deltaDollars: number;
   /** True when the tenant pays *less* than the current published rate. */
   isLess: boolean;
+  /**
+   * Populated only when `overagePriceSource === 'stripe'` AND the
+   * tenant's per-minute rate diverges from catalog by at least
+   * `OVERAGE_RENDER_THRESHOLD_PER_MIN`. Absent otherwise.
+   */
+  overage?: CustomRateOverageDelta;
 }
 
 // Sub-dollar deltas are suppressed: the callout formats every monetary
@@ -82,6 +111,14 @@ export interface CustomRateDelta {
 // doesn't add up on screen and are likely proration / Stripe rounding
 // noise rather than a meaningful negotiated rate.
 const RENDER_THRESHOLD_CENTS = 100;
+
+// Half-cent-per-minute threshold for the overage line. Catalog rates are
+// quoted to the nearest cent (e.g. $0.08, $0.12); negotiated Stripe
+// rates can be sub-cent (e.g. $0.075). Anything below half a cent is
+// almost certainly currency-conversion or pricing-engine drift rather
+// than a meaningful contract delta, so we suppress it to match the
+// "matches catalog within rounding noise" requirement.
+const OVERAGE_RENDER_THRESHOLD_PER_MIN = 0.005;
 
 function inferTenantInterval(
   payload: EffectiveRateResponse,
@@ -146,16 +183,48 @@ export function computeCustomRateDelta(
     : catalogReferenceCents(tier, interval);
   const catalogCents = catalogReferenceCents(tier, interval);
 
-  const deltaCents = catalogCents - tenantCents;
-  if (Math.abs(deltaCents) < RENDER_THRESHOLD_CENTS) return null;
+  const baseDeltaCents = catalogCents - tenantCents;
+  const baseMeaningful = Math.abs(baseDeltaCents) >= RENDER_THRESHOLD_CENTS;
+
+  // Overage delta is computed independently of the base delta, but only
+  // when Stripe actually sourced the overage rate — otherwise we'd be
+  // comparing the catalog rate to itself (or worse, to a tenant value
+  // that happens to drift from catalog purely because the API hadn't
+  // resolved a Stripe price yet).
+  let overage: CustomRateOverageDelta | undefined;
+  if (payload.overagePriceSource === 'stripe') {
+    const tenantRate = Number.isFinite(payload.overageRatePerMinute)
+      ? payload.overageRatePerMinute
+      : PLAN_CATALOG[tier].overageRatePerMinute;
+    const catalogRate = PLAN_CATALOG[tier].overageRatePerMinute;
+    const overageDelta = catalogRate - tenantRate;
+    if (Math.abs(overageDelta) >= OVERAGE_RENDER_THRESHOLD_PER_MIN) {
+      overage = {
+        currentRatePerMinute: tenantRate,
+        catalogRatePerMinute: catalogRate,
+        deltaPerMinute: Math.abs(overageDelta),
+        isLess: overageDelta > 0,
+      };
+    }
+  }
+
+  // Suppress entirely when neither base nor overage carries a
+  // meaningful delta — an isStripeSourced payload can still match
+  // catalog exactly (tenant on the published rate via a Stripe-managed
+  // sub) and we don't want to mount a banner with nothing to say.
+  if (!baseMeaningful && !overage) return null;
 
   return {
     tier,
     tierName: PLAN_CATALOG[tier].name,
     currentMonthlyDollars: centsToWholeDollars(tenantCents),
     catalogMonthlyDollars: centsToWholeDollars(catalogCents),
-    deltaDollars: centsToWholeDollars(Math.abs(deltaCents)),
-    isLess: deltaCents > 0,
+    // When base matches catalog within rounding noise, zero out the
+    // headline delta so the renderer skips the base sentence rather
+    // than printing "$0/mo less than $399".
+    deltaDollars: baseMeaningful ? centsToWholeDollars(Math.abs(baseDeltaCents)) : 0,
+    isLess: baseMeaningful ? baseDeltaCents > 0 : false,
+    ...(overage ? { overage } : {}),
   };
 }
 
@@ -272,29 +341,74 @@ function formatWholeDollars(value: number): string {
   return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+// Per-minute rates can be sub-cent (e.g. negotiated $0.075/min), so we
+// allow up to 3 decimals while still rendering common whole-cent rates
+// like $0.08 with two-decimal precision rather than awkward $0.080.
+function formatPerMinuteRate(rate: number): string {
+  return `${formatDollars(rate, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 3,
+  })}/min`;
+}
+
 interface CustomRateCalloutProps {
   delta: CustomRateDelta;
   t: ReturnType<typeof useTranslation>['t'];
 }
 
 function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
-  const interp = {
+  const baseInterp = {
     tierName: delta.tierName,
     currentPrice: formatWholeDollars(delta.currentMonthlyDollars),
     catalogPrice: formatWholeDollars(delta.catalogMonthlyDollars),
     deltaPrice: formatWholeDollars(delta.deltaDollars),
   };
-  const descriptionKey = delta.isLess
+  // `deltaDollars === 0` means base matched catalog within rounding
+  // noise — `computeCustomRateDelta` only returns a delta in that case
+  // when overage diverges, so we skip the base sentence entirely and
+  // let the overage line stand on its own.
+  const baseMeaningful = delta.deltaDollars > 0;
+  const overage = delta.overage;
+
+  const overageInterp = overage
+    ? {
+        tierName: delta.tierName,
+        currentRate: formatPerMinuteRate(overage.currentRatePerMinute),
+        catalogRate: formatPerMinuteRate(overage.catalogRatePerMinute),
+        deltaRate: formatPerMinuteRate(overage.deltaPerMinute),
+      }
+    : null;
+
+  // Title and tone are anchored on whichever delta is the headline:
+  // base when present, otherwise the overage-only variant. Mixed
+  // directions (e.g. base less, overage more) keep the base headline —
+  // the overage line below states its own direction explicitly so the
+  // banner still reads correctly.
+  const headlineIsLess = baseMeaningful
+    ? delta.isLess
+    : overage!.isLess;
+
+  let titleKey: string;
+  if (baseMeaningful) {
+    titleKey = delta.isLess
+      ? 'pricing.override_callout.title_less'
+      : 'pricing.override_callout.title_more';
+  } else {
+    titleKey = overage!.isLess
+      ? 'pricing.override_callout.title_overage_less'
+      : 'pricing.override_callout.title_overage_more';
+  }
+  const baseDescriptionKey = delta.isLess
     ? 'pricing.override_callout.description_less'
     : 'pricing.override_callout.description_more';
-  const titleKey = delta.isLess
-    ? 'pricing.override_callout.title_less'
-    : 'pricing.override_callout.title_more';
+  const overageLineKey = overage?.isLess
+    ? 'pricing.override_callout.overage_line_less'
+    : 'pricing.override_callout.overage_line_more';
+
   // Tinted by direction: success-green when the tenant is paying less than
   // the current published price (good news), warning-amber when they're
   // paying more (gentle nudge to revisit their plan).
-  const isLess = delta.isLess;
-  const tone = isLess
+  const tone = headlineIsLess
     ? {
         wrapper: 'border-success/30 bg-success/[0.06]',
         accent: 'text-success',
@@ -309,7 +423,9 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
   return (
     <div
       data-testid="pricing-override-callout"
-      data-direction={isLess ? 'less' : 'more'}
+      data-direction={headlineIsLess ? 'less' : 'more'}
+      data-has-base={baseMeaningful ? 'true' : 'false'}
+      data-has-overage={overage ? 'true' : 'false'}
       role="status"
       className={`mb-6 flex flex-col sm:flex-row sm:items-start gap-3 rounded-xl border p-4 sm:p-5 ${tone.wrapper}`}
     >
@@ -320,12 +436,22 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
         <p className={`font-display text-sm font-semibold ${tone.accent}`}>
           {t(titleKey)}
         </p>
-        <p
-          data-testid="pricing-override-callout-description"
-          className="text-sm font-body text-text-primary/80 mt-1"
-        >
-          {t(descriptionKey, interp)}
-        </p>
+        {baseMeaningful && (
+          <p
+            data-testid="pricing-override-callout-description"
+            className="text-sm font-body text-text-primary/80 mt-1"
+          >
+            {t(baseDescriptionKey, baseInterp)}
+          </p>
+        )}
+        {overage && overageInterp && (
+          <p
+            data-testid="pricing-override-callout-overage"
+            className={`text-sm font-body text-text-primary/80 ${baseMeaningful ? 'mt-1.5' : 'mt-1'}`}
+          >
+            {t(overageLineKey, overageInterp)}
+          </p>
+        )}
       </div>
       <Link
         to="/billing"

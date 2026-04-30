@@ -497,8 +497,12 @@
     "override_callout": {
       "title_less": "You're on a custom rate below today's published price",
       "title_more": "You're on a custom rate above today's published price",
+      "title_overage_less": "You're on a custom overage rate below today's published price",
+      "title_overage_more": "You're on a custom overage rate above today's published price",
       "description_less": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo less than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
       "description_more": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo more than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
+      "overage_line_less": "Your {{tierName}} overage is billed at {{currentRate}} — {{deltaRate}} less than the current {{catalogRate}} published rate.",
+      "overage_line_more": "Your {{tierName}} overage is billed at {{currentRate}} — {{deltaRate}} more than the current {{catalogRate}} published rate.",
       "manage_link": "Manage subscription"
     },
     "compare": {

@@ -497,8 +497,12 @@
     "override_callout": {
       "title_less": "Vous bénéficiez d'un tarif personnalisé inférieur au prix public actuel",
       "title_more": "Vous payez un tarif personnalisé supérieur au prix public actuel",
+      "title_overage_less": "Vous bénéficiez d'un tarif de dépassement personnalisé inférieur au prix public actuel",
+      "title_overage_more": "Vous payez un tarif de dépassement personnalisé supérieur au prix public actuel",
       "description_less": "Votre compte paie {{currentPrice}}/mois pour {{tierName}} — soit {{deltaPrice}}/mois de moins que le tarif public actuel de {{catalogPrice}}. Passer à un plan actuel modifierait votre facture.",
       "description_more": "Votre compte paie {{currentPrice}}/mois pour {{tierName}} — soit {{deltaPrice}}/mois de plus que le tarif public actuel de {{catalogPrice}}. Passer à un plan actuel modifierait votre facture.",
+      "overage_line_less": "Votre dépassement {{tierName}} est facturé à {{currentRate}} — soit {{deltaRate}} de moins que le tarif public actuel de {{catalogRate}}.",
+      "overage_line_more": "Votre dépassement {{tierName}} est facturé à {{currentRate}} — soit {{deltaRate}} de plus que le tarif public actuel de {{catalogRate}}.",
       "manage_link": "Gérer l'abonnement"
     },
     "compare": {

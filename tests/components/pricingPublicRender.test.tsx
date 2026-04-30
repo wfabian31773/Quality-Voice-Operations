@@ -400,6 +400,157 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     expect(text).not.toContain('$399');
   });
 
+  // -------------------------------------------------------------------------
+  // Task #1270: render-side coverage for the overage line. The pure
+  // computeCustomRateDelta tests above lock in the data shape; these
+  // mount the page so we also verify the i18n keys exist and the line
+  // renders with the expected per-minute numbers.
+  // -------------------------------------------------------------------------
+  it('renders the overage line on the callout when both base AND overage are custom (task #1270)', async () => {
+    mockUser = { tenantId: 'tenant-grandfathered-both' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Custom base ($250 vs catalog $399) + custom overage
+            // ($0.05/min vs catalog $0.12/min) — banner copy must read
+            // cleanly with both lines present.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.05,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            monthlyBasePriceCents: 25000,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 20000,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-direction')).toBe('less');
+    expect(callout.getAttribute('data-has-base')).toBe('true');
+    expect(callout.getAttribute('data-has-overage')).toBe('true');
+
+    // Base line still reads cleanly.
+    const baseText = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
+    expect(baseText).toContain('$250');
+    expect(baseText).toContain('$149');
+    expect(baseText).toContain('$399');
+
+    // Overage line renders with per-minute numbers and tier name.
+    const overageText = screen.getByTestId('pricing-override-callout-overage').textContent ?? '';
+    expect(overageText).toContain('$0.05/min');
+    expect(overageText).toContain('$0.07/min');
+    expect(overageText).toContain('$0.12/min');
+    expect(overageText.toLowerCase()).toContain('pro');
+    expect(overageText.toLowerCase()).toContain('less');
+  });
+
+  it('renders the callout for a tenant with ONLY a custom overage rate (base matches catalog) (task #1270)', async () => {
+    mockUser = { tenantId: 'tenant-overage-only' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // On the published Pro base price ($399) but with a
+            // negotiated $0.05/min overage. Pre-#1270 this banner
+            // would have stayed hidden — the whole point of the task
+            // is that this tenant now sees a per-minute summary.
+            basePriceCents: 39900,
+            overageRatePerMinute: 0.05,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 31920,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    // Tone derived from the overage direction since base doesn't diverge.
+    expect(callout.getAttribute('data-direction')).toBe('less');
+    expect(callout.getAttribute('data-has-base')).toBe('false');
+    expect(callout.getAttribute('data-has-overage')).toBe('true');
+
+    // Base sentence is suppressed — there's nothing meaningful to say.
+    expect(screen.queryByTestId('pricing-override-callout-description')).toBeNull();
+
+    // Overage line stands on its own.
+    const overageText = screen.getByTestId('pricing-override-callout-overage').textContent ?? '';
+    expect(overageText).toContain('$0.05/min');
+    expect(overageText).toContain('$0.12/min');
+    expect(overageText.toLowerCase()).toContain('less');
+  });
+
+  it('does NOT render the overage line when overage matches catalog (task #1270)', async () => {
+    mockUser = { tenantId: 'tenant-base-only-custom' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Custom base, but overage is catalog-sourced — overage
+            // line MUST stay hidden.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 25000,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 20000,
+            annualBasePriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-has-overage')).toBe('false');
+    expect(screen.queryByTestId('pricing-override-callout-overage')).toBeNull();
+    // Base line still rendered — that's why the callout mounted at all.
+    expect(screen.getByTestId('pricing-override-callout-description')).toBeTruthy();
+  });
+
   it('does NOT render the custom-rate callout when the tenant rate matches catalog (task #1210)', async () => {
     mockUser = { tenantId: 'tenant-on-published-rate' };
     fetchHandler = (url) => {
@@ -825,6 +976,110 @@ describe('computeCustomRateDelta', () => {
       plan: 'mythical',
       basePriceCents: 12345,
       overageRatePerMinute: 0.1,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Task #1270: grandfathered tenants with a custom per-minute overage
+  // rate also need the same "you pay $X/min vs the published $Y/min"
+  // summary on the callout, not just the base-price line.
+  // -------------------------------------------------------------------------
+  it('attaches an overage sub-delta when overagePriceSource is stripe and the rate diverges', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Pro catalog overage = $0.12/min; tenant negotiated $0.05/min.
+    // Base price ALSO diverges (Stripe sub at $250/mo vs catalog $399).
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    // Base headline preserved.
+    expect(delta?.currentMonthlyDollars).toBe(250);
+    expect(delta?.catalogMonthlyDollars).toBe(399);
+    expect(delta?.deltaDollars).toBe(149);
+    expect(delta?.isLess).toBe(true);
+    // Overage sub-delta carries the per-minute breakdown.
+    expect(delta?.overage).toBeDefined();
+    expect(delta?.overage?.currentRatePerMinute).toBe(0.05);
+    expect(delta?.overage?.catalogRatePerMinute).toBe(0.12);
+    // Floating-point: 0.12 - 0.05 = 0.07 (within rounding noise).
+    expect(delta?.overage?.deltaPerMinute).toBeCloseTo(0.07, 6);
+    expect(delta?.overage?.isLess).toBe(true);
+  });
+
+  it('omits the overage sub-delta when overagePriceSource is catalog (even if the rate happens to differ)', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // overagePriceSource is catalog — even though the numeric rate
+    // happens to look custom, we trust the source label and skip the
+    // overage line so we don't compare catalog-against-catalog.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'catalog',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.overage).toBeUndefined();
+  });
+
+  it('omits the overage sub-delta when the tenant rate matches catalog within rounding noise', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // 0.001/min drift is below the half-cent threshold — almost
+    // certainly Stripe pricing-engine rounding rather than a
+    // negotiated rate, so suppress the overage line.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.121,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.overage).toBeUndefined();
+  });
+
+  it('returns a delta with overage-only when base matches catalog but overage diverges', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Tenant on the published Pro base price ($399) but a negotiated
+    // $0.05/min overage rate. Base delta is 0; overage delta is real.
+    // This is exactly the "tenant negotiating purely on overage"
+    // scenario the task calls out — must surface the callout.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    // deltaDollars is zeroed out so the renderer skips the base
+    // sentence rather than printing "$0/mo less than $399".
+    expect(delta?.deltaDollars).toBe(0);
+    // isLess is also normalised so the renderer's tone fall-through
+    // can rely on the overage direction instead.
+    expect(delta?.isLess).toBe(false);
+    expect(delta?.overage).toBeDefined();
+    expect(delta?.overage?.currentRatePerMinute).toBe(0.05);
+    expect(delta?.overage?.catalogRatePerMinute).toBe(0.12);
+    expect(delta?.overage?.isLess).toBe(true);
+  });
+
+  it('returns null when both base and overage match catalog within their thresholds (Stripe-sourced)', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Sub-dollar base drift + sub-half-cent overage drift — both are
+    // rounding noise, so the function must NOT mount a banner with
+    // nothing to say.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39950,
+      overageRatePerMinute: 0.1201,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
     });

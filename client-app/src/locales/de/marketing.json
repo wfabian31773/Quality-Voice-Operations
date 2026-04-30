@@ -497,8 +497,12 @@
     "override_callout": {
       "title_less": "Sie haben einen individuellen Tarif unter dem aktuellen Listenpreis",
       "title_more": "Sie haben einen individuellen Tarif über dem aktuellen Listenpreis",
+      "title_overage_less": "Sie haben einen individuellen Übernutzungstarif unter dem aktuellen Listenpreis",
+      "title_overage_more": "Sie haben einen individuellen Übernutzungstarif über dem aktuellen Listenpreis",
       "description_less": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat weniger als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
       "description_more": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat mehr als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
+      "overage_line_less": "Ihre Übernutzung für {{tierName}} wird zu {{currentRate}} abgerechnet — {{deltaRate}} weniger als der aktuelle Listenpreis von {{catalogRate}}.",
+      "overage_line_more": "Ihre Übernutzung für {{tierName}} wird zu {{currentRate}} abgerechnet — {{deltaRate}} mehr als der aktuelle Listenpreis von {{catalogRate}}.",
       "manage_link": "Abonnement verwalten"
     },
     "compare": {

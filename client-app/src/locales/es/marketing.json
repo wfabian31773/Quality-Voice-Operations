@@ -497,8 +497,12 @@
     "override_callout": {
       "title_less": "Tienes una tarifa personalizada por debajo del precio público actual",
       "title_more": "Tienes una tarifa personalizada por encima del precio público actual",
+      "title_overage_less": "Tienes una tarifa de exceso personalizada por debajo del precio público actual",
+      "title_overage_more": "Tienes una tarifa de exceso personalizada por encima del precio público actual",
       "description_less": "Tu cuenta paga {{currentPrice}}/mes por {{tierName}} — eso es {{deltaPrice}}/mes menos que la tarifa pública actual de {{catalogPrice}}. Cambiar a un plan actual modificaría tu factura.",
       "description_more": "Tu cuenta paga {{currentPrice}}/mes por {{tierName}} — eso es {{deltaPrice}}/mes más que la tarifa pública actual de {{catalogPrice}}. Cambiar a un plan actual modificaría tu factura.",
+      "overage_line_less": "Tu exceso de {{tierName}} se factura a {{currentRate}} — {{deltaRate}} menos que la tarifa pública actual de {{catalogRate}}.",
+      "overage_line_more": "Tu exceso de {{tierName}} se factura a {{currentRate}} — {{deltaRate}} más que la tarifa pública actual de {{catalogRate}}.",
       "manage_link": "Gestionar suscripción"
     },
     "compare": {
