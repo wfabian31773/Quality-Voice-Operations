@@ -560,6 +560,12 @@ export default function Billing() {
   // Stripe subscription items. Falls back to catalog defaults server-side
   // when no Stripe subscription exists, so the BillingEstimator stays
   // accurate for tenants on a custom / negotiated / grandfathered price.
+  //
+  // The `monthlyBasePriceCents` / `annualBasePriceCents` pair powers the
+  // in-card "Save $X/yr by switching to annual" callout below for tenants
+  // currently on monthly billing — same source the public pricing
+  // calculator already uses, so the quote a tenant sees on the dashboard
+  // matches what they'd see on /pricing.
   const { data: effectiveRateData } = useQuery({
     queryKey: ['billing-effective-rate'],
     queryFn: () => api.get<{
@@ -567,6 +573,10 @@ export default function Billing() {
       overageRatePerMinute: number;
       basePriceSource: 'stripe' | 'catalog';
       overagePriceSource: 'stripe' | 'catalog';
+      monthlyBasePriceCents: number;
+      monthlyBasePriceSource: 'stripe' | 'catalog';
+      annualBasePriceCents: number;
+      annualBasePriceSource: 'stripe' | 'catalog';
     }>('/billing/effective-rate'),
     // The Stripe subscription rate is stable across a billing period, so a
     // 30-minute stale window keeps every page navigation from re-hitting
@@ -837,6 +847,100 @@ export default function Billing() {
                   Subscription cancelled on {formatDate(sub.cancelled_at)}. Access continues until end of billing period.
                 </div>
               )}
+
+              {/*
+                Annual savings callout. Surfaces the per-month equivalent of the
+                tenant's tier on annual billing alongside their current monthly
+                rate so they don't have to open /pricing in a new tab to see
+                the comparison. Only renders when:
+                  - the tenant has an active subscription on monthly billing
+                  - `/billing/effective-rate` has resolved
+                  - the annual quote is meaningfully cheaper than the monthly
+                    quote (`annualSavingsCents > 0`) — guards against catalog
+                    misconfigurations where the two prices come out equal.
+                Sourcing follows the same convention as the public pricing
+                calculator: a `Live rate` badge appears when either price came
+                from Stripe (the tenant's actual subscription or the published
+                `STRIPE_PRICE_<TIER>_<INTERVAL>` env var), so a custom
+                negotiated rate is honoured here too.
+              */}
+              {sub?.billing_interval === 'monthly'
+                && (status === 'active' || status === 'trialing')
+                && effectiveRateData && (() => {
+                // Gating intent: only nudge tenants whose subscription is
+                // currently in good standing toward annual. A `past_due`,
+                // `incomplete`, or `cancelled` monthly sub has bigger
+                // problems than a 20%-off pitch, and surfacing the
+                // callout there would be actively confusing.
+                const monthlyCents = effectiveRateData.monthlyBasePriceCents;
+                const annualEquivCents = effectiveRateData.annualBasePriceCents;
+                // Defence in depth: the response shape says these fields are
+                // always present, but a stale client / test fixture / partial
+                // server rollout could omit them. Guard so the callout stays
+                // hidden instead of rendering "Save NaN/yr".
+                if (
+                  typeof monthlyCents !== 'number'
+                  || typeof annualEquivCents !== 'number'
+                  || !Number.isFinite(monthlyCents)
+                  || !Number.isFinite(annualEquivCents)
+                ) {
+                  return null;
+                }
+                const annualSavingsCents = (monthlyCents - annualEquivCents) * 12;
+                if (annualSavingsCents <= 0) return null;
+                const liveRate =
+                  effectiveRateData.monthlyBasePriceSource === 'stripe'
+                  || effectiveRateData.annualBasePriceSource === 'stripe';
+                const planLabel = PLAN_LABELS[plan] ?? plan;
+                return (
+                  <div
+                    data-testid="billing-annual-savings-callout"
+                    className="mt-4 rounded-lg border border-success/30 bg-success/[0.04] px-3 py-3"
+                  >
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="h-4 w-4 text-success shrink-0 mt-0.5" aria-hidden="true" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-text-primary">
+                          Save{' '}
+                          <span
+                            data-testid="billing-annual-savings-amount"
+                            className="text-success"
+                          >
+                            {formatCents(annualSavingsCents)}/yr
+                          </span>{' '}
+                          by switching to annual billing
+                          {liveRate && (
+                            <span
+                              data-testid="billing-annual-savings-live-rate"
+                              className="ml-1.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-1.5 py-0.5 rounded-full"
+                              title="Sourced from your live Stripe pricing"
+                            >
+                              Live rate
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-text-muted mt-0.5">
+                          Your {planLabel} plan is{' '}
+                          <span
+                            data-testid="billing-annual-savings-monthly-base"
+                            className="font-medium text-text-primary"
+                          >
+                            {formatCents(monthlyCents)}/mo
+                          </span>{' '}
+                          on monthly billing. Annual billing works out to{' '}
+                          <span
+                            data-testid="billing-annual-savings-annual-equivalent"
+                            className="font-medium text-text-primary"
+                          >
+                            {formatCents(annualEquivCents)}/mo
+                          </span>
+                          {' '}({Math.round(((monthlyCents - annualEquivCents) / monthlyCents) * 100)}% off).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="bg-surface border border-border rounded-xl p-6">
