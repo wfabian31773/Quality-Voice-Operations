@@ -173,6 +173,17 @@ function UsageBar({ label, icon: Icon, used, limit, color }: {
 const TRAILING_WINDOW_OPTIONS: ReadonlyArray<TrailingWindow> = [3, 6, 12];
 const DEFAULT_TRAILING_WINDOW: TrailingWindow = 3;
 
+// Key inside the user-scoped `users.preferences` JSONB blob. The preference
+// follows the user across browsers / devices; localStorage is only used as a
+// pre-hydration cache so the page doesn't flicker on first paint while the
+// `/me/preferences` request is in-flight.
+const TRAILING_WINDOW_PREF_KEY = 'billing_trailing_window_months';
+
+interface BillingUserPreferences {
+  [TRAILING_WINDOW_PREF_KEY]?: unknown;
+  [key: string]: unknown;
+}
+
 function trailingWindowStorageKey(tenantId: string | undefined | null): string | null {
   if (!tenantId) return null;
   return `billing.trailingWindow.${tenantId}`;
@@ -195,6 +206,31 @@ function loadPersistedTrailingWindow(tenantId: string | undefined | null): Trail
   return DEFAULT_TRAILING_WINDOW;
 }
 
+function writePersistedTrailingWindow(
+  tenantId: string | undefined | null,
+  value: TrailingWindow,
+): void {
+  const key = trailingWindowStorageKey(tenantId);
+  if (!key || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // Best-effort persistence — ignore quota / privacy-mode failures.
+  }
+}
+
+function readServerTrailingWindow(
+  prefs: BillingUserPreferences | null | undefined,
+): TrailingWindow | null {
+  if (!prefs) return null;
+  const raw = prefs[TRAILING_WINDOW_PREF_KEY];
+  if (typeof raw !== 'number') return null;
+  if (TRAILING_WINDOW_OPTIONS.includes(raw as TrailingWindow)) {
+    return raw as TrailingWindow;
+  }
+  return null;
+}
+
 export default function Billing() {
   const { user } = useAuth();
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
@@ -202,35 +238,101 @@ export default function Billing() {
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [billingPeriodInitialized, setBillingPeriodInitialized] = useState(false);
-  // Persisted per-tenant window for the plan-recommendation card. The
-  // selector lives inside the BillingEstimator card, but the actual fetch
-  // is owned here because the parent already manages every other billing
-  // query. localStorage is keyed off the tenant so a user who switches
-  // accounts doesn't carry over the previous tenant's choice.
+  // Persisted trailing window for the plan-recommendation card.
+  // Authoritative store is the per-user `users.preferences` JSONB blob
+  // (key `billing_trailing_window_months`) so the choice follows the
+  // user across browsers and devices. localStorage is kept as a
+  // pre-hydration cache (keyed by tenant) so the toggle doesn't flicker
+  // on first paint while `/me/preferences` is in flight.
   const [trailingWindow, setTrailingWindowState] = useState<TrailingWindow>(() =>
     loadPersistedTrailingWindow(user?.tenantId ?? null),
   );
-  // Track which tenant id `trailingWindow` was last loaded for so we can
-  // re-hydrate whenever the active tenant changes — covers both first
-  // render before auth resolves AND a user who switches account/tenant
-  // mid-session. Without this we'd carry the previous tenant's choice
-  // over to the new tenant whenever the previous choice was non-default.
+  // Hydration is idempotent per user. Reset on user OR tenant change so
+  // a user-switch (or a tenant-switch by the same user) re-hydrates from
+  // the new account's preferences instead of keeping the previous one.
+  const serverHydratedRef = useRef(false);
+  const userTouchedTrailingWindowRef = useRef(false);
+  const loadedForUserRef = useRef<string | null>(user?.userId ?? null);
   const loadedForTenantRef = useRef<string | null>(user?.tenantId ?? null);
   useEffect(() => {
+    const userId = user?.userId ?? null;
     const tenantId = user?.tenantId ?? null;
-    if (loadedForTenantRef.current === tenantId) return;
+    if (
+      loadedForUserRef.current === userId
+      && loadedForTenantRef.current === tenantId
+    ) {
+      return;
+    }
+    loadedForUserRef.current = userId;
     loadedForTenantRef.current = tenantId;
     setTrailingWindowState(loadPersistedTrailingWindow(tenantId));
-  }, [user?.tenantId]);
-  const setTrailingWindow = (next: TrailingWindow) => {
-    setTrailingWindowState(next);
-    const key = trailingWindowStorageKey(user?.tenantId);
-    if (!key || typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(key, String(next));
-    } catch {
-      // Best-effort persistence — ignore quota / privacy-mode failures.
+    serverHydratedRef.current = false;
+    userTouchedTrailingWindowRef.current = false;
+  }, [user?.userId, user?.tenantId]);
+
+  const { data: preferencesData } = useQuery({
+    queryKey: ['user-preferences', user?.userId ?? null],
+    queryFn: () =>
+      api.get<{ preferences: BillingUserPreferences | null }>('/me/preferences'),
+    enabled: Boolean(user?.userId),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!preferencesData) return;
+    if (serverHydratedRef.current) return;
+    if (userTouchedTrailingWindowRef.current) {
+      // User clicked before the server responded — their choice already
+      // wrote through to localStorage and the server. Just mark done.
+      serverHydratedRef.current = true;
+      return;
     }
+    const serverValue = readServerTrailingWindow(preferencesData.preferences);
+    if (serverValue !== null) {
+      setTrailingWindowState(serverValue);
+      writePersistedTrailingWindow(user?.tenantId ?? null, serverValue);
+    } else if (trailingWindow !== DEFAULT_TRAILING_WINDOW) {
+      // No server value yet, but legacy localStorage holds a non-default
+      // pick from the browser-only implementation. Migrate it up so the
+      // user's other devices pick it up from now on.
+      api
+        .patch<{ preferences: BillingUserPreferences }>('/me/preferences', {
+          [TRAILING_WINDOW_PREF_KEY]: trailingWindow,
+        })
+        .then((result) => {
+          queryClient.setQueryData(
+            ['user-preferences', user?.userId ?? null],
+            { preferences: result.preferences ?? {} },
+          );
+        })
+        .catch(() => {
+          // Best-effort migration; the next explicit toggle will retry.
+        });
+    }
+    serverHydratedRef.current = true;
+  }, [preferencesData, trailingWindow, user?.tenantId, user?.userId, queryClient]);
+
+  const setTrailingWindow = (next: TrailingWindow) => {
+    userTouchedTrailingWindowRef.current = true;
+    setTrailingWindowState(next);
+    writePersistedTrailingWindow(user?.tenantId ?? null, next);
+    api
+      .patch<{ preferences: BillingUserPreferences }>('/me/preferences', {
+        [TRAILING_WINDOW_PREF_KEY]: next,
+      })
+      .then((result) => {
+        // Keep the React Query cache in sync so any other consumer of
+        // `/me/preferences` (or a remount of this page) reads the new
+        // value without a follow-up GET.
+        queryClient.setQueryData(
+          ['user-preferences', user?.userId ?? null],
+          { preferences: result.preferences ?? {} },
+        );
+      })
+      .catch(() => {
+        // Best-effort: localStorage already holds the value for this
+        // browser, and the next toggle will retry.
+      });
   };
   const currency = useTenantCurrency();
   const formatCents = (cents: number | string | bigint | null | undefined) => formatCentsHelper(cents, { currency });
