@@ -104,6 +104,8 @@ const lightChecks = [
   ["color-sidebar-text", "palette", "sidebarText"],
   ["color-sidebar-active", "palette", "sidebarActive"],
   ["color-sidebar-hover", "palette", "sidebarHover"],
+  ["color-on-sidebar", "palette", "onSidebar"],
+  ["color-overlay", "palette", "overlay"],
 ];
 
 const darkChecks = [
@@ -121,6 +123,8 @@ const darkChecks = [
   ["color-text-secondary", "paletteDark", "textSecondary"],
   ["color-sidebar-bg", "paletteDark", "sidebarBg"],
   ["color-sidebar-active", "paletteDark", "sidebarActive"],
+  ["color-on-sidebar", "paletteDark", "onSidebar"],
+  ["color-overlay", "paletteDark", "overlay"],
 ];
 
 const radiusChecks = [

@@ -57,6 +57,14 @@
   --color-sidebar-text: #C5D2DA;
   --color-sidebar-active: #1F8E83;
   --color-sidebar-hover: #143A52;
+  /* High-emphasis text/icon color sitting on `bg-sidebar-bg`. The sidebar
+   * background is dark in both light AND dark mode, so this token is
+   * white in both — replaces raw `text-white` / `bg-white/15` usage. */
+  --color-on-sidebar: #FFFFFF;
+
+  /* Modal / dialog / drawer scrim. Tinted with the brand navy in light
+   * mode and pure black in dark mode for visual depth. */
+  --color-overlay: rgba(14, 39, 56, 0.55);
 
   /* ---------- Radius (generous, premium) ---------- */
   --radius-sm: 6px;
@@ -138,6 +146,8 @@
   --color-sidebar-text: #8FA5B4;
   --color-sidebar-active: #3DB3A6;
   --color-sidebar-hover: #11293A;
+  --color-on-sidebar: #FFFFFF;
+  --color-overlay: rgba(0, 0, 0, 0.7);
 
   --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.40);
   --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.30);

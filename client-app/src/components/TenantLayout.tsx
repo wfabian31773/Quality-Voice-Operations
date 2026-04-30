@@ -194,10 +194,10 @@ export default function TenantLayout() {
 
   const sidebar = (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-5 border-b border-white/10 dark:border-white/10">
+      <div className="px-6 py-5 border-b border-on-sidebar/10">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-white tracking-tight font-display">{t('brand.name')}</h1>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase tracking-wider">{t('tenant_nav.tenant_badge')}</span>
+          <h1 className="text-lg font-bold text-on-sidebar tracking-tight font-display">{t('brand.name')}</h1>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-info/30 text-on-sidebar uppercase tracking-wider">{t('tenant_nav.tenant_badge')}</span>
         </div>
         <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
       </div>
@@ -221,8 +221,8 @@ export default function TenantLayout() {
                   clsx(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                     isActive
-                      ? 'bg-sidebar-active text-white'
-                      : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                      ? 'bg-primary-hover text-on-primary'
+                      : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
                   )
                 }
               >
@@ -266,8 +266,8 @@ export default function TenantLayout() {
             clsx(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1',
               isActive
-                ? 'bg-sidebar-active text-white'
-                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                ? 'bg-primary-hover text-on-primary'
+                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
             )
           }
         >
@@ -276,19 +276,19 @@ export default function TenantLayout() {
         </NavLink>
       </nav>
 
-      <div className="px-3 py-4 border-t border-white/10 dark:border-white/10 space-y-1">
+      <div className="px-3 py-4 border-t border-on-sidebar/10 space-y-1">
         <PortalSwitcher />
         <LanguageSwitcher variant="sidebar" />
         <button
           onClick={toggle}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors"
         >
           {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
           {dark ? t('theme.light') : t('theme.dark')}
         </button>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors"
         >
           <LogOut className="h-4.5 w-4.5" />
           {t('actions.sign_out')}
@@ -386,7 +386,7 @@ function ChangelogBadgeLink() {
     >
       <Sparkles className="h-5 w-5" />
       {count > 0 && (
-        <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+        <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">
           {count > 9 ? '9+' : count}
         </span>
       )}
@@ -411,7 +411,7 @@ function PinnedCallViews({ onLinkClick }: { onLinkClick: () => void }) {
   const views = data?.views ?? [];
   if (views.length === 0) return null;
   return (
-    <div className="mt-1 ml-3 pl-3 border-l border-white/10 dark:border-white/10 space-y-0.5">
+    <div className="mt-1 ml-3 pl-3 border-l border-on-sidebar/10 space-y-0.5">
       {views.map((view) => (
         <NavLink
           key={view.id}
@@ -421,8 +421,8 @@ function PinnedCallViews({ onLinkClick }: { onLinkClick: () => void }) {
             clsx(
               'flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
               isActive
-                ? 'bg-sidebar-active text-white'
-                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                ? 'bg-primary-hover text-on-primary'
+                : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
             )
           }
           title={view.name}
@@ -432,7 +432,7 @@ function PinnedCallViews({ onLinkClick }: { onLinkClick: () => void }) {
             <span className="truncate">{view.name}</span>
           </span>
           {view.count != null && (
-            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/10 dark:bg-white/10 text-sidebar-text">
+            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-on-sidebar/10 text-sidebar-text">
               {view.count > 999 ? '999+' : view.count}
             </span>
           )}
@@ -474,8 +474,8 @@ function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef,
         className={clsx(
           'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
           isActiveGroup
-            ? 'text-white bg-sidebar-active/50'
-            : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+            ? 'text-on-sidebar bg-sidebar-active/50'
+            : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
         )}
       >
         <div className="flex items-center gap-3">
@@ -496,7 +496,7 @@ function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef,
           id={panelId}
           role="region"
           aria-label={label}
-          className="mt-1 ml-3 pl-3 border-l border-white/10 dark:border-white/10 space-y-0.5"
+          className="mt-1 ml-3 pl-3 border-l border-on-sidebar/10 space-y-0.5"
         >
           {links.map((link) => (
             <NavLink
@@ -507,8 +507,8 @@ function NavGroup({ label, icon: Icon, links, location, open, setOpen, groupRef,
                 clsx(
                   'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-sidebar-active text-white'
-                    : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                    ? 'bg-primary-hover text-on-primary'
+                    : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
                 )
               }
             >

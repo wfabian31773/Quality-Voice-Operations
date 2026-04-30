@@ -63,6 +63,10 @@ export const palette = {
   sidebarText: "#C5D2DA",
   sidebarActive: "#1F8E83",
   sidebarHover: "#143A52",
+  onSidebar: "#FFFFFF",
+
+  // Modal / dialog scrim
+  overlay: "rgba(14, 39, 56, 0.55)",
 } as const;
 
 export const paletteDark = {
@@ -104,6 +108,9 @@ export const paletteDark = {
   sidebarText: "#8FA5B4",
   sidebarActive: "#3DB3A6",
   sidebarHover: "#11293A",
+  onSidebar: "#FFFFFF",
+
+  overlay: "rgba(0, 0, 0, 0.7)",
 } as const;
 
 /* ----------------------------------------------------------------- */

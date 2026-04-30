@@ -275,8 +275,101 @@ Keep them around as a reference; they document the "why not" alongside the "why"
 
 ---
 
-## 8. Change log
+## 8. Components
+
+The shared UI primitives live in `client-app/src/components/ui/` and re-export from `client-app/src/components/ui/index.ts`. Every primitive resolves through the locked tokens (no hex literals) so dark-mode pairing is automatic.
+
+> **Rule of thumb:** if you're about to write `<section className="py-24 ...">` with a hand-rolled max-width wrapper, use `<PageSection>` instead. If you're about to write a `bg-purple-500/20 text-purple-300` pill, use `<Badge>`.
+
+### Page chrome
+
+| Primitive | Use it for | Key props |
+|---|---|---|
+| `PageSection` | Every full-bleed section in marketing or in-app long-form pages. Handles tone, max-width, and padding. | `tone`, `pad`, `width`, `as` |
+| `SectionHeader` | Eyebrow + title + description block on top of a `PageSection`. | `eyebrow`, `title`, `description`, `align`, `size`, `inverse` |
+| `Hero` | Top-of-page intro. Single column, two column with media, or centered. | `tone` (`plain` / `subtle` / `inverse` / `gradient`), `align`, `size`, `media`, `eyebrow`, `actions`, `meta`, `trust` |
+
+```tsx
+<PageSection tone="subtle" pad="lg">
+  <SectionHeader eyebrow="What's new" title="Bilingual flows for every plan" align="center" />
+  <FeatureGrid features={items} columns={3} />
+</PageSection>
+```
+
+### Surface primitives
+
+| Primitive | Use it for | Key props |
+|---|---|---|
+| `ContentCard` | Cards inside a grid (features, links, summary tiles). | `tone` (`default` / `subtle` / `primary` / `inverse`), `pad`, `interactive`, `as`, `href`, `to` |
+| `SectionCard` | Heavy in-app cards with header + body + footer slots (existing). | `title`, `actions`, `footer` |
+| `Callout` | In-page guidance, status messages, warnings — *not* modal-blocking errors. | `tone` (`info` / `success` / `warning` / `danger` / `neutral`), `title`, `icon`, `actions` |
+
+`Callout` always pairs the colour with an icon so the meaning isn't carried by colour alone (audit A-07).
+
+### Composite blocks
+
+| Primitive | Use it for | Key props |
+|---|---|---|
+| `FeatureGrid` | Repeating "icon + title + body" feature blocks. Renders cards under the hood. | `features`, `columns` (`2` / `3` / `4`), `variant` |
+| `CTABand` | Bottom-of-page conversion strip. | `tone` (`inverse` / `primary` / `subtle` / `gradient`), `align` (`center` / `split`), `eyebrow`, `actions` |
+| `StatStrip` | Inline KPI row. Drops cleanly on light or dark surfaces. | `stats`, `columns`, `inverse`, `framed` |
+| `TestimonialBlock` | Standalone quote card primitive for marketing pages and shared blocks. (`<TestimonialsCarousel>` is a separate auto-rotating widget.) | `quote`, `name`, `title`, `company`, `initials`, `avatarUrl`, `rating`, `inverse` |
+
+### Stat / status primitives
+
+| Primitive | Use it for |
+|---|---|
+| `StatCard` | Big-number KPI tiles in dashboards. |
+| `Badge` | Pills, "New" tags, version stamps, sidebar console badges. Use `variant` (`primary` / `success` / `warning` / `danger` / `info` / `accent` / `neutral` / `inverse`) and optional `dot`. |
+| `StatusBadge` | Status pills with a leading dot (e.g. "Live · Booking", "Outage"). |
+| `StatusDot` | Standalone status dot. |
+
+### Motion layer
+
+The motion layer is built on three CSS utility classes in `tokens.css` and three React helpers in `client-app/src/hooks/`. Every utility short-circuits when the user has `prefers-reduced-motion: reduce` set.
+
+| Utility / Hook | What it does | When to use |
+|---|---|---|
+| `.motion-reveal` + `useReveal()` | Translates + fades in once the element enters the viewport. | Section reveals on long-form pages. |
+| `<Reveal>` | Wraps a block in `.motion-reveal` and applies `useReveal()`. | One-shot drop-in around any block. |
+| `.motion-stagger-item` + `useStagger()` | Reveals children one after the other (default step `60ms`). | Grids of cards, lists of features. |
+| `<Stagger>` | Wrapper that calls `useStagger()` on its container. Children opt in with `data-stagger-item`. | Same as above, drop-in. |
+| `.motion-hover-lift` | `translateY(-2px) + soft shadow` on hover. | Interactive cards, CTAs. |
+| `.motion-parallax` + `useParallax()` | Light scroll-bound translate (≤8px) driven by `--parallax-y`. Short-circuits under reduced-motion. | Marketing hero illustrations only. |
+
+```tsx
+import { Reveal, Stagger, FeatureGrid } from '@/components/ui';
+
+<Reveal>
+  <SectionHeader title="Built for high call volume" />
+</Reveal>
+
+<Stagger className="grid gap-4 sm:grid-cols-3">
+  {features.map((f) => (
+    <ContentCard key={f.id} data-stagger-item className="motion-stagger-item">
+      …
+    </ContentCard>
+  ))}
+</Stagger>
+```
+
+### See it live
+
+Every primitive renders in both light and dark mode at the top of `/internal/design-directions` (see `client-app/src/pages/internal/PrimitivesShowcase.tsx`). Toggle the theme switcher at the top of that page to spot dark-mode regressions in seconds.
+
+### Tests
+
+Primitive render coverage, axe a11y smoke, and chrome token-discipline checks live under root `tests/components/` (`uiPrimitives.test.tsx`, `uiPrimitivesAxe.test.tsx`, `chromeTokenSmoke.test.ts`). They are picked up by the root `npm test` (Vitest) script — not by `client-app`'s package-local test script — so make sure CI continues to invoke root Vitest after pulling these in.
+
+### A note on the `on-sidebar` and `overlay` semantic tokens
+
+The Round-7/8 chrome sweep added `--color-on-sidebar` and `--color-overlay` to `_theme.css`. These are **semantic** clarifications layered on top of the locked Refined Harbor brand values (white-on-navy already used everywhere implicitly; the modal scrim that previously hardcoded `bg-black/50`). No existing brand colour or numeric token value was changed, so the locked-token guarantee from the 2026-04-27 entry still holds.
+
+---
+
+## 9. Change log
 
 | Date | Change | Author |
 |---|---|---|
 | 2026-04-27 | Locked Refined Harbor as the system. Tokens written to `index.css` and `designTokens.ts`. | Task #739 |
+| 2026-04-30 | Foundation uplift — added `PageSection`, `Hero`, `SectionHeader`, `ContentCard`, `FeatureGrid`, `CTABand`, `StatStrip`, `TestimonialBlock`, `Callout`, `Badge`, `Reveal`, `Stagger`, motion utility layer, and dark-mode parity sweep on Admin/Ops/Tenant chrome. Added semantic `on-sidebar` and `overlay` tokens (no brand-value changes). | Task #1196 |

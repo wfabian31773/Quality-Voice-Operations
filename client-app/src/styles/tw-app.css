@@ -56,6 +56,7 @@
 @source "../components/TooltipWalkthrough.tsx";
 @source "../components/TourLauncher.tsx";
 @source "../components/state/**/*.{tsx,ts}";
+@source "../components/ui/**/*.{tsx,ts}";
 @source "../components/illustrations/**/*.{tsx,ts}";
 @source "../components/demo/**/*.{tsx,ts}";
 

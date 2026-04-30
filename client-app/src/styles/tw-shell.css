@@ -21,6 +21,7 @@
 
 @source "../App.tsx";
 @source "../components/state/**/*.tsx";
+@source "../components/ui/**/*.{tsx,ts}";
 @source "../components/ErrorBoundary.tsx";
 @source "../components/MaintenanceGate.tsx";
 @source "../pages/ServerError.tsx";

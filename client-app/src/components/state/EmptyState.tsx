@@ -36,7 +36,7 @@ export default function EmptyState({
           {primaryAction && (
             <button
               onClick={primaryAction.onClick}
-              className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-on-primary text-sm font-medium px-4 py-2 rounded-lg transition-colors"
             >
               {PrimaryIcon && <PrimaryIcon className="h-4 w-4" />}
               {primaryAction.label}

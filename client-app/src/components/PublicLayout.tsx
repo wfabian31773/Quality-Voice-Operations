@@ -142,14 +142,14 @@ export default function PublicLayout() {
   return (
     <div className="public-surface min-h-screen flex flex-col bg-surface-secondary font-body text-text-primary">
       <header
-        className="bg-sidebar-bg text-white sticky top-0 z-50 border-b border-white/5 dark:border-white/5"
+        className="bg-sidebar-bg text-on-sidebar sticky top-0 z-50 border-b border-on-sidebar/5"
         style={{ boxShadow: 'var(--elevation-1)' }}
       >
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2.5 shrink-0">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Phone className="h-4 w-4 text-white" />
+                <Phone className="h-4 w-4 text-on-primary" />
               </div>
               <span className="font-display text-xl font-bold tracking-tight">{t('brand.name')}</span>
             </Link>
@@ -163,8 +163,8 @@ export default function PublicLayout() {
                       to={item.to}
                       className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
                         isItemActive(item)
-                          ? 'bg-white/15 dark:bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
+                          ? 'bg-on-sidebar/15 text-on-sidebar'
+                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
                       }`}
                     >
                       {t(item.i18nKey)}
@@ -183,8 +183,8 @@ export default function PublicLayout() {
                       onMouseEnter={() => setOpenDropdown(item.id)}
                       className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1 ${
                         isItemActive(item) || isOpen
-                          ? 'bg-white/15 dark:bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
+                          ? 'bg-on-sidebar/15 text-on-sidebar'
+                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
                       }`}
                     >
                       {t(item.i18nKey)}
@@ -263,19 +263,19 @@ export default function PublicLayout() {
                 onClick={toggleTheme}
                 aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
                 aria-pressed={dark}
-                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10 transition-colors duration-[var(--motion-fast)]"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors duration-[var(--motion-fast)]"
               >
                 {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
               <Link
                 to="/login"
-                className="text-sm font-medium text-white/80 hover:text-white transition-colors duration-[var(--motion-fast)] px-3 py-2 rounded-lg"
+                className="text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar transition-colors duration-[var(--motion-fast)] px-3 py-2 rounded-lg"
               >
                 {t('actions.sign_in')}
               </Link>
               <Link
                 to="/book-demo"
-                className="text-sm font-medium text-white/90 hover:text-white border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 px-3.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
+                className="text-sm font-medium text-on-sidebar/90 hover:text-on-sidebar border border-on-sidebar/20 hover:border-on-sidebar/40 px-3.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
               >
                 {t('actions.book_demo')}
               </Link>
@@ -293,12 +293,12 @@ export default function PublicLayout() {
                 onClick={toggleTheme}
                 aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
                 aria-pressed={dark}
-                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10 transition-colors"
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors"
               >
                 {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
               <button
-                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-white/80 hover:text-white hover:bg-white/10 dark:hover:bg-white/10 transition-colors"
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-on-sidebar/80 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors"
                 onClick={() => setMobileOpen(!mobileOpen)}
                 aria-label={t('actions.open_menu')}
                 aria-expanded={mobileOpen}
@@ -310,7 +310,7 @@ export default function PublicLayout() {
         </div>
 
         {mobileOpen && (
-          <div className="lg:hidden border-t border-white/10 dark:border-white/10 bg-sidebar-bg">
+          <div className="lg:hidden border-t border-on-sidebar/10 bg-sidebar-bg">
             <div className="px-6 py-4 space-y-1">
               {navItems.map((item) => {
                 if (item.kind === 'link') {
@@ -321,8 +321,8 @@ export default function PublicLayout() {
                       onClick={() => setMobileOpen(false)}
                       className={`block px-3 py-2.5 text-sm font-medium rounded-lg ${
                         isItemActive(item)
-                          ? 'bg-white/15 dark:bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
+                          ? 'bg-on-sidebar/15 text-on-sidebar'
+                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
                       }`}
                     >
                       {t(item.i18nKey)}
@@ -339,8 +339,8 @@ export default function PublicLayout() {
                       aria-expanded={isExpanded}
                       className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg ${
                         isItemActive(item)
-                          ? 'bg-white/15 dark:bg-white/15 text-white'
-                          : 'text-white/75 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
+                          ? 'bg-on-sidebar/15 text-on-sidebar'
+                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
                       }`}
                     >
                       <span>{t(item.i18nKey)}</span>
@@ -350,11 +350,11 @@ export default function PublicLayout() {
                       />
                     </button>
                     {isExpanded && (
-                      <div className="pl-3 mt-1 mb-2 space-y-2 border-l border-white/10 dark:border-white/10 ml-3">
+                      <div className="pl-3 mt-1 mb-2 space-y-2 border-l border-on-sidebar/10 ml-3">
                         {item.groups.map((group, gi) => (
                           <div key={gi}>
                             {group.label && (
-                              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-on-sidebar/70">
                                 {group.label}
                               </p>
                             )}
@@ -365,8 +365,8 @@ export default function PublicLayout() {
                                 onClick={() => setMobileOpen(false)}
                                 className={`block px-3 py-2 text-sm rounded-lg ${
                                   location.pathname === sub.to
-                                    ? 'bg-white/15 dark:bg-white/15 text-white'
-                                    : 'text-white/70 hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
+                                    ? 'bg-on-sidebar/15 text-on-sidebar'
+                                    : 'text-on-sidebar/70 hover:text-on-sidebar hover:bg-on-sidebar/10'
                                 }`}
                               >
                                 <span className="inline-flex items-center gap-2">
@@ -386,21 +386,21 @@ export default function PublicLayout() {
                   </div>
                 );
               })}
-              <div className="pt-3 border-t border-white/10 dark:border-white/10 mt-3 space-y-2">
+              <div className="pt-3 border-t border-on-sidebar/10 mt-3 space-y-2">
                 <div className="flex items-center justify-center px-3 py-2">
                   <LanguageSwitcher variant="header" />
                 </div>
                 <Link
                   to="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-center text-sm font-medium text-white/80 hover:text-white px-3 py-2.5"
+                  className="block text-center text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar px-3 py-2.5"
                 >
                   {t('actions.sign_in')}
                 </Link>
                 <Link
                   to="/book-demo"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-center text-sm font-medium text-white border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 px-4 py-2.5 rounded-lg"
+                  className="block text-center text-sm font-medium text-on-sidebar border border-on-sidebar/20 hover:border-on-sidebar/40 px-4 py-2.5 rounded-lg"
                 >
                   {t('actions.book_demo')}
                 </Link>
@@ -424,70 +424,70 @@ export default function PublicLayout() {
       <WebsiteSalesWidget />
       <CookieConsent />
 
-      <footer className="bg-sidebar-bg text-white/70">
+      <footer className="bg-sidebar-bg text-on-sidebar/70">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-                  <Phone className="h-3.5 w-3.5 text-white" />
+                  <Phone className="h-3.5 w-3.5 text-on-primary" />
                 </div>
-                <span className="font-display text-lg font-bold text-white tracking-tight">{t('brand.name')}</span>
+                <span className="font-display text-lg font-bold text-on-sidebar tracking-tight">{t('brand.name')}</span>
               </div>
               <p className="text-sm leading-relaxed">{t('brand.tagline')}</p>
             </div>
 
             <div>
-              <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_product')}</h4>
+              <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_product')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/product" className="text-sm hover:text-white transition-colors">{t('footer.platform')}</Link></li>
-                <li><Link to="/features" className="text-sm hover:text-white transition-colors">{t('public_nav.features')}</Link></li>
-                <li><Link to="/ai-agents" className="text-sm hover:text-white transition-colors">{t('public_nav.agents')}</Link></li>
-                <li><Link to="/pricing" className="text-sm hover:text-white transition-colors">{t('public_nav.pricing')}</Link></li>
-                <li><Link to="/integrations" className="text-sm hover:text-white transition-colors">{t('public_nav.integrations')}</Link></li>
-                <li><Link to="/product/federated-ingest" className="text-sm hover:text-white transition-colors">{t('footer.federated_ingest')}</Link></li>
-                <li><Link to="/product/global-intelligence-network" className="text-sm hover:text-white transition-colors">{t('footer.gin')}</Link></li>
-                <li><Link to="/demo" className="text-sm hover:text-white transition-colors">{t('footer.live_demo')}</Link></li>
-                <li><Link to="/book-demo" className="text-sm hover:text-white transition-colors">{t('actions.book_demo')}</Link></li>
+                <li><Link to="/product" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.platform')}</Link></li>
+                <li><Link to="/features" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.features')}</Link></li>
+                <li><Link to="/ai-agents" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.agents')}</Link></li>
+                <li><Link to="/pricing" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.pricing')}</Link></li>
+                <li><Link to="/integrations" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.integrations')}</Link></li>
+                <li><Link to="/product/federated-ingest" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.federated_ingest')}</Link></li>
+                <li><Link to="/product/global-intelligence-network" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.gin')}</Link></li>
+                <li><Link to="/demo" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.live_demo')}</Link></li>
+                <li><Link to="/book-demo" className="text-sm hover:text-on-sidebar transition-colors">{t('actions.book_demo')}</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_solutions')}</h4>
+              <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_solutions')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/industries/vertical-agents" className="text-sm hover:text-white transition-colors">{t('footer.vertical_agents')}</Link></li>
-                <li><Link to="/industries/healthcare" className="text-sm hover:text-white transition-colors">{t('footer.healthcare')}</Link></li>
-                <li><Link to="/industries/dental" className="text-sm hover:text-white transition-colors">{t('footer.dental')}</Link></li>
-                <li><Link to="/industries/legal" className="text-sm hover:text-white transition-colors">{t('footer.legal')}</Link></li>
-                <li><Link to="/industries/real-estate" className="text-sm hover:text-white transition-colors">{t('footer.real_estate')}</Link></li>
-                <li><Link to="/industries/home-services" className="text-sm hover:text-white transition-colors">{t('footer.home_services')}</Link></li>
-                <li><Link to="/case-studies" className="text-sm hover:text-white transition-colors">{t('footer.case_studies')}</Link></li>
+                <li><Link to="/industries/vertical-agents" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.vertical_agents')}</Link></li>
+                <li><Link to="/industries/healthcare" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.healthcare')}</Link></li>
+                <li><Link to="/industries/dental" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.dental')}</Link></li>
+                <li><Link to="/industries/legal" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.legal')}</Link></li>
+                <li><Link to="/industries/real-estate" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.real_estate')}</Link></li>
+                <li><Link to="/industries/home-services" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.home_services')}</Link></li>
+                <li><Link to="/case-studies" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.case_studies')}</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-display text-sm font-semibold text-white mb-4">{t('footer.section_company')}</h4>
+              <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_company')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/contact" className="text-sm hover:text-white transition-colors">{t('public_nav.contact')}</Link></li>
-                <li><Link to="/blog" className="text-sm hover:text-white transition-colors">{t('footer.blog')}</Link></li>
-                <li><Link to="/resources" className="text-sm hover:text-white transition-colors">{t('public_nav.resources')}</Link></li>
-                <li><Link to="/docs" className="text-sm hover:text-white transition-colors">{t('footer.documentation')}</Link></li>
-                <li><Link to="/docs/api-overview" className="text-sm hover:text-white transition-colors">{t('footer.api_reference')}</Link></li>
-                <li><Link to="/login" className="text-sm hover:text-white transition-colors">{t('actions.sign_in')}</Link></li>
+                <li><Link to="/contact" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.contact')}</Link></li>
+                <li><Link to="/blog" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.blog')}</Link></li>
+                <li><Link to="/resources" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.resources')}</Link></li>
+                <li><Link to="/docs" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.documentation')}</Link></li>
+                <li><Link to="/docs/api-overview" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.api_reference')}</Link></li>
+                <li><Link to="/login" className="text-sm hover:text-on-sidebar transition-colors">{t('actions.sign_in')}</Link></li>
               </ul>
             </div>
           </div>
 
-          <div className="border-t border-white/10 dark:border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-white/50">
+          <div className="border-t border-on-sidebar/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-on-sidebar/50">
               {t('footer.rights', { year: new Date().getFullYear() })}
             </p>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-white/60">
-              <Link to="/privacy" className="hover:text-white transition-colors">{t('footer.privacy')}</Link>
-              <Link to="/terms" className="hover:text-white transition-colors">{t('footer.terms')}</Link>
-              <Link to="/security" className="hover:text-white transition-colors">{t('footer.security')}</Link>
-              <Link to="/subprocessors" className="hover:text-white transition-colors">{t('footer.subprocessors')}</Link>
-              <a href="/legal/dpa" className="hover:text-white transition-colors">{t('footer.dpa')}</a>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-on-sidebar/60">
+              <Link to="/privacy" className="hover:text-on-sidebar transition-colors">{t('footer.privacy')}</Link>
+              <Link to="/terms" className="hover:text-on-sidebar transition-colors">{t('footer.terms')}</Link>
+              <Link to="/security" className="hover:text-on-sidebar transition-colors">{t('footer.security')}</Link>
+              <Link to="/subprocessors" className="hover:text-on-sidebar transition-colors">{t('footer.subprocessors')}</Link>
+              <a href="/legal/dpa" className="hover:text-on-sidebar transition-colors">{t('footer.dpa')}</a>
             </div>
           </div>
         </div>

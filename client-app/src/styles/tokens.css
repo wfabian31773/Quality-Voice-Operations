@@ -39,6 +39,97 @@ body {
   border-radius: var(--radius-sm);
 }
 
+/* =================================================================
+ * MOTION LAYER — token-aware reveal / stagger / hover-lift utilities
+ *
+ * Wired to `--motion-*` and `--easing-*` tokens. Pair with the
+ * `useReveal` and `useStagger` hooks (or the <Reveal> / <Stagger>
+ * primitives in `components/ui/`).
+ *
+ * Each utility short-circuits to a static, transform-free state when
+ * the user has `prefers-reduced-motion: reduce` enabled.
+ * ================================================================= */
+
+/* Entrance reveal — `data-reveal="ready"` is the off-screen rest state,
+ * `data-reveal="visible"` is the on-screen end state. Elements without
+ * the `data-reveal` attribute render unchanged so SSR and no-JS paths
+ * stay readable. */
+.motion-reveal {
+  transition:
+    opacity var(--motion-base) var(--easing-emphasized),
+    transform var(--motion-base) var(--easing-emphasized);
+  transition-delay: var(--motion-reveal-delay, 0ms);
+}
+.motion-reveal[data-reveal='ready'] {
+  opacity: 0;
+  transform: translateY(16px);
+}
+.motion-reveal[data-reveal='visible'] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Staggered children — same as motion-reveal but `--stagger-delay`
+ * is set per-item by `useStagger` (or the <Stagger> primitive). */
+.motion-stagger-item {
+  transition:
+    opacity var(--motion-base) var(--easing-emphasized),
+    transform var(--motion-base) var(--easing-emphasized);
+  transition-delay: var(--stagger-delay, 0ms);
+}
+.motion-stagger-item[data-reveal='ready'] {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.motion-stagger-item[data-reveal='visible'] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Hover lift — used on cards and CTA tiles. Transitions through
+ * `--motion-fast` so it feels responsive without flicker. */
+.motion-hover-lift {
+  transition:
+    transform var(--motion-fast) var(--easing-standard),
+    box-shadow var(--motion-fast) var(--easing-standard);
+}
+.motion-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-2);
+}
+
+/* Parallax-lite — vertical translate driven by `--parallax-y` so a
+ * tiny IntersectionObserver hook can move the element a few px without
+ * re-rendering React. */
+.motion-parallax {
+  transform: translateY(var(--parallax-y, 0px));
+  transition: transform var(--motion-base) var(--easing-standard);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-reveal,
+  .motion-stagger-item {
+    transition: none !important;
+  }
+  .motion-reveal[data-reveal='ready'],
+  .motion-stagger-item[data-reveal='ready'] {
+    opacity: 1;
+    transform: none;
+  }
+  .motion-hover-lift {
+    transition: none;
+  }
+  .motion-hover-lift:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .motion-parallax {
+    transform: none;
+    transition: none;
+  }
+}
+
 /* ----- Print stylesheet for ticket/booking/call/dispatch detail pages ----- */
 @media print {
   @page { margin: 1.5cm; }

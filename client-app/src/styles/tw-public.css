@@ -39,6 +39,7 @@
 @source "../components/DocBlocks.tsx";
 @source "../components/SchedulingDriftBanner.tsx";
 @source "../components/state/**/*.tsx";
+@source "../components/ui/**/*.{tsx,ts}";
 @source "../components/illustrations/**/*.{tsx,ts}";
 @source "../components/demo/**/*.{tsx,ts}";
 

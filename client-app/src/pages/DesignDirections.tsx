@@ -1,6 +1,7 @@
 import "../styles/tw-app.css";
 import { useEffect } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import PrimitivesShowcase from "./internal/PrimitivesShowcase";
 import {
   Phone,
   PhoneCall,
@@ -2262,15 +2263,17 @@ export default function DesignDirections() {
   }, []);
 
   return (
-    <div
-      style={{
-        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-        background: "#F2F4F7",
-        minHeight: "100vh",
-        padding: "32px 24px 64px",
-      }}
-    >
-      <div style={{ maxWidth: 1680, margin: "0 auto" }}>
+    <>
+      <PrimitivesShowcase />
+      <div
+        style={{
+          fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+          background: "#F2F4F7",
+          minHeight: "100vh",
+          padding: "32px 24px 64px",
+        }}
+      >
+        <div style={{ maxWidth: 1680, margin: "0 auto" }}>
         <header style={{ marginBottom: 32 }}>
           <div
             style={{
@@ -2453,7 +2456,8 @@ export default function DesignDirections() {
             </div>
           </div>
         </footer>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

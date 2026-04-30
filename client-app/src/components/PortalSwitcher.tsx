@@ -11,7 +11,6 @@ interface Portal {
   icon: typeof Building2;
   path: string;
   badgeColor: string;
-  hoverColor: string;
 }
 
 const portals: Portal[] = [
@@ -21,8 +20,7 @@ const portals: Portal[] = [
     badge: 'Tenant',
     icon: Building2,
     path: '/dashboard',
-    badgeColor: 'bg-blue-500/20 text-blue-300',
-    hoverColor: 'hover:bg-white/5 dark:hover:bg-white/5',
+    badgeColor: 'bg-info/30 text-on-sidebar',
   },
   {
     id: 'admin',
@@ -30,8 +28,7 @@ const portals: Portal[] = [
     badge: 'Admin',
     icon: Shield,
     path: '/admin/dashboard',
-    badgeColor: 'bg-purple-500/20 text-purple-300',
-    hoverColor: 'hover:bg-white/5 dark:hover:bg-white/5',
+    badgeColor: 'bg-accent/30 text-on-sidebar',
   },
   {
     id: 'ops',
@@ -39,8 +36,7 @@ const portals: Portal[] = [
     badge: 'Ops',
     icon: Radio,
     path: '/ops/monitor',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300',
-    hoverColor: 'hover:bg-white/5 dark:hover:bg-white/5',
+    badgeColor: 'bg-success/30 text-on-sidebar',
   },
 ];
 
@@ -89,7 +85,7 @@ export default function PortalSwitcher() {
     <div ref={ref} className="relative px-3 mb-2">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/5 dark:hover:bg-white/5 transition-colors"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium text-sidebar-text hover:text-on-sidebar hover:bg-sidebar-hover transition-colors"
       >
         <div className="flex items-center gap-2">
           <current.icon className="h-3.5 w-3.5" />
@@ -104,8 +100,8 @@ export default function PortalSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute left-3 right-3 bottom-full mb-1 bg-[#1a2d3d] border border-white/10 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
-          <p className="px-3 py-2 text-[10px] text-white/40 uppercase tracking-wider font-semibold">
+        <div className="absolute left-3 right-3 bottom-full mb-1 bg-sidebar-bg border border-on-sidebar/10 rounded-lg shadow-xl overflow-hidden z-50">
+          <p className="px-3 py-2 text-[10px] text-on-sidebar/70 uppercase tracking-wider font-semibold">
             Switch Portal
           </p>
           {others.map((portal) => (
@@ -115,7 +111,7 @@ export default function PortalSwitcher() {
                 navigate(portal.path);
                 setOpen(false);
               }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/5 dark:hover:bg-white/5 transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-text hover:text-on-sidebar hover:bg-sidebar-hover transition-colors"
             >
               <portal.icon className="h-4 w-4" />
               <span className="flex-1 text-left">{portal.label}</span>

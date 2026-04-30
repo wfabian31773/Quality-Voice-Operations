@@ -76,7 +76,7 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
     return (
       <label
         className={
-          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors cursor-pointer ' +
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors cursor-pointer ' +
           className
         }
       >
@@ -86,7 +86,7 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
           value={current}
           onChange={handleChange}
           aria-label={t('language.switcher_label')}
-          className="bg-transparent text-sm font-medium text-sidebar-text hover:text-white focus:text-white focus:outline-none cursor-pointer w-full appearance-none"
+          className="bg-transparent text-sm font-medium text-sidebar-text hover:text-on-sidebar focus:text-on-sidebar focus:outline-none cursor-pointer w-full appearance-none"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
             <option key={lang.code} value={lang.code} className="text-text-primary bg-surface dark:bg-sidebar-bg">
@@ -100,13 +100,13 @@ export default function LanguageSwitcher({ variant = 'header', className = '' }:
 
   return (
     <label className={'inline-flex items-center gap-1.5 ' + className}>
-      <Languages className="h-4 w-4 text-white/70" aria-hidden="true" />
+      <Languages className="h-4 w-4 text-on-sidebar/70" aria-hidden="true" />
       <span className="sr-only">{t('language.switcher_label')}</span>
       <select
         value={current}
         onChange={handleChange}
         aria-label={t('language.switcher_label')}
-        className="bg-transparent text-sm font-medium text-white/85 hover:text-white focus:text-white focus:outline-none cursor-pointer appearance-none pr-1"
+        className="bg-transparent text-sm font-medium text-on-sidebar/85 hover:text-on-sidebar focus:text-on-sidebar focus:outline-none cursor-pointer appearance-none pr-1"
       >
         {SUPPORTED_LANGUAGES.map((lang) => (
           <option key={lang.code} value={lang.code} className="text-text-primary bg-surface dark:bg-sidebar-bg">

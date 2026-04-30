@@ -52,10 +52,10 @@ export default function OpsLayout() {
 
   const sidebar = (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-5 border-b border-white/10 dark:border-white/10">
+      <div className="px-6 py-5 border-b border-on-sidebar/10">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-white tracking-tight font-display">QVO</h1>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase tracking-wider">Operations</span>
+          <h1 className="text-lg font-bold text-on-sidebar tracking-tight font-display">QVO</h1>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-success/30 text-on-sidebar uppercase tracking-wider">Operations</span>
         </div>
         <p className="text-xs text-sidebar-text mt-0.5 truncate">{user?.email}</p>
       </div>
@@ -71,8 +71,8 @@ export default function OpsLayout() {
               clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
+                  ? 'bg-primary-hover text-on-primary'
+                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar',
               )
             }
           >
@@ -82,18 +82,18 @@ export default function OpsLayout() {
         ))}
       </nav>
 
-      <div className="px-3 py-4 border-t border-white/10 dark:border-white/10 space-y-1">
+      <div className="px-3 py-4 border-t border-on-sidebar/10 space-y-1">
         <PortalSwitcher />
         <button
           onClick={toggle}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors"
         >
           {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
           {dark ? 'Light Mode' : 'Dark Mode'}
         </button>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-on-sidebar w-full transition-colors"
         >
           <LogOut className="h-4.5 w-4.5" />
           Sign Out
@@ -131,8 +131,8 @@ export default function OpsLayout() {
             >
               {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
             </button>
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-primary">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
               Operations Console
             </span>
           </div>

@@ -132,7 +132,7 @@ export default function Modal({
         if (closeOnBackdrop) onClose();
       }}
     >
-      <div className="absolute inset-0 bg-black/50" />
+      <div className="absolute inset-0 bg-overlay" />
       <div
         ref={panelRef}
         role="dialog"

@@ -1,3 +1,12 @@
+/**
+ * Third-party brand mark renderer. The hex literals below (#FF7A59,
+ * #4285F4, #E01E5A, #F22F46, etc.) are intentionally NOT tokenized —
+ * they are the canonical brand colors of the integrations we display
+ * (HubSpot, Google, Slack, Twilio, Stripe, Salesforce, etc.). Replacing
+ * them with our design tokens would defeat the recognition value of the
+ * marks. This is the one component that deliberately bypasses the token
+ * system; do not generalize this exception.
+ */
 import { useMemo, type ReactElement } from 'react';
 
 export type BrandLogoId =
@@ -180,13 +189,16 @@ function StripeLogo({ size }: { size: number }) {
   );
 }
 
+// Webhook + custom-ticketing are generic protocol/category icons (not
+// real third-party brands), so they resolve their plate colour from the
+// design tokens instead of hardcoded hex.
 function WebhookLogo({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="32" height="32" rx="6" fill="#C73A63" />
+      <rect width="32" height="32" rx="6" fill="var(--color-danger)" />
       <path
         d="M11.4 19.7a3.6 3.6 0 1 0 4.2 5.2h6.8a2.6 2.6 0 1 0 0-2H14.4a1.6 1.6 0 1 1-1.45-2.27l-1.55-.93Zm10.85-2.5a3.6 3.6 0 0 0-3.05 1.7l-3.4-5.65a2.6 2.6 0 1 0-1.72 1.03l3.4 5.65a3.6 3.6 0 1 0 4.77-2.73Zm-9.7-3.7a2.6 2.6 0 1 0-1.95 4.55l-3.4 5.65a3.6 3.6 0 1 0 1.7 1.05l3.4-5.65a2.6 2.6 0 1 0 .25-5.6Z"
-        fill="#fff"
+        fill="var(--color-on-sidebar)"
       />
     </svg>
   );
@@ -195,10 +207,10 @@ function WebhookLogo({ size }: { size: number }) {
 function CustomTicketingLogo({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="32" height="32" rx="6" fill="#475569" />
+      <rect width="32" height="32" rx="6" fill="var(--color-text-secondary)" />
       <path
         d="M6 13a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4v-2Zm14 0v6h2v-6h-2Z"
-        fill="#fff"
+        fill="var(--color-on-sidebar)"
       />
     </svg>
   );
@@ -250,7 +262,7 @@ function FallbackLogo({ size, label }: { size: number; label: string }) {
 
 export default function BrandLogo({ provider, size = 32, className = '', rounded = true }: BrandLogoProps) {
   const Logo = useMemo(() => LOGO_MAP[provider], [provider]);
-  const containerClass = `inline-flex items-center justify-center bg-white dark:bg-white/95 ${
+  const containerClass = `inline-flex items-center justify-center bg-on-sidebar dark:bg-on-sidebar/95 ${
     rounded ? 'rounded-lg' : ''
   } shadow-sm ring-1 ring-black/5 ${className}`;
   const padding = Math.max(2, Math.round(size * 0.08));
