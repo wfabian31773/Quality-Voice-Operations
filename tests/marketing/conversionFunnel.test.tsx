@@ -462,6 +462,51 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     }
   });
 
+  it('only shows the dollar-savings line on tier cards when Annual is selected, with the correct amount', () => {
+    render(
+      <FunnelHarness
+        initialPath="/pricing"
+        pageRoutePath="/pricing"
+        pageElement={<Pricing />}
+      />,
+    );
+
+    const tiers: ReadonlyArray<'starter' | 'pro' | 'enterprise'> = [
+      'starter',
+      'pro',
+      'enterprise',
+    ];
+
+    // Default (monthly): no dollar-savings line should be in the DOM.
+    for (const tier of tiers) {
+      expect(screen.queryByTestId(`pricing-tier-${tier}-save-amount`)).toBeNull();
+    }
+
+    // Toggle Annual.
+    fireEvent.click(screen.getByTestId('pricing-billing-annual'));
+
+    // Expected savings = (monthly − annualMonthly) * 12, where annualMonthly
+    // = round(monthly * 0.8). At catalog prices this is $240 / $960 / $2,400.
+    const expectedSavings: Record<typeof tiers[number], string> = {
+      starter: '$240',
+      pro: '$960',
+      enterprise: '$2,400',
+    };
+    for (const tier of tiers) {
+      const line = screen.getByTestId(`pricing-tier-${tier}-save-amount`);
+      expect(line).toBeTruthy();
+      expect(line.textContent).toContain(expectedSavings[tier]);
+      // Toolkit microcopy frames it as a yearly saving.
+      expect(line.textContent).toMatch(/\/yr/);
+    }
+
+    // Toggling back to Monthly removes the savings line again.
+    fireEvent.click(screen.getByTestId('pricing-billing-monthly'));
+    for (const tier of tiers) {
+      expect(screen.queryByTestId(`pricing-tier-${tier}-save-amount`)).toBeNull();
+    }
+  });
+
   it('mirrors a toggle change on the calculator back into plan-card signup links', () => {
     render(
       <FunnelHarness
@@ -521,6 +566,50 @@ describe('Marketing conversion funnel: Signup plan badges', () => {
       const badge = screen.getByTestId(`signup-plan-${tier}-save-badge`);
       expect(badge).toBeTruthy();
       expect(badge.textContent).toMatch(/20%/);
+    }
+  });
+
+  it('shows the dollar-savings microcopy on each plan button only when interval=annual, with the correct amount', () => {
+    // Monthly default: no dollar-savings microcopy on any plan button.
+    const { unmount } = render(
+      <FunnelHarness
+        initialPath="/signup"
+        pageRoutePath="/signup"
+        pageElement={<Signup />}
+      />,
+    );
+
+    const tiers: ReadonlyArray<'starter' | 'pro' | 'enterprise'> = [
+      'starter',
+      'pro',
+      'enterprise',
+    ];
+    for (const tier of tiers) {
+      expect(screen.queryByTestId(`signup-plan-${tier}-save-amount`)).toBeNull();
+    }
+    unmount();
+    cleanup();
+
+    // ?interval=annual pre-selects Annual; the savings amount should match
+    // the same (monthly − annualMonthly) * 12 math used on the /pricing
+    // tier cards: $240 / $960 / $2,400 at catalog prices.
+    render(
+      <FunnelHarness
+        initialPath="/signup?interval=annual"
+        pageRoutePath="/signup"
+        pageElement={<Signup />}
+      />,
+    );
+    const expectedSavings: Record<typeof tiers[number], string> = {
+      starter: '$240',
+      pro: '$960',
+      enterprise: '$2,400',
+    };
+    for (const tier of tiers) {
+      const line = screen.getByTestId(`signup-plan-${tier}-save-amount`);
+      expect(line).toBeTruthy();
+      expect(line.textContent).toContain(expectedSavings[tier]);
+      expect(line.textContent).toMatch(/\/yr/);
     }
   });
 });

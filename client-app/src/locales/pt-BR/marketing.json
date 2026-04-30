@@ -480,7 +480,9 @@
       "billed_monthly": "Cobrança mensal · cancele quando quiser",
       "billed_annually": "Cobrança anual · economize 20%",
       "save_badge": "Economize {{percent}}%",
-      "save_badge_aria": "Economize {{percent}}% com cobrança anual"
+      "save_badge_aria": "Economize {{percent}}% com cobrança anual",
+      "save_amount": "Economize {{amount}}/ano",
+      "save_amount_aria": "Economize {{amount}} por ano com cobrança anual"
     },
     "billing_toggle": {
       "monthly": "Mensal",

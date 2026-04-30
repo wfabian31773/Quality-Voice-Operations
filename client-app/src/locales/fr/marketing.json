@@ -480,7 +480,9 @@
       "billed_monthly": "Facturation mensuelle · annulez à tout moment",
       "billed_annually": "Facturation annuelle · économisez 20%",
       "save_badge": "Économisez {{percent}}%",
-      "save_badge_aria": "Économisez {{percent}}% avec la facturation annuelle"
+      "save_badge_aria": "Économisez {{percent}}% avec la facturation annuelle",
+      "save_amount": "Économisez {{amount}}/an",
+      "save_amount_aria": "Économisez {{amount}} par an avec la facturation annuelle"
     },
     "billing_toggle": {
       "monthly": "Mensuel",

@@ -355,6 +355,15 @@ export default function Pricing() {
               const monthlyPrice = getPlanMonthlyPriceWholeDollars(tier.key);
               const annualMonthlyPrice = Math.round(monthlyPrice * (1 - ANNUAL_DISCOUNT));
               const displayedPrice = isAnnual ? annualMonthlyPrice : monthlyPrice;
+              // Annual savings = the dollar gap between the two displayed
+              // prices, projected over a year — keeps the math visibly
+              // consistent with the strikethrough/displayed price pair on
+              // the same card.
+              const annualSavingsDollars = (monthlyPrice - annualMonthlyPrice) * 12;
+              const annualSavingsFormatted = formatDollars(annualSavingsDollars, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              });
               const signupHref = `/signup?plan=${tier.key}${isAnnual ? '&interval=annual' : ''}`;
               return (
               <div
@@ -401,6 +410,15 @@ export default function Pricing() {
                   </span>
                   <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
                 </div>
+                {isAnnual && (
+                  <div
+                    data-testid={`pricing-tier-${tier.key}-save-amount`}
+                    aria-label={t('pricing.tier_card.save_amount_aria', { amount: annualSavingsFormatted })}
+                    className="text-xs text-success font-body font-semibold mb-1"
+                  >
+                    {t('pricing.tier_card.save_amount', { amount: annualSavingsFormatted })}
+                  </div>
+                )}
                 <div
                   data-testid={`pricing-tier-${tier.key}-billing-label`}
                   className="text-xs text-text-primary/50 font-body mb-3"

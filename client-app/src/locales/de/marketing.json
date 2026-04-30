@@ -480,7 +480,9 @@
       "billed_monthly": "Monatliche Abrechnung · jederzeit kündbar",
       "billed_annually": "Jährliche Abrechnung · 20% sparen",
       "save_badge": "{{percent}}% sparen",
-      "save_badge_aria": "Mit jährlicher Abrechnung {{percent}}% sparen"
+      "save_badge_aria": "Mit jährlicher Abrechnung {{percent}}% sparen",
+      "save_amount": "Spare {{amount}}/Jahr",
+      "save_amount_aria": "Spare {{amount}} pro Jahr mit jährlicher Abrechnung"
     },
     "billing_toggle": {
       "monthly": "Monatlich",

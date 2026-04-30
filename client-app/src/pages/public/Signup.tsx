@@ -12,6 +12,7 @@ import { SIGNUP_STEP, CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 import { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPricingCalculator';
+import { formatDollars } from '../../lib/formatCurrency';
 
 const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
 
@@ -37,10 +38,19 @@ export default function Signup() {
     return isAnnual ? Math.round(monthly * (1 - ANNUAL_DISCOUNT)) : monthly;
   };
 
+  // Annual savings = the dollar gap between displayed monthly and discounted
+  // annual-monthly prices, projected over a year. Mirrors the same math the
+  // /pricing tier cards use so the two pages stay consistent.
+  const computeAnnualSavings = (tier: 'starter' | 'pro' | 'enterprise') => {
+    const monthly = getPlanMonthlyPriceWholeDollars(tier);
+    const annualMonthly = Math.round(monthly * (1 - ANNUAL_DISCOUNT));
+    return (monthly - annualMonthly) * 12;
+  };
+
   const plans = [
-    { key: 'starter', name: t('auth.plan_starter'), price: computePrice('starter') },
-    { key: 'pro', name: t('auth.plan_pro'), price: computePrice('pro'), popular: true },
-    { key: 'enterprise', name: t('auth.plan_enterprise'), price: computePrice('enterprise') },
+    { key: 'starter', name: t('auth.plan_starter'), price: computePrice('starter'), annualSavings: computeAnnualSavings('starter') },
+    { key: 'pro', name: t('auth.plan_pro'), price: computePrice('pro'), popular: true, annualSavings: computeAnnualSavings('pro') },
+    { key: 'enterprise', name: t('auth.plan_enterprise'), price: computePrice('enterprise'), annualSavings: computeAnnualSavings('enterprise') },
   ];
 
   const benefits = [
@@ -279,36 +289,51 @@ export default function Signup() {
                     </div>
                   </div>
                   <div role="group" aria-labelledby="signup-plan-label" className="grid grid-cols-3 gap-2">
-                    {plans.map((p) => (
-                      <button
-                        key={p.key}
-                        type="button"
-                        data-testid={`signup-plan-${p.key}`}
-                        onClick={() => { setPlan(p.key); trackCTAClick(CTA.PLAN_SELECTED, 'signup', `${p.key}_${interval}`); }}
-                        className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
-                          plan === p.key
-                            ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                            : 'border-border hover:border-sidebar-bg/30'
-                        }`}
-                      >
-                        {p.popular && (
-                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-primary text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            {t('auth.popular')}
-                          </span>
-                        )}
-                        <span className="block text-sm font-semibold text-text-primary">{p.name}</span>
-                        <span className="block text-xs text-text-primary/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
-                        {isAnnual && (
-                          <span
-                            data-testid={`signup-plan-${p.key}-save-badge`}
-                            aria-label={t('marketing:pricing.tier_card.save_badge_aria', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
-                            className="inline-block mt-1 text-[9px] font-semibold bg-success/10 text-success px-1.5 py-0.5 rounded-full uppercase tracking-wide"
-                          >
-                            {t('marketing:pricing.tier_card.save_badge', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                    {plans.map((p) => {
+                      const annualSavingsFormatted = formatDollars(p.annualSavings, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      });
+                      return (
+                        <button
+                          key={p.key}
+                          type="button"
+                          data-testid={`signup-plan-${p.key}`}
+                          onClick={() => { setPlan(p.key); trackCTAClick(CTA.PLAN_SELECTED, 'signup', `${p.key}_${interval}`); }}
+                          className={`relative px-3 py-3 rounded-lg border text-center transition-all ${
+                            plan === p.key
+                              ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                              : 'border-border hover:border-sidebar-bg/30'
+                          }`}
+                        >
+                          {p.popular && (
+                            <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-primary text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              {t('auth.popular')}
+                            </span>
+                          )}
+                          <span className="block text-sm font-semibold text-text-primary">{p.name}</span>
+                          <span className="block text-xs text-text-primary/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
+                          {isAnnual && (
+                            <>
+                              <span
+                                data-testid={`signup-plan-${p.key}-save-badge`}
+                                aria-label={t('marketing:pricing.tier_card.save_badge_aria', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
+                                className="inline-block mt-1 text-[9px] font-semibold bg-success/10 text-success px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                              >
+                                {t('marketing:pricing.tier_card.save_badge', { percent: Math.round(ANNUAL_DISCOUNT * 100) })}
+                              </span>
+                              <span
+                                data-testid={`signup-plan-${p.key}-save-amount`}
+                                aria-label={t('marketing:pricing.tier_card.save_amount_aria', { amount: annualSavingsFormatted })}
+                                className="block mt-1 text-[10px] font-semibold text-success"
+                              >
+                                {t('marketing:pricing.tier_card.save_amount', { amount: annualSavingsFormatted })}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                   <p className="mt-2 text-[11px] text-text-primary/50 font-body" data-testid="signup-billing-note">
                     {isAnnual ? t('auth.billing_annual_note') : t('auth.billing_monthly_note')}

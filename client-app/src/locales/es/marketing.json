@@ -480,7 +480,9 @@
       "billed_monthly": "Facturación mensual · cancela cuando quieras",
       "billed_annually": "Facturación anual · ahorra 20%",
       "save_badge": "Ahorra {{percent}}%",
-      "save_badge_aria": "Ahorra {{percent}}% con facturación anual"
+      "save_badge_aria": "Ahorra {{percent}}% con facturación anual",
+      "save_amount": "Ahorra {{amount}}/año",
+      "save_amount_aria": "Ahorra {{amount}} por año con facturación anual"
     },
     "billing_toggle": {
       "monthly": "Mensual",
