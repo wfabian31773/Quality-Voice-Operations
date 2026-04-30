@@ -103,7 +103,38 @@ interface BillingEstimatorProps {
    * sync while Stripe Checkout is being created.
    */
   switchingPlan?: PlanTier | null;
+  /**
+   * Currently selected trailing window (in months) used to fetch
+   * `trailingMonthlyAiMinutes`. When provided alongside
+   * `onTrailingWindowChange`, the recommendation card renders a small
+   * segmented control letting the tenant switch between trailing windows
+   * (e.g. 3 / 6 / 12 months). Pure presentation — the actual fetch and
+   * persistence live in the parent.
+   */
+  trailingWindow?: TrailingWindow;
+  /**
+   * Invoked when the tenant picks a different trailing window from the
+   * segmented control inside the recommendation card. Omit (along with
+   * `trailingWindow`) to hide the control entirely — that's how this
+   * component stays backwards compatible with call sites that don't yet
+   * support window switching.
+   */
+  onTrailingWindowChange?: (months: TrailingWindow) => void;
+  /**
+   * The set of trailing windows offered in the segmented control. Defaults
+   * to `[3, 6, 12]` to match the windows the backend exposes today (and
+   * the spec for this component).
+   */
+  availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
 }
+
+/**
+ * Trailing window options offered by the recommendation card's segmented
+ * control. Capped at 12 because the backend `/billing/usage/trailing`
+ * endpoint clamps `months` to the 1..12 range.
+ */
+export type TrailingWindow = 3 | 6 | 12;
+const DEFAULT_TRAILING_WINDOWS: ReadonlyArray<TrailingWindow> = [3, 6, 12];
 
 interface TierSpec {
   key: PlanTier;
@@ -328,18 +359,66 @@ function TierEstimate({
   );
 }
 
+function TrailingWindowToggle({
+  value,
+  onChange,
+  options,
+}: {
+  value: TrailingWindow;
+  onChange: (months: TrailingWindow) => void;
+  options: ReadonlyArray<TrailingWindow>;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Trailing window for plan recommendation"
+      data-testid="billing-estimator-recommendation-window-toggle"
+      className="inline-flex items-center bg-surface border border-border rounded-md p-0.5 text-[11px]"
+    >
+      {options.map((opt) => {
+        const selected = opt === value;
+        return (
+          <button
+            key={opt}
+            type="button"
+            data-testid={`billing-estimator-recommendation-window-${opt}`}
+            aria-pressed={selected}
+            onClick={() => {
+              if (!selected) onChange(opt);
+            }}
+            className={`px-2.5 py-1 rounded font-semibold transition-colors ${
+              selected
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+            title={`Average across the last ${opt} complete months`}
+          >
+            {opt} mo
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function RecommendationCard({
   recommendation,
   monthsConsidered,
   formatMoney,
   onSwitchPlan,
   switchingPlan,
+  trailingWindow,
+  onTrailingWindowChange,
+  availableTrailingWindows,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
   formatMoney: (value: number) => string;
   onSwitchPlan?: (tier: PlanTier) => void;
   switchingPlan?: PlanTier | null;
+  trailingWindow?: TrailingWindow;
+  onTrailingWindowChange?: (months: TrailingWindow) => void;
+  availableTrailingWindows?: ReadonlyArray<TrailingWindow>;
 }) {
   const { current, recommended, monthlySavings, annualSavings, isAlreadyOptimal, averageMinutes } = recommendation;
   const monthsLabel = monthsConsidered === 1
@@ -357,26 +436,44 @@ function RecommendationCard({
     ? 'Redirecting...'
     : `${isDowngrade ? 'Downgrade to' : 'Switch to'} ${recommended.name}`;
 
+  const showWindowToggle =
+    typeof trailingWindow === 'number'
+    && typeof onTrailingWindowChange === 'function';
+  const windowOptions = availableTrailingWindows && availableTrailingWindows.length > 0
+    ? availableTrailingWindows
+    : DEFAULT_TRAILING_WINDOWS;
+  const windowToggle = showWindowToggle ? (
+    <TrailingWindowToggle
+      value={trailingWindow!}
+      onChange={onTrailingWindowChange!}
+      options={windowOptions}
+    />
+  ) : null;
+
   if (isAlreadyOptimal) {
     return (
       <div
         data-testid="billing-estimator-recommendation"
         data-recommendation-state="optimal"
-        className="mb-5 flex items-start gap-3 rounded-lg border border-success/40 bg-success/[0.06] p-4"
+        data-recommendation-window={trailingWindow ?? undefined}
+        className="mb-5 rounded-lg border border-success/40 bg-success/[0.06] p-4"
       >
-        <div className="w-9 h-9 rounded-lg bg-success/15 flex items-center justify-center shrink-0">
-          <CheckCircle2 className="h-4 w-4 text-success" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-text-primary">
-            You&rsquo;re already on the cheapest plan for your usage.
-          </p>
-          <p className="text-xs text-text-muted mt-0.5">
-            Based on your {monthsLabel} ({averageMinutes.toLocaleString()} AI min/mo on average), your{' '}
-            <span className="font-medium text-text-primary">{current.name}</span> plan is the best fit at{' '}
-            <span className="font-medium text-text-primary">{formatMoney(current.monthlyCost)}/mo</span>.
-            No change needed.
-          </p>
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-success/15 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="h-4 w-4 text-success" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-text-primary">
+              You&rsquo;re already on the cheapest plan for your usage.
+            </p>
+            <p className="text-xs text-text-muted mt-0.5">
+              Based on your {monthsLabel} ({averageMinutes.toLocaleString()} AI min/mo on average), your{' '}
+              <span className="font-medium text-text-primary">{current.name}</span> plan is the best fit at{' '}
+              <span className="font-medium text-text-primary">{formatMoney(current.monthlyCost)}/mo</span>.
+              No change needed.
+            </p>
+          </div>
+          {windowToggle && <div className="shrink-0">{windowToggle}</div>}
         </div>
       </div>
     );
@@ -387,54 +484,60 @@ function RecommendationCard({
       data-testid="billing-estimator-recommendation"
       data-recommendation-state="switch"
       data-recommended-tier={recommended.tier}
-      className="mb-5 flex items-start gap-3 rounded-lg border border-primary/40 bg-primary/[0.06] p-4"
+      data-recommendation-window={trailingWindow ?? undefined}
+      className="mb-5 rounded-lg border border-primary/40 bg-primary/[0.06] p-4"
     >
-      <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-        <Lightbulb className="h-4 w-4 text-primary" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-text-primary">
-          You&rsquo;d save{' '}
-          <span
-            data-testid="billing-estimator-recommendation-savings"
-            className="text-primary"
-          >
-            {formatMoney(monthlySavings)}/mo
-          </span>{' '}
-          on{' '}
-          <span data-testid="billing-estimator-recommendation-tier" className="text-primary">
-            {recommended.name}
-          </span>{' '}
-          based on your {monthsLabel}.
-        </p>
-        <p className="text-xs text-text-muted mt-0.5">
-          You averaged {averageMinutes.toLocaleString()} AI min/mo. {current.name} would have billed{' '}
-          {formatMoney(current.monthlyCost)}/mo at that volume; {recommended.name} comes out to{' '}
-          {formatMoney(recommended.monthlyCost)}/mo — about{' '}
-          <span className="font-medium text-text-primary">{formatMoney(annualSavings)}/yr</span>{' '}
-          back in your pocket.
-        </p>
-      </div>
-      {onSwitchPlan && (
-        <button
-          type="button"
-          data-testid="billing-estimator-recommendation-cta"
-          data-recommendation-cta-tier={recommended.tier}
-          onClick={() => onSwitchPlan(recommended.tier)}
-          disabled={isSwitchingThisTier}
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title={`${isDowngrade ? 'Downgrade' : 'Switch'} to the ${recommended.name} plan (monthly billing)`}
-        >
-          {isSwitchingThisTier ? (
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-          ) : isDowngrade ? (
-            <ArrowDownRight className="h-3 w-3" aria-hidden="true" />
-          ) : (
-            <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+          <Lightbulb className="h-4 w-4 text-primary" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-text-primary">
+            You&rsquo;d save{' '}
+            <span
+              data-testid="billing-estimator-recommendation-savings"
+              className="text-primary"
+            >
+              {formatMoney(monthlySavings)}/mo
+            </span>{' '}
+            on{' '}
+            <span data-testid="billing-estimator-recommendation-tier" className="text-primary">
+              {recommended.name}
+            </span>{' '}
+            based on your {monthsLabel}.
+          </p>
+          <p className="text-xs text-text-muted mt-0.5">
+            You averaged {averageMinutes.toLocaleString()} AI min/mo. {current.name} would have billed{' '}
+            {formatMoney(current.monthlyCost)}/mo at that volume; {recommended.name} comes out to{' '}
+            {formatMoney(recommended.monthlyCost)}/mo — about{' '}
+            <span className="font-medium text-text-primary">{formatMoney(annualSavings)}/yr</span>{' '}
+            back in your pocket.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {windowToggle}
+          {onSwitchPlan && (
+            <button
+              type="button"
+              data-testid="billing-estimator-recommendation-cta"
+              data-recommendation-cta-tier={recommended.tier}
+              onClick={() => onSwitchPlan(recommended.tier)}
+              disabled={isSwitchingThisTier}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title={`${isDowngrade ? 'Downgrade' : 'Switch'} to the ${recommended.name} plan (monthly billing)`}
+            >
+              {isSwitchingThisTier ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : isDowngrade ? (
+                <ArrowDownRight className="h-3 w-3" aria-hidden="true" />
+              ) : (
+                <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+              )}
+              {ctaLabel}
+            </button>
           )}
-          {ctaLabel}
-        </button>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -449,6 +552,9 @@ export default function BillingEstimator({
   trailingMonthlyAiMinutes,
   onSwitchPlan,
   switchingPlan,
+  trailingWindow,
+  onTrailingWindowChange,
+  availableTrailingWindows,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
@@ -458,12 +564,26 @@ export default function BillingEstimator({
   // server-side consumers stay drift-free. Override shape is mapped to
   // PlanRateOverride here (BillingEstimatorRateOverride is the same shape
   // but the props type predates the shared helper).
+  //
+  // The recommendation math averages across the FULL provided series —
+  // including zero-usage months — to match the backend's intentional
+  // zero-filled averaging behavior (a brand-new tenant whose only
+  // trailing month had 300 min should average to 100 over 3 months, not
+  // 300, so we don't push them into a tier that won't fit once usage
+  // ramps). The displayed `monthsConsidered` separately reports the
+  // number of months that actually had usage so the "based on N complete
+  // months" copy reflects the tenant's real history rather than the
+  // raw window length.
   const recommendation = useMemo(() => {
     if (!trailingMonthlyAiMinutes || trailingMonthlyAiMinutes.length === 0) return null;
     const valid = trailingMonthlyAiMinutes.filter(
       (n) => Number.isFinite(n) && n >= 0,
     );
     if (valid.length === 0) return null;
+    const monthsWithData = valid.filter((n) => n > 0).length;
+    // Hide the card entirely when no month had any usage — recommending
+    // off an all-zero series would be noise, not signal.
+    if (monthsWithData === 0) return null;
     const avg = averageTrailingMinutes(valid);
     const override: PlanRateOverride | undefined = rateOverride
       ? {
@@ -472,7 +592,7 @@ export default function BillingEstimator({
         }
       : undefined;
     return {
-      monthsConsidered: valid.length,
+      monthsConsidered: monthsWithData,
       result: recommendCheapestPlan(currentTierKey, avg, override),
     };
   }, [trailingMonthlyAiMinutes, currentTierKey, rateOverride]);
@@ -605,6 +725,9 @@ export default function BillingEstimator({
           formatMoney={formatMoney}
           onSwitchPlan={onSwitchPlan}
           switchingPlan={switchingPlan}
+          trailingWindow={trailingWindow}
+          onTrailingWindowChange={onTrailingWindowChange}
+          availableTrailingWindows={availableTrailingWindows}
         />
       )}
 

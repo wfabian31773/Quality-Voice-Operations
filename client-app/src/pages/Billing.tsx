@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { hasMinRole } from '../lib/useRole';
 import { formatCents as formatCentsHelper, formatCurrency } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
-import BillingEstimator from '../components/BillingEstimator';
+import BillingEstimator, { type TrailingWindow } from '../components/BillingEstimator';
 import {
   ANNUAL_DISCOUNT,
   getDiscountedBasePrice,
@@ -166,6 +166,31 @@ function UsageBar({ label, icon: Icon, used, limit, color }: {
   );
 }
 
+const TRAILING_WINDOW_OPTIONS: ReadonlyArray<TrailingWindow> = [3, 6, 12];
+const DEFAULT_TRAILING_WINDOW: TrailingWindow = 3;
+
+function trailingWindowStorageKey(tenantId: string | undefined | null): string | null {
+  if (!tenantId) return null;
+  return `billing.trailingWindow.${tenantId}`;
+}
+
+function loadPersistedTrailingWindow(tenantId: string | undefined | null): TrailingWindow {
+  const key = trailingWindowStorageKey(tenantId);
+  if (!key || typeof window === 'undefined') return DEFAULT_TRAILING_WINDOW;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return DEFAULT_TRAILING_WINDOW;
+    const parsed = Number.parseInt(raw, 10);
+    if (TRAILING_WINDOW_OPTIONS.includes(parsed as TrailingWindow)) {
+      return parsed as TrailingWindow;
+    }
+  } catch {
+    // localStorage access can throw in private browsing — silently fall
+    // back to the default rather than blocking the page render.
+  }
+  return DEFAULT_TRAILING_WINDOW;
+}
+
 export default function Billing() {
   const { user } = useAuth();
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
@@ -173,6 +198,36 @@ export default function Billing() {
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [billingPeriodInitialized, setBillingPeriodInitialized] = useState(false);
+  // Persisted per-tenant window for the plan-recommendation card. The
+  // selector lives inside the BillingEstimator card, but the actual fetch
+  // is owned here because the parent already manages every other billing
+  // query. localStorage is keyed off the tenant so a user who switches
+  // accounts doesn't carry over the previous tenant's choice.
+  const [trailingWindow, setTrailingWindowState] = useState<TrailingWindow>(() =>
+    loadPersistedTrailingWindow(user?.tenantId ?? null),
+  );
+  // Track which tenant id `trailingWindow` was last loaded for so we can
+  // re-hydrate whenever the active tenant changes — covers both first
+  // render before auth resolves AND a user who switches account/tenant
+  // mid-session. Without this we'd carry the previous tenant's choice
+  // over to the new tenant whenever the previous choice was non-default.
+  const loadedForTenantRef = useRef<string | null>(user?.tenantId ?? null);
+  useEffect(() => {
+    const tenantId = user?.tenantId ?? null;
+    if (loadedForTenantRef.current === tenantId) return;
+    loadedForTenantRef.current = tenantId;
+    setTrailingWindowState(loadPersistedTrailingWindow(tenantId));
+  }, [user?.tenantId]);
+  const setTrailingWindow = (next: TrailingWindow) => {
+    setTrailingWindowState(next);
+    const key = trailingWindowStorageKey(user?.tenantId);
+    if (!key || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(key, String(next));
+    } catch {
+      // Best-effort persistence — ignore quota / privacy-mode failures.
+    }
+  };
   const currency = useTenantCurrency();
   const formatCents = (cents: number | string | bigint | null | undefined) => formatCentsHelper(cents, { currency });
 
@@ -194,8 +249,12 @@ export default function Billing() {
       queryClient.invalidateQueries({ queryKey: ['billing-effective-rate'] });
       // Plan switch also resets the "cheapest plan" baseline — the
       // recommendation card needs to recompute against the new current
-      // plan rather than the previous one.
-      queryClient.invalidateQueries({ queryKey: ['billing-usage-trailing', 3] });
+      // plan rather than the previous one. Invalidate every cached
+      // trailing window (3/6/12) so a tenant who's previously toggled
+      // the window doesn't see a stale recommendation on return.
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'billing-usage-trailing',
+      });
       // The upgrade-preview cache key is keyed off the tenant's CURRENT
       // plan, which just changed — drop it so the "Next tier up" card
       // re-fetches against the new starting tier on first render.
@@ -226,20 +285,24 @@ export default function Billing() {
     enabled: isAdmin,
   });
 
-  // Trailing complete-month AI minute totals (default: 3 months) used by
-  // the BillingEstimator's plan-recommendation banner. Excludes the
-  // in-progress month so we recommend off finalized data, not a partial
-  // MTD slice. Cached for an hour because last-month totals don't shift
-  // intra-day; the recommendation just needs to be fresh-ish, not live.
+  // Trailing complete-month AI minute totals (window selected by the
+  // tenant: 3, 6, or 12 months) used by the BillingEstimator's
+  // plan-recommendation banner. Excludes the in-progress month so we
+  // recommend off finalized data, not a partial MTD slice. Cached for an
+  // hour because last-month totals don't shift intra-day; the
+  // recommendation just needs to be fresh-ish, not live. We keep the
+  // previous window's data visible while a new window refetches so the
+  // recommendation card doesn't flicker when the tenant toggles.
   const { data: trailingUsageData } = useQuery({
-    queryKey: ['billing-usage-trailing', 3],
+    queryKey: ['billing-usage-trailing', trailingWindow],
     queryFn: () => api.get<{
       months: number;
       monthsWithData: number;
       monthly: Array<{ month: string; aiMinutes: number }>;
       averageAiMinutes: number;
-    }>('/billing/usage/trailing?months=3'),
+    }>(`/billing/usage/trailing?months=${trailingWindow}`),
     staleTime: 60 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 
   // Live per-minute overage + base price sourced from the tenant's actual
@@ -521,6 +584,9 @@ export default function Billing() {
               ? (tier) => handleUpgrade(tier, 'monthly')
               : undefined}
             switchingPlan={(upgradeLoading as PlanTier | null) ?? null}
+            trailingWindow={trailingWindow}
+            onTrailingWindowChange={setTrailingWindow}
+            availableTrailingWindows={TRAILING_WINDOW_OPTIONS}
             trailingMonthlyAiMinutes={
               // Only feed the recommendation card when at least one of
               // the trailing months actually had AI usage. A brand-new
@@ -528,6 +594,13 @@ export default function Billing() {
               // otherwise see "Switch to Starter, save $300/mo!" before
               // they've ever placed a call — the recommendation needs
               // *some* signal to be actionable.
+              //
+              // The full zero-filled series is forwarded as-is so the
+              // average-of-trailing-N math matches the backend's
+              // intentional "divide by N, not by months-with-data"
+              // semantics. The BillingEstimator separately surfaces the
+              // months-with-data count in its "based on N complete
+              // months" copy.
               trailingUsageData && trailingUsageData.monthsWithData > 0
                 ? trailingUsageData.monthly.map((m) => m.aiMinutes)
                 : undefined

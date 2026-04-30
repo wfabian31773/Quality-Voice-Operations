@@ -219,5 +219,165 @@ describe('BillingEstimator', () => {
       expect(savings).toContain('€');
       expect(savings).not.toContain('$');
     });
+
+    it('hides the trailing-window toggle when no callback is provided', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-recommendation-window-toggle'),
+      ).toBeNull();
+    });
+
+    it('renders the trailing-window toggle when a callback is wired and marks the active window', () => {
+      const onChange = (_: 3 | 6 | 12) => undefined;
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+          trailingWindow={3}
+          onTrailingWindowChange={onChange}
+        />,
+      );
+      const toggle = screen.getByTestId('billing-estimator-recommendation-window-toggle');
+      expect(toggle).toBeTruthy();
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-window-3').getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-window-6').getAttribute('aria-pressed'),
+      ).toBe('false');
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-window-12').getAttribute('aria-pressed'),
+      ).toBe('false');
+    });
+
+    it('invokes the change handler when a different window pill is clicked', () => {
+      const calls: Array<3 | 6 | 12> = [];
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+          trailingWindow={3}
+          onTrailingWindowChange={(months) => calls.push(months)}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('billing-estimator-recommendation-window-12'));
+      expect(calls).toEqual([12]);
+    });
+
+    it('does not re-fire the change handler when the active window is clicked again', () => {
+      const calls: Array<3 | 6 | 12> = [];
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+          trailingWindow={6}
+          onTrailingWindowChange={(months) => calls.push(months)}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('billing-estimator-recommendation-window-6'));
+      expect(calls).toEqual([]);
+    });
+
+    it('also renders the trailing-window toggle on the "already optimal" variant', () => {
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={50}
+          trailingMonthlyAiMinutes={[80, 120, 100]}
+          trailingWindow={3}
+          onTrailingWindowChange={() => undefined}
+        />,
+      );
+      const card = screen.getByTestId('billing-estimator-recommendation');
+      expect(card.getAttribute('data-recommendation-state')).toBe('optimal');
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-window-toggle'),
+      ).toBeTruthy();
+    });
+
+    it('reflects the count of months with usage data in the "based on N complete months" copy', () => {
+      // Tenant chose the 12-month window but only 4 months had usage —
+      // BillingEstimator counts months > 0 to derive the displayed
+      // "complete months" copy, even though the math itself averages
+      // across the full zero-filled series.
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[0, 0, 0, 0, 0, 0, 0, 0, 300, 320, 280, 310]}
+          trailingWindow={12}
+          onTrailingWindowChange={() => undefined}
+        />,
+      );
+      const card = screen.getByTestId('billing-estimator-recommendation');
+      expect(card.textContent).toMatch(/last 4 complete months/i);
+      expect(card.textContent).not.toMatch(/last 12 complete months/i);
+    });
+
+    it('preserves the backend zero-filled averaging semantics over the requested window', () => {
+      // [0, 0, 300] represents a brand-new Pro tenant whose only active
+      // month had 300 min. The backend deliberately divides by the full
+      // window (3) so the recommendation doesn't push them into a tier
+      // that won't fit once usage ramps. That math gives a 100 min/mo
+      // average — which keeps Starter cheapest by $300/mo. The copy
+      // should still call out the single complete month with data.
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[0, 0, 300]}
+        />,
+      );
+      const card = screen.getByTestId('billing-estimator-recommendation');
+      expect(card.getAttribute('data-recommendation-state')).toBe('switch');
+      expect(card.getAttribute('data-recommended-tier')).toBe('starter');
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-savings').textContent,
+      ).toContain('$300');
+      expect(card.textContent).toMatch(/last complete month/i);
+      expect(card.textContent).toMatch(/100/);
+    });
+
+    it('hides the recommendation card entirely when every trailing month is zero', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={0}
+          trailingMonthlyAiMinutes={[0, 0, 0]}
+        />,
+      );
+      expect(screen.queryByTestId('billing-estimator-recommendation')).toBeNull();
+    });
+
+    it('honors a custom availableTrailingWindows prop', () => {
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={300}
+          trailingMonthlyAiMinutes={[300, 300, 300]}
+          trailingWindow={6}
+          onTrailingWindowChange={() => undefined}
+          availableTrailingWindows={[6, 12]}
+        />,
+      );
+      expect(
+        screen.queryByTestId('billing-estimator-recommendation-window-3'),
+      ).toBeNull();
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-window-6'),
+      ).toBeTruthy();
+      expect(
+        screen.getByTestId('billing-estimator-recommendation-window-12'),
+      ).toBeTruthy();
+    });
   });
 });
