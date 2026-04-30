@@ -7,6 +7,12 @@ import { formatCents as formatCentsHelper, formatCurrency } from '../lib/formatC
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import BillingEstimator from '../components/BillingEstimator';
 import {
+  ANNUAL_DISCOUNT,
+  getDiscountedBasePrice,
+  type BillingPeriod,
+} from '../components/MinutesPricingCalculator';
+import { getPlanMonthlyPriceCents, type PlanTier } from '../../../shared/billing/planCatalog';
+import {
   CreditCard, ExternalLink, AlertCircle, TrendingUp,
   Phone, MessageSquare, Brain, Zap, ArrowUpRight,
   FileText, Download, Clock, CheckCircle2, XCircle,
@@ -165,6 +171,8 @@ export default function Billing() {
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const queryClient = useQueryClient();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
+  const [billingPeriodInitialized, setBillingPeriodInitialized] = useState(false);
   const currency = useTenantCurrency();
   const formatCents = (cents: number | string | bigint | null | undefined) => formatCentsHelper(cents, { currency });
 
@@ -249,6 +257,14 @@ export default function Billing() {
     // subscription/checkout event that already invalidates this key.
     staleTime: 30 * 60 * 1000,
   });
+
+  useEffect(() => {
+    if (billingPeriodInitialized) return;
+    const interval = subData?.subscription?.billing_interval;
+    if (!interval) return;
+    setBillingPeriod(interval === 'annual' ? 'annual' : 'monthly');
+    setBillingPeriodInitialized(true);
+  }, [subData, billingPeriodInitialized]);
 
   const portalMutation = useMutation({
     mutationFn: () => api.post<{ url: string }>('/billing/portal', {
@@ -579,48 +595,162 @@ export default function Billing() {
             </div>
 
             <div className="bg-surface border border-border rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-text-primary mb-4">
-                {isAdmin ? 'Upgrade Plan' : 'Current Plan'}
-              </h2>
-              {isAdmin ? (
-                <div className="space-y-3">
-                  {plan !== 'pro' && (
-                    <div className="flex items-center justify-between p-3 bg-surface-hover rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">Pro</p>
-                        <p className="text-xs text-text-muted">5,000 calls · 2,500 AI min · 10 agents</p>
-                      </div>
-                      <button
-                        onClick={() => handleUpgrade('pro')}
-                        disabled={upgradeLoading === 'pro'}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-medium rounded-lg disabled:opacity-50"
+              <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <h2 className="text-lg font-semibold text-text-primary">
+                  {isAdmin ? 'Upgrade Plan' : 'Current Plan'}
+                </h2>
+                {isAdmin && (
+                  <div
+                    role="group"
+                    aria-label="Billing period"
+                    data-testid="billing-upgrade-interval-toggle"
+                    className="inline-flex items-center bg-surface-hover border border-border rounded-md p-0.5 text-[11px]"
+                  >
+                    <button
+                      type="button"
+                      data-testid="billing-upgrade-interval-monthly"
+                      aria-pressed={billingPeriod === 'monthly'}
+                      onClick={() => setBillingPeriod('monthly')}
+                      className={`px-2.5 py-1 rounded font-semibold transition-colors ${
+                        billingPeriod === 'monthly'
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="billing-upgrade-interval-annual"
+                      aria-pressed={billingPeriod === 'annual'}
+                      onClick={() => setBillingPeriod('annual')}
+                      className={`px-2.5 py-1 rounded font-semibold transition-colors inline-flex items-center gap-1 ${
+                        billingPeriod === 'annual'
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      Annual
+                      <span
+                        className={`text-[9px] font-semibold px-1 py-0.5 rounded-full ${
+                          billingPeriod === 'annual' ? 'bg-white/20 text-white' : 'bg-success/10 text-success'
+                        }`}
                       >
-                        {upgradeLoading === 'pro' ? 'Redirecting...' : 'Upgrade'}
-                        <ArrowUpRight className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
-                  {plan !== 'enterprise' && (
-                    <div className="flex items-center justify-between p-3 bg-surface-hover rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">Enterprise</p>
-                        <p className="text-xs text-text-muted">Unlimited calls · Unlimited AI min · Unlimited agents</p>
-                      </div>
-                      <button
-                        onClick={() => handleUpgrade('enterprise')}
-                        disabled={upgradeLoading === 'enterprise'}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-medium rounded-lg disabled:opacity-50"
-                      >
-                        {upgradeLoading === 'enterprise' ? 'Redirecting...' : 'Upgrade'}
-                        <ArrowUpRight className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
-                  {plan === 'enterprise' && (
+                        −{Math.round(ANNUAL_DISCOUNT * 100)}%
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              {isAdmin ? (() => {
+                type CardKind = 'upgrade' | 'switch_annual';
+                interface UpgradeCard { tier: PlanTier; kind: CardKind }
+                const TIER_ORDER: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2 };
+                const ALL_TIERS: PlanTier[] = ['starter', 'pro', 'enterprise'];
+                const currentRank = TIER_ORDER[plan as PlanTier] ?? 0;
+                const isAnnual = billingPeriod === 'annual';
+                const onMonthlySub = sub?.billing_interval === 'monthly';
+                const cards: UpgradeCard[] = ALL_TIERS.flatMap((tier): UpgradeCard[] => {
+                  const rank = TIER_ORDER[tier];
+                  if (rank > currentRank) return [{ tier, kind: 'upgrade' }];
+                  // Same-tier card only appears so a monthly tenant can
+                  // move to annual on the plan they already pay for.
+                  if (tier === plan && onMonthlySub && isAnnual) {
+                    return [{ tier, kind: 'switch_annual' }];
+                  }
+                  return [];
+                });
+
+                if (cards.length === 0) {
+                  return (
                     <p className="text-sm text-text-muted text-center py-2">You are on the highest plan.</p>
-                  )}
-                </div>
-              ) : (
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {cards.map(({ tier, kind }) => {
+                      const baseMonthlyCents = getPlanMonthlyPriceCents(tier);
+                      const cardIsAnnual = kind === 'switch_annual' ? true : isAnnual;
+                      const cardInterval: BillingPeriod = cardIsAnnual ? 'annual' : 'monthly';
+                      const effectiveMonthlyCents = Math.round(
+                        getDiscountedBasePrice(baseMonthlyCents, cardInterval),
+                      );
+                      const summary =
+                        tier === 'starter'
+                          ? '500 calls · 250 AI min · 2 agents'
+                          : tier === 'pro'
+                            ? '5,000 calls · 2,500 AI min · 10 agents'
+                            : 'Unlimited calls · Unlimited AI min · Unlimited agents';
+                      const label = tier === 'starter' ? 'Starter' : tier === 'pro' ? 'Pro' : 'Enterprise';
+                      const cta =
+                        upgradeLoading === tier
+                          ? 'Redirecting...'
+                          : kind === 'switch_annual'
+                            ? 'Switch to annual'
+                            : 'Upgrade';
+                      return (
+                        <div
+                          key={`${tier}-${kind}`}
+                          data-testid={`billing-upgrade-card-${tier}`}
+                          data-card-kind={kind}
+                          className="flex items-center justify-between p-3 bg-surface-hover rounded-lg gap-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-text-primary">
+                              {label}
+                              {kind === 'switch_annual' && (
+                                <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-1.5 py-0.5 rounded-full">
+                                  Save {Math.round(ANNUAL_DISCOUNT * 100)}%
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-text-muted">{summary}</p>
+                            <p
+                              data-testid={`billing-upgrade-price-${tier}`}
+                              className="text-xs text-text-primary mt-1"
+                            >
+                              {cardIsAnnual ? (
+                                <>
+                                  <span className="line-through text-text-muted mr-1">
+                                    {formatCentsHelper(baseMonthlyCents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  </span>
+                                  <span className="font-semibold">
+                                    {formatCentsHelper(effectiveMonthlyCents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  </span>
+                                  <span className="text-text-muted">/mo</span>
+                                  <span
+                                    data-testid={`billing-upgrade-annual-note-${tier}`}
+                                    className="ml-1 text-text-muted"
+                                  >
+                                    · billed annually
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-semibold">
+                                    {formatCentsHelper(baseMonthlyCents, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  </span>
+                                  <span className="text-text-muted">/mo</span>
+                                </>
+                              )}
+                            </p>
+                          </div>
+                          <button
+                            data-testid={`billing-upgrade-button-${tier}`}
+                            onClick={() => handleUpgrade(tier, cardInterval)}
+                            disabled={upgradeLoading === tier}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-medium rounded-lg disabled:opacity-50 shrink-0"
+                          >
+                            {cta}
+                            <ArrowUpRight className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })() : (
                 <p className="text-sm text-text-muted">Contact your organization admin to manage plan changes.</p>
               )}
 
