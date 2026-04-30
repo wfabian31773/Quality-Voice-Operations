@@ -98,6 +98,25 @@ const PAGES: PageCheck[] = [
   // operations_manager) so it's reachable from the same session. PageHeader
   // title="Platform Reliability".
   { path: '/ops/reliability', slug: 'tenant-reliability', expect: { kind: 'heading', text: 'Platform Reliability' } },
+
+  // SMS Inbox — PageHeader title="SMS Console". The customer-flow messaging
+  // workspace fetches conversation lists on mount and has historically broken
+  // silently when the /api/sms/* response shape changed.
+  { path: '/sms-inbox', slug: 'tenant-sms-inbox', expect: { kind: 'heading', text: 'SMS Console' } },
+
+  // Tickets — PageHeader title="Tickets". High-traffic for home-services and
+  // legal verticals; the list-fetch endpoint has changed shape before.
+  { path: '/tickets', slug: 'tenant-tickets', expect: { kind: 'heading', text: 'Tickets' } },
+
+  // Tickets Reporting — renders an explicit `<h1>Ticket Reports</h1>` (no
+  // PageHeader). Charts/aggregations are fed by their own /api/tickets/*
+  // analytics endpoints.
+  { path: '/tickets/reporting', slug: 'tenant-tickets-reporting', expect: { kind: 'heading', text: 'Ticket Reports' } },
+
+  // Scheduling — PageHeader title="Scheduling". Enterprise appointment
+  // management; pulls from multiple endpoints (appointments, types,
+  // reminders) on mount.
+  { path: '/scheduling', slug: 'tenant-scheduling', expect: { kind: 'heading', text: 'Scheduling' } },
 ];
 
 const ERROR_BOUNDARY_TEXT = 'An unexpected error occurred';
