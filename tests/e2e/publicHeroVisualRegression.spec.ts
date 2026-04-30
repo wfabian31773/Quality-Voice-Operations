@@ -1,5 +1,6 @@
 /**
  * Task #1174: visual-regression coverage for marketing hero patterns.
+ * Task #1227: extended to also cover mid-page and bottom (final-CTA) bands.
  *
  * Background — the existing dark-mode contrast probe
  * (`tests/e2e/publicDarkModeContrast.spec.ts`) catches "white text on
@@ -21,14 +22,27 @@
  * slab in dark mode but the contrast probe doesn't see it because no
  * text element is directly on top of the broken layer.
  *
- * This spec catches those visual regressions by sampling the actual
- * rendered colour at a grid of points across the top "hero" rectangle
- * of every public route in both light and dark mode, computing a
- * dominant RGB triple, and comparing it against a checked-in baseline
- * file (`tests/e2e/__baselines__/publicHeroColors.json`). It also
- * applies a hard theme-invariant: in dark mode the dominant hero
- * colour MUST be dark (luminance < 0.5), so even a fresh baseline
- * cannot accidentally lock in a white-slab regression.
+ * The original v1 of this spec only sampled the top 600px of every
+ * route — the hero zone. Several public pages also use the same
+ * `<section class="relative"><div class="absolute inset-0 bg-gradient-..."/>`
+ * backstop pattern in MID-PAGE feature bands (e.g. Landing's industry +
+ * platform-capabilities sections) and in the BOTTOM final-CTA band on
+ * almost every page. A regression there (e.g. someone re-introducing
+ * `from-white` in a dark-mode CTA section) would not be caught by
+ * either the dark-mode contrast probe or the v1 hero-only check.
+ *
+ * v2 (this file) therefore samples THREE zones per route and asserts
+ * the same dark-mode luminance invariant on each:
+ *
+ *   - `hero`: top 600px of the page (scroll y = 0).
+ *   - `mid`:  top 600px of the viewport after scrolling halfway down
+ *             the page. Catches `from-white` regressions reintroduced
+ *             into mid-page feature bands.
+ *   - `cta`:  bottom 600px of the viewport after scrolling so the
+ *             site `<footer>` sits at the bottom edge of the viewport
+ *             (or the bottom of the document if no `<footer>` exists).
+ *             This is the final-CTA band that lives just above the
+ *             footer on almost every public page.
  *
  * Why a colour-baseline rather than a literal pixel-diff:
  *
@@ -36,9 +50,9 @@
  *   - Stable across font-rendering jitter, animated counters, and the
  *     other small visual differences that make literal screenshot
  *     diffs notoriously flaky in CI.
- *   - Directly catches the regression the task calls out (hero shows a
- *     white slab in dark mode) without false positives from cosmetic
- *     tweaks that don't touch the dominant colour.
+ *   - Directly catches the regression the task calls out (a section
+ *     shows a white slab in dark mode) without false positives from
+ *     cosmetic tweaks that don't touch the dominant colour.
  *
  * Standalone runner — no `@playwright/test` dependency. Mirrors the
  * pattern established in `publicDarkModeContrast.spec.ts`:
@@ -54,7 +68,7 @@
  *   UPDATE_HERO_BASELINES     default 0   (set to 1 to (re)write baseline JSON)
  *   HERO_RGB_TOLERANCE        default 32  (max per-channel RGB delta)
  *   HERO_DARK_MAX_LUMA        default 0.5 (dark theme dominant must be ≤ this)
- *   HERO_ZONE_HEIGHT          default 600 (top-of-page zone, in CSS pixels)
+ *   HERO_ZONE_HEIGHT          default 600 (sample-band height, in CSS pixels)
  *
  * Regenerating baselines after an intentional design change:
  *
@@ -104,6 +118,11 @@ const PUBLIC_ROUTES = [
   '/signup',
 ] as const;
 
+// The three vertical bands sampled on every route. Order matters —
+// it determines the per-route nesting order in the baseline JSON.
+const ZONES = ['hero', 'mid', 'cta'] as const;
+type Zone = (typeof ZONES)[number];
+
 type Theme = 'light' | 'dark';
 type RGB = [number, number, number];
 
@@ -116,6 +135,7 @@ interface ProbeResult {
 interface RouteResult {
   route: string;
   theme: Theme;
+  zone: Zone;
   passed: boolean;
   probe?: ProbeResult;
   baseline?: RGB;
@@ -123,26 +143,61 @@ interface RouteResult {
   reason?: string;
 }
 
-type BaselineFile = Record<string, { light: RGB; dark: RGB }>;
+type ZoneEntry = { light: RGB; dark: RGB };
+type RouteBaseline = Partial<Record<Zone, ZoneEntry>>;
+type BaselineFile = Record<string, RouteBaseline>;
 
 function loadBaselines(): BaselineFile {
   if (!fs.existsSync(BASELINE_PATH)) return {};
+  let raw: unknown;
   try {
-    return JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8')) as BaselineFile;
+    raw = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`! could not parse baseline file: ${(err as Error).message}`);
     return {};
   }
+  if (!raw || typeof raw !== 'object') return {};
+  const out: BaselineFile = {};
+  for (const [route, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    // v1 shape: { light: [r,g,b], dark: [r,g,b] } — treat as hero only.
+    if (Array.isArray(e.light) && Array.isArray(e.dark)) {
+      out[route] = {
+        hero: { light: e.light as RGB, dark: e.dark as RGB },
+      };
+      continue;
+    }
+    // v2 shape: { hero: {...}, mid: {...}, cta: {...} }.
+    const migrated: RouteBaseline = {};
+    for (const zone of ZONES) {
+      const z = e[zone] as { light?: RGB; dark?: RGB } | undefined;
+      if (z && Array.isArray(z.light) && Array.isArray(z.dark)) {
+        migrated[zone] = { light: z.light as RGB, dark: z.dark as RGB };
+      }
+    }
+    if (Object.keys(migrated).length > 0) out[route] = migrated;
+  }
+  return out;
 }
 
 function writeBaselines(b: BaselineFile): void {
   fs.mkdirSync(path.dirname(BASELINE_PATH), { recursive: true });
   // Stable key ordering so re-running with no real change produces an
-  // empty git diff.
+  // empty git diff: routes ordered by PUBLIC_ROUTES, zones ordered by
+  // ZONES, themes always [light, dark].
   const ordered: BaselineFile = {};
   for (const route of PUBLIC_ROUTES) {
-    if (b[route]) ordered[route] = b[route];
+    const entry = b[route];
+    if (!entry) continue;
+    const zoneOrdered: RouteBaseline = {};
+    for (const zone of ZONES) {
+      const z = entry[zone];
+      if (!z) continue;
+      zoneOrdered[zone] = { light: z.light, dark: z.dark };
+    }
+    if (Object.keys(zoneOrdered).length > 0) ordered[route] = zoneOrdered;
   }
   fs.writeFileSync(BASELINE_PATH, JSON.stringify(ordered, null, 2) + '\n');
 }
@@ -164,28 +219,30 @@ function chebyshev(a: RGB, b: RGB): number {
 }
 
 /**
- * Runs in the page context. Samples a grid of points across the top
- * `heroHeight` × viewport-width zone using `elementFromPoint`, walks
- * each sample's ancestor chain to its effective opaque background
- * colour, then returns:
+ * Runs in the page context. Samples a grid of points across a band
+ * of the current viewport defined by [sampleY0, sampleY1] using
+ * `elementFromPoint`, walks each sample's ancestor chain to its
+ * effective opaque background colour, then returns:
  *
  *   - `average`: per-channel mean across all samples (a fingerprint
  *     stable enough to baseline against).
  *   - `dominant`: the largest cluster's mean colour (used for the
  *     dark-mode luminance invariant; less sensitive to a single
- *     light "callout" pill in an otherwise-dark hero).
+ *     light "callout" pill in an otherwise-dark band).
  *
  * Reuses the gradient + child-fill backstop logic established in
- * publicDarkModeContrast.spec.ts so a hero built from a sibling
+ * publicDarkModeContrast.spec.ts so a band built from a sibling
  * `absolute inset-0 bg-gradient-...` div registers correctly.
  */
-function buildHeroProbe(
-  heroHeight: number,
+function buildBandProbe(
+  sampleY0: number,
+  sampleY1: number,
   gridX: number,
   gridY: number,
 ): string {
   return `(() => {
-    const HERO_H = ${heroHeight};
+    const Y0 = ${sampleY0};
+    const Y1 = ${sampleY1};
     const GRID_X = ${gridX};
     const GRID_Y = ${gridY};
 
@@ -290,16 +347,19 @@ function buildHeroProbe(
     }
 
     const w = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
-    const h = Math.min(HERO_H, window.innerHeight);
+    const vh = window.innerHeight;
+    const y0 = Math.max(0, Math.min(vh, Y0));
+    const y1 = Math.max(0, Math.min(vh, Y1));
+    const bandH = Math.max(1, y1 - y0);
     const samples = [];
     // Avoid sampling literal pixel 0 — elementFromPoint(0,0) can
     // return null on some layouts. Inset by half a step.
     const stepX = w / (GRID_X + 1);
-    const stepY = h / (GRID_Y + 1);
+    const stepY = bandH / (GRID_Y + 1);
     for (let i = 1; i <= GRID_X; i++) {
       for (let j = 1; j <= GRID_Y; j++) {
         const x = Math.round(i * stepX);
-        const y = Math.round(j * stepY);
+        const y = Math.round(y0 + j * stepY);
         const el = document.elementFromPoint(x, y);
         if (!el) continue;
         const bg = effectiveBackground(el);
@@ -345,6 +405,66 @@ function buildHeroProbe(
   })()`;
 }
 
+/**
+ * Scrolls the page so the requested zone is in the viewport, then
+ * returns the [y0, y1] band (in viewport coordinates) that should be
+ * sampled. Runs in the page context.
+ *
+ *   - hero: scroll y=0; sample top HERO_ZONE_HEIGHT of viewport.
+ *   - mid:  scroll halfway down; sample top HERO_ZONE_HEIGHT of viewport.
+ *   - cta:  scroll so the site `<footer>` (if present) sits at the
+ *           bottom of the viewport, otherwise scroll to the bottom of
+ *           the document. Sample the HERO_ZONE_HEIGHT band immediately
+ *           above the footer (or at the bottom of the viewport when
+ *           there is no footer).
+ */
+function buildZoneScroller(zone: Zone, heroH: number): string {
+  return `(() => {
+    const ZONE = ${JSON.stringify(zone)};
+    const HERO_H = ${heroH};
+    const docH = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+    );
+    const vh = window.innerHeight;
+    const maxScroll = Math.max(0, docH - vh);
+    let scrollY = 0;
+    let y0 = 0;
+    let y1 = Math.min(HERO_H, vh);
+    if (ZONE === 'hero') {
+      scrollY = 0;
+    } else if (ZONE === 'mid') {
+      scrollY = Math.round(maxScroll * 0.5);
+    } else if (ZONE === 'cta') {
+      // Prefer aligning the bottom of the viewport with the top of
+      // the site <footer> so the band immediately above the footer
+      // — the final CTA — fills the bottom of the viewport.
+      const footer = document.querySelector('footer');
+      const bottomEdgeDoc = footer
+        ? window.scrollY + footer.getBoundingClientRect().top
+        : docH;
+      scrollY = Math.max(0, Math.min(maxScroll, Math.round(bottomEdgeDoc - vh)));
+    }
+    window.scrollTo(0, scrollY);
+    // Compute the sample band in POST-SCROLL viewport coordinates
+    // so getBoundingClientRect() reflects the new scroll position.
+    if (ZONE === 'cta') {
+      const footer = document.querySelector('footer');
+      if (footer) {
+        const footerTopVp = Math.max(0, Math.min(vh, Math.round(footer.getBoundingClientRect().top)));
+        y1 = footerTopVp > 0 ? footerTopVp : vh;
+      } else {
+        y1 = vh;
+      }
+      y0 = Math.max(0, y1 - HERO_H);
+    } else {
+      y0 = 0;
+      y1 = Math.min(HERO_H, vh);
+    }
+    return { scrollY, y0, y1, docH, vh };
+  })()`;
+}
+
 async function applyTheme(ctx: BrowserContext, theme: Theme): Promise<void> {
   await ctx.addInitScript(
     (t: string) => {
@@ -363,38 +483,73 @@ async function applyTheme(ctx: BrowserContext, theme: Theme): Promise<void> {
   );
 }
 
-async function probeRoute(
+/**
+ * Open ONE page per route+theme and probe all zones in sequence,
+ * scrolling between zones rather than re-navigating. This keeps the
+ * full test under a couple of minutes even with 13 routes × 2 themes
+ * × 3 zones (a fresh navigation per zone is multiple seconds in vite
+ * dev mode).
+ */
+async function probeRouteThemeAllZones(
   browser: Browser,
   route: string,
   theme: Theme,
-): Promise<RouteResult> {
+): Promise<RouteResult[]> {
   const ctx = await browser.newContext({ viewport: VIEWPORT });
   await applyTheme(ctx, theme);
   const page: Page = await ctx.newPage();
   try {
-    await page.goto(`${BASE_URL}${route}`, {
-      waitUntil: 'networkidle',
-      timeout: 30_000,
-    });
+    try {
+      await page.goto(`${BASE_URL}${route}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30_000,
+      });
+      // Best-effort: wait briefly for network to quiesce so lazy
+      // public sections / icons / images are present, but don't hang
+      // forever on long-poll/SSE connections.
+      await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+    } catch (err) {
+      const reason = `navigation error: ${(err as Error).message}`;
+      return ZONES.map((zone) => ({ route, theme, zone, passed: false, reason }));
+    }
     await page.evaluate((t) => {
       try { localStorage.setItem('theme', t); } catch { /* ignore */ }
       document.documentElement.classList.toggle('dark', t === 'dark');
-      // Scroll to the top so probe samples the actual hero, even on
-      // routes whose initial render scrolls past it for any reason.
       window.scrollTo(0, 0);
     }, theme);
-    await page.waitForTimeout(250);
+    // Let layout + lazy-rendered sections settle before measuring
+    // doc height for mid/cta scroll positioning.
+    await page.waitForTimeout(300);
 
-    const probe = buildHeroProbe(HERO_ZONE_HEIGHT, SAMPLE_GRID_X, SAMPLE_GRID_Y);
-    const result = (await page.evaluate(probe)) as ProbeResult;
-    return { route, theme, passed: true, probe: result };
-  } catch (err) {
-    return {
-      route,
-      theme,
-      passed: false,
-      reason: `navigation/probe error: ${(err as Error).message}`,
-    };
+    const out: RouteResult[] = [];
+    for (const zone of ZONES) {
+      try {
+        const scroll = (await page.evaluate(
+          buildZoneScroller(zone, HERO_ZONE_HEIGHT),
+        )) as { scrollY: number; y0: number; y1: number; docH: number; vh: number };
+        // Allow scroll-triggered reveal animations / sticky chrome
+        // to settle before sampling.
+        await page.waitForTimeout(250);
+
+        const probe = buildBandProbe(
+          scroll.y0,
+          scroll.y1,
+          SAMPLE_GRID_X,
+          SAMPLE_GRID_Y,
+        );
+        const result = (await page.evaluate(probe)) as ProbeResult;
+        out.push({ route, theme, zone, passed: true, probe: result });
+      } catch (err) {
+        out.push({
+          route,
+          theme,
+          zone,
+          passed: false,
+          reason: `probe error: ${(err as Error).message}`,
+        });
+      }
+    }
+    return out;
   } finally {
     await ctx.close();
   }
@@ -440,69 +595,75 @@ async function run(): Promise<void> {
 
   try {
     for (const route of PUBLIC_ROUTES) {
-      collected[route] = collected[route] ?? { light: [0, 0, 0], dark: [0, 0, 0] };
+      collected[route] = collected[route] ?? {};
       for (const theme of ['light', 'dark'] as const) {
-        process.stdout.write(`  · ${theme.padEnd(5)} ${route} ... `);
-        const result = await probeRoute(browser, route, theme);
+        process.stdout.write(`  → ${theme.padEnd(5)} ${route}\n`);
+        const zoneResults = await probeRouteThemeAllZones(browser, route, theme);
+        for (const result of zoneResults) {
+          collected[route][result.zone] = collected[route][result.zone] ?? {
+            light: [0, 0, 0],
+            dark: [0, 0, 0],
+          };
 
-        if (!result.probe) {
-          results.push(result);
-          // eslint-disable-next-line no-console
-          console.log(`FAIL (${result.reason})`);
-          continue;
-        }
-
-        // Record for baseline write.
-        collected[route][theme] = result.probe.average;
-
-        // Hard theme invariant — dark mode dominant must be DARK.
-        if (theme === 'dark') {
-          const luma = relLuminance(result.probe.dominant);
-          if (luma > DARK_MAX_LUMA) {
-            result.passed = false;
-            result.reason =
-              `dark-mode dominant ${fmtRgb(result.probe.dominant)} ` +
-              `has luminance ${luma.toFixed(3)} > ${DARK_MAX_LUMA} ` +
-              `(suggests a white/light slab leaked into a dark hero)`;
+          if (!result.probe) {
+            results.push(result);
+            // eslint-disable-next-line no-console
+            console.log(`    · ${result.zone.padEnd(4)} FAIL (${result.reason})`);
+            continue;
           }
-        }
 
-        // Baseline diff (skipped only when explicitly updating).
-        if (!UPDATE_BASELINES && result.passed) {
-          const baseline = baselines[route]?.[theme];
-          if (!baseline) {
-            // New route added to PUBLIC_ROUTES since the baseline was
-            // last written. Fail rather than silently passing — the
-            // contributor adding the route should regenerate the
-            // baseline intentionally and commit the diff.
-            result.passed = false;
-            result.reason =
-              `no baseline entry for this route+theme — re-run with ` +
-              `UPDATE_HERO_BASELINES=1 to seed it and commit the result`;
-          } else {
-            const diff = chebyshev(result.probe.average, baseline);
-            result.baseline = baseline;
-            result.diff = diff;
-            if (diff > RGB_TOLERANCE) {
+          // Record for baseline write.
+          collected[route][result.zone]![theme] = result.probe.average;
+
+          // Hard theme invariant — dark mode dominant must be DARK.
+          if (theme === 'dark') {
+            const luma = relLuminance(result.probe.dominant);
+            if (luma > DARK_MAX_LUMA) {
               result.passed = false;
               result.reason =
-                `dominant colour drifted from baseline ${fmtRgb(baseline)} ` +
-                `to ${fmtRgb(result.probe.average)} ` +
-                `(per-channel Δ=${diff} > tolerance ${RGB_TOLERANCE})`;
+                `dark-mode dominant ${fmtRgb(result.probe.dominant)} ` +
+                `has luminance ${luma.toFixed(3)} > ${DARK_MAX_LUMA} ` +
+                `(suggests a white/light slab leaked into a dark ${result.zone} band)`;
             }
           }
-        }
 
-        results.push(result);
-        if (result.passed) {
-          const tag = result.diff !== undefined
-            ? ` Δ=${result.diff}`
-            : '';
-          // eslint-disable-next-line no-console
-          console.log(`OK  avg=${fmtRgb(result.probe.average)}${tag}`);
-        } else {
-          // eslint-disable-next-line no-console
-          console.log(`FAIL ${result.reason ?? ''}`);
+          // Baseline diff (skipped only when explicitly updating).
+          if (!UPDATE_BASELINES && result.passed) {
+            const baseline = baselines[route]?.[result.zone]?.[theme];
+            if (!baseline) {
+              // New route or zone added since the baseline was last
+              // written. Fail rather than silently passing — the
+              // contributor adding it should regenerate the baseline
+              // intentionally and commit the diff.
+              result.passed = false;
+              result.reason =
+                `no baseline entry for this route+zone+theme — re-run with ` +
+                `UPDATE_HERO_BASELINES=1 to seed it and commit the result`;
+            } else {
+              const diff = chebyshev(result.probe.average, baseline);
+              result.baseline = baseline;
+              result.diff = diff;
+              if (diff > RGB_TOLERANCE) {
+                result.passed = false;
+                result.reason =
+                  `${result.zone} colour drifted from baseline ${fmtRgb(baseline)} ` +
+                  `to ${fmtRgb(result.probe.average)} ` +
+                  `(per-channel Δ=${diff} > tolerance ${RGB_TOLERANCE})`;
+              }
+            }
+          }
+
+          results.push(result);
+          if (result.passed) {
+            const tag = result.diff !== undefined ? ` Δ=${result.diff}` : '';
+            // eslint-disable-next-line no-console
+            console.log(
+              `    · ${result.zone.padEnd(4)} OK  avg=${fmtRgb(result.probe.average)}${tag}`,
+            );
+          } else {
+            // eslint-disable-next-line no-console
+            console.log(`    · ${result.zone.padEnd(4)} FAIL ${result.reason ?? ''}`);
+          }
         }
       }
     }
@@ -515,34 +676,47 @@ async function run(): Promise<void> {
   // fail handled at the top, so this branch only runs when the user
   // has explicitly opted in to a baseline write.)
   if (UPDATE_BASELINES) {
-    // Don't overwrite known routes with results that errored out
-    // mid-run; preserve previous baselines for those.
-    const merged: BaselineFile = { ...baselines };
+    // Don't overwrite known route/zone/theme entries with results
+    // that errored out mid-run; preserve previous baselines for those.
+    const merged: BaselineFile = {};
     for (const route of PUBLIC_ROUTES) {
-      const lightOk = results.find((r) => r.route === route && r.theme === 'light' && r.probe);
-      const darkOk = results.find((r) => r.route === route && r.theme === 'dark' && r.probe);
-      if (lightOk?.probe && darkOk?.probe) {
-        merged[route] = {
-          light: lightOk.probe.average,
-          dark: darkOk.probe.average,
-        };
+      const existing = baselines[route] ?? {};
+      const mergedRoute: RouteBaseline = { ...existing };
+      for (const zone of ZONES) {
+        const lightOk = results.find(
+          (r) => r.route === route && r.zone === zone && r.theme === 'light' && r.probe,
+        );
+        const darkOk = results.find(
+          (r) => r.route === route && r.zone === zone && r.theme === 'dark' && r.probe,
+        );
+        if (lightOk?.probe && darkOk?.probe) {
+          mergedRoute[zone] = {
+            light: lightOk.probe.average,
+            dark: darkOk.probe.average,
+          };
+        }
       }
+      if (Object.keys(mergedRoute).length > 0) merged[route] = mergedRoute;
     }
     writeBaselines(merged);
     // eslint-disable-next-line no-console
-    console.log(`\n→ wrote ${Object.keys(merged).length} baselines to ${BASELINE_PATH}`);
+    console.log(
+      `\n→ wrote ${Object.keys(merged).length} route baselines (×${ZONES.length} zones) to ${BASELINE_PATH}`,
+    );
   }
 
   const failed = results.filter((r) => !r.passed);
   // eslint-disable-next-line no-console
   console.log(
-    `\n${results.length - failed.length}/${results.length} route+theme combinations passed ` +
+    `\n${results.length - failed.length}/${results.length} route+zone+theme combinations passed ` +
       `(tolerance=${RGB_TOLERANCE}, dark max luma=${DARK_MAX_LUMA}).`,
   );
   if (failed.length) {
     for (const r of failed) {
       // eslint-disable-next-line no-console
-      console.error(`  [FAIL] ${r.theme} ${r.route} — ${r.reason ?? 'unknown'}`);
+      console.error(
+        `  [FAIL] ${r.zone} ${r.theme} ${r.route} — ${r.reason ?? 'unknown'}`,
+      );
     }
     if (UPDATE_BASELINES) {
       // eslint-disable-next-line no-console

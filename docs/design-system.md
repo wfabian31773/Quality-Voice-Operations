@@ -219,25 +219,35 @@ npm run check:public-dark-mode
 
 It exits non-zero and prints up to 10 worst-offender elements per failing route, with their tag, classes, computed text colour, computed background colour and contrast ratio. Tunable via `DARKMODE_MIN_CONTRAST` (default `1.6`) and `DARKMODE_MAX_FAILURES` (default `0`).
 
-### Catch hero gradient regressions (visual baseline)
+### Catch hero, mid-page, and bottom-CTA gradient regressions (visual baseline)
 
-The contrast check above is text-anchored: it walks visible text nodes and asserts each one has enough contrast against its background. That misses an entire class of bug — a hero whose `<div class="absolute inset-0 bg-gradient-...">` backstop accidentally renders as a white slab in dark mode but happens to have no direct text on top of the offending layer.
+The contrast check above is text-anchored: it walks visible text nodes and asserts each one has enough contrast against its background. That misses an entire class of bug — a section whose `<div class="absolute inset-0 bg-gradient-...">` backstop accidentally renders as a white slab in dark mode but happens to have no direct text on top of the offending layer.
 
-A third check fills that gap. For each public route in both light and dark mode it samples the colour at a grid of points across the top of the viewport, computes a dominant RGB triple, and compares it against a checked-in baseline (`tests/e2e/__baselines__/publicHeroColors.json`). It also enforces a hard invariant: in dark mode the hero's dominant colour must be dark (luminance ≤ `HERO_DARK_MAX_LUMA`, default `0.5`), so even a fresh baseline cannot lock in a white-slab regression.
+A third check fills that gap. For each public route in both light and dark mode it scrolls to **three different bands** of the page, samples the rendered colour at a grid of points across each band, computes a dominant RGB triple, and compares it against a checked-in baseline (`tests/e2e/__baselines__/publicHeroColors.json`):
+
+| Zone | Where it samples |
+|---|---|
+| `hero` | The top `HERO_ZONE_HEIGHT` (default 600px) of the page (scroll y = 0). Catches white-slab regressions in the hero band, e.g. `from-white` reintroduced into a dark-mode hero gradient. |
+| `mid`  | The top `HERO_ZONE_HEIGHT` of the viewport after scrolling halfway down the page. Catches white-slab regressions in mid-page feature/industry/capability bands that share the same `<section class="relative"><div class="absolute inset-0 bg-gradient-…"/>` backstop pattern as the hero. |
+| `cta`  | The `HERO_ZONE_HEIGHT` band immediately above the site `<footer>` after scrolling so the footer sits at the bottom of the viewport (or the bottom of the document if the page has no footer). Catches white-slab regressions in the final-CTA band on every public page. |
+
+Each zone has its own per-route, per-theme baseline triple in the JSON (`{ "/": { "hero": { "light": [...], "dark": [...] }, "mid": {...}, "cta": {...} } }`).
+
+The same hard invariant applies to **all three zones**: in dark mode the dominant colour for that band must be dark (luminance ≤ `HERO_DARK_MAX_LUMA`, default `0.5`), so even a fresh baseline cannot lock in a white-slab regression in any of the three zones.
 
 ```bash
 # Same prerequisites as check:public-dark-mode.
 npm run check:public-hero-visual
 ```
 
-After an intentional design change to a hero, regenerate the baseline and commit the JSON diff alongside the design change:
+After an intentional design change to any of the three bands, regenerate the baseline and commit the JSON diff alongside the design change:
 
 ```bash
 UPDATE_HERO_BASELINES=1 npm run check:public-hero-visual
 git add tests/e2e/__baselines__/publicHeroColors.json
 ```
 
-Tunable via `HERO_RGB_TOLERANCE` (default `32`, max per-channel RGB delta), `HERO_DARK_MAX_LUMA` (default `0.5`), and `HERO_ZONE_HEIGHT` (default `600`, the top-of-page rectangle in CSS pixels).
+Tunable via `HERO_RGB_TOLERANCE` (default `32`, max per-channel RGB delta), `HERO_DARK_MAX_LUMA` (default `0.5`), and `HERO_ZONE_HEIGHT` (default `600`, the sample-band height in CSS pixels).
 
 ### Run all three checks together (CI entrypoint)
 
