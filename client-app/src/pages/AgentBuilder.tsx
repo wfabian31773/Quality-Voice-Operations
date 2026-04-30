@@ -49,6 +49,18 @@ import {
   getAgentTypeLabelTKey,
 } from '../lib/agentBuilderI18n';
 import {
+  type WorkflowNode,
+  type WorkflowEdge,
+  type IndustryTemplate,
+  INDUSTRY_TEMPLATES_RAW,
+  NODE_TYPE_TO_LABEL_KEY,
+  buildIndustryTemplates,
+  getNodeLabel,
+} from '../lib/industryTemplates';
+import { IndustryTemplateMenuList } from '../components/IndustryTemplateMenuList';
+import { TemplatePreview } from '../components/TemplatePreview';
+import { TemplateHoverPreview } from '../components/TemplateHoverPreview';
+import {
   ArrowLeft, Save, Play, Rocket, History, GripVertical,
   MessageSquare, HelpCircle, CheckCircle, GitBranch, Route,
   Ticket, UserPlus, Calendar, Send, Truck, Phone,
@@ -98,22 +110,6 @@ interface WorkflowDefinition {
   edges: WorkflowEdge[];
 }
 
-interface WorkflowNode {
-  id: string;
-  type: string;
-  position: { x: number; y: number };
-  data: Record<string, unknown>;
-}
-
-interface WorkflowEdge {
-  id: string;
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-  label?: string;
-}
-
 interface VersionInfo {
   id: string;
   version: number;
@@ -136,19 +132,6 @@ interface NodeCategory {
     icon: React.ReactNode;
   }[];
 }
-
-const NODE_TYPE_TO_LABEL_KEY: Record<string, AgentBuilderTKey> = {
-  greeting: 'nodeGreeting',
-  askQuestion: 'nodeAskQuestion',
-  confirmInfo: 'nodeConfirmInfo',
-  condition: 'nodeCondition',
-  routeDecision: 'nodeRouteDecision',
-  createTicket: 'nodeCreateTicket',
-  createContact: 'nodeCreateContact',
-  scheduleAppt: 'nodeScheduleAppt',
-  sendSms: 'nodeSendSms',
-  dispatchJob: 'nodeDispatchJob',
-};
 
 const NODE_TYPE_TO_ICON: Record<string, React.ReactNode> = {
   greeting: <Phone className="h-4 w-4" />,
@@ -214,164 +197,8 @@ const NODE_COLORS: Record<string, { bg: string; border: string; text: string; ha
 
 const DEFAULT_COLORS = { bg: 'bg-surface-hover', border: 'border-border', text: 'text-text-primary', handle: '#6b7280' };
 
-/**
- * Auto-generated mini visualization of a template's node graph. Renders a
- * scaled SVG of the actual node positions/edges so any new template added to
- * INDUSTRY_TEMPLATES_RAW automatically gets a preview without needing a
- * hand-authored screenshot asset.
- *
- * Edges between nodes positioned vertically use a smooth bezier so the preview
- * resembles the React Flow layout. Node fill/stroke uses the same handle
- * colors the runtime canvas uses, so the preview reads as a faithful
- * thumbnail of the loaded template.
- */
-interface TemplatePreviewNode {
-  id: string;
-  position: { x: number; y: number };
-  data?: Record<string, unknown>;
-  nodeType?: string;
-}
-interface TemplatePreviewEdge {
-  id?: string;
-  source: string;
-  target: string;
-}
-function TemplatePreview({
-  nodes,
-  edges,
-  width,
-  height,
-  showLabels = false,
-  ariaLabel,
-}: {
-  nodes: TemplatePreviewNode[];
-  edges: TemplatePreviewEdge[];
-  width: number;
-  height: number;
-  showLabels?: boolean;
-  ariaLabel?: string;
-}) {
-  if (nodes.length === 0) {
-    return <svg width={width} height={height} aria-hidden="true" />;
-  }
-  // Approximate the runtime node footprint so the bounding box matches what
-  // React Flow draws on the real canvas.
-  const NODE_W = 140;
-  const NODE_H = 56;
-  const padding = 12;
-
-  const minX = Math.min(...nodes.map((n) => n.position.x));
-  const minY = Math.min(...nodes.map((n) => n.position.y));
-  const maxX = Math.max(...nodes.map((n) => n.position.x + NODE_W));
-  const maxY = Math.max(...nodes.map((n) => n.position.y + NODE_H));
-  const graphW = maxX - minX;
-  const graphH = maxY - minY;
-  const innerW = Math.max(width - padding * 2, 1);
-  const innerH = Math.max(height - padding * 2, 1);
-  const scale = Math.min(innerW / graphW, innerH / graphH);
-  const offX = (width - graphW * scale) / 2 - minX * scale;
-  const offY = (height - graphH * scale) / 2 - minY * scale;
-
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const nodeColorOf = (n: TemplatePreviewNode) => {
-    const nt = (n.nodeType ?? (n.data?.nodeType as string) ?? '') as string;
-    return (NODE_COLORS[nt] || DEFAULT_COLORS).handle;
-  };
-
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      role={ariaLabel ? 'img' : undefined}
-      aria-label={ariaLabel}
-      aria-hidden={ariaLabel ? undefined : true}
-      className="block"
-    >
-      <g>
-        {edges.map((e, i) => {
-          const s = nodeMap.get(e.source);
-          const t = nodeMap.get(e.target);
-          if (!s || !t) return null;
-          const x1 = (s.position.x + NODE_W / 2) * scale + offX;
-          const y1 = (s.position.y + NODE_H) * scale + offY;
-          const x2 = (t.position.x + NODE_W / 2) * scale + offX;
-          const y2 = t.position.y * scale + offY;
-          const midY = (y1 + y2) / 2;
-          return (
-            <path
-              key={e.id ?? `${e.source}-${e.target}-${i}`}
-              d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1}
-              className="text-border"
-              opacity={0.85}
-            />
-          );
-        })}
-        {nodes.map((n) => {
-          const x = n.position.x * scale + offX;
-          const y = n.position.y * scale + offY;
-          const w = NODE_W * scale;
-          const h = NODE_H * scale;
-          const color = nodeColorOf(n);
-          return (
-            <g key={n.id}>
-              <rect
-                x={x}
-                y={y}
-                width={w}
-                height={h}
-                rx={Math.min(4, h / 4)}
-                fill={color}
-                fillOpacity={0.18}
-                stroke={color}
-                strokeWidth={1}
-              />
-              {showLabels && (n.data?.label as string) && h > 14 && (
-                <text
-                  x={x + w / 2}
-                  y={y + h / 2 + 3}
-                  textAnchor="middle"
-                  fontSize={Math.min(9, h / 3)}
-                  fill={color}
-                  className="font-medium"
-                >
-                  {String(n.data?.label).length > 14
-                    ? String(n.data?.label).slice(0, 13) + '…'
-                    : String(n.data?.label)}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </g>
-    </svg>
-  );
-}
-
 function getNodeIcon(type: string) {
   return NODE_TYPE_TO_ICON[type] ?? <MessageSquare className="h-4 w-4" />;
-}
-
-function getNodeLabel(type: string, t?: BuilderT) {
-  const key = NODE_TYPE_TO_LABEL_KEY[type];
-  if (key && t) return t(key);
-  // Fallback English labels (used when no translator is available, e.g. logging contexts).
-  const fallbackEn: Record<string, string> = {
-    greeting: 'Greeting',
-    askQuestion: 'Ask Question',
-    confirmInfo: 'Confirm Info',
-    condition: 'Condition / If',
-    routeDecision: 'Route Decision',
-    createTicket: 'Create Ticket',
-    createContact: 'Create Contact',
-    scheduleAppt: 'Schedule Appointment',
-    sendSms: 'Send SMS',
-    dispatchJob: 'Dispatch Job',
-  };
-  return fallbackEn[type] ?? type;
 }
 
 function ConversationNode({ data, selected }: { data: Record<string, unknown>; selected: boolean }) {
@@ -484,18 +311,6 @@ function isValidConnection(sourceNodeType: string, targetNodeType: string): bool
   return allowed.includes(targetNodeType);
 }
 
-interface IndustryTemplate {
-  label: string;
-  labelKey: AgentBuilderTKey;
-  description: string;
-  descriptionKey: AgentBuilderTKey;
-  key: IndustryTemplateKey;
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  /** True when the active language has no translated industry copy and English fallback was used. */
-  usedEnglishFallback: boolean;
-}
-
 /**
  * Tenant-defined template saved by an operator from the current canvas. Unlike
  * {@link IndustryTemplate} these are not localized server-side: the saved
@@ -559,351 +374,6 @@ function getCustomTemplateAuthorLabel(
   return t('customTemplateAuthorLabel', { name });
 }
 
-/**
- * Workflow shape for each industry template. Holds only positions, node ids,
- * categories, node types, edges, and any non-translatable code (e.g. JS-style
- * condition expressions). All user-facing strings (labels, prompts, tool
- * configs) live in `INDUSTRY_TEMPLATE_COPY` in `agentBuilderI18n.ts` keyed by
- * the same node ids and are merged in by `buildIndustryTemplates` below.
- */
-interface IndustryTemplateShapeNode {
-  id: string;
-  type: string;
-  position: { x: number; y: number };
-  nodeType: string;
-  conditionField?: string;
-}
-
-interface IndustryTemplateShapeEdge {
-  id: string;
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-  /**
-   * Translation key for the edge label. Resolved at template-build time
-   * against the agent's language so the label persists consistently with
-   * the rest of the workflow data (which is also keyed by agent language).
-   */
-  labelKey?: AgentBuilderTKey;
-}
-
-interface IndustryTemplateShape {
-  labelKey: AgentBuilderTKey;
-  descriptionKey: AgentBuilderTKey;
-  key: IndustryTemplateKey;
-  nodes: IndustryTemplateShapeNode[];
-  edges: IndustryTemplateShapeEdge[];
-}
-
-const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
-  {
-    labelKey: 'tplMedical',
-    descriptionKey: 'tplMedicalDesc',
-    key: 'medical',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'urgency === "emergency"' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelUrgent' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelRoutine' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplDental',
-    descriptionKey: 'tplDentalDesc',
-    key: 'dental',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'scheduleAppt' },
-      { id: '4', type: 'conversation', position: { x: 250, y: 450 }, nodeType: 'confirmInfo' },
-      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4' },
-      { id: 'e4-5', source: '4', target: '5' },
-    ],
-  },
-  {
-    labelKey: 'tplHvac',
-    descriptionKey: 'tplHvacDesc',
-    key: 'hvac',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'isEmergency === true' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'dispatchJob' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelEmergency' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelRoutine' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplLegal',
-    descriptionKey: 'tplLegalDesc',
-    key: 'legal',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'createContact' },
-      { id: '4', type: 'action', position: { x: 250, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4' },
-      { id: 'e4-5', source: '4', target: '5' },
-    ],
-  },
-  {
-    labelKey: 'tplSupport',
-    descriptionKey: 'tplSupportDesc',
-    key: 'support',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'routeDecision', conditionField: 'issueType' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelTicket' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelCallback' },
-    ],
-  },
-  {
-    labelKey: 'tplRealEstate',
-    descriptionKey: 'tplRealEstateDesc',
-    key: 'realestate',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'createContact' },
-      { id: '4', type: 'action', position: { x: 250, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4' },
-      { id: 'e4-5', source: '4', target: '5' },
-    ],
-  },
-  {
-    labelKey: 'tplRestaurant',
-    descriptionKey: 'tplRestaurantDesc',
-    key: 'restaurant',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'tableAvailable === true' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'createTicket' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelAvailable' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelWaitlist' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplSalon',
-    descriptionKey: 'tplSalonDesc',
-    key: 'salon',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'action', position: { x: 250, y: 300 }, nodeType: 'scheduleAppt' },
-      { id: '4', type: 'conversation', position: { x: 250, y: 450 }, nodeType: 'confirmInfo' },
-      { id: '5', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4' },
-      { id: 'e4-5', source: '4', target: '5' },
-    ],
-  },
-  {
-    labelKey: 'tplPropertyManagement',
-    descriptionKey: 'tplPropertyManagementDesc',
-    key: 'propertymanagement',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'requestType === "maintenance"' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelMaintenance' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelTour' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplCustomerSupport',
-    descriptionKey: 'tplCustomerSupportDesc',
-    key: 'customer-support',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'priority === "high"' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelTicket' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelCallback' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplOutboundSales',
-    descriptionKey: 'tplOutboundSalesDesc',
-    key: 'outbound-sales',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'qualified === true' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'createContact' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelYes' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelNo' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplTechnicalSupport',
-    descriptionKey: 'tplTechnicalSupportDesc',
-    key: 'technical-support',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'severity === "tier2"' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'createTicket' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelTicket' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelCallback' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-  {
-    labelKey: 'tplCollections',
-    descriptionKey: 'tplCollectionsDesc',
-    key: 'collections',
-    nodes: [
-      { id: '1', type: 'conversation', position: { x: 250, y: 0 }, nodeType: 'greeting' },
-      { id: '2', type: 'conversation', position: { x: 250, y: 150 }, nodeType: 'askQuestion' },
-      { id: '3', type: 'logic', position: { x: 250, y: 300 }, nodeType: 'condition', conditionField: 'paymentArrangement === true' },
-      { id: '4', type: 'action', position: { x: 100, y: 450 }, nodeType: 'scheduleAppt' },
-      { id: '5', type: 'action', position: { x: 400, y: 450 }, nodeType: 'createTicket' },
-      { id: '6', type: 'action', position: { x: 250, y: 600 }, nodeType: 'sendSms' },
-    ],
-    edges: [
-      { id: 'e1-2', source: '1', target: '2' },
-      { id: 'e2-3', source: '2', target: '3' },
-      { id: 'e3-4', source: '3', target: '4', sourceHandle: 'yes', labelKey: 'edgeLabelYes' },
-      { id: 'e3-5', source: '3', target: '5', sourceHandle: 'no', labelKey: 'edgeLabelNo' },
-      { id: 'e4-6', source: '4', target: '6' },
-      { id: 'e5-6', source: '5', target: '6' },
-    ],
-  },
-];
-
-/**
- * Build the industry templates for display.
- *
- * - `uiT` is bound to the viewer's UI language and is used for labels shown
- *   in the picker (template name, description, node-library fallbacks).
- * - `language` is the agent's spoken language. Workflow data that gets
- *   persisted with the agent (node labels, edge labels) is localised against
- *   this language so the saved workflow stays internally consistent.
- */
-function buildIndustryTemplates(uiT: BuilderT, language: string): IndustryTemplate[] {
-  const agentT = makeBuilderT(language);
-  return INDUSTRY_TEMPLATES_RAW.map((tpl) => {
-    const copy = getIndustryTemplateCopy(language, tpl.key);
-    const nodes: WorkflowNode[] = tpl.nodes.map((n) => {
-      const nodeCopy = copy.nodes[n.id];
-      const data: Record<string, unknown> = {
-        nodeType: n.nodeType,
-        label: nodeCopy?.label ?? getNodeLabel(n.nodeType, agentT),
-      };
-      if (nodeCopy?.prompt) data.prompt = nodeCopy.prompt;
-      if (nodeCopy?.toolConfig) data.toolConfig = nodeCopy.toolConfig;
-      if (n.conditionField) data.conditionField = n.conditionField;
-      return {
-        id: n.id,
-        type: n.type,
-        position: n.position,
-        data,
-      };
-    });
-    const edges: WorkflowEdge[] = tpl.edges.map((e) => {
-      const { labelKey, ...rest } = e;
-      const edge: WorkflowEdge = { ...rest };
-      if (labelKey) edge.label = agentT(labelKey);
-      return edge;
-    });
-    return {
-      label: uiT(tpl.labelKey),
-      labelKey: tpl.labelKey,
-      description: uiT(tpl.descriptionKey),
-      descriptionKey: tpl.descriptionKey,
-      key: tpl.key,
-      nodes,
-      edges,
-      usedEnglishFallback: copy.usedEnglishFallback,
-    };
-  });
-}
 
 function NodeLibrarySidebar({ onDragStart, t }: { onDragStart: (type: string, nodeType: string) => void; t: BuilderT }) {
   const library = buildNodeLibrary(t);
@@ -3483,52 +2953,20 @@ function AgentBuilderInner() {
                 </p>
               </div>
               <div className="max-h-[420px] overflow-y-auto">
-                {industryTemplates.map((tpl) => (
-                  <button
-                    key={tpl.key}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setTemplatesOpen(false);
-                      setHoveredTemplateKey(null);
-                      loadTemplate(tpl);
-                    }}
-                    onMouseEnter={() => {
-                      setHoveredTemplateKey(tpl.key);
-                      setHoveredCustomTemplateId(null);
-                    }}
-                    onFocus={() => {
-                      setHoveredTemplateKey(tpl.key);
-                      setHoveredCustomTemplateId(null);
-                    }}
-                    onBlur={() =>
-                      setHoveredTemplateKey((curr) => (curr === tpl.key ? null : curr))
-                    }
-                    className="flex items-center gap-3 w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover focus:bg-surface-hover focus:outline-none transition"
-                  >
-                    <div className="flex-shrink-0 w-12 h-9 rounded border border-border bg-surface-secondary overflow-hidden">
-                      <TemplatePreview
-                        nodes={tpl.nodes}
-                        edges={tpl.edges}
-                        width={48}
-                        height={36}
-                        ariaLabel={t('templatePreviewAria', { label: tpl.label })}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate font-medium">{tpl.label}</div>
-                      <div className="text-[10px] text-text-secondary leading-snug line-clamp-2">
-                        {tpl.description}
-                      </div>
-                      <div className="text-[10px] text-text-muted mt-0.5">
-                        {t('templateStepsLabel', {
-                          nodes: tpl.nodes.length,
-                          edges: tpl.edges.length,
-                        })}
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                <IndustryTemplateMenuList
+                  templates={industryTemplates}
+                  t={t}
+                  language={agentSettings.language}
+                  onSelect={(tpl) => {
+                    setTemplatesOpen(false);
+                    setHoveredTemplateKey(null);
+                    loadTemplate(tpl);
+                  }}
+                  onHover={(key) => {
+                    setHoveredTemplateKey(key);
+                    if (key !== null) setHoveredCustomTemplateId(null);
+                  }}
+                />
                 <div className="px-3 py-2 border-t border-border bg-surface-secondary/40">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                     {t('customTemplatesHeader')}
@@ -3632,32 +3070,11 @@ function AgentBuilderInner() {
               const tpl = industryTemplates.find((x) => x.key === hoveredTemplateKey);
               if (!tpl) return null;
               return (
-                <div
-                  className="absolute right-full top-full mt-1 mr-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-30 p-3 pointer-events-none"
-                  aria-hidden="true"
-                >
-                  <p className="text-xs font-semibold text-text-primary mb-1 truncate">
-                    {tpl.label}
-                  </p>
-                  <p className="text-[11px] text-text-secondary mb-1 leading-snug">
-                    {tpl.description}
-                  </p>
-                  <p className="text-[10px] text-text-muted mb-2">
-                    {t('templateStepsLabel', {
-                      nodes: tpl.nodes.length,
-                      edges: tpl.edges.length,
-                    })}
-                  </p>
-                  <div className="rounded-md border border-border bg-surface-secondary overflow-hidden">
-                    <TemplatePreview
-                      nodes={tpl.nodes}
-                      edges={tpl.edges}
-                      width={264}
-                      height={200}
-                      ariaLabel={t('templatePreviewAria', { label: tpl.label })}
-                    />
-                  </div>
-                </div>
+                <TemplateHoverPreview
+                  template={tpl}
+                  t={t}
+                  language={agentSettings.language}
+                />
               );
             })()}
             {templatesOpen && hoveredCustomTemplateId && (() => {
