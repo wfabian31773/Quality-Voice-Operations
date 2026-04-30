@@ -1508,6 +1508,127 @@ router.put('/platform/demo-scheduler-settings', requireAuth, requirePlatformAdmi
   }
 });
 
+// Checkout-session direction breakdown over the past N days, sourced
+// from `billing.checkout_created` (success) and
+// `billing.checkout_rejected` (strict-downgrade rejected at the
+// /billing/checkout guard). `billing.downgrade_scheduled` is
+// intentionally excluded so a single downgrade journey (rejected
+// checkout → scheduled downgrade) isn't counted twice.
+// `windowDays` is clamped to 1..365.
+router.get(
+  '/platform/checkout-directions',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const rawDays = parseInt(String(req.query.days ?? '30'), 10);
+    const days = Number.isFinite(rawDays)
+      ? Math.min(Math.max(rawDays, 1), 365)
+      : 30;
+
+    try {
+      const data = await withPrivilegedClient(async (client) => {
+        const { rows: byDayRows } = await client.query(
+          `SELECT
+             date_trunc('day', occurred_at) AS day,
+             COALESCE(NULLIF(changes->>'direction', ''), 'unknown') AS direction,
+             COUNT(*)::bigint AS count
+           FROM audit_logs
+           WHERE action IN ('billing.checkout_created', 'billing.checkout_rejected')
+             AND occurred_at >= NOW() - make_interval(days => $1::int)
+           GROUP BY day, direction
+           ORDER BY day ASC, direction ASC`,
+          [days],
+        );
+
+        const { rows: totalRows } = await client.query(
+          `SELECT
+             COALESCE(NULLIF(changes->>'direction', ''), 'unknown') AS direction,
+             COUNT(*)::bigint AS count
+           FROM audit_logs
+           WHERE action IN ('billing.checkout_created', 'billing.checkout_rejected')
+             AND occurred_at >= NOW() - make_interval(days => $1::int)
+           GROUP BY direction`,
+          [days],
+        );
+
+        const { rows: downgradeRows } = await client.query(
+          `SELECT
+             COALESCE(NULLIF(changes->>'fromPlan', ''), 'unknown') AS from_plan,
+             COALESCE(NULLIF(changes->>'toPlan', ''),   'unknown') AS to_plan,
+             COUNT(*)::bigint AS count
+           FROM audit_logs
+           WHERE action IN ('billing.checkout_created', 'billing.checkout_rejected')
+             AND changes->>'direction' = 'downgrade'
+             AND occurred_at >= NOW() - make_interval(days => $1::int)
+           GROUP BY from_plan, to_plan
+           ORDER BY count DESC, from_plan ASC, to_plan ASC
+           LIMIT 10`,
+          [days],
+        );
+
+        const ALLOWED_DIRECTIONS = new Set([
+          'upgrade',
+          'downgrade',
+          'interval_change',
+          'same',
+          'new',
+          'unknown',
+        ]);
+        const normalizeDirection = (raw: string): string =>
+          ALLOWED_DIRECTIONS.has(raw) ? raw : 'unknown';
+
+        const totals: Record<string, number> = {
+          upgrade: 0,
+          downgrade: 0,
+          interval_change: 0,
+          same: 0,
+          new: 0,
+          unknown: 0,
+        };
+        for (const row of totalRows as Array<{ direction: string; count: string }>) {
+          const dir = normalizeDirection(row.direction);
+          totals[dir] = (totals[dir] ?? 0) + (Number(row.count) || 0);
+        }
+
+        const byDay = (byDayRows as Array<{ day: Date; direction: string; count: string }>).map(
+          (row) => ({
+            day:
+              row.day instanceof Date
+                ? row.day.toISOString().slice(0, 10)
+                : String(row.day).slice(0, 10),
+            direction: normalizeDirection(row.direction),
+            count: Number(row.count) || 0,
+          }),
+        );
+
+        const topDowngradeTransitions = (downgradeRows as Array<{
+          from_plan: string;
+          to_plan: string;
+          count: string;
+        }>).map((row) => ({
+          fromPlan: row.from_plan,
+          toPlan: row.to_plan,
+          count: Number(row.count) || 0,
+        }));
+
+        return { totals, byDay, topDowngradeTransitions };
+      });
+
+      return res.json({
+        windowDays: days,
+        ...data,
+      });
+    } catch (err) {
+      logger.error('Failed to load checkout direction breakdown', {
+        error: String(err),
+      });
+      return res.status(500).json({
+        error: 'Failed to load checkout direction breakdown',
+      });
+    }
+  },
+);
+
 // Trailing-30-day funnel for the BillingEstimator recommendation
 // banner. Counts are sourced from `billing_recommendation_events`:
 // impressions/clicks come from the tenant-facing route, switch_completed

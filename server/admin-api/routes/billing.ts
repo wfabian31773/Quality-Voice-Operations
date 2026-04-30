@@ -11,6 +11,7 @@ import {
   scheduleDowngrade,
   loadTenantSubscription,
   isStrictDowngrade,
+  classifyCheckoutDirection,
 } from '../../../platform/billing/stripe/planChange';
 import type { PlanTier } from '../../../shared/billing/planCatalog';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
@@ -148,16 +149,40 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
   }
 
   // Refuse strict downgrades through Checkout. Checkout always creates a
-  // NEW Stripe subscription, so a downgrade routed here would (a) leave
-  // the tenant with two parallel subscriptions and (b) flip the local
+  // NEW Stripe subscription, so a downgrade routed here would leave the
+  // tenant with two parallel subscriptions and flip the local
   // `subscriptions` row to the lower plan immediately on
-  // checkout.session.completed — both of which contradict the
-  // "takes effect at next renewal" promise we make in the UI. Any
-  // legitimate downgrade must go through `/billing/schedule-downgrade`.
+  // checkout.session.completed — contradicting the "takes effect at next
+  // renewal" promise the UI makes. Legitimate downgrades go through
+  // `/billing/schedule-downgrade`.
+  let currentPlan: PlanTier | null = null;
+  let currentInterval: 'monthly' | 'annual' | null = null;
   if (isPlanTier(plan)) {
     try {
       const existing = await loadTenantSubscription(tenantId);
+      currentPlan = existing.currentPlan;
+      currentInterval = existing.currentInterval;
       if (existing.currentPlan && isStrictDowngrade(existing.currentPlan, plan)) {
+        // Record the rejected downgrade attempt before returning so
+        // the checkout audit trail still captures direction='downgrade'.
+        await writeAuditLog({
+          tenantId,
+          actorUserId: req.user!.userId,
+          actorRole: req.user!.role,
+          action: 'billing.checkout_rejected',
+          resourceType: 'billing',
+          changes: {
+            reason: 'downgrade_requires_schedule',
+            direction: 'downgrade',
+            fromPlan: existing.currentPlan,
+            fromInterval: existing.currentInterval,
+            toPlan: plan,
+            toInterval: interval,
+          },
+          severity: 'warning',
+          ipAddress: extractIp(req),
+          userAgent: req.headers['user-agent'],
+        });
         return res.status(400).json({
           error: `Cannot downgrade from ${existing.currentPlan} to ${plan} via /billing/checkout. Use POST /billing/schedule-downgrade so the change takes effect at the end of the current billing period.`,
           code: 'DOWNGRADE_REQUIRES_SCHEDULE',
@@ -194,13 +219,27 @@ router.post('/billing/checkout', requireAuth, requireRole('manager'), async (req
       customerEmail: email,
       recommendation: validatedRecommendation,
     });
+    const direction = classifyCheckoutDirection(
+      currentPlan,
+      currentInterval,
+      plan as PlanTier,
+      interval as 'monthly' | 'annual',
+    );
     await writeAuditLog({
       tenantId,
       actorUserId: req.user!.userId,
       actorRole: req.user!.role,
       action: 'billing.checkout_created',
       resourceType: 'billing',
-      changes: { plan, interval },
+      changes: {
+        plan,
+        interval,
+        direction,
+        fromPlan: currentPlan,
+        fromInterval: currentInterval,
+        toPlan: plan,
+        toInterval: interval,
+      },
       severity: 'warning',
       ipAddress: extractIp(req),
       userAgent: req.headers['user-agent'],
@@ -283,6 +322,7 @@ router.post('/billing/schedule-downgrade', requireAuth, requireRole('manager'), 
       action: 'billing.downgrade_scheduled',
       resourceType: 'billing',
       changes: {
+        direction: 'downgrade',
         fromPlan: currentPlan,
         toPlan: plan,
         interval,

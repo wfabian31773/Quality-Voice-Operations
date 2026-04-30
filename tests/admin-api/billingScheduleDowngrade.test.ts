@@ -31,6 +31,7 @@ const {
   subscriptionSchedulesRetrieveMock,
   subscriptionSchedulesUpdateMock,
   getPlanPriceIdMock,
+  writeAuditLogMock,
 } = vi.hoisted(() => {
   const q = vi.fn();
   const r = vi.fn();
@@ -44,6 +45,7 @@ const {
     subscriptionSchedulesRetrieveMock: vi.fn(),
     subscriptionSchedulesUpdateMock: vi.fn(),
     getPlanPriceIdMock: vi.fn((tier: string, interval: string) => `price_${tier}_${interval}`),
+    writeAuditLogMock: vi.fn(),
   };
 });
 
@@ -64,7 +66,7 @@ vi.mock('../../platform/core/logger', () => ({
 }));
 
 vi.mock('../../platform/audit/AuditService', () => ({
-  writeAuditLog: vi.fn(),
+  writeAuditLog: writeAuditLogMock,
   extractIp: () => '127.0.0.1',
 }));
 
@@ -147,12 +149,25 @@ function buildApp(): express.Express {
  * (BEGIN/COMMIT/SET LOCAL) get empty result sets so the handler still
  * completes cleanly.
  */
-function stubLoadSubscription(row: { stripe_subscription_id: string | null; plan: string | null } | null): void {
+function stubLoadSubscription(
+  row:
+    | {
+        stripe_subscription_id: string | null;
+        plan: string | null;
+        billing_interval?: string | null;
+      }
+    | null,
+): void {
   queryMock.mockImplementation(async (sql: string) => {
     if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(sql)) return { rows: [], rowCount: 0 };
     if (/SET LOCAL/i.test(sql)) return { rows: [], rowCount: 0 };
-    if (/SELECT stripe_subscription_id, plan FROM subscriptions/i.test(sql)) {
-      return row ? { rows: [row], rowCount: 1 } : { rows: [], rowCount: 0 };
+    if (/SELECT stripe_subscription_id, plan/i.test(sql) && /FROM subscriptions/i.test(sql)) {
+      return row
+        ? {
+            rows: [{ billing_interval: null, ...row }],
+            rowCount: 1,
+          }
+        : { rows: [], rowCount: 0 };
     }
     return { rows: [], rowCount: 0 };
   });
@@ -169,6 +184,7 @@ describe('POST /billing/schedule-downgrade', () => {
     subscriptionSchedulesUpdateMock.mockReset();
     createCheckoutSessionMock.mockClear();
     getPlanPriceIdMock.mockClear();
+    writeAuditLogMock.mockReset();
   });
 
   it('rejects an invalid plan without touching Stripe', async () => {
@@ -246,6 +262,17 @@ describe('POST /billing/schedule-downgrade', () => {
 
     expect(subscriptionSchedulesCreateMock).toHaveBeenCalledWith({ from_subscription: 'sub_1' });
     expect(getPlanPriceIdMock).toHaveBeenCalledWith('pro', 'monthly');
+
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    expect(writeAuditLogMock.mock.calls[0][0]).toMatchObject({
+      action: 'billing.downgrade_scheduled',
+      changes: expect.objectContaining({
+        direction: 'downgrade',
+        fromPlan: 'enterprise',
+        toPlan: 'pro',
+        interval: 'monthly',
+      }),
+    });
 
     const [scheduleId, updateArgs] = subscriptionSchedulesUpdateMock.mock.calls[0];
     expect(scheduleId).toBe('sub_sched_1');
@@ -327,10 +354,15 @@ describe('POST /billing/checkout — strict downgrade guard', () => {
     releaseMock.mockReset();
     connectMock.mockClear();
     createCheckoutSessionMock.mockClear();
+    writeAuditLogMock.mockReset();
   });
 
-  it('refuses a downgrade routed to /billing/checkout and points the caller at the schedule endpoint', async () => {
-    stubLoadSubscription({ stripe_subscription_id: 'sub_1', plan: 'enterprise' });
+  it('refuses a downgrade routed to /billing/checkout, records direction=downgrade on a billing.checkout_rejected audit, and points the caller at the schedule endpoint', async () => {
+    stubLoadSubscription({
+      stripe_subscription_id: 'sub_1',
+      plan: 'enterprise',
+      billing_interval: 'monthly',
+    });
 
     const res = await request(buildApp())
       .post('/billing/checkout')
@@ -340,6 +372,19 @@ describe('POST /billing/checkout — strict downgrade guard', () => {
     expect(res.body.code).toBe('DOWNGRADE_REQUIRES_SCHEDULE');
     expect(res.body.error).toMatch(/schedule-downgrade/);
     expect(createCheckoutSessionMock).not.toHaveBeenCalled();
+
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    expect(writeAuditLogMock.mock.calls[0][0]).toMatchObject({
+      action: 'billing.checkout_rejected',
+      changes: expect.objectContaining({
+        reason: 'downgrade_requires_schedule',
+        direction: 'downgrade',
+        fromPlan: 'enterprise',
+        fromInterval: 'monthly',
+        toPlan: 'pro',
+        toInterval: 'monthly',
+      }),
+    });
   });
 
   it('still allows checkout for a true upgrade', async () => {
@@ -366,6 +411,73 @@ describe('POST /billing/checkout — strict downgrade guard', () => {
     expect(createCheckoutSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({ plan: 'starter', interval: 'monthly' }),
     );
+  });
+
+  it("stamps direction='upgrade' on the audit log when the tenant moves up a tier", async () => {
+    stubLoadSubscription({
+      stripe_subscription_id: 'sub_1',
+      plan: 'pro',
+      billing_interval: 'monthly',
+    });
+
+    const res = await request(buildApp())
+      .post('/billing/checkout')
+      .send({ plan: 'enterprise', interval: 'monthly', successUrl: 'https://x', cancelUrl: 'https://y' });
+
+    expect(res.status).toBe(200);
+    expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
+    expect(writeAuditLogMock.mock.calls[0][0]).toMatchObject({
+      action: 'billing.checkout_created',
+      changes: {
+        plan: 'enterprise',
+        interval: 'monthly',
+        direction: 'upgrade',
+        fromPlan: 'pro',
+        fromInterval: 'monthly',
+        toPlan: 'enterprise',
+        toInterval: 'monthly',
+      },
+    });
+  });
+
+  it("stamps direction='interval_change' when the tier stays the same but the cadence flips", async () => {
+    stubLoadSubscription({
+      stripe_subscription_id: 'sub_1',
+      plan: 'pro',
+      billing_interval: 'monthly',
+    });
+
+    const res = await request(buildApp())
+      .post('/billing/checkout')
+      .send({ plan: 'pro', interval: 'annual', successUrl: 'https://x', cancelUrl: 'https://y' });
+
+    expect(res.status).toBe(200);
+    expect(writeAuditLogMock.mock.calls[0][0]).toMatchObject({
+      changes: expect.objectContaining({
+        direction: 'interval_change',
+        fromPlan: 'pro',
+        fromInterval: 'monthly',
+        toPlan: 'pro',
+        toInterval: 'annual',
+      }),
+    });
+  });
+
+  it("stamps direction='new' when the tenant has no current paid subscription", async () => {
+    stubLoadSubscription(null);
+
+    const res = await request(buildApp())
+      .post('/billing/checkout')
+      .send({ plan: 'starter', interval: 'monthly', successUrl: 'https://x', cancelUrl: 'https://y' });
+
+    expect(res.status).toBe(200);
+    expect(writeAuditLogMock.mock.calls[0][0]).toMatchObject({
+      changes: expect.objectContaining({
+        direction: 'new',
+        fromPlan: null,
+        fromInterval: null,
+      }),
+    });
   });
 
   it('fails CLOSED (503, no Stripe call) when the downgrade-guard subscription lookup throws', async () => {

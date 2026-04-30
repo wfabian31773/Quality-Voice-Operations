@@ -17,13 +17,12 @@ export interface ScheduledDowngrade {
 interface SubscriptionLookup {
   stripeSubscriptionId: string | null;
   currentPlan: PlanTier | null;
+  currentInterval: 'monthly' | 'annual' | null;
 }
 
 /**
- * Loads the tenant's Stripe subscription id + current plan from the local
- * `subscriptions` table. Used by the downgrade endpoint both for the
- * "must have a paid sub to downgrade" check and to drive the schedule
- * creation against the right Stripe object.
+ * Loads the tenant's Stripe subscription id, current plan, and current
+ * billing interval from the local `subscriptions` table.
  */
 export async function loadTenantSubscription(tenantId: string): Promise<SubscriptionLookup> {
   const pool = getPlatformPool();
@@ -32,16 +31,21 @@ export async function loadTenantSubscription(tenantId: string): Promise<Subscrip
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT stripe_subscription_id, plan FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      `SELECT stripe_subscription_id, plan, billing_interval
+         FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
     await client.query('COMMIT');
     if (rows.length === 0) {
-      return { stripeSubscriptionId: null, currentPlan: null };
+      return { stripeSubscriptionId: null, currentPlan: null, currentInterval: null };
     }
+    const rawInterval = (rows[0].billing_interval as string | null) ?? null;
+    const currentInterval: 'monthly' | 'annual' | null =
+      rawInterval === 'monthly' || rawInterval === 'annual' ? rawInterval : null;
     return {
       stripeSubscriptionId: (rows[0].stripe_subscription_id as string | null) ?? null,
       currentPlan: (rows[0].plan as PlanTier | null) ?? null,
+      currentInterval,
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -165,4 +169,36 @@ const TIER_ORDER: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2
 
 export function isStrictDowngrade(currentPlan: PlanTier, targetPlan: PlanTier): boolean {
   return TIER_ORDER[targetPlan] < TIER_ORDER[currentPlan];
+}
+
+/**
+ * Direction of a plan-change request relative to the tenant's existing
+ * paid subscription:
+ *   - `upgrade`         → strictly higher tier than current
+ *   - `downgrade`       → strictly lower tier than current
+ *   - `interval_change` → same tier, different billing cadence
+ *   - `same`            → same tier and same cadence (no-op)
+ *   - `new`             → tenant has no paid subscription yet
+ */
+export type CheckoutDirection =
+  | 'upgrade'
+  | 'downgrade'
+  | 'interval_change'
+  | 'same'
+  | 'new';
+
+export function classifyCheckoutDirection(
+  currentPlan: PlanTier | null,
+  currentInterval: 'monthly' | 'annual' | null,
+  targetPlan: PlanTier,
+  targetInterval: 'monthly' | 'annual',
+): CheckoutDirection {
+  if (!currentPlan) return 'new';
+  if (TIER_ORDER[targetPlan] > TIER_ORDER[currentPlan]) return 'upgrade';
+  if (TIER_ORDER[targetPlan] < TIER_ORDER[currentPlan]) return 'downgrade';
+  // Same tier — distinguish "swapping cadence" from a true no-op.
+  if (currentInterval && currentInterval !== targetInterval) {
+    return 'interval_change';
+  }
+  return 'same';
 }
