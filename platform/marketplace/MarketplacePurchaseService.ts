@@ -108,8 +108,39 @@ export async function createMarketplacePurchase(input: PurchaseInput): Promise<{
         payment_method_types: ['card'],
         success_url: safeSuccessUrl,
         cancel_url: safeCancelUrl,
+        // Let buyers redeem a Stripe-managed promo code at the marketplace
+        // checkout. Combined with the `invoice_creation` block below, this
+        // is what makes the coupon-aware "Discount applied" badge from the
+        // `invoice.finalized` webhook (see Task #1311) actually fire on
+        // one-off marketplace purchases — without an invoice, Stripe never
+        // emits the event the badge stamper hooks. Subscription-mode
+        // sessions already auto-create invoices, so this just unblocks the
+        // one-off path.
+        allow_promotion_codes: true,
         metadata: { tenantId, templateId, purchaseId, type: 'marketplace_purchase' },
       };
+
+      // For one-off marketplace purchases (mode: 'payment') Stripe does
+      // NOT create an invoice by default — only a Charge + receipt email.
+      // Enable `invoice_creation` so the same `invoice.finalized` webhook
+      // that powers the discount badge on subscription invoices also
+      // fires for marketplace add-on purchases. Mirror the session
+      // metadata onto the invoice so Finance/Support can trace the
+      // receipt PDF back to the originating marketplace purchase row
+      // without joining through the Charge.
+      if (!isSubscription) {
+        sessionParams.invoice_creation = {
+          enabled: true,
+          invoice_data: {
+            metadata: {
+              tenantId,
+              templateId,
+              purchaseId,
+              type: 'marketplace_purchase',
+            },
+          },
+        };
+      }
 
       if (customerId) {
         sessionParams.customer = customerId;

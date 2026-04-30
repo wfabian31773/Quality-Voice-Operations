@@ -293,6 +293,197 @@ describe('handleInvoiceFinalized — discount badge stamping', () => {
   });
 });
 
+/**
+ * One-off invoice coverage (Task #1351).
+ *
+ * Stripe fires `invoice.finalized` for any invoice it finalizes — not
+ * just subscription renewals. Marketplace add-on purchases (and any
+ * future `stripe.invoices.create` + manual finalize flow) take the
+ * `mode: 'payment'` Checkout path with `invoice_creation: { enabled:
+ * true }`, which produces an invoice that has NO `subscription` /
+ * `subscription_details` fields but the same `total_discount_amounts`
+ * + `discounts` shape as a subscription invoice.
+ *
+ * These tests pin that the badge stamper:
+ *   - Treats those one-off invoices the same as subscription ones.
+ *   - Successfully passes the marketplace-purchase coupon shape through
+ *     `normalizeDiscount` (i.e. there's no subscription-only field the
+ *     handler depends on that would cause the marketplace path to bypass
+ *     the badge stamping).
+ */
+describe('handleInvoiceFinalized — one-off / marketplace invoices', () => {
+  function makeOneOffInvoice(
+    overrides: Partial<Stripe.Invoice> & {
+      total_discount_amounts?: Array<{ amount: number; discount: string }> | null;
+    } = {},
+  ): Stripe.Invoice {
+    return {
+      id: 'in_oneoff_123',
+      customer: 'cus_marketplace_buyer',
+      // The two fields that mark a Stripe invoice as "one-off" rather
+      // than subscription-driven. Pinned explicitly so a future change
+      // that accidentally reads `invoice.subscription` would fail this
+      // test.
+      subscription: null,
+      subscription_details: null,
+      billing_reason: 'manual',
+      custom_fields: null,
+      footer: null,
+      metadata: {},
+      total_discount_amounts: [{ amount: 750, discount: 'di_oneoff_1' }],
+      ...overrides,
+    } as unknown as Stripe.Invoice;
+  }
+
+  it('stamps the badge on a one-off invoice (no subscription) with a coupon', async () => {
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_oneoff_123',
+      // Mirror the shape Stripe returns for a one-off invoice — no
+      // `subscription` / `subscription_details`, just discounts.
+      subscription: null,
+      subscription_details: null,
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_launch15',
+            name: 'Launch Discount',
+            percent_off: 15,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_launch', code: 'LAUNCH15' },
+        },
+      ],
+    });
+
+    await handleInvoiceFinalized(makeOneOffInvoice());
+
+    expect(invoicesUpdateMock).toHaveBeenCalledTimes(1);
+    const [invoiceId, args] = invoicesUpdateMock.mock.calls[0];
+    expect(invoiceId).toBe('in_oneoff_123');
+    expect(args.custom_fields).toEqual([
+      { name: 'Discount applied', value: 'LAUNCH15 - 15% off' },
+    ]);
+    expect(args.footer).toContain('LAUNCH15');
+    expect(args.footer).toContain('15% off');
+    expect(args.metadata?.discountBadgeApplied).toBe('true');
+    expect(args.metadata?.discountBadgePromotionCode).toBe('LAUNCH15');
+  });
+
+  it('stamps the badge on a marketplace-purchase invoice and preserves marketplace metadata', async () => {
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_oneoff_123',
+      subscription: null,
+      subscription_details: null,
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_market10',
+            name: 'Marketplace Promo',
+            amount_off: 1000,
+            currency: 'usd',
+            valid: true,
+          },
+          promotion_code: { id: 'promo_market', code: 'MARKET10' },
+        },
+      ],
+    });
+
+    await handleInvoiceFinalized(
+      makeOneOffInvoice({
+        // The metadata `MarketplacePurchaseService` stamps onto the
+        // invoice via `invoice_creation.invoice_data.metadata`.
+        metadata: {
+          tenantId: 'tenant_42',
+          templateId: 'tmpl_dispatch_addon',
+          purchaseId: 'mkt_purchase_abc',
+          type: 'marketplace_purchase',
+        },
+      }),
+    );
+
+    expect(invoicesUpdateMock).toHaveBeenCalledTimes(1);
+    const [, args] = invoicesUpdateMock.mock.calls[0];
+    expect(args.custom_fields[0].name).toBe('Discount applied');
+    expect(args.custom_fields[0].value).toContain('MARKET10');
+    expect(args.custom_fields[0].value).toContain('USD 10.00 off');
+    expect(args.footer).toContain('promo code "MARKET10"');
+    expect(args.footer).toContain('USD 10.00 off');
+    // Critically: the marketplace breadcrumb metadata must survive the
+    // update — Finance reconciles the receipt PDF back to the purchase
+    // row through these fields, so clobbering them here would break the
+    // very workflow this badge exists to support.
+    expect(args.metadata).toMatchObject({
+      tenantId: 'tenant_42',
+      templateId: 'tmpl_dispatch_addon',
+      purchaseId: 'mkt_purchase_abc',
+      type: 'marketplace_purchase',
+      discountBadgeApplied: 'true',
+      discountBadgeCouponId: 'coupon_market10',
+      discountBadgePromotionCode: 'MARKET10',
+    });
+  });
+
+  it('honours the marker on a marketplace invoice that was already stamped (idempotent retry)', async () => {
+    await handleInvoiceFinalized(
+      makeOneOffInvoice({
+        metadata: {
+          tenantId: 'tenant_42',
+          purchaseId: 'mkt_purchase_abc',
+          type: 'marketplace_purchase',
+          discountBadgeApplied: 'true',
+        },
+      }),
+    );
+    expect(invoicesRetrieveMock).not.toHaveBeenCalled();
+    expect(invoicesUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('skips a one-off invoice with no discount (charge-only marketplace purchases)', async () => {
+    await handleInvoiceFinalized(
+      makeOneOffInvoice({
+        total_discount_amounts: null,
+        metadata: { type: 'marketplace_purchase', purchaseId: 'mkt_p_2' },
+      }),
+    );
+    expect(invoicesRetrieveMock).not.toHaveBeenCalled();
+    expect(invoicesUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('handles an unexpanded promotion_code (string id only) on a marketplace invoice', async () => {
+    // When the marketplace Checkout session forwards a promo code via
+    // `allow_promotion_codes`, Stripe sometimes returns the discount
+    // with `promotion_code` as the bare `promo_*` id (unexpanded) rather
+    // than the full object. `normalizeDiscount` treats that as the
+    // forwardable id with no human label — we still want to stamp the
+    // coupon name so the badge isn't blank.
+    invoicesRetrieveMock.mockResolvedValue({
+      id: 'in_oneoff_123',
+      subscription: null,
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_x',
+            name: 'Friends and Family',
+            percent_off: 20,
+            valid: true,
+          },
+          promotion_code: 'promo_unexpanded_xyz',
+        },
+      ],
+    });
+
+    await handleInvoiceFinalized(makeOneOffInvoice());
+
+    expect(invoicesUpdateMock).toHaveBeenCalledTimes(1);
+    const [, args] = invoicesUpdateMock.mock.calls[0];
+    // Falls back to the coupon name when there's no human-readable
+    // promo code on the discount object.
+    expect(args.custom_fields[0].value).toBe('Friends and Family - 20% off');
+    expect(args.metadata.discountBadgeCouponId).toBe('coupon_x');
+    expect(args.metadata.discountBadgePromotionCode).toBe('');
+  });
+});
+
 describe('formatDiscountBadgeLabel / formatDiscountFooter', () => {
   it('uses promo code in label when available', () => {
     expect(
