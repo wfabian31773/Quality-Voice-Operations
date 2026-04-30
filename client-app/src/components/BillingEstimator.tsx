@@ -9,6 +9,7 @@ import {
   Lightbulb,
   CheckCircle2,
   Loader2,
+  MessageSquare,
 } from 'lucide-react';
 import {
   PLAN_CATALOG,
@@ -49,6 +50,25 @@ export interface BillingEstimatorRateOverride {
   basePriceCents?: number | null;
   /** Effective per-minute overage rate, in dollars (e.g. 0.12 = $0.12/min). */
   overageRatePerMinute?: number | null;
+  /**
+   * Effective per-message SMS rate, in dollars (e.g. 0.025 = $0.025/msg).
+   * Sourced from `/billing/effective-rate.smsRatePerMessage` so a tenant
+   * on a custom / negotiated SMS price sees the rate that is actually
+   * driving their SMS line on the invoice. The rate is tenant-wide and
+   * does not vary by AI tier, so it's surfaced once below the tier
+   * cards rather than inside each tier card.
+   *
+   * Optional — when omitted (or nullish) the SMS rate row is hidden so
+   * call sites that don't yet plumb the rate keep rendering unchanged.
+   */
+  smsRatePerMessage?: number | null;
+  /**
+   * Provenance of `smsRatePerMessage`. `'stripe'` engages the
+   * "Live Stripe rate" badge next to the SMS rate; `'catalog'` (or
+   * absent) renders the rate without the badge so we don't falsely
+   * imply the env-default fallback is a Stripe-sourced number.
+   */
+  smsPriceSource?: 'stripe' | 'catalog' | null;
 }
 
 /**
@@ -332,6 +352,17 @@ function makeFormatMoney(currency: string) {
 function makeFormatPerMinute(currency: string) {
   return (value: number) =>
     formatDollars(value, { currency, minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+/**
+ * Per-message SMS rate formatter. SMS prices typically run 1–3 cents
+ * (e.g. $0.0075–$0.025), so we widen the fraction band beyond the
+ * per-minute formatter — a tenant on a $0.0075/msg negotiated rate
+ * must see four meaningful digits, not "$0.008" rounded.
+ */
+function makeFormatPerMessage(currency: string) {
+  return (value: number) =>
+    formatDollars(value, { currency, minimumFractionDigits: 4, maximumFractionDigits: 4 });
 }
 
 function clampMinutes(value: number): number {
@@ -1238,7 +1269,21 @@ export default function BillingEstimator({
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
+  const formatPerMessage = useMemo(() => makeFormatPerMessage(currency), [currency]);
   const currentTierKey = normalizePlan(currentPlan);
+
+  // Per-message SMS rate is tenant-wide (it doesn't vary by AI tier),
+  // so we surface it once below the tier cards rather than inside each
+  // tier card. The badge is gated on a Stripe-sourced provenance — a
+  // catalog/env-default rate is shown without the badge so we don't
+  // falsely imply the fallback came from Stripe.
+  const smsRate =
+    rateOverride?.smsRatePerMessage != null
+    && Number.isFinite(rateOverride.smsRatePerMessage)
+    && rateOverride.smsRatePerMessage >= 0
+      ? rateOverride.smsRatePerMessage
+      : null;
+  const smsFromStripe = rateOverride?.smsPriceSource === 'stripe';
 
   // Defer averaging + filtering to the shared helper so the UI and
   // server-side consumers stay drift-free. Override shape is mapped to
@@ -1495,6 +1540,45 @@ export default function BillingEstimator({
           </div>
         )}
       </div>
+
+      {smsRate != null && (
+        <div
+          data-testid="billing-estimator-sms-rate"
+          data-sms-source={smsFromStripe ? 'stripe' : 'catalog'}
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-hover/40 px-4 py-3"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+              <MessageSquare className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Per-message SMS rate
+              </div>
+              <div className="text-xs text-text-muted/80 mt-0.5">
+                Charged per outbound SMS — same rate posted to your Stripe metered usage.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              data-testid="billing-estimator-sms-rate-value"
+              className="text-sm font-semibold text-text-primary"
+            >
+              {formatPerMessage(smsRate)}/msg
+            </span>
+            {smsFromStripe && (
+              <span
+                data-testid="billing-estimator-sms-source"
+                className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+                title="Pulled from your live Stripe subscription — overrides the env-default SMS rate"
+              >
+                Live Stripe rate
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <p className="mt-4 text-xs text-text-muted">
         Estimates use the same per-minute rates posted to your Stripe metered usage. Only

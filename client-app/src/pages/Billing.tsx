@@ -579,6 +579,12 @@ export default function Billing() {
       monthlyBasePriceSource: 'stripe' | 'catalog';
       annualBasePriceCents: number;
       annualBasePriceSource: 'stripe' | 'catalog';
+      // Per-message SMS rate (in dollars) and its provenance. Optional
+      // for backward-compat with older API responses — the
+      // BillingEstimator hides its SMS rate row when the field is
+      // missing rather than rendering a misleading "$0.00/msg".
+      smsRatePerMessage?: number;
+      smsPriceSource?: 'stripe' | 'catalog';
     }>('/billing/effective-rate'),
     // The Stripe subscription rate is stable across a billing period, so a
     // 30-minute stale window keeps every page navigation from re-hitting
@@ -1011,6 +1017,15 @@ export default function Billing() {
                     effectiveRateData.overagePriceSource === 'stripe'
                       ? effectiveRateData.overageRatePerMinute
                       : null,
+                  // Always pass the SMS rate when present — even when
+                  // the source is `catalog`, surfacing the rate the
+                  // tenant is actually billed at is more useful than
+                  // hiding it. The "Live Stripe rate" badge is
+                  // separately gated on `smsPriceSource === 'stripe'`
+                  // so a catalog-sourced rate renders without the
+                  // badge (matching the AI-overage convention).
+                  smsRatePerMessage: effectiveRateData.smsRatePerMessage ?? null,
+                  smsPriceSource: effectiveRateData.smsPriceSource ?? null,
                 }
               : undefined}
             upgradePreview={upgradePreviewData?.upgrade

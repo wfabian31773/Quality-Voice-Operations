@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Calculator, Sparkles } from 'lucide-react';
+import { Calculator, Sparkles, MessageSquare } from 'lucide-react';
 import { formatDollars } from '../lib/formatCurrency';
 import {
   ANNUAL_DISCOUNT,
@@ -48,6 +48,16 @@ export interface CurrentPlanOverride {
   overagePriceSource?: 'stripe' | 'catalog';
   annualBasePriceCents?: number | null;
   annualBasePriceSource?: 'stripe' | 'catalog';
+  /**
+   * Per-message SMS rate (in dollars) and its provenance, sourced
+   * from `/billing/effective-rate.smsRatePerMessage`. Tenant-wide
+   * (does not vary by AI tier or billing interval) so the calculator
+   * surfaces it as a single line below the tier cards. The
+   * "Live Stripe rate" badge engages when `smsPriceSource === 'stripe'`,
+   * matching the convention used for AI base/overage rates.
+   */
+  smsRatePerMessage?: number | null;
+  smsPriceSource?: 'stripe' | 'catalog' | null;
 }
 
 export type BillingPeriod = 'monthly' | 'annual';
@@ -76,6 +86,16 @@ function formatCurrency(value: number): string {
 
 function formatPerMinute(value: number): string {
   return formatDollars(value, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+/**
+ * Per-message SMS rate formatter. SMS prices typically run 1–3 cents
+ * (e.g. $0.0075–$0.025), so we widen the fraction band beyond the
+ * per-minute formatter — a tenant on a $0.0075/msg negotiated rate
+ * must see four meaningful digits, not "$0.008" rounded.
+ */
+function formatPerMessage(value: number): string {
+  return formatDollars(value, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 }
 
 export function calculateMonthlyCost(tier: Pick<CalculatorTier, 'basePrice' | 'includedMinutes' | 'overageRate'>, minutes: number): number {
@@ -224,6 +244,20 @@ export default function MinutesPricingCalculator({
   }, [results, minutes]);
 
   const isAnnual = billingPeriod === 'annual';
+
+  // Per-message SMS rate is tenant-wide (does not vary by AI tier or
+  // billing interval), so we surface it once below the tier cards
+  // rather than inside each tier card. The badge mirrors the
+  // per-tier "Live Stripe rate" convention — a catalog/env-default
+  // rate renders without the badge so we don't falsely imply the
+  // fallback came from Stripe.
+  const smsRate =
+    currentPlanOverride?.smsRatePerMessage != null
+    && Number.isFinite(currentPlanOverride.smsRatePerMessage)
+    && currentPlanOverride.smsRatePerMessage >= 0
+      ? currentPlanOverride.smsRatePerMessage
+      : null;
+  const smsFromStripe = currentPlanOverride?.smsPriceSource === 'stripe';
 
   return (
     <div className="bg-surface rounded-2xl border border-border-strong/50 shadow-sm overflow-hidden">
@@ -422,6 +456,45 @@ export default function MinutesPricingCalculator({
           );
         })}
       </div>
+
+      {smsRate != null && (
+        <div
+          data-testid="calc-sms-rate"
+          data-sms-source={smsFromStripe ? 'stripe' : 'catalog'}
+          className="px-6 lg:px-8 py-3 bg-surface-secondary/40 border-t border-border-strong/30 flex flex-wrap items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+              <MessageSquare className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-display font-semibold uppercase tracking-wide text-text-primary/70">
+                Per-message SMS rate
+              </div>
+              <div className="text-[11px] text-text-primary/50 font-body mt-0.5">
+                Charged per outbound SMS — same rate billed by your usage meter.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              data-testid="calc-sms-rate-value"
+              className="text-sm font-display font-semibold text-text-primary"
+            >
+              {formatPerMessage(smsRate)}/msg
+            </span>
+            {smsFromStripe && (
+              <span
+                data-testid="calc-sms-source"
+                className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+                title="Live Stripe SMS rate for your account — pulled from your subscription. Overrides the env-default fallback."
+              >
+                Live Stripe rate
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="px-6 lg:px-8 py-4 bg-surface-secondary/40 border-t border-border-strong/30 text-xs text-text-primary/60 font-body">
         {isAnnual

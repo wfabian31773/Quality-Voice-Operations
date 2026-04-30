@@ -576,6 +576,60 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
     });
     expect(override).toBeUndefined();
   });
+
+  // Task #1265: an SMS-only Stripe quote (catalog AI/base rates) must
+  // still produce an override so the calculator can surface the
+  // negotiated $/msg rate. Previously buildOverride bailed out unless
+  // an AI-side source was Stripe, which would have hidden the SMS row
+  // for tenants on a custom SMS price + catalog AI plan.
+  it('engages the override when only the SMS side is Stripe-sourced', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.08,
+      basePriceSource: 'catalog',
+      overagePriceSource: 'catalog',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'catalog',
+      annualBasePriceCents: 31900,
+      annualBasePriceSource: 'catalog',
+      smsRatePerMessage: 0.0075,
+      smsPriceSource: 'stripe',
+    });
+    expect(override).toBeDefined();
+    expect(override?.basePriceSource).toBe('catalog');
+    expect(override?.smsRatePerMessage).toBe(0.0075);
+    expect(override?.smsPriceSource).toBe('stripe');
+  });
+
+  it('passes SMS fields through unchanged when the override is engaged for AI reasons', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 30000,
+      overageRatePerMinute: 0.07,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.012,
+      smsPriceSource: 'stripe',
+    });
+    expect(override?.smsRatePerMessage).toBe(0.012);
+    expect(override?.smsPriceSource).toBe('stripe');
+  });
+
+  it('normalises missing SMS fields to null on the override', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 30000,
+      overageRatePerMinute: 0.07,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(override?.smsRatePerMessage).toBeNull();
+    expect(override?.smsPriceSource).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

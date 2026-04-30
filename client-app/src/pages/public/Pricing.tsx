@@ -39,6 +39,13 @@ export interface EffectiveRateResponse {
   monthlyBasePriceSource?: 'stripe' | 'catalog';
   annualBasePriceCents?: number;
   annualBasePriceSource?: 'stripe' | 'catalog';
+  // Per-message SMS rate (in dollars) and its provenance, added in
+  // #1265 so the calculator can surface a tenant's negotiated SMS
+  // rate alongside the AI per-minute rate. Optional for backward
+  // compat with older API responses; the calculator hides the SMS
+  // line when neither field is present.
+  smsRatePerMessage?: number;
+  smsPriceSource?: 'stripe' | 'catalog';
 }
 
 /**
@@ -164,11 +171,17 @@ export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverri
   const monthlySource = payload.monthlyBasePriceSource ?? payload.basePriceSource;
   // No point passing an override that's pure catalog — that's exactly what
   // anonymous visitors already see, and would render a misleading
-  // "Live Stripe rate" badge on the current tier card.
+  // "Live Stripe rate" badge on the current tier card. SMS counts as
+  // a Stripe-sourced signal too: a tenant on a negotiated SMS price
+  // (with catalog AI/base rates) still deserves to see their rate
+  // surfaced on the calculator's SMS row, so we treat
+  // `smsPriceSource === 'stripe'` as a sufficient reason to engage
+  // the override even when none of the AI-side sources are Stripe.
   if (
     monthlySource !== 'stripe'
     && payload.overagePriceSource !== 'stripe'
     && payload.annualBasePriceSource !== 'stripe'
+    && payload.smsPriceSource !== 'stripe'
   ) {
     return undefined;
   }
@@ -180,6 +193,12 @@ export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverri
     overagePriceSource: payload.overagePriceSource,
     annualBasePriceCents: payload.annualBasePriceCents,
     annualBasePriceSource: payload.annualBasePriceSource,
+    // SMS rate is tenant-wide and interval-agnostic, so it flows
+    // through unchanged. The calculator surfaces it alongside the AI
+    // per-minute rate so a tenant on a custom SMS price sees the
+    // rate that's driving their SMS line on the invoice.
+    smsRatePerMessage: payload.smsRatePerMessage ?? null,
+    smsPriceSource: payload.smsPriceSource ?? null,
   };
 }
 
