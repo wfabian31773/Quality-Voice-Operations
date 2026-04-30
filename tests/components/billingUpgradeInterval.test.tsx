@@ -47,9 +47,20 @@ interface DowngradeBody {
   interval?: string;
 }
 
+interface FetchCall {
+  path: string;
+  method: string;
+  body: unknown;
+}
+
 let lastCheckoutBody: CheckoutBody | null = null;
 let lastDowngradeBody: DowngradeBody | null = null;
 let scheduledDowngradeFor = '2026-06-01T00:00:00.000Z';
+let fetchCalls: FetchCall[] = [];
+let preferencesGetResponse: { preferences: Record<string, unknown> | null } = {
+  preferences: {},
+};
+let upgradeIntervalsRequested: string[] = [];
 let handlers: Record<string, () => unknown> = {};
 
 beforeEach(() => {
@@ -57,6 +68,9 @@ beforeEach(() => {
   lastCheckoutBody = null;
   lastDowngradeBody = null;
   scheduledDowngradeFor = '2026-06-01T00:00:00.000Z';
+  fetchCalls = [];
+  upgradeIntervalsRequested = [];
+  preferencesGetResponse = { preferences: {} };
 
   handlers = {
     '/tenants/me': () => ({
@@ -126,6 +140,36 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/api/, '');
+      const method = (init?.method ?? 'GET').toUpperCase();
+      let parsedBody: unknown = undefined;
+      if (typeof init?.body === 'string' && init.body.length > 0) {
+        try {
+          parsedBody = JSON.parse(init.body);
+        } catch {
+          parsedBody = init.body;
+        }
+      }
+      fetchCalls.push({ path, method, body: parsedBody });
+
+      if (path === '/me/preferences' && method === 'GET') {
+        return new Response(JSON.stringify(preferencesGetResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (path === '/me/preferences' && method === 'PATCH') {
+        const body = (parsedBody ?? {}) as Record<string, unknown>;
+        if (typeof body.billing_upgrade_interval === 'string') {
+          upgradeIntervalsRequested.push(body.billing_upgrade_interval);
+        }
+        preferencesGetResponse = {
+          preferences: { ...(preferencesGetResponse.preferences ?? {}), ...body },
+        };
+        return new Response(
+          JSON.stringify({ preferences: preferencesGetResponse.preferences }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
 
       if (path.startsWith('/billing/checkout')) {
         try {
@@ -464,5 +508,159 @@ describe('Billing page upgrade interval toggle', () => {
       screen.getByTestId('billing-upgrade-card-enterprise').getAttribute('data-card-kind'),
     ).toBe('upgrade');
     expect(screen.queryByTestId('billing-upgrade-card-starter')).toBeNull();
+  });
+});
+
+/**
+ * Per-user persistence of the Billing Monthly / Annual upgrade-interval
+ * toggle. The choice lives in `users.preferences.billing_upgrade_interval`
+ * via `/me/preferences` so it follows the user across browsers/devices;
+ * localStorage is only a pre-hydration cache.
+ *
+ * Mirrors the trailing-window persistence test — covers server hydration on
+ * a new browser, write-through on toggle, legacy-localStorage migration, and
+ * no-op for tenants who have never explicitly toggled (so the existing
+ * "default to whatever the subscription is on" behaviour is preserved).
+ */
+describe('Billing upgrade-interval persistence', () => {
+  it('hydrates the toggle from /me/preferences on mount, beating the subscription default', async () => {
+    loginAsOwner();
+    // Tenant is on monthly billing but the user previously chose Annual on
+    // another device. The saved preference must win so the upgrade cards
+    // render the discounted annual price right away.
+    preferencesGetResponse = {
+      preferences: { billing_upgrade_interval: 'annual' },
+    };
+
+    await renderBilling();
+
+    await waitFor(() => {
+      expect(
+        fetchCalls.some((c) => c.method === 'GET' && c.path === '/me/preferences'),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('billing-upgrade-interval-annual').getAttribute('aria-pressed'),
+      ).toBe('true');
+    });
+    expect(
+      screen.getByTestId('billing-upgrade-interval-monthly').getAttribute('aria-pressed'),
+    ).toBe('false');
+    // The discounted Pro price proves the saved preference actually drove
+    // the upgrade-card pricing, not just the toggle's pressed state.
+    expect(screen.getByTestId('billing-upgrade-price-pro').textContent ?? '').toContain('$319');
+  });
+
+  it('writes the chosen interval to /me/preferences when toggled', async () => {
+    loginAsOwner();
+    await renderBilling();
+
+    const annual = await waitFor(() =>
+      screen.getByTestId('billing-upgrade-interval-annual'),
+    );
+    fireEvent.click(annual);
+
+    await waitFor(() => {
+      expect(upgradeIntervalsRequested).toContain('annual');
+    });
+
+    // The PATCH body must use the per-user preference key (not a top-level
+    // field) so the server's shallow JSONB merge keeps unrelated keys
+    // (e.g. `billing_trailing_window_months`) intact.
+    const patchCall = fetchCalls.find(
+      (c) =>
+        c.method === 'PATCH'
+        && c.path === '/me/preferences'
+        && (c.body as { billing_upgrade_interval?: string } | undefined)
+          ?.billing_upgrade_interval === 'annual',
+    );
+    expect(patchCall).toBeTruthy();
+    expect(patchCall?.body).toEqual({ billing_upgrade_interval: 'annual' });
+
+    // localStorage continues to mirror the choice for fast pre-hydration
+    // on the next page load.
+    expect(localStorage.getItem('billing.upgradeInterval.tenant-1')).toBe('annual');
+
+    // Toggling back to Monthly persists too.
+    fireEvent.click(screen.getByTestId('billing-upgrade-interval-monthly'));
+    await waitFor(() => {
+      expect(upgradeIntervalsRequested).toContain('monthly');
+    });
+    expect(localStorage.getItem('billing.upgradeInterval.tenant-1')).toBe('monthly');
+  });
+
+  it('migrates a legacy localStorage value up to the server on first load', async () => {
+    loginAsOwner();
+    // Simulate a tenant who already chose Annual on this browser via the
+    // localStorage cache, but the server has no record yet.
+    localStorage.setItem('billing.upgradeInterval.tenant-1', 'annual');
+    preferencesGetResponse = { preferences: {} };
+
+    await renderBilling();
+
+    // Pre-hydration cache means the toggle starts on Annual immediately,
+    // before /me/preferences resolves — no flicker back to Monthly.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('billing-upgrade-interval-annual').getAttribute('aria-pressed'),
+      ).toBe('true');
+    });
+
+    // …and the cached value gets pushed up to the server so the user's
+    // other devices will pick it up next time.
+    await waitFor(() => {
+      expect(upgradeIntervalsRequested).toContain('annual');
+    });
+    const migrationCall = fetchCalls.find(
+      (c) =>
+        c.method === 'PATCH'
+        && c.path === '/me/preferences'
+        && (c.body as { billing_upgrade_interval?: string } | undefined)
+          ?.billing_upgrade_interval === 'annual',
+    );
+    expect(migrationCall).toBeTruthy();
+  });
+
+  it('does not write to the server when no value has been chosen yet', async () => {
+    loginAsOwner();
+    // Brand new tenant: no localStorage cache, no server preference, plain
+    // monthly subscription. The page must NOT pollute /me/preferences with
+    // an implicit default just because it computed one from the
+    // subscription.
+    preferencesGetResponse = { preferences: {} };
+
+    await renderBilling();
+
+    await waitFor(() => screen.getByTestId('billing-upgrade-interval-toggle'));
+    // Allow microtasks to drain so any deferred PATCH would have fired.
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(upgradeIntervalsRequested).toEqual([]);
+    // Default Monthly is still selected (existing behaviour preserved).
+    expect(
+      screen.getByTestId('billing-upgrade-interval-monthly').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('falls back to the subscription billing_interval when no preference is saved', async () => {
+    loginAsOwner();
+    // Tenant is already on annual billing and has never explicitly
+    // toggled. Existing behaviour: default the toggle to Annual without
+    // writing a preference.
+    setSubscription('pro', 'annual');
+    preferencesGetResponse = { preferences: {} };
+
+    await renderBilling();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('billing-upgrade-interval-annual').getAttribute('aria-pressed'),
+      ).toBe('true');
+    });
+    // Allow microtasks to drain so any spurious PATCH would have fired.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(upgradeIntervalsRequested).toEqual([]);
   });
 });

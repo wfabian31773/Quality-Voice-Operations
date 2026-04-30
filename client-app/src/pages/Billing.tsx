@@ -173,20 +173,29 @@ function UsageBar({ label, icon: Icon, used, limit, color }: {
 const TRAILING_WINDOW_OPTIONS: ReadonlyArray<TrailingWindow> = [3, 6, 12];
 const DEFAULT_TRAILING_WINDOW: TrailingWindow = 3;
 
-// Key inside the user-scoped `users.preferences` JSONB blob. The preference
-// follows the user across browsers / devices; localStorage is only used as a
-// pre-hydration cache so the page doesn't flicker on first paint while the
-// `/me/preferences` request is in-flight.
+// Keys inside the user-scoped `users.preferences` JSONB blob. These follow the
+// user across browsers / devices; localStorage is only used as a pre-hydration
+// cache so the page doesn't flicker on first paint while the `/me/preferences`
+// request is in-flight.
 const TRAILING_WINDOW_PREF_KEY = 'billing_trailing_window_months';
+const UPGRADE_INTERVAL_PREF_KEY = 'billing_upgrade_interval';
+
+const UPGRADE_INTERVAL_OPTIONS: ReadonlyArray<BillingPeriod> = ['monthly', 'annual'];
 
 interface BillingUserPreferences {
   [TRAILING_WINDOW_PREF_KEY]?: unknown;
+  [UPGRADE_INTERVAL_PREF_KEY]?: unknown;
   [key: string]: unknown;
 }
 
 function trailingWindowStorageKey(tenantId: string | undefined | null): string | null {
   if (!tenantId) return null;
   return `billing.trailingWindow.${tenantId}`;
+}
+
+function upgradeIntervalStorageKey(tenantId: string | undefined | null): string | null {
+  if (!tenantId) return null;
+  return `billing.upgradeInterval.${tenantId}`;
 }
 
 function loadPersistedTrailingWindow(tenantId: string | undefined | null): TrailingWindow {
@@ -231,13 +240,70 @@ function readServerTrailingWindow(
   return null;
 }
 
+// Returns null if no cached value exists so the caller can decide whether to
+// fall back to the subscription's billing_interval (which is the existing
+// behaviour for tenants who have never explicitly toggled).
+function loadPersistedUpgradeInterval(
+  tenantId: string | undefined | null,
+): BillingPeriod | null {
+  const key = upgradeIntervalStorageKey(tenantId);
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    if (UPGRADE_INTERVAL_OPTIONS.includes(raw as BillingPeriod)) {
+      return raw as BillingPeriod;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function writePersistedUpgradeInterval(
+  tenantId: string | undefined | null,
+  value: BillingPeriod,
+): void {
+  const key = upgradeIntervalStorageKey(tenantId);
+  if (!key || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function readServerUpgradeInterval(
+  prefs: BillingUserPreferences | null | undefined,
+): BillingPeriod | null {
+  if (!prefs) return null;
+  const raw = prefs[UPGRADE_INTERVAL_PREF_KEY];
+  if (typeof raw !== 'string') return null;
+  if (UPGRADE_INTERVAL_OPTIONS.includes(raw as BillingPeriod)) {
+    return raw as BillingPeriod;
+  }
+  return null;
+}
+
 export default function Billing() {
   const { user } = useAuth();
   const isAdmin = hasMinRole(user?.role ?? '', 'manager');
   const queryClient = useQueryClient();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
-  const [billingPeriodInitialized, setBillingPeriodInitialized] = useState(false);
+  // Monthly / Annual upgrade-interval toggle. Authoritative store is the
+  // per-user `users.preferences` JSONB blob (key `billing_upgrade_interval`)
+  // so the choice follows the user across browsers and devices. localStorage
+  // is kept as a pre-hydration cache (keyed by tenant) so the toggle doesn't
+  // flicker on first paint while `/me/preferences` is in flight. When no
+  // value has ever been saved we fall back to the subscription's
+  // `billing_interval` (existing behaviour) so users on annual billing keep
+  // landing on the Annual tab by default.
+  const [billingPeriod, setBillingPeriodState] = useState<BillingPeriod>(
+    () => loadPersistedUpgradeInterval(user?.tenantId ?? null) ?? 'monthly',
+  );
+  const [billingPeriodInitialized, setBillingPeriodInitialized] = useState<boolean>(
+    () => loadPersistedUpgradeInterval(user?.tenantId ?? null) !== null,
+  );
   // Persisted trailing window for the plan-recommendation card.
   // Authoritative store is the per-user `users.preferences` JSONB blob
   // (key `billing_trailing_window_months`) so the choice follows the
@@ -252,6 +318,8 @@ export default function Billing() {
   // the new account's preferences instead of keeping the previous one.
   const serverHydratedRef = useRef(false);
   const userTouchedTrailingWindowRef = useRef(false);
+  const upgradeIntervalServerHydratedRef = useRef(false);
+  const userTouchedUpgradeIntervalRef = useRef(false);
   const loadedForUserRef = useRef<string | null>(user?.userId ?? null);
   const loadedForTenantRef = useRef<string | null>(user?.tenantId ?? null);
   useEffect(() => {
@@ -268,6 +336,11 @@ export default function Billing() {
     setTrailingWindowState(loadPersistedTrailingWindow(tenantId));
     serverHydratedRef.current = false;
     userTouchedTrailingWindowRef.current = false;
+    const cachedInterval = loadPersistedUpgradeInterval(tenantId);
+    setBillingPeriodState(cachedInterval ?? 'monthly');
+    setBillingPeriodInitialized(cachedInterval !== null);
+    upgradeIntervalServerHydratedRef.current = false;
+    userTouchedUpgradeIntervalRef.current = false;
   }, [user?.userId, user?.tenantId]);
 
   const { data: preferencesData } = useQuery({
@@ -324,6 +397,67 @@ export default function Billing() {
         // Keep the React Query cache in sync so any other consumer of
         // `/me/preferences` (or a remount of this page) reads the new
         // value without a follow-up GET.
+        queryClient.setQueryData(
+          ['user-preferences', user?.userId ?? null],
+          { preferences: result.preferences ?? {} },
+        );
+      })
+      .catch(() => {
+        // Best-effort: localStorage already holds the value for this
+        // browser, and the next toggle will retry.
+      });
+  };
+
+  // Hydrate the Monthly / Annual upgrade-interval toggle from the per-user
+  // preferences blob the same way the trailing-window picker does. Skipped
+  // entirely if the user already toggled before the GET resolved (their
+  // explicit click is more authoritative than a stale server value).
+  useEffect(() => {
+    if (!preferencesData) return;
+    if (upgradeIntervalServerHydratedRef.current) return;
+    if (userTouchedUpgradeIntervalRef.current) {
+      upgradeIntervalServerHydratedRef.current = true;
+      return;
+    }
+    const serverValue = readServerUpgradeInterval(preferencesData.preferences);
+    if (serverValue !== null) {
+      setBillingPeriodState(serverValue);
+      setBillingPeriodInitialized(true);
+      writePersistedUpgradeInterval(user?.tenantId ?? null, serverValue);
+    } else {
+      // No server value yet. If localStorage already has a non-default pick
+      // (e.g. set by a previous failed PATCH on this browser, or a future
+      // legacy world), migrate it up so the user's other devices pick it up.
+      const cached = loadPersistedUpgradeInterval(user?.tenantId ?? null);
+      if (cached !== null) {
+        api
+          .patch<{ preferences: BillingUserPreferences }>('/me/preferences', {
+            [UPGRADE_INTERVAL_PREF_KEY]: cached,
+          })
+          .then((result) => {
+            queryClient.setQueryData(
+              ['user-preferences', user?.userId ?? null],
+              { preferences: result.preferences ?? {} },
+            );
+          })
+          .catch(() => {
+            // Best-effort migration; the next explicit toggle will retry.
+          });
+      }
+    }
+    upgradeIntervalServerHydratedRef.current = true;
+  }, [preferencesData, user?.tenantId, user?.userId, queryClient]);
+
+  const setBillingPeriod = (next: BillingPeriod) => {
+    userTouchedUpgradeIntervalRef.current = true;
+    setBillingPeriodState(next);
+    setBillingPeriodInitialized(true);
+    writePersistedUpgradeInterval(user?.tenantId ?? null, next);
+    api
+      .patch<{ preferences: BillingUserPreferences }>('/me/preferences', {
+        [UPGRADE_INTERVAL_PREF_KEY]: next,
+      })
+      .then((result) => {
         queryClient.setQueryData(
           ['user-preferences', user?.userId ?? null],
           { preferences: result.preferences ?? {} },
@@ -442,9 +576,20 @@ export default function Billing() {
     if (billingPeriodInitialized) return;
     const interval = subData?.subscription?.billing_interval;
     if (!interval) return;
-    setBillingPeriod(interval === 'annual' ? 'annual' : 'monthly');
+    // If the user has an explicitly-saved upgrade-interval preference,
+    // defer to the hydration effect — applying the subscription-derived
+    // default would race-overwrite the user's saved value when both
+    // queries resolve in the same render cycle.
+    const savedPref = preferencesData?.preferences
+      ? readServerUpgradeInterval(preferencesData.preferences)
+      : null;
+    if (savedPref !== null) return;
+    // Implicit default derived from the tenant's current subscription —
+    // never write this through to /me/preferences. We only persist values
+    // the user has explicitly chosen via the toggle.
+    setBillingPeriodState(interval === 'annual' ? 'annual' : 'monthly');
     setBillingPeriodInitialized(true);
-  }, [subData, billingPeriodInitialized]);
+  }, [subData, billingPeriodInitialized, preferencesData]);
 
   // Tenant-specific upgrade quote for the BillingEstimator's "Next tier
   // up" card. The endpoint applies any active customer-level coupon /
