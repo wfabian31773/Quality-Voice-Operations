@@ -56,6 +56,9 @@ function resetEnv(): void {
   }
   delete process.env.DATABASE_URL;
   delete process.env.CALENDLY_WEBHOOK_SECRET;
+  delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+  delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
 }
 
 function applyAllProductionVars(): void {
@@ -70,6 +73,15 @@ function applyAllProductionVars(): void {
   process.env.PLATFORM_DB_POOL_URL = 'postgresql://user:pw@db.example.com:6543/postgres';
   process.env.ADMIN_JWT_SECRET = 'rotated-prod-secret';
   process.env.STRIPE_SECRET_KEY = 'sk_live_xxx';
+  // Per-tier metered AI-minutes Stripe price ids. These are *optional* env
+  // vars but, when STRIPE_METER_EVENT_AI_MINUTES is set (which the loop
+  // above does), `validateBillingConfig` emits a warning for each unset
+  // tier. The "no warnings" baseline test needs them set so the per-tier
+  // AI-minutes warning does not fire by default. Tests that exercise the
+  // warning explicitly delete them.
+  process.env.STRIPE_PRICE_STARTER_AI_MINUTES = 'price_starter_ai_metered';
+  process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_metered';
+  process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES = 'price_ent_ai_metered';
 }
 
 let logSpy: ReturnType<typeof vi.spyOn>;
@@ -422,6 +434,72 @@ describe('validateEnvironment() — warnings', () => {
     const result = validateEnvironment();
 
     expect(result.warnings).toEqual([]);
+    expect(result.passed).toBe(true);
+  });
+});
+
+describe('validateEnvironment() — per-tier metered AI-minutes warning', () => {
+  it('does not surface the AI-minutes warning when STRIPE_METER_EVENT_AI_MINUTES is unset', async () => {
+    applyAllProductionVars();
+    delete process.env.STRIPE_METER_EVENT_AI_MINUTES;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
+    // Note: STRIPE_METER_EVENT_AI_MINUTES is itself in ALL_PROD_REQUIRED, so
+    // deleting it makes the validator fail. The point of this test is that
+    // *no* AI-minutes warning gets emitted in the warnings array.
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain('STRIPE_METER_EVENT_AI_MINUTES');
+  });
+
+  it('surfaces a per-tier warning when STRIPE_METER_EVENT_AI_MINUTES is set but the metered price ids are unset', async () => {
+    applyAllProductionVars();
+    // applyAllProductionVars() sets the per-tier STRIPE_PRICE_<TIER>_AI_MINUTES
+    // env vars by default so the baseline "no warnings" test stays clean —
+    // delete them here to exercise the warning path explicitly.
+    delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
+    delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+    delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    const aiMinutesWarnings = result.warnings.filter(w => w.includes('_AI_MINUTES'));
+    expect(aiMinutesWarnings).toHaveLength(3);
+    expect(aiMinutesWarnings.some(w => w.includes('STRIPE_PRICE_STARTER_AI_MINUTES'))).toBe(true);
+    expect(aiMinutesWarnings.some(w => w.includes('STRIPE_PRICE_PRO_AI_MINUTES'))).toBe(true);
+    expect(aiMinutesWarnings.some(w => w.includes('STRIPE_PRICE_ENTERPRISE_AI_MINUTES'))).toBe(true);
+    // Warnings are non-fatal — the validator still passes.
+    expect(result.missing).toEqual([]);
+    expect(result.passed).toBe(true);
+    // And the warning lines should reach the console output too.
+    expect(loggedLines()).toMatch(/STRIPE_PRICE_PRO_AI_MINUTES/);
+  });
+
+  it('does not surface the AI-minutes warning in development even when STRIPE_METER_EVENT_AI_MINUTES is set without per-tier prices', async () => {
+    process.env.APP_ENV = 'development';
+    process.env.DATABASE_URL = 'postgresql://user:pw@localhost:5432/dev';
+    for (const v of ALWAYS_REQUIRED) {
+      process.env[v] = `dev-${v}`;
+    }
+    process.env.STRIPE_METER_EVENT_AI_MINUTES = 'ai_minutes';
+    // Per-tier prices intentionally unset.
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
+    expect(result.passed).toBe(true);
+  });
+
+  it('does not surface the AI-minutes warning once every per-tier metered price id is configured', async () => {
+    applyAllProductionVars();
+    process.env.STRIPE_PRICE_STARTER_AI_MINUTES = 'price_starter_ai_metered';
+    process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_metered';
+    process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES = 'price_ent_ai_metered';
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
     expect(result.passed).toBe(true);
   });
 });

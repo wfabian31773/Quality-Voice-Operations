@@ -1,4 +1,5 @@
 import { getPlatformPool } from '../platform/db';
+import { validateBillingConfig } from '../platform/billing/stripe/plans';
 
 interface EnvVar {
   name: string;
@@ -202,6 +203,28 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {
     warnings.push('CONNECTOR_ENCRYPTION_KEY should be 32 bytes (64 hex chars)');
+  }
+
+  // Surface the per-tier metered AI-minutes price warnings from
+  // `validateBillingConfig` so operators see the same gap during the env
+  // validator pass that the Admin API logs at boot. These are intentionally
+  // non-fatal: `STRIPE_PRICE_<TIER>_AI_MINUTES` is optional (the upgrade-
+  // preview overage falls back to the catalog rate when unset), but once
+  // `STRIPE_METER_EVENT_AI_MINUTES` is configured a missing per-tier metered
+  // price means the upgrade card silently keeps reporting catalog defaults.
+  // We filter to the AI-minutes warnings here to avoid double-reporting the
+  // other billing warnings (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, the
+  // tier × interval base prices) that are already enforced as production-
+  // required entries in the ENV_VARS table above. Gated on isProd so dev
+  // boxes that happen to set STRIPE_METER_EVENT_AI_MINUTES locally don't
+  // get noise — the underlying concern (silent catalog fallback in the
+  // upgrade preview) is a production-environment gap.
+  if (isProd) {
+    const billingCheck = validateBillingConfig();
+    const aiMinutesWarnings = billingCheck.warnings.filter(w => w.includes('_AI_MINUTES'));
+    for (const w of aiMinutesWarnings) {
+      warnings.push(w);
+    }
   }
 
   if (warnings.length > 0) {
