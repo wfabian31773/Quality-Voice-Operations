@@ -119,10 +119,15 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
   const body = req.body as Record<string, unknown>;
   const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-4o-realtime-preview',
           temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null,
-          language = DEFAULT_AGENT_LANGUAGE } = body;
+          language = DEFAULT_AGENT_LANGUAGE, workflow_definition = null } = body;
 
   const validationError = validateAgentInput(body, true);
   if (validationError) return res.status(400).json({ error: validationError });
+
+  if (workflow_definition !== null && workflow_definition !== undefined) {
+    const wfError = validateWorkflowDefinition(workflow_definition);
+    if (wfError) return res.status(400).json({ error: wfError });
+  }
 
   const { checkTrialAgentLimit } = await import('../../../platform/billing/guardrails/TrialGuard');
   const agentLimitCheck = await checkTrialAgentLimit(tenantId);
@@ -138,12 +143,13 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata, scheduling_provider, language)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, voice, model, temperature, tools, escalation_config, metadata, scheduling_provider, language, workflow_definition)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [tenantId, name, type, system_prompt ?? null, welcome_greeting ?? null, voice, model, temperature,
        JSON.stringify(tools), JSON.stringify(escalation_config), JSON.stringify(metadata),
-       scheduling_provider ?? null, normalizeAgentLanguage(language)],
+       scheduling_provider ?? null, normalizeAgentLanguage(language),
+       workflow_definition ? JSON.stringify(workflow_definition) : null],
     );
     await client.query('COMMIT');
 

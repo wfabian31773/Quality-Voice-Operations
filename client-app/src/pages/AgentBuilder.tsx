@@ -49,6 +49,7 @@ import {
   getAgentTypeLabelTKey,
 } from '../lib/agentBuilderI18n';
 import {
+  type WorkflowDefinition,
   type WorkflowNode,
   type WorkflowEdge,
   type IndustryTemplate,
@@ -103,11 +104,6 @@ interface PhoneNumber {
   routed_agent_id: string | null;
   routing_active: boolean;
   status: string;
-}
-
-interface WorkflowDefinition {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
 }
 
 interface VersionInfo {

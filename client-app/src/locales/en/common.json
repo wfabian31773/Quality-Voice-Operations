@@ -735,6 +735,10 @@
       "property-management": { "label": "Property Management", "description": "Maintenance requests and emergency dispatch" },
       "home-services": { "label": "Home Services", "description": "HVAC, plumbing, and electrical service booking" },
       "legal": { "label": "Legal Intake", "description": "Consultation scheduling with conflict-of-interest screening" },
+      "customer-support": { "label": "Customer Support Center", "description": "Triage support callers by priority, log tickets, and confirm next steps via SMS" },
+      "outbound-sales": { "label": "Outbound Sales", "description": "Qualify outbound prospects, book demos with reps, and SMS the follow-up details" },
+      "technical-support": { "label": "Technical Support", "description": "Run guided troubleshooting, escalate to Tier 2, and SMS the resolution" },
+      "collections": { "label": "Collections & Recovery", "description": "Verify accounts with mini-Miranda compliance, set up payment plans, and SMS confirmations" },
       "real-estate": { "label": "Real Estate", "description": "Buyer/seller qualification and showing scheduling" },
       "restaurant": { "label": "Restaurant Reservations", "description": "Take reservations or add callers to the waitlist" },
       "salon": { "label": "Salon & Spa", "description": "Book stylist appointments and confirm the day before" }

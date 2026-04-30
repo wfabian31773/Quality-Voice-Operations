@@ -1,3 +1,11 @@
+// Shared industry-template definitions used by:
+//   - the visual Agent Builder (AgentBuilder.tsx)
+//   - the onboarding wizard (Onboarding.tsx)
+//   - the Agents create/edit modal (Agents.tsx)
+// Keeping a single source of truth here is what guarantees that picking
+// "Customer Support" (or any other vertical) from the wizard or the Agents
+// page scaffolds the same starter workflow graph as the builder's template
+// picker.
 import {
   type AgentBuilderTKey,
   type IndustryTemplateKey,
@@ -27,6 +35,11 @@ export interface WorkflowEdge {
   label?: string;
 }
 
+export interface WorkflowDefinition {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
 export interface IndustryTemplateShapeNode {
   id: string;
   type: string;
@@ -41,7 +54,11 @@ export interface IndustryTemplateShapeEdge {
   target: string;
   sourceHandle?: string;
   targetHandle?: string;
-  /** Translation key resolved against the agent's spoken language. */
+  /**
+   * Translation key for the edge label. Resolved at template-build time
+   * against the agent's spoken language so the saved edge label stays
+   * consistent with the rest of the workflow data.
+   */
   labelKey?: AgentBuilderTKey;
 }
 
@@ -359,7 +376,7 @@ export const INDUSTRY_TEMPLATES_RAW: IndustryTemplateShape[] = [
 ];
 
 /**
- * Build the industry templates for display.
+ * Build the industry templates for display in the visual builder picker.
  *
  * - `uiT` is bound to the viewer's UI language and is used for labels shown
  *   in the picker (template name, description, node-library fallbacks).
@@ -412,4 +429,37 @@ export function buildIndustryTemplatesForLanguage(language: string): IndustryTem
     (key, params) => tBuilder(language, key, params),
     language,
   );
+}
+
+// Resolve an industry template into a workflow_definition ready to PATCH onto
+// the agent. Node labels and edge labels are localised against the agent's
+// language so the saved workflow stays internally consistent. Used by the
+// onboarding wizard and the Agents create flow so picking a starter agent
+// type scaffolds the same graph the visual builder's template picker would.
+export function buildIndustryTemplateDefinition(
+  language: string,
+  key: IndustryTemplateKey,
+): WorkflowDefinition | null {
+  const tpl = INDUSTRY_TEMPLATES_RAW.find((t) => t.key === key);
+  if (!tpl) return null;
+  const agentT = makeBuilderT(language);
+  const copy = getIndustryTemplateCopy(language, tpl.key);
+  const nodes: WorkflowNode[] = tpl.nodes.map((n) => {
+    const nodeCopy = copy.nodes[n.id];
+    const data: Record<string, unknown> = {
+      nodeType: n.nodeType,
+      label: nodeCopy?.label ?? getNodeLabel(n.nodeType, agentT),
+    };
+    if (nodeCopy?.prompt) data.prompt = nodeCopy.prompt;
+    if (nodeCopy?.toolConfig) data.toolConfig = nodeCopy.toolConfig;
+    if (n.conditionField) data.conditionField = n.conditionField;
+    return { id: n.id, type: n.type, position: n.position, data };
+  });
+  const edges: WorkflowEdge[] = tpl.edges.map((e) => {
+    const { labelKey, ...rest } = e;
+    const edge: WorkflowEdge = { ...rest };
+    if (labelKey) edge.label = agentT(labelKey);
+    return edge;
+  });
+  return { nodes, edges };
 }

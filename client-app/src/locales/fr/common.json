@@ -753,6 +753,22 @@
         "label": "Accueil juridique",
         "description": "Prise de rendez-vous avec vérification des conflits d'intérêts"
       },
+      "customer-support": {
+        "label": "Centre de support client",
+        "description": "Triez les appels de support par priorité, ouvrez des tickets et confirmez les prochaines étapes par SMS"
+      },
+      "outbound-sales": {
+        "label": "Ventes sortantes",
+        "description": "Qualifiez les prospects sortants, planifiez des démos avec les commerciaux et envoyez le suivi par SMS"
+      },
+      "technical-support": {
+        "label": "Support technique",
+        "description": "Réalisez un dépannage guidé, escaladez au niveau 2 et confirmez la solution par SMS"
+      },
+      "collections": {
+        "label": "Recouvrement et créances",
+        "description": "Vérifiez les comptes avec conformité mini-Miranda, mettez en place des plans de paiement et envoyez les confirmations par SMS"
+      },
       "real-estate": {
         "label": "Immobilier",
         "description": "Qualification acheteurs/vendeurs et planification des visites"

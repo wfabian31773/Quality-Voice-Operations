@@ -753,6 +753,22 @@
         "label": "Rechtliche Aufnahme",
         "description": "Beratungsterminierung mit Interessenkonflikt-Prüfung"
       },
+      "customer-support": {
+        "label": "Kundensupport-Center",
+        "description": "Support-Anrufe nach Priorität sortieren, Tickets erfassen und nächste Schritte per SMS bestätigen"
+      },
+      "outbound-sales": {
+        "label": "Outbound-Vertrieb",
+        "description": "Outbound-Interessenten qualifizieren, Demos mit Vertrieblern buchen und Folgeinfos per SMS senden"
+      },
+      "technical-support": {
+        "label": "Technischer Support",
+        "description": "Geführte Fehlersuche durchführen, an Tier 2 eskalieren und Lösung per SMS bestätigen"
+      },
+      "collections": {
+        "label": "Inkasso & Forderungen",
+        "description": "Konten mit Mini-Miranda-Compliance verifizieren, Zahlungspläne einrichten und Bestätigungen per SMS senden"
+      },
       "real-estate": {
         "label": "Immobilien",
         "description": "Qualifizierung von Käufern/Verkäufern und Besichtigungstermine"

@@ -753,6 +753,22 @@
         "label": "Recepción legal",
         "description": "Programación de consultas con verificación de conflictos de interés"
       },
+      "customer-support": {
+        "label": "Centro de atención al cliente",
+        "description": "Clasifica llamadas de soporte por prioridad, abre tickets y confirma los próximos pasos por SMS"
+      },
+      "outbound-sales": {
+        "label": "Ventas salientes",
+        "description": "Califica prospectos salientes, agenda demos con representantes y envía el seguimiento por SMS"
+      },
+      "technical-support": {
+        "label": "Soporte técnico",
+        "description": "Realiza diagnóstico guiado, escala a Nivel 2 y confirma la solución por SMS"
+      },
+      "collections": {
+        "label": "Cobranzas y recuperación",
+        "description": "Verifica cuentas con aviso mini-Miranda, define planes de pago y envía confirmaciones por SMS"
+      },
       "real-estate": {
         "label": "Inmobiliaria",
         "description": "Calificación de compradores/vendedores y programación de visitas"

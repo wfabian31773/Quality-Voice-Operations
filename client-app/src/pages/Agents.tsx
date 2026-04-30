@@ -22,7 +22,6 @@ import {
 } from '../lib/agentLanguages';
 import {
   type AgentBuilderTKey,
-  type IndustryTemplateKey,
   getDefaultWelcomeGreeting,
   getDefaultSystemPrompt,
   getIndustryTemplateCopy,
@@ -32,20 +31,9 @@ import {
   isTemplateOrDefaultSystemPrompt,
   makeBuilderT,
 } from '../lib/agentBuilderI18n';
+import { AGENT_TYPE_TO_TEMPLATE } from '../lib/agentTypeTemplate';
+import { buildIndustryTemplateDefinition } from '../lib/industryTemplates';
 import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
-
-const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
-  'medical-after-hours': 'medical',
-  'dental': 'dental',
-  'property-management': 'propertymanagement',
-  'home-services': 'hvac',
-  'legal': 'legal',
-  'customer-support': 'support',
-  'technical-support': 'support',
-  'real-estate': 'realestate',
-  'restaurant': 'restaurant',
-  'salon': 'salon',
-};
 
 interface Agent {
   id: string;
@@ -352,6 +340,17 @@ function AgentModal({
         ...data,
         scheduling_provider: data.scheduling_provider || null,
       };
+      // For new agents, scaffold the matching starter graph so picking an
+      // agent type here yields the same result as picking the template in
+      // the visual builder. Existing agents are left alone so we don't
+      // clobber operator-customised workflows on edit.
+      if (!agentId) {
+        const templateKey = AGENT_TYPE_TO_TEMPLATE[data.type];
+        if (templateKey) {
+          const def = buildIndustryTemplateDefinition(data.language, templateKey);
+          if (def) payload.workflow_definition = def;
+        }
+      }
       return agentId
         ? api.patch<Record<string, unknown>>(`/agents/${agentId}`, payload)
         : api.post<{ agent: { id: string } }>('/agents', payload);

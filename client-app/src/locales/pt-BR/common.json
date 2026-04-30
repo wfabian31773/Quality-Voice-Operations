@@ -753,6 +753,22 @@
         "label": "Recepção jurídica",
         "description": "Agendamento de consultas com verificação de conflito de interesses"
       },
+      "customer-support": {
+        "label": "Central de atendimento ao cliente",
+        "description": "Classifique chamadas de suporte por prioridade, abra tickets e confirme próximos passos por SMS"
+      },
+      "outbound-sales": {
+        "label": "Vendas outbound",
+        "description": "Qualifique prospects outbound, agende demos com representantes e envie o follow-up por SMS"
+      },
+      "technical-support": {
+        "label": "Suporte técnico",
+        "description": "Realize troubleshooting guiado, escale para o Tier 2 e confirme a solução por SMS"
+      },
+      "collections": {
+        "label": "Cobrança e recuperação",
+        "description": "Verifique contas com aviso mini-Miranda, configure planos de pagamento e envie confirmações por SMS"
+      },
       "real-estate": {
         "label": "Imobiliário",
         "description": "Qualificação de compradores/vendedores e agendamento de visitas"

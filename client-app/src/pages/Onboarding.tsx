@@ -5,7 +5,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { CheckCircle2, Loader2, Phone, Bot, ArrowRight, ArrowLeft, Sparkles, AlertTriangle } from 'lucide-react';
-import { type IndustryTemplateKey, getIndustryTemplateCopy } from '../lib/agentBuilderI18n';
+import { getIndustryTemplateCopy } from '../lib/agentBuilderI18n';
+import { AGENT_TYPE_TO_TEMPLATE } from '../lib/agentTypeTemplate';
+import { buildIndustryTemplateDefinition } from '../lib/industryTemplates';
 import { useTenantPrimaryLanguage } from '../hooks/useTenantPrimaryLanguage';
 
 interface ProvisioningStatus {
@@ -36,29 +38,14 @@ const AGENT_TEMPLATE_VALUES = [
   'property-management',
   'home-services',
   'legal',
+  'customer-support',
+  'outbound-sales',
+  'technical-support',
+  'collections',
   'real-estate',
   'restaurant',
   'salon',
 ] as const;
-
-/**
- * Maps an onboarding template slug (the agent `type` we save on the starter
- * agent) to the industry template key used by `getIndustryTemplateCopy`. Slugs
- * not listed here keep the agent's existing greeting/system prompt — that's
- * the case for `answering-service` (the provisioning default). Mirrors
- * `AGENT_TYPE_TO_TEMPLATE` in `client-app/src/pages/Agents.tsx` so the wizard
- * seeds the same copy as the Agents page quick-create.
- */
-const AGENT_TYPE_TO_TEMPLATE: Record<string, IndustryTemplateKey> = {
-  'medical-after-hours': 'medical',
-  'dental': 'dental',
-  'property-management': 'propertymanagement',
-  'home-services': 'hvac',
-  'legal': 'legal',
-  'real-estate': 'realestate',
-  'restaurant': 'restaurant',
-  'salon': 'salon',
-};
 
 export default function Onboarding() {
   const { t } = useTranslation();
@@ -269,6 +256,10 @@ export default function Onboarding() {
           const copy = getIndustryTemplateCopy(tenantPrimaryLanguage, templateKey);
           updates.welcome_greeting = copy.welcomeGreeting;
           updates.system_prompt = copy.systemPrompt;
+          // Scaffold the matching starter graph so the wizard pick yields the
+          // same result as choosing the template inside the visual builder.
+          const def = buildIndustryTemplateDefinition(tenantPrimaryLanguage, templateKey);
+          if (def) updates.workflow_definition = def;
         }
         await api.patch(`/agents/${agents.agents[0].id}`, updates);
       }
