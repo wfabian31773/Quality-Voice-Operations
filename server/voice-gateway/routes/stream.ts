@@ -23,7 +23,7 @@ import { writeCallMetric } from '../../../platform/core/observability';
 import { scoreCall } from '../../../platform/analytics/QualityScorerService';
 import { analyzeCallSentiment } from '../../../platform/analytics/SentimentAnalysisService';
 import { classifyCallTopic } from '../../../platform/analytics/TopicClusteringService';
-import { recordCallUsage, estimateCallCost } from '../../../platform/billing/usage/UsageRecorder';
+import { recordCallUsage, estimateCallCostWithLiveRate } from '../../../platform/billing/usage/UsageRecorder';
 import { recordConversationCost, logRoutingDecision } from '../../../platform/billing/cost';
 import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../../../platform/widget/WidgetTokenService';
 import { HandoffEngine } from '../../../platform/workforce/HandoffEngine';
@@ -141,7 +141,12 @@ export function attachWebSocket(server: HTTPServer): void {
         }
 
         const durationSeconds = Math.round((Date.now() - streamStartedAt) / 1000);
-        const costEstimate = estimateCallCost(durationSeconds);
+        // Use the tenant's live Stripe overage rate for the AI portion so
+        // the per-call drilldown row and the `call_completed` activity-feed
+        // payload match what we'll roll up into the tenant's usage row
+        // (and what Stripe will actually invoice). Falls back to env
+        // defaults if the resolver fails — see `estimateCallCostWithLiveRate`.
+        const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
 
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
@@ -741,7 +746,10 @@ export function attachWebSocket(server: HTTPServer): void {
           }
         }
         const durationSeconds = Math.round((Date.now() - startedAt) / 1000);
-        const costEstimate = estimateCallCost(durationSeconds);
+        // Same live-Stripe-rate path as the Twilio finalizer above so a
+        // negotiated tenant's widget call drilldown matches what Stripe
+        // will invoice (instead of quoting the catalog AI rate).
+        const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
         } catch (err) {

@@ -31,6 +31,31 @@ export function estimateCallCost(durationSeconds: number): CallCostEstimate {
   };
 }
 
+// Per-call cost using the tenant's live Stripe overage rate for the
+// AI portion (Twilio still uses the env per-minute default — those
+// rates aren't tenant-negotiated). The cached resolver dedupes Stripe
+// round-trips, and any failure degrades to the env default so call
+// teardown never blocks on Stripe. The aggregate (not the per-minute
+// rate) is rounded so sub-cent Stripe pricing matches the invoice —
+// same rule as `recordCallUsage` so the rolled-up usage row and the
+// per-call drilldown agree to the cent.
+export async function estimateCallCostWithLiveRate(
+  tenantId: string,
+  durationSeconds: number,
+): Promise<CallCostEstimate> {
+  const minutes = Math.ceil(durationSeconds / 60);
+  const twilioCostCents = minutes * TWILIO_PER_MINUTE_CENTS;
+  const aiRateCentsPerMin = minutes > 0
+    ? await resolveAiRateCentsPerMinute(tenantId)
+    : 0;
+  const aiCostCents = Math.round(aiRateCentsPerMin * minutes);
+  return {
+    totalCostCents: twilioCostCents + aiCostCents,
+    twilioCostCents,
+    aiCostCents,
+  };
+}
+
 // Resolve the per-minute AI rate from the tenant's live Stripe
 // subscription as cents-per-minute (may be fractional to preserve
 // sub-cent Stripe precision). Falls back to the env default if the

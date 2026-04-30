@@ -58,7 +58,10 @@ vi.mock('../../platform/billing/stripe/effectiveRate', () => ({
 
 const { getTenantEffectiveRate } = stripeRateMocks;
 
-import { recordCallUsage } from '../../platform/billing/usage/UsageRecorder';
+import {
+  recordCallUsage,
+  estimateCallCostWithLiveRate,
+} from '../../platform/billing/usage/UsageRecorder';
 import { clearTenantEffectiveRateCache } from '../../platform/billing/stripe/effectiveRateCache';
 
 const TENANT = 'tenant-usage-effective-rate';
@@ -170,5 +173,71 @@ describe('recordCallUsage — tenant-effective Stripe rate', () => {
     expect(aiInsert).toBeDefined();
     expect(aiInsert!.values[4]).toBe(6);
     expect(aiInsert!.values[5]).toBe(12);
+  });
+});
+
+describe('estimateCallCostWithLiveRate — per-call drilldown matches Stripe', () => {
+  it('quotes the live tenant overage rate (not the env default) for the AI portion', async () => {
+    // Negotiated tenant on $0.09/min — env default of 6¢/min would
+    // under-quote the per-call AI cost by 33% if we used it instead.
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'pro',
+      basePriceCents: 29_900,
+      overageRatePerMinute: 0.09,
+      currency: 'usd',
+      source: 'stripe',
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      basePriceId: 'price_pro_base',
+      overagePriceId: 'price_ai_minutes_negotiated',
+    });
+
+    // 3 minutes (180s rounded up) × 9¢/min = 27¢ AI; Twilio env = 2¢/min
+    // × 3min = 6¢; total = 33¢. Env-default AI would give 18¢ + 6¢ = 24¢.
+    const cost = await estimateCallCostWithLiveRate(TENANT, 180);
+
+    expect(cost.aiCostCents).toBe(27);
+    expect(cost.twilioCostCents).toBe(6);
+    expect(cost.totalCostCents).toBe(33);
+  });
+
+  it('rounds the AI aggregate (not the per-minute rate) so sub-cent Stripe pricing matches the invoice', async () => {
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'pro',
+      basePriceCents: 29_900,
+      // $0.075/min — would lossily round to 8¢/min if rounded per-minute.
+      overageRatePerMinute: 0.075,
+      currency: 'usd',
+      source: 'stripe',
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      basePriceId: 'price_pro_base',
+      overagePriceId: 'price_ai_minutes_subcent',
+    });
+
+    // 2 minutes × 7.5¢ = 15¢. Per-minute rounding would give 16¢.
+    const cost = await estimateCallCostWithLiveRate(TENANT, 120);
+
+    expect(cost.aiCostCents).toBe(15);
+  });
+
+  it('falls back to AI_COST_PER_MINUTE_CENTS when the resolver throws', async () => {
+    getTenantEffectiveRate.mockRejectedValue(new Error('Stripe boom'));
+
+    const cost = await estimateCallCostWithLiveRate(TENANT, 120);
+
+    // 2 minutes × 6¢ env default = 12¢ AI; 2 × 2¢ Twilio env = 4¢.
+    expect(cost.aiCostCents).toBe(12);
+    expect(cost.twilioCostCents).toBe(4);
+    expect(cost.totalCostCents).toBe(16);
+  });
+
+  it('skips the resolver entirely for a zero-duration call', async () => {
+    const cost = await estimateCallCostWithLiveRate(TENANT, 0);
+
+    expect(getTenantEffectiveRate).not.toHaveBeenCalled();
+    expect(cost.aiCostCents).toBe(0);
+    expect(cost.twilioCostCents).toBe(0);
+    expect(cost.totalCostCents).toBe(0);
   });
 });
