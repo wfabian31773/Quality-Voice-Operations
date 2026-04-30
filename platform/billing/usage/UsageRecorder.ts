@@ -17,13 +17,23 @@ export interface CallCostEstimate {
   aiCostCents: number;
 }
 
-const TWILIO_PER_MINUTE_CENTS = parseInt(process.env.TWILIO_COST_PER_MINUTE_CENTS ?? '2', 10);
-const AI_PER_MINUTE_CENTS = parseInt(process.env.AI_COST_PER_MINUTE_CENTS ?? '6', 10);
+// Read env defaults at call time so a test that mutates them after
+// module import is still honoured (mirrors the same approach
+// `envDefaultSmsRateCents` uses below).
+function envDefaultTwilioRateCents(): number {
+  const raw = parseInt(process.env.TWILIO_COST_PER_MINUTE_CENTS ?? '2', 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 2;
+}
+
+function envDefaultAiRateCents(): number {
+  const raw = parseInt(process.env.AI_COST_PER_MINUTE_CENTS ?? '6', 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 6;
+}
 
 export function estimateCallCost(durationSeconds: number): CallCostEstimate {
   const minutes = Math.ceil(durationSeconds / 60);
-  const twilioCostCents = minutes * TWILIO_PER_MINUTE_CENTS;
-  const aiCostCents = minutes * AI_PER_MINUTE_CENTS;
+  const twilioCostCents = minutes * envDefaultTwilioRateCents();
+  const aiCostCents = minutes * envDefaultAiRateCents();
   return {
     totalCostCents: twilioCostCents + aiCostCents,
     twilioCostCents,
@@ -31,24 +41,28 @@ export function estimateCallCost(durationSeconds: number): CallCostEstimate {
   };
 }
 
-// Per-call cost using the tenant's live Stripe overage rate for the
-// AI portion (Twilio still uses the env per-minute default — those
-// rates aren't tenant-negotiated). The cached resolver dedupes Stripe
-// round-trips, and any failure degrades to the env default so call
-// teardown never blocks on Stripe. The aggregate (not the per-minute
-// rate) is rounded so sub-cent Stripe pricing matches the invoice —
-// same rule as `recordCallUsage` so the rolled-up usage row and the
-// per-call drilldown agree to the cent.
+// Per-call cost using the tenant's live Stripe overage rates for both
+// the AI portion AND the Twilio (carrier) portion. High-volume voice
+// tenants negotiate their own per-minute Twilio rate which is shipped
+// as its own metered Stripe price line — the cached resolver dedupes
+// Stripe round-trips, and any failure degrades to the env default so
+// call teardown never blocks on Stripe. The aggregate (not the
+// per-minute rate) is rounded so sub-cent Stripe pricing matches the
+// invoice — same rule as `recordCallUsage` so the rolled-up usage row
+// and the per-call drilldown agree to the cent.
 export async function estimateCallCostWithLiveRate(
   tenantId: string,
   durationSeconds: number,
 ): Promise<CallCostEstimate> {
   const minutes = Math.ceil(durationSeconds / 60);
-  const twilioCostCents = minutes * TWILIO_PER_MINUTE_CENTS;
-  const aiRateCentsPerMin = minutes > 0
-    ? await resolveAiRateCentsPerMinute(tenantId)
-    : 0;
+  const [aiRateCentsPerMin, twilioRateCentsPerMin] = minutes > 0
+    ? await Promise.all([
+        resolveAiRateCentsPerMinute(tenantId),
+        resolveTwilioRateCentsPerMinute(tenantId),
+      ])
+    : [0, 0];
   const aiCostCents = Math.round(aiRateCentsPerMin * minutes);
+  const twilioCostCents = Math.round(twilioRateCentsPerMin * minutes);
   return {
     totalCostCents: twilioCostCents + aiCostCents,
     twilioCostCents,
@@ -72,7 +86,32 @@ async function resolveAiRateCentsPerMinute(tenantId: string): Promise<number> {
       error: String(err),
     });
   }
-  return AI_PER_MINUTE_CENTS;
+  return envDefaultAiRateCents();
+}
+
+// Resolve the per-minute Twilio (carrier) rate from the tenant's live
+// Stripe subscription as cents-per-minute (may be fractional to
+// preserve sub-cent Stripe precision). High-volume voice tenants
+// typically negotiate their own carrier rate, which lives on Stripe
+// as a tagged metered price line — see `classifyPrice`'s
+// `isTwilioMinutes` branch in `effectiveRate.ts`. Falls back to the
+// env default if the resolver throws or the rate is missing — call
+// teardown must never block on Stripe just to insert a usage row.
+async function resolveTwilioRateCentsPerMinute(tenantId: string): Promise<number> {
+  try {
+    const rate = await getCachedTenantEffectiveRate(tenantId);
+    if (rate.twilioRatePerMinute != null) {
+      // eslint-disable-next-line local/no-dollars-times-100 -- dollars→cents conversion; sub-cent precision must survive into the aggregate `total_cost_cents` rounding below.
+      const centsPerMin = rate.twilioRatePerMinute * 100;
+      if (Number.isFinite(centsPerMin) && centsPerMin >= 0) return centsPerMin;
+    }
+  } catch (err) {
+    logger.warn('Falling back to env Twilio rate for usage cost', {
+      tenantId,
+      error: String(err),
+    });
+  }
+  return envDefaultTwilioRateCents();
 }
 
 function envDefaultSmsRateCents(): number {
@@ -114,14 +153,25 @@ export async function recordCallUsage(
   const metricType = direction === 'inbound' ? 'calls_inbound' : 'calls_outbound';
   const callMinutes = Math.ceil(durationSeconds / 60);
   const estimatedAiMinutes = aiMinutes ?? callMinutes;
-  const costEstimate = estimateCallCost(durationSeconds);
-  const callCostCents = costEstimate.twilioCostCents;
 
-  // Resolve the AI rate before opening the DB transaction so an
-  // uncached Stripe round-trip never holds a Postgres connection open.
-  const aiRateCentsPerMin = estimatedAiMinutes > 0
-    ? await resolveAiRateCentsPerMinute(tenantId)
-    : 0;
+  // Resolve both the Twilio (carrier) AND the AI per-minute rates
+  // before opening the DB transaction so an uncached Stripe round-trip
+  // never holds a Postgres connection open. Both share the same
+  // `getCachedTenantEffectiveRate` cache so this is at most one
+  // Stripe round-trip per cache TTL — see `effectiveRateCache.ts`.
+  const [twilioRateCentsPerMin, aiRateCentsPerMin] = await Promise.all([
+    callMinutes > 0
+      ? resolveTwilioRateCentsPerMinute(tenantId)
+      : Promise.resolve(0),
+    estimatedAiMinutes > 0
+      ? resolveAiRateCentsPerMinute(tenantId)
+      : Promise.resolve(0),
+  ]);
+
+  // Round the aggregate (not the per-minute rate) so sub-cent Stripe
+  // pricing matches what Stripe will actually invoice — same rule as
+  // the AI-minutes row below.
+  const callCostCents = Math.round(twilioRateCentsPerMin * callMinutes);
 
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -166,6 +216,7 @@ export async function recordCallUsage(
       durationSeconds,
       aiMinutes: estimatedAiMinutes,
       aiRateCentsPerMin,
+      twilioRateCentsPerMin,
       metricType,
       hourBucket: periodStart.toISOString(),
     });

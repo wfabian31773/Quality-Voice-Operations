@@ -91,6 +91,8 @@ beforeEach(() => {
   stripeClientShouldThrow = false;
   queryHandler = async () => ({ rows: [] });
   delete process.env.STRIPE_METER_AI_MINUTES;
+  delete process.env.STRIPE_METER_SMS_SENT;
+  delete process.env.STRIPE_METER_TWILIO_MINUTES;
   delete process.env.STRIPE_PRICE_STARTER_MONTHLY;
   delete process.env.STRIPE_PRICE_STARTER_ANNUAL;
   delete process.env.STRIPE_PRICE_PRO_MONTHLY;
@@ -101,6 +103,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  delete process.env.STRIPE_METER_AI_MINUTES;
+  delete process.env.STRIPE_METER_SMS_SENT;
+  delete process.env.STRIPE_METER_TWILIO_MINUTES;
   delete process.env.STRIPE_PRICE_STARTER_MONTHLY;
   delete process.env.STRIPE_PRICE_STARTER_ANNUAL;
   delete process.env.STRIPE_PRICE_PRO_MONTHLY;
@@ -329,6 +334,100 @@ describe('getTenantEffectiveRate — catalog fallback', () => {
 
     expect(result.source).toBe('catalog');
     expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
+  });
+
+  it('overrides catalog with the metered Twilio-minutes price for negotiated carrier rates', async () => {
+    // High-volume voice tenant with their own negotiated Twilio rate
+    // shipped as a separate metered line (`metric=twilio_minutes`). The
+    // resolver must surface it on `twilioRatePerMinute` while keeping the
+    // AI-minutes line as the AI overage.
+    setSubRow({
+      plan: 'enterprise',
+      stripe_subscription_id: 'sub_voice_heavy',
+      stripe_price_id: 'price_ent_base',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_ent_base',
+              unit_amount: 99_900,
+              unit_amount_decimal: '99900',
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+          {
+            price: {
+              id: 'price_ai_minutes_custom',
+              unit_amount: 6,
+              unit_amount_decimal: '6',
+              currency: 'usd',
+              recurring: { usage_type: 'metered', interval: 'month', interval_count: 1 },
+              metadata: { metric: 'ai_minutes' },
+            },
+          },
+          {
+            price: {
+              id: 'price_twilio_minutes_custom',
+              unit_amount: 1, // would lossily round 1.2 → 1
+              unit_amount_decimal: '1.2', // $0.012/min — sub-cent precision must survive
+              currency: 'usd',
+              recurring: { usage_type: 'metered', interval: 'month', interval_count: 1 },
+              metadata: { metric: 'twilio_minutes' },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // Twilio override surfaces on the new field with sub-cent precision
+    // intact ($0.012/min, NOT 1¢/min).
+    expect(result.twilioPriceSource).toBe('stripe');
+    expect(result.twilioPriceId).toBe('price_twilio_minutes_custom');
+    expect(result.twilioRatePerMinute).toBeCloseTo(0.012, 6);
+    // AI overage stays AI — the Twilio metered line must NOT have been
+    // mistaken for the generic-metered AI fallback.
+    expect(result.overagePriceId).toBe('price_ai_minutes_custom');
+    expect(result.overageRatePerMinute).toBeCloseTo(0.06, 6);
+  });
+
+  it('matches a Twilio-minutes meter via STRIPE_METER_TWILIO_MINUTES env when metadata is absent', async () => {
+    process.env.STRIPE_METER_TWILIO_MINUTES = 'mtr_twilio_min';
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_twilio_meter_match',
+      stripe_price_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_twilio_via_meter',
+              unit_amount: 2,
+              unit_amount_decimal: '1.5',
+              currency: 'usd',
+              recurring: { usage_type: 'metered', interval: 'month', meter: 'mtr_twilio_min' },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(result.twilioPriceId).toBe('price_twilio_via_meter');
+    expect(result.twilioRatePerMinute).toBeCloseTo(0.015, 6);
+    // The Twilio-tagged metered line must NOT be misclassified as the
+    // AI generic-metered fallback — overage stays catalog.
+    expect(result.overagePriceSource).toBe('catalog');
+    expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
   });
 
   it('only overrides the field it can resolve (mixed source)', async () => {

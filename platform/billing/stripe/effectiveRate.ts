@@ -56,6 +56,19 @@ export interface TenantEffectiveRate {
    * back to the env default when this field is absent.
    */
   smsRatePerMessage?: number;
+  /**
+   * Per-minute Twilio (carrier) rate in dollars. Sourced from the
+   * `unit_amount` on the metered Twilio-minutes price line on the tenant's
+   * Stripe subscription (a price tagged with
+   * `metadata.metric === 'twilio_minutes'` or matched against
+   * `STRIPE_METER_TWILIO_MINUTES`). Falls back to the env-default Twilio
+   * rate (`TWILIO_COST_PER_MINUTE_CENTS`) when no Stripe override exists.
+   *
+   * Optional so existing test fixtures and downstream consumers that only
+   * care about base/AI/SMS rates remain compatible — `recordCallUsage`
+   * falls back to the env default when this field is absent.
+   */
+  twilioRatePerMinute?: number;
   /** Lower-case ISO currency code for the Stripe price (e.g. `usd`). */
   currency: string;
   /**
@@ -77,11 +90,15 @@ export interface TenantEffectiveRate {
   overagePriceSource: 'stripe' | 'catalog';
   /** SMS-line provenance — `stripe` when a tagged metered SMS price was found. */
   smsPriceSource?: 'stripe' | 'catalog';
+  /** Twilio-minutes provenance — `stripe` when a tagged metered Twilio-minutes price was found. */
+  twilioPriceSource?: 'stripe' | 'catalog';
   /** Stripe price ids that drove the override (when applicable). */
   basePriceId: string | null;
   overagePriceId: string | null;
   /** Stripe price id for the metered SMS line (when applicable). */
   smsPriceId?: string | null;
+  /** Stripe price id for the metered Twilio-minutes line (when applicable). */
+  twilioPriceId?: string | null;
   /**
    * Per-month price the tenant would pay billed *monthly*, in cents.
    * Resolved from the tenant's subscription when their subscription is
@@ -121,6 +138,19 @@ function defaultSmsRatePerMessageDollars(): number {
   return cents / 100;
 }
 
+/**
+ * Default per-minute Twilio (carrier) price in dollars. Read at call time
+ * so a test that mutates `process.env.TWILIO_COST_PER_MINUTE_CENTS` after
+ * import is still honoured (mirrors the same approach `recordCallUsage`
+ * uses for its env-default fallback).
+ */
+function defaultTwilioRatePerMinuteDollars(): number {
+  const raw = parseInt(process.env.TWILIO_COST_PER_MINUTE_CENTS ?? '2', 10);
+  const cents = Number.isFinite(raw) && raw >= 0 ? raw : 2;
+  // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars conversion for parity with the dollar-denominated `overageRatePerMinute` / `twilioRatePerMinute` fields.
+  return cents / 100;
+}
+
 interface SubscriptionRow {
   plan: string | null;
   stripe_subscription_id: string | null;
@@ -155,14 +185,17 @@ function catalogFor(plan: PlanTier): TenantEffectiveRate {
     basePriceCents: entry.monthlyPriceCents,
     overageRatePerMinute: entry.overageRatePerMinute,
     smsRatePerMessage: defaultSmsRatePerMessageDollars(),
+    twilioRatePerMinute: defaultTwilioRatePerMinuteDollars(),
     currency: 'usd',
     source: 'catalog',
     basePriceSource: 'catalog',
     overagePriceSource: 'catalog',
     smsPriceSource: 'catalog',
+    twilioPriceSource: 'catalog',
     basePriceId: null,
     overagePriceId: null,
     smsPriceId: null,
+    twilioPriceId: null,
     monthlyBasePriceCents: entry.monthlyPriceCents,
     monthlyBasePriceSource: 'catalog',
     monthlyBasePriceId: null,
@@ -192,25 +225,33 @@ interface ItemLike {
 
 /**
  * Decide whether a Stripe price represents a metered overage line and, if so,
- * which metric it covers (AI minutes or SMS).
+ * which metric it covers (AI minutes, SMS, or Twilio carrier minutes).
  *
  * We match in this order so that a tenant with a custom price metadata set
  * always wins over the env-configured meter id, but a generic metered price
  * still gets picked up as the AI-overage source if nothing else matches:
- *   1. `price.metadata.metric === 'ai_minutes'` / `'sms_sent'`
- *   2. `price.recurring.meter === STRIPE_METER_AI_MINUTES` / `STRIPE_METER_SMS_SENT`
+ *   1. `price.metadata.metric === 'ai_minutes'` / `'sms_sent'` / `'twilio_minutes'`
+ *   2. `price.recurring.meter === STRIPE_METER_AI_MINUTES` /
+ *      `STRIPE_METER_SMS_SENT` / `STRIPE_METER_TWILIO_MINUTES`
  *   3. `price.recurring.usage_type === 'metered'` (AI fallback only — we do
- *      NOT default a generic metered line to SMS to avoid double-counting
- *      it as both AI and SMS).
+ *      NOT default a generic metered line to SMS or Twilio to avoid
+ *      double-counting it across multiple metrics).
  */
 function classifyPrice(price: PriceLike | null | undefined): {
   isMetered: boolean;
   isAiMinutes: boolean;
   isSms: boolean;
+  isTwilioMinutes: boolean;
   isLicensedRecurring: boolean;
 } {
   if (!price) {
-    return { isMetered: false, isAiMinutes: false, isSms: false, isLicensedRecurring: false };
+    return {
+      isMetered: false,
+      isAiMinutes: false,
+      isSms: false,
+      isTwilioMinutes: false,
+      isLicensedRecurring: false,
+    };
   }
   const usageType = price.recurring?.usage_type ?? null;
   const isMetered = usageType === 'metered';
@@ -228,7 +269,15 @@ function classifyPrice(price: PriceLike | null | undefined): {
   const smsMetaMatches = metricMeta === 'sms_sent' || metricMeta === 'sms';
   const isSms = isMetered && (smsMetaMatches || !!smsMeterMatches);
 
-  return { isMetered, isAiMinutes, isSms, isLicensedRecurring };
+  const twilioMeterEnv = process.env.STRIPE_METER_TWILIO_MINUTES ?? null;
+  const twilioMeterMatches = twilioMeterEnv && price.recurring?.meter === twilioMeterEnv;
+  const twilioMetaMatches =
+    metricMeta === 'twilio_minutes'
+    || metricMeta === 'twilio'
+    || metricMeta === 'carrier_minutes';
+  const isTwilioMinutes = isMetered && (twilioMetaMatches || !!twilioMeterMatches);
+
+  return { isMetered, isAiMinutes, isSms, isTwilioMinutes, isLicensedRecurring };
 }
 
 function unitAmountToDollarsPerMinute(price: PriceLike): number | null {
@@ -370,19 +419,34 @@ export async function getTenantEffectiveRate(
   let basePrice: PriceLike | null = null;
   let aiMinutesPrice: PriceLike | null = null;
   let smsPrice: PriceLike | null = null;
+  let twilioMinutesPrice: PriceLike | null = null;
   // Generic metered fallback for the AI-overage rate. We deliberately
-  // SKIP SMS-tagged metered lines here so a tenant with an SMS price
-  // configured but no AI price configured doesn't get the SMS rate
-  // misquoted as their AI overage.
+  // SKIP SMS- and Twilio-tagged metered lines here so a tenant with an
+  // SMS or Twilio price configured but no AI price configured doesn't
+  // get those rates misquoted as their AI overage.
   let firstMeteredAiCandidate: PriceLike | null = null;
 
   for (const item of items) {
     const price = item.price;
     if (!price) continue;
-    const { isMetered, isAiMinutes, isSms, isLicensedRecurring } = classifyPrice(price);
+    const {
+      isMetered,
+      isAiMinutes,
+      isSms,
+      isTwilioMinutes,
+      isLicensedRecurring,
+    } = classifyPrice(price);
     if (isAiMinutes && !aiMinutesPrice) aiMinutesPrice = price;
     if (isSms && !smsPrice) smsPrice = price;
-    if (isMetered && !isSms && !firstMeteredAiCandidate) firstMeteredAiCandidate = price;
+    if (isTwilioMinutes && !twilioMinutesPrice) twilioMinutesPrice = price;
+    if (
+      isMetered
+      && !isSms
+      && !isTwilioMinutes
+      && !firstMeteredAiCandidate
+    ) {
+      firstMeteredAiCandidate = price;
+    }
     if (isLicensedRecurring && !basePrice) basePrice = price;
   }
 
@@ -429,10 +493,24 @@ export async function getTenantEffectiveRate(
     }
   }
 
+  let twilioRatePerMinute =
+    fallback.twilioRatePerMinute ?? defaultTwilioRatePerMinuteDollars();
+  let twilioPriceSource: 'stripe' | 'catalog' = 'catalog';
+  let twilioPriceId: string | null = null;
+  if (twilioMinutesPrice) {
+    const dollarsPerMin = unitAmountToDollarsPerMinute(twilioMinutesPrice);
+    if (dollarsPerMin != null) {
+      twilioRatePerMinute = dollarsPerMin;
+      twilioPriceSource = 'stripe';
+      twilioPriceId = twilioMinutesPrice.id;
+    }
+  }
+
   const currency = (
     basePrice?.currency
     ?? overagePrice?.currency
     ?? smsPrice?.currency
+    ?? twilioMinutesPrice?.currency
     ?? fallback.currency
   ).toLowerCase();
 
@@ -506,14 +584,17 @@ export async function getTenantEffectiveRate(
     basePriceCents,
     overageRatePerMinute,
     smsRatePerMessage,
+    twilioRatePerMinute,
     currency,
     source,
     basePriceSource,
     overagePriceSource,
     smsPriceSource,
+    twilioPriceSource,
     basePriceId,
     overagePriceId,
     smsPriceId,
+    twilioPriceId,
     monthlyBasePriceCents,
     monthlyBasePriceSource,
     monthlyBasePriceId,

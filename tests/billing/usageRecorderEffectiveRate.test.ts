@@ -114,6 +114,142 @@ describe('recordCallUsage — tenant-effective Stripe rate', () => {
     expect(totalCost).toBe(27);
   });
 
+  it('writes calls_* total_cost_cents using the live Stripe per-minute Twilio rate', async () => {
+    // Tenant negotiated $0.012/min Twilio (high-volume voice rate well
+    // below the env catalog default of 2¢) — the calls_inbound row must
+    // be quoted at the tenant rate, not the env default.
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'enterprise',
+      basePriceCents: 99_900,
+      overageRatePerMinute: 0.06,
+      smsRatePerMessage: 0.01,
+      twilioRatePerMinute: 0.012,
+      currency: 'usd',
+      source: 'stripe',
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsPriceSource: 'catalog',
+      twilioPriceSource: 'stripe',
+      basePriceId: 'price_ent_base',
+      overagePriceId: 'price_ai_minutes_custom',
+      smsPriceId: null,
+      twilioPriceId: 'price_twilio_custom',
+    });
+
+    // 180s → 3 minutes. 3 × 1.2¢ = 3.6¢ → rounds to 4¢ (NOT the env
+    // default of 6¢ that 3min × 2¢/min would yield).
+    await recordCallUsage(TENANT, 'inbound', 180);
+
+    const callInsert = insertCalls.find((c) => c.metricType === 'calls_inbound');
+    expect(callInsert).toBeDefined();
+    // Bound params for calls_*: $1 tenantId, $2 metricType, $3 periodStart,
+    // $4 periodEnd, $5 cost (used as both unit_cost_cents AND total_cost_cents).
+    const [tenantArg, , , , callCost] = callInsert!.values;
+    expect(tenantArg).toBe(TENANT);
+    expect(callCost).toBe(4);
+  });
+
+  it('caches the resolved Twilio rate across back-to-back calls (no extra Stripe round-trips)', async () => {
+    // Per-minute Twilio = 1.5¢, per-minute AI = 11¢. The same cached
+    // effective-rate lookup must serve BOTH the carrier-cost and the
+    // AI-cost branches across multiple call finalisations.
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'pro',
+      basePriceCents: 29_900,
+      overageRatePerMinute: 0.11,
+      twilioRatePerMinute: 0.015,
+      currency: 'usd',
+      source: 'stripe',
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      twilioPriceSource: 'stripe',
+      basePriceId: 'price_pro_base',
+      overagePriceId: 'price_ai_minutes_custom',
+      twilioPriceId: 'price_twilio_custom',
+    });
+
+    await recordCallUsage(TENANT, 'inbound', 60);
+    await recordCallUsage(TENANT, 'outbound', 60);
+    await recordCallUsage(TENANT, 'inbound', 60);
+
+    // Twilio + AI resolution share the same cache, so this is still
+    // exactly one round-trip across all three call finalisations.
+    expect(getTenantEffectiveRate).toHaveBeenCalledTimes(1);
+
+    const callInserts = insertCalls.filter(
+      (c) => c.metricType === 'calls_inbound' || c.metricType === 'calls_outbound',
+    );
+    expect(callInserts).toHaveLength(3);
+    // Each call uses 1 minute × 1.5¢ Twilio = 1.5¢ → rounds to 2¢.
+    for (const ins of callInserts) {
+      expect(ins.values[4]).toBe(2);
+    }
+  });
+
+  it('rounds the Twilio aggregate (not the per-minute rate) so sub-cent Stripe pricing matches the invoice', async () => {
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'enterprise',
+      basePriceCents: 99_900,
+      overageRatePerMinute: 0.06,
+      // $0.0125/min — would lossily round to 1¢/min if rounded per-minute.
+      twilioRatePerMinute: 0.0125,
+      currency: 'usd',
+      source: 'stripe',
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      twilioPriceSource: 'stripe',
+      basePriceId: 'price_ent_base',
+      overagePriceId: 'price_ai_minutes_custom',
+      twilioPriceId: 'price_twilio_subcent',
+    });
+
+    // 4 minutes × 1.25¢ = 5¢. Per-minute rounding would record 4¢
+    // (1¢/min × 4) — under-quoting the carrier portion.
+    await recordCallUsage(TENANT, 'outbound', 240);
+
+    const callInsert = insertCalls.find((c) => c.metricType === 'calls_outbound');
+    expect(callInsert).toBeDefined();
+    expect(callInsert!.values[4]).toBe(5);
+  });
+
+  it('falls back to TWILIO_COST_PER_MINUTE_CENTS when the resolver throws', async () => {
+    // Resolver throws → calls_* row must use the env default carrier
+    // rate so call teardown never blocks on Stripe.
+    process.env.TWILIO_COST_PER_MINUTE_CENTS = '3';
+    getTenantEffectiveRate.mockRejectedValue(new Error('Stripe boom'));
+
+    await recordCallUsage(TENANT, 'inbound', 120);
+
+    const callInsert = insertCalls.find((c) => c.metricType === 'calls_inbound');
+    expect(callInsert).toBeDefined();
+    // 2min × 3¢ env default = 6¢.
+    expect(callInsert!.values[4]).toBe(6);
+  });
+
+  it('falls back to the env Twilio default when the resolver omits twilioRatePerMinute', async () => {
+    // Old-style fixture without `twilioRatePerMinute` (back-compat with
+    // pre-1266 callers) — must use the env default carrier rate.
+    process.env.TWILIO_COST_PER_MINUTE_CENTS = '4';
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'starter',
+      basePriceCents: 9_900,
+      overageRatePerMinute: 0.12,
+      currency: 'usd',
+      source: 'catalog',
+      basePriceSource: 'catalog',
+      overagePriceSource: 'catalog',
+      basePriceId: null,
+      overagePriceId: null,
+    });
+
+    await recordCallUsage(TENANT, 'outbound', 120);
+
+    const callInsert = insertCalls.find((c) => c.metricType === 'calls_outbound');
+    expect(callInsert).toBeDefined();
+    // 2min × 4¢ env default = 8¢.
+    expect(callInsert!.values[4]).toBe(8);
+  });
+
   it('caches the resolved rate across back-to-back calls', async () => {
     getTenantEffectiveRate.mockResolvedValue({
       plan: 'pro',
@@ -206,6 +342,34 @@ describe('estimateCallCostWithLiveRate — per-call drilldown matches Stripe', (
     expect(cost.aiCostCents).toBe(27);
     expect(cost.twilioCostCents).toBe(6);
     expect(cost.totalCostCents).toBe(33);
+  });
+
+  it('quotes the live tenant Twilio rate (not the env default) for the carrier portion', async () => {
+    // Negotiated tenant on $0.014/min Twilio — env default of 2¢/min
+    // would over-quote the carrier cost by ~43% if we used it instead.
+    getTenantEffectiveRate.mockResolvedValue({
+      plan: 'enterprise',
+      basePriceCents: 99_900,
+      overageRatePerMinute: 0.06,
+      twilioRatePerMinute: 0.014,
+      currency: 'usd',
+      source: 'stripe',
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      twilioPriceSource: 'stripe',
+      basePriceId: 'price_ent_base',
+      overagePriceId: 'price_ai_minutes_negotiated',
+      twilioPriceId: 'price_twilio_negotiated',
+    });
+
+    // 3 minutes (180s rounded up) × 1.4¢/min = 4.2¢ → rounds to 4¢
+    // (env-default Twilio would give 6¢ here).
+    const cost = await estimateCallCostWithLiveRate(TENANT, 180);
+
+    expect(cost.twilioCostCents).toBe(4);
+    // AI: 3min × 6¢ = 18¢. Total = 22¢.
+    expect(cost.aiCostCents).toBe(18);
+    expect(cost.totalCostCents).toBe(22);
   });
 
   it('rounds the AI aggregate (not the per-minute rate) so sub-cent Stripe pricing matches the invoice', async () => {
