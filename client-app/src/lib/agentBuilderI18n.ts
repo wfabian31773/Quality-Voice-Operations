@@ -282,7 +282,11 @@ export type AgentBuilderTKey =
   | 'edgeLabelAvailable'
   | 'edgeLabelWaitlist'
   | 'edgeLabelYes'
-  | 'edgeLabelNo';
+  | 'edgeLabelNo'
+  | 'unsavedLeaveTitle'
+  | 'unsavedLeaveBody'
+  | 'unsavedLeaveStay'
+  | 'unsavedLeaveConfirm';
 
 const EN: Record<AgentBuilderTKey, string> = {
   back: 'Back',
@@ -561,6 +565,10 @@ const EN: Record<AgentBuilderTKey, string> = {
   edgeLabelWaitlist: 'Waitlist',
   edgeLabelYes: 'Yes',
   edgeLabelNo: 'No',
+  unsavedLeaveTitle: 'Leave with unsaved changes?',
+  unsavedLeaveBody: 'You have unsaved changes. If you leave now, your changes will be lost.',
+  unsavedLeaveStay: 'Stay on page',
+  unsavedLeaveConfirm: 'Leave anyway',
 };
 
 const ES: Partial<Record<AgentBuilderTKey, string>> = {
@@ -840,6 +848,10 @@ const ES: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'Lista de espera',
   edgeLabelYes: 'Sí',
   edgeLabelNo: 'No',
+  unsavedLeaveTitle: '¿Salir con cambios sin guardar?',
+  unsavedLeaveBody: 'Tienes cambios sin guardar. Si sales ahora, se perderán.',
+  unsavedLeaveStay: 'Permanecer en la página',
+  unsavedLeaveConfirm: 'Salir de todos modos',
 };
 
 const FR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1119,6 +1131,10 @@ const FR: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: "Liste d'attente",
   edgeLabelYes: 'Oui',
   edgeLabelNo: 'Non',
+  unsavedLeaveTitle: 'Quitter sans enregistrer les modifications ?',
+  unsavedLeaveBody: 'Vous avez des modifications non enregistrées. Si vous quittez maintenant, elles seront perdues.',
+  unsavedLeaveStay: 'Rester sur la page',
+  unsavedLeaveConfirm: 'Quitter quand même',
 };
 
 const DE: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1398,6 +1414,10 @@ const DE: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'Warteliste',
   edgeLabelYes: 'Ja',
   edgeLabelNo: 'Nein',
+  unsavedLeaveTitle: 'Mit ungespeicherten Änderungen verlassen?',
+  unsavedLeaveBody: 'Sie haben ungespeicherte Änderungen. Wenn Sie die Seite jetzt verlassen, gehen Ihre Änderungen verloren.',
+  unsavedLeaveStay: 'Auf der Seite bleiben',
+  unsavedLeaveConfirm: 'Trotzdem verlassen',
 };
 
 const PT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1677,6 +1697,10 @@ const PT: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'Lista de espera',
   edgeLabelYes: 'Sim',
   edgeLabelNo: 'Não',
+  unsavedLeaveTitle: 'Sair com alterações não salvas?',
+  unsavedLeaveBody: 'Você tem alterações não salvas. Se sair agora, suas alterações serão perdidas.',
+  unsavedLeaveStay: 'Permanecer na página',
+  unsavedLeaveConfirm: 'Sair mesmo assim',
 };
 
 const IT: Partial<Record<AgentBuilderTKey, string>> = {
@@ -1956,6 +1980,10 @@ const IT: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: "Lista d'attesa",
   edgeLabelYes: 'Sì',
   edgeLabelNo: 'No',
+  unsavedLeaveTitle: 'Uscire con modifiche non salvate?',
+  unsavedLeaveBody: 'Hai modifiche non salvate. Se esci ora, le tue modifiche andranno perse.',
+  unsavedLeaveStay: 'Rimani sulla pagina',
+  unsavedLeaveConfirm: 'Esci comunque',
 };
 
 const NL: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2235,6 +2263,10 @@ const NL: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'Wachtlijst',
   edgeLabelYes: 'Ja',
   edgeLabelNo: 'Nee',
+  unsavedLeaveTitle: 'Pagina verlaten met niet-opgeslagen wijzigingen?',
+  unsavedLeaveBody: 'Je hebt niet-opgeslagen wijzigingen. Als je de pagina nu verlaat, gaan je wijzigingen verloren.',
+  unsavedLeaveStay: 'Op de pagina blijven',
+  unsavedLeaveConfirm: 'Toch verlaten',
 };
 
 const ZH: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2514,6 +2546,10 @@ const ZH: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: '等候名单',
   edgeLabelYes: '是',
   edgeLabelNo: '否',
+  unsavedLeaveTitle: '要离开吗?有未保存的更改',
+  unsavedLeaveBody: '你有未保存的更改。如果现在离开,这些更改将会丢失。',
+  unsavedLeaveStay: '留在此页',
+  unsavedLeaveConfirm: '仍要离开',
 };
 
 const JA: Partial<Record<AgentBuilderTKey, string>> = {
@@ -2793,6 +2829,10 @@ const JA: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'ウェイトリスト',
   edgeLabelYes: 'はい',
   edgeLabelNo: 'いいえ',
+  unsavedLeaveTitle: '未保存の変更があります。本当に移動しますか?',
+  unsavedLeaveBody: '未保存の変更があります。今移動すると、変更内容は失われます。',
+  unsavedLeaveStay: 'このページにとどまる',
+  unsavedLeaveConfirm: 'それでも移動する',
 };
 
 const KO: Partial<Record<AgentBuilderTKey, string>> = {
@@ -3072,6 +3112,10 @@ const KO: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: '대기 목록',
   edgeLabelYes: '예',
   edgeLabelNo: '아니오',
+  unsavedLeaveTitle: '저장하지 않은 변경 사항이 있습니다. 페이지를 떠나시겠습니까?',
+  unsavedLeaveBody: '저장되지 않은 변경 사항이 있습니다. 지금 페이지를 떠나면 변경 내용이 사라집니다.',
+  unsavedLeaveStay: '페이지에 머무르기',
+  unsavedLeaveConfirm: '그래도 떠나기',
 };
 
 const AR: Partial<Record<AgentBuilderTKey, string>> = {
@@ -3351,6 +3395,10 @@ const AR: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'قائمة الانتظار',
   edgeLabelYes: 'نعم',
   edgeLabelNo: 'لا',
+  unsavedLeaveTitle: 'هل تريد المغادرة مع وجود تغييرات لم تُحفظ؟',
+  unsavedLeaveBody: 'لديك تغييرات غير محفوظة. إذا غادرت الآن، فستفقد تغييراتك.',
+  unsavedLeaveStay: 'البقاء في الصفحة',
+  unsavedLeaveConfirm: 'المغادرة على أي حال',
 };
 
 const HI: Partial<Record<AgentBuilderTKey, string>> = {
@@ -3630,6 +3678,10 @@ const HI: Partial<Record<AgentBuilderTKey, string>> = {
   edgeLabelWaitlist: 'प्रतीक्षा सूची',
   edgeLabelYes: 'हाँ',
   edgeLabelNo: 'नहीं',
+  unsavedLeaveTitle: 'बिना सहेजे बदलावों के साथ छोड़ें?',
+  unsavedLeaveBody: 'आपके पास सहेजे न गए बदलाव हैं। अगर आप अभी छोड़ देते हैं, तो आपके बदलाव खो जाएँगे।',
+  unsavedLeaveStay: 'पेज पर रहें',
+  unsavedLeaveConfirm: 'फिर भी छोड़ें',
 };
 
 const TRANSLATIONS: Record<string, Partial<Record<AgentBuilderTKey, string>>> = {

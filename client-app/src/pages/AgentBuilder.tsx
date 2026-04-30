@@ -4127,11 +4127,10 @@ function AgentBuilderInner() {
                 id="builder-leave-confirm-title"
                 className="text-base font-semibold text-text-primary"
               >
-                Leave with unsaved changes?
+                {t('unsavedLeaveTitle')}
               </h2>
               <p className="text-sm text-text-muted mt-1">
-                You have unsaved agent edits. If you leave now, your changes
-                will be lost.
+                {t('unsavedLeaveBody')}
               </p>
             </div>
           </div>
@@ -4143,7 +4142,7 @@ function AgentBuilderInner() {
               }}
               className="inline-flex items-center px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-surface-hover"
             >
-              Stay on page
+              {t('unsavedLeaveStay')}
             </button>
             <button
               type="button"
@@ -4152,7 +4151,7 @@ function AgentBuilderInner() {
               }}
               className="inline-flex items-center px-4 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg"
             >
-              Leave anyway
+              {t('unsavedLeaveConfirm')}
             </button>
           </div>
         </div>

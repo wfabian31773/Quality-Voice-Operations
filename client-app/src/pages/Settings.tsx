@@ -28,7 +28,7 @@ import {
   DEFAULT_AGENT_LANGUAGE,
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
-import { getDefaultWelcomeGreeting } from '../lib/agentBuilderI18n';
+import { getDefaultWelcomeGreeting, useBuilderUiT } from '../lib/agentBuilderI18n';
 
 interface Tenant {
   id: string;
@@ -2032,6 +2032,14 @@ const TAB_COMPONENTS: Record<Tab, ComponentType> = {
 
 export default function Settings() {
   const { t: tenantT } = useTranslation('tenant');
+  // The tenant locale catalog only ships translations for the five UI
+  // languages currently selectable in the app (en, es, fr, de, pt-BR).
+  // The unsaved-changes leave-confirm modal is intentionally sourced from
+  // the agent-builder UI catalog so the four prompt strings are translated
+  // for every language that catalog ships (en, es, fr, de, pt, it, nl, zh,
+  // ja, ko, ar, hi) and stay in lock-step with the same modal in the agent
+  // builder. See `client-app/src/lib/agentBuilderI18n.ts`.
+  const leaveConfirmT = useBuilderUiT();
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
   const rawTab = params.tab ?? 'general';
@@ -2206,11 +2214,10 @@ export default function Settings() {
                 id="settings-leave-confirm-title"
                 className="text-base font-semibold text-text-primary"
               >
-                Leave with unsaved changes?
+                {leaveConfirmT('unsavedLeaveTitle')}
               </h2>
               <p className="text-sm text-text-muted mt-1">
-                You have unsaved settings edits. If you leave now, your changes
-                will be lost.
+                {leaveConfirmT('unsavedLeaveBody')}
               </p>
             </div>
           </div>
@@ -2222,7 +2229,7 @@ export default function Settings() {
               }}
               className="inline-flex items-center px-4 py-2 bg-surface border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-surface-hover"
             >
-              Stay on page
+              {leaveConfirmT('unsavedLeaveStay')}
             </button>
             <button
               type="button"
@@ -2231,7 +2238,7 @@ export default function Settings() {
               }}
               className="inline-flex items-center px-4 py-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium rounded-lg"
             >
-              Leave anyway
+              {leaveConfirmT('unsavedLeaveConfirm')}
             </button>
           </div>
         </div>
