@@ -994,7 +994,15 @@
       "pitch_heading": "Funnel by pitch",
       "col_pitch": "Pitch",
       "pitch_tier_switch": "Tier switch",
-      "pitch_annual_only": "Annual billing"
+      "pitch_annual_only": "Annual billing",
+      "trend_heading": "Weekly trend ({{weeks}}w)",
+      "empty_trend": "Not enough history yet to chart a weekly trend.",
+      "trend_completed_label": "{{count}} this week",
+      "trend_completed_value": "{{count}} switches",
+      "trend_completed_aria": "Weekly completed switches for {{tier}}",
+      "trend_savings_label": "{{amount}}/mo this week",
+      "trend_savings_value": "{{amount}} saved",
+      "trend_savings_aria": "Weekly realised monthly savings for {{tier}}"
     },
     "discount_breakdown": {
       "title": "Discount badge funnel by coupon (30d)",

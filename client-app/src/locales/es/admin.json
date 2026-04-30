@@ -994,7 +994,15 @@
       "pitch_heading": "Embudo por argumento",
       "col_pitch": "Argumento",
       "pitch_tier_switch": "Cambio de plan",
-      "pitch_annual_only": "Facturación anual"
+      "pitch_annual_only": "Facturación anual",
+      "trend_heading": "Tendencia semanal ({{weeks}} sem)",
+      "empty_trend": "Aún no hay historial suficiente para mostrar la tendencia semanal.",
+      "trend_completed_label": "{{count}} esta semana",
+      "trend_completed_value": "{{count}} cambios",
+      "trend_completed_aria": "Cambios completados por semana para {{tier}}",
+      "trend_savings_label": "{{amount}}/mes esta semana",
+      "trend_savings_value": "{{amount}} ahorrados",
+      "trend_savings_aria": "Ahorros mensuales realizados por semana para {{tier}}"
     },
     "discount_breakdown": {
       "title": "Embudo de la insignia de descuento por cupón (30 d)",

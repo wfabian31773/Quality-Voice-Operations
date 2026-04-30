@@ -994,7 +994,15 @@
       "pitch_heading": "Funil por argumento",
       "col_pitch": "Argumento",
       "pitch_tier_switch": "Troca de plano",
-      "pitch_annual_only": "Cobrança anual"
+      "pitch_annual_only": "Cobrança anual",
+      "trend_heading": "Tendência semanal ({{weeks}} sem)",
+      "empty_trend": "Ainda não há histórico suficiente para mostrar a tendência semanal.",
+      "trend_completed_label": "{{count}} nesta semana",
+      "trend_completed_value": "{{count}} trocas",
+      "trend_completed_aria": "Trocas concluídas por semana para {{tier}}",
+      "trend_savings_label": "{{amount}}/mês nesta semana",
+      "trend_savings_value": "{{amount}} economizados",
+      "trend_savings_aria": "Economia mensal realizada por semana para {{tier}}"
     },
     "discount_breakdown": {
       "title": "Funil do selo de desconto por cupom (30 d)",

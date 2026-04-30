@@ -343,6 +343,7 @@
         "platform_admin.badges.enterprise",
         "platform_admin.badges.pro",
         "platform_admin.badges.starter",
+        "platform_admin.recommendation_breakdown.col_pitch",
         "platform_admin.recommendation_breakdown.tier_enterprise",
         "platform_admin.recommendation_breakdown.tier_pro",
         "platform_admin.recommendation_breakdown.tier_starter",

@@ -994,7 +994,15 @@
       "pitch_heading": "Funnel nach Pitch",
       "col_pitch": "Pitch",
       "pitch_tier_switch": "Tarifwechsel",
-      "pitch_annual_only": "Jahresabrechnung"
+      "pitch_annual_only": "Jahresabrechnung",
+      "trend_heading": "Wöchentlicher Trend ({{weeks}} W.)",
+      "empty_trend": "Noch nicht genügend Verlauf für einen Wochentrend.",
+      "trend_completed_label": "{{count}} diese Woche",
+      "trend_completed_value": "{{count}} Wechsel",
+      "trend_completed_aria": "Wöchentlich abgeschlossene Wechsel für {{tier}}",
+      "trend_savings_label": "{{amount}}/Monat diese Woche",
+      "trend_savings_value": "{{amount}} gespart",
+      "trend_savings_aria": "Wöchentlich realisierte Monatsersparnis für {{tier}}"
     },
     "discount_breakdown": {
       "title": "Rabatt-Badge-Funnel nach Coupon (30 T.)",

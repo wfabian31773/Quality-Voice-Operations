@@ -3990,6 +3990,63 @@ interface RecommendationStatsShape {
     completedSwitches: number;
     monthlySavingsCents: number;
   }>;
+  // Per-tier weekly trend; series arrays are index-aligned with `weeks`.
+  weeklyTrend: {
+    windowWeeks: number;
+    weeks: string[];
+    byRecommendedTier: Array<{
+      recommendedTier: RecommendationTier;
+      completedSwitches: number[];
+      monthlySavingsCents: number[];
+    }>;
+  };
+}
+
+function RecommendationTrendSparkline({
+  values,
+  weeks,
+  formatValue,
+  ariaLabel,
+}: {
+  values: number[];
+  weeks: string[];
+  formatValue: (value: number) => string;
+  ariaLabel: string;
+}) {
+  if (values.length === 0) {
+    return (
+      <div
+        className="h-6 w-24 rounded bg-surface-muted/40"
+        aria-label={ariaLabel}
+        role="img"
+      />
+    );
+  }
+  const max = Math.max(1, ...values);
+  return (
+    <div
+      className="flex items-end gap-px h-6 w-24"
+      aria-label={ariaLabel}
+      role="img"
+    >
+      {values.map((value, idx) => {
+        const heightPct = Math.max((value / max) * 100, 4);
+        const week = weeks[idx] ?? '';
+        return (
+          <div
+            key={`${week}-${idx}`}
+            className={
+              value > 0
+                ? 'flex-1 bg-primary/60 rounded-t min-h-[1px]'
+                : 'flex-1 bg-surface-muted/60 rounded-t min-h-[1px]'
+            }
+            style={{ height: `${heightPct}%` }}
+            title={week ? `${week}: ${formatValue(value)}` : formatValue(value)}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 // Drawer rendered just below the platform stats grid when an admin clicks
@@ -4052,6 +4109,16 @@ function RecommendationBreakdownPanel({
         ? 'platform_admin.recommendation_breakdown.pitch_annual_only'
         : 'platform_admin.recommendation_breakdown.pitch_tier_switch',
     );
+
+  const weeklyTrend = stats?.weeklyTrend;
+  const trendWeeks = weeklyTrend?.weeks ?? [];
+  const trendByTier = new Map(
+    (weeklyTrend?.byRecommendedTier ?? []).map((row) => [
+      row.recommendedTier,
+      row,
+    ]),
+  );
+  const hasTrendData = trendWeeks.length > 0;
 
   return (
     <section
@@ -4249,6 +4316,84 @@ function RecommendationBreakdownPanel({
                 )}
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="mt-5" data-testid="recommendation-trend-section">
+        <h3 className="text-sm font-semibold text-text-primary">
+          {adminT('platform_admin.recommendation_breakdown.trend_heading', {
+            weeks: weeklyTrend?.windowWeeks ?? 12,
+          })}
+        </h3>
+        {!hasTrendData ? (
+          <p className="text-xs text-text-muted mt-1">
+            {adminT('platform_admin.recommendation_breakdown.empty_trend')}
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {RECOMMENDATION_TIERS_ORDER.map((tier) => {
+              const series = trendByTier.get(tier);
+              const completed = series?.completedSwitches ?? [];
+              const savings = series?.monthlySavingsCents ?? [];
+              const latestCompleted = completed[completed.length - 1] ?? 0;
+              const latestSavings = savings[savings.length - 1] ?? 0;
+              return (
+                <li
+                  key={tier}
+                  className="flex items-center gap-3 text-sm"
+                  data-testid={`recommendation-trend-row-${tier}`}
+                >
+                  <span className="w-20 text-text-primary font-medium">
+                    {tierLabel(tier)}
+                  </span>
+                  <div className="flex items-center gap-2 min-w-[10rem]">
+                    <RecommendationTrendSparkline
+                      values={completed}
+                      weeks={trendWeeks}
+                      formatValue={(value) =>
+                        adminT(
+                          'platform_admin.recommendation_breakdown.trend_completed_value',
+                          { count: value },
+                        )
+                      }
+                      ariaLabel={adminT(
+                        'platform_admin.recommendation_breakdown.trend_completed_aria',
+                        { tier: tierLabel(tier) },
+                      )}
+                    />
+                    <span className="text-xs tabular-nums text-text-secondary">
+                      {adminT(
+                        'platform_admin.recommendation_breakdown.trend_completed_label',
+                        { count: latestCompleted },
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 min-w-[10rem]">
+                    <RecommendationTrendSparkline
+                      values={savings}
+                      weeks={trendWeeks}
+                      formatValue={(value) =>
+                        adminT(
+                          'platform_admin.recommendation_breakdown.trend_savings_value',
+                          { amount: formatCents(value) },
+                        )
+                      }
+                      ariaLabel={adminT(
+                        'platform_admin.recommendation_breakdown.trend_savings_aria',
+                        { tier: tierLabel(tier) },
+                      )}
+                    />
+                    <span className="text-xs tabular-nums text-text-secondary">
+                      {adminT(
+                        'platform_admin.recommendation_breakdown.trend_savings_label',
+                        { amount: formatCents(latestSavings) },
+                      )}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -4472,37 +4617,7 @@ export default function PlatformAdmin() {
     useQuery({
       queryKey: ['platform-billing-recommendations'],
       queryFn: () =>
-        api.get<{
-          windowDays: number;
-          impressions: number;
-          clicks: number;
-          completedSwitches: number;
-          totalMonthlySavingsCents: number;
-          tenantsClicked: number;
-          tenantsSwitched: number;
-          clickThroughRate: number;
-          completionRate: number;
-          byRecommendedTier: Array<{
-            recommendedTier: 'starter' | 'pro' | 'enterprise';
-            impressions: number;
-            clicks: number;
-            completedSwitches: number;
-            monthlySavingsCents: number;
-          }>;
-          byPitch: Array<{
-            pitch: 'tier-switch' | 'annual-only';
-            impressions: number;
-            clicks: number;
-            completedSwitches: number;
-            monthlySavingsCents: number;
-          }>;
-          switchPairs: Array<{
-            currentTier: 'starter' | 'pro' | 'enterprise';
-            recommendedTier: 'starter' | 'pro' | 'enterprise';
-            completedSwitches: number;
-            monthlySavingsCents: number;
-          }>;
-        }>('/platform/billing-recommendations'),
+        api.get<RecommendationStatsShape>('/platform/billing-recommendations'),
       refetchInterval: 60_000,
     });
   const [showRecommendationDetails, setShowRecommendationDetails] =

@@ -398,6 +398,48 @@ describe('GET /platform/billing-recommendations', () => {
     // queries around doesn't quietly break ordering assumptions.
     queryMock.mockImplementation(async (sql: string) => {
       const s = String(sql);
+      if (/generate_series/i.test(s)) {
+        return {
+          rows: [
+            {
+              week_start: '2026-04-20',
+              recommended_tier: 'starter',
+              completed_switches: '5',
+              monthly_savings_cents: '180000',
+            },
+            {
+              week_start: '2026-04-20',
+              recommended_tier: 'pro',
+              completed_switches: '1',
+              monthly_savings_cents: '25000',
+            },
+            {
+              week_start: '2026-04-20',
+              recommended_tier: 'enterprise',
+              completed_switches: '0',
+              monthly_savings_cents: '0',
+            },
+            {
+              week_start: '2026-04-27',
+              recommended_tier: 'starter',
+              completed_switches: '7',
+              monthly_savings_cents: '240000',
+            },
+            {
+              week_start: '2026-04-27',
+              recommended_tier: 'pro',
+              completed_switches: '1',
+              monthly_savings_cents: '25000',
+            },
+            {
+              week_start: '2026-04-27',
+              recommended_tier: 'enterprise',
+              completed_switches: '0',
+              monthly_savings_cents: '0',
+            },
+          ],
+        };
+      }
       if (/GROUP BY recommended_tier\b/i.test(s)) {
         return {
           rows: [
@@ -523,6 +565,27 @@ describe('GET /platform/billing-recommendations', () => {
           monthlySavingsCents: 50000,
         },
       ],
+      weeklyTrend: {
+        windowWeeks: 12,
+        weeks: ['2026-04-20', '2026-04-27'],
+        byRecommendedTier: [
+          {
+            recommendedTier: 'starter',
+            completedSwitches: [5, 7],
+            monthlySavingsCents: [180000, 240000],
+          },
+          {
+            recommendedTier: 'pro',
+            completedSwitches: [1, 1],
+            monthlySavingsCents: [25000, 25000],
+          },
+          {
+            recommendedTier: 'enterprise',
+            completedSwitches: [0, 0],
+            monthlySavingsCents: [0, 0],
+          },
+        ],
+      },
     });
   });
 
@@ -584,6 +647,27 @@ describe('GET /platform/billing-recommendations', () => {
         },
       ],
       switchPairs: [],
+      weeklyTrend: {
+        windowWeeks: 12,
+        weeks: [],
+        byRecommendedTier: [
+          {
+            recommendedTier: 'starter',
+            completedSwitches: [],
+            monthlySavingsCents: [],
+          },
+          {
+            recommendedTier: 'pro',
+            completedSwitches: [],
+            monthlySavingsCents: [],
+          },
+          {
+            recommendedTier: 'enterprise',
+            completedSwitches: [],
+            monthlySavingsCents: [],
+          },
+        ],
+      },
     });
   });
 
@@ -766,9 +850,69 @@ describe('GET /platform/billing-recommendations', () => {
       /billing_recommendation_events/i.test(s),
     );
     expect(recSqls.length).toBeGreaterThan(0);
+    // Accept either the 30d aggregate window or the per-tier weekly trend
+    // window — both anchor on NOW() so the test needs no fixture timestamps.
     for (const sql of recSqls) {
-      expect(sql).toMatch(/NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i);
+      const usesThirtyDayWindow =
+        /NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i.test(sql);
+      const usesWeeklyTrendWindow =
+        /date_trunc\(\s*'week'\s*,\s*NOW\(\)\s*\)/i.test(sql);
+      expect(usesThirtyDayWindow || usesWeeklyTrendWindow).toBe(true);
     }
+  });
+
+  it('rolls the per-tier weekly trend into a dense weeks axis with parallel completed/savings series', async () => {
+    // Sparse matrix with mixed week_start types and out-of-order rows
+    // exercises the normalisation + zero-padding path.
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (/generate_series/i.test(s)) {
+        return {
+          rows: [
+            {
+              week_start: new Date('2026-04-27T00:00:00Z'),
+              recommended_tier: 'pro',
+              completed_switches: 2,
+              monthly_savings_cents: 50000,
+            },
+            {
+              week_start: '2026-04-20',
+              recommended_tier: 'starter',
+              completed_switches: '4',
+              monthly_savings_cents: '120000',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.weeklyTrend).toEqual({
+      windowWeeks: 12,
+      weeks: ['2026-04-20', '2026-04-27'],
+      byRecommendedTier: [
+        {
+          recommendedTier: 'starter',
+          completedSwitches: [4, 0],
+          monthlySavingsCents: [120000, 0],
+        },
+        {
+          recommendedTier: 'pro',
+          completedSwitches: [0, 2],
+          monthlySavingsCents: [0, 50000],
+        },
+        {
+          recommendedTier: 'enterprise',
+          completedSwitches: [0, 0],
+          monthlySavingsCents: [0, 0],
+        },
+      ],
+    });
   });
 });
 

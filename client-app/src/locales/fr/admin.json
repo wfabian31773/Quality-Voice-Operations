@@ -994,7 +994,15 @@
       "pitch_heading": "Entonnoir par argumentaire",
       "col_pitch": "Argumentaire",
       "pitch_tier_switch": "Changement de plan",
-      "pitch_annual_only": "Facturation annuelle"
+      "pitch_annual_only": "Facturation annuelle",
+      "trend_heading": "Tendance hebdomadaire ({{weeks}} sem)",
+      "empty_trend": "Pas encore assez d'historique pour tracer la tendance hebdomadaire.",
+      "trend_completed_label": "{{count}} cette semaine",
+      "trend_completed_value": "{{count}} changements",
+      "trend_completed_aria": "Changements terminés par semaine pour {{tier}}",
+      "trend_savings_label": "{{amount}}/mois cette semaine",
+      "trend_savings_value": "{{amount}} économisés",
+      "trend_savings_aria": "Économies mensuelles réalisées par semaine pour {{tier}}"
     },
     "discount_breakdown": {
       "title": "Entonnoir du badge de remise par coupon (30 j)",

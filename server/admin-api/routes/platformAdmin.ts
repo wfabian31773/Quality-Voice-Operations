@@ -1651,6 +1651,8 @@ router.get(
 //     "12 of 18 completed switches were Pro → Starter, $4.2k/mo saved".
 //   * `totalMonthlySavingsCents` — sum of `monthly_savings_cents` across
 //     every `switch_completed` row in the window.
+//   * `weeklyTrend` — completed-switch count and realised savings bucketed
+//     into the trailing N ISO weeks per recommended tier.
 const RECOMMENDATION_TIERS = ['starter', 'pro', 'enterprise'] as const;
 type RecommendationTier = (typeof RECOMMENDATION_TIERS)[number];
 
@@ -1664,6 +1666,7 @@ const isRecommendationPitch = (value: unknown): value is RecommendationPitch =>
 const isRecommendationTier = (value: unknown): value is RecommendationTier =>
   typeof value === 'string' &&
   (RECOMMENDATION_TIERS as readonly string[]).includes(value);
+const RECOMMENDATION_TREND_WEEKS = 12;
 
 router.get(
   '/platform/billing-recommendations',
@@ -1848,6 +1851,85 @@ router.get(
         monthlySavingsCents: pitchIndex.get(pitch)?.monthlySavingsCents ?? 0,
       }));
 
+      // Per-tier weekly trend: dense (weeks × tiers) matrix so empty
+      // buckets render as zeros instead of disappearing from the axis.
+      // The events join is bounded on `created_at` and filtered to
+      // `switch_completed` so it stays index-friendly as the table grows.
+      const trendWindowWeeks = RECOMMENDATION_TREND_WEEKS;
+      const { rows: trendRows } = await withPrivilegedClient(async (client) => {
+        return client.query(
+          `WITH weeks AS (
+             SELECT generate_series(
+               (date_trunc('week', NOW()) - ($1::int - 1) * INTERVAL '1 week')::date,
+               date_trunc('week', NOW())::date,
+               INTERVAL '1 week'
+             )::date AS week_start
+           ),
+           tiers AS (
+             SELECT unnest($2::varchar[]) AS recommended_tier
+           )
+           SELECT
+             w.week_start,
+             t.recommended_tier,
+             COUNT(e.id)::bigint AS completed_switches,
+             COALESCE(SUM(e.monthly_savings_cents), 0)::bigint
+               AS monthly_savings_cents
+             FROM weeks w
+             CROSS JOIN tiers t
+             LEFT JOIN billing_recommendation_events e
+               ON e.recommended_tier = t.recommended_tier
+              AND e.event_type = 'switch_completed'
+              AND e.created_at >= w.week_start
+              AND e.created_at < w.week_start + INTERVAL '1 week'
+            GROUP BY w.week_start, t.recommended_tier
+            ORDER BY w.week_start ASC, t.recommended_tier ASC`,
+          [trendWindowWeeks, RECOMMENDATION_TIERS as readonly string[]],
+        );
+      });
+
+      const weekStartSet = new Set<string>();
+      const trendByTier = new Map<RecommendationTier, {
+        completedSwitches: Map<string, number>;
+        monthlySavingsCents: Map<string, number>;
+      }>();
+      for (const tier of RECOMMENDATION_TIERS) {
+        trendByTier.set(tier, {
+          completedSwitches: new Map(),
+          monthlySavingsCents: new Map(),
+        });
+      }
+      for (const raw of trendRows as Array<{
+        week_start: Date | string;
+        recommended_tier: string;
+        completed_switches: string | number;
+        monthly_savings_cents: string | number;
+      }>) {
+        const weekStartIso =
+          raw.week_start instanceof Date
+            ? raw.week_start.toISOString().slice(0, 10)
+            : String(raw.week_start).slice(0, 10);
+        weekStartSet.add(weekStartIso);
+        if (!isRecommendationTier(raw.recommended_tier)) continue;
+        const bucket = trendByTier.get(raw.recommended_tier)!;
+        bucket.completedSwitches.set(
+          weekStartIso,
+          Number(raw.completed_switches) || 0,
+        );
+        bucket.monthlySavingsCents.set(
+          weekStartIso,
+          Number(raw.monthly_savings_cents) || 0,
+        );
+      }
+      const weeks = Array.from(weekStartSet).sort();
+      const trendByRecommendedTier = RECOMMENDATION_TIERS.map((tier) => {
+        const bucket = trendByTier.get(tier)!;
+        return {
+          recommendedTier: tier,
+          completedSwitches: weeks.map((w) => bucket.completedSwitches.get(w) ?? 0),
+          monthlySavingsCents: weeks.map((w) => bucket.monthlySavingsCents.get(w) ?? 0),
+        };
+      });
+
       return res.json({
         windowDays: 30,
         impressions: totals.impressions,
@@ -1866,6 +1948,11 @@ router.get(
         byRecommendedTier,
         byPitch,
         switchPairs,
+        weeklyTrend: {
+          windowWeeks: trendWindowWeeks,
+          weeks,
+          byRecommendedTier: trendByRecommendedTier,
+        },
       });
     } catch (err) {
       logger.error('Failed to load billing recommendation metrics', {
