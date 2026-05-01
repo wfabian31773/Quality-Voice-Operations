@@ -7,6 +7,7 @@ import { authCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { getStripeClient } from '../../../platform/billing/stripe/client';
 import { getPlanPriceId, TRIAL_LIMITS, type PlanTier } from '../../../platform/billing/stripe/plans';
+import { isSupportedBillingCurrency } from '../../../platform/billing/supportedCurrencies';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 
 const router = Router();
@@ -132,15 +133,33 @@ router.post('/auth/login', async (req, res) => {
 });
 
 router.post('/auth/signup', async (req, res) => {
-  const { name, email, password, plan = 'starter', interval = 'monthly', captchaToken, visitorId } = req.body as {
+  const {
+    name,
+    email,
+    password,
+    plan = 'starter',
+    interval = 'monthly',
+    billingCurrency,
+    captchaToken,
+    visitorId,
+  } = req.body as {
     name?: string;
     email?: string;
     password?: string;
     plan?: string;
     interval?: string;
+    billingCurrency?: string;
     captchaToken?: string;
     visitorId?: string;
   };
+
+  // Normalize the optional billingCurrency from the public signup
+  // form: lowercase ISO 4217 if on the allowlist, else fall back to
+  // 'usd'. Persisted to `tenants.billing_currency`.
+  const normalizedBillingCurrency =
+    typeof billingCurrency === 'string' && isSupportedBillingCurrency(billingCurrency)
+      ? billingCurrency.trim().toLowerCase()
+      : 'usd';
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email, and password are required' });
@@ -191,10 +210,10 @@ router.post('/auth/signup', async (req, res) => {
     const trialExpiresAt = new Date(Date.now() + TRIAL_LIMITS.durationDays * 24 * 60 * 60 * 1000);
 
     const { rows: tenantRows } = await client.query(
-      `INSERT INTO tenants (name, slug, status, plan, trial_started_at, trial_expires_at)
-       VALUES ($1, $2, 'pending', $3, NOW(), $4)
+      `INSERT INTO tenants (name, slug, status, plan, trial_started_at, trial_expires_at, billing_currency)
+       VALUES ($1, $2, 'pending', $3, NOW(), $4, $5)
        RETURNING id`,
-      [name, slug, plan, trialExpiresAt.toISOString()],
+      [name, slug, plan, trialExpiresAt.toISOString(), normalizedBillingCurrency],
     );
     const tenantId = tenantRows[0].id as string;
 
@@ -231,9 +250,16 @@ router.post('/auth/signup', async (req, res) => {
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
-        metadata: { tenantId, userId, plan, interval, ...(visitorId ? { visitorId } : {}) },
+        metadata: {
+          tenantId,
+          userId,
+          plan,
+          interval,
+          billingCurrency: normalizedBillingCurrency,
+          ...(visitorId ? { visitorId } : {}),
+        },
         subscription_data: {
-          metadata: { tenantId, userId, plan, interval },
+          metadata: { tenantId, userId, plan, interval, billingCurrency: normalizedBillingCurrency },
         },
         client_reference_id: visitorId || undefined,
         success_url: `${baseUrl}/onboarding?session_id={CHECKOUT_SESSION_ID}`,
@@ -270,7 +296,14 @@ router.post('/auth/signup', async (req, res) => {
 
     res.cookie('auth_token', token, authCookieOptions());
 
-    logger.info('Signup initiated', { tenantId, userId, plan, interval, emailVerificationRequired: true });
+    logger.info('Signup initiated', {
+      tenantId,
+      userId,
+      plan,
+      interval,
+      billingCurrency: normalizedBillingCurrency,
+      emailVerificationRequired: true,
+    });
 
     try {
       const { sendEmail, emailVerificationEmail } = await import('../../../platform/email');

@@ -51,6 +51,7 @@ let tenantResponse: { tenant: { id: string; billing_currency?: string | null } |
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   tenantResponse = { tenant: { id: 'tenant-1', billing_currency: 'eur' } };
 
   vi.stubGlobal(
@@ -77,6 +78,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetModules();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 interface ProbeProps {
@@ -167,5 +169,53 @@ describe('useTenantCurrency', () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(container.querySelector('[data-testid="currency"]')!.textContent).toBe('USD');
+  });
+
+  // Task #1137: the post-signup currency handoff is opt-in via a one-shot
+  // sessionStorage flag set by the public Signup form. These cases pin
+  // that the flag is consumed exactly once on the first post-signup
+  // render and never leaks to later logins or unrelated tenants.
+  it('seeds the first render from the post-signup sessionStorage flag', async () => {
+    loginAs();
+    tenantResponse = { tenant: { id: 'tenant-1', billing_currency: 'eur' } };
+    sessionStorage.setItem('qvo:signup_billing_currency', 'EUR');
+
+    const { container } = await renderProbe({});
+
+    // First render — query has not resolved yet, but the seeded value
+    // means we never render USD.
+    expect(container.querySelector('[data-testid="currency"]')!.textContent).toBe('EUR');
+    // Flag is consumed on read so it does not leak into a subsequent login.
+    expect(sessionStorage.getItem('qvo:signup_billing_currency')).toBeNull();
+  });
+
+  it('ignores public-display localStorage for non-signup sessions (no wrong-currency flash)', async () => {
+    loginAs();
+    // The public marketing localStorage key may carry a totally
+    // different value (e.g. a previous shared-device visitor); it must
+    // NOT influence the in-app tenant currency.
+    localStorage.setItem('qvo:display_currency', 'JPY');
+    tenantResponse = { tenant: { id: 'tenant-1', billing_currency: 'eur' } };
+
+    const { container } = await renderProbe({});
+
+    // Before the API resolves the hook must report a safe default,
+    // not the unrelated marketing-side localStorage value.
+    expect(container.querySelector('[data-testid="currency"]')!.textContent).toBe('USD');
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="currency"]')!.textContent).toBe('EUR'),
+    );
+  });
+
+  it('ignores an unsupported sessionStorage code', async () => {
+    loginAs();
+    sessionStorage.setItem('qvo:signup_billing_currency', 'XYZ');
+    tenantResponse = { tenant: { id: 'tenant-1', billing_currency: 'eur' } };
+
+    const { container } = await renderProbe({});
+
+    expect(container.querySelector('[data-testid="currency"]')!.textContent).toBe('USD');
+    expect(sessionStorage.getItem('qvo:signup_billing_currency')).toBeNull();
   });
 });

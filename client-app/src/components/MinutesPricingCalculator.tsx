@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react';
 import { Calculator, Sparkles, MessageSquare } from 'lucide-react';
 import { formatDollars } from '../lib/formatCurrency';
 import {
+  DEFAULT_DISPLAY_CURRENCY,
+  formatPublicPrice,
+  isApproximateCurrency,
+} from '../lib/displayCurrency';
+import {
   ANNUAL_DISCOUNT,
   PLAN_CATALOG,
   PLAN_TIERS,
@@ -80,12 +85,18 @@ const MIN_MINUTES = 100;
 const MAX_MINUTES = 25_000;
 const STEP_MINUTES = 100;
 
-function formatCurrency(value: number): string {
-  return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+function formatCurrency(value: number, currency: string = DEFAULT_DISPLAY_CURRENCY): string {
+  if (currency === DEFAULT_DISPLAY_CURRENCY) {
+    return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  return formatPublicPrice(value, currency, { fractionDigits: 0 });
 }
 
-function formatPerMinute(value: number): string {
-  return formatDollars(value, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+function formatPerMinute(value: number, currency: string = DEFAULT_DISPLAY_CURRENCY): string {
+  if (currency === DEFAULT_DISPLAY_CURRENCY) {
+    return formatDollars(value, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  }
+  return formatPublicPrice(value, currency, { fractionDigits: 3, precise: true });
 }
 
 /**
@@ -94,8 +105,11 @@ function formatPerMinute(value: number): string {
  * per-minute formatter — a tenant on a $0.0075/msg negotiated rate
  * must see four meaningful digits, not "$0.008" rounded.
  */
-function formatPerMessage(value: number): string {
-  return formatDollars(value, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+function formatPerMessage(value: number, currency: string = DEFAULT_DISPLAY_CURRENCY): string {
+  if (currency === DEFAULT_DISPLAY_CURRENCY) {
+    return formatDollars(value, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  }
+  return formatPublicPrice(value, currency, { fractionDigits: 4, precise: true });
 }
 
 export function calculateMonthlyCost(tier: Pick<CalculatorTier, 'basePrice' | 'includedMinutes' | 'overageRate'>, minutes: number): number {
@@ -135,13 +149,24 @@ export interface MinutesPricingCalculatorProps {
    * default and renders a "Live Stripe rate" badge.
    */
   currentPlanOverride?: CurrentPlanOverride;
+  /**
+   * Display currency code for the public marketing surface (e.g. `EUR`,
+   * `GBP`). Defaults to `USD` for the in-app callers (Billing,
+   * BillingEstimator) so existing behaviour is preserved. When set to
+   * a non-USD code, every figure is FX-converted via
+   * `client-app/src/lib/displayCurrency` and an "approximate
+   * conversion" disclaimer is shown alongside the cards.
+   */
+  displayCurrency?: string;
 }
 
 export default function MinutesPricingCalculator({
   billingPeriod: billingPeriodProp,
   onBillingPeriodChange,
   currentPlanOverride,
+  displayCurrency = DEFAULT_DISPLAY_CURRENCY,
 }: MinutesPricingCalculatorProps = {}) {
+  const isApprox = isApproximateCurrency(displayCurrency);
   const [minutes, setMinutes] = useState<number>(1_500);
   const [billingPeriodInternal, setBillingPeriodInternal] = useState<BillingPeriod>('monthly');
   const isControlled = billingPeriodProp !== undefined;
@@ -385,9 +410,10 @@ export default function MinutesPricingCalculator({
                 <div className="flex items-baseline gap-1">
                   <span
                     data-testid={`calc-monthly-${tier.key}`}
+                    data-display-currency={displayCurrency}
                     className="font-display text-3xl font-bold text-text-primary"
                   >
-                    {formatCurrency(monthlyCost)}
+                    {isApprox && '≈ '}{formatCurrency(monthlyCost, displayCurrency)}
                   </span>
                   <span className="text-xs text-text-primary/50 font-body">/mo est.</span>
                 </div>
@@ -395,7 +421,7 @@ export default function MinutesPricingCalculator({
                   data-testid={`calc-effective-${tier.key}`}
                   className="text-sm text-text-primary/70 font-body mt-1"
                 >
-                  {minutes > 0 ? formatPerMinute(effectiveRate) : '—'} effective per minute
+                  {minutes > 0 ? formatPerMinute(effectiveRate, displayCurrency) : '—'} effective per minute
                 </div>
                 {sourcedFromStripe && (
                   <div
@@ -411,7 +437,7 @@ export default function MinutesPricingCalculator({
                     data-testid={`calc-savings-${tier.key}`}
                     className="text-[11px] text-success font-body font-medium mt-1.5"
                   >
-                    Saves {formatCurrency(annualSavings)}/yr vs monthly billing
+                    Saves {formatCurrency(annualSavings, displayCurrency)}/yr vs monthly billing
                   </div>
                 )}
               </div>
@@ -424,14 +450,14 @@ export default function MinutesPricingCalculator({
                     className="text-text-primary font-medium"
                   >
                     {sourcedFromStripe ? (
-                      <span>{formatCurrency(effectiveBase)}/mo</span>
+                      <span>{formatCurrency(effectiveBase, displayCurrency)}/mo</span>
                     ) : isAnnual ? (
                       <span className="inline-flex items-baseline gap-1.5">
-                        <span className="line-through text-text-primary/40">{formatCurrency(tier.basePrice)}</span>
-                        <span>{formatCurrency(effectiveBase)}/mo</span>
+                        <span className="line-through text-text-primary/40">{formatCurrency(tier.basePrice, displayCurrency)}</span>
+                        <span>{formatCurrency(effectiveBase, displayCurrency)}/mo</span>
                       </span>
                     ) : (
-                      <span>{formatCurrency(tier.basePrice)}/mo</span>
+                      <span>{formatCurrency(tier.basePrice, displayCurrency)}/mo</span>
                     )}
                   </dd>
                 </div>
@@ -441,13 +467,13 @@ export default function MinutesPricingCalculator({
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Overage rate</dt>
-                  <dd className="text-text-primary font-medium">{formatPerMinute(effectiveOverageRate)}/min</dd>
+                  <dd className="text-text-primary font-medium">{formatPerMinute(effectiveOverageRate, displayCurrency)}/min</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-primary/50">Overage this month</dt>
                   <dd className={`font-medium ${overageMinutes > 0 ? 'text-danger' : 'text-success'}`}>
                     {overageMinutes > 0
-                      ? `${overageMinutes.toLocaleString()} min · ${formatCurrency(overageCost)}`
+                      ? `${overageMinutes.toLocaleString()} min · ${formatCurrency(overageCost, displayCurrency)}`
                       : 'None'}
                   </dd>
                 </div>
@@ -481,7 +507,7 @@ export default function MinutesPricingCalculator({
               data-testid="calc-sms-rate-value"
               className="text-sm font-display font-semibold text-text-primary"
             >
-              {formatPerMessage(smsRate)}/msg
+              {isApprox && '≈ '}{formatPerMessage(smsRate, displayCurrency)}/msg
             </span>
             {smsFromStripe && (
               <span
@@ -496,10 +522,18 @@ export default function MinutesPricingCalculator({
         </div>
       )}
 
-      <div className="px-6 lg:px-8 py-4 bg-surface-secondary/40 border-t border-border-strong/30 text-xs text-text-primary/60 font-body">
+      <div
+        className="px-6 lg:px-8 py-4 bg-surface-secondary/40 border-t border-border-strong/30 text-xs text-text-primary/60 font-body"
+        data-testid="calc-disclaimer"
+      >
         {isAnnual
           ? 'Annual billing saves 20% off the base plan. Estimates assume the same per-minute usage every month — overage is still billed monthly at the published rate.'
           : 'Estimates use the same per-minute rates billed by your usage meter. Only active conversation time counts toward AI minutes — hold time, ringing, and processing are not billed.'}
+        {isApprox && (
+          <span data-testid="calc-fx-disclaimer" className="block mt-1.5 text-text-primary/50">
+            Prices shown in {displayCurrency} are an approximate conversion from the published USD list price for reference only. Final invoicing happens in your billing currency.
+          </span>
+        )}
       </div>
     </div>
   );

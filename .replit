@@ -64,6 +64,18 @@ author = "agent"
 task = "workflow.run"
 args = "Platform Dev"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "lint"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "typecheck"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "unit"
+
 [[workflows.workflow]]
 name = "Platform Dev"
 author = "agent"
@@ -75,6 +87,39 @@ outputType = "webview"
 task = "shell.exec"
 args = "bash scripts/start-platform-dev.sh"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "lint"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run lint -- client-app/src/lib/displayCurrency.ts client-app/src/components/DisplayCurrencyPicker.tsx client-app/src/components/MinutesPricingCalculator.tsx client-app/src/components/ROICalculator.tsx client-app/src/pages/public/Pricing.tsx client-app/src/pages/public/Signup.tsx client-app/src/pages/public/Product.tsx server/admin-api/routes/auth.ts client-app/src/hooks/useTenantCurrency.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "typecheck"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run typecheck:client"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "unit"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx vitest run tests/billing/displayCurrency.test.ts tests/billing/signupBillingCurrency.test.ts tests/marketing/pricingDisplayCurrency.test.tsx 2>&1 | tail -50"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [userenv]
 

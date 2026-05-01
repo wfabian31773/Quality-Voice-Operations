@@ -5,9 +5,19 @@ import { trackCTAClick, trackConversionEvent } from '../lib/analytics';
 import { CTA } from '../lib/analyticsCtas';
 import { CONVERSION_STAGE } from '../lib/analyticsLabels';
 import { formatDollars } from '../lib/formatCurrency';
+import {
+  DEFAULT_DISPLAY_CURRENCY,
+  convertUsd,
+  convertUsdRate,
+  isApproximateCurrency,
+} from '../lib/displayCurrency';
 
 interface ROICalculatorProps {
   vertical?: string;
+  // Display currency for output. Hourly-cost input is treated as
+  // already-native to this currency; QVO list values are converted
+  // from USD before the savings math runs.
+  displayCurrency?: string;
 }
 
 const DEFAULTS: Record<string, { calls: number; handleTime: number; hourlyRate: number }> = {
@@ -21,7 +31,31 @@ const DEFAULTS: Record<string, { calls: number; handleTime: number; hourlyRate: 
 const QVO_COST_PER_MINUTE = 0.12;
 const QVO_MONTHLY_BASE = 99;
 
-export default function ROICalculator({ vertical }: ROICalculatorProps) {
+export default function ROICalculator({
+  vertical,
+  displayCurrency = DEFAULT_DISPLAY_CURRENCY,
+}: ROICalculatorProps) {
+  const isApprox = isApproximateCurrency(displayCurrency);
+  const currencySymbol = (() => {
+    try {
+      const parts = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: displayCurrency,
+        minimumFractionDigits: 0,
+      }).formatToParts(0);
+      return parts.find((p) => p.type === 'currency')?.value ?? '$';
+    } catch {
+      return '$';
+    }
+  })();
+  const qvoCostPerMinute =
+    displayCurrency === DEFAULT_DISPLAY_CURRENCY
+      ? QVO_COST_PER_MINUTE
+      : convertUsdRate(QVO_COST_PER_MINUTE, displayCurrency);
+  const qvoMonthlyBase =
+    displayCurrency === DEFAULT_DISPLAY_CURRENCY
+      ? QVO_MONTHLY_BASE
+      : convertUsd(QVO_MONTHLY_BASE, displayCurrency);
   const defaults = vertical && DEFAULTS[vertical] ? DEFAULTS[vertical] : { calls: 500, handleTime: 5, hourlyRate: 18 };
 
   const [step, setStep] = useState(0);
@@ -42,8 +76,8 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
     const currentMonthlyCost = totalHoursPerMonth * agentHourlyCost;
     const currentCostPerCall = monthlyCallVolume > 0 ? currentMonthlyCost / monthlyCallVolume : 0;
     const residualHumanCost = currentMonthlyCost * (1 - aiHandleFraction);
-    const qvoUsageCost = aiMinutesPerMonth * QVO_COST_PER_MINUTE;
-    const qvoMonthlyCost = qvoUsageCost + QVO_MONTHLY_BASE + residualHumanCost;
+    const qvoUsageCost = aiMinutesPerMonth * qvoCostPerMinute;
+    const qvoMonthlyCost = qvoUsageCost + qvoMonthlyBase + residualHumanCost;
     const monthlySavings = Math.max(0, currentMonthlyCost - qvoMonthlyCost);
     const annualSavings = monthlySavings * 12;
     const annualROI = qvoMonthlyCost > 0 ? ((monthlySavings * 12) / (qvoMonthlyCost * 12)) * 100 : 0;
@@ -60,7 +94,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
       totalMinutesPerMonth,
       aiMinutesPerMonth,
     };
-  }, [monthlyCallVolume, avgHandleTime, agentHourlyCost, aiHandleRate]);
+  }, [monthlyCallVolume, avgHandleTime, agentHourlyCost, aiHandleRate, qvoCostPerMinute, qvoMonthlyBase]);
 
   const handleEmailReport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +109,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
           email: emailReport.email,
           company: emailReport.company || null,
           vertical: vertical || null,
+          displayCurrency,
           inputs: { monthlyCallVolume, avgHandleTime, agentHourlyCost, aiHandleRate },
           results,
         }),
@@ -91,7 +126,21 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
     }
   };
 
-  const formatCurrency = (value: number) => formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const formatCurrency = (value: number) => {
+    if (displayCurrency === DEFAULT_DISPLAY_CURRENCY) {
+      return formatDollars(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: displayCurrency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(value);
+    } catch {
+      return `${currencySymbol}${Math.round(value).toLocaleString()}`;
+    }
+  };
 
   const steps = [
     {
@@ -151,7 +200,7 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-text-secondary">Hourly rate</span>
-            <span className="text-2xl font-display font-bold text-text-primary">${agentHourlyCost}/hr</span>
+            <span className="text-2xl font-display font-bold text-text-primary">{currencySymbol}{agentHourlyCost}/hr</span>
           </div>
           <input
             type="range"
@@ -163,8 +212,8 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
             className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
           <div className="flex justify-between text-xs text-text-secondary">
-            <span>$10/hr</span>
-            <span>$50/hr</span>
+            <span>{currencySymbol}10/hr</span>
+            <span>{currencySymbol}50/hr</span>
           </div>
           <p className="text-xs text-text-secondary pt-2 border-t border-border">
             Today this works out to about <span className="font-semibold text-text-primary">{formatCurrency((monthlyCallVolume * avgHandleTime / 60) * agentHourlyCost / Math.max(1, monthlyCallVolume))}</span> per call.
@@ -284,9 +333,23 @@ export default function ROICalculator({ vertical }: ROICalculatorProps) {
                 </div>
                 <div className="border-t border-border pt-3 flex justify-between text-sm font-semibold">
                   <span className="text-text-primary">Annual savings</span>
-                  <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(results.annualSavings)}/year</span>
+                  <span
+                    className="text-emerald-600 dark:text-emerald-400"
+                    data-testid="roi-annual-savings"
+                    data-display-currency={displayCurrency}
+                  >
+                    {formatCurrency(results.annualSavings)}/year
+                  </span>
                 </div>
               </div>
+              {isApprox && (
+                <p
+                  data-testid="roi-fx-disclaimer"
+                  className="mt-4 text-[11px] text-text-primary/50 font-body"
+                >
+                  QVO list prices shown in {displayCurrency} are an approximate conversion from USD. Final invoicing happens in your billing currency.
+                </p>
+              )}
             </div>
 
             <div className="bg-surface-secondary/60 border border-border-strong/30 rounded-xl p-5 mb-6">

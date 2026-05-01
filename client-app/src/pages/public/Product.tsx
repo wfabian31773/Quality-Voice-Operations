@@ -13,6 +13,11 @@ import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import { trackPageView, trackCTAClick } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
+import {
+  DEFAULT_DISPLAY_CURRENCY,
+  convertUsd,
+  useDisplayCurrency,
+} from '../../lib/displayCurrency';
 import WorkflowDiagram, {
   genericWorkflowSteps,
   healthcareWorkflow,
@@ -312,6 +317,17 @@ function SecuritySection() {
 }
 
 export default function Product() {
+  const [displayCurrency] = useDisplayCurrency();
+  const productLowUsd = 99;
+  const productHighUsd = 999;
+  const productLow =
+    displayCurrency === DEFAULT_DISPLAY_CURRENCY
+      ? productLowUsd
+      : convertUsd(productLowUsd, displayCurrency);
+  const productHigh =
+    displayCurrency === DEFAULT_DISPLAY_CURRENCY
+      ? productHighUsd
+      : convertUsd(productHighUsd, displayCurrency);
   const { t } = useTranslation('marketing');
 
   useEffect(() => {
@@ -341,9 +357,9 @@ export default function Product() {
     brand: { '@type': 'Organization', name: 'QVO' },
     offers: {
       '@type': 'AggregateOffer',
-      priceCurrency: 'USD',
-      lowPrice: '99',
-      highPrice: '999',
+      priceCurrency: displayCurrency,
+      lowPrice: String(productLow),
+      highPrice: String(productHigh),
       offerCount: '3',
     },
   };

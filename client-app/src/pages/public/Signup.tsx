@@ -13,6 +13,14 @@ import { CTA } from '../../lib/analyticsCtas';
 import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 import { ANNUAL_DISCOUNT, type BillingPeriod } from '../../components/MinutesPricingCalculator';
 import { formatDollars } from '../../lib/formatCurrency';
+import {
+  DEFAULT_DISPLAY_CURRENCY,
+  formatPublicPrice,
+  isApproximateCurrency,
+  toBillingCurrencyCode,
+  useDisplayCurrency,
+} from '../../lib/displayCurrency';
+import DisplayCurrencyPicker from '../../components/DisplayCurrencyPicker';
 
 const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
 
@@ -32,6 +40,14 @@ export default function Signup() {
   const captchaRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [displayCurrency] = useDisplayCurrency();
+  const isApprox = isApproximateCurrency(displayCurrency);
+  const formatSignupPrice = (usd: number) => {
+    if (displayCurrency === DEFAULT_DISPLAY_CURRENCY) {
+      return formatDollars(usd, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    return formatPublicPrice(usd, displayCurrency, { fractionDigits: 0 });
+  };
 
   const computePrice = (tier: 'starter' | 'pro' | 'enterprise') => {
     const monthly = getPlanMonthlyPriceWholeDollars(tier);
@@ -130,11 +146,21 @@ export default function Signup() {
         password,
         plan,
         interval,
+        billingCurrency: toBillingCurrencyCode(displayCurrency),
         captchaToken: captchaToken || undefined,
         visitorId: getVisitorId(),
       });
       if (res.token) {
         setToken(res.token);
+      }
+      try {
+        sessionStorage.setItem(
+          'qvo:signup_billing_currency',
+          toBillingCurrencyCode(displayCurrency),
+        );
+      } catch {
+        // sessionStorage may be unavailable (private mode); the
+        // post-signup screen will fall back to /tenants/me.
       }
       trackSignupConversion(plan, res.checkoutUrl ? SIGNUP_STEP.CHECKOUT : SIGNUP_STEP.ONBOARDING);
       trackConversionEvent(CONVERSION_STAGE.SIGNUP_COMPLETED, '/signup', { plan, interval });
@@ -288,12 +314,12 @@ export default function Signup() {
                       </button>
                     </div>
                   </div>
+                  <div className="flex justify-end mb-2">
+                    <DisplayCurrencyPicker testId="signup-display-currency" ariaLabel="Display prices in" />
+                  </div>
                   <div role="group" aria-labelledby="signup-plan-label" className="grid grid-cols-3 gap-2">
                     {plans.map((p) => {
-                      const annualSavingsFormatted = formatDollars(p.annualSavings, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      });
+                      const annualSavingsFormatted = formatSignupPrice(p.annualSavings);
                       return (
                         <button
                           key={p.key}
@@ -312,7 +338,13 @@ export default function Signup() {
                             </span>
                           )}
                           <span className="block text-sm font-semibold text-text-primary">{p.name}</span>
-                          <span className="block text-xs text-text-primary/60 mt-0.5">${p.price}{t('auth.per_month_short')}</span>
+                          <span
+                            className="block text-xs text-text-primary/60 mt-0.5"
+                            data-testid={`signup-plan-${p.key}-price`}
+                            data-display-currency={displayCurrency}
+                          >
+                            {isApprox && '≈ '}{formatSignupPrice(p.price)}{t('auth.per_month_short')}
+                          </span>
                           {isAnnual && (
                             <>
                               <span

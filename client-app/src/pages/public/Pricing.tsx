@@ -24,6 +24,13 @@ import {
   type PlanTier,
 } from '../../../../shared/billing/planCatalog';
 import { formatDollars } from '../../lib/formatCurrency';
+import {
+  DEFAULT_DISPLAY_CURRENCY,
+  formatPublicPrice,
+  isApproximateCurrency,
+  useDisplayCurrency,
+} from '../../lib/displayCurrency';
+import DisplayCurrencyPicker from '../../components/DisplayCurrencyPicker';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
 
@@ -314,11 +321,15 @@ function formatOverageRate(ratePerMinute: number): string {
   return `${formatDollars(ratePerMinute)}/min`;
 }
 
-function formatPlanMonthlyPrice(tier: 'starter' | 'pro' | 'enterprise'): string {
-  return formatDollars(getPlanMonthlyPriceWholeDollars(tier), {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
+function formatPlanMonthlyPrice(
+  tier: 'starter' | 'pro' | 'enterprise',
+  currency: string = DEFAULT_DISPLAY_CURRENCY,
+): string {
+  const usd = getPlanMonthlyPriceWholeDollars(tier);
+  if (currency === DEFAULT_DISPLAY_CURRENCY) {
+    return formatDollars(usd, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  return formatPublicPrice(usd, currency, { fractionDigits: 0 });
 }
 
 interface Feature {
@@ -569,6 +580,14 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
 }
 
 export default function Pricing() {
+  const [displayCurrency] = useDisplayCurrency();
+  const isApprox = isApproximateCurrency(displayCurrency);
+  const formatPriceForCurrency = (usd: number) => {
+    if (displayCurrency === DEFAULT_DISPLAY_CURRENCY) {
+      return formatDollars(usd, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    return formatPublicPrice(usd, displayCurrency, { fractionDigits: 0 });
+  };
   const { t } = useTranslation('marketing');
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const isAnnual = billingPeriod === 'annual';
@@ -724,7 +743,10 @@ export default function Pricing() {
       {
         '@type': 'Question',
         name: 'How much does QVO cost?',
-        acceptedAnswer: { '@type': 'Answer', text: `QVO offers three plans: Starter at ${formatPlanMonthlyPrice('starter')}/month, Pro at ${formatPlanMonthlyPrice('pro')}/month, and Enterprise at ${formatPlanMonthlyPrice('enterprise')}/month. All plans include a 14-day free trial.` },
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `QVO offers three plans: Starter at ${formatPlanMonthlyPrice('starter', displayCurrency)}/month, Pro at ${formatPlanMonthlyPrice('pro', displayCurrency)}/month, and Enterprise at ${formatPlanMonthlyPrice('enterprise', displayCurrency)}/month. All plans include a 14-day free trial.${isApprox ? ` Prices in ${displayCurrency} are approximate; final billing happens in your selected billing currency.` : ''}`,
+        },
       },
       {
         '@type': 'Question',
@@ -743,7 +765,7 @@ export default function Pricing() {
     <div>
       <SEO
         title={t('pricing.seo_title')}
-        description={t('pricing.seo_description', { starter: formatPlanMonthlyPrice('starter') })}
+        description={t('pricing.seo_description', { starter: formatPlanMonthlyPrice('starter', displayCurrency) })}
         canonicalPath="/pricing"
         structuredData={faqSchema}
       />
@@ -769,7 +791,7 @@ export default function Pricing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
           <div className="max-w-5xl mx-auto mb-20">
-            <div className="flex justify-center mb-8">
+            <div className="flex flex-wrap items-center justify-center gap-4 mb-8">
               <div
                 role="group"
                 aria-label="Billing period"
@@ -810,6 +832,7 @@ export default function Pricing() {
                   </span>
                 </button>
               </div>
+              <DisplayCurrencyPicker testId="pricing-display-currency" ariaLabel="Display prices in" />
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -822,10 +845,7 @@ export default function Pricing() {
               // consistent with the strikethrough/displayed price pair on
               // the same card.
               const annualSavingsDollars = (monthlyPrice - annualMonthlyPrice) * 12;
-              const annualSavingsFormatted = formatDollars(annualSavingsDollars, {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              });
+              const annualSavingsFormatted = formatPriceForCurrency(annualSavingsDollars);
               const signupHref = `/signup?plan=${tier.key}${isAnnual ? '&interval=annual' : ''}`;
               return (
               <div
@@ -861,14 +881,15 @@ export default function Pricing() {
                 <div className="mb-2">
                   {isAnnual && (
                     <div className="text-xs text-text-primary/40 font-body line-through" data-testid={`pricing-tier-${tier.key}-monthly-price`}>
-                      {formatDollars(monthlyPrice, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{t('pricing.tier_card.per_month')}
+                      {formatPriceForCurrency(monthlyPrice)}{t('pricing.tier_card.per_month')}
                     </div>
                   )}
                   <span
                     data-testid={`pricing-tier-${tier.key}-price`}
+                    data-display-currency={displayCurrency}
                     className="font-display text-5xl font-bold text-text-primary"
                   >
-                    {formatDollars(displayedPrice, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    {isApprox && '≈ '}{formatPriceForCurrency(displayedPrice)}
                   </span>
                   <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
                 </div>
@@ -933,6 +954,7 @@ export default function Pricing() {
               billingPeriod={billingPeriod}
               onBillingPeriodChange={setBillingPeriod}
               currentPlanOverride={currentPlanOverride}
+              displayCurrency={displayCurrency}
             />
           </div>
           </RevealSection>
@@ -1033,7 +1055,7 @@ export default function Pricing() {
             <h2 className="font-display text-2xl font-bold text-text-primary mb-3">{t('pricing.roi.title')}</h2>
             <p className="text-slate-600">{t('pricing.roi.subtitle')}</p>
           </div>
-          <ROICalculator />
+          <ROICalculator displayCurrency={displayCurrency} />
         </div>
       </section>
 
