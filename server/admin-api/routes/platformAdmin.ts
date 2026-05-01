@@ -1639,22 +1639,43 @@ router.get(
 // Trailing-30-day funnel for the BillingEstimator recommendation
 // banner. Counts are sourced from `billing_recommendation_events`:
 // impressions/clicks come from the tenant-facing route, switch_completed
-// is written by the Stripe webhook for server-attributed conversions.
+// is written for two server-attributed sources:
+//   * the Stripe webhook for upgrade checkouts (metadata.source =
+//     'stripe_webhook'), and
+//   * the schedule-downgrade flow when an admin/tenant accepts the
+//     recommendation banner's downgrade CTA (metadata.source =
+//     'schedule_downgrade'). Downgrades skip Checkout entirely, so we
+//     must not filter on `metadata.source` or `stripeSessionId` —
+//     doing so would silently drop the downgrade arm and under-count
+//     the banner's realised savings.
 //
 // In addition to the global funnel we expose:
 //   * `byRecommendedTier` — per-recommended-tier (starter / pro / enterprise)
 //     impressions, clicks, completed switches, and the realised
 //     `monthly_savings_cents` sum for completed switches. This lets admins
 //     see *which* tier the banner is actually moving MRR for.
+//   * `byDirection` — funnel split into "upgrade" (current → higher tier),
+//     "downgrade" (current → lower tier), and "lateral" (same tier, e.g.
+//     the annual-only pitch). Lets Sales / Finance see how much of the
+//     banner's realised MRR impact came from saving customers on a
+//     downgrade vs converting upgrades, since both arms now feed the
+//     same table.
 //   * `switchPairs` — completed-switch counts and savings broken down by
 //     (current_tier → recommended_tier) so the admin can see e.g.
 //     "12 of 18 completed switches were Pro → Starter, $4.2k/mo saved".
 //   * `totalMonthlySavingsCents` — sum of `monthly_savings_cents` across
-//     every `switch_completed` row in the window.
+//     every `switch_completed` row in the window — i.e. the "monthly
+//     savings unlocked" metric across upgrade + downgrade arms.
 //   * `weeklyTrend` — completed-switch count and realised savings bucketed
 //     into the trailing N ISO weeks per recommended tier.
 const RECOMMENDATION_TIERS = ['starter', 'pro', 'enterprise'] as const;
 type RecommendationTier = (typeof RECOMMENDATION_TIERS)[number];
+
+// Direction (upgrade / downgrade / lateral) is derived inline in the
+// `byDirection` SQL via an explicit CASE on tier pairs. We deliberately
+// do not maintain a parallel TS rank constant here because the SQL is
+// the single source of truth for that mapping — keeping a duplicate
+// would risk drift if the tier taxonomy changes.
 
 // Order drives dashboard row order; tier-switch first since every
 // pre-migration row falls into that bucket.
@@ -1666,6 +1687,18 @@ const isRecommendationPitch = (value: unknown): value is RecommendationPitch =>
 const isRecommendationTier = (value: unknown): value is RecommendationTier =>
   typeof value === 'string' &&
   (RECOMMENDATION_TIERS as readonly string[]).includes(value);
+
+// Order drives dashboard row order; upgrade first because it's the
+// historical default arm, downgrade second so the "savings unlocked"
+// row sits next to it, lateral last since it's only meaningful for
+// the annual-only pitch.
+const RECOMMENDATION_DIRECTIONS = ['upgrade', 'downgrade', 'lateral'] as const;
+type RecommendationDirection = (typeof RECOMMENDATION_DIRECTIONS)[number];
+const isRecommendationDirection = (
+  value: unknown,
+): value is RecommendationDirection =>
+  typeof value === 'string' &&
+  (RECOMMENDATION_DIRECTIONS as readonly string[]).includes(value);
 const RECOMMENDATION_TREND_WEEKS = 12;
 
 router.get(
@@ -1851,6 +1884,95 @@ router.get(
         monthlySavingsCents: pitchIndex.get(pitch)?.monthlySavingsCents ?? 0,
       }));
 
+      // Funnel split by switch *direction* (upgrade / downgrade /
+      // lateral). The downgrade arm now writes `switch_completed` rows
+      // from `schedule_downgrade` (planChange.ts) alongside the upgrade
+      // arm's Stripe webhook attribution, so a single direction-blind
+      // total no longer tells Sales / Finance the whole story —
+      // aggregating both into one bucket hid which arm was actually
+      // moving MRR.
+      //
+      // Direction is derived in SQL from (current_tier, recommended_tier)
+      // rather than from `metadata->>'source'`: the downgrade arm
+      // identifies itself with `source = 'schedule_downgrade'`, but
+      // tier rank is the source of truth for what the banner actually
+      // pitched (and is what the UI labels rows by anyway). Pre-existing
+      // tier-rank pairs that don't match a known direction (e.g. a
+      // legacy stale tier name) get filtered to `unknown` and dropped
+      // when we whitelist below — same defensive pattern used by the
+      // per-tier breakdown above.
+      const { rows: directionRows } = await withPrivilegedClient(
+        async (client) => {
+          return client.query(
+            `SELECT
+               CASE
+                 WHEN current_tier = recommended_tier THEN 'lateral'
+                 WHEN current_tier = 'starter'
+                      AND recommended_tier IN ('pro', 'enterprise')
+                   THEN 'upgrade'
+                 WHEN current_tier = 'pro'
+                      AND recommended_tier = 'enterprise'
+                   THEN 'upgrade'
+                 WHEN current_tier = 'enterprise'
+                      AND recommended_tier IN ('pro', 'starter')
+                   THEN 'downgrade'
+                 WHEN current_tier = 'pro'
+                      AND recommended_tier = 'starter'
+                   THEN 'downgrade'
+                 ELSE 'unknown'
+               END AS direction,
+               COUNT(*) FILTER (WHERE event_type = 'impression')::bigint
+                 AS impressions,
+               COUNT(*) FILTER (WHERE event_type = 'click')::bigint
+                 AS clicks,
+               COUNT(*) FILTER (WHERE event_type = 'switch_completed')::bigint
+                 AS completed_switches,
+               COALESCE(
+                 SUM(monthly_savings_cents)
+                   FILTER (WHERE event_type = 'switch_completed'),
+                 0
+               )::bigint AS monthly_savings_cents
+               FROM billing_recommendation_events
+              WHERE created_at >= NOW() - INTERVAL '30 days'
+                AND event_type IN ('impression', 'click', 'switch_completed')
+              GROUP BY direction`,
+          );
+        },
+      );
+      const directionIndex = new Map<RecommendationDirection, {
+        impressions: number;
+        clicks: number;
+        completedSwitches: number;
+        monthlySavingsCents: number;
+      }>();
+      for (const raw of directionRows as Array<{
+        direction: string;
+        impressions: string;
+        clicks: string;
+        completed_switches: string;
+        monthly_savings_cents: string;
+      }>) {
+        if (!isRecommendationDirection(raw.direction)) continue;
+        directionIndex.set(raw.direction, {
+          impressions: Number(raw.impressions) || 0,
+          clicks: Number(raw.clicks) || 0,
+          completedSwitches: Number(raw.completed_switches) || 0,
+          monthlySavingsCents: Number(raw.monthly_savings_cents) || 0,
+        });
+      }
+      // Always emit the three known directions in a stable order so the
+      // dashboard renders a deterministic table even when one bucket is
+      // empty (e.g. no laterals before annual-only shipped).
+      const byDirection = RECOMMENDATION_DIRECTIONS.map((direction) => ({
+        direction,
+        impressions: directionIndex.get(direction)?.impressions ?? 0,
+        clicks: directionIndex.get(direction)?.clicks ?? 0,
+        completedSwitches:
+          directionIndex.get(direction)?.completedSwitches ?? 0,
+        monthlySavingsCents:
+          directionIndex.get(direction)?.monthlySavingsCents ?? 0,
+      }));
+
       // Per-tier weekly trend: dense (weeks × tiers) matrix so empty
       // buckets render as zeros instead of disappearing from the axis.
       // The events join is bounded on `created_at` and filtered to
@@ -1947,6 +2069,7 @@ router.get(
             : 0,
         byRecommendedTier,
         byPitch,
+        byDirection,
         switchPairs,
         weeklyTrend: {
           windowWeeks: trendWindowWeeks,

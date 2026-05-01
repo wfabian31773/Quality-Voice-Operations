@@ -490,6 +490,33 @@ describe('GET /platform/billing-recommendations', () => {
           rows: [{ tenants_clicked: '11', tenants_switched: '3' }],
         };
       }
+      if (/GROUP BY direction\b/i.test(s)) {
+        return {
+          rows: [
+            {
+              direction: 'upgrade',
+              impressions: '40',
+              clicks: '6',
+              completed_switches: '2',
+              monthly_savings_cents: '50000',
+            },
+            {
+              direction: 'downgrade',
+              impressions: '70',
+              clicks: '12',
+              completed_switches: '11',
+              monthly_savings_cents: '380000',
+            },
+            {
+              direction: 'lateral',
+              impressions: '10',
+              clicks: '0',
+              completed_switches: '1',
+              monthly_savings_cents: '40000',
+            },
+          ],
+        };
+      }
       return { rows: [], rowCount: 0 };
     });
 
@@ -549,6 +576,29 @@ describe('GET /platform/billing-recommendations', () => {
           clicks: 0,
           completedSwitches: 0,
           monthlySavingsCents: 0,
+        },
+      ],
+      byDirection: [
+        {
+          direction: 'upgrade',
+          impressions: 40,
+          clicks: 6,
+          completedSwitches: 2,
+          monthlySavingsCents: 50000,
+        },
+        {
+          direction: 'downgrade',
+          impressions: 70,
+          clicks: 12,
+          completedSwitches: 11,
+          monthlySavingsCents: 380000,
+        },
+        {
+          direction: 'lateral',
+          impressions: 10,
+          clicks: 0,
+          completedSwitches: 1,
+          monthlySavingsCents: 40000,
         },
       ],
       switchPairs: [
@@ -640,6 +690,29 @@ describe('GET /platform/billing-recommendations', () => {
         },
         {
           pitch: 'annual-only',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+      ],
+      byDirection: [
+        {
+          direction: 'upgrade',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+        {
+          direction: 'downgrade',
+          impressions: 0,
+          clicks: 0,
+          completedSwitches: 0,
+          monthlySavingsCents: 0,
+        },
+        {
+          direction: 'lateral',
           impressions: 0,
           clicks: 0,
           completedSwitches: 0,
@@ -767,6 +840,107 @@ describe('GET /platform/billing-recommendations', () => {
         monthlySavingsCents: 0,
       },
     ]);
+  });
+
+  it('splits the funnel by direction (upgrade / downgrade / lateral) and surfaces savings for both arms', async () => {
+    // Downgrade conversions are written from `schedule_downgrade`
+    // (planChange.ts), upgrade conversions from the Stripe webhook —
+    // both arms feed the same table and the dashboard must surface
+    // each direction's realised savings independently so Sales /
+    // Finance can see the downgrade arm's contribution to the
+    // banner's "monthly savings unlocked" total.
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (/GROUP BY direction\b/i.test(s)) {
+        return {
+          rows: [
+            {
+              direction: 'upgrade',
+              impressions: '20',
+              clicks: '4',
+              completed_switches: '2',
+              monthly_savings_cents: '50000',
+            },
+            {
+              direction: 'downgrade',
+              impressions: '50',
+              clicks: '10',
+              completed_switches: '8',
+              monthly_savings_cents: '420000',
+            },
+            {
+              direction: 'lateral',
+              impressions: '30',
+              clicks: '3',
+              completed_switches: '1',
+              monthly_savings_cents: '4400',
+            },
+            {
+              // Defensive: a row that doesn't map to a known
+              // direction (e.g. legacy / stale tier name) must not
+              // pollute the breakdown.
+              direction: 'unknown',
+              impressions: '99',
+              clicks: '99',
+              completed_switches: '99',
+              monthly_savings_cents: '999999',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.byDirection).toEqual([
+      {
+        direction: 'upgrade',
+        impressions: 20,
+        clicks: 4,
+        completedSwitches: 2,
+        monthlySavingsCents: 50000,
+      },
+      {
+        direction: 'downgrade',
+        impressions: 50,
+        clicks: 10,
+        completedSwitches: 8,
+        monthlySavingsCents: 420000,
+      },
+      {
+        direction: 'lateral',
+        impressions: 30,
+        clicks: 3,
+        completedSwitches: 1,
+        monthlySavingsCents: 4400,
+      },
+    ]);
+  });
+
+  it('SQL groups by a derived direction column anchored on tier rank, scoped to recommendation event types only', async () => {
+    // The downgrade arm is identified in writers by metadata.source,
+    // but the dashboard must derive direction from tier rank so
+    // pre-source rows still bucket correctly. Discount-flavored event
+    // types must be excluded so the discount funnel stays separate.
+    await request(buildPlatformAdminApp()).get('/platform/billing-recommendations');
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    const directionSqls = sqls.filter(
+      (s) => /billing_recommendation_events/i.test(s) && /GROUP BY direction\b/i.test(s),
+    );
+    expect(directionSqls.length).toBe(1);
+    const sql = directionSqls[0]!;
+    expect(sql).toMatch(/CASE/);
+    expect(sql).toMatch(/'upgrade'/);
+    expect(sql).toMatch(/'downgrade'/);
+    expect(sql).toMatch(/'lateral'/);
+    // Recommendation arm only — the discount funnel rolls up separately
+    // and would double-count if it leaked in here.
+    expect(sql).toMatch(/event_type IN\s*\(\s*'impression',\s*'click',\s*'switch_completed'\s*\)/);
+    expect(sql).toMatch(/NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i);
   });
 
   it('drops rows with non-whitelisted recommended_tier values from the per-tier breakdown', async () => {

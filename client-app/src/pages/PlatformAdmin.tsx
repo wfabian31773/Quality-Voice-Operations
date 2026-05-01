@@ -4386,6 +4386,17 @@ const RECOMMENDATION_TIERS_ORDER: readonly RecommendationTier[] = [
   'enterprise',
 ];
 
+// Switch direction emitted by the recommendation funnel endpoint.
+// Mirrors the server enum and order: upgrade first (historical default
+// arm), downgrade second (so the "savings unlocked" row sits next to
+// it), lateral last (only meaningful for the annual-only pitch).
+type RecommendationDirection = 'upgrade' | 'downgrade' | 'lateral';
+const RECOMMENDATION_DIRECTION_ORDER: readonly RecommendationDirection[] = [
+  'upgrade',
+  'downgrade',
+  'lateral',
+];
+
 interface RecommendationStatsShape {
   windowDays: number;
   impressions: number;
@@ -4405,6 +4416,16 @@ interface RecommendationStatsShape {
   }>;
   byPitch: Array<{
     pitch: 'tier-switch' | 'annual-only';
+    impressions: number;
+    clicks: number;
+    completedSwitches: number;
+    monthlySavingsCents: number;
+  }>;
+  // Funnel split by switch direction. Upgrade rows are server-attributed
+  // from the Stripe webhook; downgrade rows from the schedule-downgrade
+  // flow (no Checkout step) — same table, different writers.
+  byDirection: Array<{
+    direction: RecommendationDirection;
     impressions: number;
     clicks: number;
     completedSwitches: number;
@@ -4536,6 +4557,30 @@ function RecommendationBreakdownPanel({
         : 'platform_admin.recommendation_breakdown.pitch_tier_switch',
     );
 
+  // Direction segmentation (upgrade / downgrade / lateral). Both the
+  // upgrade webhook and the schedule-downgrade flow now write rows
+  // into the same table, so without this split the dashboard hides
+  // which arm of the funnel actually unlocked the realised savings.
+  const directionRowsByKey = new Map(
+    (stats?.byDirection ?? []).map((row) => [row.direction, row]),
+  );
+  const directionRows = RECOMMENDATION_DIRECTION_ORDER.map(
+    (direction) =>
+      directionRowsByKey.get(direction) ?? {
+        direction,
+        impressions: 0,
+        clicks: 0,
+        completedSwitches: 0,
+        monthlySavingsCents: 0,
+      },
+  );
+  const directionLabel = (direction: RecommendationDirection): string =>
+    adminT(`platform_admin.recommendation_breakdown.direction_${direction}`);
+  const upgradeRow = directionRowsByKey.get('upgrade');
+  const downgradeRow = directionRowsByKey.get('downgrade');
+  const upgradeSavings = upgradeRow?.monthlySavingsCents ?? 0;
+  const downgradeSavings = downgradeRow?.monthlySavingsCents ?? 0;
+
   const weeklyTrend = stats?.weeklyTrend;
   const trendWeeks = weeklyTrend?.weeks ?? [];
   const trendByTier = new Map(
@@ -4567,6 +4612,25 @@ function RecommendationBreakdownPanel({
                   },
                 )}
           </p>
+          {/* Sales / Finance care about the upgrade vs downgrade arm
+              split — the headline total combines both, but the
+              per-arm savings tell them where the realised MRR impact
+              actually came from. Hidden while loading so we don't
+              flash $0 splits before the data arrives. */}
+          {!loading && (
+            <p
+              className="text-xs text-text-muted mt-0.5"
+              data-testid="recommendation-savings-arms"
+            >
+              {adminT(
+                'platform_admin.recommendation_breakdown.savings_arms',
+                {
+                  upgrade: formatCents(upgradeSavings),
+                  downgrade: formatCents(downgradeSavings),
+                },
+              )}
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -4650,6 +4714,75 @@ function RecommendationBreakdownPanel({
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-5" data-testid="recommendation-direction-section">
+        <h3 className="text-sm font-semibold text-text-primary">
+          {adminT('platform_admin.recommendation_breakdown.direction_heading')}
+        </h3>
+        <p className="text-xs text-text-muted mt-0.5">
+          {adminT(
+            'platform_admin.recommendation_breakdown.direction_subtitle',
+          )}
+        </p>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
+                <th className="py-2 pr-4 font-medium">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_direction',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_impressions',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_clicks',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_completed',
+                  )}
+                </th>
+                <th className="py-2 pr-0 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.col_savings',
+                  )}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {directionRows.map((row) => (
+                <tr
+                  key={row.direction}
+                  data-testid={`recommendation-direction-row-${row.direction}`}
+                  className="border-b border-border last:border-b-0"
+                >
+                  <td className="py-2 pr-4 font-medium text-text-primary">
+                    {directionLabel(row.direction)}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                    {row.impressions}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                    {row.clicks}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-primary">
+                    {row.completedSwitches}
+                  </td>
+                  <td className="py-2 pr-0 text-right tabular-nums text-text-primary">
+                    {formatCents(row.monthlySavingsCents)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="mt-5">
@@ -5196,6 +5329,12 @@ export default function PlatformAdmin() {
               : adminT('platform_admin.stats.recommendation_sub', {
                   impressions: recommendationStats?.impressions ?? 0,
                   clicks: recommendationStats?.clicks ?? 0,
+                  // Savings unlocked across both upgrade + downgrade
+                  // arms — the headline number Sales / Finance asks
+                  // for. Falls back to $0/mo when the funnel is empty.
+                  savings: formatCents(
+                    recommendationStats?.totalMonthlySavingsCents ?? 0,
+                  ),
                 })
           }
           onClick={() => setShowRecommendationDetails((v) => !v)}
