@@ -35,6 +35,7 @@ interface FieldSchema {
   lockReason?: string;
   options?: { value: string; label: string }[];
   group: string;
+  groupTitle: string;
 }
 
 interface CustomizationSchema {
@@ -204,21 +205,27 @@ function StepCard({
 
 function CustomizationForm({
   installationId,
+  locale,
   onGreetingSaved,
 }: {
   installationId: string;
+  locale: string;
   onGreetingSaved: () => void;
 }) {
   const { t } = useTranslation();
+  // Locale is part of the cache key so a language switch refetches localized
+  // labels/lock reasons/group titles instead of reusing stale English copy.
   const { data, isLoading } = useQuery({
-    queryKey: ['customization-schema', installationId],
+    queryKey: ['customization-schema', installationId, locale],
     queryFn: () =>
       api.get<{
         schema: CustomizationSchema;
         currentValues: Record<string, unknown>;
         agentId: string;
         agentType: string;
-      }>(`/marketplace/installations/${installationId}/customization-schema`),
+      }>(
+        `/marketplace/installations/${installationId}/customization-schema?locale=${encodeURIComponent(locale)}`,
+      ),
   });
 
   const [form, setForm] = useState<Record<string, unknown>>({});
@@ -258,10 +265,34 @@ function CustomizationForm({
   if (!data) return null;
 
   const { schema } = data;
-  const allFields = [...schema.customizableFields, ...schema.lockedFields].sort((a, b) => {
-    const groupOrder = ['general', 'voice', 'workflow', 'escalation', 'knowledge'];
-    return groupOrder.indexOf(a.group) - groupOrder.indexOf(b.group);
+  const groupOrder = ['general', 'voice', 'workflow', 'escalation', 'knowledge'];
+  // Anything outside the known order sorts after it but is still rendered.
+  const groupRank = (g: string) => {
+    const idx = groupOrder.indexOf(g);
+    return idx === -1 ? groupOrder.length : idx;
+  };
+  const allFields = [...schema.customizableFields, ...schema.lockedFields].sort(
+    (a, b) => groupRank(a.group) - groupRank(b.group),
+  );
+
+  // Build sections in the canonical order, then append any extra groups that
+  // came back from the server (manifest-declared ad-hoc groups) so unknown
+  // values aren't silently dropped from the form.
+  const knownGroupSections = groupOrder.map((group) => {
+    const fields = allFields.filter((f) => f.group === group);
+    return { group, title: fields[0]?.groupTitle ?? group, fields };
   });
+  const knownGroupSet = new Set(groupOrder);
+  const extraGroups = Array.from(new Set(allFields.map((f) => f.group))).filter(
+    (g) => !knownGroupSet.has(g),
+  );
+  const extraGroupSections = extraGroups.map((group) => {
+    const fields = allFields.filter((f) => f.group === group);
+    return { group, title: fields[0]?.groupTitle ?? group, fields };
+  });
+  const fieldsByGroup = [...knownGroupSections, ...extraGroupSections].filter(
+    (g) => g.fields.length > 0,
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -397,8 +428,17 @@ function CustomizationForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {allFields.map(renderField)}
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {fieldsByGroup.map((group) => (
+        <section key={group.group} className="space-y-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {group.title}
+          </h3>
+          <div className="space-y-5">
+            {group.fields.map(renderField)}
+          </div>
+        </section>
+      ))}
 
       {error && (
         <div className="flex items-center gap-2 text-sm text-danger">
@@ -575,6 +615,7 @@ export default function PostInstallSetup() {
           {installationId && (
             <CustomizationForm
               installationId={installationId}
+              locale={checklistLocale}
               onGreetingSaved={handleGreetingSaved}
             />
           )}

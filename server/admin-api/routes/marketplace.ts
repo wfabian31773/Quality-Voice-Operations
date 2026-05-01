@@ -1057,6 +1057,7 @@ router.patch('/marketplace/installations/:id/checklist', requireAuth, requireRol
 router.get('/marketplace/installations/:id/customization-schema', requireAuth, async (req, res) => {
   const { tenantId } = req.user!;
   const installationId = req.params.id;
+  const locale = resolveChecklistLocale(req);
   const pool = getPlatformPool();
 
   try {
@@ -1077,7 +1078,7 @@ router.get('/marketplace/installations/:id/customization-schema', requireAuth, a
     }
 
     const configSchema = rows[0].config_schema as Record<string, unknown> | null;
-    const schema = buildCustomizationSchema(configSchema);
+    const schema = buildCustomizationSchema(configSchema, locale);
     const agentMeta = (rows[0].metadata as Record<string, unknown>) ?? {};
 
     return res.json({
