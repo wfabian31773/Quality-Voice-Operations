@@ -975,6 +975,7 @@
         "platform_admin.badges.hard_bounce",
         "platform_admin.badges.pro",
         "platform_admin.badges.starter",
+        "platform_admin.recommendation_breakdown.col_direction",
         "platform_admin.recommendation_breakdown.col_impressions",
         "platform_admin.recommendation_breakdown.tier_enterprise",
         "platform_admin.recommendation_breakdown.tier_pro",

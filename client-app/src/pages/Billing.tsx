@@ -1792,10 +1792,10 @@ export default function Billing() {
             <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-success" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-success">
-                {tenantT('billing.tier_upgrade_banner.title', { plan: newPlanLabel })}
+                {tenantT('settings.billing.tier_upgrade_banner.title', { plan: newPlanLabel })}
               </p>
               <p className="text-sm mt-0.5 text-text-muted">
-                {tenantT('billing.tier_upgrade_banner.body', { plan: newPlanLabel })}
+                {tenantT('settings.billing.tier_upgrade_banner.body', { plan: newPlanLabel })}
               </p>
               {discountList.length > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1818,7 +1818,7 @@ export default function Billing() {
               onClick={dismissTierUpgradeBanner}
               data-testid="billing-tier-upgrade-success-dismiss"
               className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-              aria-label={tenantT('billing.tier_upgrade_banner.dismiss_aria')}
+              aria-label={tenantT('settings.billing.tier_upgrade_banner.dismiss_aria')}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>

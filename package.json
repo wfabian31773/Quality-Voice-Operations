@@ -35,6 +35,7 @@
     "test:e2e:billing-subscription-stacked-discounts": "tsx tests/e2e/billingSubscriptionStackedDiscounts.spec.ts",
     "test:e2e:billing-annual-switch-success-stacked-discounts": "tsx tests/e2e/billingAnnualSwitchSuccessStackedDiscounts.spec.ts",
     "test:e2e:billing-checkout-success-banner": "tsx tests/e2e/billingCheckoutSuccessBanner.spec.ts",
+    "test:e2e:billing-tier-upgrade-success-banner-copy": "tsx tests/e2e/billingTierUpgradeSuccessBannerCopy.spec.ts",
     "test:e2e:marketplace-purchase-discount-badge": "tsx tests/e2e/marketplacePurchaseDiscountBadge.spec.ts",
     "test:e2e:marketplace-purchase-invoice-history": "tsx tests/e2e/marketplacePurchaseInvoiceHistory.spec.ts",
     "test:e2e:marketplace-listing-discount-badge": "tsx tests/e2e/marketplaceListingDiscountBadge.spec.ts",
