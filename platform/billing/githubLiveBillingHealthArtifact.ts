@@ -64,6 +64,34 @@ export interface LiveBillingHealthSuccessSummary extends LiveBillingHealthRunSum
   screenshotAvailable: boolean;
 }
 
+/**
+ * Links to the failure screenshot for the most recent failed CI run.
+ * Surfaced in ops Slack alerts so on-call can confirm the visual
+ * regression directly from the alert thread without bouncing through
+ * the Admin console or hunting through the Actions tab.
+ *
+ * Both URLs require a logged-in GitHub session (same audience as the
+ * `Workflow run:` link the alert already includes), so this is the
+ * "GitHub run-artifact URL gated by the existing GITHUB_TOKEN" path
+ * called out on task #1476 — not a public/proxied PNG.
+ */
+export interface LiveBillingHealthFailureScreenshotLinks {
+  /** `https://github.com/<owner>/<repo>/actions/runs/<id>` for the failure run. */
+  workflowRunHtmlUrl: string;
+  /**
+   * `https://github.com/<owner>/<repo>/actions/runs/<id>/artifacts/<artifactId>`
+   * — direct link to the uploaded artifact zip page that contains
+   * `screenshots/platform-admin-billing-health-live-failure.png`.
+   * `null` when the artifact has expired (>14 days) or the upload step
+   * was skipped (gate did not run).
+   */
+  artifactPageUrl: string | null;
+  /** Whether GitHub still has the artifact (false once it ages out of the 14-day retention). */
+  artifactExpired: boolean;
+  /** ISO timestamp of when the failure run completed (best-effort context for the alert). */
+  failureRunUpdatedAt: string;
+}
+
 export interface LiveBillingHealthTrackingIssue {
   number: number;
   htmlUrl: string;
@@ -105,6 +133,11 @@ interface CachedScreenshot {
 let summaryCache: { value: LiveBillingHealthSummary; expiresAt: number } | null = null;
 let screenshotCache: { value: CachedScreenshot; expiresAt: number } | null = null;
 let inFlightSummary: Promise<LiveBillingHealthSummary> | null = null;
+let failureLinksCache:
+  | { value: LiveBillingHealthFailureScreenshotLinks | null; expiresAt: number }
+  | null = null;
+let inFlightFailureLinks: Promise<LiveBillingHealthFailureScreenshotLinks | null> | null =
+  null;
 
 function parseCacheTtl(): number {
   const raw = process.env.GITHUB_BILLING_HEALTH_CACHE_TTL_MS;
@@ -228,6 +261,14 @@ async function fetchLatestSuccessRun(cfg: ResolvedConfig): Promise<GhWorkflowRun
   const url =
     `${GITHUB_API}/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}`
     + `/actions/workflows/${encodeURIComponent(cfg.workflowFile)}/runs?status=success&per_page=1`;
+  const data = await ghJson<{ workflow_runs: GhWorkflowRun[] }>(url, cfg.token);
+  return data.workflow_runs?.[0] ?? null;
+}
+
+async function fetchLatestFailureRun(cfg: ResolvedConfig): Promise<GhWorkflowRun | null> {
+  const url =
+    `${GITHUB_API}/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}`
+    + `/actions/workflows/${encodeURIComponent(cfg.workflowFile)}/runs?status=failure&per_page=1`;
   const data = await ghJson<{ workflow_runs: GhWorkflowRun[] }>(url, cfg.token);
   return data.workflow_runs?.[0] ?? null;
 }
@@ -445,9 +486,87 @@ export async function getLatestSuccessScreenshot(): Promise<CachedScreenshot | n
   return downloaded;
 }
 
+async function loadFailureScreenshotLinksUncached(): Promise<
+  LiveBillingHealthFailureScreenshotLinks | null
+> {
+  const cfg = resolveConfig();
+  if ('configured' in cfg && cfg.configured === false) {
+    return null;
+  }
+  const resolved = cfg as ResolvedConfig;
+  try {
+    const failureRun = await fetchLatestFailureRun(resolved);
+    if (!failureRun) return null;
+    const artifact = await fetchArtifactForRun(resolved, failureRun.id).catch((err) => {
+      logger.warn('Failed to look up artifact for latest failure run', {
+        runId: failureRun.id,
+        error: String(err),
+      });
+      return null;
+    });
+    const artifactExpired = artifact?.expired ?? false;
+    const artifactPageUrl =
+      artifact && !artifactExpired
+        ? `https://github.com/${resolved.owner}/${resolved.repo}/actions/runs/${failureRun.id}/artifacts/${artifact.id}`
+        : null;
+    return {
+      workflowRunHtmlUrl: failureRun.html_url,
+      artifactPageUrl,
+      artifactExpired,
+      failureRunUpdatedAt: failureRun.updated_at,
+    };
+  } catch (err) {
+    // Best-effort: a GitHub API hiccup must NOT swallow the underlying
+    // ops alert. Callers (the Stripe drift Slack post + the CI body
+    // builder) treat `null` as "no link to embed" and continue.
+    logger.warn('Failed to load failure-screenshot links from GitHub', {
+      error: String(err),
+    });
+    return null;
+  }
+}
+
+/**
+ * Returns deep links to the most recent live billing-health failure
+ * screenshot artifact, or `null` when the GitHub integration is
+ * unconfigured / the workflow has never failed / the lookup itself
+ * blew up.
+ *
+ * Cached for the same TTL as `getLiveBillingHealthSummary` so a burst
+ * of drift alerts (the in-process scheduler can fire alongside the
+ * nightly CI workflow) doesn't spray the GitHub API.
+ */
+export async function getLatestFailureScreenshotLinks(options?: {
+  forceRefresh?: boolean;
+}): Promise<LiveBillingHealthFailureScreenshotLinks | null> {
+  const cfg = resolveConfig();
+  const ttl =
+    'configured' in cfg && cfg.configured === false
+      ? DEFAULT_CACHE_TTL_MS
+      : (cfg as ResolvedConfig).cacheTtlMs;
+  const now = Date.now();
+  if (!options?.forceRefresh && failureLinksCache && failureLinksCache.expiresAt > now) {
+    return failureLinksCache.value;
+  }
+  if (inFlightFailureLinks) {
+    return inFlightFailureLinks;
+  }
+  inFlightFailureLinks = loadFailureScreenshotLinksUncached()
+    .then((value) => {
+      failureLinksCache = { value, expiresAt: Date.now() + ttl };
+      return value;
+    })
+    .finally(() => {
+      inFlightFailureLinks = null;
+    });
+  return inFlightFailureLinks;
+}
+
 /** Test-only: clear in-process caches between assertions. */
 export function __resetLiveBillingHealthCachesForTests(): void {
   summaryCache = null;
   screenshotCache = null;
   inFlightSummary = null;
+  failureLinksCache = null;
+  inFlightFailureLinks = null;
 }

@@ -6,6 +6,10 @@ import {
   type PriceCheckResult,
   type VerifyStripePricesSummary,
 } from './stripe/verifyPrices';
+import {
+  getLatestFailureScreenshotLinks,
+  type LiveBillingHealthFailureScreenshotLinks,
+} from './githubLiveBillingHealthArtifact';
 
 const logger = createLogger('STRIPE_PRICE_DRIFT');
 
@@ -40,6 +44,15 @@ export interface StripePriceVerificationSnapshot {
   lastFailureAt: string | null;
   regressed: boolean;
   slackNotified: boolean;
+  /**
+   * Links to the latest failure screenshot artifact embedded into the
+   * Slack regression alert, when the GitHub integration is configured
+   * and the live-billing-health workflow has at least one prior
+   * failure run on record. `null` for healthy / recovery / no-key
+   * cycles, when GitHub config is missing, or when the lookup itself
+   * failed (best-effort — never blocks the underlying alert).
+   */
+  failureScreenshotLinks: LiveBillingHealthFailureScreenshotLinks | null;
 }
 
 let latestSnapshot: StripePriceVerificationSnapshot | null = null;
@@ -70,15 +83,63 @@ function summariseFailures(results: PriceCheckResult[]): string[] {
     });
 }
 
-function buildRegressionSlackText(report: VerifyStripePricesReport): string {
+function buildScreenshotLinkLines(
+  links: LiveBillingHealthFailureScreenshotLinks | null,
+): string[] {
+  if (!links) return [];
+  const lines: string[] = [];
+  if (links.artifactPageUrl) {
+    // The artifact page is the deepest link we can produce with a
+    // single API call — clicking it on a logged-in GitHub session
+    // downloads the zip containing
+    // `screenshots/platform-admin-billing-health-live-failure.png`.
+    lines.push(`Latest failure screenshot artifact: ${links.artifactPageUrl}`);
+  } else if (links.artifactExpired) {
+    // The 14-day retention on the upload-artifact step expired before
+    // we could surface the screenshot — point on-call at the run page
+    // anyway since the spec log + sister tracking issue are still
+    // useful triage context.
+    lines.push(
+      `Latest failure run (artifact expired — only the spec log remains): ${links.workflowRunHtmlUrl}`,
+    );
+  } else {
+    lines.push(`Latest failure run: ${links.workflowRunHtmlUrl}`);
+  }
+  return lines;
+}
+
+async function loadFailureScreenshotLinksSafely(): Promise<
+  LiveBillingHealthFailureScreenshotLinks | null
+> {
+  try {
+    return await getLatestFailureScreenshotLinks();
+  } catch (err) {
+    // Defence in depth — `getLatestFailureScreenshotLinks` already
+    // catches its own errors, but if a future refactor lets one
+    // escape we still want the underlying drift alert to fire rather
+    // than silently failing because of an unrelated GitHub API hiccup.
+    logger.warn('Failed to fetch failure-screenshot links for Slack alert', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+function buildRegressionSlackText(
+  report: VerifyStripePricesReport,
+  failureLinks: LiveBillingHealthFailureScreenshotLinks | null,
+): string {
   const failureLines = summariseFailures(report.results);
   const header = `:rotating_light: *Stripe price drift detected* — \`${report.summary.status}\` (${report.summary.failed}/${report.summary.total} failed)`;
   const trailer =
     'Live-rate badge will fall back to the catalog 20% rate until the env vars are re-pointed and the Admin API is redeployed.';
+  const screenshotLines = buildScreenshotLinkLines(failureLinks);
   if (failureLines.length === 0) {
-    return [header, report.summary.message ?? '', trailer].filter(Boolean).join('\n');
+    return [header, report.summary.message ?? '', trailer, ...screenshotLines]
+      .filter(Boolean)
+      .join('\n');
   }
-  return [header, ...failureLines, trailer].join('\n');
+  return [header, ...failureLines, trailer, ...screenshotLines].join('\n');
 }
 
 function buildRecoverySlackText(report: VerifyStripePricesReport): string {
@@ -132,6 +193,7 @@ export async function runStripePriceVerificationCycle(
       lastFailureAt,
       regressed: false,
       slackNotified: false,
+      failureScreenshotLinks: null,
     };
     latestSnapshot = snapshot;
     return snapshot;
@@ -145,8 +207,18 @@ export async function runStripePriceVerificationCycle(
     (!failed && previousStatus !== null && isFailure(previousStatus));
 
   let slackNotified = false;
+  let failureScreenshotLinks: LiveBillingHealthFailureScreenshotLinks | null = null;
   if (failed && previousStatus !== status) {
-    slackNotified = await postSlackSafely(buildRegressionSlackText(report));
+    // Fetch the GitHub-hosted failure screenshot artifact link (if
+    // configured) so on-call can confirm the visual regression
+    // directly from the alert thread without bouncing through the
+    // Admin console. Best-effort — `loadFailureScreenshotLinksSafely`
+    // returns null for unconfigured / empty / errored lookups so the
+    // underlying Slack alert always fires regardless.
+    failureScreenshotLinks = await loadFailureScreenshotLinksSafely();
+    slackNotified = await postSlackSafely(
+      buildRegressionSlackText(report, failureScreenshotLinks),
+    );
   } else if (!failed && previousStatus !== null && isFailure(previousStatus)) {
     slackNotified = await postSlackSafely(buildRecoverySlackText(report));
   }
@@ -167,6 +239,7 @@ export async function runStripePriceVerificationCycle(
     lastFailureAt,
     regressed,
     slackNotified,
+    failureScreenshotLinks,
   };
   latestSnapshot = snapshot;
 
@@ -177,6 +250,7 @@ export async function runStripePriceVerificationCycle(
     total: report.summary.total,
     regressed,
     slackNotified,
+    failureScreenshotLinked: failureScreenshotLinks !== null,
   });
 
   return snapshot;

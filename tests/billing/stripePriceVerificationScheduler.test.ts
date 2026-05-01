@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VerifyStripePricesReport } from '../../platform/billing/stripe/verifyPrices';
 
-const { verifyStripePricesMock, postToOpsSlackWebhookMock } = vi.hoisted(() => ({
+const {
+  verifyStripePricesMock,
+  postToOpsSlackWebhookMock,
+  getLatestFailureScreenshotLinksMock,
+} = vi.hoisted(() => ({
   verifyStripePricesMock: vi.fn(),
   postToOpsSlackWebhookMock: vi.fn(),
+  getLatestFailureScreenshotLinksMock: vi.fn(),
 }));
 
 vi.mock('../../platform/billing/stripe/verifyPrices', () => ({
@@ -12,6 +17,10 @@ vi.mock('../../platform/billing/stripe/verifyPrices', () => ({
 
 vi.mock('../../platform/messaging/SlackWebhookNotifier', () => ({
   postToOpsSlackWebhook: postToOpsSlackWebhookMock,
+}));
+
+vi.mock('../../platform/billing/githubLiveBillingHealthArtifact', () => ({
+  getLatestFailureScreenshotLinks: getLatestFailureScreenshotLinksMock,
 }));
 
 vi.mock('../../platform/core/logger', () => ({
@@ -102,6 +111,12 @@ beforeEach(() => {
   verifyStripePricesMock.mockReset();
   postToOpsSlackWebhookMock.mockReset();
   postToOpsSlackWebhookMock.mockResolvedValue({ success: true });
+  getLatestFailureScreenshotLinksMock.mockReset();
+  // Default: GitHub integration unconfigured / no prior failure run —
+  // the alert text should fall back to the no-link shape so the
+  // existing behavioural tests stay focused on the regression
+  // detection logic itself.
+  getLatestFailureScreenshotLinksMock.mockResolvedValue(null);
   __resetStripePriceVerificationStateForTests();
 });
 
@@ -278,5 +293,123 @@ describe('runStripePriceVerificationCycle', () => {
     expect(snapshot.summary.status).toBe('failed');
     expect(snapshot.regressed).toBe(true);
     expect(snapshot.slackNotified).toBe(true);
+  });
+
+  it('embeds the GitHub failure-screenshot artifact link into the regression alert', async () => {
+    // Task #1476: on-call should be able to confirm the visual
+    // regression directly from the Slack alert thread without
+    // bouncing through the Admin console. When the GitHub integration
+    // is configured and the live-billing-health workflow has a recent
+    // failure run with a fresh artifact, the regression alert
+    // includes a deep link to the artifact page.
+    getLatestFailureScreenshotLinksMock.mockResolvedValueOnce({
+      workflowRunHtmlUrl: 'https://github.com/qvo-org/qvo/actions/runs/999',
+      artifactPageUrl:
+        'https://github.com/qvo-org/qvo/actions/runs/999/artifacts/12345',
+      artifactExpired: false,
+      failureRunUpdatedAt: '2026-04-30T05:00:00Z',
+    });
+    verifyStripePricesMock.mockResolvedValueOnce(failedReport('2026-04-30T12:00:00.000Z'));
+
+    const snapshot = await runStripePriceVerificationCycle();
+
+    expect(getLatestFailureScreenshotLinksMock).toHaveBeenCalledTimes(1);
+    expect(postToOpsSlackWebhookMock).toHaveBeenCalledTimes(1);
+    const message = postToOpsSlackWebhookMock.mock.calls[0][0] as { text: string };
+    expect(message.text).toContain('Latest failure screenshot artifact:');
+    expect(message.text).toContain(
+      'https://github.com/qvo-org/qvo/actions/runs/999/artifacts/12345',
+    );
+    expect(snapshot.failureScreenshotLinks?.artifactPageUrl).toBe(
+      'https://github.com/qvo-org/qvo/actions/runs/999/artifacts/12345',
+    );
+  });
+
+  it('falls back to the workflow run URL when the failure artifact has expired', async () => {
+    // 14-day artifact retention can age out a long-standing drift
+    // before someone re-runs the workflow. The alert still surfaces
+    // the failure run page so on-call has somewhere to land.
+    getLatestFailureScreenshotLinksMock.mockResolvedValueOnce({
+      workflowRunHtmlUrl: 'https://github.com/qvo-org/qvo/actions/runs/777',
+      artifactPageUrl: null,
+      artifactExpired: true,
+      failureRunUpdatedAt: '2026-03-15T05:00:00Z',
+    });
+    verifyStripePricesMock.mockResolvedValueOnce(failedReport('2026-04-30T12:00:00.000Z'));
+
+    await runStripePriceVerificationCycle();
+
+    const message = postToOpsSlackWebhookMock.mock.calls[0][0] as { text: string };
+    expect(message.text).toContain('artifact expired');
+    expect(message.text).toContain('https://github.com/qvo-org/qvo/actions/runs/777');
+    // No "screenshot artifact:" link line when the artifact is gone —
+    // we use the "Latest failure run (artifact expired …)" line
+    // instead so on-call isn't tricked into clicking a 404.
+    expect(message.text).not.toContain('Latest failure screenshot artifact:');
+  });
+
+  it('still posts the regression alert when the GitHub integration is unconfigured', async () => {
+    // Default beforeEach mock returns null (unconfigured / never
+    // failed). The alert text should NOT include any "Latest failure"
+    // line, the underlying drift alert must still fire, and the
+    // snapshot should record `failureScreenshotLinks: null`.
+    verifyStripePricesMock.mockResolvedValueOnce(failedReport('2026-04-30T12:00:00.000Z'));
+
+    const snapshot = await runStripePriceVerificationCycle();
+
+    expect(postToOpsSlackWebhookMock).toHaveBeenCalledTimes(1);
+    const message = postToOpsSlackWebhookMock.mock.calls[0][0] as { text: string };
+    expect(message.text).toContain('Stripe price drift detected');
+    expect(message.text).not.toContain('Latest failure');
+    expect(snapshot.failureScreenshotLinks).toBeNull();
+    expect(snapshot.slackNotified).toBe(true);
+  });
+
+  it('still posts the regression alert when the screenshot lookup throws', async () => {
+    // Defence in depth: a transient GitHub API hiccup must NOT
+    // swallow the underlying drift alert.
+    getLatestFailureScreenshotLinksMock.mockRejectedValueOnce(
+      new Error('GitHub API 503 — backend down'),
+    );
+    verifyStripePricesMock.mockResolvedValueOnce(failedReport('2026-04-30T12:00:00.000Z'));
+
+    const snapshot = await runStripePriceVerificationCycle();
+
+    expect(postToOpsSlackWebhookMock).toHaveBeenCalledTimes(1);
+    const message = postToOpsSlackWebhookMock.mock.calls[0][0] as { text: string };
+    expect(message.text).toContain('Stripe price drift detected');
+    expect(message.text).not.toContain('Latest failure');
+    expect(snapshot.failureScreenshotLinks).toBeNull();
+    expect(snapshot.slackNotified).toBe(true);
+  });
+
+  it('does not call the GitHub failure-link helper on healthy / recovery / no-key cycles', async () => {
+    // Recovery path: ok → failed → ok. The screenshot-link helper
+    // should only be invoked on the *regression* edge (ok → failed).
+    verifyStripePricesMock.mockResolvedValueOnce(okReport('2026-04-30T11:00:00.000Z'));
+    await runStripePriceVerificationCycle();
+    verifyStripePricesMock.mockResolvedValueOnce(failedReport('2026-04-30T12:00:00.000Z'));
+    await runStripePriceVerificationCycle();
+    expect(getLatestFailureScreenshotLinksMock).toHaveBeenCalledTimes(1);
+
+    verifyStripePricesMock.mockResolvedValueOnce(okReport('2026-04-30T13:00:00.000Z'));
+    const recoverySnapshot = await runStripePriceVerificationCycle();
+
+    // Recovery cycle re-uses the standard recovery text (no failure
+    // link section) and does not re-hit the GitHub API.
+    expect(getLatestFailureScreenshotLinksMock).toHaveBeenCalledTimes(1);
+    expect(recoverySnapshot.failureScreenshotLinks).toBeNull();
+    const recoveryMessage = postToOpsSlackWebhookMock.mock.calls[1][0] as { text: string };
+    expect(recoveryMessage.text).toContain('Stripe price drift recovered');
+    expect(recoveryMessage.text).not.toContain('Latest failure');
+  });
+
+  it('records failureScreenshotLinks: null on the no-stripe-key path', async () => {
+    verifyStripePricesMock.mockResolvedValueOnce(noKeyReport('2026-04-30T12:00:00.000Z'));
+
+    const snapshot = await runStripePriceVerificationCycle();
+
+    expect(getLatestFailureScreenshotLinksMock).not.toHaveBeenCalled();
+    expect(snapshot.failureScreenshotLinks).toBeNull();
   });
 });

@@ -274,6 +274,11 @@ jobs:
         # Always upload (success too) so the success screenshot is
         # auditable as a visual receipt that the tile rendered "All
         # prices healthy" against the real verifier on this run.
+        # `id: upload_artifact` exposes `outputs.artifact-url` so the
+        # failure-alert step downstream can deep-link Slack / the
+        # tracking issue straight at the failure screenshot artifact
+        # page (task #1476).
+        id: upload_artifact
         if: always() && steps.gate.outputs.run_spec == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -299,11 +304,29 @@ jobs:
         id: alert_body
         env:
           SPEC_OUTCOME: ${{ steps.spec.outcome }}
+          # `outputs.artifact-url` is the GitHub-UI page for the upload
+          # (a logged-in maintainer clicks it to download the zip
+          # containing
+          # `screenshots/platform-admin-billing-health-live-failure.png`).
+          # Empty when the upload step itself failed / was skipped —
+          # the body builder degrades gracefully in that case.
+          ARTIFACT_URL: ${{ steps.upload_artifact.outputs.artifact-url }}
         run: |
           set +e
           mkdir -p .ci-out
           snapshot_path=".ci-logs/screenshots/platform-admin-billing-health-live-snapshot.json"
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # When the upload-artifact step succeeded, surface a single
+          # "Failure screenshot:" line on-call can click straight from
+          # Slack to confirm the visual regression without leaving the
+          # alert thread (task #1476). Mirrors the same line emitted by
+          # `StripePriceVerificationScheduler.buildRegressionSlackText`
+          # so the in-process and CI alerts have the same shape.
+          if [ -n "${ARTIFACT_URL}" ]; then
+            screenshot_line="Failure screenshot artifact: ${ARTIFACT_URL}"
+          else
+            screenshot_line="Failure screenshot artifact: (upload step did not run — check the workflow log)"
+          fi
 
           # When the spec itself never ran (boot / wait failure), the
           # snapshot file won't exist — emit an "infra failure" alert
@@ -318,6 +341,7 @@ jobs:
             {
               echo ":rotating_light: *Live billing-health CI failed before the verifier ran* — spec step outcome was \`${SPEC_OUTCOME}\` (boot / wait / install failure). The Platform Admin Billing config health tile was NOT exercised against live Stripe on this run, so price drift would NOT have been caught."
               echo "Workflow run: ${run_url}"
+              echo "${screenshot_line}"
               echo "Runbook: open the workflow log, identify the failing step (Boot Platform Dev / Wait for vite & admin API / migrations / seed), and re-run."
             } > .ci-out/slack-text.txt
             {
@@ -368,8 +392,10 @@ jobs:
           # Slack message — keep the format aligned with
           # `StripePriceVerificationScheduler.buildRegressionSlackText`
           # so on-call gets a consistent shape across the in-process
-          # alert and this CI alert. The Slack post step uses jq to
-          # encode this safely as a JSON payload.
+          # alert and this CI alert (including the trailing
+          # "Failure screenshot artifact:" line — task #1476). The
+          # Slack post step uses jq to encode this safely as a JSON
+          # payload.
           {
             echo ":rotating_light: *Live billing-health tile failed in CI* — the Platform Admin \`Billing config health\` panel did not render \"All prices healthy\" against the real \`/api/platform/billing-config-health\` route."
             jq -r '
@@ -378,6 +404,7 @@ jobs:
               (if (.failureLines | length) > 0 then "\n" + (.failureLines | join("\n")) else "" end)
             ' .ci-out/snapshot-summary.json
             echo "Workflow run: ${run_url}"
+            echo "${screenshot_line}"
             echo "Runbook: re-run \`npm run verify:stripe-prices\` locally with the same Stripe creds, or open the Billing config health tab in the Platform Admin to see which env var rotated."
           } > .ci-out/slack-text.txt
 
@@ -398,7 +425,7 @@ jobs:
             echo
             echo "## Triage"
             echo
-            echo "1. Open the workflow run linked below and inspect the spec log + failure screenshot uploaded as \`billing-health-live-stripe-artifacts\` (\`platform-admin-billing-health-live-failure.png\`)."
+            echo "1. Open the workflow run linked below and inspect the spec log + failure screenshot uploaded as \`billing-health-live-stripe-artifacts\` (\`platform-admin-billing-health-live-failure.png\`). Direct artifact link: ${ARTIFACT_URL:-(upload step did not run)}."
             echo "2. Re-run \`npm run verify:stripe-prices\` locally against the same Stripe creds to confirm the drift outside of the e2e harness."
             echo "3. Identify the rotated env var from the per-row failure list above (each row names the \`STRIPE_PRICE_*\` env key, the failing \`status\`, and the human-readable message from \`verifyPrices.ts\`)."
             echo "4. Re-point the env var at the new Stripe price id (or roll the Stripe price back), redeploy the Admin API, and re-run this workflow via \`workflow_dispatch\` to confirm the panel is back to \"All prices healthy\". The auto-close step will close this issue automatically once the next scheduled run goes green."

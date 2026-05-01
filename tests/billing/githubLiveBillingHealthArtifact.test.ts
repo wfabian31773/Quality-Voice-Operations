@@ -28,6 +28,7 @@ vi.mock('../../platform/core/logger', () => ({
 
 import {
   __resetLiveBillingHealthCachesForTests,
+  getLatestFailureScreenshotLinks,
   getLatestSuccessScreenshot,
   getLiveBillingHealthSummary,
 } from '../../platform/billing/githubLiveBillingHealthArtifact';
@@ -427,5 +428,178 @@ describe('getLatestSuccessScreenshot', () => {
 
     const result = await getLatestSuccessScreenshot();
     expect(result).toBeNull();
+  });
+});
+
+describe('getLatestFailureScreenshotLinks', () => {
+  it('returns null when GitHub integration is unconfigured', async () => {
+    unsetEnv();
+    const result = await getLatestFailureScreenshotLinks();
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the workflow has never failed', async () => {
+    installFetchMock([
+      {
+        match: (u) => u.includes('status=failure&per_page=1'),
+        body: { workflow_runs: [] },
+      },
+    ]);
+    const result = await getLatestFailureScreenshotLinks();
+    expect(result).toBeNull();
+  });
+
+  it('returns workflow + artifact deep link for the latest failure run', async () => {
+    const failureRun = {
+      id: 1234,
+      conclusion: 'failure',
+      status: 'completed',
+      html_url: 'https://github.com/qvo-org/qvo/actions/runs/1234',
+      run_started_at: '2026-04-30T04:37:00Z',
+      updated_at: '2026-04-30T04:55:00Z',
+      head_sha: 'sha-fail',
+      head_branch: 'main',
+      event: 'schedule',
+    };
+    const artifact = {
+      id: 8888,
+      name: 'billing-health-live-stripe-artifacts',
+      size_in_bytes: 4096,
+      expired: false,
+      archive_download_url:
+        'https://api.github.com/repos/qvo-org/qvo/actions/artifacts/8888/zip',
+    };
+
+    installFetchMock([
+      {
+        match: (u) => u.includes('status=failure&per_page=1'),
+        body: { workflow_runs: [failureRun] },
+      },
+      {
+        match: (u) => u.includes('/runs/1234/artifacts'),
+        body: { artifacts: [artifact] },
+      },
+    ]);
+
+    const result = await getLatestFailureScreenshotLinks();
+    expect(result).not.toBeNull();
+    expect(result?.workflowRunHtmlUrl).toBe(failureRun.html_url);
+    // The deep link points at the GitHub UI artifact page so a logged
+    // in maintainer clicking it from Slack downloads the zip
+    // containing `screenshots/platform-admin-billing-health-live-failure.png`.
+    expect(result?.artifactPageUrl).toBe(
+      'https://github.com/qvo-org/qvo/actions/runs/1234/artifacts/8888',
+    );
+    expect(result?.artifactExpired).toBe(false);
+    expect(result?.failureRunUpdatedAt).toBe('2026-04-30T04:55:00Z');
+  });
+
+  it('marks artifactPageUrl null and artifactExpired true when retention has aged out', async () => {
+    const failureRun = {
+      id: 5,
+      conclusion: 'failure',
+      status: 'completed',
+      html_url: 'https://github.com/qvo-org/qvo/actions/runs/5',
+      run_started_at: '2026-03-01T04:37:00Z',
+      updated_at: '2026-03-01T04:55:00Z',
+      head_sha: 'sha',
+      head_branch: 'main',
+      event: 'schedule',
+    };
+    const artifact = {
+      id: 11,
+      name: 'billing-health-live-stripe-artifacts',
+      size_in_bytes: 100,
+      expired: true,
+      archive_download_url: 'https://api.github.com/whatever',
+    };
+    installFetchMock([
+      {
+        match: (u) => u.includes('status=failure&per_page=1'),
+        body: { workflow_runs: [failureRun] },
+      },
+      {
+        match: (u) => u.includes('/runs/5/artifacts'),
+        body: { artifacts: [artifact] },
+      },
+    ]);
+
+    const result = await getLatestFailureScreenshotLinks();
+    expect(result?.artifactExpired).toBe(true);
+    expect(result?.artifactPageUrl).toBeNull();
+    expect(result?.workflowRunHtmlUrl).toBe(failureRun.html_url);
+  });
+
+  it('still returns the run URL when the artifact lookup itself blows up', async () => {
+    const failureRun = {
+      id: 9,
+      conclusion: 'failure',
+      status: 'completed',
+      html_url: 'https://github.com/qvo-org/qvo/actions/runs/9',
+      run_started_at: '2026-04-30T04:37:00Z',
+      updated_at: '2026-04-30T04:55:00Z',
+      head_sha: 'sha',
+      head_branch: 'main',
+      event: 'schedule',
+    };
+    installFetchMock([
+      {
+        match: (u) => u.includes('status=failure&per_page=1'),
+        body: { workflow_runs: [failureRun] },
+      },
+      {
+        match: (u) => u.includes('/runs/9/artifacts'),
+        status: 502,
+        body: { message: 'bad gateway' },
+      },
+    ]);
+
+    const result = await getLatestFailureScreenshotLinks();
+    // Artifact lookup hiccup must not blank the link entirely — the
+    // run page URL is still useful triage context.
+    expect(result?.workflowRunHtmlUrl).toBe(failureRun.html_url);
+    expect(result?.artifactPageUrl).toBeNull();
+    expect(result?.artifactExpired).toBe(false);
+  });
+
+  it('returns null (not throw) when the failure-run lookup itself fails', async () => {
+    installFetchMock([
+      {
+        match: (u) => u.includes('status=failure&per_page=1'),
+        status: 500,
+        body: { message: 'kaboom' },
+      },
+    ]);
+    const result = await getLatestFailureScreenshotLinks();
+    expect(result).toBeNull();
+  });
+
+  it('caches the result between calls inside the TTL window', async () => {
+    const failureRun = {
+      id: 1,
+      conclusion: 'failure',
+      status: 'completed',
+      html_url: 'https://github.com/qvo-org/qvo/actions/runs/1',
+      run_started_at: '2026-04-30T04:37:00Z',
+      updated_at: '2026-04-30T04:55:00Z',
+      head_sha: 'sha',
+      head_branch: 'main',
+      event: 'schedule',
+    };
+    const { calls } = installFetchMock([
+      {
+        match: (u) => u.includes('status=failure&per_page=1'),
+        body: { workflow_runs: [failureRun] },
+      },
+      {
+        match: (u) => u.includes('/runs/1/artifacts'),
+        body: { artifacts: [] },
+      },
+    ]);
+
+    await getLatestFailureScreenshotLinks();
+    const firstCallCount = calls.length;
+    await getLatestFailureScreenshotLinks();
+    expect(calls.length).toBe(firstCallCount);
   });
 });
