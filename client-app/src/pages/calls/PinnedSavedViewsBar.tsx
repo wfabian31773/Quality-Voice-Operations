@@ -221,7 +221,7 @@ export default function PinnedSavedViewsBar({
             )}
             <button
               onClick={(e) => { e.stopPropagation(); handleDeleteView(view.id); }}
-              className="p-1 mr-1 rounded-full text-text-muted hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+              className="p-1 mr-1 rounded-full text-text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition"
               title={tenantT('calls.saved_view.delete_tooltip')}
               aria-label={tenantT('calls.saved_view.delete_aria', { name: view.name })}
             >

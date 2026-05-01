@@ -174,16 +174,16 @@ function SalesforceRecordCard({ event }: { event: CallEvent & { payload: Connect
     <div className="bg-surface-hover rounded-lg p-3 border border-border">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <Cloud className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <Cloud className="h-4 w-4 text-info" />
           <span className="text-sm font-medium text-text-primary">Salesforce</span>
           {meta.pipelineMode && (
             <span className="text-[10px] uppercase tracking-wide text-text-muted bg-surface px-1.5 py-0.5 rounded">{meta.pipelineMode}</span>
           )}
           {payload.usedFallback && (
-            <span className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{t('calls.crm.fallback_badge')}</span>
+            <span className="text-[10px] uppercase tracking-wide text-warning bg-warning-light px-1.5 py-0.5 rounded">{t('calls.crm.fallback_badge')}</span>
           )}
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
           {isSuccess ? t('calls.crm.success') : t('calls.crm.failed')}
         </span>
       </div>
@@ -194,7 +194,7 @@ function SalesforceRecordCard({ event }: { event: CallEvent & { payload: Connect
       </div>
 
       {!isSuccess && payload.error && (
-        <p className="text-xs text-red-600 dark:text-red-400 mb-2">{payload.error}</p>
+        <p className="text-xs text-danger mb-2">{payload.error}</p>
       )}
 
       {records.length > 0 ? (
@@ -245,7 +245,7 @@ function GenericConnectorCard({ event }: { event: CallEvent & { payload: Connect
         <span className="text-sm font-medium text-text-primary capitalize">
           {payload.provider ?? payload.connectorType ?? t('calls.crm.connector_fallback')}
         </span>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSuccess ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
           {isSuccess ? t('calls.crm.success') : t('calls.crm.failed')}
         </span>
       </div>
@@ -254,7 +254,7 @@ function GenericConnectorCard({ event }: { event: CallEvent & { payload: Connect
         <span className="text-text-muted">{event.occurred_at ? format(new Date(event.occurred_at), 'h:mm:ss a') : '--'}</span>
       </div>
       {!isSuccess && payload.error && (
-        <p className="text-xs text-red-600 dark:text-red-400 mt-2">{payload.error}</p>
+        <p className="text-xs text-danger mt-2">{payload.error}</p>
       )}
       {payload.externalId && (
         <p className="text-xs text-text-muted mt-1 font-mono">id: {shortId(payload.externalId)}</p>
@@ -326,8 +326,8 @@ function StirAttestationBadge({
   if (degraded && !attestation) tooltipParts.push(t('calls.stir.tooltip_carrier_failed'));
 
   const cls = degraded
-    ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
-    : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-300 dark:border-green-800';
+    ? 'bg-warning-light text-warning border border-warning/30'
+    : 'bg-success-light text-success border border-success/30';
 
   return (
     <span
@@ -519,7 +519,7 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                             : Circle;
                       const statusBgClass =
                         dispatchSuccess === false
-                          ? 'bg-red-500 text-white'
+                          ? 'bg-danger text-white'
                           : dispatchSuccess === true
                             ? 'bg-primary text-white'
                             : 'bg-surface-hover text-text-secondary';
@@ -542,7 +542,7 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                               <p className="text-xs text-text-secondary">{event.from_state} → {event.to_state}</p>
                             )}
                             {dispatchPayload && dispatchSuccess === false && dispatchPayload.error && (
-                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">{dispatchPayload.error}</p>
+                              <p className="text-xs text-danger mt-1">{dispatchPayload.error}</p>
                             )}
                           </div>
                         </div>
@@ -566,7 +566,7 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                     <div key={exec.id} className="bg-surface-hover rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-text-primary font-mono">{exec.toolName}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${exec.status === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : exec.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${exec.status === 'success' ? 'bg-success-light text-success' : exec.status === 'failed' ? 'bg-danger-light text-danger' : 'bg-warning-light text-warning'}`}>
                           {toolExecStatusLabel(t, exec.status)}
                         </span>
                       </div>
@@ -575,7 +575,7 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                         {exec.durationMs != null && <span>{t('calls.detail.duration_ms', { ms: exec.durationMs })}</span>}
                       </div>
                       {exec.errorMessage && (
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-2">{exec.errorMessage}</p>
+                        <p className="text-xs text-danger mt-2">{exec.errorMessage}</p>
                       )}
                       {exec.recoveryAction && (
                         <p className="text-xs text-text-secondary mt-1 italic">{t('calls.detail.tool_recovery', { action: exec.recoveryAction })}</p>
@@ -996,7 +996,7 @@ export default function Calls() {
                     <span className="truncate max-w-[240px]">{email}</span>
                     <button
                       onClick={() => handleRemoveSubscriber(view, email)}
-                      className="p-1 rounded-full text-text-muted hover:text-red-600 dark:hover:text-red-400 transition"
+                      className="p-1 rounded-full text-text-muted hover:text-danger transition"
                       title={tenantT('calls.subscribers_panel.remove_tooltip', { email })}
                       aria-label={tenantT('calls.subscribers_panel.remove_aria', { email, name: view.name })}
                     >
@@ -1056,7 +1056,7 @@ export default function Calls() {
               {tenantT('calls.save_view_panel.cancel')}
             </button>
           </div>
-          {saveError && <p className="text-xs text-red-600 dark:text-red-400 mt-2">{saveError}</p>}
+          {saveError && <p className="text-xs text-danger mt-2">{saveError}</p>}
         </div>
       )}
 
@@ -1162,7 +1162,7 @@ export default function Calls() {
                   onChange={(e) => setFilter('tool_failures_only', e.target.checked ? 'true' : '')}
                   className="rounded border-border"
                 />
-                <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400" />
+                <AlertTriangle className="h-4 w-4 text-danger" />
                 {tenantT('calls.filters.tool_failures_only')}
               </label>
             </div>
@@ -1222,19 +1222,19 @@ export default function Calls() {
                       {call.language ? getAgentLanguageLabel(call.language) : '--'}
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${call.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${call.direction === 'inbound' ? 'bg-info-light text-info' : 'bg-warning-light text-warning'}`}>
                         {callDirectionLabel(tenantT, call.direction)}
                       </span>
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${['CALL_CONNECTED', 'active'].includes(call.lifecycle_state) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-surface-hover text-text-secondary'}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${['CALL_CONNECTED', 'active'].includes(call.lifecycle_state) ? 'bg-success-light text-success' : 'bg-surface-hover text-text-secondary'}`}>
                           {callLifecycleLabel(tenantT, call.lifecycle_state)}
                         </span>
                         {call.failed_tool_count && call.failed_tool_count > 0 ? (
                           <span
                             title={tenantT('calls.table.failed_tool_tooltip', { count: call.failed_tool_count })}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-danger-light text-danger"
                           >
                             <AlertTriangle className="h-3 w-3" />
                             {tenantT('calls.table.failed_tool_badge', { count: call.failed_tool_count })}
