@@ -329,6 +329,124 @@ describe('BillingEstimator', () => {
       expect(screen.queryByTestId('billing-estimator-source-pro')).toBeNull();
     });
 
+    it('surfaces the Stripe price nicknames in the badge tooltip when the override carries them', () => {
+      // Task #1322: when the upstream effective-rate / upgrade-preview
+      // payload carries operator-set `Price.nickname` values, the
+      // "Live Stripe rate" badge tooltip should expose them so a tenant
+      // can match the rate driving their bill against the price they
+      // see in their Stripe portal — without us leaking the raw
+      // `price_*` id (which is opaque and unhelpful in conversation
+      // with Sales/Support).
+      //
+      // The leading provenance sentence MUST stay intact so the other
+      // assertions in this file (and any downstream snapshot/QA) keep
+      // matching unchanged; the labels are appended as a structured
+      // suffix delimited by " · " (matching the discount-badge tooltip
+      // convention used elsewhere in this component).
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.10,
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            basePriceId: 'price_base_pro_test',
+            overagePriceId: 'price_metered_pro_test',
+            basePriceNickname: 'Pro monthly base',
+            overagePriceNickname: 'Pro AI minutes overage',
+            discount: null,
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-source-pro');
+      const tooltip = badge.getAttribute('title') ?? '';
+      // Leading provenance sentence is preserved (existing behaviour).
+      expect(tooltip).toMatch(
+        /Pulled from your live Stripe subscription — overrides published catalog rates/,
+      );
+      // Nickname-driven labels are appended verbatim — operators set
+      // these so the human-readable string IS the contract.
+      expect(tooltip).toMatch(/Base price: Pro monthly base/);
+      expect(tooltip).toMatch(/Per-minute price: Pro AI minutes overage/);
+    });
+
+    it('also surfaces the nickname tooltip on the CURRENT-tier badge via rateOverride', () => {
+      // Same provenance as the upgrade-card path, but driven by the
+      // current-tier `rateOverride` prop the Billing page wires from
+      // `/billing/effective-rate`. The current-tier badge previously
+      // inferred Stripe provenance from non-null cents/rate (because
+      // the page null-gates those fields when the source is catalog),
+      // but the tooltip helper needs the explicit source flags + the
+      // base/overage price ids and nicknames to build the suffix —
+      // this test pins that wiring so a refactor can't quietly drop
+      // provenance from the current-tier card.
+      render(
+        <BillingEstimator
+          currentPlan="pro"
+          monthToDateAiMinutes={500}
+          rateOverride={{
+            basePriceCents: 29_900,
+            overageRatePerMinute: 0.10,
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            basePriceId: 'price_base_pro_current',
+            overagePriceId: 'price_metered_pro_current',
+            basePriceNickname: 'Pro custom base',
+            overagePriceNickname: 'Pro custom overage',
+          }}
+        />,
+      );
+      const badge = screen.getByTestId('billing-estimator-source-pro');
+      const tooltip = badge.getAttribute('title') ?? '';
+      expect(tooltip).toMatch(
+        /Pulled from your live Stripe subscription — overrides published catalog rates/,
+      );
+      expect(tooltip).toMatch(/Base price: Pro custom base/);
+      expect(tooltip).toMatch(/Per-minute price: Pro custom overage/);
+      // The current-tier badge also exposes the price ids as data
+      // attributes for QA / support diagnostics (mirroring the
+      // upgrade-card convention).
+      expect(badge.getAttribute('data-base-price-id')).toBe(
+        'price_base_pro_current',
+      );
+      expect(badge.getAttribute('data-overage-price-id')).toBe(
+        'price_metered_pro_current',
+      );
+    });
+
+    it('falls back to a short price-id snippet in the tooltip when no nickname is set', () => {
+      // Most operator-managed prices won't have a nickname (Stripe
+      // leaves it null by default), so the badge tooltip degrades to
+      // a short `…<last6>` snippet of the price id — narrow enough
+      // to look up in the Stripe price list without us leaking the
+      // full opaque id into the tooltip surface.
+      render(
+        <BillingEstimator
+          currentPlan="starter"
+          monthToDateAiMinutes={500}
+          upgradePreview={{
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.10,
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            basePriceId: 'price_base_abc123',
+            overagePriceId: 'price_metered_xyz789',
+            basePriceNickname: null,
+            overagePriceNickname: null,
+            discount: null,
+          }}
+        />,
+      );
+      const tooltip =
+        screen.getByTestId('billing-estimator-source-pro').getAttribute('title') ?? '';
+      // last 6 of "price_base_abc123" -> "abc123"
+      expect(tooltip).toMatch(/Base price: …abc123/);
+      // last 6 of "price_metered_xyz789" -> "xyz789"
+      expect(tooltip).toMatch(/Per-minute price: …xyz789/);
+    });
+
     it('omits the data-overage-price-id attribute when the overage source is catalog', () => {
       // Even if the upstream payload carried an overagePriceId, we
       // should only expose it when the overage actually came from

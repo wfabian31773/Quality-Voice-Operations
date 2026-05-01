@@ -80,6 +80,32 @@ export interface BillingEstimatorRateOverride {
    */
   overagePriceId?: string | null;
   /**
+   * Stripe price id backing `basePriceCents` when the source is
+   * `'stripe'`. Paired with `basePriceNickname` (when present) so the
+   * "Live Stripe rate" badge tooltip can surface a human-readable
+   * label — operator-set nickname when configured, otherwise a short
+   * `…<last6>` snippet of the id — that the tenant can match against
+   * the price they see in their Stripe portal. Optional — only
+   * meaningful when `basePriceSource === 'stripe'`.
+   */
+  basePriceId?: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the licensed base line
+   * (when sourced from Stripe). Surfaced in the "Live Stripe rate"
+   * badge tooltip so a tenant can confirm the rate against the
+   * price they see in their Stripe portal. Optional — when null/absent
+   * the tooltip falls back to a short `…<last6>` snippet of
+   * `basePriceId` (and omits the label entirely when neither is set).
+   */
+  basePriceNickname?: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the metered AI-minutes
+   * overage line (when sourced from Stripe). Same provenance/usage
+   * as `basePriceNickname` — surfaced in the "Live Stripe rate"
+   * badge tooltip with the same nickname-or-`…<last6>` fallback.
+   */
+  overagePriceNickname?: string | null;
+  /**
    * Effective per-message SMS rate, in dollars (e.g. 0.025 = $0.025/msg).
    * Sourced from `/billing/effective-rate.smsRatePerMessage` so a tenant
    * on a custom / negotiated SMS price sees the rate that is actually
@@ -446,6 +472,31 @@ interface TierSpec {
    */
   overagePriceId?: string | null;
   /**
+   * Stripe price id behind the licensed base line when the override
+   * carried one. Used to build the human-readable price label
+   * (`Price.nickname` when set, otherwise `…<last6>` of this id) the
+   * "Live Stripe rate" badge tooltip surfaces so a tenant can match
+   * the rate against what they see in their Stripe portal. Only
+   * carried forward when `basePriceSource === 'stripe'`.
+   */
+  basePriceId?: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the licensed base line
+   * (when sourced from Stripe). Surfaced in the "Live Stripe rate"
+   * badge tooltip to give a tenant a customer-readable identifier
+   * for the price driving their bill. `null` when no nickname was
+   * configured — the tooltip then falls back to `basePriceId`'s
+   * `…<last6>` snippet.
+   */
+  basePriceNickname?: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the metered AI-minutes
+   * overage line (when sourced from Stripe). Same provenance/usage
+   * as `basePriceNickname` — falls back to `overagePriceId`'s
+   * `…<last6>` snippet in the tooltip when null.
+   */
+  overagePriceNickname?: string | null;
+  /**
    * Customer-level discount that explains why this tier's `basePrice` came
    * in below the published catalog rate. Surfaced to the tenant via the
    * discount badge in the comparison card.
@@ -525,6 +576,21 @@ function toTierSpec(
     explicitOverageSource === 'stripe' && typeof override?.overagePriceId === 'string'
       ? override.overagePriceId
       : null;
+  // Same gating as `overagePriceId` — only surface the base price id
+  // (and the paired nickname) when the base actually came from Stripe.
+  // The badge tooltip falls back gracefully when these are absent.
+  const basePriceId =
+    explicitBaseSource === 'stripe' && typeof override?.basePriceId === 'string'
+      ? override.basePriceId
+      : null;
+  const basePriceNickname =
+    explicitBaseSource === 'stripe' && typeof override?.basePriceNickname === 'string'
+      ? override.basePriceNickname
+      : null;
+  const overagePriceNickname =
+    explicitOverageSource === 'stripe' && typeof override?.overagePriceNickname === 'string'
+      ? override.overagePriceNickname
+      : null;
 
   return {
     key: plan.key,
@@ -534,6 +600,9 @@ function toTierSpec(
     overageRate,
     sourcedFromStripe,
     overagePriceId,
+    basePriceId,
+    basePriceNickname,
+    overagePriceNickname,
     discount,
   };
 }
@@ -644,6 +713,67 @@ function buildDiscountBadge(
   const tooltip = tooltipParts.join(' · ');
 
   return { label, tooltip };
+}
+
+/**
+ * Build a customer-readable label for a Stripe Price reference. Operators
+ * set `Price.nickname` in the Stripe dashboard to give each price a short,
+ * meaningful name (e.g. "Growth monthly base", "AI minutes overage v2") —
+ * surfacing it in the "Live Stripe rate" badge tooltip lets a tenant
+ * cross-check the rate driving their bill against the price they see in
+ * their Stripe portal without us leaking the raw `price_*` id (which is a
+ * 30-char opaque string and not useful in conversation with Sales/Support).
+ *
+ * Fallback chain (in order of preference):
+ *   1. `nickname` (trimmed) when present — operator-curated label.
+ *   2. `…<last6>` of `priceId` — short, copy-pastable diagnostic that
+ *      narrows a Stripe price list search without exposing the full id.
+ *   3. `null` — neither input was usable; the caller should omit the
+ *      label entirely rather than render an empty separator.
+ */
+function formatStripePriceLabel(
+  nickname: string | null | undefined,
+  priceId: string | null | undefined,
+): string | null {
+  const trimmedNickname = typeof nickname === 'string' ? nickname.trim() : '';
+  if (trimmedNickname) return trimmedNickname;
+  const trimmedId = typeof priceId === 'string' ? priceId.trim() : '';
+  if (trimmedId.length >= 6) return `…${trimmedAt(trimmedId, 6)}`;
+  if (trimmedId.length > 0) return `…${trimmedId}`;
+  return null;
+}
+
+// Tiny helper kept local to `formatStripePriceLabel` — avoids pulling in
+// a generic `last(n)` utility for a single use site. Returns the last
+// `n` characters of `value`; assumes the caller has already validated
+// `value.length >= n`.
+function trimmedAt(value: string, n: number): string {
+  return value.slice(-n);
+}
+
+/**
+ * Compose the "Live Stripe rate" badge tooltip for an AI-tier card. The
+ * tooltip always includes the base provenance copy (so existing assertions
+ * keep matching the leading sentence) and appends a `Base price` /
+ * `Per-minute price` provenance line when at least one human-readable
+ * Stripe price label is available.
+ *
+ * The labels are intentionally suffixed onto a single tooltip rather
+ * than rendered as separate badges or DOM nodes — keeping all the
+ * provenance in `title` means the visual badge stays compact while
+ * still letting a curious tenant hover to see exactly which Stripe
+ * prices drove the quote.
+ */
+function buildStripeRateTooltip(
+  basePriceLabel: string | null,
+  overagePriceLabel: string | null,
+): string {
+  const base = 'Pulled from your live Stripe subscription — overrides published catalog rates';
+  const parts: string[] = [];
+  if (basePriceLabel) parts.push(`Base price: ${basePriceLabel}`);
+  if (overagePriceLabel) parts.push(`Per-minute price: ${overagePriceLabel}`);
+  if (parts.length === 0) return base;
+  return `${base} · ${parts.join(' · ')}`;
 }
 
 function TierEstimate({
@@ -786,18 +916,37 @@ function TierEstimate({
         </div>
       </div>
 
-      {tier.sourcedFromStripe && (
-        <div
-          data-testid={`billing-estimator-source-${tier.key}`}
-          {...(tier.overagePriceId
-            ? { 'data-overage-price-id': tier.overagePriceId }
-            : {})}
-          className="mb-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
-          title="Pulled from your live Stripe subscription — overrides published catalog rates"
-        >
-          Live Stripe rate
-        </div>
-      )}
+      {tier.sourcedFromStripe && (() => {
+        // Compose the "Base price" / "Per-minute price" provenance suffix
+        // off the (optional) Stripe nicknames + ids the override carries.
+        // Falls back gracefully when neither is set — the existing tests
+        // assert the leading provenance sentence is preserved unchanged
+        // for that case.
+        const baseLabel = formatStripePriceLabel(
+          tier.basePriceNickname,
+          tier.basePriceId,
+        );
+        const overageLabel = formatStripePriceLabel(
+          tier.overagePriceNickname,
+          tier.overagePriceId,
+        );
+        const tooltip = buildStripeRateTooltip(baseLabel, overageLabel);
+        return (
+          <div
+            data-testid={`billing-estimator-source-${tier.key}`}
+            {...(tier.overagePriceId
+              ? { 'data-overage-price-id': tier.overagePriceId }
+              : {})}
+            {...(tier.basePriceId
+              ? { 'data-base-price-id': tier.basePriceId }
+              : {})}
+            className="mb-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+            title={tooltip}
+          >
+            Live Stripe rate
+          </div>
+        );
+      })()}
 
       {tier.discount && (() => {
         // Mirrors the "Live Stripe rate" pill style for visual consistency

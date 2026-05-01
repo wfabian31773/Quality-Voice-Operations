@@ -97,6 +97,21 @@ export interface TenantEffectiveRate {
   /** Stripe price ids that drove the override (when applicable). */
   basePriceId: string | null;
   overagePriceId: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the licensed base line, when
+   * one is configured. Surfaced to customers in the BillingEstimator's
+   * "Live Stripe rate" badge tooltip so a tenant can self-serve "which
+   * price am I actually on?" without filing a Sales/Support ticket. `null`
+   * when the resolved price came from the catalog or the Stripe price has
+   * no nickname configured.
+   */
+  basePriceNickname?: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the metered AI-minutes line.
+   * Same provenance/usage as `basePriceNickname` — the BillingEstimator
+   * tooltip falls back to a short price-id snippet when this is `null`.
+   */
+  overagePriceNickname?: string | null;
   /** Stripe price id for the metered SMS line (when applicable). */
   smsPriceId?: string | null;
   /** Stripe price id for the metered Twilio-minutes line (when applicable). */
@@ -196,6 +211,8 @@ function catalogFor(plan: PlanTier): TenantEffectiveRate {
     twilioPriceSource: 'catalog',
     basePriceId: null,
     overagePriceId: null,
+    basePriceNickname: null,
+    overagePriceNickname: null,
     smsPriceId: null,
     twilioPriceId: null,
     monthlyBasePriceCents: entry.monthlyPriceCents,
@@ -212,6 +229,14 @@ interface PriceLike {
   unit_amount: number | null;
   unit_amount_decimal: string | null;
   currency: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` (e.g. "Pro Monthly v2",
+   * "Acme custom AI minutes"). Optional because not every Stripe price
+   * carries one — when it does we surface it in the BillingEstimator
+   * tooltip so customers can match the price they see in their Stripe
+   * portal to the rate driving their bill.
+   */
+  nickname?: string | null;
   recurring: {
     usage_type?: string | null;
     interval?: string | null;
@@ -219,6 +244,20 @@ interface PriceLike {
     meter?: string | null;
   } | null;
   metadata: Record<string, string> | null;
+}
+
+/**
+ * Normalise a Stripe `Price.nickname` to a non-empty string or `null`.
+ * Stripe returns the field as `string | null`, but the same field is
+ * also routinely set to whitespace by operators copy-pasting from a
+ * spreadsheet — treat empty/whitespace as "no nickname configured" so
+ * the BillingEstimator tooltip falls back to the short price-id snippet
+ * instead of rendering an empty parenthetical.
+ */
+function normalizeNickname(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 interface ItemLike {
@@ -413,6 +452,7 @@ export async function getTenantEffectiveRate(
       overageRatePerMinute: resolved.ratePerMinute,
       overagePriceSource: 'stripe',
       overagePriceId: resolved.id,
+      overagePriceNickname: resolved.nickname,
       // Base/SMS/Twilio still catalog-sourced, so this is a `mixed`
       // result — only the AI overage came from live Stripe data.
       source: 'mixed',
@@ -494,6 +534,7 @@ export async function getTenantEffectiveRate(
   let basePriceCents = fallback.basePriceCents;
   let basePriceSource: 'stripe' | 'catalog' = 'catalog';
   let basePriceId: string | null = null;
+  let basePriceNickname: string | null = null;
   let baseInterval: string | null = null;
   if (basePrice) {
     const raw = pickBasePriceCents(basePrice);
@@ -501,6 +542,7 @@ export async function getTenantEffectiveRate(
       basePriceCents = normalizeBaseToMonthly(basePrice, raw);
       basePriceSource = 'stripe';
       basePriceId = basePrice.id;
+      basePriceNickname = normalizeNickname(basePrice.nickname);
       baseInterval = basePrice.recurring?.interval ?? null;
     }
   }
@@ -508,12 +550,14 @@ export async function getTenantEffectiveRate(
   let overageRatePerMinute = fallback.overageRatePerMinute;
   let overagePriceSource: 'stripe' | 'catalog' = 'catalog';
   let overagePriceId: string | null = null;
+  let overagePriceNickname: string | null = null;
   if (overagePrice) {
     const dollarsPerMin = unitAmountToDollarsPerMinute(overagePrice);
     if (dollarsPerMin != null) {
       overageRatePerMinute = dollarsPerMin;
       overagePriceSource = 'stripe';
       overagePriceId = overagePrice.id;
+      overagePriceNickname = normalizeNickname(overagePrice.nickname);
     }
   }
 
@@ -534,6 +578,7 @@ export async function getTenantEffectiveRate(
       overageRatePerMinute = resolved.ratePerMinute;
       overagePriceSource = 'stripe';
       overagePriceId = resolved.id;
+      overagePriceNickname = resolved.nickname;
     }
   }
 
@@ -649,6 +694,8 @@ export async function getTenantEffectiveRate(
     twilioPriceSource,
     basePriceId,
     overagePriceId,
+    basePriceNickname,
+    overagePriceNickname,
     smsPriceId,
     twilioPriceId,
     monthlyBasePriceCents,
@@ -743,7 +790,7 @@ async function resolvePerTierAiMinutesPrice(
   stripe: Stripe,
   plan: PlanTier,
   tenantId: string,
-): Promise<{ ratePerMinute: number; id: string } | null> {
+): Promise<{ ratePerMinute: number; id: string; nickname: string | null } | null> {
   const meteredPriceId = getPlanAiMinutesPriceId(plan);
   if (!meteredPriceId) return null;
   try {
@@ -773,6 +820,7 @@ async function resolvePerTierAiMinutesPrice(
     return {
       ratePerMinute: dollarsPerMin,
       id: meteredPrice.id ?? meteredPriceId,
+      nickname: normalizeNickname(meteredPrice.nickname),
     };
   } catch (err) {
     logger.warn('Failed to retrieve per-tier AI-minutes Stripe price', {
@@ -847,6 +895,22 @@ export interface TenantUpgradePreview {
   basePriceId: string | null;
   /** Stripe metered price id we used for the overage (when applicable). */
   overagePriceId: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the licensed base line of
+   * the target tier, when one is configured. Surfaced in the
+   * BillingEstimator's "Live Stripe rate" badge tooltip on the upgrade
+   * card so a tenant can self-serve "which price would I be on after I
+   * upgrade?" without filing a Sales/Support ticket. `null` when the
+   * resolved price came from the catalog or has no nickname configured.
+   */
+  basePriceNickname?: string | null;
+  /**
+   * Operator-set Stripe `Price.nickname` for the metered AI-minutes line
+   * of the target tier. Same provenance/usage as `basePriceNickname` —
+   * the BillingEstimator tooltip falls back to a short price-id snippet
+   * when this is `null`.
+   */
+  overagePriceNickname?: string | null;
   /** Discount we resolved off the customer record (when applicable). */
   discount: UpgradeDiscount | null;
 }
@@ -863,6 +927,8 @@ function catalogUpgradeFor(plan: PlanTier): TenantUpgradePreview {
     overagePriceSource: 'catalog',
     basePriceId: null,
     overagePriceId: null,
+    basePriceNickname: null,
+    overagePriceNickname: null,
     discount: null,
   };
 }
@@ -1233,6 +1299,7 @@ export async function getTenantUpgradePreview(
   let basePriceCents = fallback.basePriceCents;
   let basePriceSource: 'stripe' | 'catalog' = 'catalog';
   let basePriceId: string | null = null;
+  let basePriceNickname: string | null = null;
   let currency: string = fallback.currency;
 
   if (publishedPriceId) {
@@ -1243,6 +1310,7 @@ export async function getTenantUpgradePreview(
         basePriceCents = normalizeBaseToMonthly(stripePrice, raw);
         basePriceSource = 'stripe';
         basePriceId = stripePrice.id ?? publishedPriceId;
+        basePriceNickname = normalizeNickname(stripePrice.nickname);
         if (stripePrice.currency) currency = stripePrice.currency.toLowerCase();
       }
     } catch (err) {
@@ -1265,6 +1333,7 @@ export async function getTenantUpgradePreview(
   let overageRatePerMinute = fallback.overageRatePerMinute;
   let overagePriceSource: 'stripe' | 'catalog' = 'catalog';
   let overagePriceId: string | null = null;
+  let overagePriceNickname: string | null = null;
   // Track whether the env var was configured but the lookup failed, so we
   // can surface that as a `mixed` source (we tried for live data and only
   // got partial coverage).
@@ -1292,6 +1361,7 @@ export async function getTenantUpgradePreview(
         overageRatePerMinute = dollarsPerMin;
         overagePriceSource = 'stripe';
         overagePriceId = meteredPrice.id ?? meteredPriceId;
+        overagePriceNickname = normalizeNickname(meteredPrice.nickname);
         if (meteredPrice.currency && currency === fallback.currency) {
           currency = meteredPrice.currency.toLowerCase();
         }
@@ -1387,6 +1457,8 @@ export async function getTenantUpgradePreview(
     overagePriceSource,
     basePriceId,
     overagePriceId,
+    basePriceNickname,
+    overagePriceNickname,
     discount,
   };
 }

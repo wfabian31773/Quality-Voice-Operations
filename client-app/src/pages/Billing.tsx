@@ -1083,6 +1083,21 @@ export default function Billing() {
       twilioRatePerMinute?: number;
       twilioPriceSource?: 'stripe' | 'catalog';
       twilioPriceId?: string | null;
+      // Stripe `Price.id`s for the licensed base line and the metered
+      // AI-minutes overage line (when sourced from Stripe). Surfaced
+      // through the BillingEstimator's "Live Stripe rate" badge tooltip —
+      // paired with the matching nickname (when present) so a tenant can
+      // match the prices they see in their Stripe portal to the rates
+      // driving their bill.
+      basePriceId?: string | null;
+      overagePriceId?: string | null;
+      // Operator-set Stripe `Price.nickname` for the licensed base line
+      // and the metered AI-minutes line. Optional — the BillingEstimator
+      // tooltip falls back to a short price-id snippet when null/absent
+      // so customers always have *some* customer-readable identifier
+      // they can ask Sales/Support about.
+      basePriceNickname?: string | null;
+      overagePriceNickname?: string | null;
     }>('/billing/effective-rate'),
     // The Stripe subscription rate is stable across a billing period, so a
     // 30-minute stale window keeps every page navigation from re-hitting
@@ -1161,6 +1176,14 @@ export default function Billing() {
         // exactly which Stripe price drove the upgrade quote.
         basePriceId?: string | null;
         overagePriceId?: string | null;
+        // Operator-set Stripe `Price.nickname` for the licensed base
+        // line and the metered AI-minutes line on the upgrade target
+        // tier. Surfaced through the BillingEstimator's "Live Stripe
+        // rate" badge tooltip so a tenant can match the upgrade quote
+        // against the price they see in their Stripe portal. Optional
+        // — falls back to a short price-id snippet when null/absent.
+        basePriceNickname?: string | null;
+        overagePriceNickname?: string | null;
         // Customer-level coupon / promotion-code metadata that explains
         // why the quoted base price came in below the published catalog
         // rate. Surfaced to the tenant as a small badge on the "Next
@@ -2252,6 +2275,17 @@ export default function Billing() {
                     effectiveRateData.overagePriceSource === 'stripe'
                       ? effectiveRateData.overageRatePerMinute
                       : null,
+                  // Provenance flags for the AI base/overage lines —
+                  // forwarded so the BillingEstimator's "Live Stripe
+                  // rate" badge tooltip helper can decide which Stripe
+                  // price ids/nicknames to surface in the suffix. The
+                  // current-tier card historically inferred provenance
+                  // from non-null cents/rate (because of the null-gating
+                  // above), but the tooltip helper needs explicit flags
+                  // to match the upgrade-card convention and to gate
+                  // the new `data-base-price-id` attribute correctly.
+                  basePriceSource: effectiveRateData.basePriceSource,
+                  overagePriceSource: effectiveRateData.overagePriceSource,
                   // Always pass the SMS rate when present — even when
                   // the source is `catalog`, surfacing the rate the
                   // tenant is actually billed at is more useful than
@@ -2273,6 +2307,23 @@ export default function Billing() {
                   twilioRatePerMinute: effectiveRateData.twilioRatePerMinute ?? null,
                   twilioPriceSource: effectiveRateData.twilioPriceSource ?? null,
                   twilioPriceId: effectiveRateData.twilioPriceId ?? null,
+                  // Stripe `Price.id`s and operator-set nicknames for
+                  // the AI base/overage lines — paired so the
+                  // BillingEstimator's "Live Stripe rate" badge
+                  // tooltip can surface a human-readable identifier
+                  // (nickname when set, otherwise the last 6 chars of
+                  // the price id) the tenant can match against what
+                  // they see in their Stripe portal. Component
+                  // gating drops these when the matching source is
+                  // `catalog`, so a stale id from a prior
+                  // subscription doesn't leak into the catalog
+                  // fallback render.
+                  basePriceId: effectiveRateData.basePriceId ?? null,
+                  overagePriceId: effectiveRateData.overagePriceId ?? null,
+                  basePriceNickname:
+                    effectiveRateData.basePriceNickname ?? null,
+                  overagePriceNickname:
+                    effectiveRateData.overagePriceNickname ?? null,
                 }
               : undefined}
             upgradePreview={upgradePreviewData?.upgrade
@@ -2304,6 +2355,20 @@ export default function Billing() {
                   // actually came from Stripe.
                   overagePriceId:
                     upgradePreviewData.upgrade.overagePriceId ?? null,
+                  // Stripe `Price.id` for the licensed base line and
+                  // operator-set nicknames for both lines on the upgrade
+                  // target tier. The BillingEstimator's "Live Stripe
+                  // rate" badge tooltip surfaces a human-readable label
+                  // (nickname when set, otherwise the last 6 chars of
+                  // the price id) so a tenant can confirm the upgrade
+                  // quote against the price they see in their Stripe
+                  // portal.
+                  basePriceId:
+                    upgradePreviewData.upgrade.basePriceId ?? null,
+                  basePriceNickname:
+                    upgradePreviewData.upgrade.basePriceNickname ?? null,
+                  overagePriceNickname:
+                    upgradePreviewData.upgrade.overagePriceNickname ?? null,
                   // Coupon / promotion-code metadata so the comparison
                   // card can render a "25% off — PROMO25" badge that
                   // explains why the quote is below catalog. `null` when
