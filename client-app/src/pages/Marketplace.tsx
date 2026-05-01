@@ -14,6 +14,13 @@ import { PageHeader } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import Modal from '../components/Modal';
+import {
+  applyDiscountToCents,
+  buildDiscountChipTooltip,
+  discountReducesPrice,
+  formatDiscountChipLabel,
+  type MarketplaceCustomerDiscount,
+} from '../lib/marketplaceDiscount';
 
 interface TemplateCategory {
   name: string;
@@ -281,7 +288,27 @@ function formatPrice(priceCents: number, priceModel: string, currency: string): 
   return formatted;
 }
 
-function PriceBadge({ priceCents, priceModel, currency }: { priceCents: number; priceModel: string; currency: string }) {
+/**
+ * Listing-card / detail-view price block. When the tenant has an active
+ * customer-level Stripe discount (Task #1380), renders the discounted
+ * price as the prominent label, strikes through the original, and
+ * appends a small emerald "X% off" chip (matches the styling the
+ * post-purchase history badge already uses, so the marketplace surfaces
+ * a consistent coupon-attribution colour). When there is no discount,
+ * falls back to the original undiscounted single-price badge so
+ * existing snapshots/screenshots stay byte-identical.
+ */
+function PriceBadge({
+  priceCents,
+  priceModel,
+  currency,
+  discount,
+}: {
+  priceCents: number;
+  priceModel: string;
+  currency: string;
+  discount?: MarketplaceCustomerDiscount | null;
+}) {
   const isFree = priceModel === 'free' || priceCents === 0;
   // Note: we intentionally do NOT prefix the badge with a hardcoded
   // <DollarSign /> icon. The price string itself already carries the
@@ -289,14 +316,41 @@ function PriceBadge({ priceCents, priceModel, currency }: { priceCents: number; 
   // formatPrice, so adding a fixed dollar glyph would make every paid
   // template visibly say "$" to non-USD tenants — exactly what task
   // #1006 set out to eliminate.
+  const showDiscount = !isFree && discountReducesPrice(discount);
+  const discountedCents = showDiscount
+    ? applyDiscountToCents(priceCents, discount)
+    : priceCents;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-      isFree
-        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-    }`}>
-      {!isFree && <Tag className="h-3 w-3" />}
-      {formatPrice(priceCents, priceModel, currency)}
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+          isFree
+            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+        }`}
+      >
+        {!isFree && <Tag className="h-3 w-3" />}
+        {formatPrice(discountedCents, priceModel, currency)}
+      </span>
+      {showDiscount && (
+        <>
+          <span
+            className="text-xs text-text-muted line-through"
+            data-testid="marketplace-card-original-price"
+          >
+            {formatPrice(priceCents, priceModel, currency)}
+          </span>
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+            data-testid="marketplace-card-discount-chip"
+            title={buildDiscountChipTooltip(discount!, currency)}
+            aria-label={buildDiscountChipTooltip(discount!, currency)}
+          >
+            <BadgePercent className="h-3 w-3" />
+            {formatDiscountChipLabel(discount!, currency)}
+          </span>
+        </>
+      )}
     </span>
   );
 }
@@ -645,10 +699,12 @@ function TemplateCard({
   template,
   installed,
   onClick,
+  customerDiscount,
 }: {
   template: MarketplaceTemplate;
   installed: boolean;
   onClick: () => void;
+  customerDiscount?: MarketplaceCustomerDiscount | null;
 }) {
   const currency = useTenantCurrency();
   return (
@@ -666,8 +722,13 @@ function TemplateCard({
         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
           <CategoryIcon category={template.marketplaceCategory} />
         </div>
-        <div className="flex items-center gap-2">
-          <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} currency={currency} />
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <PriceBadge
+            priceCents={template.priceCents}
+            priceModel={template.priceModel}
+            currency={currency}
+            discount={customerDiscount}
+          />
           {installed && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
               <CheckCircle className="h-3 w-3" /> Installed
@@ -731,6 +792,21 @@ function TemplateDetailView({
     queryKey: ['marketplace-template', templateId],
     queryFn: () => api.get<TemplateDetail>(`/marketplace/templates/${templateId}`),
   });
+
+  // Customer-level Stripe discount snapshot (Task #1380). Fetched here
+  // (in addition to the parent Marketplace component) because the
+  // detail view is also reachable via deep link `/marketplace/:id` —
+  // landing on this route directly must NOT skip the discount preview.
+  // Server returns `{ discount: null }` on any failure, so this is safe
+  // to render unconditionally.
+  const { data: customerDiscountData } = useQuery({
+    queryKey: ['marketplace-customer-discount'],
+    queryFn: () => api.get<{ discount: MarketplaceCustomerDiscount | null }>(
+      '/marketplace/customer-discount',
+    ),
+    staleTime: 60_000,
+  });
+  const customerDiscount = customerDiscountData?.discount ?? null;
 
   const template = data;
   const isInstalled = template ? installedTemplateIds.has(template.id) : false;
@@ -850,7 +926,12 @@ function TemplateDetailView({
                 </p>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <PlanBadge plan={template.minPlan} />
-                  <PriceBadge priceCents={template.priceCents} priceModel={template.priceModel} currency={currency} />
+                  <PriceBadge
+                    priceCents={template.priceCents}
+                    priceModel={template.priceModel}
+                    currency={currency}
+                    discount={customerDiscount}
+                  />
                   <ChannelBadges channels={template.supportedChannels} />
                   <span className="text-xs text-text-muted flex items-center gap-1">
                     <Download className="h-3 w-3" /> {template.installCount} installs
@@ -1201,27 +1282,73 @@ function TemplateDetailView({
                 </a>
               </div>
             ) : isPaidTemplate && !hasPurchaseAccess ? (
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-text-primary">
-                    {formatPrice(template.priceCents, template.priceModel, currency)}
-                  </p>
-                  {template.priceModel === 'monthly_subscription' && (
-                    <p className="text-xs text-text-muted">billed monthly</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => purchaseMutation.mutate()}
-                  disabled={purchaseMutation.isPending}
-                  className="w-full px-4 py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition inline-flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <ShoppingCart className="h-4 w-4" />
-                  {purchaseMutation.isPending ? 'Processing...' : 'Purchase'}
-                </button>
-                {purchaseMutation.error && (
-                  <p className="text-xs text-danger">{(purchaseMutation.error as Error).message}</p>
-                )}
-              </div>
+              (() => {
+                // Customer-discount-aware Purchase CTA (Task #1380). When
+                // the buyer has an active customer-level Stripe discount
+                // (coupon or promotion code), show the discounted price
+                // as the prominent figure with the original struck through
+                // beneath, plus an emerald "X% off — applied at checkout"
+                // chip mirroring `PriceBadge`. The discounted figure
+                // matches what `createMarketplacePurchase` will forward
+                // to Stripe Checkout (Task #1372), so the in-app number
+                // and the hosted Checkout total never disagree. When no
+                // discount applies, the panel renders identically to the
+                // pre-#1380 layout.
+                const showDiscount = discountReducesPrice(customerDiscount);
+                const discountedCents = showDiscount
+                  ? applyDiscountToCents(template.priceCents, customerDiscount)
+                  : template.priceCents;
+                return (
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <p
+                        className="text-2xl font-bold text-text-primary"
+                        data-testid="marketplace-purchase-cta-price"
+                      >
+                        {formatPrice(discountedCents, template.priceModel, currency)}
+                      </p>
+                      {showDiscount && (
+                        <div className="mt-1 flex items-center justify-center gap-2 flex-wrap">
+                          <span
+                            className="text-xs text-text-muted line-through"
+                            data-testid="marketplace-purchase-cta-original-price"
+                          >
+                            {formatPrice(template.priceCents, template.priceModel, currency)}
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                            data-testid="marketplace-purchase-cta-discount-chip"
+                            title={buildDiscountChipTooltip(customerDiscount!, currency)}
+                            aria-label={buildDiscountChipTooltip(customerDiscount!, currency)}
+                          >
+                            <BadgePercent className="h-3 w-3" />
+                            {formatDiscountChipLabel(customerDiscount!, currency)}
+                          </span>
+                        </div>
+                      )}
+                      {template.priceModel === 'monthly_subscription' && (
+                        <p className="text-xs text-text-muted mt-1">billed monthly</p>
+                      )}
+                      {showDiscount && (
+                        <p className="text-[11px] text-text-muted mt-1">
+                          Discount applied automatically at checkout
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => purchaseMutation.mutate()}
+                      disabled={purchaseMutation.isPending}
+                      className="w-full px-4 py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg transition inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      {purchaseMutation.isPending ? 'Processing...' : 'Purchase'}
+                    </button>
+                    {purchaseMutation.error && (
+                      <p className="text-xs text-danger">{(purchaseMutation.error as Error).message}</p>
+                    )}
+                  </div>
+                );
+              })()
             ) : (
               <button
                 onClick={() => setShowInstall(true)}
@@ -1676,6 +1803,19 @@ export default function Marketplace() {
     queryFn: () => api.get<{ installations: Installation[] }>('/marketplace/installations'),
   });
 
+  // Customer-level Stripe discount snapshot (Task #1380). Threaded into
+  // every TemplateCard so listing rows show the discounted price BEFORE
+  // the buyer is redirected to Stripe Checkout. Failures degrade to
+  // `null` server-side, so cards keep rendering the full price.
+  const { data: customerDiscountData } = useQuery({
+    queryKey: ['marketplace-customer-discount'],
+    queryFn: () => api.get<{ discount: MarketplaceCustomerDiscount | null }>(
+      '/marketplace/customer-discount',
+    ),
+    staleTime: 60_000,
+  });
+  const customerDiscount = customerDiscountData?.discount ?? null;
+
   const templates = templatesData?.templates ?? [];
   const categories = categoriesData?.categories ?? [];
   const installations = installationsData?.installations ?? [];
@@ -1824,6 +1964,7 @@ export default function Marketplace() {
                     template={template}
                     installed={installedTemplateIds.has(template.id)}
                     onClick={() => handleViewTemplate(template.id)}
+                    customerDiscount={customerDiscount}
                   />
                 ))}
               </div>
@@ -1865,6 +2006,7 @@ export default function Marketplace() {
                   template={template}
                   installed={installedTemplateIds.has(template.id)}
                   onClick={() => handleViewTemplate(template.id)}
+                  customerDiscount={customerDiscount}
                 />
               ))}
             </div>

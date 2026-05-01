@@ -1672,6 +1672,93 @@ router.post('/marketplace/templates/:id/purchase', requireAuth, requireRole('man
   }
 });
 
+/**
+ * Active customer-level Stripe discount snapshot for the current tenant
+ * (Task #1380). Mirrors the same `loadActiveCustomerDiscount` helper the
+ * `/billing/subscription` panel and the marketplace Checkout session
+ * builder use, so the marketplace listing UI can preview the discounted
+ * price BEFORE the buyer is redirected to Stripe — the in-app number
+ * matches what the hosted Checkout page will show. Returns
+ * `{ discount: null }` when the tenant has no Stripe customer, no active
+ * customer-level discount, or when the Stripe lookup degraded silently —
+ * the UI treats that as the existing "show full template price"
+ * behaviour, so a discount lookup failure never blocks browsing the
+ * marketplace.
+ */
+router.get('/marketplace/customer-discount', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const pool = getPlatformPool();
+  let stripeCustomerId: string | null = null;
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, tenantId, async () => {});
+      const { rows } = await client.query<{ stripe_customer_id: string | null }>(
+        `SELECT stripe_customer_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        [tenantId],
+      );
+      await client.query('COMMIT');
+      stripeCustomerId = rows[0]?.stripe_customer_id ?? null;
+    } catch (innerErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.warn('Failed to load subscription row for marketplace customer discount', {
+        tenantId,
+        error: String(innerErr),
+      });
+    } finally {
+      client.release();
+    }
+
+    if (!stripeCustomerId) {
+      return res.json({ discount: null });
+    }
+
+    const { getStripeClient } = await import('../../../platform/billing/stripe/client');
+    const { loadActiveCustomerDiscount } = await import(
+      '../../../platform/billing/stripe/effectiveRate'
+    );
+    let stripe;
+    try {
+      stripe = getStripeClient();
+    } catch (err) {
+      logger.info('Stripe client unavailable — marketplace shows full price', {
+        tenantId,
+        error: String(err),
+      });
+      return res.json({ discount: null });
+    }
+
+    const discount = await loadActiveCustomerDiscount(stripe, stripeCustomerId, {
+      tenantId,
+      surface: 'marketplace_listing',
+    });
+    if (!discount) {
+      return res.json({ discount: null });
+    }
+
+    // Project to the same compact shape `marketplace_purchases` rows
+    // already use so the client can share one renderer for the listing
+    // preview AND the post-purchase history chip without a second type.
+    return res.json({
+      discount: {
+        couponId: discount.couponId,
+        name: discount.name,
+        promotionCode: discount.promotionCode,
+        percentOff: discount.percentOff,
+        amountOffCents: discount.amountOffCents,
+        currency: discount.currency,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to resolve marketplace customer discount', {
+      tenantId,
+      error: String(err),
+    });
+    return res.json({ discount: null });
+  }
+});
+
 // List the tenant's marketplace purchase history (newest first), each
 // row enriched with the coupon-aware "Discount applied" badge fields
 // mirrored from `invoice.finalized` so the in-app history view renders
