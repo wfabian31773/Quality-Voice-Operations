@@ -30,11 +30,25 @@
  *   4. Otherwise — DEACTIVATE.
  *
  * The "active customer discount" set is built by walking the
- * `subscriptions` table for distinct `stripe_customer_id` values and
- * loading each customer's discount via the same path the portal /
- * checkout surfaces use (`loadActiveCustomerDiscount`), so the cleanup
- * judgement uses the same definition of "currently active" as the
- * surface that mints the configurations in the first place.
+ * `subscriptions` table for distinct `stripe_customer_id` /
+ * `stripe_subscription_id` pairs and loading each tenant's discount via
+ * the same paths the portal / checkout surfaces use:
+ *
+ *   - `loadActiveCustomerDiscount` for the legacy customer-level
+ *     `customer.discount` shape.
+ *   - `loadActiveSubscriptionDiscounts` for the modern multi-coupon
+ *     `subscription.discounts[]` shape (including the brand-new stacked
+ *     "+ N more" headline configs minted by `createPortalSession`).
+ *
+ * Without dereferencing the subscription-level path the sweep only sees
+ * customer-level coupons, so any portal config that was minted from a
+ * `subscription.discounts[]` entry — the modern shape, including every
+ * stacked-discount headline — would flip to `active: false` on the next
+ * pass even though the coupon is still in force, churning Stripe
+ * configurations needlessly and polluting the cleanup log with bogus
+ * "deactivated" entries. Loading both paths means the cleanup judgement
+ * uses the same definition of "currently active" as the surface that
+ * mints the configurations in the first place.
  */
 
 import type Stripe from 'stripe';
@@ -43,6 +57,7 @@ import { getPlatformPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
   loadActiveCustomerDiscount,
+  loadActiveSubscriptionDiscounts,
   type UpgradeDiscount,
 } from './effectiveRate';
 import {
@@ -144,8 +159,18 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
   // the enum array type so `= ANY(...)` resolves to the enum equality
   // operator. Without this cast, the query fails at plan time with
   // "operator does not exist: subscription_status = text".
-  const { rows } = await pool.query<{ stripe_customer_id: string | null }>(
-    `SELECT DISTINCT stripe_customer_id
+  //
+  // We also pull `stripe_subscription_id` so the worker below can
+  // dereference subscription-level discounts (`subscription.discounts[]`,
+  // the modern multi-coupon shape including the stacked
+  // "+ N more" headline configs). Without that the active-set sweep
+  // only sees customer-level coupons and would mass-deactivate
+  // still-in-use stacked-discount portal configs every cycle.
+  const { rows } = await pool.query<{
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+  }>(
+    `SELECT DISTINCT stripe_customer_id, stripe_subscription_id
        FROM subscriptions
       WHERE stripe_customer_id IS NOT NULL
         AND status = ANY($1::subscription_status[])
@@ -156,13 +181,38 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
     ],
   );
 
-  const customerIds = rows
-    .map((r) => r.stripe_customer_id)
-    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  // Dedupe in code as well — the SQL DISTINCT is on the
+  // (customer, subscription) pair, but a single customer with multiple
+  // active subscription rows would otherwise hit
+  // `loadActiveCustomerDiscount` twice. The Set guarantees one Stripe
+  // call per unique id regardless of how the join shakes out.
+  const customerIdSet = new Set<string>();
+  const subscriptionIdSet = new Set<string>();
+  for (const r of rows) {
+    if (typeof r.stripe_customer_id === 'string' && r.stripe_customer_id.length > 0) {
+      customerIdSet.add(r.stripe_customer_id);
+    }
+    if (
+      typeof r.stripe_subscription_id === 'string'
+      && r.stripe_subscription_id.length > 0
+    ) {
+      subscriptionIdSet.add(r.stripe_subscription_id);
+    }
+  }
+
+  const customerIds = Array.from(customerIdSet);
+  const subscriptionIds = Array.from(subscriptionIdSet);
+  // Truncation is judged on the customer count (the historical
+  // semantic for `MAX_CUSTOMERS_PER_CYCLE` and the field surfaced in
+  // the cleanup result). Subscriptions are 1:1 with billing customers
+  // in our schema, so the same cap effectively bounds them too.
   const truncated = customerIds.length > MAX_CUSTOMERS_PER_CYCLE;
   const consideredCustomerIds = truncated
     ? customerIds.slice(0, MAX_CUSTOMERS_PER_CYCLE)
     : customerIds;
+  const consideredSubscriptionIds = truncated
+    ? subscriptionIds.slice(0, MAX_CUSTOMERS_PER_CYCLE)
+    : subscriptionIds;
 
   if (truncated) {
     logger.warn(
@@ -178,12 +228,33 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
   const couponIds = new Set<string>();
   const promotionCodeIds = new Set<string>();
 
+  function recordDiscount(
+    discount: UpgradeDiscount,
+    additionalCount: number,
+  ): void {
+    // Always record the singular headline so cleanups for
+    // single-coupon configs keep matching, and also record the
+    // stacked variant when this discount belongs to a tenant with
+    // multiple active subscription-level discounts. Stacked configs
+    // live or die by the `+ N more` form; recording it lets the
+    // headline fallback rule (#3) keep them alive when they were
+    // minted before `couponId` metadata was stamped.
+    const singular = buildPortalDiscountHeadline(discount);
+    if (singular) headlines.add(singular);
+    if (additionalCount > 0) {
+      const stacked = buildPortalDiscountHeadline(discount, { additionalCount });
+      if (stacked) headlines.add(stacked);
+    }
+    if (discount.couponId) couponIds.add(discount.couponId);
+    if (discount.promotionCodeId) promotionCodeIds.add(discount.promotionCodeId);
+  }
+
   // Walk the customer list with bounded concurrency so we don't burst
   // Stripe's rate limit on accounts with thousands of paying tenants.
-  let cursor = 0;
-  async function worker(): Promise<void> {
+  let customerCursor = 0;
+  async function customerWorker(): Promise<void> {
     for (;;) {
-      const idx = cursor++;
+      const idx = customerCursor++;
       if (idx >= consideredCustomerIds.length) return;
       const customerId = consideredCustomerIds[idx];
       let discount: UpgradeDiscount | null = null;
@@ -199,21 +270,58 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
         discount = null;
       }
       if (!discount) continue;
-
-      const headline = buildPortalDiscountHeadline(discount);
-      if (headline) headlines.add(headline);
-      if (discount.couponId) couponIds.add(discount.couponId);
-      if (discount.promotionCodeId) promotionCodeIds.add(discount.promotionCodeId);
+      recordDiscount(discount, 0);
     }
   }
 
-  const workerCount = Math.min(
+  // Same pattern for the subscription-level discount path. Each
+  // subscription can carry multiple coupons (`subscription.discounts[]`)
+  // and `loadActiveSubscriptionDiscounts` returns all of them. We feed
+  // every entry into the active set so a portal config minted from any
+  // of them — whether the headline one or one of the "+ N more"
+  // siblings — keeps matching by `couponId` / `promotionCodeId`. The
+  // additionalCount we pass to the headline builder mirrors what
+  // `createPortalSession` would have computed (`length - 1`) so the
+  // stacked headline string round-trips through the headline-fallback
+  // rule for legacy configs missing the new `additionalDiscountCount`
+  // metadata.
+  let subscriptionCursor = 0;
+  async function subscriptionWorker(): Promise<void> {
+    for (;;) {
+      const idx = subscriptionCursor++;
+      if (idx >= consideredSubscriptionIds.length) return;
+      const subscriptionId = consideredSubscriptionIds[idx];
+      let subDiscounts: UpgradeDiscount[] = [];
+      try {
+        subDiscounts = await loadActiveSubscriptionDiscounts(stripe, subscriptionId, {
+          tenantId: 'portal-config-cleanup',
+          surface: 'portal_config_cleanup',
+        });
+      } catch {
+        // Belt-and-braces — `loadActiveSubscriptionDiscounts` already
+        // returns `[]` on error, but a thrown error here would
+        // otherwise abort the whole worker pool.
+        subDiscounts = [];
+      }
+      const additionalCount = subDiscounts.length > 1 ? subDiscounts.length - 1 : 0;
+      for (const discount of subDiscounts) {
+        recordDiscount(discount, additionalCount);
+      }
+    }
+  }
+
+  const customerWorkerCount = Math.min(
     DISCOUNT_LOOKUP_CONCURRENCY,
     Math.max(1, consideredCustomerIds.length),
   );
-  await Promise.all(
-    Array.from({ length: workerCount }, () => worker()),
+  const subscriptionWorkerCount = Math.min(
+    DISCOUNT_LOOKUP_CONCURRENCY,
+    Math.max(1, consideredSubscriptionIds.length),
   );
+  await Promise.all([
+    ...Array.from({ length: customerWorkerCount }, () => customerWorker()),
+    ...Array.from({ length: subscriptionWorkerCount }, () => subscriptionWorker()),
+  ]);
 
   return {
     headlines,

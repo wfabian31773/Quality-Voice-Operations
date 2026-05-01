@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const customersRetrieve = vi.fn();
+const subscriptionsRetrieve = vi.fn();
+const promotionCodesRetrieve = vi.fn();
 const portalConfigurationsList = vi.fn();
 const portalConfigurationsUpdate = vi.fn();
 const platformPoolQuery = vi.fn();
@@ -32,6 +34,8 @@ vi.mock('../../platform/billing/stripe/plans', () => ({
 vi.mock('../../platform/billing/stripe/client', () => ({
   getStripeClient: () => ({
     customers: { retrieve: customersRetrieve },
+    subscriptions: { retrieve: subscriptionsRetrieve },
+    promotionCodes: { retrieve: promotionCodesRetrieve },
     billingPortal: {
       configurations: {
         list: portalConfigurationsList,
@@ -72,9 +76,15 @@ function activeDiscountedConfig(
 
 beforeEach(() => {
   customersRetrieve.mockReset();
+  subscriptionsRetrieve.mockReset();
+  promotionCodesRetrieve.mockReset();
   portalConfigurationsList.mockReset();
   portalConfigurationsUpdate.mockReset();
   platformPoolQuery.mockReset();
+  // Default: no subscription-level discounts so existing tests that
+  // don't supply a `stripe_subscription_id` row are unaffected by the
+  // new subscription-discount path.
+  subscriptionsRetrieve.mockResolvedValue({ discounts: [], discount: null });
   __resetPortalConfigCacheForTests();
 });
 
@@ -384,6 +394,168 @@ describe('runDiscountPortalConfigCleanup', () => {
     expect(result.deactivatedConfigurationIds).toEqual(['bpc_churned']);
     expect(result.keptConfigurationIds).toEqual(['bpc_live']);
     expect(result.customersConsidered).toBe(1);
+  });
+
+  it('keeps configurations whose coupon lives on subscription.discounts[] (modern shape)', async () => {
+    // Regression: tenants whose coupons live on `subscription.discounts[]`
+    // (rather than the legacy customer.discount field) must keep their
+    // portal-headline configurations alive. The cleanup sweep must
+    // dereference subscription-level discounts via
+    // `loadActiveSubscriptionDiscounts` and add their coupon /
+    // promotion-code ids to the active set. Without that, every modern
+    // tenant's portal config would flip to `active: false` on the next
+    // sweep — including the new stacked "+ N more" headline configs —
+    // and the next portal open would silently re-create them, churning
+    // Stripe configurations for no benefit.
+    platformPoolQuery.mockResolvedValue({
+      rows: [
+        {
+          stripe_customer_id: 'cus_modern',
+          stripe_subscription_id: 'sub_stacked',
+        },
+      ],
+    });
+    // No customer-level discount — modern tenants attach coupons at the
+    // subscription level.
+    customersRetrieve.mockResolvedValue(customer('cus_modern', null));
+    // Two stacked subscription-level discounts. The portal headline
+    // config will have been minted with `metadata.couponId` = the
+    // primary one and `additionalDiscountCount = 1`; the cleanup must
+    // recognise *both* coupons so siblings stay alive too.
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_primary',
+            name: 'Primary Coupon',
+            percent_off: 30,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_primary', code: 'STACK30' },
+        },
+        {
+          coupon: {
+            id: 'coupon_secondary',
+            name: 'Secondary Coupon',
+            percent_off: 10,
+            valid: true,
+          },
+          promotion_code: null,
+        },
+      ],
+      discount: null,
+    });
+    portalConfigurationsList.mockResolvedValue({
+      data: [
+        // Stacked headline config minted by `createPortalSession` for
+        // the primary coupon. Carries `additionalDiscountCount` to flag
+        // it as one of the stacked-discount configs.
+        activeDiscountedConfig('bpc_stacked_primary', {
+          headline: 'Active discount: 30% off — STACK30 + 1 more',
+          couponId: 'coupon_primary',
+          promotionCodeId: 'promo_primary',
+          additionalDiscountCount: '1',
+          defaultConfigId: 'bpc_default',
+        }),
+        // Portal config for the sibling coupon (mintable when the
+        // headline is rebuilt off the second discount). Must also be
+        // kept alive — its couponId is in the subscription-level
+        // active set.
+        activeDiscountedConfig('bpc_sibling', {
+          headline: 'Active discount: 10% off — Secondary Coupon',
+          couponId: 'coupon_secondary',
+          defaultConfigId: 'bpc_default',
+        }),
+        // Genuinely stale config — its coupon is not on either the
+        // customer or any subscription. Must be deactivated this cycle
+        // so the sweep still does its job.
+        activeDiscountedConfig('bpc_stale', {
+          headline: 'Active discount: 99% off — DEAD',
+          couponId: 'coupon_dead',
+          defaultConfigId: 'bpc_default',
+        }),
+      ],
+      has_more: false,
+    });
+
+    const result = await runDiscountPortalConfigCleanup();
+
+    expect(subscriptionsRetrieve).toHaveBeenCalledWith(
+      'sub_stacked',
+      expect.objectContaining({ expand: expect.any(Array) }),
+    );
+    expect(portalConfigurationsUpdate).toHaveBeenCalledTimes(1);
+    expect(portalConfigurationsUpdate).toHaveBeenCalledWith('bpc_stale', {
+      active: false,
+    });
+    expect(result.deactivatedConfigurationIds).toEqual(['bpc_stale']);
+    expect(result.keptConfigurationIds).toEqual(
+      expect.arrayContaining(['bpc_stacked_primary', 'bpc_sibling']),
+    );
+    expect(result.keptConfigurationIds).not.toContain('bpc_stale');
+    // Subscription-level coupon ids must show up in the active-coupon
+    // count even though no customer.discount was set.
+    expect(result.activeCouponsCount).toBe(2);
+  });
+
+  it('keeps stacked-discount configurations via headline match when coupon metadata is missing', async () => {
+    // Defense-in-depth: even if a stacked-discount config was minted
+    // before `couponId` metadata was reliably stamped, the headline
+    // fallback must still rescue it. The cleanup builds the stacked
+    // headline string (e.g. "+ 1 more") for each subscription-level
+    // discount, so a legacy stacked config whose only marker is the
+    // headline still round-trips through rule #3.
+    platformPoolQuery.mockResolvedValue({
+      rows: [
+        {
+          stripe_customer_id: 'cus_modern',
+          stripe_subscription_id: 'sub_stacked',
+        },
+      ],
+    });
+    customersRetrieve.mockResolvedValue(customer('cus_modern', null));
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_primary',
+            name: 'Primary Coupon',
+            percent_off: 30,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_primary', code: 'STACK30' },
+        },
+        {
+          coupon: {
+            id: 'coupon_secondary',
+            name: 'Secondary Coupon',
+            percent_off: 10,
+            valid: true,
+          },
+          promotion_code: null,
+        },
+      ],
+      discount: null,
+    });
+    portalConfigurationsList.mockResolvedValue({
+      data: [
+        // No coupon metadata — only the stacked headline. Must still
+        // survive the cleanup because the rebuilt active-set headline
+        // exactly matches.
+        activeDiscountedConfig('bpc_legacy_stacked', {
+          headline: 'Active discount: 30% off — STACK30 + 1 more',
+          additionalDiscountCount: '1',
+          defaultConfigId: 'bpc_default',
+        }),
+      ],
+      has_more: false,
+    });
+
+    const result = await runDiscountPortalConfigCleanup();
+
+    expect(portalConfigurationsUpdate).not.toHaveBeenCalled();
+    expect(result.deactivatedConfigurationIds).toEqual([]);
+    expect(result.keptConfigurationIds).toEqual(['bpc_legacy_stacked']);
   });
 
   it('evicts the in-process configuration cache for every deactivated id', async () => {
