@@ -227,6 +227,7 @@ export async function listInstallations(tenantId: TenantId): Promise<unknown[]> 
               tai.status, tai.config, tai.installed_by, tai.installed_at, tai.updated_at,
               tr.slug AS template_slug, tr.display_name AS template_name,
               tr.current_version AS latest_version,
+              tr.price_model, tr.price_cents,
               a.name AS agent_name, a.status AS agent_status, a.type AS agent_type
        FROM tenant_agent_installations tai
        JOIN template_registry tr ON tr.id = tai.template_id

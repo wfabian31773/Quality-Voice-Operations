@@ -229,6 +229,12 @@ interface Installation {
   agent_status: string | null;
   agent_type: string | null;
   installed_by: string | null;
+  // Pulled from `template_registry` so the in-app management view can
+  // mirror the recurring price the buyer is actually being billed
+  // (Task #1404). Older API responses won't include these — both
+  // fields are optional and the row falls back silently.
+  price_model?: string | null;
+  price_cents?: number | null;
 }
 
 interface CompatibilityResult {
@@ -1857,7 +1863,13 @@ function PurchaseInvoiceItem({
   );
 }
 
-function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => void }) {
+function InstalledView({
+  onViewTemplate,
+  customerDiscount,
+}: {
+  onViewTemplate: (id: string) => void;
+  customerDiscount: MarketplaceCustomerDiscount | null;
+}) {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace-installations'],
     queryFn: () => api.get<{ installations: Installation[] }>('/marketplace/installations'),
@@ -1869,6 +1881,7 @@ function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
   });
   const phoneNumbers = phoneData?.phoneNumbers ?? [];
 
+  const currency = useTenantCurrency();
   const installations = data?.installations ?? [];
 
   if (isLoading) {
@@ -1913,6 +1926,25 @@ function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
           ? [configPhone, ...assignedPhones.filter((p) => p.id !== configPhone.id)]
           : assignedPhones;
 
+        // Mirror the marketplace browse listing: when this row carries
+        // a paid price model AND the tenant has an active customer-level
+        // Stripe discount that actually moves the price, render the
+        // discounted recurring figure (e.g. `$36.75/mo`) with the same
+        // strikethrough + emerald "X% off" chip styling PriceBadge uses
+        // on the browse cards. Free templates and tenants without a
+        // discount keep rendering nothing here so existing snapshots
+        // stay byte-identical (Task #1404).
+        const priceModel = inst.price_model ?? null;
+        const priceCents = inst.price_cents ?? null;
+        const hasPaidPrice = priceModel != null
+          && priceModel !== 'free'
+          && priceCents != null
+          && priceCents > 0;
+        const showDiscount = hasPaidPrice && discountReducesPrice(customerDiscount);
+        const discountedCents = showDiscount && priceCents != null
+          ? applyDiscountToCents(priceCents, customerDiscount)
+          : priceCents;
+
         return (
         <div key={inst.id} className="bg-surface border border-border rounded-xl p-5 shadow-sm">
           <div className="flex items-start gap-4">
@@ -1945,6 +1977,31 @@ function InstalledView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
                 <span>
                   Installed {new Date(inst.installed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
+                {showDiscount && priceCents != null && discountedCents != null && (
+                  <span
+                    className="inline-flex items-center gap-1.5 flex-wrap"
+                    data-testid="installed-row-price"
+                  >
+                    <span className="text-text-secondary font-medium">
+                      {formatPrice(discountedCents, priceModel ?? 'one_time', currency)}
+                    </span>
+                    <span
+                      className="line-through text-text-muted"
+                      data-testid="installed-row-original-price"
+                    >
+                      {formatPrice(priceCents, priceModel ?? 'one_time', currency)}
+                    </span>
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      data-testid="installed-row-discount-chip"
+                      title={buildDiscountChipTooltip(customerDiscount!, currency)}
+                      aria-label={buildDiscountChipTooltip(customerDiscount!, currency)}
+                    >
+                      <BadgePercent className="h-3 w-3" />
+                      {formatDiscountChipLabel(customerDiscount!, currency)}
+                    </span>
+                  </span>
+                )}
               </div>
 
               {allPhones.length > 0 && (
@@ -2258,7 +2315,12 @@ export default function Marketplace() {
         </>
       )}
 
-      {view === 'installed' && <InstalledView onViewTemplate={handleViewTemplate} />}
+      {view === 'installed' && (
+        <InstalledView
+          onViewTemplate={handleViewTemplate}
+          customerDiscount={customerDiscount}
+        />
+      )}
       {view === 'purchases' && <PurchasesView onViewTemplate={handleViewTemplate} />}
     </div>
   );
