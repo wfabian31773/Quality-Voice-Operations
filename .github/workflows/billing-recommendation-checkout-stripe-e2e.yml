@@ -54,19 +54,34 @@ jobs:
       # never see them.
 
     steps:
-      # Resolves to `true` only when both required Stripe secrets are
+      # Resolves to `true` only when ALL required Stripe secrets are
       # configured AND the secret key is a test-mode key. Hard-errors on
       # a non-test key so live creds wired up by mistake fail fast.
+      #
+      # STRIPE_WEBHOOK_SECRET is part of the gate (not just consumed in
+      # later steps) because the webhook-HTTP companion spec
+      # (billingRecommendationCheckoutStripeWebhookHttp.spec.ts) signs
+      # its payload with this secret. Without it, that spec would
+      # silently SKIP (exit 0) and the job would still go green —
+      # leaving signature/route regressions uncovered, which is exactly
+      # what task #1358 added the spec to prevent. Gating both specs
+      # together also keeps failure attribution honest: if the gate
+      # passes, both specs are guaranteed to run on every PR.
       - name: Determine whether to run the live Stripe spec
         id: gate
         env:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           STRIPE_PRICE_ENTERPRISE_MONTHLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_MONTHLY }}
         run: |
           run_spec="false"
           reason=""
-          if [ -z "${STRIPE_SECRET_KEY}" ] || [ -z "${STRIPE_PRICE_ENTERPRISE_MONTHLY}" ]; then
-            reason="STRIPE_SECRET_KEY and/or STRIPE_PRICE_ENTERPRISE_MONTHLY is not configured"
+          missing=()
+          [ -z "${STRIPE_SECRET_KEY}" ] && missing+=("STRIPE_SECRET_KEY")
+          [ -z "${STRIPE_WEBHOOK_SECRET}" ] && missing+=("STRIPE_WEBHOOK_SECRET")
+          [ -z "${STRIPE_PRICE_ENTERPRISE_MONTHLY}" ] && missing+=("STRIPE_PRICE_ENTERPRISE_MONTHLY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            reason="missing required secret(s): ${missing[*]}"
           elif [ "${STRIPE_SECRET_KEY#sk_test_}" = "${STRIPE_SECRET_KEY}" ]; then
             echo "::error::STRIPE_SECRET_KEY is configured but is not a test-mode key (sk_test_…). Refusing to run live Stripe e2e against a non-test key."
             exit 1
@@ -75,9 +90,9 @@ jobs:
           fi
           echo "run_spec=${run_spec}" >> "$GITHUB_OUTPUT"
           if [ "${run_spec}" = "true" ]; then
-            echo "::notice::Live Stripe billing creds detected — running billingRecommendationCheckoutStripe.spec.ts."
+            echo "::notice::Live Stripe billing creds detected — running both billingRecommendationCheckoutStripe.spec.ts (in-process) and billingRecommendationCheckoutStripeWebhookHttp.spec.ts (HTTP route)."
           else
-            echo "::notice::Skipping billingRecommendationCheckoutStripe.spec.ts: ${reason}. Configure STRIPE_SECRET_KEY (sk_test_…) and STRIPE_PRICE_ENTERPRISE_MONTHLY in repo secrets to enable this check."
+            echo "::notice::Skipping billingRecommendationCheckoutStripe e2e specs: ${reason}. Configure STRIPE_SECRET_KEY (sk_test_…), STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_ENTERPRISE_MONTHLY in repo secrets to enable these checks."
           fi
 
       - name: Check out repository
@@ -153,6 +168,29 @@ jobs:
           set -o pipefail
           npm run test:e2e:billing-recommendation-checkout-stripe 2>&1 \
             | tee .ci-logs/billing-recommendation-checkout-stripe.log
+
+      # Companion HTTP-route spec — covers the regressions the in-process
+      # spec above can't catch (signature verification, raw-body
+      # middleware, route mounting). Inherits the same secret-gating and
+      # the same dev stack the in-process spec uses, but POSTs a
+      # signed payload to http://localhost:3002/billing/stripe-webhook
+      # rather than calling handleStripeEvent directly.
+      #
+      # `if: always() && steps.gate.outputs.run_spec == 'true'` so a
+      # failure in the in-process spec above does NOT skip this one —
+      # we want both layers reported on every PR so the failure
+      # attribution (handler vs. signature/route) stays clear.
+      - name: Run billing recommendation checkout (Stripe webhook HTTP) e2e
+        id: spec_webhook_http
+        if: always() && steps.gate.outputs.run_spec == 'true'
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_PRICE_ENTERPRISE_MONTHLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_MONTHLY }}
+        run: |
+          set -o pipefail
+          npm run test:e2e:billing-recommendation-checkout-stripe-webhook-http 2>&1 \
+            | tee .ci-logs/billing-recommendation-checkout-stripe-webhook-http.log
 
       - name: Capture Platform Dev logs
         if: always() && steps.gate.outputs.run_spec == 'true'
