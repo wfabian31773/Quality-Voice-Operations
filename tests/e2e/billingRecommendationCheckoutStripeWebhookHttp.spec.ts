@@ -12,8 +12,9 @@
  * constructing a signed payload with `stripe.webhooks.generateTestHeaderString`
  * and POSTing it to the live admin-api webhook route at
  * `http://localhost:3002/billing/stripe-webhook`. It also runs two
- * negative scenarios (missing signature, invalid signature) so a
- * failure points clearly to which layer broke:
+ * negative scenarios (missing signature, invalid signature) and a
+ * duplicate-delivery / idempotency probe so a failure points clearly
+ * to which layer broke:
  *
  *   - "missing signature → expected 400" failure   ⇒ route is not
  *     mounted (404), or middleware swallowed/redirected the POST.
@@ -24,6 +25,11 @@
  *     route handled, but the dispatch path / handler didn't write the
  *     billing_recommendation_events row the existing in-process spec
  *     also asserts.
+ *   - "duplicate POST → expected 200 + still 1 row" ⇒ the
+ *     isEventProcessed dedup short-circuit in handleStripeEvent
+ *     regressed — Stripe retries the same event id on timeouts and
+ *     a doubled billing_recommendation_events row would corrupt
+ *     downstream attribution.
  *
  * Skips when STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET /
  * STRIPE_PRICE_ENTERPRISE_MONTHLY are absent. Run:
@@ -339,6 +345,46 @@ async function readSwitchCompletedRow(
   }
 }
 
+/**
+ * Count of switch_completed rows for a (tenant, stripeSessionId) pair.
+ * Used by the duplicate-delivery assertion below to prove that a second
+ * POST of the same signed event id does NOT cause a second
+ * billing_recommendation_events INSERT.
+ *
+ * The webhook handler relies on `isEventProcessed` (a SELECT against
+ * `billing_events` keyed on `stripe_event_id`) to short-circuit the
+ * second pass before it ever reaches handleCheckoutCompleted. If that
+ * check is moved/removed/bypassed, or the unique constraint that backs
+ * `billing_events.stripe_event_id` is dropped, this count will jump
+ * from 1 to 2 and fail the spec.
+ */
+async function countSwitchCompletedRows(
+  pool: pg.Pool,
+  tenantId: string,
+  stripeSessionId: string,
+): Promise<number> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL row_security = off');
+    const { rows } = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM billing_recommendation_events
+        WHERE tenant_id = $1
+          AND event_type = 'switch_completed'
+          AND metadata->>'stripeSessionId' = $2`,
+      [tenantId, stripeSessionId],
+    );
+    await client.query('COMMIT');
+    return Number(rows[0]?.count ?? 0);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 interface PostResponse {
   status: number;
   body: string;
@@ -559,6 +605,67 @@ async function run(): Promise<void> {
     );
 
     console.log('[e2e] PASS valid-signature webhook wrote billing_recommendation_events row');
+
+    // ─────────────────────────────────────────────────────────────────
+    // Duplicate-delivery / idempotency probe.
+    //
+    // Stripe legitimately retries the same event id when its first
+    // delivery times out (or when the webhook endpoint returns a non-2xx
+    // for any reason). Our handler relies on `isEventProcessed` — a
+    // SELECT against `billing_events` keyed on `stripe_event_id` — to
+    // short-circuit the second pass BEFORE it reaches
+    // handleCheckoutCompleted, so the second delivery must:
+    //   1. Still return 200 + { received: true } (so Stripe stops
+    //      retrying), and
+    //   2. NOT write a second `billing_recommendation_events` row.
+    //
+    // The base spec above only POSTs once, so it cannot catch a
+    // dedup regression — e.g. someone moving the `isEventProcessed`
+    // check to AFTER the INSERT, dropping the unique constraint that
+    // backs `billing_events.stripe_event_id`, or short-circuiting on
+    // the wrong key. Re-POSTing the same signed payload here exercises
+    // the retry path end-to-end (signature verification + dedup +
+    // dispatch + DB) and asserts the row count stays at exactly 1 for
+    // this stripeSessionId.
+    //
+    // The signature stays valid on the second POST because Stripe's v1
+    // signature is over (timestamp + body), not over (event id +
+    // delivery attempt) — so the SDK's verify path can't tell the two
+    // POSTs apart. Dedup MUST come from our application layer, which
+    // is what this assertion guards.
+    // ─────────────────────────────────────────────────────────────────
+    const okDup = await postWebhook({ body: eventBody, signature });
+    assert(
+      okDup.status === 200,
+      `STRIPE WEBHOOK DUPLICATE-DELIVERY REGRESSION: second POST of the same event id (${seedData.stripeEventId}) returned ${okDup.status}, expected 200. ` +
+        `Body: ${okDup.body}. ` +
+        `Stripe retries the same event id on timeouts/non-2xx — a non-200 here would put us into a retry storm. ` +
+        `If 400, signature verification rejected the replay (it shouldn't — same body, same secret). ` +
+        `If 500, handleStripeEvent threw on the dedup path — check admin-api logs around stripeEventId=${seedData.stripeEventId}.`,
+    );
+    assert(
+      okDup.parsed?.received === true,
+      `WEBHOOK ROUTE RESPONSE SHAPE REGRESSION on duplicate delivery: expected { received: true }, got ${okDup.body}`,
+    );
+
+    const switchRowCount = await countSwitchCompletedRows(
+      pool,
+      ADMIN_TENANT_ID,
+      createdSessionId,
+    );
+    assert(
+      switchRowCount === 1,
+      `STRIPE WEBHOOK IDEMPOTENCY REGRESSION: expected exactly 1 switch_completed row for stripeSessionId=${createdSessionId} after the duplicate POST, got ${switchRowCount}. ` +
+        `This means handleCheckoutCompleted ran twice for the same Stripe event id (${seedData.stripeEventId}). ` +
+        `Check that:\n` +
+        `  1. handleStripeEvent still calls isEventProcessed BEFORE dispatching to handleCheckoutCompleted (platform/billing/stripe/webhook.ts).\n` +
+        `  2. isEventProcessed reads from billing_events keyed on stripe_event_id (not a stale column).\n` +
+        `  3. billing_events.stripe_event_id still has its UNIQUE constraint (a missing constraint lets appendBillingEvent insert a second row, after which isEventProcessed on the next retry would still see only the first — so the regression manifests as a doubled billing_recommendation_events row, exactly what this asserts).`,
+    );
+    console.log(
+      `[e2e] PASS duplicate-delivery dedup: second POST returned 200 and switch_completed row count stayed at ${switchRowCount}`,
+    );
+
     console.log('[e2e] PASS');
   } finally {
     if (seedData) {
