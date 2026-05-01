@@ -179,6 +179,11 @@ describe('GET /platform/tenants (Task #994 — onboarding badge column)', () => 
     // client can render the badge.
     expect(sql).toMatch(/latest_owner_onboarding_step/);
     expect(sql).toMatch(/latest_owner_onboarding_completed/);
+    // Task #1132 — the customer-picked IANA timezone (`tenants.timezone`,
+    // written by General Settings) is surfaced on the list endpoint so
+    // support / ops can answer "their schedule looks wrong" tickets
+    // without dropping into psql.
+    expect(sql).toMatch(/t\.timezone/);
   });
 
   it('returns step + completed=false for an owner whose preferences lack the completed key', async () => {
@@ -217,6 +222,45 @@ describe('GET /platform/tenants (Task #994 — onboarding badge column)', () => 
     expect(res.status).toBe(200);
     expect(res.body.tenants[0].latest_owner_onboarding_step).toBe(1);
     expect(res.body.tenants[0].latest_owner_onboarding_completed).toBe(false);
+  });
+});
+
+describe('GET /platform/tenants/:id (Task #1132 — timezone column)', () => {
+  it('projects t.timezone so the detail panel can render the customer timezone', async () => {
+    // The Platform Admin TenantDetailPanel reads `tenant.timezone` to
+    // surface the customer-picked IANA value (NULL for legacy rows
+    // pre-dating migration 097). Lock the SELECT shape here so a
+    // future refactor can't quietly drop the column.
+    const detailRow = {
+      id: 'tenant-tz',
+      name: 'Timezone Test',
+      slug: 'timezone-test',
+      status: 'active',
+      plan: 'pro',
+      timezone: 'America/Los_Angeles',
+      created_at: '2026-04-01T00:00:00Z',
+      updated_at: '2026-04-15T00:00:00Z',
+      user_count: '3',
+      agent_count: '2',
+      phone_number_count: '1',
+      total_calls: '120',
+      total_cost_cents: '4500',
+      last_downgrade_at: null,
+    };
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/FROM tenants t\b/.test(sql) && /WHERE t\.id = \$1/.test(sql)) {
+        return { rows: [detailRow] };
+      }
+      return { rows: [] };
+    });
+
+    const res = await request(buildApp()).get('/platform/tenants/tenant-tz');
+    expect(res.status).toBe(200);
+    expect(res.body.tenant).toEqual(detailRow);
+    expect(res.body.tenant.timezone).toBe('America/Los_Angeles');
+
+    const sql = captureSql().find((s) => /FROM tenants t\b/.test(s) && /WHERE t\.id = \$1/.test(s)) ?? '';
+    expect(sql).toMatch(/t\.timezone/);
   });
 });
 

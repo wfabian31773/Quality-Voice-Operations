@@ -54,7 +54,7 @@ router.get('/platform/tenants', requireAuth, requirePlatformAdmin, async (_req, 
       // corrupt legacy `users.preferences` row can't 500 the list.
       const { rows } = await client.query(`
         SELECT
-          t.id, t.name, t.slug, t.status, t.plan, t.created_at, t.updated_at,
+          t.id, t.name, t.slug, t.status, t.plan, t.timezone, t.created_at, t.updated_at,
           (SELECT COUNT(*) FROM user_roles ur WHERE ur.tenant_id = t.id) AS user_count,
           (SELECT COUNT(*) FROM call_sessions cs WHERE cs.tenant_id = t.id) AS total_calls,
           (SELECT MAX(cs.created_at) FROM call_sessions cs WHERE cs.tenant_id = t.id) AS last_call_at,
@@ -109,7 +109,7 @@ router.get('/platform/tenants/:id', requireAuth, requirePlatformAdmin, async (re
     const tenant = await withPrivilegedClient(async (client) => {
       const { rows } = await client.query(`
         SELECT
-          t.id, t.name, t.slug, t.status, t.plan, t.created_at, t.updated_at,
+          t.id, t.name, t.slug, t.status, t.plan, t.timezone, t.created_at, t.updated_at,
           (SELECT COUNT(*) FROM user_roles ur WHERE ur.tenant_id = t.id) AS user_count,
           (SELECT COUNT(*) FROM agents a WHERE a.tenant_id = t.id) AS agent_count,
           (SELECT COUNT(*) FROM phone_numbers pn WHERE pn.tenant_id = t.id) AS phone_number_count,

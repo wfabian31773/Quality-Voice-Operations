@@ -64,7 +64,8 @@
       "reactivate_tenant": "Réactiver le tenant",
       "confirm_suspend": "Suspendre le tenant « {{name}} » ?",
       "confirm_reactivate": "Réactiver le tenant « {{name}} » ?",
-      "header_onboarding": "Intégration"
+      "header_onboarding": "Intégration",
+      "header_timezone": "Fuseau horaire"
     },
     "users": {
       "title": "Users",

@@ -64,7 +64,8 @@
       "reactivate_tenant": "Reactivate tenant",
       "confirm_suspend": "Suspend tenant \"{{name}}\"?",
       "confirm_reactivate": "Reactivate tenant \"{{name}}\"?",
-      "header_onboarding": "Onboarding"
+      "header_onboarding": "Onboarding",
+      "header_timezone": "Timezone"
     },
     "users": {
       "title": "Users",

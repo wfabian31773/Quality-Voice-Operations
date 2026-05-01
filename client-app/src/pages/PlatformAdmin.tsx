@@ -203,6 +203,12 @@ interface Tenant {
   slug: string;
   status: string;
   plan: string;
+  // IANA timezone the tenant owner picked in General Settings (writes
+  // `tenants.timezone`, the column the scheduling code reads). NULL for
+  // legacy rows that pre-date migration 097 and never picked one — those
+  // render as an em-dash instead of confusing the on-call with a stale
+  // server default like "UTC".
+  timezone: string | null;
   created_at: string;
   updated_at: string;
   user_count: string;
@@ -223,6 +229,7 @@ interface TenantDetail {
   slug: string;
   status: string;
   plan: string;
+  timezone: string | null;
   created_at: string;
   user_count: string;
   agent_count: string;
@@ -577,6 +584,17 @@ function TenantDetailPanel({ tenantId }: { tenantId: string }) {
             {t.last_downgrade_at
               ? new Date(t.last_downgrade_at).toLocaleString()
               : 'Never'}
+          </div>
+        </div>
+        {/* Customer-picked IANA timezone (`tenants.timezone`, written by
+            General Settings). Surfaced here so support / ops can answer
+            "their schedule looks wrong" tickets without dropping into
+            psql. NULL for legacy tenants that never picked one — render
+            as em-dash instead of a confusing fake default. */}
+        <div>
+          <span className="text-text-muted">Timezone</span>
+          <div className="font-medium font-mono text-xs whitespace-nowrap">
+            {t.timezone ?? '—'}
           </div>
         </div>
       </div>
@@ -5425,6 +5443,7 @@ export default function PlatformAdmin() {
                   <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_tenant')}</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_status')}</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_plan')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_timezone')}</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_onboarding')}</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_users')}</th>
                   <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_calls_30d')}</th>
@@ -5434,9 +5453,9 @@ export default function PlatformAdmin() {
               </thead>
               <tbody>
                 {tenantsLoading ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">{adminT('platform_admin.common_loading')}</td></tr>
+                  <tr><td colSpan={10} className="text-center py-12 text-text-muted">{adminT('platform_admin.common_loading')}</td></tr>
                 ) : !tenantsData?.tenants.length ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-text-muted">{adminT('platform_admin.tenants.no_tenants')}</td></tr>
+                  <tr><td colSpan={10} className="text-center py-12 text-text-muted">{adminT('platform_admin.tenants.no_tenants')}</td></tr>
                 ) : (
                   tenantsData.tenants.map((tenant) => (
                     <Fragment key={tenant.id}>
@@ -5457,6 +5476,9 @@ export default function PlatformAdmin() {
                         </td>
                         <td className="px-4 py-3"><StatusBadge status={tenant.status} /></td>
                         <td className="px-4 py-3"><PlanBadge plan={tenant.plan} /></td>
+                        <td className="px-4 py-3 text-text-muted whitespace-nowrap font-mono text-xs">
+                          {tenant.timezone ?? '—'}
+                        </td>
                         <td className="px-4 py-3">
                           {/* Server returns NULL for both onboarding fields only when the tenant
                               has no active owner row. When an owner exists, `step` is server-clamped
@@ -5515,7 +5537,7 @@ export default function PlatformAdmin() {
                       </tr>
                       {expandedTenant === tenant.id && (
                         <tr className="border-b border-border">
-                          <td colSpan={9} className="p-0">
+                          <td colSpan={10} className="p-0">
                             <TenantDetailPanel tenantId={tenant.id} />
                           </td>
                         </tr>
