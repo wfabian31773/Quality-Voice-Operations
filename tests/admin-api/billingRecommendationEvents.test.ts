@@ -1090,6 +1090,261 @@ describe('GET /platform/billing-recommendations', () => {
   });
 });
 
+describe('GET /platform/billing-recommendations/annual-only-tenants', () => {
+  beforeEach(() => {
+    queryMock.mockReset();
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+  });
+
+  function mockTenantRows(rows: Array<Record<string, unknown>>): void {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (
+        /FROM billing_recommendation_events e/i.test(s) &&
+        /pitch = 'annual-only'/i.test(s)
+      ) {
+        return { rows };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  it('returns the per-tenant annual-only breakdown with normalised numbers and ISO timestamps', async () => {
+    const lastImpression = new Date('2026-04-29T18:00:00Z');
+    const lastClick = new Date('2026-04-30T12:00:00Z');
+    const lastSwitch = new Date('2026-04-30T13:00:00Z');
+    mockTenantRows([
+      {
+        tenant_id: 'tenant-stalled',
+        tenant_name: 'Acme',
+        tenant_slug: 'acme',
+        tenant_plan: 'pro',
+        impressions: '5',
+        clicks: '2',
+        last_impression_at: lastImpression,
+        last_click_at: lastClick,
+        completed_switch: false,
+        last_switch_at: null,
+        monthly_savings_cents: '0',
+      },
+      {
+        tenant_id: 'tenant-converted',
+        tenant_name: 'Globex',
+        tenant_slug: 'globex',
+        tenant_plan: 'pro',
+        impressions: '3',
+        clicks: '1',
+        last_impression_at: lastImpression,
+        last_click_at: lastClick,
+        completed_switch: true,
+        last_switch_at: lastSwitch,
+        monthly_savings_cents: '4400',
+      },
+    ]);
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      windowDays: 30,
+      pitch: 'annual-only',
+      limit: 200,
+      converted: 'all',
+      total: 2,
+      tenants: [
+        {
+          tenantId: 'tenant-stalled',
+          tenantName: 'Acme',
+          tenantSlug: 'acme',
+          tenantPlan: 'pro',
+          impressions: 5,
+          clicks: 2,
+          lastImpressionAt: lastImpression.toISOString(),
+          lastClickAt: lastClick.toISOString(),
+          completedSwitch: false,
+          lastSwitchAt: null,
+          monthlySavingsCents: 0,
+        },
+        {
+          tenantId: 'tenant-converted',
+          tenantName: 'Globex',
+          tenantSlug: 'globex',
+          tenantPlan: 'pro',
+          impressions: 3,
+          clicks: 1,
+          lastImpressionAt: lastImpression.toISOString(),
+          lastClickAt: lastClick.toISOString(),
+          completedSwitch: true,
+          lastSwitchAt: lastSwitch.toISOString(),
+          monthlySavingsCents: 4400,
+        },
+      ],
+    });
+  });
+
+  it('SQL is scoped to pitch=annual-only, the trailing 30-day window, and the recommendation event types only', async () => {
+    // The discount funnel uses different event_type values and
+    // pitch=NULL, so the per-tenant follow-up list must not pick up
+    // discount rows. Likewise switch_completed needs to participate
+    // so we can distinguish converted vs stalled tenants.
+    await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants',
+    );
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    const tenantSqls = sqls.filter(
+      (s) =>
+        /FROM billing_recommendation_events e/i.test(s) &&
+        /pitch = 'annual-only'/i.test(s),
+    );
+    expect(tenantSqls.length).toBe(1);
+    const sql = tenantSqls[0]!;
+    expect(sql).toMatch(/NOW\(\)\s*-\s*INTERVAL\s*'30 days'/i);
+    expect(sql).toMatch(
+      /event_type IN\s*\(\s*'impression',\s*'click',\s*'switch_completed'\s*\)/,
+    );
+    // Stalled-but-clicked tenants must surface first so Sales hits
+    // the highest-intent follow-ups at the top of the list.
+    expect(sql).toMatch(
+      /BOOL_OR\(e\.event_type = 'switch_completed'\)\s*ASC/i,
+    );
+    expect(sql).toMatch(/LIMIT \$1/);
+  });
+
+  it('applies the converted=false filter via HAVING so the DB does the work', async () => {
+    await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?converted=false',
+    );
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    const tenantSql = sqls.find(
+      (s) =>
+        /FROM billing_recommendation_events e/i.test(s) &&
+        /pitch = 'annual-only'/i.test(s),
+    );
+    expect(tenantSql).toBeDefined();
+    expect(tenantSql!).toMatch(
+      /HAVING BOOL_OR\(e\.event_type = 'switch_completed'\) = FALSE/i,
+    );
+  });
+
+  it('applies the converted=true filter via HAVING', async () => {
+    await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?converted=true',
+    );
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    const tenantSql = sqls.find(
+      (s) =>
+        /FROM billing_recommendation_events e/i.test(s) &&
+        /pitch = 'annual-only'/i.test(s),
+    );
+    expect(tenantSql!).toMatch(
+      /HAVING BOOL_OR\(e\.event_type = 'switch_completed'\) = TRUE/i,
+    );
+  });
+
+  it('rejects an invalid converted value with 400', async () => {
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?converted=maybe',
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-numeric / non-positive limit with 400', async () => {
+    const r1 = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?limit=abc',
+    );
+    expect(r1.status).toBe(400);
+    const r2 = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?limit=0',
+    );
+    expect(r2.status).toBe(400);
+  });
+
+  it('caps an over-large limit at the configured maximum (1000) instead of 400ing', async () => {
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?limit=99999',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(1000);
+    const tenantCall = queryMock.mock.calls.find(([sql]) =>
+      /FROM billing_recommendation_events e/i.test(String(sql)) &&
+      /pitch = 'annual-only'/i.test(String(sql)),
+    );
+    expect(tenantCall).toBeDefined();
+    expect((tenantCall as [string, unknown[]])[1][0]).toBe(1000);
+  });
+
+  it('defaults CSV exports to the max limit so Sales gets the full dataset (the table copy promises "see the rest")', async () => {
+    // The UI's truncation hint says "filter or export CSV to see the
+    // rest" — that promise only holds if CSV bypasses the smaller
+    // table-paging default and pulls up to the configured cap.
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?format=csv',
+    );
+    expect(res.status).toBe(200);
+    const tenantCall = queryMock.mock.calls.find(([sql]) =>
+      /FROM billing_recommendation_events e/i.test(String(sql)) &&
+      /pitch = 'annual-only'/i.test(String(sql)),
+    );
+    expect(tenantCall).toBeDefined();
+    expect((tenantCall as [string, unknown[]])[1][0]).toBe(1000);
+  });
+
+  it('exports CSV with attachment headers and a sanitised row per tenant', async () => {
+    const lastClick = new Date('2026-04-30T12:00:00Z');
+    mockTenantRows([
+      {
+        tenant_id: 'tenant-csv',
+        // Leading '=' would be interpreted as a formula by Excel —
+        // the csvField sanitiser must prefix it with a single quote.
+        tenant_name: '=cmd|evil',
+        tenant_slug: 'csv-co',
+        tenant_plan: 'pro',
+        impressions: '4',
+        clicks: '2',
+        last_impression_at: lastClick,
+        last_click_at: lastClick,
+        completed_switch: false,
+        last_switch_at: null,
+        monthly_savings_cents: '0',
+      },
+    ]);
+
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?format=csv',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-disposition']).toMatch(
+      /attachment; filename="annual-only-tenants-\d{4}-\d{2}-\d{2}\.csv"/,
+    );
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+
+    const body = res.text;
+    const [header, ...lines] = body.trim().split(/\r\n/);
+    expect(header).toBe(
+      'tenant_id,tenant_name,tenant_slug,tenant_plan,impressions,clicks,last_impression_at,last_click_at,completed_switch,last_switch_at,monthly_savings_cents',
+    );
+    expect(lines).toHaveLength(1);
+    // Formula-injection prefix on the malicious tenant_name cell.
+    expect(lines[0]).toMatch(/"'=cmd\|evil"|'=cmd\|evil/);
+    // Trailing columns: impressions, clicks, ISO timestamp twice,
+    // false (no conversion), empty last_switch_at, 0 savings.
+    expect(lines[0]).toMatch(/,4,2,/);
+    expect(lines[0]).toMatch(/,false,,0$/);
+  });
+
+  it('rejects an unknown format value with 400', async () => {
+    const res = await request(buildPlatformAdminApp()).get(
+      '/platform/billing-recommendations/annual-only-tenants?format=xml',
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('POST /billing/checkout — recommendation attribution validation', () => {
   beforeEach(() => {
     queryMock.mockReset();

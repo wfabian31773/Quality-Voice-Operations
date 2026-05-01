@@ -1047,7 +1047,29 @@
       "trend_completed_aria": "Weekly completed switches for {{tier}}",
       "trend_savings_label": "{{amount}}/mo this week",
       "trend_savings_value": "{{amount}} saved",
-      "trend_savings_aria": "Weekly realised monthly savings for {{tier}}"
+      "trend_savings_aria": "Weekly realised monthly savings for {{tier}}",
+      "annual_only": {
+        "heading": "Annual-only pitch · per-tenant follow-up",
+        "subtitle": "Tenants who saw the annual-billing pitch in the last 30 days. Stalled (clicked but not converted) tenants are listed first — high-intent follow-up candidates.",
+        "filter_label": "Conversion status",
+        "filter_all": "All tenants",
+        "filter_not_converted": "Not converted",
+        "filter_converted": "Converted",
+        "export_csv": "Export CSV",
+        "exporting": "Preparing…",
+        "export_error": "Couldn't export the CSV. Please try again.",
+        "load_error": "Couldn't load the per-tenant breakdown.",
+        "empty": "No tenants saw the annual-only pitch in the last 30 days yet.",
+        "col_tenant": "Tenant",
+        "col_impressions": "Impr.",
+        "col_clicks": "Clicks",
+        "col_last_impression": "Last impression",
+        "col_last_click": "Last click",
+        "col_status": "Conversion",
+        "status_converted": "Converted · {{amount}}/mo",
+        "status_pending": "Not converted",
+        "truncated": "Showing the first {{limit}} tenants — refine the filter or export CSV to see the rest."
+      }
     },
     "discount_breakdown": {
       "title": "Discount badge funnel by coupon (30d)",

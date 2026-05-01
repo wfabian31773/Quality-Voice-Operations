@@ -1046,7 +1046,29 @@
       "trend_completed_aria": "Wöchentlich abgeschlossene Wechsel für {{tier}}",
       "trend_savings_label": "{{amount}}/Monat diese Woche",
       "trend_savings_value": "{{amount}} gespart",
-      "trend_savings_aria": "Wöchentlich realisierte Monatsersparnis für {{tier}}"
+      "trend_savings_aria": "Wöchentlich realisierte Monatsersparnis für {{tier}}",
+      "annual_only": {
+        "heading": "Jahres-Pitch · Nachfass-Liste pro Mandant",
+        "subtitle": "Mandanten, denen in den letzten 30 Tagen der Jahres-Pitch angezeigt wurde. Stehen­gebliebene Mandanten (geklickt, aber nicht gewechselt) stehen oben — die Top-Kandidaten für den Vertrieb.",
+        "filter_label": "Conversion-Status",
+        "filter_all": "Alle Mandanten",
+        "filter_not_converted": "Nicht gewechselt",
+        "filter_converted": "Gewechselt",
+        "export_csv": "CSV exportieren",
+        "exporting": "Wird vorbereitet…",
+        "export_error": "CSV-Export fehlgeschlagen. Bitte erneut versuchen.",
+        "load_error": "Mandanten-Aufschlüsselung konnte nicht geladen werden.",
+        "empty": "Bisher hat in den letzten 30 Tagen kein Mandant den Jahres-Pitch gesehen.",
+        "col_tenant": "Mandant",
+        "col_impressions": "Anzeigen",
+        "col_clicks": "Klicks",
+        "col_last_impression": "Letzte Anzeige",
+        "col_last_click": "Letzter Klick",
+        "col_status": "Conversion",
+        "status_converted": "Gewechselt · {{amount}}/Mon.",
+        "status_pending": "Nicht gewechselt",
+        "truncated": "Es werden nur die ersten {{limit}} Mandanten angezeigt — Filter eingrenzen oder CSV exportieren, um den Rest zu sehen."
+      }
     },
     "discount_breakdown": {
       "title": "Rabatt-Badge-Funnel nach Coupon (30 T.)",

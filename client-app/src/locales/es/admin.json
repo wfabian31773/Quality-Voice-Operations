@@ -1046,7 +1046,29 @@
       "trend_completed_aria": "Cambios completados por semana para {{tier}}",
       "trend_savings_label": "{{amount}}/mes esta semana",
       "trend_savings_value": "{{amount}} ahorrados",
-      "trend_savings_aria": "Ahorros mensuales realizados por semana para {{tier}}"
+      "trend_savings_aria": "Ahorros mensuales realizados por semana para {{tier}}",
+      "annual_only": {
+        "heading": "Pitch anual · seguimiento por inquilino",
+        "subtitle": "Inquilinos a los que se mostró el pitch de facturación anual en los últimos 30 días. Los que han hecho clic pero no han convertido aparecen primero — los mejores candidatos para que ventas haga seguimiento.",
+        "filter_label": "Estado de conversión",
+        "filter_all": "Todos los inquilinos",
+        "filter_not_converted": "No convertidos",
+        "filter_converted": "Convertidos",
+        "export_csv": "Exportar CSV",
+        "exporting": "Preparando…",
+        "export_error": "No se pudo exportar el CSV. Inténtalo de nuevo.",
+        "load_error": "No se pudo cargar el detalle por inquilino.",
+        "empty": "Aún ningún inquilino ha visto el pitch anual en los últimos 30 días.",
+        "col_tenant": "Inquilino",
+        "col_impressions": "Impr.",
+        "col_clicks": "Clics",
+        "col_last_impression": "Última impresión",
+        "col_last_click": "Último clic",
+        "col_status": "Conversión",
+        "status_converted": "Convertido · {{amount}}/mes",
+        "status_pending": "No convertido",
+        "truncated": "Mostrando los primeros {{limit}} inquilinos — refina el filtro o exporta el CSV para ver el resto."
+      }
     },
     "discount_breakdown": {
       "title": "Embudo de la insignia de descuento por cupón (30 d)",

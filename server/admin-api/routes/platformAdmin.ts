@@ -2090,6 +2090,247 @@ router.get(
   },
 );
 
+// Per-tenant breakdown of `pitch = 'annual-only'` events over the
+// trailing 30 days. Sales / CS asked for this so they can follow up
+// with tenants who saw the annual-only pitch but didn't convert
+// (the highest-intent revenue lever — they liked it enough to look,
+// then stalled). One row per tenant_id with:
+//   * lastImpressionAt / lastClickAt — most recent of each event
+//   * completedSwitch / lastSwitchAt — whether (and when) they
+//     completed an annual-only switch
+//   * impressions / clicks — raw counts so the table can sort
+//     "high-intent stalled" tenants (clicked but not converted)
+//   * monthlySavingsCents — realised savings on the completed switch
+//
+// Reuses the same RBAC / privileged-client pattern as the funnel
+// endpoint above, and the new (pitch, created_at DESC) index from
+// migration 106 so the row scan stays bounded.
+//
+// Supports `?format=csv` so Sales can paste the list into a CRM /
+// outreach tool without copy-pasting from the dashboard. CSV mirrors
+// the JSON columns and reuses the same `csvField` sanitiser as the
+// marketing-leads export (formula-injection safe).
+const ANNUAL_ONLY_TENANTS_DEFAULT_LIMIT = 200;
+const ANNUAL_ONLY_TENANTS_MAX_LIMIT = 1000;
+
+interface AnnualOnlyTenantRow {
+  tenant_id: string;
+  tenant_name: string | null;
+  tenant_slug: string | null;
+  tenant_plan: string | null;
+  impressions: string | number;
+  clicks: string | number;
+  last_impression_at: Date | string | null;
+  last_click_at: Date | string | null;
+  completed_switch: boolean | null;
+  last_switch_at: Date | string | null;
+  monthly_savings_cents: string | number | null;
+}
+
+async function loadAnnualOnlyTenantRows(
+  limit: number,
+  convertedFilter: 'all' | 'converted' | 'not_converted',
+): Promise<AnnualOnlyTenantRow[]> {
+  // The `HAVING` clause runs after the per-tenant aggregation, so
+  // `BOOL_OR(... = 'switch_completed')` is the source of truth for
+  // "did this tenant convert" — equivalent to the boolean we project
+  // out, but evaluated server-side so the filter doesn't pull rows
+  // we'd just throw away.
+  const havingClause =
+    convertedFilter === 'converted'
+      ? `HAVING BOOL_OR(e.event_type = 'switch_completed') = TRUE`
+      : convertedFilter === 'not_converted'
+        ? `HAVING BOOL_OR(e.event_type = 'switch_completed') = FALSE`
+        : '';
+
+  const { rows } = await withPrivilegedClient(async (client) => {
+    return client.query(
+      `SELECT
+         e.tenant_id,
+         t.name AS tenant_name,
+         t.slug AS tenant_slug,
+         t.plan AS tenant_plan,
+         COUNT(*) FILTER (WHERE e.event_type = 'impression')::bigint
+           AS impressions,
+         COUNT(*) FILTER (WHERE e.event_type = 'click')::bigint
+           AS clicks,
+         MAX(e.created_at) FILTER (WHERE e.event_type = 'impression')
+           AS last_impression_at,
+         MAX(e.created_at) FILTER (WHERE e.event_type = 'click')
+           AS last_click_at,
+         BOOL_OR(e.event_type = 'switch_completed') AS completed_switch,
+         MAX(e.created_at) FILTER (WHERE e.event_type = 'switch_completed')
+           AS last_switch_at,
+         COALESCE(
+           SUM(e.monthly_savings_cents)
+             FILTER (WHERE e.event_type = 'switch_completed'),
+           0
+         )::bigint AS monthly_savings_cents
+         FROM billing_recommendation_events e
+         LEFT JOIN tenants t ON t.id = e.tenant_id
+        WHERE e.pitch = 'annual-only'
+          AND e.created_at >= NOW() - INTERVAL '30 days'
+          AND e.event_type IN ('impression', 'click', 'switch_completed')
+        GROUP BY e.tenant_id, t.name, t.slug, t.plan
+        ${havingClause}
+        ORDER BY
+          -- Stalled-but-clicked tenants first (highest-intent follow-up
+          -- candidates), then by most-recent click, then by most-recent
+          -- impression so empty-tail tenants don't crowd the top.
+          BOOL_OR(e.event_type = 'switch_completed') ASC,
+          MAX(e.created_at) FILTER (WHERE e.event_type = 'click')
+            DESC NULLS LAST,
+          MAX(e.created_at) FILTER (WHERE e.event_type = 'impression')
+            DESC NULLS LAST
+        LIMIT $1`,
+      [limit],
+    );
+  });
+
+  return rows as unknown as AnnualOnlyTenantRow[];
+}
+
+function formatTimestamp(value: Date | string | null): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+router.get(
+  '/platform/billing-recommendations/annual-only-tenants',
+  requireAuth,
+  requirePlatformAdmin,
+  async (req, res) => {
+    const formatRaw =
+      typeof req.query.format === 'string'
+        ? req.query.format.trim().toLowerCase()
+        : '';
+    if (formatRaw && formatRaw !== 'csv' && formatRaw !== 'json') {
+      return res
+        .status(400)
+        .json({ error: 'Invalid `format` (must be csv or json)' });
+    }
+    const isCsv = formatRaw === 'csv';
+
+    // Reject malformed `limit` instead of silently coercing NaN — same
+    // pattern the plan-recommendation-emails route above uses. CSV
+    // exports default to the max cap so Sales gets the full eligible
+    // dataset (the on-page table copy literally says "export CSV to
+    // see the rest"); JSON defaults to the smaller paging cap.
+    const limitRaw = req.query.limit;
+    let limit = isCsv
+      ? ANNUAL_ONLY_TENANTS_MAX_LIMIT
+      : ANNUAL_ONLY_TENANTS_DEFAULT_LIMIT;
+    if (limitRaw !== undefined) {
+      const parsed = Number(limitRaw);
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+        return res
+          .status(400)
+          .json({ error: 'Invalid `limit` (must be a positive integer)' });
+      }
+      limit = Math.min(parsed, ANNUAL_ONLY_TENANTS_MAX_LIMIT);
+    }
+
+    const convertedRaw = req.query.converted;
+    let convertedFilter: 'all' | 'converted' | 'not_converted' = 'all';
+    if (convertedRaw !== undefined) {
+      const v = String(convertedRaw).trim().toLowerCase();
+      if (v === 'true' || v === '1' || v === 'yes') {
+        convertedFilter = 'converted';
+      } else if (v === 'false' || v === '0' || v === 'no') {
+        convertedFilter = 'not_converted';
+      } else if (v === 'all' || v === '') {
+        convertedFilter = 'all';
+      } else {
+        return res.status(400).json({
+          error: 'Invalid `converted` (must be true / false / all)',
+        });
+      }
+    }
+
+    try {
+      const rows = await loadAnnualOnlyTenantRows(limit, convertedFilter);
+
+      if (formatRaw === 'csv') {
+        const stamp = new Date().toISOString().slice(0, 10);
+        const filename = `annual-only-tenants-${stamp}.csv`;
+        res.status(200);
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${filename}"`,
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+
+        const header = [
+          'tenant_id',
+          'tenant_name',
+          'tenant_slug',
+          'tenant_plan',
+          'impressions',
+          'clicks',
+          'last_impression_at',
+          'last_click_at',
+          'completed_switch',
+          'last_switch_at',
+          'monthly_savings_cents',
+        ];
+        res.write(header.join(',') + '\r\n');
+        for (const r of rows) {
+          const line = [
+            r.tenant_id,
+            r.tenant_name ?? '',
+            r.tenant_slug ?? '',
+            r.tenant_plan ?? '',
+            Number(r.impressions) || 0,
+            Number(r.clicks) || 0,
+            formatTimestamp(r.last_impression_at) ?? '',
+            formatTimestamp(r.last_click_at) ?? '',
+            r.completed_switch === true ? 'true' : 'false',
+            formatTimestamp(r.last_switch_at) ?? '',
+            Number(r.monthly_savings_cents) || 0,
+          ]
+            .map(csvField)
+            .join(',');
+          res.write(line + '\r\n');
+        }
+        return res.end();
+      }
+
+      const tenants = rows.map((r) => ({
+        tenantId: r.tenant_id,
+        tenantName: r.tenant_name,
+        tenantSlug: r.tenant_slug,
+        tenantPlan: r.tenant_plan,
+        impressions: Number(r.impressions) || 0,
+        clicks: Number(r.clicks) || 0,
+        lastImpressionAt: formatTimestamp(r.last_impression_at),
+        lastClickAt: formatTimestamp(r.last_click_at),
+        completedSwitch: r.completed_switch === true,
+        lastSwitchAt: formatTimestamp(r.last_switch_at),
+        monthlySavingsCents: Number(r.monthly_savings_cents) || 0,
+      }));
+
+      return res.json({
+        windowDays: 30,
+        pitch: 'annual-only',
+        limit,
+        converted: convertedFilter,
+        total: tenants.length,
+        tenants,
+      });
+    } catch (err) {
+      logger.error('Failed to load annual-only tenant breakdown', {
+        error: String(err),
+      });
+      return res.status(500).json({
+        error: 'Failed to load annual-only tenant breakdown',
+      });
+    }
+  },
+);
+
 // Trailing-30-day funnel for the BillingEstimator's *upgrade-card
 // discount badge*. Mirrors the recommendation funnel above but rolls
 // up by the resolved (coupon_id, promotion_code) pair so admins can

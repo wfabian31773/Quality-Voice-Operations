@@ -1046,7 +1046,29 @@
       "trend_completed_aria": "Changements terminés par semaine pour {{tier}}",
       "trend_savings_label": "{{amount}}/mois cette semaine",
       "trend_savings_value": "{{amount}} économisés",
-      "trend_savings_aria": "Économies mensuelles réalisées par semaine pour {{tier}}"
+      "trend_savings_aria": "Économies mensuelles réalisées par semaine pour {{tier}}",
+      "annual_only": {
+        "heading": "Pitch annuel · relance par locataire",
+        "subtitle": "Locataires à qui le pitch d'abonnement annuel a été présenté ces 30 derniers jours. Les locataires « bloqués » (qui ont cliqué sans convertir) apparaissent en premier — les meilleurs candidats pour une relance commerciale.",
+        "filter_label": "Statut de conversion",
+        "filter_all": "Tous les locataires",
+        "filter_not_converted": "Non convertis",
+        "filter_converted": "Convertis",
+        "export_csv": "Exporter en CSV",
+        "exporting": "Préparation…",
+        "export_error": "Impossible d'exporter le CSV. Veuillez réessayer.",
+        "load_error": "Impossible de charger le détail par locataire.",
+        "empty": "Aucun locataire n'a vu le pitch annuel ces 30 derniers jours.",
+        "col_tenant": "Locataire",
+        "col_impressions": "Impr.",
+        "col_clicks": "Clics",
+        "col_last_impression": "Dernière impression",
+        "col_last_click": "Dernier clic",
+        "col_status": "Conversion",
+        "status_converted": "Converti · {{amount}}/mois",
+        "status_pending": "Non converti",
+        "truncated": "Affichage des {{limit}} premiers locataires — affinez le filtre ou exportez en CSV pour voir le reste."
+      }
     },
     "discount_breakdown": {
       "title": "Entonnoir du badge de remise par coupon (30 j)",

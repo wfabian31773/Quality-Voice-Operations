@@ -1046,7 +1046,29 @@
       "trend_completed_aria": "Trocas concluídas por semana para {{tier}}",
       "trend_savings_label": "{{amount}}/mês nesta semana",
       "trend_savings_value": "{{amount}} economizados",
-      "trend_savings_aria": "Economia mensal realizada por semana para {{tier}}"
+      "trend_savings_aria": "Economia mensal realizada por semana para {{tier}}",
+      "annual_only": {
+        "heading": "Pitch anual · acompanhamento por inquilino",
+        "subtitle": "Inquilinos que viram o pitch de cobrança anual nos últimos 30 dias. Os que clicaram mas não converteram aparecem primeiro — os melhores candidatos para o acompanhamento de vendas.",
+        "filter_label": "Status de conversão",
+        "filter_all": "Todos os inquilinos",
+        "filter_not_converted": "Não convertidos",
+        "filter_converted": "Convertidos",
+        "export_csv": "Exportar CSV",
+        "exporting": "Preparando…",
+        "export_error": "Não foi possível exportar o CSV. Tente novamente.",
+        "load_error": "Não foi possível carregar o detalhamento por inquilino.",
+        "empty": "Nenhum inquilino viu o pitch anual nos últimos 30 dias ainda.",
+        "col_tenant": "Inquilino",
+        "col_impressions": "Impr.",
+        "col_clicks": "Cliques",
+        "col_last_impression": "Última impressão",
+        "col_last_click": "Último clique",
+        "col_status": "Conversão",
+        "status_converted": "Convertido · {{amount}}/mês",
+        "status_pending": "Não convertido",
+        "truncated": "Exibindo os primeiros {{limit}} inquilinos — refine o filtro ou exporte o CSV para ver os demais."
+      }
     },
     "discount_breakdown": {
       "title": "Funil do selo de desconto por cupom (30 d)",

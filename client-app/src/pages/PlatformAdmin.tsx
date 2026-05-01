@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { api } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { StatCard, PageHeader } from '../components/ui';
@@ -4523,6 +4523,349 @@ function RecommendationTrendSparkline({
   );
 }
 
+// Per-tenant breakdown for the `pitch = 'annual-only'` arm of the
+// recommendation funnel. Sales / CS use this to follow up with
+// tenants who saw the annual pitch but didn't convert — the
+// highest-intent revenue lever the funnel data exposes.
+//
+// Lazily fetches its own data when mounted (i.e. when the
+// recommendation drawer is opened) so the platform-stats payload
+// stays small. The CSV export hits the same endpoint with
+// `?format=csv` so the columns / sort order can't drift between the
+// table view and the export.
+interface AnnualOnlyTenantRowShape {
+  tenantId: string;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  tenantPlan: string | null;
+  impressions: number;
+  clicks: number;
+  lastImpressionAt: string | null;
+  lastClickAt: string | null;
+  completedSwitch: boolean;
+  lastSwitchAt: string | null;
+  monthlySavingsCents: number;
+}
+
+interface AnnualOnlyTenantsResponse {
+  windowDays: number;
+  pitch: 'annual-only';
+  limit: number;
+  converted: 'all' | 'converted' | 'not_converted';
+  total: number;
+  tenants: AnnualOnlyTenantRowShape[];
+}
+
+type AnnualOnlyConvertedFilter = 'all' | 'converted' | 'not_converted';
+
+function formatTenantTimestamp(value: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  // Compact ISO-style date+time the rest of the platform admin uses for
+  // event timestamps; keeps the column narrow without losing the time
+  // (which Sales needs to know how recent the click was).
+  return `${d.toISOString().slice(0, 10)} ${d
+    .toISOString()
+    .slice(11, 16)}`;
+}
+
+function AnnualOnlyTenantsPanel() {
+  const { t: adminT } = useTranslation('admin');
+  const [convertedFilter, setConvertedFilter] =
+    useState<AnnualOnlyConvertedFilter>('all');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['platform-billing-recommendations-annual-only', convertedFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (convertedFilter !== 'all') {
+        params.set(
+          'converted',
+          convertedFilter === 'converted' ? 'true' : 'false',
+        );
+      }
+      const qs = params.toString();
+      return api.get<AnnualOnlyTenantsResponse>(
+        `/platform/billing-recommendations/annual-only-tenants${
+          qs ? `?${qs}` : ''
+        }`,
+      );
+    },
+    refetchInterval: 60_000,
+  });
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const params = new URLSearchParams({ format: 'csv' });
+      if (convertedFilter !== 'all') {
+        params.set(
+          'converted',
+          convertedFilter === 'converted' ? 'true' : 'false',
+        );
+      }
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(
+        `/api/platform/billing-recommendations/annual-only-tenants?${params.toString()}`,
+        { headers, credentials: 'include' },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') ?? '';
+      const match = /filename\s*=\s*"?([^";]+)"?/i.exec(cd);
+      const filename =
+        match?.[1] ??
+        `annual-only-tenants-${new Date().toISOString().slice(0, 10)}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (err) {
+      setExportError(
+        err instanceof Error
+          ? err.message
+          : adminT(
+              'platform_admin.recommendation_breakdown.annual_only.export_error',
+            ),
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const rows = data?.tenants ?? [];
+
+  return (
+    <div
+      className="mt-5"
+      data-testid="recommendation-annual-only-tenants-section"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">
+            {adminT(
+              'platform_admin.recommendation_breakdown.annual_only.heading',
+            )}
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            {adminT(
+              'platform_admin.recommendation_breakdown.annual_only.subtitle',
+            )}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs text-text-muted">
+            <span className="sr-only">
+              {adminT(
+                'platform_admin.recommendation_breakdown.annual_only.filter_label',
+              )}
+            </span>
+            <select
+              value={convertedFilter}
+              onChange={(e) =>
+                setConvertedFilter(e.target.value as AnnualOnlyConvertedFilter)
+              }
+              className="text-xs border border-border rounded px-2 py-1 bg-surface"
+              data-testid="annual-only-converted-filter"
+            >
+              <option value="all">
+                {adminT(
+                  'platform_admin.recommendation_breakdown.annual_only.filter_all',
+                )}
+              </option>
+              <option value="not_converted">
+                {adminT(
+                  'platform_admin.recommendation_breakdown.annual_only.filter_not_converted',
+                )}
+              </option>
+              <option value="converted">
+                {adminT(
+                  'platform_admin.recommendation_breakdown.annual_only.filter_converted',
+                )}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={exporting || rows.length === 0}
+            className="inline-flex items-center gap-1 text-xs font-medium border border-border rounded px-2 py-1 text-text-primary hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="annual-only-export-csv"
+          >
+            <DownloadIcon className="h-3.5 w-3.5" />
+            {exporting
+              ? adminT(
+                  'platform_admin.recommendation_breakdown.annual_only.exporting',
+                )
+              : adminT(
+                  'platform_admin.recommendation_breakdown.annual_only.export_csv',
+                )}
+          </button>
+        </div>
+      </div>
+
+      {exportError && (
+        <p
+          className="mt-2 text-xs text-danger"
+          role="alert"
+          data-testid="annual-only-export-error"
+        >
+          {exportError}
+        </p>
+      )}
+
+      {isLoading ? (
+        <p className="text-xs text-text-muted mt-2">
+          {adminT('platform_admin.common_loading')}
+        </p>
+      ) : isError ? (
+        <p
+          className="text-xs text-danger mt-2"
+          data-testid="annual-only-load-error"
+        >
+          {error instanceof Error
+            ? error.message
+            : adminT(
+                'platform_admin.recommendation_breakdown.annual_only.load_error',
+              )}
+        </p>
+      ) : rows.length === 0 ? (
+        <p
+          className="text-xs text-text-muted mt-2"
+          data-testid="annual-only-empty"
+        >
+          {adminT(
+            'platform_admin.recommendation_breakdown.annual_only.empty',
+          )}
+        </p>
+      ) : (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
+                <th className="py-2 pr-4 font-medium">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.annual_only.col_tenant',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.annual_only.col_impressions',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium text-right">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.annual_only.col_clicks',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.annual_only.col_last_impression',
+                  )}
+                </th>
+                <th className="py-2 pr-4 font-medium">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.annual_only.col_last_click',
+                  )}
+                </th>
+                <th className="py-2 pr-0 font-medium">
+                  {adminT(
+                    'platform_admin.recommendation_breakdown.annual_only.col_status',
+                  )}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  key={row.tenantId}
+                  className="border-b border-border last:border-b-0"
+                  data-testid={`annual-only-tenant-row-${row.tenantId}`}
+                >
+                  <td className="py-2 pr-4">
+                    <div className="font-medium text-text-primary">
+                      {row.tenantName ??
+                        row.tenantSlug ??
+                        row.tenantId}
+                    </div>
+                    <div className="text-xs text-text-muted font-mono">
+                      {row.tenantSlug ?? row.tenantId}
+                    </div>
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                    {row.impressions}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-text-secondary">
+                    {row.clicks}
+                  </td>
+                  <td className="py-2 pr-4 text-text-muted whitespace-nowrap font-mono text-xs">
+                    {formatTenantTimestamp(row.lastImpressionAt)}
+                  </td>
+                  <td className="py-2 pr-4 text-text-muted whitespace-nowrap font-mono text-xs">
+                    {formatTenantTimestamp(row.lastClickAt)}
+                  </td>
+                  <td className="py-2 pr-0">
+                    {row.completedSwitch ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-medium text-success"
+                        data-testid={`annual-only-status-${row.tenantId}`}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {adminT(
+                          'platform_admin.recommendation_breakdown.annual_only.status_converted',
+                          {
+                            amount: formatCents(row.monthlySavingsCents),
+                          },
+                        )}
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-medium text-text-muted"
+                        data-testid={`annual-only-status-${row.tenantId}`}
+                      >
+                        <Clock className="h-3.5 w-3.5" />
+                        {adminT(
+                          'platform_admin.recommendation_breakdown.annual_only.status_pending',
+                        )}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data && data.total >= data.limit && (
+            <p
+              className="text-xs text-text-muted mt-2"
+              data-testid="annual-only-truncated"
+            >
+              {adminT(
+                'platform_admin.recommendation_breakdown.annual_only.truncated',
+                { limit: data.limit },
+              )}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Drawer rendered just below the platform stats grid when an admin clicks
 // the recommendation tile. Splits the trailing-30d funnel by recommended
 // tier so we can answer "which recommendation is actually moving MRR" —
@@ -4875,6 +5218,8 @@ function RecommendationBreakdownPanel({
           </table>
         </div>
       </div>
+
+      <AnnualOnlyTenantsPanel />
 
       <div className="mt-5">
         <h3 className="text-sm font-semibold text-text-primary">
