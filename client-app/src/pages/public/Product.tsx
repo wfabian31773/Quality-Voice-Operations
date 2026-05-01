@@ -86,7 +86,7 @@ function WorkflowSection() {
           <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
             {t('product.workflow.title')}
           </h2>
-          <p className="text-text-primary/60 font-body leading-relaxed">
+          <p className="text-text-secondary font-body leading-relaxed">
             {t('product.workflow.subtitle')}
           </p>
         </div>
@@ -118,7 +118,7 @@ function WorkflowSection() {
                         ? 'bg-primary text-white shadow-lg shadow-primary/25 scale-110'
                         : isComplete
                           ? 'bg-primary/15 text-primary'
-                          : 'bg-surface-secondary text-text-primary/40 group-hover:bg-primary/10 group-hover:text-primary/60'
+                          : 'bg-surface-secondary text-text-secondary group-hover:bg-primary/10 group-hover:text-primary/60'
                     }`}
                   >
                     <s.icon className={`transition-all duration-500 ${isActive ? 'h-10 w-10' : 'h-8 w-8'}`} />
@@ -126,7 +126,7 @@ function WorkflowSection() {
                       className={`absolute -top-2 -right-2 w-7 h-7 rounded-full font-display text-xs font-bold flex items-center justify-center transition-all duration-500 ${
                         isActive || isComplete
                           ? 'bg-primary text-white'
-                          : 'bg-border-strong/50 text-text-primary/50'
+                          : 'bg-border-strong/50 text-text-secondary'
                       }`}
                     >
                       {s.step}
@@ -139,14 +139,14 @@ function WorkflowSection() {
                   >
                     {s.title}
                   </h3>
-                  <p className="text-sm text-text-primary/60 font-body leading-relaxed mb-4">{s.desc}</p>
+                  <p className="text-sm text-text-secondary font-body leading-relaxed mb-4">{s.desc}</p>
                   <ul
                     className={`space-y-1.5 transition-all duration-500 overflow-hidden ${
                       isActive ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
                     }`}
                   >
                     {s.details.map((d) => (
-                      <li key={d} className="flex items-center gap-2 text-xs text-text-primary/50 font-body">
+                      <li key={d} className="flex items-center gap-2 text-xs text-text-secondary font-body">
                         <ChevronRight className="h-3 w-3 text-primary flex-shrink-0" />
                         {d}
                       </li>
@@ -184,7 +184,7 @@ function ScreenshotsSection() {
           <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
             {t('product.screenshots_section.title')}
           </h2>
-          <p className="text-text-primary/60 font-body leading-relaxed">
+          <p className="text-text-secondary font-body leading-relaxed">
             {t('product.screenshots_section.subtitle')}
           </p>
         </div>
@@ -202,7 +202,7 @@ function ScreenshotsSection() {
                 />
               </div>
               <h3 className="font-display text-base font-semibold text-text-primary mb-1">{s.title}</h3>
-              <p className="text-sm text-text-primary/60 font-body leading-relaxed">{s.desc}</p>
+              <p className="text-sm text-text-secondary font-body leading-relaxed">{s.desc}</p>
             </div>
           ))}
         </div>
@@ -237,7 +237,7 @@ function IntegrationsSection() {
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
               {t('product.integrations_section.title')}
             </h2>
-            <p className="text-text-primary/60 font-body leading-relaxed mb-6">
+            <p className="text-text-secondary font-body leading-relaxed mb-6">
               {t('product.integrations_section.subtitle')}
             </p>
             <Link
@@ -395,7 +395,7 @@ export default function Product() {
               <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
                 {t('product.intro.title')}
               </h2>
-              <p className="text-text-primary/60 font-body leading-relaxed">
+              <p className="text-text-secondary font-body leading-relaxed">
                 {t('product.intro.subtitle')}
               </p>
             </div>
@@ -408,7 +408,7 @@ export default function Product() {
                     <c.icon className="h-5 w-5 text-primary" />
                   </div>
                   <h3 className="font-display text-base font-semibold text-text-primary mb-2">{c.title}</h3>
-                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{c.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed font-body">{c.desc}</p>
                 </div>
               ))}
             </div>
@@ -428,7 +428,7 @@ export default function Product() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('product.agent_workflow.title')}
               </h2>
-              <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
+              <p className="text-text-secondary font-body leading-relaxed max-w-2xl mx-auto">
                 {t('product.agent_workflow.subtitle')}
               </p>
             </div>
@@ -471,7 +471,7 @@ export default function Product() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('product.tools_section.title')}
               </h2>
-              <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
+              <p className="text-text-secondary font-body leading-relaxed max-w-2xl mx-auto">
                 {t('product.tools_section.subtitle')}
               </p>
             </div>
@@ -495,7 +495,7 @@ export default function Product() {
                   </div>
                   <div className="p-5">
                     <h3 className="font-display text-base font-semibold text-text-primary mb-1">{tool.title}</h3>
-                    <p className="text-sm text-text-primary/60 font-body leading-relaxed">{tool.desc}</p>
+                    <p className="text-sm text-text-secondary font-body leading-relaxed">{tool.desc}</p>
                   </div>
                 </div>
               </RevealSection>
@@ -537,7 +537,7 @@ export default function Product() {
                   </div>
                   <div className="p-5">
                     <h3 className="font-display text-base font-semibold text-text-primary mb-1">{feature.title}</h3>
-                    <p className="text-sm text-text-primary/60 font-body leading-relaxed">{feature.desc}</p>
+                    <p className="text-sm text-text-secondary font-body leading-relaxed">{feature.desc}</p>
                   </div>
                 </div>
               </RevealSection>
@@ -559,7 +559,7 @@ export default function Product() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('product.deeper.title')}
               </h2>
-              <p className="text-text-primary/60 font-body leading-relaxed max-w-2xl mx-auto">
+              <p className="text-text-secondary font-body leading-relaxed max-w-2xl mx-auto">
                 {t('product.deeper.subtitle')}
               </p>
             </div>
@@ -613,7 +613,7 @@ export default function Product() {
           <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
             {t('product.bottom_cta.title')}
           </h2>
-          <p className="text-lg text-text-primary/60 font-body mb-10">
+          <p className="text-lg text-text-secondary font-body mb-10">
             {t('product.bottom_cta.subtitle')}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

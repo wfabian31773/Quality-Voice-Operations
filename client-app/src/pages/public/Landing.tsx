@@ -269,9 +269,11 @@ export default function Landing() {
         canonicalPath="/"
         structuredData={organizationSchema}
       />
-      <section className="relative text-white overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-hover/30 to-sidebar-bg" />
-        <div className="absolute inset-0 opacity-10">
+      <section className="relative overflow-hidden text-text-primary dark:text-white">
+        {/* Light-mode hero: soft harbor wash so the hero blends into the
+            page below it. Dark-mode hero: original deep navy gradient. */}
+        <div className="absolute inset-0 bg-gradient-to-br from-surface via-surface-secondary to-surface dark:from-sidebar-bg dark:via-sidebar-hover/30 dark:to-sidebar-bg" />
+        <div className="absolute inset-0 opacity-15 dark:opacity-10">
           <div className="absolute top-20 left-10 w-72 h-72 bg-primary rounded-full blur-[128px]" />
           <div className="absolute bottom-10 right-20 w-96 h-96 bg-primary rounded-full blur-[160px]" />
         </div>
@@ -285,12 +287,12 @@ export default function Landing() {
               <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] mb-6">
                 <span className="hero-gradient-text">{t('landing.hero.title_highlight')}</span>{t('landing.hero.title_rest')}
               </h1>
-              <p className="text-lg lg:text-xl text-white/65 leading-relaxed mb-8 max-w-xl font-body">
+              <p className="text-lg lg:text-xl text-text-secondary dark:text-white/65 leading-relaxed mb-8 max-w-xl font-body">
                 {t('landing.hero.description')}
               </p>
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {keyBenefits.map((benefit) => (
-                  <div key={benefit.text} className="flex items-center gap-2 text-sm text-white/80">
+                  <div key={benefit.text} className="flex items-center gap-2 text-sm text-text-primary dark:text-white/80">
                     <benefit.icon className="h-4 w-4 text-primary shrink-0" />
                     <span className="font-body">{benefit.text}</span>
                   </div>
@@ -307,7 +309,7 @@ export default function Landing() {
                 </Link>
                 <Link
                   to="/product"
-                  className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 backdrop-blur-sm text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-white/15 dark:border-white/15 hover:border-white/25 dark:hover:border-white/25 min-h-[44px]"
+                  className="inline-flex items-center justify-center gap-2 bg-surface-muted dark:bg-white/10 hover:bg-surface-hover dark:hover:bg-white/15 backdrop-blur-sm text-text-primary dark:text-white font-semibold px-7 py-3.5 rounded-xl transition-colors duration-[var(--motion-base)] text-sm border border-border dark:border-white/15 hover:border-border-strong dark:hover:border-white/25 min-h-[44px]"
                   onClick={() => trackCTAClick(CTA.SEE_HOW_IT_WORKS, '/', 'hero')}
                 >
                   {t('common.see_how_it_works')}
@@ -321,38 +323,38 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="bg-sidebar-bg border-t border-white/5 dark:border-white/5">
+      <section className="bg-surface dark:bg-sidebar-bg border-t border-border dark:border-white/5">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             {socialProofStats.map((stat) => (
               <div key={stat.label} className="text-center">
-                <p className="font-display text-2xl md:text-3xl font-bold text-white">
+                <p className="font-display text-2xl md:text-3xl font-bold text-text-primary dark:text-white">
                   <AnimatedCounter end={stat.value} suffix={stat.suffix} />
                 </p>
-                <p className="text-xs md:text-sm text-white/50 font-body mt-1">{stat.label}</p>
+                <p className="text-xs md:text-sm text-text-secondary dark:text-white/50 font-body mt-1">{stat.label}</p>
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-6 pt-6 border-t border-white/5 dark:border-white/5">
-            <span className="text-xs text-white/30 uppercase tracking-wider font-medium">{t('common.trusted_by')}</span>
+          <div className="flex flex-wrap items-center justify-center gap-6 mt-6 pt-6 border-t border-border dark:border-white/5">
+            <span className="text-xs text-text-secondary dark:text-white/30 uppercase tracking-wider font-medium">{t('common.trusted_by')}</span>
             {industryLogos.map((logo) => (
-              <div key={logo.name} className="flex items-center gap-1.5 opacity-40 hover:opacity-60 transition-opacity">
-                <logo.icon className="h-4 w-4 text-white" />
-                <span className="text-xs font-medium text-white">{logo.name}</span>
+              <div key={logo.name} className="flex items-center gap-1.5 opacity-70 dark:opacity-40 hover:opacity-100 dark:hover:opacity-60 transition-opacity">
+                <logo.icon className="h-4 w-4 text-text-primary dark:text-white" />
+                <span className="text-xs font-medium text-text-primary dark:text-white">{logo.name}</span>
               </div>
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary dark:text-white/55 hover:text-text-primary dark:hover:text-white border border-border dark:border-white/15 hover:border-border-strong dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.soc2_in_progress')}
             </Link>
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary dark:text-white/55 hover:text-text-primary dark:hover:text-white border border-border dark:border-white/15 hover:border-border-strong dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.hipaa_ready')}
             </Link>
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary dark:text-white/55 hover:text-text-primary dark:hover:text-white border border-border dark:border-white/15 hover:border-border-strong dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.gdpr_compliant')}
             </Link>
-            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white border border-white/15 dark:border-white/15 hover:border-white/30 dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
+            <Link to="/security" className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary dark:text-white/55 hover:text-text-primary dark:hover:text-white border border-border dark:border-white/15 hover:border-border-strong dark:hover:border-white/30 rounded-full px-3 py-1 transition-colors">
               <ShieldCheck className="h-3 w-3 text-primary" /> {t('landing.stats.aes_encryption')}
             </Link>
           </div>
@@ -367,7 +369,7 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.problem.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.problem.subtitle')}
               </p>
             </div>
@@ -381,7 +383,7 @@ export default function Landing() {
                     <point.icon className="h-5 w-5 text-danger" />
                   </div>
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{point.title}</h3>
-                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{point.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed font-body">{point.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -393,21 +395,21 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.solution.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.solution.subtitle')}
               </p>
             </div>
           </RevealSection>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="solution-cards-grid">
             {solutionFeatures.map((f, i) => (
               <RevealSection key={f.title} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <div className="glass-card-light rounded-2xl p-7 hover:shadow-lg transition-all border border-primary/10 hover:border-primary/25 h-full">
+                <div className="bg-surface rounded-2xl p-7 hover:shadow-lg transition-all border border-border hover:border-primary/40 h-full" data-testid="solution-card">
                   <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                     <f.icon className="h-5 w-5 text-primary" />
                   </div>
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{f.title}</h3>
-                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{f.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed font-body">{f.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -423,7 +425,7 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.marketplace.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.marketplace.subtitle')}
               </p>
             </div>
@@ -443,7 +445,7 @@ export default function Landing() {
                     </div>
                   )}
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{agent.name}</h3>
-                  <p className="text-sm text-text-primary/60 leading-relaxed font-body mb-3">{agent.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed font-body mb-3">{agent.desc}</p>
                   <div className="bg-surface-secondary rounded-lg p-3 mb-4 border border-border/15">
                     <p className="text-xs text-text-primary/70 font-body italic leading-relaxed">{agent.example}</p>
                   </div>
@@ -484,7 +486,7 @@ export default function Landing() {
                   {t('landing.industry_section.title_pre')}<span className="text-primary">{t('landing.industry_section.title_emph')}</span>{t('landing.industry_section.title_post')}
                 </h2>
               </div>
-              <p className="text-lg text-text-primary/65 font-body leading-relaxed max-w-xl lg:pb-2">
+              <p className="text-lg text-text-secondary font-body leading-relaxed max-w-xl lg:pb-2">
                 {t('landing.industry_section.description')}
               </p>
             </div>
@@ -502,7 +504,7 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.platform_capabilities.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.platform_capabilities.subtitle')}
               </p>
             </div>
@@ -516,7 +518,7 @@ export default function Landing() {
                     <f.icon className="h-5 w-5 text-primary" />
                   </div>
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{f.title}</h3>
-                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{f.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed font-body">{f.desc}</p>
                 </div>
               </RevealSection>
             ))}
@@ -532,7 +534,7 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.results.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.results.subtitle')}
               </p>
             </div>
@@ -546,13 +548,13 @@ export default function Landing() {
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                       <result.icon className="h-5 w-5 text-primary" />
                     </div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-text-primary/40">{result.industry}</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{result.industry}</span>
                   </div>
                   <div className="mb-5">
                     <span className="font-display text-4xl font-bold text-primary">{result.metric}</span>
                     <span className="block text-sm font-semibold text-text-primary mt-1">{result.metricLabel}</span>
                   </div>
-                  <p className="text-sm text-text-primary/60 font-body leading-relaxed mb-6 italic">
+                  <p className="text-sm text-text-secondary font-body leading-relaxed mb-6 italic">
                     "{result.quote}"
                   </p>
                   <div className="flex items-center gap-1 mb-3">
@@ -562,7 +564,7 @@ export default function Landing() {
                   </div>
                   <div>
                     <p className="font-display text-sm font-semibold text-text-primary">{result.name}</p>
-                    <p className="text-xs text-text-primary/50 font-body mt-0.5">{result.role}</p>
+                    <p className="text-xs text-text-secondary font-body mt-0.5">{result.role}</p>
                   </div>
                 </div>
               </RevealSection>
@@ -579,7 +581,7 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.testimonials.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.testimonials.subtitle')}
               </p>
             </div>
@@ -603,7 +605,7 @@ export default function Landing() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('landing.comparison.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('landing.comparison.subtitle')}
               </p>
             </div>
@@ -622,7 +624,7 @@ export default function Landing() {
               <h2 className="font-display text-2xl lg:text-3xl font-bold text-text-primary mb-3">
                 {t('landing.security.title')}
               </h2>
-              <p className="text-text-primary/60 font-body max-w-xl mx-auto">
+              <p className="text-text-secondary font-body max-w-xl mx-auto">
                 {t('landing.security.subtitle')}
               </p>
             </div>

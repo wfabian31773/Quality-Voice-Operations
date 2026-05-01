@@ -21,8 +21,10 @@
     "close": "Fermer"
   },
   "theme": {
-    "light": "Mode clair",
-    "dark": "Mode sombre"
+    "light": "Clair",
+    "dark": "Sombre",
+    "switch_to_light": "Passer en mode clair",
+    "switch_to_dark": "Passer en mode sombre"
   },
   "public_nav": {
     "product": "Produit",

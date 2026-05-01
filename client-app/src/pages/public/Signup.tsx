@@ -219,7 +219,7 @@ export default function Signup() {
                 </div>
                 <div>
                   <h2 className="font-display text-lg font-bold text-text-primary">{t('auth.signup_card_title')}</h2>
-                  <p className="text-xs text-text-primary/60">{t('auth.signup_card_subtitle')}</p>
+                  <p className="text-xs text-text-secondary">{t('auth.signup_card_subtitle')}</p>
                 </div>
               </div>
 
@@ -339,7 +339,7 @@ export default function Signup() {
                           )}
                           <span className="block text-sm font-semibold text-text-primary">{p.name}</span>
                           <span
-                            className="block text-xs text-text-primary/60 mt-0.5"
+                            className="block text-xs text-text-secondary mt-0.5"
                             data-testid={`signup-plan-${p.key}-price`}
                             data-display-currency={displayCurrency}
                           >
@@ -367,7 +367,7 @@ export default function Signup() {
                       );
                     })}
                   </div>
-                  <p className="mt-2 text-[11px] text-text-primary/50 font-body" data-testid="signup-billing-note">
+                  <p className="mt-2 text-[11px] text-text-secondary font-body" data-testid="signup-billing-note">
                     {isAnnual ? t('auth.billing_annual_note') : t('auth.billing_monthly_note')}
                   </p>
                 </div>
@@ -393,11 +393,11 @@ export default function Signup() {
                   )}
                 </button>
 
-                <p className="text-center text-[10px] text-text-primary/40 mt-1">
+                <p className="text-center text-[10px] text-text-secondary mt-1">
                   {t('auth.verification_required')}
                 </p>
 
-                <p className="text-center text-xs text-text-primary/50 mt-3">
+                <p className="text-center text-xs text-text-secondary mt-3">
                   {t('auth.have_account')}{' '}
                   <Link to="/login" className="text-primary hover:text-primary-hover font-medium transition-colors">
                     {t('auth.sign_in_link')}

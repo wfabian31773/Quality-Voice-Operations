@@ -21,8 +21,10 @@
     "close": "Cerrar"
   },
   "theme": {
-    "light": "Modo claro",
-    "dark": "Modo oscuro"
+    "light": "Claro",
+    "dark": "Oscuro",
+    "switch_to_light": "Cambiar a modo claro",
+    "switch_to_dark": "Cambiar a modo oscuro"
   },
   "public_nav": {
     "product": "Producto",

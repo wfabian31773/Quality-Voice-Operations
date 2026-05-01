@@ -644,7 +644,7 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
           {q}
         </span>
         <ChevronDown
-          className={`h-5 w-5 text-text-primary/40 flex-shrink-0 transition-transform duration-300 ${
+          className={`h-5 w-5 text-text-secondary flex-shrink-0 transition-transform duration-300 ${
             open ? 'rotate-180' : ''
           }`}
         />
@@ -657,7 +657,7 @@ function FAQItem({ q, a, id }: { q: string; a: string; id: string }) {
           open ? 'max-h-96 pb-5' : 'max-h-0'
         }`}
       >
-        <p className="text-sm text-text-primary/60 font-body leading-relaxed px-1">{a}</p>
+        <p className="text-sm text-text-secondary font-body leading-relaxed px-1">{a}</p>
       </div>
     </div>
   );
@@ -1287,16 +1287,16 @@ export default function Pricing() {
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-text-primary/50 font-body mb-5">{tier.desc}</p>
+                <p className="text-sm text-text-secondary font-body mb-5">{tier.desc}</p>
                 <div className="mb-2">
                   {isAnnual && (
-                    <div className="text-xs text-text-primary/40 font-body line-through" data-testid={`pricing-tier-${tier.key}-monthly-price`}>
+                    <div className="text-xs text-text-secondary font-body line-through" data-testid={`pricing-tier-${tier.key}-monthly-price`}>
                       {formatPriceForCurrency(monthlyPrice)}{t('pricing.tier_card.per_month')}
                     </div>
                   )}
                   {hasVisibleDiscount && (
                     <div
-                      className="text-xs text-text-primary/40 font-body line-through"
+                      className="text-xs text-text-secondary font-body line-through"
                       data-testid={`pricing-tier-${tier.key}-pre-discount-price`}
                     >
                       {isApprox && '≈ '}{formatPriceForCurrency(displayedPrice)}{t('pricing.tier_card.per_month')}
@@ -1310,7 +1310,7 @@ export default function Pricing() {
                   >
                     {isApprox && '≈ '}{formatPriceForCurrency(hasVisibleDiscount ? discountedPriceDollars : displayedPrice)}
                   </span>
-                  <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
+                  <span className="text-sm text-text-secondary font-body">{t('pricing.tier_card.per_month')}</span>
                 </div>
                 {hasVisibleDiscount && discountLabel && (
                   <div
@@ -1320,7 +1320,7 @@ export default function Pricing() {
                   >
                     {t('pricing.tier_card.discount_badge', { label: discountLabel })}
                     {tierDiscount?.promotionCode && (
-                      <span className="ml-1.5 normal-case font-normal text-text-primary/60">
+                      <span className="ml-1.5 normal-case font-normal text-text-secondary">
                         · {t('pricing.tier_card.discount_promo_code', { code: tierDiscount.promotionCode })}
                       </span>
                     )}
@@ -1337,7 +1337,7 @@ export default function Pricing() {
                 )}
                 <div
                   data-testid={`pricing-tier-${tier.key}-billing-label`}
-                  className="text-xs text-text-primary/50 font-body mb-3"
+                  className="text-xs text-text-secondary font-body mb-3"
                 >
                   {isAnnual
                     ? t('pricing.tier_card.billed_annually')
@@ -1345,7 +1345,7 @@ export default function Pricing() {
                 </div>
                 <div className="flex flex-col gap-1 mb-6">
                   <span className="text-xs text-primary font-semibold font-body">{tier.minutes}</span>
-                  <span className="text-xs text-text-primary/40 font-body">{tier.overage}</span>
+                  <span className="text-xs text-text-secondary font-body">{tier.overage}</span>
                 </div>
                 <Link
                   to={signupHref}
@@ -1376,7 +1376,7 @@ export default function Pricing() {
               <h2 className="font-display text-2xl font-bold text-text-primary mb-3">
                 {t('pricing.calculator.title')}
               </h2>
-              <p className="text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-text-secondary font-body max-w-2xl mx-auto">
                 {t('pricing.calculator.subtitle')}
               </p>
             </div>
@@ -1444,7 +1444,7 @@ export default function Pricing() {
 
       <section className="bg-surface py-12 border-t border-border/30">
         <div className="max-w-5xl mx-auto px-6 lg:px-8">
-          <p className="text-center text-xs font-semibold text-text-primary/40 uppercase tracking-wider mb-6">
+          <p className="text-center text-xs font-semibold text-text-secondary uppercase tracking-wider mb-6">
             {t('pricing.compliance.eyebrow')}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -1470,7 +1470,7 @@ export default function Pricing() {
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
               {t('pricing.faq.title')}
             </h2>
-            <p className="text-text-primary/60 font-body leading-relaxed">
+            <p className="text-text-secondary font-body leading-relaxed">
               {t('pricing.faq.subtitle')}
             </p>
           </div>

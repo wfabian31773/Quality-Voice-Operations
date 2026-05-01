@@ -72,10 +72,19 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Translucent surface used by light-tinted public marketing cards. The
+ * legacy hard-coded `rgba(255,255,255,0.6)` rendered as a near-white
+ * slab on top of the dark navy `bg-surface-secondary` in dark mode,
+ * which produced a washed-out grey card with effectively invisible
+ * text. Token-driven so it follows whatever surface tokens resolve
+ * to in each theme. */
 .glass-card-light {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+.dark .glass-card-light {
+  background: var(--color-surface);
 }
 
 .scroll-reveal {

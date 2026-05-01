@@ -261,11 +261,13 @@ export default function PublicLayout() {
               <button
                 type="button"
                 onClick={toggleTheme}
-                aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label={dark ? t('theme.switch_to_light') : t('theme.switch_to_dark')}
                 aria-pressed={dark}
-                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors duration-[var(--motion-fast)]"
+                title={dark ? t('theme.switch_to_light') : t('theme.switch_to_dark')}
+                className="inline-flex items-center gap-1.5 h-10 px-2.5 rounded-lg text-on-sidebar/80 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors duration-[var(--motion-fast)] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
+                <span className="text-xs font-medium">{dark ? t('theme.light') : t('theme.dark')}</span>
               </button>
               <Link
                 to="/login"
@@ -291,11 +293,12 @@ export default function PublicLayout() {
               <button
                 type="button"
                 onClick={toggleTheme}
-                aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label={dark ? t('theme.switch_to_light') : t('theme.switch_to_dark')}
                 aria-pressed={dark}
-                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors"
+                title={dark ? t('theme.switch_to_light') : t('theme.switch_to_dark')}
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-on-sidebar/80 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                {dark ? <Sun className="h-5 w-5" aria-hidden="true" /> : <Moon className="h-5 w-5" aria-hidden="true" />}
               </button>
               <button
                 className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-on-sidebar/80 hover:text-on-sidebar hover:bg-on-sidebar/10 transition-colors"

@@ -21,8 +21,10 @@
     "close": "Close"
   },
   "theme": {
-    "light": "Light Mode",
-    "dark": "Dark Mode"
+    "light": "Light",
+    "dark": "Dark",
+    "switch_to_light": "Switch to light mode",
+    "switch_to_dark": "Switch to dark mode"
   },
   "public_nav": {
     "product": "Product",

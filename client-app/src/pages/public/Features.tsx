@@ -165,7 +165,7 @@ export default function Features() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('features.architecture.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('features.architecture.subtitle')}
               </p>
             </div>
@@ -188,7 +188,7 @@ export default function Features() {
                   ))}
                 </div>
                 <div className="mt-6 pt-6 border-t border-border/20 text-center">
-                  <p className="text-xs text-text-primary/40 font-body">
+                  <p className="text-xs text-text-secondary font-body">
                     {t('features.architecture.footer')}
                   </p>
                 </div>
@@ -241,7 +241,7 @@ export default function Features() {
               <h2 className="font-display text-3xl lg:text-4xl font-bold text-text-primary mb-4">
                 {t('features.mini_systems.title')}
               </h2>
-              <p className="text-lg text-text-primary/60 font-body max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary font-body max-w-2xl mx-auto">
                 {t('features.mini_systems.subtitle')}
               </p>
             </div>
@@ -255,7 +255,7 @@ export default function Features() {
                     <sys.icon className="h-5 w-5 text-primary" />
                   </div>
                   <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{sys.title}</h3>
-                  <p className="text-sm text-text-primary/60 leading-relaxed font-body">{sys.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed font-body">{sys.desc}</p>
                 </div>
               </RevealSection>
             ))}

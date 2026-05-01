@@ -52,7 +52,7 @@ export default function Security() {
                   <c.icon className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="font-display text-sm font-semibold text-text-primary mb-1.5">{c.title}</h3>
-                <p className="text-xs text-text-primary/65 font-body leading-relaxed">{c.body}</p>
+                <p className="text-xs text-text-secondary font-body leading-relaxed">{c.body}</p>
               </div>
             ))}
           </div>
@@ -82,11 +82,11 @@ export default function Security() {
                           ? 'bg-success/15 text-success'
                           : c.status === 'In progress'
                           ? 'bg-accent/15 text-accent'
-                          : 'bg-border-strong/30 text-text-primary/60'
+                          : 'bg-border-strong/30 text-text-secondary'
                       }`}>{c.status}</span>
                     </td>
                     <td className="px-5 py-4 text-text-primary/70">{c.target}</td>
-                    <td className="px-5 py-4 text-text-primary/65 text-xs">{c.description}</td>
+                    <td className="px-5 py-4 text-text-secondary text-xs">{c.description}</td>
                   </tr>
                 ))}
               </tbody>
@@ -116,7 +116,7 @@ export default function Security() {
               View sub-processors
             </Link>
           </div>
-          <p className="text-xs text-text-primary/50 font-body mt-4">
+          <p className="text-xs text-text-secondary font-body mt-4">
             Templates marked DRAFT are pending legal review. Final counter-signed copies available on request.
           </p>
         </div>

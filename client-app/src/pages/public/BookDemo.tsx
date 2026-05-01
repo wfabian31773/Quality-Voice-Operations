@@ -178,14 +178,14 @@ export default function BookDemo() {
                     </div>
                     <div>
                       <p className="font-display text-sm font-semibold text-text-primary">{b.title}</p>
-                      <p className="text-xs text-text-primary/60 font-body leading-relaxed mt-0.5">{b.desc}</p>
+                      <p className="text-xs text-text-secondary font-body leading-relaxed mt-0.5">{b.desc}</p>
                     </div>
                   </li>
                 ))}
               </ul>
             </div>
             <div className="bg-surface rounded-2xl border border-border/30 p-6">
-              <p className="text-xs uppercase tracking-wider font-semibold text-text-primary/50 mb-3">Prefer self-serve?</p>
+              <p className="text-xs uppercase tracking-wider font-semibold text-text-secondary mb-3">Prefer self-serve?</p>
               <p className="text-sm text-text-primary/70 font-body mb-4">
                 Skip the demo and start your 14-day free trial — no credit card required.
               </p>
@@ -227,7 +227,7 @@ export default function BookDemo() {
                     style={{ height: '720px', border: 0 }}
                     loading="lazy"
                   />
-                  <div className="px-5 py-3 border-t border-border/30 text-xs text-text-primary/60 font-body">
+                  <div className="px-5 py-3 border-t border-border/30 text-xs text-text-secondary font-body">
                     Calendar trouble? Email <a href="mailto:sales@qvo.ai" className="text-primary hover:underline">sales@qvo.ai</a> and we will follow up within one business day.
                   </div>
                 </div>
@@ -353,7 +353,7 @@ export default function BookDemo() {
                     </>
                   )}
                 </button>
-                <p className="text-[11px] text-text-primary/50 text-center font-body">
+                <p className="text-[11px] text-text-secondary text-center font-body">
                   By submitting, you agree to be contacted by QVO about your demo request. We will not share your information.
                 </p>
               </form>

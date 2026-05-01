@@ -21,8 +21,10 @@
     "close": "Schließen"
   },
   "theme": {
-    "light": "Hellmodus",
-    "dark": "Dunkelmodus"
+    "light": "Hell",
+    "dark": "Dunkel",
+    "switch_to_light": "Zum hellen Modus wechseln",
+    "switch_to_dark": "Zum dunklen Modus wechseln"
   },
   "public_nav": {
     "product": "Produkt",
