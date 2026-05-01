@@ -797,6 +797,177 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     expect(overageText.toLowerCase()).toContain('less');
   });
 
+  // -------------------------------------------------------------------------
+  // Task #1327: render-side coverage for the SMS line. The pure
+  // computeCustomRateDelta tests below lock in the data shape; these
+  // mount the page so we also verify the i18n keys exist and the line
+  // renders with the expected per-message numbers alongside the existing
+  // base + overage lines.
+  // -------------------------------------------------------------------------
+  it('renders the SMS line on the callout when base, overage AND SMS are all custom (task #1327)', async () => {
+    mockUser = { tenantId: 'tenant-grandfathered-everything' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Custom base ($250 vs catalog $399) + custom overage
+            // ($0.05/min vs catalog $0.12/min) + custom SMS
+            // ($0.0075/msg vs catalog $0.01/msg). Banner copy must
+            // read cleanly with all three lines present — that's the
+            // headline scenario the task calls out.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.05,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            monthlyBasePriceCents: 25000,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 20000,
+            annualBasePriceSource: 'stripe',
+            smsRatePerMessage: 0.0075,
+            smsPriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-direction')).toBe('less');
+    expect(callout.getAttribute('data-has-base')).toBe('true');
+    expect(callout.getAttribute('data-has-overage')).toBe('true');
+    expect(callout.getAttribute('data-has-sms')).toBe('true');
+
+    // All three lines render side-by-side without confusing each other.
+    const baseText = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
+    expect(baseText).toContain('$250');
+    expect(baseText).toContain('$399');
+
+    const overageText = screen.getByTestId('pricing-override-callout-overage').textContent ?? '';
+    expect(overageText).toContain('$0.05/min');
+    expect(overageText).toContain('$0.12/min');
+
+    // SMS line carries its own per-message numbers, formatted to four
+    // fraction digits so a sub-cent rate is never quietly truncated.
+    const smsText = screen.getByTestId('pricing-override-callout-sms').textContent ?? '';
+    expect(smsText).toContain('$0.0075/msg');
+    expect(smsText).toContain('$0.0100/msg');
+    expect(smsText).toContain('$0.0025/msg');
+    expect(smsText.toLowerCase()).toContain('less');
+  });
+
+  it('renders the callout for a tenant with ONLY a custom SMS rate (base + overage match catalog) (task #1327)', async () => {
+    mockUser = { tenantId: 'tenant-sms-only' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // On the published Pro base + catalog overage, but with a
+            // negotiated $0.0075/msg SMS rate. Pre-#1327 this banner
+            // would have stayed hidden — the whole point of the task
+            // is that this tenant now sees a per-message summary.
+            basePriceCents: 39900,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 31920,
+            annualBasePriceSource: 'stripe',
+            smsRatePerMessage: 0.0075,
+            smsPriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    // Tone derived from the SMS direction since neither base nor overage diverges.
+    expect(callout.getAttribute('data-direction')).toBe('less');
+    expect(callout.getAttribute('data-has-base')).toBe('false');
+    expect(callout.getAttribute('data-has-overage')).toBe('false');
+    expect(callout.getAttribute('data-has-sms')).toBe('true');
+
+    // Base and overage sentences are suppressed — there's nothing
+    // meaningful to say about them.
+    expect(screen.queryByTestId('pricing-override-callout-description')).toBeNull();
+    expect(screen.queryByTestId('pricing-override-callout-overage')).toBeNull();
+
+    // SMS line stands on its own.
+    const smsText = screen.getByTestId('pricing-override-callout-sms').textContent ?? '';
+    expect(smsText).toContain('$0.0075/msg');
+    expect(smsText).toContain('$0.0100/msg');
+    expect(smsText.toLowerCase()).toContain('less');
+  });
+
+  it('does NOT render the SMS line when smsPriceSource is catalog (task #1327)', async () => {
+    mockUser = { tenantId: 'tenant-base-custom-sms-catalog' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Custom base + Stripe overage, but SMS source is catalog
+            // (env-default fallback) — the SMS line MUST stay hidden
+            // even though the value is present, since we don't want
+            // to imply the env default was negotiated.
+            basePriceCents: 25000,
+            overageRatePerMinute: 0.05,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            monthlyBasePriceCents: 25000,
+            monthlyBasePriceSource: 'stripe',
+            annualBasePriceCents: 20000,
+            annualBasePriceSource: 'stripe',
+            smsRatePerMessage: 0.01,
+            smsPriceSource: 'catalog',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    const callout = await waitFor(() =>
+      screen.getByTestId('pricing-override-callout'),
+    );
+    expect(callout.getAttribute('data-has-sms')).toBe('false');
+    expect(screen.queryByTestId('pricing-override-callout-sms')).toBeNull();
+    // Existing base + overage lines still render — that's why the
+    // callout mounted at all.
+    expect(screen.getByTestId('pricing-override-callout-description')).toBeTruthy();
+    expect(screen.getByTestId('pricing-override-callout-overage')).toBeTruthy();
+  });
+
   it('does NOT render the overage line when overage matches catalog (task #1270)', async () => {
     mockUser = { tenantId: 'tenant-base-only-custom' };
     fetchHandler = (url) => {
@@ -1376,6 +1547,130 @@ describe('computeCustomRateDelta', () => {
       overageRatePerMinute: 0.1201,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
+    });
+    expect(delta).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Task #1327: a tenant on a custom Stripe SMS rate must see the same
+  // "you pay $X/msg vs the published $Y/msg" summary on the callout
+  // alongside the existing base + overage lines, so a grandfathered
+  // customer with any of base, overage, or SMS negotiated sees the
+  // full picture in one place.
+  // -------------------------------------------------------------------------
+  it('attaches an SMS sub-delta when smsPriceSource is stripe and the rate diverges', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Catalog SMS rate = $0.01/msg; tenant negotiated $0.0075/msg.
+    // Base/overage stay catalog so we can see the SMS line populates
+    // independently of the AI-side fields.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.0075,
+      smsPriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    // SMS sub-delta carries the per-message breakdown.
+    expect(delta?.sms).toBeDefined();
+    expect(delta?.sms?.currentRatePerMessage).toBe(0.0075);
+    expect(delta?.sms?.catalogRatePerMessage).toBe(0.01);
+    // Floating-point: 0.01 - 0.0075 = 0.0025 (within rounding noise).
+    expect(delta?.sms?.deltaPerMessage).toBeCloseTo(0.0025, 6);
+    expect(delta?.sms?.isLess).toBe(true);
+  });
+
+  it('omits the SMS sub-delta when smsPriceSource is catalog (even if the rate happens to differ)', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // smsPriceSource is catalog — even though the numeric rate
+    // happens to look custom, we trust the source label and skip the
+    // SMS line so we don't compare catalog-against-catalog.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.0075,
+      smsPriceSource: 'catalog',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.sms).toBeUndefined();
+  });
+
+  it('omits the SMS sub-delta when the tenant rate matches catalog within rounding noise', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // 0.0001/msg drift is below the half-tenth-of-a-cent threshold —
+    // almost certainly Stripe pricing-engine rounding rather than a
+    // negotiated rate, so suppress the SMS line.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.0101,
+      smsPriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.sms).toBeUndefined();
+  });
+
+  it('returns a delta with SMS-only when base AND overage match catalog but SMS diverges', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Tenant on the published Pro base + catalog overage but a
+    // negotiated $0.0075/msg SMS rate. Base + overage deltas are 0;
+    // SMS delta is real. Pre-#1327 this banner would have stayed
+    // hidden — the whole point of the task is that this tenant now
+    // sees a per-message summary.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.0075,
+      smsPriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.deltaDollars).toBe(0);
+    expect(delta?.isLess).toBe(false);
+    expect(delta?.overage).toBeUndefined();
+    expect(delta?.sms).toBeDefined();
+    expect(delta?.sms?.currentRatePerMessage).toBe(0.0075);
+    expect(delta?.sms?.isLess).toBe(true);
+  });
+
+  it('flags an SMS rate above catalog as not-less', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.12,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.015,
+      smsPriceSource: 'stripe',
+    });
+    expect(delta).not.toBeNull();
+    expect(delta?.sms?.isLess).toBe(false);
+    expect(delta?.sms?.deltaPerMessage).toBeCloseTo(0.005, 6);
+  });
+
+  it('returns null when base + overage + SMS all match catalog within their thresholds (Stripe-sourced)', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    // Sub-threshold drift on every dimension — even though every
+    // source is Stripe, we don't mount a banner with nothing to say.
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 39950,
+      overageRatePerMinute: 0.1201,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      smsRatePerMessage: 0.0101,
+      smsPriceSource: 'stripe',
     });
     expect(delta).toBeNull();
   });

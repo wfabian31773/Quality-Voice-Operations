@@ -15,6 +15,7 @@ import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } 
 import { CTA } from '../../lib/analyticsCtas';
 import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import {
+  CATALOG_SMS_RATE_PER_MESSAGE,
   PLAN_CATALOG,
   PLAN_TIERS,
   centsToWholeDollars,
@@ -97,6 +98,24 @@ export interface CustomRateOverageDelta {
   isLess: boolean;
 }
 
+/**
+ * Per-message SMS divergence summary for the custom-rate callout
+ * (task #1327). Mirrors `CustomRateOverageDelta` shape so the renderer
+ * can treat the SMS line and the overage line uniformly. SMS pricing is
+ * tenant-wide rather than per-tier, so the catalog reference comes from
+ * `CATALOG_SMS_RATE_PER_MESSAGE` (not `PLAN_CATALOG`).
+ */
+export interface CustomRateSmsDelta {
+  /** Tenant's actual Stripe-invoiced SMS rate, in dollars/message. */
+  currentRatePerMessage: number;
+  /** Catalog (published) SMS rate, dollars/message. */
+  catalogRatePerMessage: number;
+  /** Absolute difference between catalog and tenant rate, dollars/message. */
+  deltaPerMessage: number;
+  /** True when the tenant pays *less* per message than the published rate. */
+  isLess: boolean;
+}
+
 export interface CustomRateDelta {
   tier: PlanTier;
   tierName: string;
@@ -122,6 +141,15 @@ export interface CustomRateDelta {
    * `OVERAGE_RENDER_THRESHOLD_PER_MIN`. Absent otherwise.
    */
   overage?: CustomRateOverageDelta;
+  /**
+   * Populated only when `smsPriceSource === 'stripe'` AND the tenant's
+   * per-message rate diverges from `CATALOG_SMS_RATE_PER_MESSAGE` by at
+   * least `SMS_RENDER_THRESHOLD_PER_MSG`. Absent otherwise. Mirrors
+   * the `overage` field's treatment so a tenant with any of base,
+   * overage, or SMS negotiated sees the full picture in one banner
+   * (task #1327).
+   */
+  sms?: CustomRateSmsDelta;
 }
 
 // Sub-dollar deltas are suppressed: the callout formats every monetary
@@ -137,6 +165,17 @@ const RENDER_THRESHOLD_CENTS = 100;
 // than a meaningful contract delta, so we suppress it to match the
 // "matches catalog within rounding noise" requirement.
 const OVERAGE_RENDER_THRESHOLD_PER_MIN = 0.005;
+
+// Half-tenth-of-a-cent-per-message threshold for the SMS line. The
+// catalog SMS rate is quoted in whole cents ($0.01/msg) and negotiated
+// rates routinely run sub-cent (e.g. $0.0075/msg, $0.012/msg) — so the
+// $0.005/min threshold used for overage would be far too coarse here.
+// $0.0005/msg sits at the same fractional position relative to the
+// catalog reference (half of one significant unit of the published rate)
+// and is well above the four-decimal `formatPerMessageRate` rendering
+// granularity, so anything below it is rounding noise we don't want to
+// surface as a "you pay $0.0000/msg less than $0.0100" sentence.
+const SMS_RENDER_THRESHOLD_PER_MSG = 0.0005;
 
 function inferTenantInterval(
   payload: EffectiveRateResponse,
@@ -255,11 +294,37 @@ export function computeCustomRateDelta(
     }
   }
 
-  // Suppress entirely when neither base nor overage carries a
+  // SMS delta is computed independently of base/overage. Same source-
+  // gated logic as overage: only when Stripe actually sourced the SMS
+  // rate do we trust the divergence as a real negotiated rate rather
+  // than catalog-vs-catalog noise. The catalog reference here is the
+  // shared `CATALOG_SMS_RATE_PER_MESSAGE` constant — SMS pricing is
+  // tenant-wide rather than per-tier, so there's no per-tier catalog
+  // figure to fall back to.
+  let sms: CustomRateSmsDelta | undefined;
+  if (payload.smsPriceSource === 'stripe') {
+    const tenantRate = Number.isFinite(payload.smsRatePerMessage)
+      ? (payload.smsRatePerMessage as number)
+      : CATALOG_SMS_RATE_PER_MESSAGE;
+    if (tenantRate >= 0) {
+      const catalogRate = CATALOG_SMS_RATE_PER_MESSAGE;
+      const smsDelta = catalogRate - tenantRate;
+      if (Math.abs(smsDelta) >= SMS_RENDER_THRESHOLD_PER_MSG) {
+        sms = {
+          currentRatePerMessage: tenantRate,
+          catalogRatePerMessage: catalogRate,
+          deltaPerMessage: Math.abs(smsDelta),
+          isLess: smsDelta > 0,
+        };
+      }
+    }
+  }
+
+  // Suppress entirely when none of base, overage, or SMS carries a
   // meaningful delta — an isStripeSourced payload can still match
   // catalog exactly (tenant on the published rate via a Stripe-managed
   // sub) and we don't want to mount a banner with nothing to say.
-  if (!baseMeaningful && !overage) return null;
+  if (!baseMeaningful && !overage && !sms) return null;
 
   return {
     tier,
@@ -276,6 +341,7 @@ export function computeCustomRateDelta(
     annualDeltaDollars: null,
     isLess: baseMeaningful ? baseDeltaCents > 0 : false,
     ...(overage ? { overage } : {}),
+    ...(sms ? { sms } : {}),
   };
 }
 
@@ -406,6 +472,18 @@ function formatPerMinuteRate(rate: number): string {
   })}/min`;
 }
 
+// Per-message rates run sub-cent (e.g. $0.0075/msg vs catalog $0.01/msg),
+// so we widen the band to four fraction digits — matching
+// `MinutesPricingCalculator.formatPerMessage` so the callout and the
+// calculator quote the negotiated rate identically rather than drifting
+// at the third decimal.
+function formatPerMessageRate(rate: number): string {
+  return `${formatDollars(rate, {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  })}/msg`;
+}
+
 interface CustomRateCalloutProps {
   delta: CustomRateDelta;
   t: ReturnType<typeof useTranslation>['t'];
@@ -483,10 +561,11 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
   };
   // `deltaDollars === 0` means base matched catalog within rounding
   // noise — `computeCustomRateDelta` only returns a delta in that case
-  // when overage diverges, so we skip the base sentence entirely and
-  // let the overage line stand on its own.
+  // when overage or SMS diverges, so we skip the base sentence entirely
+  // and let the overage / SMS line(s) stand on their own.
   const baseMeaningful = delta.deltaDollars > 0;
   const overage = delta.overage;
+  const sms = delta.sms;
 
   const overageInterp = overage
     ? {
@@ -497,24 +576,38 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
       }
     : null;
 
+  const smsInterp = sms
+    ? {
+        currentRate: formatPerMessageRate(sms.currentRatePerMessage),
+        catalogRate: formatPerMessageRate(sms.catalogRatePerMessage),
+        deltaRate: formatPerMessageRate(sms.deltaPerMessage),
+      }
+    : null;
+
   // Title and tone are anchored on whichever delta is the headline:
-  // base when present, otherwise the overage-only variant. Mixed
-  // directions (e.g. base less, overage more) keep the base headline —
-  // the overage line below states its own direction explicitly so the
-  // banner still reads correctly.
-  const headlineIsLess = baseMeaningful
-    ? delta.isLess
-    : overage!.isLess;
+  // base when present, otherwise overage when present, otherwise the
+  // SMS-only variant. Mixed directions (e.g. base less, overage more)
+  // keep the base headline — each line below states its own direction
+  // explicitly so the banner still reads correctly when base, overage,
+  // and SMS are simultaneously custom (task #1327).
+  let headlineIsLess: boolean;
+  if (baseMeaningful) headlineIsLess = delta.isLess;
+  else if (overage) headlineIsLess = overage.isLess;
+  else headlineIsLess = sms!.isLess;
 
   let titleKey: string;
   if (baseMeaningful) {
     titleKey = delta.isLess
       ? 'pricing.override_callout.title_less'
       : 'pricing.override_callout.title_more';
-  } else {
-    titleKey = overage!.isLess
+  } else if (overage) {
+    titleKey = overage.isLess
       ? 'pricing.override_callout.title_overage_less'
       : 'pricing.override_callout.title_overage_more';
+  } else {
+    titleKey = sms!.isLess
+      ? 'pricing.override_callout.title_sms_less'
+      : 'pricing.override_callout.title_sms_more';
   }
   const baseDescriptionKey = delta.isLess
     ? 'pricing.override_callout.description_less'
@@ -522,6 +615,9 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
   const overageLineKey = overage?.isLess
     ? 'pricing.override_callout.overage_line_less'
     : 'pricing.override_callout.overage_line_more';
+  const smsLineKey = sms?.isLess
+    ? 'pricing.override_callout.sms_line_less'
+    : 'pricing.override_callout.sms_line_more';
 
   // Tinted by direction: success-green when the tenant is paying less than
   // the current published price (good news), warning-amber when they're
@@ -538,6 +634,11 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
         iconBg: 'bg-warning/15',
       };
 
+  // Whether the SMS line needs top spacing depends on whether ANY line
+  // already rendered above it (base sentence or overage sentence) —
+  // matches the same `mt-1.5` vs `mt-1` rhythm overage uses.
+  const smsHasPrior = baseMeaningful || !!overage;
+
   return (
     <div
       data-testid="pricing-override-callout"
@@ -545,6 +646,7 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
       data-frame="monthly"
       data-has-base={baseMeaningful ? 'true' : 'false'}
       data-has-overage={overage ? 'true' : 'false'}
+      data-has-sms={sms ? 'true' : 'false'}
       role="status"
       className={`mb-6 flex flex-col sm:flex-row sm:items-start gap-3 rounded-xl border p-4 sm:p-5 ${tone.wrapper}`}
     >
@@ -569,6 +671,14 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
             className={`text-sm font-body text-text-primary/80 ${baseMeaningful ? 'mt-1.5' : 'mt-1'}`}
           >
             {t(overageLineKey, overageInterp)}
+          </p>
+        )}
+        {sms && smsInterp && (
+          <p
+            data-testid="pricing-override-callout-sms"
+            className={`text-sm font-body text-text-primary/80 ${smsHasPrior ? 'mt-1.5' : 'mt-1'}`}
+          >
+            {t(smsLineKey, smsInterp)}
           </p>
         )}
       </div>
