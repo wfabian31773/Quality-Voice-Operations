@@ -45,6 +45,7 @@ export interface PublicCaseStudy {
   summary: string;
   publicSlug: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface CaseStudyMetrics {
@@ -356,6 +357,7 @@ function mapPublicRow(row: Record<string, unknown>): PublicCaseStudy {
     summary: row.summary as string,
     publicSlug: row.public_slug as string | null,
     createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at ?? row.created_at),
   };
 }
 

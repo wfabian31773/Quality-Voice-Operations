@@ -13,7 +13,9 @@ import {
   extractSlugs,
   extractVerticalSlugs,
   extractCaseStudySlugsFromPayload,
+  extractCaseStudyEntriesFromPayload,
   loadCaseStudySlugs,
+  loadCaseStudyEntries,
   resolveCaseStudySource,
   SUPPORTED_LOCALES,
   DEFAULT_LOCALE,
@@ -543,6 +545,263 @@ describe('generate-sitemap script', () => {
       for (const p of forbidden) {
         expect(xml).not.toContain(`<loc>https://qvo.ai${p}`);
       }
+    });
+  });
+
+  /**
+   * Per-route `<lastmod>` plumbing — the whole point of task #1229. Case
+   * studies have real `createdAt`/`updatedAt` timestamps in the
+   * `/api/public/case-studies` payload, so they should be carried through to
+   * the sitemap instead of being stamped with today's build date.
+   */
+  describe('per-route lastmod (case-study freshness)', () => {
+    describe('extractCaseStudyEntriesFromPayload', () => {
+      it('returns slug + normalized lastmod from updatedAt (preferred over createdAt)', () => {
+        const payload = [
+          {
+            id: '1',
+            publicSlug: 'acme-co',
+            createdAt: '2026-01-10T10:00:00.000Z',
+            updatedAt: '2026-04-22T14:30:00.000Z',
+          },
+        ];
+        expect(extractCaseStudyEntriesFromPayload(payload)).toEqual([
+          { slug: 'acme-co', lastmod: '2026-04-22' },
+        ]);
+      });
+
+      it('falls back to createdAt when updatedAt is missing', () => {
+        const payload = [
+          { id: '1', publicSlug: 'just-created', createdAt: '2026-03-15T09:00:00.000Z' },
+        ];
+        expect(extractCaseStudyEntriesFromPayload(payload)).toEqual([
+          { slug: 'just-created', lastmod: '2026-03-15' },
+        ]);
+      });
+
+      it('accepts snake_case fields (raw DB row snapshots)', () => {
+        const payload = [
+          {
+            id: '1',
+            public_slug: 'snake-cased',
+            created_at: '2026-02-01T00:00:00.000Z',
+            updated_at: '2026-02-20T00:00:00.000Z',
+          },
+        ];
+        expect(extractCaseStudyEntriesFromPayload(payload)).toEqual([
+          { slug: 'snake-cased', lastmod: '2026-02-20' },
+        ]);
+      });
+
+      it('omits lastmod entirely when no parseable timestamp is available', () => {
+        const payload = [
+          { id: '1', publicSlug: 'no-dates' },
+          { id: '2', publicSlug: 'bad-dates', updatedAt: 'not-a-date', createdAt: '' },
+        ];
+        expect(extractCaseStudyEntriesFromPayload(payload)).toEqual([
+          { slug: 'no-dates' },
+          { slug: 'bad-dates' },
+        ]);
+      });
+
+      it('still drops invalid slugs / non-arrays the same way the slug-only extractor does', () => {
+        expect(extractCaseStudyEntriesFromPayload(null)).toEqual([]);
+        expect(
+          extractCaseStudyEntriesFromPayload([
+            { id: '1', publicSlug: 'Has Spaces', updatedAt: '2026-04-01' },
+            { id: '2', publicSlug: 'good', updatedAt: '2026-04-01T00:00:00Z' },
+          ]),
+        ).toEqual([{ slug: 'good', lastmod: '2026-04-01' }]);
+      });
+
+      it('deduplicates repeated slugs, keeping the first entry seen', () => {
+        const payload = [
+          { id: '1', publicSlug: 'foo', updatedAt: '2026-04-01T00:00:00Z' },
+          { id: '2', publicSlug: 'foo', updatedAt: '2026-05-01T00:00:00Z' },
+        ];
+        expect(extractCaseStudyEntriesFromPayload(payload)).toEqual([
+          { slug: 'foo', lastmod: '2026-04-01' },
+        ]);
+      });
+
+      it('extractCaseStudySlugsFromPayload still returns bare strings (back-compat)', () => {
+        const payload = [
+          { id: '1', publicSlug: 'foo', updatedAt: '2026-04-01T00:00:00Z' },
+          { id: '2', publicSlug: 'bar', createdAt: '2026-03-01T00:00:00Z' },
+        ];
+        expect(extractCaseStudySlugsFromPayload(payload)).toEqual(['foo', 'bar']);
+      });
+    });
+
+    describe('loadCaseStudyEntries', () => {
+      const silentLogger = { warn: () => {} };
+
+      it('fetches entries (slug + lastmod) from the API', async () => {
+        const fetchImpl = async () => ({
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              id: '1',
+              publicSlug: 'acme-co',
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-04-15T00:00:00Z',
+            },
+            { id: '2', publicSlug: 'globex', createdAt: '2026-02-10T00:00:00Z' },
+          ],
+        });
+        const entries = await loadCaseStudyEntries({
+          url: 'https://qvo.ai/api/public/case-studies',
+          fetchImpl,
+          logger: silentLogger,
+        });
+        expect(entries).toEqual([
+          { slug: 'acme-co', lastmod: '2026-04-15' },
+          { slug: 'globex', lastmod: '2026-02-10' },
+        ]);
+      });
+
+      it('returns [] (does NOT throw) when the API is unreachable', async () => {
+        const fetchImpl = async () => {
+          throw new Error('ENOTFOUND');
+        };
+        const entries = await loadCaseStudyEntries({
+          url: 'https://qvo.ai/api/public/case-studies',
+          fetchImpl,
+          logger: silentLogger,
+        });
+        expect(entries).toEqual([]);
+      });
+
+      it('reads from a snapshot file when no URL is provided', async () => {
+        const dir = mkdtempSync(path.join(tmpdir(), 'sitemap-cs-entries-'));
+        const file = path.join(dir, 'case-studies.json');
+        writeFileSync(
+          file,
+          JSON.stringify([
+            { id: '1', publicSlug: 'from-file', updatedAt: '2026-03-30T00:00:00Z' },
+          ]),
+        );
+        try {
+          const entries = await loadCaseStudyEntries({ file, logger: silentLogger });
+          expect(entries).toEqual([{ slug: 'from-file', lastmod: '2026-03-30' }]);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      });
+
+      it('loadCaseStudySlugs still returns bare strings derived from the same payload', async () => {
+        const fetchImpl = async () => ({
+          ok: true,
+          status: 200,
+          json: async () => [
+            { id: '1', publicSlug: 'one', updatedAt: '2026-04-01T00:00:00Z' },
+            { id: '2', publicSlug: 'two', createdAt: '2026-03-01T00:00:00Z' },
+          ],
+        });
+        const slugs = await loadCaseStudySlugs({
+          url: 'https://qvo.ai/api/public/case-studies',
+          fetchImpl,
+          logger: silentLogger,
+        });
+        expect(slugs).toEqual(['one', 'two']);
+      });
+    });
+
+    describe('buildCaseStudyRoutes accepts entries with lastmod', () => {
+      it('attaches lastmod to the route when provided', () => {
+        expect(
+          buildCaseStudyRoutes([
+            { slug: 'acme-co', lastmod: '2026-04-15' },
+            { slug: 'globex' },
+          ]),
+        ).toEqual([
+          {
+            path: '/case-studies/acme-co',
+            changefreq: 'monthly',
+            priority: '0.6',
+            lastmod: '2026-04-15',
+          },
+          { path: '/case-studies/globex', changefreq: 'monthly', priority: '0.6' },
+        ]);
+      });
+
+      it('still accepts bare slug strings for back-compat', () => {
+        expect(buildCaseStudyRoutes(['acme-co'])).toEqual([
+          { path: '/case-studies/acme-co', changefreq: 'monthly', priority: '0.6' },
+        ]);
+      });
+    });
+
+    describe('buildSitemapXml emits per-route <lastmod>', () => {
+      it('uses route.lastmod when present, falling back to the build-time default otherwise', () => {
+        const xml = buildSitemapXml({
+          routes: [
+            // Static route — no per-route override → today's date.
+            { path: '/pricing', changefreq: 'weekly', priority: '0.8' },
+            // Case-study route — carries its own real lastmod.
+            {
+              path: '/case-studies/acme-co',
+              changefreq: 'monthly',
+              priority: '0.6',
+              lastmod: '2026-04-15',
+            },
+          ],
+          lastmod: '2026-04-29',
+          baseUrl: 'https://qvo.ai',
+        });
+
+        // The static route uses the build default for every locale variant.
+        const pricingDefaultLastmod = (xml.match(/<lastmod>2026-04-29<\/lastmod>/g) || []).length;
+        expect(pricingDefaultLastmod).toBe(SUPPORTED_LOCALES.length);
+
+        // The case study uses its own lastmod for every locale variant.
+        const acmeRealLastmod = (xml.match(/<lastmod>2026-04-15<\/lastmod>/g) || []).length;
+        expect(acmeRealLastmod).toBe(SUPPORTED_LOCALES.length);
+      });
+    });
+
+    describe('generateSitemap with caseStudyEntries', () => {
+      it('emits real per-URL <lastmod> values for case-study routes', () => {
+        const xml = generateSitemap({
+          lastmod: '2026-04-29',
+          caseStudyEntries: [
+            { slug: 'acme-co', lastmod: '2026-04-15' },
+            { slug: 'globex', lastmod: '2026-02-10' },
+            // No lastmod available — should fall back to the build-time default.
+            { slug: 'no-date' },
+          ],
+        });
+
+        // Each case study with a real lastmod appears once per locale.
+        expect((xml.match(/<lastmod>2026-04-15<\/lastmod>/g) || []).length).toBe(
+          SUPPORTED_LOCALES.length,
+        );
+        expect((xml.match(/<lastmod>2026-02-10<\/lastmod>/g) || []).length).toBe(
+          SUPPORTED_LOCALES.length,
+        );
+
+        // Sanity: the actual case-study URLs are present too.
+        for (const slug of ['acme-co', 'globex', 'no-date']) {
+          for (const locale of SUPPORTED_LOCALES) {
+            const url = `https://qvo.ai${withLocalePrefix(locale, `/case-studies/${slug}`)}`;
+            expect(xml, `missing <loc>${url}</loc>`).toContain(`<loc>${url}</loc>`);
+          }
+        }
+      });
+
+      it('caseStudyEntries takes precedence over the legacy caseStudySlugs param', () => {
+        const xml = generateSitemap({
+          lastmod: '2026-04-29',
+          caseStudySlugs: ['ignored-when-entries-provided'],
+          caseStudyEntries: [{ slug: 'real-entry', lastmod: '2026-04-20' }],
+        });
+        expect(xml).toContain('<loc>https://qvo.ai/case-studies/real-entry</loc>');
+        expect(xml).not.toContain('ignored-when-entries-provided');
+        expect((xml.match(/<lastmod>2026-04-20<\/lastmod>/g) || []).length).toBe(
+          SUPPORTED_LOCALES.length,
+        );
+      });
     });
   });
 });

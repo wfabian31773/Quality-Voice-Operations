@@ -230,8 +230,36 @@ function isValidSlug(value) {
  * snapshot). Drops nulls, invalid slugs, and dedupes.
  */
 export function extractCaseStudySlugsFromPayload(body) {
+  return extractCaseStudyEntriesFromPayload(body).map((entry) => entry.slug);
+}
+
+/**
+ * Normalize an arbitrary timestamp value (ISO 8601 string, `Date`, or millis)
+ * into the `YYYY-MM-DD` shape sitemap.org's `<lastmod>` accepts. Returns
+ * `null` for missing/unparseable values so callers can fall back gracefully.
+ */
+function normalizeLastmod(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  if (Number.isNaN(time)) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Like `extractCaseStudySlugsFromPayload`, but also surfaces a per-entry
+ * `lastmod` derived from the case study's `updatedAt` (preferred) or
+ * `createdAt` field. Snake-case (`updated_at` / `created_at`) variants are
+ * also accepted so raw DB row snapshots work the same as API responses.
+ *
+ * Entries with no parseable timestamp omit `lastmod` (rather than carrying
+ * `null`) so downstream code can fall back to the build-time default with a
+ * simple `route.lastmod || today` check.
+ */
+export function extractCaseStudyEntriesFromPayload(body) {
   if (!Array.isArray(body)) return [];
-  const slugs = [];
+  const seen = new Set();
+  const entries = [];
   for (const item of body) {
     if (!item || typeof item !== 'object') continue;
     const candidate =
@@ -240,17 +268,29 @@ export function extractCaseStudySlugsFromPayload(body) {
         : typeof item.public_slug === 'string'
           ? item.public_slug
           : null;
-    if (isValidSlug(candidate)) slugs.push(candidate);
+    if (!isValidSlug(candidate)) continue;
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+
+    const rawLastmod =
+      item.updatedAt ?? item.updated_at ?? item.createdAt ?? item.created_at ?? null;
+    const lastmod = normalizeLastmod(rawLastmod);
+    entries.push(lastmod ? { slug: candidate, lastmod } : { slug: candidate });
   }
-  return Array.from(new Set(slugs));
+  return entries;
 }
 
 /**
- * Load published case-study slugs from a remote `url` (preferred) or local
+ * Load published case-study entries from a remote `url` (preferred) or local
  * `file` snapshot. Returns `[]` on any failure so a flaky API can never block
  * a release build.
+ *
+ * Each entry is `{ slug, lastmod? }` — `lastmod` is the case study's
+ * `updatedAt` (preferred) or `createdAt`, normalized to `YYYY-MM-DD`. When
+ * neither timestamp is present/parseable the entry omits `lastmod` and the
+ * downstream sitemap writer falls back to the build-time default.
  */
-export async function loadCaseStudySlugs({
+export async function loadCaseStudyEntries({
   url,
   file,
   timeoutMs = 5000,
@@ -259,7 +299,7 @@ export async function loadCaseStudySlugs({
 } = {}) {
   if (url) {
     if (typeof fetchImpl !== 'function') {
-      logger.warn?.('loadCaseStudySlugs: no fetch implementation available, skipping case-study URLs');
+      logger.warn?.('loadCaseStudyEntries: no fetch implementation available, skipping case-study URLs');
       return [];
     }
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
@@ -270,14 +310,14 @@ export async function loadCaseStudySlugs({
       const res = await fetchImpl(url, controller ? { signal: controller.signal } : undefined);
       if (!res || !res.ok) {
         const status = res ? res.status : 'no response';
-        logger.warn?.(`loadCaseStudySlugs: ${url} returned ${status}, skipping case-study URLs`);
+        logger.warn?.(`loadCaseStudyEntries: ${url} returned ${status}, skipping case-study URLs`);
         return [];
       }
       const body = await res.json();
-      return extractCaseStudySlugsFromPayload(body);
+      return extractCaseStudyEntriesFromPayload(body);
     } catch (err) {
       const message = err && typeof err === 'object' && 'message' in err ? err.message : String(err);
-      logger.warn?.(`loadCaseStudySlugs: failed to fetch ${url} (${message}), skipping case-study URLs`);
+      logger.warn?.(`loadCaseStudyEntries: failed to fetch ${url} (${message}), skipping case-study URLs`);
       return [];
     } finally {
       if (timer) clearTimeout(timer);
@@ -287,15 +327,15 @@ export async function loadCaseStudySlugs({
   if (file) {
     try {
       if (!existsSync(file)) {
-        logger.warn?.(`loadCaseStudySlugs: snapshot file ${file} not found, skipping case-study URLs`);
+        logger.warn?.(`loadCaseStudyEntries: snapshot file ${file} not found, skipping case-study URLs`);
         return [];
       }
       const raw = readFileSync(file, 'utf8');
       const body = JSON.parse(raw);
-      return extractCaseStudySlugsFromPayload(body);
+      return extractCaseStudyEntriesFromPayload(body);
     } catch (err) {
       const message = err && typeof err === 'object' && 'message' in err ? err.message : String(err);
-      logger.warn?.(`loadCaseStudySlugs: failed to read ${file} (${message}), skipping case-study URLs`);
+      logger.warn?.(`loadCaseStudyEntries: failed to read ${file} (${message}), skipping case-study URLs`);
       return [];
     }
   }
@@ -304,14 +344,33 @@ export async function loadCaseStudySlugs({
 }
 
 /**
- * Turn validated case-study slugs into sitemap route entries (monthly/0.6,
- * matching the doc/blog cadence).
+ * Backwards-compatible thin wrapper around `loadCaseStudyEntries` for callers
+ * that only need the slug strings. New call sites should prefer
+ * `loadCaseStudyEntries` so the per-route `<lastmod>` survives.
  */
-export function buildCaseStudyRoutes(slugs) {
+export async function loadCaseStudySlugs(opts = {}) {
+  const entries = await loadCaseStudyEntries(opts);
+  return entries.map((entry) => entry.slug);
+}
+
+/**
+ * Turn validated case-study entries into sitemap route entries (monthly/0.6,
+ * matching the doc/blog cadence). Accepts either bare slug strings (legacy)
+ * or `{ slug, lastmod? }` objects — the latter carries each story's real
+ * `updatedAt`/`createdAt` through to the per-URL `<lastmod>` so search
+ * engines re-crawl when the story actually changes, not on every redeploy.
+ */
+export function buildCaseStudyRoutes(entries) {
   const routes = [];
-  for (const slug of slugs) {
+  for (const entry of entries) {
+    const slug = typeof entry === 'string' ? entry : entry?.slug;
     if (!isValidSlug(slug)) continue;
-    routes.push({ path: `/case-studies/${slug}`, changefreq: 'monthly', priority: '0.6' });
+    const lastmod = typeof entry === 'object' && entry !== null ? entry.lastmod : undefined;
+    const route = { path: `/case-studies/${slug}`, changefreq: 'monthly', priority: '0.6' };
+    if (typeof lastmod === 'string' && lastmod.length > 0) {
+      route.lastmod = lastmod;
+    }
+    routes.push(route);
   }
   return routes;
 }
@@ -349,11 +408,15 @@ export function buildSitemapXml({ routes, locales = SUPPORTED_LOCALES, baseUrl =
       },
     ];
 
+    // Per-route override beats the build-time default — that's how case-study
+    // URLs carry their real `updatedAt`/`createdAt` instead of stamping today.
+    const routeLastmod = route.lastmod || today;
+
     for (const locale of locales) {
       const loc = `${baseUrl}${withLocalePrefix(locale, route.path)}`;
       out.push('  <url>');
       out.push(`    <loc>${escapeXml(loc)}</loc>`);
-      out.push(`    <lastmod>${today}</lastmod>`);
+      out.push(`    <lastmod>${routeLastmod}</lastmod>`);
       out.push(`    <changefreq>${route.changefreq}</changefreq>`);
       out.push(`    <priority>${route.priority}</priority>`);
       for (const alt of alternates) {
@@ -375,11 +438,17 @@ export function generateSitemap({
   locales = SUPPORTED_LOCALES,
   lastmod,
   caseStudySlugs = [],
+  caseStudyEntries,
 } = {}) {
+  // Prefer the entry shape (carries per-route lastmod) when callers provide
+  // it; fall back to the legacy slug-only param so existing callers keep
+  // working until they migrate.
+  const studyInput =
+    caseStudyEntries && caseStudyEntries.length > 0 ? caseStudyEntries : caseStudySlugs;
   const routes = [
     ...STATIC_ROUTES,
     ...collectDynamicPaths(),
-    ...buildCaseStudyRoutes(caseStudySlugs),
+    ...buildCaseStudyRoutes(studyInput),
   ];
   return buildSitemapXml({ routes, locales, baseUrl, lastmod });
 }
@@ -406,13 +475,14 @@ export function resolveCaseStudySource({ env = process.env, baseUrl = BASE_URL }
 
 if (isCli()) {
   const source = resolveCaseStudySource();
-  const caseStudySlugs = await loadCaseStudySlugs(source);
-  const xml = generateSitemap({ caseStudySlugs });
+  const caseStudyEntries = await loadCaseStudyEntries(source);
+  const xml = generateSitemap({ caseStudyEntries });
   const outPath = path.join(REPO_ROOT, 'client-app', 'public', 'sitemap.xml');
   writeFileSync(outPath, xml, 'utf8');
   const urlCount = (xml.match(/<url>/g) || []).length;
+  const datedCount = caseStudyEntries.filter((e) => typeof e.lastmod === 'string').length;
   // eslint-disable-next-line no-console
   console.log(
-    `Wrote ${outPath} (${urlCount} <url> entries across ${SUPPORTED_LOCALES.length} locales, ${caseStudySlugs.length} case-study slug(s))`,
+    `Wrote ${outPath} (${urlCount} <url> entries across ${SUPPORTED_LOCALES.length} locales, ${caseStudyEntries.length} case-study slug(s), ${datedCount} with real <lastmod>)`,
   );
 }
