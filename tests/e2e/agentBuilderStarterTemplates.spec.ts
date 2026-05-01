@@ -6,8 +6,10 @@
  * any browser console errors.
  *
  * Why this exists:
- *   `client-app/src/pages/AgentBuilder.tsx` ships nine industry starter
- *   workflows (`INDUSTRY_TEMPLATES_RAW` around line 599). Translation
+ *   `client-app/src/pages/AgentBuilder.tsx` ships thirteen industry
+ *   starter workflows (`INDUSTRY_TEMPLATES_RAW` around line 599 — the
+ *   original nine plus `customer-support`, `outbound-sales`,
+ *   `technical-support`, and `collections`). Translation
  *   key coverage is verified by `scripts/check-i18n-keys.mjs`, but
  *   nothing actually clicks each card and asserts the resulting nodes /
  *   edges. A regression in any one template — a malformed `nodeType`,
@@ -181,6 +183,34 @@ const STARTER_TEMPLATES: StarterTemplateExpectation[] = [
     label: 'Property Management',
     expectedNodeCount: 6,
     expectedFirstNodeLabel: 'Front Desk Greeting',
+    expectedEdgeCount: 6,
+  },
+  {
+    key: 'customer-support',
+    label: 'Customer Support Center',
+    expectedNodeCount: 6,
+    expectedFirstNodeLabel: 'Support Welcome',
+    expectedEdgeCount: 6,
+  },
+  {
+    key: 'outbound-sales',
+    label: 'Outbound Sales',
+    expectedNodeCount: 6,
+    expectedFirstNodeLabel: 'Outbound Intro',
+    expectedEdgeCount: 6,
+  },
+  {
+    key: 'technical-support',
+    label: 'Technical Support',
+    expectedNodeCount: 6,
+    expectedFirstNodeLabel: 'Tech Welcome',
+    expectedEdgeCount: 6,
+  },
+  {
+    key: 'collections',
+    label: 'Collections & Recovery',
+    expectedNodeCount: 6,
+    expectedFirstNodeLabel: 'Mini-Miranda & ID',
     expectedEdgeCount: 6,
   },
 ];
@@ -437,7 +467,7 @@ async function run(): Promise<void> {
     const builderUrl = `${BASE_URL}/agents/${agentId}/builder`;
 
     // Sanity-check that the picker actually contains exactly the
-    // templates this spec knows about. Without this guard, a tenth
+    // templates this spec knows about. Without this guard, a 14th
     // starter template added to `INDUSTRY_TEMPLATES_RAW` would render
     // in production but go untested here, and CI would still pass —
     // exactly the regression the task asked us to close. We do this
@@ -469,7 +499,7 @@ async function run(): Promise<void> {
       `picker is missing ${missing.length} starter template(s) this spec knows about: ${missing.join(', ')}`,
     );
 
-    // Exact-count guard: if a tenth starter is added to
+    // Exact-count guard: if a 14th starter is added to
     // `INDUSTRY_TEMPLATES_RAW` without updating this spec, the
     // overall card count will exceed `STARTER_TEMPLATES.length` and
     // CI will fail with a clear error pointing at the discrepancy.
