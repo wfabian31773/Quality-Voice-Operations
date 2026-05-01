@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking, Platform } from 'react-native';
+import { isOffline } from './connectivity';
 
 export async function openDirections(address: string): Promise<void> {
   const encoded = encodeURIComponent(address.trim());
@@ -309,4 +310,177 @@ export async function clearGeocodeCache(): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+export interface RouteResult {
+  coordinates: Coords[];
+  distanceKm: number;
+  durationMinutes: number;
+}
+
+const DEFAULT_ROUTING_BASE = 'https://router.project-osrm.org';
+const ROUTING_BASE = (
+  process.env.EXPO_PUBLIC_ROUTING_URL ?? DEFAULT_ROUTING_BASE
+).replace(/\/+$/, '');
+const ROUTING_TIMEOUT_MS = 6_000;
+const ROUTE_CACHE_MAX = 50;
+const ROUTE_SUCCESS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ROUTE_FAILURE_TTL_MS = 30_000;
+// Quantize coordinates to ~100m so nearby technician positions reuse the
+// same cached route instead of refetching on every GPS jitter.
+const ROUTE_COORD_QUANTIZE = 1_000;
+
+interface RouteCacheEntry {
+  result: RouteResult | null;
+  expiresAt: number;
+}
+
+const routeCache = new Map<string, RouteCacheEntry>();
+const inFlightRoutes = new Map<string, Promise<RouteResult | null>>();
+
+function quantizeCoord(value: number): number {
+  return Math.round(value * ROUTE_COORD_QUANTIZE) / ROUTE_COORD_QUANTIZE;
+}
+
+function buildRouteKey(origin: Coords, destination: Coords): string {
+  return [
+    quantizeCoord(origin.latitude),
+    quantizeCoord(origin.longitude),
+    quantizeCoord(destination.latitude),
+    quantizeCoord(destination.longitude),
+  ].join(',');
+}
+
+function rememberRoute(
+  key: string,
+  result: RouteResult | null,
+  ttl: number,
+): void {
+  if (routeCache.size >= ROUTE_CACHE_MAX) {
+    const oldestKey = routeCache.keys().next().value;
+    if (oldestKey !== undefined) routeCache.delete(oldestKey);
+  }
+  routeCache.set(key, { result, expiresAt: Date.now() + ttl });
+}
+
+export function getCachedRoute(
+  origin: Coords,
+  destination: Coords,
+): RouteResult | null {
+  const entry = routeCache.get(buildRouteKey(origin, destination));
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) return null;
+  return entry.result;
+}
+
+export type CachedRouteStatus =
+  | { kind: 'miss' }
+  | { kind: 'hit'; result: RouteResult }
+  | { kind: 'unavailable' };
+
+export function peekCachedRoute(
+  origin: Coords,
+  destination: Coords,
+): CachedRouteStatus {
+  const entry = routeCache.get(buildRouteKey(origin, destination));
+  if (!entry || entry.expiresAt <= Date.now()) return { kind: 'miss' };
+  if (entry.result) return { kind: 'hit', result: entry.result };
+  return { kind: 'unavailable' };
+}
+
+export async function fetchRoute(
+  origin: Coords,
+  destination: Coords,
+): Promise<RouteResult | null> {
+  const key = buildRouteKey(origin, destination);
+  const cached = routeCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  const existing = inFlightRoutes.get(key);
+  if (existing) return existing;
+  if (isOffline()) return null;
+  if (typeof fetch !== 'function') return null;
+
+  const url =
+    `${ROUTING_BASE}/route/v1/driving/` +
+    `${origin.longitude},${origin.latitude};` +
+    `${destination.longitude},${destination.latitude}` +
+    `?overview=full&geometries=geojson&alternatives=false&steps=false`;
+
+  const promise = (async () => {
+    const controller =
+      typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = controller
+      ? setTimeout(() => controller.abort(), ROUTING_TIMEOUT_MS)
+      : null;
+    try {
+      const res = await fetch(url, {
+        signal: controller?.signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        rememberRoute(key, null, ROUTE_FAILURE_TTL_MS);
+        return null;
+      }
+      const data = (await res.json()) as {
+        code?: string;
+        routes?: Array<{
+          distance?: number;
+          duration?: number;
+          geometry?: { coordinates?: unknown };
+        }>;
+      };
+      const route = data?.routes?.[0];
+      const rawCoords = route?.geometry?.coordinates;
+      if (
+        data?.code !== 'Ok' ||
+        !route ||
+        typeof route.distance !== 'number' ||
+        typeof route.duration !== 'number' ||
+        !Array.isArray(rawCoords) ||
+        rawCoords.length < 2
+      ) {
+        rememberRoute(key, null, ROUTE_FAILURE_TTL_MS);
+        return null;
+      }
+      const coordinates: Coords[] = [];
+      for (const point of rawCoords) {
+        if (!Array.isArray(point) || point.length < 2) continue;
+        const [lon, lat] = point as [unknown, unknown];
+        if (
+          typeof lat !== 'number' ||
+          typeof lon !== 'number' ||
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lon)
+        ) {
+          continue;
+        }
+        coordinates.push({ latitude: lat, longitude: lon });
+      }
+      if (coordinates.length < 2) {
+        rememberRoute(key, null, ROUTE_FAILURE_TTL_MS);
+        return null;
+      }
+      const result: RouteResult = {
+        coordinates,
+        distanceKm: route.distance / 1000,
+        durationMinutes: Math.max(1, Math.round(route.duration / 60)),
+      };
+      rememberRoute(key, result, ROUTE_SUCCESS_TTL_MS);
+      return result;
+    } catch {
+      rememberRoute(key, null, ROUTE_FAILURE_TTL_MS);
+      return null;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      inFlightRoutes.delete(key);
+    }
+  })();
+
+  inFlightRoutes.set(key, promise);
+  return promise;
+}
+
+export function clearRouteCache(): void {
+  routeCache.clear();
+  inFlightRoutes.clear();
 }

@@ -58,6 +58,13 @@ When you launch the app, you'll be asked for:
    Read-only keys can browse but cannot trigger transitions; write/admin keys
    can do both.
 
+The job map preview also fetches a driving route between the technician's
+current location and the job site. By default it queries the public OSRM
+demo server (`https://router.project-osrm.org`); point at your own OSRM /
+Valhalla deployment by setting `EXPO_PUBLIC_ROUTING_URL`. When the route
+endpoint is unreachable (offline, rate-limited, timeout) the preview falls
+back to a straight-line haversine ETA.
+
 The credentials are stored using `expo-secure-store` (keychain / keystore).
 On the Profile tab you can pick which dispatch resource (technician) the app
 should filter by — this scopes the Dispatch and Schedule lists to that person.

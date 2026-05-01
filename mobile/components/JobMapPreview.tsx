@@ -13,12 +13,15 @@ import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
 import {
   ensureGeocodeCacheHydrated,
   estimateDriveMinutes,
+  fetchRoute,
   formatDistance,
   formatEta,
   geocodeAddress,
   getCachedGeocode,
   haversineKm,
   openDirections,
+  peekCachedRoute,
+  type RouteResult,
 } from '@/lib/maps';
 
 interface JobMapPreviewProps {
@@ -57,6 +60,9 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
   const [isResolving, setIsResolving] = useState(
     isNative && !initialCached,
   );
+  const [route, setRoute] = useState<RouteResult | null>(null);
+  const [isRouting, setIsRouting] = useState(false);
+  const [routeUnavailable, setRouteUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +118,51 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
     }
   }, [destination, requestLocation]);
 
+  useEffect(() => {
+    if (!isNative || !origin || !destination) {
+      setRoute(null);
+      setIsRouting(false);
+      setRouteUnavailable(false);
+      return;
+    }
+
+    let cancelled = false;
+    const cached = peekCachedRoute(origin, destination);
+    if (cached.kind === 'hit') {
+      setRoute(cached.result);
+      setIsRouting(false);
+      setRouteUnavailable(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (cached.kind === 'unavailable') {
+      // Recent fetch already failed — don't flash a "loading" state, just
+      // surface the haversine fallback until the failure TTL expires.
+      setRoute(null);
+      setIsRouting(false);
+      setRouteUnavailable(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setRoute(null);
+    setRouteUnavailable(false);
+    setIsRouting(true);
+    void (async () => {
+      const result = await fetchRoute(origin, destination);
+      if (cancelled) return;
+      setRoute(result);
+      setRouteUnavailable(!result);
+      setIsRouting(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [origin, destination]);
+
   const isLocating = locationStatus === 'requesting';
   const locationError =
     locationStatus === 'denied'
@@ -147,12 +198,19 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
 
   const Map = MapsModuleRef?.default;
   const Marker = MapsModuleRef?.Marker;
+  const Polyline = MapsModuleRef?.Polyline;
 
   let distanceKm: number | null = null;
   let etaMinutes: number | null = null;
-  if (origin && destination) {
+  let metricsSource: 'route' | 'haversine' | null = null;
+  if (route) {
+    distanceKm = route.distanceKm;
+    etaMinutes = route.durationMinutes;
+    metricsSource = 'route';
+  } else if (origin && destination) {
     distanceKm = haversineKm(origin, destination);
     etaMinutes = estimateDriveMinutes(distanceKm);
+    metricsSource = 'haversine';
   }
 
   return (
@@ -219,8 +277,8 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
           <Map
             style={styles.map}
             pointerEvents="none"
-            initialRegion={regionFor(destination, origin)}
-            region={regionFor(destination, origin)}
+            initialRegion={regionFor(destination, origin, route?.coordinates)}
+            region={regionFor(destination, origin, route?.coordinates)}
             showsUserLocation={Boolean(origin)}
             showsMyLocationButton={false}
             showsCompass={false}
@@ -228,6 +286,15 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
             toolbarEnabled={false}
             loadingEnabled
           >
+            {route && Polyline ? (
+              <Polyline
+                coordinates={route.coordinates}
+                strokeColor={colors.primary}
+                strokeWidth={4}
+                lineCap="round"
+                lineJoin="round"
+              />
+            ) : null}
             <Marker
               coordinate={destination}
               title="Job location"
@@ -249,7 +316,7 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
             ETA
           </Text>
           <Text style={[styles.metricValue, { color: colors.text }]}>
-            {isLocating
+            {isLocating || (isRouting && etaMinutes == null)
               ? 'Calculating…'
               : etaMinutes != null
                 ? formatEta(etaMinutes)
@@ -275,10 +342,19 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
         <Text style={[styles.note, { color: colors.textMuted }]}>
           ETA appears once your location is available.
         </Text>
-      ) : etaMinutes != null ? (
+      ) : metricsSource === 'route' ? (
         <Text style={[styles.note, { color: colors.textMuted }]}>
-          Estimated from straight-line distance — open directions for a
-          traffic-aware ETA.
+          Routed driving distance — open directions for live traffic.
+        </Text>
+      ) : isRouting ? (
+        <Text style={[styles.note, { color: colors.textMuted }]}>
+          Loading driving route…
+        </Text>
+      ) : metricsSource === 'haversine' ? (
+        <Text style={[styles.note, { color: colors.textMuted }]}>
+          {routeUnavailable
+            ? 'Driving route unavailable — showing straight-line estimate.'
+            : 'Estimated from straight-line distance — open directions for a traffic-aware ETA.'}
         </Text>
       ) : null}
     </View>
@@ -288,12 +364,31 @@ export function JobMapPreview({ address }: JobMapPreviewProps) {
 function regionFor(
   destination: Coords,
   origin: Coords | null,
+  routeCoords?: Coords[],
 ): {
   latitude: number;
   longitude: number;
   latitudeDelta: number;
   longitudeDelta: number;
 } {
+  if (routeCoords && routeCoords.length >= 2) {
+    let minLat = routeCoords[0].latitude;
+    let maxLat = routeCoords[0].latitude;
+    let minLon = routeCoords[0].longitude;
+    let maxLon = routeCoords[0].longitude;
+    for (const point of routeCoords) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLon) minLon = point.longitude;
+      if (point.longitude > maxLon) maxLon = point.longitude;
+    }
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLon + maxLon) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.4, 0.02),
+      longitudeDelta: Math.max((maxLon - minLon) * 1.4, 0.02),
+    };
+  }
   if (!origin) {
     return {
       latitude: destination.latitude,
