@@ -26,16 +26,27 @@
 #      catalog-sourced. Catches the original "annual badge silently
 #      uses catalog discount" regression on every PR.
 #
+#   5. `check:public-pages-preact-smoke` — Playwright-based smoke
+#      (Task #1165) that builds the marketing bundle, serves it from
+#      `client-app/dist/public/`, and loads every route declared in
+#      `client-app/src/PublicApp.tsx` under preact/compat. Asserts no
+#      uncaught exceptions, no unhandled promise rejections, and no
+#      `console.error()` from application code on any page. Catches
+#      Preact-incompatible React escape hatches (`useId`, `forwardRef`,
+#      `Suspense`, etc.) that would otherwise ship silently because the
+#      build still succeeds and the failures only surface at runtime.
+#
 # Designed to run from `scripts/post-merge.sh` and from any future CI
 # pipeline. Boots an ephemeral vite dev server on :5000 only if one is not
 # already responding, and tears it down on exit.
 #
 # Env vars:
-#   SKIP_DARK_MODE_CHECK=1  — skip the browser-based checks (the dark-mode
+#   SKIP_DARK_MODE_CHECK=1  — skip ALL browser-based checks (the dark-mode
 #                             contrast probe, the hero visual-regression
-#                             check, AND the pricing live-rate badge
-#                             check), e.g. in a headless container without
-#                             chromium installed.
+#                             check, the pricing live-rate badge check,
+#                             AND the marketing-bundle Preact smoke), e.g.
+#                             in a headless container without chromium
+#                             installed.
 #   E2E_BASE_URL            — override the URL the browser-based checks hit
 #                             (default http://localhost:5000).
 
@@ -48,7 +59,7 @@ echo "→ check:design-tokens (static)"
 npm run --silent check:design-tokens
 
 if [[ "${SKIP_DARK_MODE_CHECK:-0}" == "1" ]]; then
-  echo "↷ check:public-dark-mode + check:public-hero-visual + check:pricing-live-rate-badge skipped (SKIP_DARK_MODE_CHECK=1)"
+  echo "↷ check:public-dark-mode + check:public-hero-visual + check:pricing-live-rate-badge + check:public-pages-preact-smoke skipped (SKIP_DARK_MODE_CHECK=1)"
   exit 0
 fi
 
@@ -105,3 +116,8 @@ E2E_BASE_URL="$BASE_URL" npm run --silent check:public-hero-visual
 
 echo "→ check:pricing-live-rate-badge (browser, ${BASE_URL})"
 E2E_BASE_URL="$BASE_URL" npm run --silent check:pricing-live-rate-badge
+
+# This one runs against its own ephemeral test server (built marketing
+# bundle), not the dev server above, so it doesn't take E2E_BASE_URL.
+echo "→ check:public-pages-preact-smoke (browser, built marketing bundle)"
+npm run --silent check:public-pages-preact-smoke
