@@ -25,6 +25,7 @@ import {
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
   AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
   Clock, ArrowUpDown, Database, PhoneOff, BellRing, Globe, Search as SearchIcon,
+  Camera, X as XIcon,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -1819,6 +1820,312 @@ function fmtCatalogPerMin(catalog: number | null): string {
   return `$${catalog.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}/min`;
 }
 
+interface LiveBillingHealthRunSummary {
+  id: number;
+  conclusion: 'success' | 'failure' | 'cancelled' | 'timed_out' | 'neutral' | 'skipped' | null;
+  status: string;
+  htmlUrl: string;
+  runStartedAt: string;
+  updatedAt: string;
+  headSha: string | null;
+  headBranch: string | null;
+  event: string | null;
+}
+
+interface LiveBillingHealthSuccessSummary extends LiveBillingHealthRunSummary {
+  artifactId: number | null;
+  artifactExpired: boolean;
+  artifactSizeInBytes: number | null;
+  screenshotAvailable: boolean;
+}
+
+interface LiveBillingHealthTrackingIssue {
+  number: number;
+  htmlUrl: string;
+  title: string;
+  updatedAt: string;
+}
+
+interface LiveBillingHealthSummaryResponse {
+  configured: boolean;
+  unavailableReason?: string;
+  workflowHtmlUrl: string | null;
+  trackingIssueLabelSearchUrl: string | null;
+  latestRun: LiveBillingHealthRunSummary | null;
+  latestSuccess: LiveBillingHealthSuccessSummary | null;
+  openTrackingIssue: LiveBillingHealthTrackingIssue | null;
+  error: string | null;
+  fetchedAt: string;
+}
+
+/**
+ * Surfaces the most recent screenshot from the nightly
+ * `billing-health-live-stripe.yml` workflow inline so admins don't have
+ * to dig through the Actions tab to confirm the visual contract last
+ * passed against live Stripe. Failure runs swap the green dot for a red
+ * one and link straight to the open `billing-health-live-drift`
+ * tracking issue.
+ *
+ * Hides itself silently when the integration isn't configured
+ * (`GITHUB_REPOSITORY` / `GITHUB_TOKEN` unset on this host) so dev /
+ * preview deployments don't render an orphaned card.
+ */
+function LiveBillingHealthScreenshotCard() {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  // Tracks 404s on the proxied PNG endpoint so we can fall back to a
+  // helpful "screenshot unavailable" placeholder instead of showing a
+  // broken-image glyph. Cleared whenever the upstream metadata changes
+  // (so a fresh successful run un-pins the fallback automatically).
+  const [screenshotMissing, setScreenshotMissing] = useState(false);
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['platform-billing-config-health-live-run'],
+    queryFn: () =>
+      api.get<LiveBillingHealthSummaryResponse>(
+        '/platform/billing-config-health/last-live-run',
+      ),
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-3 text-xs text-text-muted">
+        Loading latest live screenshot…
+      </div>
+    );
+  }
+  if (error || !data) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-3 text-xs text-text-muted">
+        Failed to load latest live screenshot:{' '}
+        {error ? (error as Error).message : 'no data'}
+      </div>
+    );
+  }
+  if (!data.configured) {
+    // Nothing to render; the integration isn't wired up on this host.
+    return null;
+  }
+
+  const latest = data.latestRun;
+  const success = data.latestSuccess;
+  const conclusion = latest?.conclusion ?? null;
+  const isFailing = conclusion !== null && conclusion !== 'success';
+  const dotTone = isFailing
+    ? 'bg-danger'
+    : conclusion === 'success'
+      ? 'bg-success'
+      : 'bg-text-muted';
+  const lastRunLabel = latest
+    ? `${conclusion ?? latest.status} · ${new Date(latest.runStartedAt).toLocaleString()}`
+    : 'No runs yet';
+  const successAt = success ? new Date(success.runStartedAt).toLocaleString() : null;
+  const screenshotUrl = success?.screenshotAvailable
+    ? `/api/platform/billing-config-health/last-live-screenshot.png?artifact=${success.artifactId}`
+    : null;
+  // The artifactId acts as a stable cache key — when it changes we
+  // know we're looking at a fresh upstream run, so retry the image.
+  useEffect(() => {
+    setScreenshotMissing(false);
+  }, [success?.artifactId]);
+  const screenshotRenderable = screenshotUrl && !screenshotMissing;
+
+  return (
+    <>
+      <div className="bg-surface border border-border rounded-xl p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold flex items-center gap-1.5">
+              <Camera className="h-3.5 w-3.5 text-primary" />
+              Live screenshot
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${dotTone}`}
+                aria-label={`Latest run: ${conclusion ?? 'pending'}`}
+                title={`Latest run: ${conclusion ?? 'pending'}`}
+              />
+            </div>
+            <p className="text-[11px] text-text-muted mt-1">
+              From the nightly{' '}
+              <code className="font-mono">billing-health-live-stripe</code> workflow.
+              {data.workflowHtmlUrl && (
+                <>
+                  {' · '}
+                  <a
+                    href={data.workflowHtmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    workflow <ExternalLink className="h-3 w-3" />
+                  </a>
+                </>
+              )}
+            </p>
+            <p className="text-[11px] mt-1">
+              <span className="text-text-muted">Last run:</span>{' '}
+              {latest ? (
+                <a
+                  href={latest.htmlUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`hover:underline inline-flex items-center gap-0.5 font-medium ${isFailing ? 'text-danger' : ''}`}
+                >
+                  {lastRunLabel} <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <span>{lastRunLabel}</span>
+              )}
+            </p>
+            {successAt && (
+              <p className="text-[11px] mt-1">
+                <span className="text-text-muted">Last live screenshot:</span>{' '}
+                {screenshotRenderable ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    {successAt}
+                  </button>
+                ) : (
+                  <span>{successAt}</span>
+                )}
+                {success?.artifactExpired && (
+                  <span className="text-text-muted"> · artifact expired</span>
+                )}
+                {screenshotMissing && !success?.artifactExpired && (
+                  <span className="text-text-muted"> · screenshot unavailable</span>
+                )}
+              </p>
+            )}
+            {isFailing && (
+              <p className="text-[11px] mt-1 flex items-center gap-1.5">
+                <span className="inline-flex h-2 w-2 rounded-full bg-danger" aria-hidden="true" />
+                <span className="text-danger font-medium">
+                  Latest run failed —
+                </span>
+                {data.openTrackingIssue ? (
+                  <a
+                    href={data.openTrackingIssue.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    tracking issue #{data.openTrackingIssue.number}{' '}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : data.trackingIssueLabelSearchUrl ? (
+                  <a
+                    href={data.trackingIssueLabelSearchUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    open tracking issues <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : null}
+              </p>
+            )}
+            {data.error && (
+              <p className="text-[11px] text-warning mt-1">
+                GitHub API error: {data.error}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            {screenshotRenderable ? (
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="block border border-border rounded overflow-hidden hover:border-primary transition-colors"
+                aria-label="Preview last live billing-health screenshot"
+              >
+                <img
+                  src={screenshotUrl ?? undefined}
+                  alt="Last live billing-health screenshot"
+                  className="block h-16 w-28 object-cover bg-surface-secondary"
+                  loading="lazy"
+                  onError={() => setScreenshotMissing(true)}
+                />
+              </button>
+            ) : (
+              <div className="h-16 w-28 border border-dashed border-border rounded flex items-center justify-center text-[10px] text-text-muted text-center px-1">
+                {screenshotMissing ? 'Screenshot unavailable' : 'No screenshot'}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium border border-border rounded hover:bg-surface-secondary disabled:opacity-50"
+              title="Refresh from GitHub"
+            >
+              <RotateCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {previewOpen && screenshotRenderable && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setPreviewOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Last live billing-health screenshot"
+        >
+          <div
+            className="bg-surface border border-border rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+              <div className="text-sm font-semibold flex items-center gap-2">
+                <Camera className="h-4 w-4 text-primary" />
+                Live billing-health screenshot
+                {successAt && (
+                  <span className="text-xs text-text-muted font-normal">· {successAt}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {success?.htmlUrl && (
+                  <a
+                    href={success.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    Source run <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(false)}
+                  className="p-1 rounded hover:bg-surface-secondary"
+                  aria-label="Close preview"
+                >
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto p-4 bg-surface-secondary flex items-center justify-center">
+              <img
+                src={screenshotUrl ?? undefined}
+                alt="Last live billing-health screenshot"
+                className="max-w-full h-auto rounded shadow-sm"
+                onError={() => {
+                  setScreenshotMissing(true);
+                  setPreviewOpen(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /**
  * Re-runs the same `STRIPE_PRICE_<TIER>_<INTERVAL>` verification the deploy
  * build runs (`npm run verify:stripe-prices`), but on demand against the
@@ -1936,6 +2243,8 @@ function BillingConfigHealthPanel() {
           </button>
         </div>
       </div>
+
+      <LiveBillingHealthScreenshotCard />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-surface border border-border rounded-xl p-3">

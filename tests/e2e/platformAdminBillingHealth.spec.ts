@@ -217,6 +217,9 @@ async function login(page: Page): Promise<void> {
 // doesn't leak between scenarios.
 async function installApiMock(page: Page, withMetered: boolean): Promise<void> {
   await page.unroute('**/api/platform/billing-config-health').catch(() => undefined);
+  await page
+    .unroute('**/api/platform/billing-config-health/last-live-run')
+    .catch(() => undefined);
   await page.route('**/api/platform/billing-config-health', async (route: Route) => {
     await route.fulfill({
       status: 200,
@@ -224,6 +227,33 @@ async function installApiMock(page: Page, withMetered: boolean): Promise<void> {
       body: JSON.stringify(buildResponse({ withMetered })),
     });
   });
+  // The "Live screenshot" card (added with task-1392) fetches this
+  // sibling endpoint via the GitHub-API-backed
+  // `getLiveBillingHealthSummary` helper. The deterministic spec
+  // doesn't have GitHub creds wired up, and we don't want a real
+  // request landing on api.github.com from a PR job, so stub it as
+  // `configured: false` — the card hides itself in that case which
+  // keeps this spec's visual contract identical to before.
+  await page.route(
+    '**/api/platform/billing-config-health/last-live-run',
+    async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          configured: false,
+          unavailableReason: 'mocked off in deterministic e2e',
+          workflowHtmlUrl: null,
+          trackingIssueLabelSearchUrl: null,
+          latestRun: null,
+          latestSuccess: null,
+          openTrackingIssue: null,
+          error: null,
+          fetchedAt: new Date().toISOString(),
+        }),
+      });
+    },
+  );
 }
 
 async function expectVisible(page: Page, locator: Locator, label: string): Promise<void> {
