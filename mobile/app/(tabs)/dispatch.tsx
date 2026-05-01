@@ -17,6 +17,7 @@ import { useTechnicianLocation } from '@/hooks/useTechnicianLocation';
 import { useJobDistances } from '@/hooks/useJobDistances';
 import { api, type DispatchJob } from '@/lib/api';
 import { JobCard } from '@/components/JobCard';
+import { DispatchMapView } from '@/components/DispatchMapView';
 import { EmptyState } from '@/components/EmptyState';
 
 const STATUS_FILTERS: Array<{ label: string; value: string | undefined }> = [
@@ -36,10 +37,16 @@ const ACTIVE_STATUSES = new Set([
 ]);
 
 type SortMode = 'scheduled' | 'distance';
+type ViewMode = 'list' | 'map';
 
 const SORT_MODES: Array<{ label: string; value: SortMode; icon: keyof typeof Ionicons.glyphMap }> = [
   { label: 'Time', value: 'scheduled', icon: 'time-outline' },
   { label: 'Closest', value: 'distance', icon: 'navigate-outline' },
+];
+
+const VIEW_MODES: Array<{ label: string; value: ViewMode; icon: keyof typeof Ionicons.glyphMap }> = [
+  { label: 'List', value: 'list', icon: 'list-outline' },
+  { label: 'Map', value: 'map', icon: 'map-outline' },
 ];
 
 export default function DispatchScreen() {
@@ -50,6 +57,7 @@ export default function DispatchScreen() {
     undefined,
   );
   const [sortMode, setSortMode] = useState<SortMode>('scheduled');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const { origin, status: locationStatus } = useTechnicianLocation();
 
   const query = useQuery({
@@ -79,10 +87,12 @@ export default function DispatchScreen() {
   );
 
   const distanceSortActive = sortMode === 'distance' && origin !== null;
-  const { distances, isComputing: distancesComputing } = useJobDistances(
-    jobs,
-    distanceSortActive ? origin : null,
-  );
+  const distancesEnabled = distanceSortActive || viewMode === 'map';
+  const {
+    distances,
+    coordinates,
+    isComputing: distancesComputing,
+  } = useJobDistances(distancesEnabled ? jobs : [], origin);
 
   const sortedJobs = useMemo(() => {
     if (!distanceSortActive) return jobs;
@@ -241,9 +251,53 @@ export default function DispatchScreen() {
             );
           })}
         </View>
+
+        <View style={styles.viewModeSpacer} />
+
+        <View
+          style={[
+            styles.segmented,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          {VIEW_MODES.map((opt) => {
+            const active = opt.value === viewMode;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => setViewMode(opt.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Show ${opt.label} view`}
+                style={({ pressed }) => [
+                  styles.segmentedItem,
+                  {
+                    backgroundColor: active ? colors.primary : 'transparent',
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={opt.icon}
+                  size={14}
+                  color={active ? colors.textInverse : colors.text}
+                />
+                <Text
+                  style={{
+                    color: active ? colors.textInverse : colors.text,
+                    fontWeight: '600',
+                    fontSize: 13,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
-      {sortHint ? (
+      {viewMode === 'list' && sortHint ? (
         <Text style={[styles.sortHint, { color: colors.textMuted }]}>
           {sortHint}
         </Text>
@@ -261,6 +315,21 @@ export default function DispatchScreen() {
               ? query.error.message
               : 'Pull down to retry.'
           }
+        />
+      ) : viewMode === 'map' ? (
+        <DispatchMapView
+          jobs={sortedJobs}
+          coordinates={coordinates}
+          distances={distances}
+          origin={origin}
+          isResolvingCoords={distancesComputing}
+          isLocating={locationStatus === 'requesting' && !origin}
+          locationUnavailable={
+            locationStatus === 'denied' ||
+            locationStatus === 'unsupported' ||
+            locationStatus === 'error'
+          }
+          onSelectJob={(jobId) => router.push(`/jobs/${jobId}`)}
         />
       ) : (
         <FlatList
@@ -348,6 +417,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     padding: 2,
+  },
+  viewModeSpacer: {
+    flex: 1,
   },
   segmentedItem: {
     flexDirection: 'row',

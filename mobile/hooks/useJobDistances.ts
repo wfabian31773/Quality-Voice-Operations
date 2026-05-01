@@ -9,9 +9,11 @@ import {
 import type { DispatchJob } from '@/lib/api';
 
 export type JobDistanceMap = Map<string, number>;
+export type JobCoordsMap = Map<string, Coords>;
 
 export interface JobDistancesResult {
   distances: JobDistanceMap;
+  coordinates: JobCoordsMap;
   isComputing: boolean;
 }
 
@@ -31,6 +33,21 @@ function buildDistances(
   return next;
 }
 
+function buildCoordinates(
+  jobs: DispatchJob[],
+  coordsByAddress: Map<string, Coords>,
+): JobCoordsMap {
+  const next: JobCoordsMap = new Map();
+  for (const job of jobs) {
+    if (!job.address) continue;
+    const dest = coordsByAddress.get(job.address);
+    if (dest) {
+      next.set(job.id, dest);
+    }
+  }
+  return next;
+}
+
 function distancesEqual(a: JobDistanceMap, b: JobDistanceMap): boolean {
   if (a.size !== b.size) return false;
   for (const [key, value] of a) {
@@ -40,20 +57,32 @@ function distancesEqual(a: JobDistanceMap, b: JobDistanceMap): boolean {
   return true;
 }
 
+function coordinatesEqual(a: JobCoordsMap, b: JobCoordsMap): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, value] of a) {
+    const other = b.get(key);
+    if (
+      !other ||
+      other.latitude !== value.latitude ||
+      other.longitude !== value.longitude
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function useJobDistances(
   jobs: DispatchJob[],
   origin: Coords | null,
 ): JobDistancesResult {
   const [distances, setDistances] = useState<JobDistanceMap>(() => new Map());
+  const [coordinates, setCoordinates] = useState<JobCoordsMap>(
+    () => new Map(),
+  );
   const [isComputing, setIsComputing] = useState(false);
 
   useEffect(() => {
-    if (!origin) {
-      setDistances((prev) => (prev.size === 0 ? prev : new Map()));
-      setIsComputing(false);
-      return;
-    }
-
     let cancelled = false;
     const coordsByAddress = new Map<string, Coords>();
     const missing = new Set<string>();
@@ -68,8 +97,18 @@ export function useJobDistances(
     }
 
     const apply = (map: Map<string, Coords>) => {
-      const next = buildDistances(jobs, origin, map);
-      setDistances((prev) => (distancesEqual(prev, next) ? prev : next));
+      const nextCoords = buildCoordinates(jobs, map);
+      setCoordinates((prev) =>
+        coordinatesEqual(prev, nextCoords) ? prev : nextCoords,
+      );
+      if (origin) {
+        const nextDistances = buildDistances(jobs, origin, map);
+        setDistances((prev) =>
+          distancesEqual(prev, nextDistances) ? prev : nextDistances,
+        );
+      } else {
+        setDistances((prev) => (prev.size === 0 ? prev : new Map()));
+      }
     };
 
     apply(coordsByAddress);
@@ -126,5 +165,5 @@ export function useJobDistances(
     };
   }, [jobs, origin]);
 
-  return { distances, isComputing };
+  return { distances, coordinates, isComputing };
 }
