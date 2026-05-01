@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { TrendingUp, AlertTriangle, History, RotateCcw, Star, ChevronDown, ChevronUp, ExternalLink, BarChart3, PhoneCall } from 'lucide-react';
-import { PageHeader } from '../components/ui';
+import { PageHeader, StatusBadge, type BadgeTone } from '../components/ui';
 import { EmptyState, PageSkeleton } from '../components/state';
 
 interface QualityTrend {
@@ -136,6 +136,12 @@ export default function Quality() {
     return 'needs attention';
   }
 
+  function scoreTone(score: number): BadgeTone {
+    if (score >= 8) return 'success';
+    if (score >= 6) return 'warning';
+    return 'danger';
+  }
+
   if (loading) {
     return <PageSkeleton />;
   }
@@ -259,13 +265,14 @@ export default function Quality() {
               lowestScoring.slice(0, 10).map((call) => (
                 <tr key={call.callSessionId} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                   <td className="px-4 py-3">
-                    <span
-                      className={`text-sm font-bold ${scoreColor(call.score)}`}
-                      aria-label={`Quality score ${call.score.toFixed(1)} out of 10 — ${scoreBand(call.score)}`}
-                      title={`Score ${call.score.toFixed(1)} of 10 — ${scoreBand(call.score)} (green ≥ 8, yellow 6–7.9, red < 6)`}
+                    <StatusBadge
+                      tone={scoreTone(call.score)}
+                      size="sm"
+                      variant="soft"
+                      tooltip={`Quality score ${call.score.toFixed(1)} out of 10 — ${scoreBand(call.score)} (green ≥ 8, yellow 6–7.9, red < 6)`}
                     >
                       {call.score.toFixed(1)}
-                    </span>
+                    </StatusBadge>
                   </td>
                   <td className="px-4 py-3 text-sm text-heading">{call.agentName}</td>
                   <td className="px-4 py-3 text-sm text-muted hidden sm:table-cell">

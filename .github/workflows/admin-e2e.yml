@@ -83,6 +83,14 @@ jobs:
       - name: Seed admin user
         run: npx tsx scripts/seed-admin.ts
 
+      # Task #1159: seed dispatch jobs, SMS conversations and call/QA
+      # rows so the tenant-status-badge axe audit actually exercises
+      # `/dispatch`, `/sms-inbox` and `/quality` (those pages only
+      # render their status pills inside per-row data, so they no-op
+      # under the admin-only seed without these fixtures).
+      - name: Seed status-badge fixtures (dispatch / SMS / quality)
+        run: npx tsx scripts/seed-status-badge-fixtures.ts
+
       - name: Boot Platform Dev stack
         run: |
           mkdir -p .ci-logs/screenshots
