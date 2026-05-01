@@ -7,3 +7,8 @@ export { reportUsageForTenant, reportUsageForAllTenants, startUsageMeteringWorke
 export { getTenantEffectiveRate } from './effectiveRate';
 export type { TenantEffectiveRate, EffectiveRateSource } from './effectiveRate';
 export { getCachedTenantEffectiveRate, clearTenantEffectiveRateCache } from './effectiveRateCache';
+export {
+  getCachedStripePrice,
+  invalidateStripePrice,
+  clearStripePriceCache,
+} from './priceCache';

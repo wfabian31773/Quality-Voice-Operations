@@ -72,6 +72,7 @@ vi.mock('../../platform/billing/stripe/client', () => ({
 }));
 
 import { getTenantDowngradePreview } from '../../platform/billing/stripe/effectiveRate';
+import { clearStripePriceCache } from '../../platform/billing/stripe/priceCache';
 import { DOWNGRADE_PRORATION_BEHAVIOR } from '../../platform/billing/stripe/planChange';
 import { PLAN_CATALOG } from '../../shared/billing/planCatalog';
 
@@ -101,6 +102,9 @@ beforeEach(() => {
   invoicesCreatePreview.mockReset();
   stripeClientShouldThrow = false;
   queryHandler = async () => ({ rows: [] });
+  // Reset the cross-test process-local Stripe price cache so an entry
+  // populated in a previous case can't satisfy a `prices.retrieve` here.
+  clearStripePriceCache();
   process.env.STRIPE_PRICE_STARTER_MONTHLY = 'price_starter_monthly_published';
   process.env.STRIPE_PRICE_STARTER_ANNUAL = 'price_starter_annual_published';
   process.env.STRIPE_PRICE_PRO_MONTHLY = 'price_pro_monthly_published';

@@ -2,6 +2,7 @@ import type Stripe from 'stripe';
 import { getStripeClient } from './client';
 import { getPlanFromPriceId, getPlanAiMinutesPriceId } from './plans';
 import { DOWNGRADE_PRORATION_BEHAVIOR } from './planChange';
+import { getCachedStripePrice } from './priceCache';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
@@ -679,7 +680,7 @@ async function resolvePublishedIntervalPrice(
   if (!priceId) return null;
 
   try {
-    const stripePrice = (await stripe.prices.retrieve(priceId)) as unknown as PriceLike;
+    const stripePrice = (await getCachedStripePrice(stripe, priceId)) as unknown as PriceLike;
     // Defence in depth: the env var convention assumes `_MONTHLY` points
     // at a `recurring.interval === 'month'` price and `_ANNUAL` at
     // `'year'`. A misconfigured env var that crosses the wires would,
@@ -746,7 +747,7 @@ async function resolvePerTierAiMinutesPrice(
   const meteredPriceId = getPlanAiMinutesPriceId(plan);
   if (!meteredPriceId) return null;
   try {
-    const meteredPrice = (await stripe.prices.retrieve(meteredPriceId)) as unknown as PriceLike;
+    const meteredPrice = (await getCachedStripePrice(stripe, meteredPriceId)) as unknown as PriceLike;
     // Defence-in-depth: the env value is operator-controlled, so confirm
     // the retrieved price is actually a metered line before we trust its
     // unit_amount as a per-minute rate. A licensed/recurring monthly
@@ -1236,7 +1237,7 @@ export async function getTenantUpgradePreview(
 
   if (publishedPriceId) {
     try {
-      const stripePrice = (await stripe.prices.retrieve(publishedPriceId)) as unknown as PriceLike;
+      const stripePrice = (await getCachedStripePrice(stripe, publishedPriceId)) as unknown as PriceLike;
       const raw = pickBasePriceCents(stripePrice);
       if (raw != null) {
         basePriceCents = normalizeBaseToMonthly(stripePrice, raw);
@@ -1271,7 +1272,7 @@ export async function getTenantUpgradePreview(
 
   if (meteredPriceId) {
     try {
-      const meteredPrice = (await stripe.prices.retrieve(meteredPriceId)) as unknown as PriceLike;
+      const meteredPrice = (await getCachedStripePrice(stripe, meteredPriceId)) as unknown as PriceLike;
       // Defense-in-depth: the env value is operator-controlled, so confirm
       // the retrieved price is actually a metered line before we trust its
       // unit_amount as a per-minute rate. A licensed/recurring monthly
@@ -1513,7 +1514,7 @@ export async function getTenantDowngradePreview(
 
   if (publishedPriceId) {
     try {
-      const stripePrice = (await stripe.prices.retrieve(publishedPriceId)) as unknown as PriceLike;
+      const stripePrice = (await getCachedStripePrice(stripe, publishedPriceId)) as unknown as PriceLike;
       const raw = pickBasePriceCents(stripePrice);
       if (raw != null) {
         basePriceCents = normalizeBaseToMonthly(stripePrice, raw);

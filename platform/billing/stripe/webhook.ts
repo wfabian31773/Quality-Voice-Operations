@@ -5,6 +5,7 @@ import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import { provisionTenant } from '../../tenant/provisioning/TenantProvisioningService';
 import { normalizeDiscount, type UpgradeDiscount } from './effectiveRate';
+import { invalidateStripePrice } from './priceCache';
 
 const logger = createLogger('STRIPE_WEBHOOK');
 
@@ -120,9 +121,39 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     case 'customer.subscription.updated':
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription, stripeEventId);
       break;
+    case 'price.created':
+    case 'price.updated':
+    case 'price.deleted':
+      handlePriceMutated(event.data.object as Stripe.Price, event.type);
+      break;
     default:
       logger.info('Unhandled Stripe event type', { type: event.type });
   }
+}
+
+/**
+ * Bust the in-process Stripe price cache as soon as Stripe tells us the
+ * price changed. Without this, the public Pricing page (and the in-app
+ * upgrade/downgrade preview surfaces) would keep quoting the cached
+ * value for up to `STRIPE_PRICE_CACHE_TTL_MS` after an operator edits
+ * the price in the Stripe dashboard. Handles the create/update/delete
+ * lifecycle for symmetry — `price.created` is included so a stale
+ * negative-cache entry (e.g. from a transient retrieve failure on a
+ * brand-new price id wired into env right after publish) cannot pin a
+ * misleading value.
+ *
+ * Intentionally lightweight: synchronous cache mutation only, no DB or
+ * external IO, so we don't need to add a row to `billing_events` for
+ * idempotency. Stripe re-firing the same event id just re-busts the
+ * (now-empty) entry, which is a no-op.
+ */
+function handlePriceMutated(price: Stripe.Price, eventType: string): void {
+  const priceId = price?.id;
+  if (!priceId) {
+    logger.warn('Stripe price webhook missing price id', { eventType });
+    return;
+  }
+  invalidateStripePrice(priceId);
 }
 
 export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, stripeEventId: string): Promise<void> {

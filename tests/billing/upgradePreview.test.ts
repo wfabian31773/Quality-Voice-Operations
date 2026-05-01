@@ -65,6 +65,7 @@ vi.mock('../../platform/billing/stripe/client', () => ({
 }));
 
 import { getTenantUpgradePreview } from '../../platform/billing/stripe/effectiveRate';
+import { clearStripePriceCache } from '../../platform/billing/stripe/priceCache';
 import { PLAN_CATALOG } from '../../shared/billing/planCatalog';
 
 const TENANT = 'tenant-upgrade-preview';
@@ -92,6 +93,11 @@ beforeEach(() => {
   subscriptionsRetrieve.mockReset();
   stripeClientShouldThrow = false;
   queryHandler = async () => ({ rows: [] });
+  // Defensively reset the cross-test process-local Stripe price cache so a
+  // value cached during the previous case can't satisfy a `prices.retrieve`
+  // call in this one (the mock would never fire and assertions on
+  // `pricesRetrieve.mock.calls` would silently drift).
+  clearStripePriceCache();
   process.env.STRIPE_PRICE_PRO_MONTHLY = 'price_pro_monthly_published';
   process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY = 'price_ent_monthly_published';
   // Per-tier metered AI-minutes prices are intentionally unset by default

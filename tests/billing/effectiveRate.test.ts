@@ -65,6 +65,7 @@ vi.mock('../../platform/billing/stripe/client', () => ({
 }));
 
 import { getTenantEffectiveRate } from '../../platform/billing/stripe/effectiveRate';
+import { clearStripePriceCache } from '../../platform/billing/stripe/priceCache';
 import { PLAN_CATALOG } from '../../shared/billing/planCatalog';
 
 const TENANT = 'tenant-eff-rate';
@@ -90,6 +91,11 @@ beforeEach(() => {
   pricesRetrieve.mockReset();
   stripeClientShouldThrow = false;
   queryHandler = async () => ({ rows: [] });
+  // Defensively reset the cross-test process-local Stripe price cache so a
+  // value cached during the previous case can't satisfy a `prices.retrieve`
+  // call in this one (the mock would never fire and assertions on
+  // `pricesRetrieve.mock.calls` would silently drift).
+  clearStripePriceCache();
   delete process.env.STRIPE_METER_AI_MINUTES;
   delete process.env.STRIPE_METER_SMS_SENT;
   delete process.env.STRIPE_METER_TWILIO_MINUTES;
