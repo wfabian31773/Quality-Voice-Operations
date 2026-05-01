@@ -51,6 +51,21 @@ export const PLAN_TIERS: PlanTier[] = ['starter', 'pro', 'enterprise'];
 export const CATALOG_SMS_RATE_PER_MESSAGE = 0.01;
 
 /**
+ * Published per-minute Twilio (carrier) rate, in dollars/minute. Like
+ * SMS, carrier pricing is tenant-wide rather than per-tier, so it
+ * lives outside `PLAN_CATALOG`.
+ *
+ * MUST be kept in lockstep with the server-side env default
+ * `TWILIO_COST_PER_MINUTE_CENTS` (see
+ * `platform/billing/stripe/effectiveRate.ts:defaultTwilioRatePerMinuteDollars`):
+ * the public pricing callout uses this constant as the catalog reference
+ * when comparing a tenant's negotiated Stripe Twilio carrier rate
+ * (task #1357), so a divergence here would falsely render a "you pay
+ * $X vs $Y" delta against the wrong baseline.
+ */
+export const CATALOG_TWILIO_RATE_PER_MINUTE = 0.02;
+
+/**
  * Discount applied to the published monthly base price when a tenant
  * commits to annual billing (e.g. 0.2 == 20% off). Lives in the shared
  * catalog so the public pricing page, the in-app billing estimator, and
