@@ -11,6 +11,9 @@ import {
 import { EmptyState, PageSkeleton, SkeletonRows } from '../components/state';
 import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
+import { palette } from '../lib/designTokens';
+
+const DEFAULT_TYPE_COLOR: string = palette.info;
 
 interface Booking {
   id: string;
@@ -117,13 +120,13 @@ type ViewMode = 'day' | 'week' | 'month' | 'agenda' | 'resource';
 type TabMode = 'calendar' | 'providers' | 'types' | 'resources' | 'waitlist' | 'reminders' | 'reports' | 'utilization' | 'rules' | 'settings';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  confirmed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  completed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  no_show: 'bg-surface-hover text-text-primary',
-  checked_in: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  rescheduled: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+  pending: 'bg-warning-light text-warning',
+  confirmed: 'bg-success-light text-success',
+  cancelled: 'bg-danger-light text-danger',
+  completed: 'bg-info-light text-info',
+  no_show: 'bg-surface-hover text-text-secondary',
+  checked_in: 'bg-accent-light text-accent',
+  rescheduled: 'bg-warning-light text-warning',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -205,7 +208,7 @@ export default function Scheduling() {
   const [editingType, setEditingType] = useState<AppointmentType | null>(null);
   const [typeFormData, setTypeFormData] = useState({
     name: '', description: '', duration_minutes: 30, buffer_minutes: 0,
-    capacity: 1, color: '#3b82f6', allow_self_scheduling: false,
+    capacity: 1, color: DEFAULT_TYPE_COLOR, allow_self_scheduling: false,
   });
 
   const [showResourceForm, setShowResourceForm] = useState(false);
@@ -513,7 +516,7 @@ export default function Scheduling() {
                 {hourBookings.map(b => (
                   <button key={b.id} onClick={() => setShowDetailModal(b)}
                     className="w-full text-left text-xs px-2 py-1 rounded truncate"
-                    style={{ backgroundColor: (b.appointment_type_color || '#3b82f6') + '20', borderLeft: `3px solid ${b.appointment_type_color || '#3b82f6'}` }}>
+                    style={{ backgroundColor: (b.appointment_type_color || DEFAULT_TYPE_COLOR) + '20', borderLeft: `3px solid ${b.appointment_type_color || DEFAULT_TYPE_COLOR}` }}>
                     <span className="font-medium">{formatTime(b.start_time)}</span> {b.title}
                     {b.provider_name && <span className="text-muted ml-1">- {b.provider_name}</span>}
                   </button>
@@ -545,7 +548,7 @@ export default function Scheduling() {
                 {dayBookings.slice(0, 4).map(b => (
                   <button key={b.id} onClick={() => setShowDetailModal(b)}
                     className="w-full text-left text-[10px] px-1.5 py-0.5 rounded truncate"
-                    style={{ backgroundColor: (b.appointment_type_color || '#3b82f6') + '15', color: b.appointment_type_color || '#3b82f6' }}>
+                    style={{ backgroundColor: (b.appointment_type_color || DEFAULT_TYPE_COLOR) + '15', color: b.appointment_type_color || DEFAULT_TYPE_COLOR }}>
                     {formatTime(b.start_time)} {b.title}
                   </button>
                 ))}
@@ -579,7 +582,7 @@ export default function Scheduling() {
               <div className="space-y-0.5">
                 {dayBookings.slice(0, 3).map(b => (
                   <button key={b.id} onClick={() => setShowDetailModal(b)}
-                    className={`w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${STATUS_COLORS[b.status] || 'bg-surface-hover text-text-primary'}`}>
+                    className={`w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${STATUS_COLORS[b.status] || 'bg-surface-hover text-text-secondary'}`}>
                     {formatTime(b.start_time)} {b.title}
                   </button>
                 ))}
@@ -622,7 +625,7 @@ export default function Scheduling() {
               {dayBookings.map(b => (
                 <button key={b.id} onClick={() => setShowDetailModal(b)}
                   className="w-full text-left flex items-center gap-3 p-3 rounded-lg bg-surface-secondary hover:bg-surface-secondary/80 transition-colors">
-                  <div className="w-1 h-10 rounded-full" style={{ backgroundColor: b.appointment_type_color || '#3b82f6' }} />
+                  <div className="w-1 h-10 rounded-full" style={{ backgroundColor: b.appointment_type_color || DEFAULT_TYPE_COLOR }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-heading truncate">{b.title}</div>
                     <div className="text-xs text-muted">
@@ -673,7 +676,7 @@ export default function Scheduling() {
                       {dayBookings.slice(0, 3).map(b => (
                         <button key={b.id} onClick={() => setShowDetailModal(b)}
                           className="w-full text-left text-[9px] px-1 py-0.5 rounded mb-0.5 truncate"
-                          style={{ backgroundColor: (b.appointment_type_color || '#3b82f6') + '20', color: b.appointment_type_color || '#3b82f6' }}>
+                          style={{ backgroundColor: (b.appointment_type_color || DEFAULT_TYPE_COLOR) + '20', color: b.appointment_type_color || DEFAULT_TYPE_COLOR }}>
                           {formatTime(b.start_time)} {b.title}
                         </button>
                       ))}
@@ -695,7 +698,7 @@ export default function Scheduling() {
         <h3 className="font-semibold text-heading">Providers</h3>
         {!isReadOnly && (
           <button onClick={() => { setEditingProvider(null); setProviderFormData({ name: '', specialty: '', email: '', phone: '', location: '' }); setShowProviderForm(true); }}
-            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
+            className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add Provider
           </button>
         )}
@@ -715,12 +718,12 @@ export default function Scheduling() {
                   <button onClick={() => { setEditingProvider(p); setProviderFormData({ name: p.name, specialty: p.specialty, email: p.email, phone: p.phone, location: p.location }); setShowProviderForm(true); }}
                     className="p-1 rounded hover:bg-surface-secondary text-muted"><Edit2 className="h-3.5 w-3.5" /></button>
                   <button onClick={() => deleteProvider(p.id)}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    className="p-1 rounded hover:bg-danger/10 text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
             <div className="mt-2">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${p.is_active ? 'bg-success-light text-success' : 'bg-surface-hover text-text-secondary'}`}>
                 {p.is_active ? 'Active' : 'Inactive'}
               </span>
             </div>
@@ -750,8 +753,8 @@ export default function Scheduling() {
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-heading">Appointment Types</h3>
         {!isReadOnly && (
-          <button onClick={() => { setEditingType(null); setTypeFormData({ name: '', description: '', duration_minutes: 30, buffer_minutes: 0, capacity: 1, color: '#3b82f6', allow_self_scheduling: false }); setShowTypeForm(true); }}
-            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
+          <button onClick={() => { setEditingType(null); setTypeFormData({ name: '', description: '', duration_minutes: 30, buffer_minutes: 0, capacity: 1, color: DEFAULT_TYPE_COLOR, allow_self_scheduling: false }); setShowTypeForm(true); }}
+            className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add Type
           </button>
         )}
@@ -769,7 +772,7 @@ export default function Scheduling() {
                   <button onClick={() => { setEditingType(t); setTypeFormData({ name: t.name, description: t.description, duration_minutes: t.duration_minutes, buffer_minutes: t.buffer_minutes, capacity: t.capacity, color: t.color, allow_self_scheduling: t.allow_self_scheduling }); setShowTypeForm(true); }}
                     className="p-1 rounded hover:bg-surface-secondary text-muted"><Edit2 className="h-3.5 w-3.5" /></button>
                   <button onClick={() => deleteType(t.id)}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    className="p-1 rounded hover:bg-danger/10 text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
@@ -778,7 +781,7 @@ export default function Scheduling() {
               <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{t.duration_minutes}min</span>
               {t.buffer_minutes > 0 && <span>+{t.buffer_minutes}min buffer</span>}
               <span>Cap: {t.capacity}</span>
-              {t.allow_self_scheduling && <span className="text-green-600 dark:text-green-400">Self-schedule</span>}
+              {t.allow_self_scheduling && <span className="text-success">Self-schedule</span>}
             </div>
           </div>
         ))}
@@ -791,7 +794,7 @@ export default function Scheduling() {
               primaryAction={!isReadOnly ? {
                 label: 'Add Type',
                 icon: Plus,
-                onClick: () => { setEditingType(null); setTypeFormData({ name: '', description: '', duration_minutes: 30, buffer_minutes: 0, capacity: 1, color: '#3b82f6', allow_self_scheduling: false }); setShowTypeForm(true); },
+                onClick: () => { setEditingType(null); setTypeFormData({ name: '', description: '', duration_minutes: 30, buffer_minutes: 0, capacity: 1, color: DEFAULT_TYPE_COLOR, allow_self_scheduling: false }); setShowTypeForm(true); },
               } : undefined}
               variant="compact"
             />
@@ -807,7 +810,7 @@ export default function Scheduling() {
         <h3 className="font-semibold text-heading">Resources</h3>
         {!isReadOnly && (
           <button onClick={() => { setEditingResource(null); setResourceFormData({ name: '', type: 'room', location: '', capacity: 1 }); setShowResourceForm(true); }}
-            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
+            className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add Resource
           </button>
         )}
@@ -825,13 +828,13 @@ export default function Scheduling() {
                   <button onClick={() => { setEditingResource(r); setResourceFormData({ name: r.name, type: r.type, location: r.location, capacity: r.capacity }); setShowResourceForm(true); }}
                     className="p-1 rounded hover:bg-surface-secondary text-muted"><Edit2 className="h-3.5 w-3.5" /></button>
                   <button onClick={() => deleteResource(r.id)}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    className="p-1 rounded hover:bg-danger/10 text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
             <div className="flex gap-2 mt-2 text-[10px] text-muted">
               <span>Capacity: {r.capacity}</span>
-              <span className={r.is_active ? 'text-green-600 dark:text-green-400' : 'text-text-secondary'}>{r.is_active ? 'Active' : 'Inactive'}</span>
+              <span className={r.is_active ? 'text-success' : 'text-text-secondary'}>{r.is_active ? 'Active' : 'Inactive'}</span>
             </div>
           </div>
         ))}
@@ -860,7 +863,7 @@ export default function Scheduling() {
         <h3 className="font-semibold text-heading">Waitlist</h3>
         {!isReadOnly && (
           <button onClick={() => { setWaitlistFormData({ contact_name: '', contact_phone: '', contact_email: '', appointment_type_id: '', provider_id: '', notes: '' }); setShowWaitlistForm(true); }}
-            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
+            className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add to Waitlist
           </button>
         )}
@@ -882,7 +885,7 @@ export default function Scheduling() {
                 {w.status}
               </span>
               {!isReadOnly && (
-                <button onClick={() => removeFromWaitlist(w.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400">
+                <button onClick={() => removeFromWaitlist(w.id)} className="p-1 rounded hover:bg-danger/10 text-danger">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -915,12 +918,12 @@ export default function Scheduling() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {[
             { label: 'Total', value: s.total_bookings, color: 'text-heading' },
-            { label: 'Completed', value: s.completed, color: 'text-blue-600 dark:text-blue-400' },
-            { label: 'Confirmed', value: s.confirmed, color: 'text-green-600 dark:text-green-400' },
-            { label: 'Pending', value: s.pending, color: 'text-yellow-600 dark:text-yellow-400' },
-            { label: 'Cancelled', value: s.cancelled, color: 'text-red-600 dark:text-red-400' },
+            { label: 'Completed', value: s.completed, color: 'text-info' },
+            { label: 'Confirmed', value: s.confirmed, color: 'text-success' },
+            { label: 'Pending', value: s.pending, color: 'text-warning' },
+            { label: 'Cancelled', value: s.cancelled, color: 'text-danger' },
             { label: 'No Shows', value: s.no_shows, color: 'text-text-secondary' },
-            { label: 'Checked In', value: s.checked_in, color: 'text-purple-600 dark:text-purple-400' },
+            { label: 'Checked In', value: s.checked_in, color: 'text-accent' },
           ].map(stat => (
             <div key={stat.label} className="bg-surface border border-border rounded-xl p-3 text-center">
               <div className={`text-xl font-bold ${stat.color}`}>{stat.value}</div>
@@ -958,7 +961,7 @@ export default function Scheduling() {
               {reportData.by_type.map((t, i) => (
                 <div key={i} className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#3b82f6' }} />
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || DEFAULT_TYPE_COLOR }} />
                     <span className="text-muted truncate">{t.type_name || 'Untyped'}</span>
                   </span>
                   <span className="font-medium text-heading">{t.total}</span>
@@ -1017,7 +1020,7 @@ export default function Scheduling() {
                     <span className="text-muted">{p.booked_hours || 0}h | {p.total_bookings} appts | {p.completed} done | {p.no_shows} no-show</span>
                   </div>
                   <div className="h-2 bg-surface-secondary rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: pct > 80 ? '#ef4444' : pct > 50 ? '#f59e0b' : '#22c55e' }} />
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: pct > 80 ? 'var(--color-danger)' : pct > 50 ? 'var(--color-warning)' : 'var(--color-success)' }} />
                   </div>
                 </div>
               );
@@ -1072,14 +1075,14 @@ export default function Scheduling() {
         title="Scheduling"
         description="Enterprise appointment management"
         actions={!isReadOnly && activeTab === 'calendar' ? (
-          <button onClick={() => openBookingForm()} className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-hover transition-colors">
+          <button onClick={() => openBookingForm()} className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary-hover transition-colors">
             <Plus className="h-4 w-4" /> New Booking
           </button>
         ) : undefined}
       />
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+        <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm text-danger flex items-center justify-between">
           <span className="flex items-center gap-2"><AlertCircle className="h-4 w-4" />{error}</span>
           <button onClick={() => setError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -1089,7 +1092,7 @@ export default function Scheduling() {
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-              activeTab === tab.id ? 'bg-primary text-white' : 'bg-surface-secondary text-muted hover:text-heading'
+              activeTab === tab.id ? 'bg-primary text-on-primary' : 'bg-surface-secondary text-muted hover:text-heading'
             }`}>
             {tab.icon}{tab.label}
           </button>
@@ -1140,7 +1143,7 @@ export default function Scheduling() {
                 <div className="flex gap-0.5 bg-surface-secondary rounded-lg p-0.5">
                   {(['day', 'week', 'month', 'agenda', 'resource'] as ViewMode[]).map(v => (
                     <button key={v} onClick={() => setView(v)}
-                      className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors capitalize ${view === v ? 'bg-primary text-white' : 'text-muted hover:text-heading'}`}>
+                      className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors capitalize ${view === v ? 'bg-primary text-on-primary' : 'text-muted hover:text-heading'}`}>
                       {v}
                     </button>
                   ))}
@@ -1165,7 +1168,7 @@ export default function Scheduling() {
                 bookings.filter(b => !['cancelled', 'rescheduled'].includes(b.status)).slice(0, 10).map(b => (
                   <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-surface-secondary">
                     <button onClick={() => setShowDetailModal(b)} className="flex items-center gap-3 text-left flex-1 min-w-0">
-                      <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: b.appointment_type_color || '#3b82f6' }} />
+                      <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: b.appointment_type_color || DEFAULT_TYPE_COLOR }} />
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-heading truncate">{b.title}</div>
                         <div className="text-xs text-muted truncate">
@@ -1180,12 +1183,12 @@ export default function Scheduling() {
                         {STATUS_LABELS[b.status] || b.status}
                       </span>
                       {!isReadOnly && b.status === 'pending' && (
-                        <button onClick={() => transitionBooking(b.id, 'confirm')} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400" title="Confirm">
+                        <button onClick={() => transitionBooking(b.id, 'confirm')} className="p-1 rounded hover:bg-success/10 text-success" title="Confirm">
                           <CheckCircle2 className="h-4 w-4" />
                         </button>
                       )}
                       {!isReadOnly && b.status === 'confirmed' && (
-                        <button onClick={() => transitionBooking(b.id, 'check_in')} className="p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400" title="Check In">
+                        <button onClick={() => transitionBooking(b.id, 'check_in')} className="p-1 rounded hover:bg-accent/10 text-accent" title="Check In">
                           <UserCheck className="h-4 w-4" />
                         </button>
                       )}
@@ -1307,7 +1310,7 @@ export default function Scheduling() {
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
               <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
-              <button onClick={saveBooking} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
+              <button onClick={saveBooking} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-on-primary hover:bg-primary/90">Save</button>
             </div>
         </Modal>
       )}
@@ -1352,23 +1355,23 @@ export default function Scheduling() {
                 <div><span className="text-xs text-muted">Notes:</span><p className="text-sm text-heading mt-0.5">{showDetailModal.notes}</p></div>
               )}
               {showDetailModal.cancellation_reason && (
-                <div><span className="text-xs text-red-600 dark:text-red-400">Cancellation Reason:</span><p className="text-sm text-heading mt-0.5">{showDetailModal.cancellation_reason}</p></div>
+                <div><span className="text-xs text-danger">Cancellation Reason:</span><p className="text-sm text-heading mt-0.5">{showDetailModal.cancellation_reason}</p></div>
               )}
 
               {!isReadOnly && (
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
                   {showDetailModal.status === 'pending' && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'confirm')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'confirm')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-success-light text-success hover:bg-success/20">
                       <CheckCircle2 className="h-3 w-3" /> Confirm
                     </button>
                   )}
                   {showDetailModal.status === 'confirmed' && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'check_in')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'check_in')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-light text-accent hover:bg-accent/20">
                       <UserCheck className="h-3 w-3" /> Check In
                     </button>
                   )}
                   {['checked_in', 'confirmed'].includes(showDetailModal.status) && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'complete')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'complete')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-info-light text-info hover:bg-info/20">
                       <CheckCircle2 className="h-3 w-3" /> Complete
                     </button>
                   )}
@@ -1384,12 +1387,12 @@ export default function Scheduling() {
                     <button onClick={() => {
                       const reason = prompt('Cancellation reason:');
                       if (reason !== null) transitionBooking(showDetailModal.id, 'cancel', { cancellation_reason: reason });
-                    }} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50">
+                    }} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-danger-light text-danger hover:bg-danger/20">
                       <XCircle className="h-3 w-3" /> Cancel
                     </button>
                   )}
                   {['cancelled', 'no_show', 'completed'].includes(showDetailModal.status) && (
-                    <button onClick={() => transitionBooking(showDetailModal.id, 'reopen')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50">
+                    <button onClick={() => transitionBooking(showDetailModal.id, 'reopen')} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-warning-light text-warning hover:bg-warning/20">
                       <RotateCcw className="h-3 w-3" /> Reopen
                     </button>
                   )}
@@ -1398,7 +1401,7 @@ export default function Scheduling() {
                     <Edit2 className="h-3 w-3" /> Edit
                   </button>
                   <button onClick={() => { if (confirm(tenantT('common.confirms.delete_booking'))) deleteBooking(showDetailModal.id); }}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40">
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-danger/10 text-danger hover:bg-danger/20">
                     <Trash2 className="h-3 w-3" /> Delete
                   </button>
                 </div>
@@ -1520,7 +1523,7 @@ function FormModal({ title, onClose, onSave, children }: { title: string; onClos
         <div className="p-4 space-y-3">{children}</div>
         <div className="flex justify-end gap-2 p-4 border-t border-border">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
-          <button onClick={onSave} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
+          <button onClick={onSave} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-on-primary hover:bg-primary/90">Save</button>
         </div>
     </Modal>
   );
@@ -1621,7 +1624,7 @@ function BookingRulesManager({ tenantId, appointmentTypes, isReadOnly }: { tenan
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowForm(false)} className="px-3 py-1 text-xs rounded bg-surface-secondary text-muted">Cancel</button>
-            <button onClick={save} className="px-3 py-1 text-xs rounded bg-primary text-white">Save</button>
+            <button onClick={save} className="px-3 py-1 text-xs rounded bg-primary text-on-primary">Save</button>
           </div>
         </div>
       )}
@@ -1745,7 +1748,7 @@ function ReminderConfigManager({ tenantId, appointmentTypes, isReadOnly }: { ten
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowForm(false)} className="px-3 py-1 text-xs rounded bg-surface-secondary text-muted">Cancel</button>
-            <button onClick={save} className="px-3 py-1 text-xs rounded bg-primary text-white">Save</button>
+            <button onClick={save} className="px-3 py-1 text-xs rounded bg-primary text-on-primary">Save</button>
           </div>
         </div>
       )}
