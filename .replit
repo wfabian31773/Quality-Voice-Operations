@@ -29,10 +29,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
-externalPort = 3000
-
-[[ports]]
 localPort = 5173
 externalPort = 5173
 
@@ -72,6 +68,10 @@ args = "typecheck"
 task = "workflow.run"
 args = "unit"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
 [[workflows.workflow]]
 name = "lint"
 author = "agent"
@@ -104,6 +104,18 @@ args = "npx vitest run tests/billing/displayCurrency.test.ts tests/billing/signu
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [userenv]
 
