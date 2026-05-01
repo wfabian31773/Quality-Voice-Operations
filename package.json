@@ -31,6 +31,7 @@
     "test:e2e:billing-tier-upgrade-banner": "tsx tests/e2e/billingTierUpgradeBanner.spec.ts",
     "test:e2e:billing-annual-switch-banner": "tsx tests/e2e/billingAnnualSwitchBanner.spec.ts",
     "test:e2e:billing-discount-badge": "tsx tests/e2e/billingDiscountBadge.spec.ts",
+    "test:e2e:billing-discount-badge-stripe": "tsx tests/e2e/billingDiscountBadgeStripe.spec.ts",
     "test:e2e:billing-portal-discount-headline": "tsx tests/e2e/billingPortalDiscountHeadline.spec.ts",
     "test:e2e:billing-portal-subscription-discount-headline": "tsx tests/e2e/billingPortalSubscriptionDiscountHeadline.spec.ts",
     "test:e2e:billing-portal-stacked-discount-headline": "tsx tests/e2e/billingPortalStackedDiscountHeadline.spec.ts",
