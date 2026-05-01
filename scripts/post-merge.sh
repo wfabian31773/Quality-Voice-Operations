@@ -18,6 +18,9 @@ npm run --silent check:i18n-keys
 echo "Running sitemap coverage check..."
 npm run --silent check:sitemap-coverage
 
+echo "Running Vite pin check (Task #1166)..."
+npm run --silent check:vite-pinned
+
 echo "Running client-app unit tests (vitest)..."
 pnpm --filter client-app test
 
