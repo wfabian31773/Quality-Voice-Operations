@@ -22,7 +22,8 @@
       "connector_health": "Connector-Health",
       "retention": "Anrufereignis-Aufbewahrung",
       "push_health": "Push-Status",
-      "billing_health": "Abrechnungskonfigurations-Status"
+      "billing_health": "Abrechnungskonfigurations-Status",
+      "plan_emails": "Plan-E-Mails"
     },
     "overview": {
       "active_tenants": "Active tenants",
@@ -1110,6 +1111,28 @@
       "header_progress": "Fortschritt",
       "no_tenant_data": "Noch keine Tenant-Daten",
       "milestones_progress": "{{done}}/{{total}}"
+    },
+    "plan_emails": {
+      "title": "Plan-Empfehlungs-E-Mails",
+      "subtitle": "Tenants, die die monatliche Zusammenfassung „auf einen günstigeren Plan wechseln\" erhalten haben. Standardmäßig der aktuelle Kalendermonat — erweitern Sie den Datumsbereich, um weiter zurückzublicken.",
+      "since_label": "Von",
+      "until_label": "Bis",
+      "refresh": "Aktualisieren",
+      "total_count": "{{count}} E-Mail(s) im Zeitraum",
+      "truncation_warning": "Zeige {{shown}} von {{total}} passenden E-Mails — schränken Sie den Datumsbereich ein, um alle Ergebnisse zu sehen.",
+      "header_tenant": "Tenant",
+      "header_current_plan": "Aktueller Plan",
+      "header_recommended_plan": "Empfohlener Plan",
+      "header_monthly_savings": "Monatliche Ersparnis",
+      "header_annual_savings": "Jährliche Ersparnis",
+      "header_owner_email": "E-Mail des Eigentümers",
+      "header_sent_at": "Gesendet am",
+      "header_actions": "Aktionen",
+      "view_tenant": "Tenant-Details anzeigen",
+      "view_audit": "Audit-Log-Eintrag öffnen",
+      "tenant_deleted": "Tenant gelöscht",
+      "load_error": "Plan-Empfehlungs-E-Mails konnten nicht geladen werden.",
+      "empty": "In diesem Zeitraum wurden keine Plan-Empfehlungs-E-Mails versendet."
     }
   }
 }

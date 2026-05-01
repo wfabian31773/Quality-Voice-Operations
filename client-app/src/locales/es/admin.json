@@ -22,7 +22,8 @@
       "connector_health": "Salud de conectores",
       "retention": "Retención de eventos de llamada",
       "push_health": "Estado de notificaciones push",
-      "billing_health": "Estado de configuración de facturación"
+      "billing_health": "Estado de configuración de facturación",
+      "plan_emails": "Correos de plan"
     },
     "overview": {
       "active_tenants": "Tenants activos",
@@ -1110,6 +1111,28 @@
       "header_progress": "Progreso",
       "no_tenant_data": "Aún no hay datos de tenants",
       "milestones_progress": "{{done}}/{{total}}"
+    },
+    "plan_emails": {
+      "title": "Correos de recomendación de plan",
+      "subtitle": "Tenants que recibieron el resumen mensual \"cambiar a un plan más económico\". Por defecto el mes calendario actual — amplía el rango de fechas para ver más atrás.",
+      "since_label": "Desde",
+      "until_label": "Hasta",
+      "refresh": "Actualizar",
+      "total_count": "{{count}} correo(s) en el rango",
+      "truncation_warning": "Mostrando {{shown}} de {{total}} correos coincidentes — reduce el rango de fechas para ver todos los resultados.",
+      "header_tenant": "Tenant",
+      "header_current_plan": "Plan actual",
+      "header_recommended_plan": "Plan recomendado",
+      "header_monthly_savings": "Ahorro mensual",
+      "header_annual_savings": "Ahorro anual",
+      "header_owner_email": "Correo del propietario",
+      "header_sent_at": "Enviado el",
+      "header_actions": "Acciones",
+      "view_tenant": "Ver detalles del tenant",
+      "view_audit": "Abrir entrada de auditoría",
+      "tenant_deleted": "Tenant eliminado",
+      "load_error": "No se pudieron cargar los correos de recomendación de plan.",
+      "empty": "No se enviaron correos de recomendación de plan en este rango."
     }
   }
 }

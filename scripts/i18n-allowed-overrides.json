@@ -471,7 +471,9 @@
         "platform_admin.users.table.tenant",
         "platform_admin.users.title",
         "platform_admin.verified_caller.header_status",
-        "platform_admin.verified_caller.header_tenant"
+        "platform_admin.verified_caller.header_tenant",
+        "platform_admin.recommendation_breakdown.annual_only.col_status",
+        "platform_admin.plan_emails.header_tenant"
       ]
     },
     "es": {
@@ -669,7 +671,9 @@
         "platform_admin.tenants.title",
         "platform_admin.token_health.header_tenant",
         "platform_admin.users.table.tenant",
-        "platform_admin.verified_caller.header_tenant"
+        "platform_admin.verified_caller.header_tenant",
+        "platform_admin.recommendation_breakdown.annual_only.col_impressions",
+        "platform_admin.plan_emails.header_tenant"
       ]
     },
     "fr": {
@@ -1135,7 +1139,13 @@
         "platform_admin.users.table.tenant",
         "platform_admin.users.title",
         "platform_admin.verified_caller.header_actions",
-        "platform_admin.verified_caller.header_tenant"
+        "platform_admin.verified_caller.header_tenant",
+        "platform_admin.marketing_search_empty.header_source",
+        "platform_admin.marketing_search_empty.source_label",
+        "platform_admin.recommendation_breakdown.annual_only.col_impressions",
+        "platform_admin.recommendation_breakdown.annual_only.col_status",
+        "platform_admin.plan_emails.header_actions",
+        "platform_admin.plan_emails.header_tenant"
       ]
     },
     "pt-BR": {
@@ -1548,7 +1558,9 @@
         "platform_admin.users.table.tenant",
         "platform_admin.users.title",
         "platform_admin.verified_caller.header_status",
-        "platform_admin.verified_caller.header_tenant"
+        "platform_admin.verified_caller.header_tenant",
+        "platform_admin.recommendation_breakdown.annual_only.col_impressions",
+        "platform_admin.plan_emails.header_tenant"
       ]
     }
   }
