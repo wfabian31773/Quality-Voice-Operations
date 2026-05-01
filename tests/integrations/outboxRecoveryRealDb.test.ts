@@ -1,6 +1,9 @@
 // @vitest-environment node
 //
 // Task #974 — real-Postgres recovery test for the integration outbox.
+// Task #1149 — extended to exercise the full
+// `connectorService.dispatchEvent` path end-to-end against the seeded
+// database, instead of stubbing dispatch at the drain boundary.
 //
 // The hermetic sibling (`outboxRecovery.test.ts`) replaces the DB layer with
 // an in-memory fake that answers based on string-prefix matching. That's
@@ -25,13 +28,32 @@
 //     `archived_at` predicate (migration 095) and the `lease_expires_at`
 //     columns (migration 096).
 //
-// What this test deliberately does NOT exercise: the high-level
-// `connectorService.dispatchEvent` flow. That path resolves enabled
-// integrations through `listEnabledConnectorConfigs` in
-// `platform/integrations/connectors/db.ts`, which is its own concern and
-// already has dedicated coverage. Stubbing `dispatchEvent` at the drain's
-// dispatch boundary keeps this test focused on the SQL paths the task
-// explicitly enumerates.
+// Task #1149 widens the blast radius further: the drain's call to
+// `connectorService.dispatchEvent` is no longer stubbed. Instead the
+// suite seeds a real (test-mode) `crm`/`hubspot` integration row plus a
+// matching encrypted `connector_configs` row, and the drain runs through
+// the actual code path:
+//
+//   1. `runConnectorOutboxDrainCycle` claims the row (real CTE).
+//   2. `connectorService.dispatchEvent` resolves enabled integrations via
+//      `listEnabledConnectorConfigs` (real SQL — same query whose
+//      enum/text mismatch broke production prior to Task #1109).
+//   3. The HubSpot adapter is selected from the registry by
+//      `(connectorType=crm, provider=hubspot)`.
+//   4. `executeWithConfig` dispatches to the adapter and records the
+//      result via `updateConnectorSyncStatus` (real SQL on the
+//      `last_sync_status` / `last_sync_error*` columns from migrations
+//      050/061) and `recordIntegrationEvent` (real SQL on
+//      `integration_event_logs` from migration 046).
+//   5. The drain finalises the row with `markDelivered` (real UPDATE
+//      that nulls the lease columns).
+//
+// To stay hermetic we replace only the leaf network call: the HubSpot
+// adapter's `execute` method is spied on `HubSpotConnectorAdapter.prototype`
+// and toggles between an offline failure and an online success based on
+// `adapterState.hubspotOnline`. Every layer above that — adapter
+// resolution, integration lookup, sync-status updates, integration event
+// logging, outbox state transitions — runs against the real database.
 //
 // The suite skips cleanly when DATABASE_URL is unset or unreachable, the
 // same way other real-DB suites
@@ -171,19 +193,22 @@ async function applyMigrations(client: Pool, migrations: { name: string; sql: st
 // ---------------------------------------------------------------------------
 
 const TENANT_ID = `tenant_outbox_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+const CRM_INTEGRATION_ID = `int_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
 // Toggled per test to simulate the HubSpot adapter being offline / online
 // when the drain dispatches the buffered event.
 const adapterState = { hubspotOnline: false };
 
 type OutboxBufferImport = typeof import('../../platform/integrations/connectors/outboxBuffer');
 type DrainImport = typeof import('../../platform/integrations/connectors/ConnectorOutboxDrainScheduler');
-type ConnectorServiceImport = typeof import('../../platform/integrations/connectors/ConnectorService');
+type HubSpotAdapterImport = typeof import('../../platform/integrations/connectors/adapters/hubspot');
+type CryptoImport = typeof import('../../platform/integrations/connectors/crypto');
 type PlatformDbImport = typeof import('../../platform/db');
 
 let bufferOutboxEvent: OutboxBufferImport['bufferOutboxEvent'];
 let markOutboxRowPendingAfterInlineFailure: OutboxBufferImport['markOutboxRowPendingAfterInlineFailure'];
 let runConnectorOutboxDrainCycle: DrainImport['runConnectorOutboxDrainCycle'];
-let connectorService: ConnectorServiceImport['connectorService'];
+let HubSpotConnectorAdapter: HubSpotAdapterImport['HubSpotConnectorAdapter'];
+let encryptValue: CryptoImport['encryptValue'];
 let closePlatformPool: PlatformDbImport['closePlatformPool'];
 
 let testPool: Pool;
@@ -241,11 +266,38 @@ describe.skipIf(skipReason !== null)(
       bufferOutboxEvent = bufferModule.bufferOutboxEvent;
       markOutboxRowPendingAfterInlineFailure = bufferModule.markOutboxRowPendingAfterInlineFailure;
 
+      // Loading the drain module transitively loads ConnectorService,
+      // which instantiates each adapter singleton (including the HubSpot
+      // adapter we spy on below). Spying on the prototype intercepts the
+      // call on that same singleton.
       const drainModule = await import('../../platform/integrations/connectors/ConnectorOutboxDrainScheduler');
       runConnectorOutboxDrainCycle = drainModule.runConnectorOutboxDrainCycle;
 
-      const csModule = await import('../../platform/integrations/connectors/ConnectorService');
-      connectorService = csModule.connectorService;
+      const hubspotModule = await import('../../platform/integrations/connectors/adapters/hubspot');
+      HubSpotConnectorAdapter = hubspotModule.HubSpotConnectorAdapter;
+
+      const cryptoModule = await import('../../platform/integrations/connectors/crypto');
+      encryptValue = cryptoModule.encryptValue;
+
+      // 5. Seed a single enabled CRM/HubSpot integration so
+      //    `listEnabledConnectorConfigs` (the real query inside
+      //    `dispatchEvent`) returns exactly one config and the drain's
+      //    dispatched count is deterministic. The encrypted access_token
+      //    flows through the same decrypt branch the production code
+      //    takes; the spy on the adapter's `execute` short-circuits the
+      //    actual HubSpot HTTP call so the test stays hermetic.
+      await testPool.query(
+        `INSERT INTO integrations
+           (id, tenant_id, name, integration_type, provider, is_enabled, config)
+         VALUES ($1, $2, 'HubSpot CRM', 'crm', 'hubspot', TRUE, '{}'::jsonb)`,
+        [CRM_INTEGRATION_ID, TENANT_ID],
+      );
+      await testPool.query(
+        `INSERT INTO connector_configs
+           (tenant_id, integration_id, config_key, encrypted_value)
+         VALUES ($1, $2, 'access_token', $3)`,
+        [TENANT_ID, CRM_INTEGRATION_ID, encryptValue('hs-token-real')],
+      );
 
       setupOk = true;
     }, 180_000);
@@ -282,37 +334,43 @@ describe.skipIf(skipReason !== null)(
       if (!setupOk) return;
       // Fresh outbox state per test so assertions are deterministic.
       await testPool.query('DELETE FROM outbox_events');
+      // Reset the integration's sync status so per-test assertions on
+      // `last_sync_status` / `last_sync_error*` are not contaminated by
+      // an earlier test's success / failure recording.
+      await testPool.query(
+        `UPDATE integrations
+           SET last_sync_status = NULL,
+               last_sync_at = NULL,
+               last_sync_error = NULL,
+               last_sync_error_at = NULL
+         WHERE tenant_id = $1`,
+        [TENANT_ID],
+      );
+      // Drop any integration_event_logs rows from a prior test so the
+      // dispatch-recorded count assertion below sees only this run's row.
+      await testPool.query(
+        `DELETE FROM integration_event_logs WHERE tenant_id = $1`,
+        [TENANT_ID],
+      );
       adapterState.hubspotOnline = false;
 
-      // The drain calls `connectorService.dispatchEvent(... { bufferToOutbox: false })`
-      // to deliver each claimed row. Stubbing that single boundary lets us
-      // exercise the drain's real claim CTE + delivery UPDATE while
-      // simulating the HubSpot adapter being offline / online via the
-      // `adapterState` toggle. The outbox SQL paths under test
-      // (bufferOutboxEvent, markOutboxRow*, claim CTE) all run for real.
+      // Task #1149: replace only the leaf network call. The drain runs
+      // through the real `connectorService.dispatchEvent` path —
+      // `listEnabledConnectorConfigs` (real SQL), adapter resolution,
+      // `executeWithConfig` (real `updateConnectorSyncStatus` +
+      // `recordIntegrationEvent` writes), and finally `markDelivered` —
+      // and only the adapter's outbound HTTP call is replaced via this
+      // prototype spy. Toggling `adapterState.hubspotOnline` flips the
+      // adapter between an offline failure (drain leaves the row
+      // pending) and an online success (drain marks the row delivered).
       // Cleared in afterEach via vi.restoreAllMocks so the spy never
       // leaks to neighboring suites.
-      vi.spyOn(connectorService, 'dispatchEvent').mockImplementation(
-        async (_tenantId, _eventType, _payload, _opts) => {
+      vi.spyOn(HubSpotConnectorAdapter.prototype, 'execute').mockImplementation(
+        async (_tenantId, _config, _payload) => {
           if (!adapterState.hubspotOnline) {
-            return {
-              dispatched: 1,
-              results: [{
-                connectorType: 'crm',
-                provider: 'hubspot',
-                success: false,
-                error: 'HubSpot API: connection refused',
-              }],
-            };
+            return { success: false, error: 'HubSpot API: connection refused' };
           }
-          return {
-            dispatched: 1,
-            results: [{
-              connectorType: 'crm',
-              provider: 'hubspot',
-              success: true,
-            }],
-          };
+          return { success: true, externalId: 'hs-engagement-real-1' };
         },
       );
     });
@@ -397,11 +455,14 @@ describe.skipIf(skipReason !== null)(
 
       // 3. Bring the adapter online and run a single drain cycle. This
       //    exercises the real claim CTE (FOR UPDATE SKIP LOCKED, the
-      //    archived_at filter, the lease columns) plus markDelivered's
-      //    UPDATE. dispatchEvent is stubbed at the boundary so the
-      //    decision to mark delivered comes from the test, not from a
-      //    network call — but the SQL that records that decision runs
-      //    for real.
+      //    archived_at filter, the lease columns), the real
+      //    `connectorService.dispatchEvent` path
+      //    (`listEnabledConnectorConfigs` → adapter resolution →
+      //    `executeWithConfig`), and finally `markDelivered`'s UPDATE.
+      //    Only the adapter's outbound HTTP call is replaced by the
+      //    prototype spy in `beforeEach`; every SQL touchpoint runs for
+      //    real against the test database.
+      const adapterSpy = vi.mocked(HubSpotConnectorAdapter.prototype.execute);
       adapterState.hubspotOnline = true;
       const drain = await runConnectorOutboxDrainCycle();
 
@@ -409,6 +470,28 @@ describe.skipIf(skipReason !== null)(
       expect(drain.delivered).toBe(1);
       expect(drain.failed).toBe(0);
       expect(drain.deadLettered).toBe(0);
+
+      // The adapter spy was actually invoked — proves dispatchEvent
+      // resolved an integration row, picked the HubSpot adapter, and
+      // executed it (rather than short-circuiting at any earlier stage).
+      // Called once for this drain cycle's single claimed row.
+      expect(adapterSpy).toHaveBeenCalledTimes(1);
+      const adapterCall = adapterSpy.mock.calls[0];
+      expect(adapterCall[0]).toBe(TENANT_ID);
+      // The config passed to the adapter must be the seeded HubSpot CRM
+      // row, with credentials decrypted by `listEnabledConnectorConfigs`.
+      expect(adapterCall[1]).toMatchObject({
+        connectorType: 'crm',
+        provider: 'hubspot',
+        integrationId: CRM_INTEGRATION_ID,
+        isEnabled: true,
+      });
+      expect((adapterCall[1].credentials as Record<string, string>).access_token)
+        .toBe('hs-token-real');
+      expect(adapterCall[2]).toMatchObject({
+        type: 'appointment.booked',
+        appointmentId: 'appt-real-recovery-1',
+      });
 
       const { rows: after } = await testPool.query<{
         status: string;
@@ -430,6 +513,45 @@ describe.skipIf(skipReason !== null)(
       // accidentally pick the row back up after delivery.
       expect(after[0].claimed_at).toBeNull();
       expect(after[0].lease_expires_at).toBeNull();
+
+      // updateConnectorSyncStatus and recordIntegrationEvent are fired
+      // without `await` inside executeWithConfig (they intentionally run
+      // out of band so adapter latency isn't blocked on observability
+      // writes). Poll briefly for the expected steady state rather than
+      // racing them.
+      await vi.waitFor(async () => {
+        const { rows: integ } = await testPool.query<{
+          last_sync_status: string | null;
+          last_sync_error: string | null;
+          last_sync_at: string | null;
+        }>(
+          `SELECT last_sync_status, last_sync_error, last_sync_at
+             FROM integrations WHERE id = $1`,
+          [CRM_INTEGRATION_ID],
+        );
+        expect(integ).toHaveLength(1);
+        // Real `UPDATE integrations SET last_sync_status = $3, ...` —
+        // catches column renames or enum mismatches in the sync-status
+        // recording path.
+        expect(integ[0].last_sync_status).toBe('success');
+        expect(integ[0].last_sync_error).toBeNull();
+        expect(integ[0].last_sync_at).not.toBeNull();
+
+        const { rows: logs } = await testPool.query<{
+          service_name: string | null;
+          response_status: number | null;
+        }>(
+          `SELECT service_name, response_status
+             FROM integration_event_logs WHERE tenant_id = $1`,
+          [TENANT_ID],
+        );
+        // Real INSERT into integration_event_logs from
+        // `recordIntegrationEvent` — catches schema drift on the
+        // observability table.
+        expect(logs).toHaveLength(1);
+        expect(logs[0].service_name).toBe('crm:hubspot');
+        expect(logs[0].response_status).toBe(200);
+      }, { timeout: 10_000, interval: 50 });
     });
 
     it('honours the (tenant_id, idempotency_key) unique constraint — re-buffering the same key collapses onto the original row', async () => {
