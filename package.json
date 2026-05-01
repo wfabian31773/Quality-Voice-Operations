@@ -38,6 +38,7 @@
     "test:e2e:marketplace-purchase-discount-badge": "tsx tests/e2e/marketplacePurchaseDiscountBadge.spec.ts",
     "test:e2e:marketplace-purchase-invoice-history": "tsx tests/e2e/marketplacePurchaseInvoiceHistory.spec.ts",
     "test:e2e:marketplace-listing-discount-badge": "tsx tests/e2e/marketplaceListingDiscountBadge.spec.ts",
+    "test:e2e:marketplace-listing-discount-refresh": "tsx tests/e2e/marketplaceListingDiscountRefresh.spec.ts",
     "test:e2e:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",
     "test:e2e:pricing-live-rate-badge": "tsx tests/e2e/pricingLiveRateBadge.spec.ts",
     "test:e2e:public-hero-visual": "tsx tests/e2e/publicHeroVisualRegression.spec.ts",

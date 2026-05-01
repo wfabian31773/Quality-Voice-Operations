@@ -811,6 +811,14 @@ function TemplateDetailView({
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('purchase') === 'success') {
       queryClient.invalidateQueries({ queryKey: ['marketplace-purchase-access', templateId] });
+      // Task #1405: a successful Stripe Checkout may have attached
+      // a fresh customer-level discount to the buyer (e.g. an
+      // inline promo code redeemed at checkout). Drop the
+      // staleTime-cached `marketplace-customer-discount` snapshot
+      // so the very next listing/detail render shows the up-to-date
+      // discount preview instead of waiting up to 60s for the
+      // staleTime window to elapse.
+      queryClient.invalidateQueries({ queryKey: ['marketplace-customer-discount'] });
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [templateId, queryClient]);

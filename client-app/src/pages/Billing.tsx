@@ -1162,6 +1162,27 @@ export default function Billing() {
     onSuccess: (data) => { window.location.href = data.url; },
   });
 
+  // Task #1405: coupon redemption happens here — either via the
+  // Stripe Customer Portal launched by `portalMutation` above, or
+  // via an inline promo code attached during a Checkout flow.
+  // Marketplace listing cards cache the customer-level discount
+  // preview (`marketplace-customer-discount`) for 60s via React
+  // Query's `staleTime` (Task #1380), which means a buyer who
+  // applies a fresh coupon here would otherwise keep seeing the
+  // old preview when they navigate back to /marketplace inside
+  // that window. Invalidating on unmount guarantees that any SPA
+  // navigation away from /billing — back to /marketplace, or via
+  // any other route on the way there — refetches the snapshot
+  // before the next listing render. The Stripe Portal redirect
+  // itself is a full page navigation, after which the React Query
+  // cache resets on the fresh load, so there is no parallel case
+  // to handle for that flow.
+  useEffect(() => {
+    return () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-customer-discount'] });
+    };
+  }, [queryClient]);
+
   const checkoutMutation = useMutation({
     mutationFn: (params: {
       plan: string;
