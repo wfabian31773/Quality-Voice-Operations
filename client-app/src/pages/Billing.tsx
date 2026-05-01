@@ -975,6 +975,43 @@ export default function Billing() {
     [],
   );
 
+  // Annual-savings nudge impression. Mirrors `handleAnnualNudgeClick`
+  // so the funnel rollup can compute conversion = clicks ÷ impressions
+  // by `metadata.source` out of the box. Fired at most once per
+  // (tenant, tier, source) per browser session via sessionStorage
+  // dedup — matches the dedup pattern used by the discount-badge
+  // impression in BillingEstimator.
+  const handleAnnualNudgeImpression = useCallback(
+    (event: {
+      source: 'callout' | 'upgrade-card';
+      currentTier: PlanTier;
+      annualSavingsCents: number;
+      liveRateBadgeVisible: boolean;
+    }) => {
+      const safeAnnualSavings = Number.isFinite(event.annualSavingsCents)
+        ? Math.max(0, Math.round(event.annualSavingsCents))
+        : 0;
+      const monthlySavingsCents = Math.round(safeAnnualSavings / 12);
+      api
+        .post('/billing/recommendation-event', {
+          eventType: 'impression',
+          currentTier: event.currentTier,
+          recommendedTier: event.currentTier,
+          monthlySavingsCents,
+          pitch: 'annual-only',
+          metadata: {
+            source: event.source,
+            annualSavingsCents: safeAnnualSavings,
+            liveRateBadgeVisible: event.liveRateBadgeVisible,
+          },
+        })
+        .catch(() => {
+          // Analytics failures must not block the page render.
+        });
+    },
+    [],
+  );
+
   const { data: subData, isLoading: subLoading, error: subError } = useQuery({
     queryKey: ['billing-subscription'],
     queryFn: () => api.get<{ subscription: Subscription | null; plan?: string; status?: string }>('/billing/subscription'),
@@ -1415,6 +1452,105 @@ export default function Billing() {
   const status = sub?.status ?? subData?.status ?? 'none';
   const usage = usageData?.usage ?? {};
   const budget = budgetData;
+
+  // Annual-savings callout impression. Mirrors the JSX gating below
+  // (monthly billing in good standing + valid /billing/effective-rate
+  // quote + a positive annual saving) so the impression fires exactly
+  // when the callout actually renders for the tenant. Per-(tenant,
+  // tier) sessionStorage dedup keeps a one-shot promise — the same
+  // dedup posture the discount-badge impression in BillingEstimator
+  // uses. Dedup includes a `callout` segment so the upgrade-card
+  // impression below can fire independently in the same session.
+  useEffect(() => {
+    const tenantId = user?.tenantId;
+    if (!tenantId) return;
+    if (sub?.billing_interval !== 'monthly') return;
+    if (status !== 'active' && status !== 'trialing') return;
+    if (!effectiveRateData) return;
+    const monthlyCents = effectiveRateData.monthlyBasePriceCents;
+    const annualEquivCents = effectiveRateData.annualBasePriceCents;
+    if (
+      typeof monthlyCents !== 'number'
+      || typeof annualEquivCents !== 'number'
+      || !Number.isFinite(monthlyCents)
+      || !Number.isFinite(annualEquivCents)
+    ) {
+      return;
+    }
+    const annualSavingsCents = (monthlyCents - annualEquivCents) * 12;
+    if (annualSavingsCents <= 0) return;
+    const liveRate =
+      effectiveRateData.monthlyBasePriceSource === 'stripe'
+      || effectiveRateData.annualBasePriceSource === 'stripe';
+    const dedupKey = `billing.annual-nudge.impression.${tenantId}.callout.${plan}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem(dedupKey)) return;
+        window.sessionStorage.setItem(dedupKey, '1');
+      }
+    } catch {
+      // sessionStorage unavailable (private mode, SSR); fall through
+      // and fire rather than swallowing the impression.
+    }
+    handleAnnualNudgeImpression({
+      source: 'callout',
+      currentTier: plan as PlanTier,
+      annualSavingsCents,
+      liveRateBadgeVisible: liveRate,
+    });
+  }, [
+    user?.tenantId,
+    sub?.billing_interval,
+    status,
+    plan,
+    effectiveRateData,
+    handleAnnualNudgeImpression,
+  ]);
+
+  // Same-tier "Switch to annual" upgrade card impression. The card
+  // only renders when the admin/manager toggles the upgrade-section
+  // billing period to "Annual" while their subscription is on monthly
+  // billing — those are the same conditions that gate the card itself
+  // in the Upgrade Plan section below. Per-(tenant, tier) dedup with a
+  // `upgrade-card` segment so it stays disjoint from the callout key.
+  useEffect(() => {
+    const tenantId = user?.tenantId;
+    if (!tenantId) return;
+    if (!isAdmin) return;
+    if (sub?.billing_interval !== 'monthly') return;
+    if (billingPeriod !== 'annual') return;
+    const baseMonthlyCents = getPlanMonthlyPriceCents(plan as PlanTier);
+    const baseMonthlyDollars = centsToWholeDollars(baseMonthlyCents);
+    const effectiveMonthlyDollars = getDiscountedAnnualMonthlyDollars(baseMonthlyDollars);
+    const annualSavingsCents = dollarsToCents(
+      (baseMonthlyDollars - effectiveMonthlyDollars) * 12,
+    );
+    if (annualSavingsCents <= 0) return;
+    const dedupKey = `billing.annual-nudge.impression.${tenantId}.upgrade-card.${plan}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem(dedupKey)) return;
+        window.sessionStorage.setItem(dedupKey, '1');
+      }
+    } catch {
+      // sessionStorage unavailable; fire anyway.
+    }
+    handleAnnualNudgeImpression({
+      source: 'upgrade-card',
+      currentTier: plan as PlanTier,
+      annualSavingsCents,
+      // The upgrade-card surface never renders the "Live rate" badge,
+      // so it's always false here — matches the click-side contract.
+      liveRateBadgeVisible: false,
+    });
+  }, [
+    user?.tenantId,
+    isAdmin,
+    sub?.billing_interval,
+    billingPeriod,
+    plan,
+    handleAnnualNudgeImpression,
+  ]);
 
   // One-time guarantee: once the banner is renderable, drop the
   // sessionStorage marker and the URL param so reloads/fresh visits
