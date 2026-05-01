@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Calculator,
   ArrowUpRight,
@@ -11,6 +11,8 @@ import {
   Loader2,
   MessageSquare,
   Phone,
+  CalendarClock,
+  MailMinus,
 } from 'lucide-react';
 import {
   PLAN_CATALOG,
@@ -339,6 +341,42 @@ interface BillingEstimatorProps {
    * so we don't render a misleading "save $0/yr" callout.
    */
   annualBasePriceCents?: number | null;
+  /**
+   * Per-tenant snapshot of the plan-recommendation digest pipeline.
+   * When provided, the recommendation card shows a small status line
+   * — "Next recommendation review: <date>" or a one-line reason if no
+   * email is queued (already optimal, no usage yet, owner opted out)
+   * — so a tenant who notices the banner but never received an email
+   * can see exactly when the next digest is due. Sourced from
+   * `GET /billing/recommendation-status`.
+   *
+   * Optional and decoupled from the rest of the recommendation props
+   * so call sites that don't yet plumb the field keep rendering.
+   */
+  recommendationDigestStatus?: RecommendationDigestStatus | null;
+}
+
+/**
+ * Why the plan-recommendation digest is (or isn't) queued for the
+ * tenant. Mirrors `TenantRecommendationDigestReason` in
+ * `platform/billing/PlanRecommendationDigestScheduler.ts`.
+ */
+export type RecommendationDigestReason =
+  | 'scheduled'
+  | 'already_optimal'
+  | 'no_usage'
+  | 'opted_out'
+  | 'no_active_subscription';
+
+export interface RecommendationDigestStatus {
+  reason: RecommendationDigestReason;
+  /** ISO timestamp of the most recent digest email, or `null` if never sent. */
+  lastEmailedAt?: string | null;
+  /** ISO timestamp when the next digest review is expected; `null` when no email is queued. */
+  nextScheduledAt?: string | null;
+  cooldownDays?: number;
+  lookbackMonths?: number;
+  ownerOptedIn?: boolean;
 }
 
 /**
@@ -1080,6 +1118,122 @@ function TrailingWindowToggle({
   );
 }
 
+/**
+ * Render the small status line that closes the loop on the monthly
+ * recommendation digest email — "Next recommendation review: <date>"
+ * when an email is queued, or a one-line reason ("you're already on the
+ * cheapest plan", "the owner opted out of billing emails", etc.) when
+ * none is. Sits at the bottom of the recommendation card and shares
+ * the card's chrome rather than rendering its own border.
+ *
+ * The date is formatted in the viewer's locale via
+ * `Intl.DateTimeFormat` with `month: 'short', day: 'numeric'` — the
+ * year is included only when the next review falls outside the current
+ * calendar year, so the common case stays compact ("Apr 28") while
+ * year-end reviews still disambiguate ("Jan 12, 2027"). A `<time>`
+ * element with `dateTime` is used so screen readers announce the full
+ * ISO timestamp.
+ */
+function RecommendationDigestStatusLine({
+  status,
+}: {
+  status: RecommendationDigestStatus;
+}) {
+  const { reason, nextScheduledAt } = status;
+
+  let icon: ReactNode;
+  let copy: ReactNode;
+  if (reason === 'scheduled' && nextScheduledAt) {
+    const next = new Date(nextScheduledAt);
+    const now = new Date();
+    const includeYear = next.getFullYear() !== now.getFullYear();
+    const formatted = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      ...(includeYear ? { year: 'numeric' } : {}),
+    }).format(next);
+    icon = <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
+    copy = (
+      <>
+        Next recommendation review:{' '}
+        <time
+          dateTime={nextScheduledAt}
+          className="font-medium text-text-primary"
+        >
+          {formatted}
+        </time>
+      </>
+    );
+  } else {
+    icon = <MailMinus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
+    if (reason === 'already_optimal') {
+      copy = "No email queued — you're already on the cheapest plan for your usage.";
+    } else if (reason === 'no_usage') {
+      copy = 'No email queued — we need a full month of usage to make a recommendation.';
+    } else if (reason === 'opted_out') {
+      copy = 'No email queued — the workspace owner opted out of billing emails.';
+    } else if (reason === 'no_active_subscription') {
+      copy = 'No email queued — recommendations resume once a paid subscription is active.';
+    } else {
+      copy = 'No email queued.';
+    }
+  }
+
+  return (
+    <p
+      data-testid="billing-estimator-recommendation-digest-status"
+      data-recommendation-digest-reason={reason}
+      className="mt-3 pt-3 border-t border-border/60 flex items-center gap-1.5 text-xs text-text-muted"
+    >
+      {icon}
+      <span>{copy}</span>
+    </p>
+  );
+}
+
+/**
+ * Lightweight standalone variant of the recommendation card used when
+ * we have NO recommendation to show (because the tenant has no usage
+ * yet, no active subscription, or the owner opted out of billing
+ * emails) but we DO have a digest-status reason worth surfacing. Keeps
+ * the in-app /billing surface honest about why no email is queued, so
+ * a tenant who's expecting a monthly recommendation digest but hasn't
+ * received one can see the answer without filing a support ticket.
+ *
+ * Deliberately styled in the neutral border palette (not success/
+ * primary) so it doesn't look like a recommendation or a warning —
+ * it's purely informational.
+ */
+function RecommendationDigestPlaceholderCard({
+  status,
+}: {
+  status: RecommendationDigestStatus;
+}) {
+  return (
+    <div
+      data-testid="billing-estimator-recommendation"
+      data-recommendation-state="placeholder"
+      data-recommendation-digest-reason={status.reason}
+      className="mb-5 rounded-lg border border-border bg-surface p-4"
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-surface-hover flex items-center justify-center shrink-0">
+          <Lightbulb className="h-4 w-4 text-text-muted" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-text-primary">
+            Plan recommendations
+          </p>
+          <p className="text-xs text-text-muted mt-0.5">
+            We send a monthly email when switching plans would save you money.
+          </p>
+          <RecommendationDigestStatusLine status={status} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecommendationCard({
   recommendation,
   monthsConsidered,
@@ -1093,6 +1247,7 @@ function RecommendationCard({
   trailingMonthlyBreakdown,
   trailingMonthlyPriorYearBreakdown,
   currentBillingInterval,
+  digestStatus,
 }: {
   recommendation: NonNullable<ReturnType<typeof recommendCheapestPlan>>;
   monthsConsidered: number;
@@ -1113,6 +1268,7 @@ function RecommendationCard({
     aiMinutes: number | null;
   }>;
   currentBillingInterval?: BillingPeriod;
+  digestStatus?: RecommendationDigestStatus | null;
 }) {
   const {
     current,
@@ -1266,6 +1422,16 @@ function RecommendationCard({
     )
     : null;
 
+  // Tenant-facing status line that closes the loop on the monthly
+  // digest email — "Next recommendation review: <date>" or a one-line
+  // reason ("you're already optimal", "owner opted out", etc.) so an
+  // admin who notices the recommendation banner can see exactly when
+  // (or why not) the next email will arrive. Hidden when the parent
+  // hasn't plumbed `digestStatus` so this stays backwards compatible.
+  const digestStatusLine = digestStatus
+    ? <RecommendationDigestStatusLine status={digestStatus} />
+    : null;
+
   if (isAlreadyOptimal) {
     const isSwitchingToAnnual = switchingPlan === recommended.tier;
     const annualCtaLabel = isSwitchingToAnnual
@@ -1359,6 +1525,7 @@ function RecommendationCard({
           {windowToggle && <div className="shrink-0">{windowToggle}</div>}
         </div>
         {chart}
+        {digestStatusLine}
       </div>
     );
   }
@@ -1461,6 +1628,7 @@ function RecommendationCard({
         </div>
       </div>
       {chart}
+      {digestStatusLine}
     </div>
   );
 }
@@ -1555,6 +1723,7 @@ export default function BillingEstimator({
   currentBillingInterval,
   monthlyBasePriceCents,
   annualBasePriceCents,
+  recommendationDigestStatus,
 }: BillingEstimatorProps) {
   const formatMoney = useMemo(() => makeFormatMoney(currency), [currency]);
   const formatPerMinute = useMemo(() => makeFormatPerMinute(currency), [currency]);
@@ -1779,7 +1948,7 @@ export default function BillingEstimator({
         </div>
       </div>
 
-      {recommendation?.result && (
+      {recommendation?.result ? (
         <RecommendationCard
           recommendation={recommendation.result}
           monthsConsidered={recommendation.monthsConsidered}
@@ -1793,8 +1962,27 @@ export default function BillingEstimator({
           trailingMonthlyBreakdown={trailingMonthlyBreakdown}
           trailingMonthlyPriorYearBreakdown={trailingMonthlyPriorYearBreakdown}
           currentBillingInterval={currentBillingInterval}
+          digestStatus={recommendationDigestStatus}
         />
-      )}
+      ) : recommendationDigestStatus
+          && recommendationDigestStatus.reason !== 'scheduled'
+          && recommendationDigestStatus.reason !== 'already_optimal' ? (
+        // The full recommendation card is gated on real trailing usage,
+        // so a tenant with no usage yet (or no active subscription, or
+        // an opted-out owner) wouldn't normally see anything explaining
+        // why they aren't getting a digest. Render a small placeholder
+        // card so the "no email queued because…" reason from
+        // /billing/recommendation-status still has somewhere to live —
+        // matches the spec's "no usage yet / owner opted out / no
+        // active subscription" copy. We deliberately skip rendering for
+        // 'already_optimal' here because that copy only makes sense
+        // once we know the tenant's current plan IS the cheapest, and
+        // we can't claim that without a recommendation result to
+        // back it up.
+        <RecommendationDigestPlaceholderCard
+          status={recommendationDigestStatus}
+        />
+      ) : null}
 
       <div className="space-y-3 mb-5">
         <div className="flex items-center justify-between gap-4">

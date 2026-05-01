@@ -1019,6 +1019,35 @@ export default function Billing() {
     placeholderData: (prev) => prev,
   });
 
+  // Tenant-facing snapshot of the plan-recommendation digest pipeline,
+  // used to render the "Next recommendation review: <date>" status line
+  // (or a one-line reason no email is queued) at the bottom of the
+  // recommendation card. Refreshes hourly because the next-review date
+  // only shifts when an email actually goes out or the tenant's
+  // subscription period rolls — neither of which needs sub-minute
+  // freshness — and we keep the previous response visible across
+  // refetches so the line doesn't flicker.
+  const { data: recommendationDigestStatusData } = useQuery({
+    queryKey: ['billing-recommendation-status'],
+    queryFn: () => api.get<{
+      status: {
+        reason:
+          | 'scheduled'
+          | 'already_optimal'
+          | 'no_usage'
+          | 'opted_out'
+          | 'no_active_subscription';
+        lastEmailedAt: string | null;
+        nextScheduledAt: string | null;
+        cooldownDays: number;
+        lookbackMonths: number;
+        ownerOptedIn: boolean;
+      };
+    }>('/billing/recommendation-status'),
+    staleTime: 60 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+
   // Live per-minute overage + base price sourced from the tenant's actual
   // Stripe subscription items. Falls back to catalog defaults server-side
   // when no Stripe subscription exists, so the BillingEstimator stays
@@ -2381,6 +2410,7 @@ export default function Billing() {
                 ? trailingUsageData.monthlyPriorYear
                 : undefined
             }
+            recommendationDigestStatus={recommendationDigestStatusData?.status}
           />
 
           {sub && isAdmin && (

@@ -59,6 +59,7 @@ vi.mock('../../platform/core/logger', () => ({
 
 import {
   runPlanRecommendationDigestCycle,
+  getTenantRecommendationDigestStatus,
   PLAN_RECOMMENDATION_AUDIT_ACTION,
 } from '../../platform/billing/PlanRecommendationDigestScheduler';
 import { sendEmail } from '../../platform/email/EmailService';
@@ -299,5 +300,170 @@ describe('runPlanRecommendationDigestCycle', () => {
     expect(result.skippedNoBaseUrl).toBe(1);
     expect(privilegedQueryMock).not.toHaveBeenCalled();
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Per-tenant status snapshot used by the in-app /billing recommendation
+ * card. Tests focus on the *contract* the UI relies on — every reason
+ * branch + a `nextScheduledAt` clamped sensibly relative to the period
+ * and cooldown gates — rather than on the internal SQL shape, which the
+ * scheduler-cycle tests above already lock down.
+ */
+describe('getTenantRecommendationDigestStatus', () => {
+  function lookupRow(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      owner_user_id: 'user-1',
+      status: 'active',
+      current_period_start: new Date('2026-04-01T00:00:00.000Z'),
+      current_period_end: new Date('2026-05-01T00:00:00.000Z'),
+      last_emailed_at: null,
+      last_emailed_period_start: null,
+      ...overrides,
+    };
+  }
+
+  it("returns 'no_active_subscription' when the tenant has no subscription row", async () => {
+    privilegedQueryMock.mockResolvedValueOnce({
+      rows: [lookupRow({ status: null, current_period_start: null })],
+    });
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.reason).toBe('no_active_subscription');
+    expect(status.nextScheduledAt).toBeNull();
+    expect(getTenantEffectiveRateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 'no_active_subscription' when the tenant row is missing entirely", async () => {
+    privilegedQueryMock.mockResolvedValueOnce({ rows: [] });
+
+    const status = await getTenantRecommendationDigestStatus('tenant-missing');
+
+    expect(status.reason).toBe('no_active_subscription');
+    expect(status.nextScheduledAt).toBeNull();
+  });
+
+  it("returns 'no_usage' when the trailing window has no AI minutes", async () => {
+    privilegedQueryMock.mockResolvedValueOnce({ rows: [lookupRow()] });
+    mockUsageRows(0, 0, 0);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(PRO_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(true);
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.reason).toBe('no_usage');
+    expect(status.nextScheduledAt).toBeNull();
+  });
+
+  it("returns 'already_optimal' when the tenant is on the cheapest plan for their usage", async () => {
+    privilegedQueryMock.mockResolvedValueOnce({ rows: [lookupRow()] });
+    mockUsageRows(100, 100, 100);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(STARTER_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(true);
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.reason).toBe('already_optimal');
+    expect(status.nextScheduledAt).toBeNull();
+  });
+
+  it("returns 'opted_out' when the owner disabled billing emails (preempts the recommendation)", async () => {
+    privilegedQueryMock.mockResolvedValueOnce({ rows: [lookupRow()] });
+    mockUsageRows(300, 300, 300);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(PRO_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(false);
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.reason).toBe('opted_out');
+    expect(status.ownerOptedIn).toBe(false);
+    expect(status.nextScheduledAt).toBeNull();
+    expect(isChannelEnabledMock).toHaveBeenCalledWith('user-1', 'billing', 'email');
+  });
+
+  it("returns 'scheduled' with nextScheduledAt = now when both gates are open", async () => {
+    privilegedQueryMock.mockResolvedValueOnce({
+      rows: [lookupRow({ last_emailed_at: null, last_emailed_period_start: null })],
+    });
+    mockUsageRows(300, 300, 300);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(PRO_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(true);
+
+    const before = Date.now();
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+    const after = Date.now();
+
+    expect(status.reason).toBe('scheduled');
+    expect(status.nextScheduledAt).not.toBeNull();
+    const ts = new Date(status.nextScheduledAt!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after + 5);
+  });
+
+  it("returns 'scheduled' with nextScheduledAt clamped to the period end when already emailed this cycle", async () => {
+    // Period end deliberately in the FUTURE so the period-gate clamp
+    // wins over the `now` floor — otherwise the assertion is sensitive
+    // to whatever wall-clock the test runner happens to be at.
+    const now = Date.now();
+    const periodStart = new Date(now - 5 * 24 * 60 * 60 * 1000);
+    const periodEnd = new Date(now + 25 * 24 * 60 * 60 * 1000);
+    const lastEmailedAt = new Date(now - 4 * 24 * 60 * 60 * 1000);
+    privilegedQueryMock.mockResolvedValueOnce({
+      rows: [
+        lookupRow({
+          current_period_start: periodStart,
+          current_period_end: periodEnd,
+          last_emailed_at: lastEmailedAt,
+          last_emailed_period_start: periodStart,
+        }),
+      ],
+    });
+    mockUsageRows(300, 300, 300);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(PRO_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(true);
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.reason).toBe('scheduled');
+    expect(status.nextScheduledAt).toBe(periodEnd.toISOString());
+    expect(status.lastEmailedAt).toBe(lastEmailedAt.toISOString());
+  });
+
+  it("returns 'scheduled' with nextScheduledAt clamped to last_emailed_at + cooldown when cooldown is the binding gate", async () => {
+    // 1-day-old email, cooldown defaults to 28 days, period gate is open
+    // (different period from current) — cooldown should win.
+    const lastEmailedAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    privilegedQueryMock.mockResolvedValueOnce({
+      rows: [
+        lookupRow({
+          last_emailed_at: lastEmailedAt,
+          last_emailed_period_start: new Date('2026-03-01T00:00:00.000Z'),
+        }),
+      ],
+    });
+    mockUsageRows(300, 300, 300);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(PRO_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(true);
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.reason).toBe('scheduled');
+    expect(status.nextScheduledAt).not.toBeNull();
+    const ts = new Date(status.nextScheduledAt!).getTime();
+    const expected = lastEmailedAt.getTime() + status.cooldownDays * 24 * 60 * 60 * 1000;
+    expect(ts).toBe(expected);
+  });
+
+  it('exposes the scheduler config (cooldownDays + lookbackMonths) so the UI can explain cadence', async () => {
+    privilegedQueryMock.mockResolvedValueOnce({ rows: [lookupRow()] });
+    mockUsageRows(300, 300, 300);
+    getTenantEffectiveRateMock.mockResolvedValueOnce(PRO_RATE);
+    isChannelEnabledMock.mockResolvedValueOnce(true);
+
+    const status = await getTenantRecommendationDigestStatus('tenant-1');
+
+    expect(status.cooldownDays).toBeGreaterThan(0);
+    expect(status.lookbackMonths).toBeGreaterThan(0);
   });
 });

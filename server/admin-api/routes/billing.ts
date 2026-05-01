@@ -20,6 +20,7 @@ import {
 } from '../../../platform/billing/stripe/planChange';
 import type { PlanTier } from '../../../shared/billing/planCatalog';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
+import { getTenantRecommendationDigestStatus } from '../../../platform/billing/PlanRecommendationDigestScheduler';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
@@ -756,6 +757,39 @@ router.get('/billing/usage/trailing', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Failed to retrieve trailing usage' });
   } finally {
     client.release();
+  }
+});
+
+/**
+ * `GET /billing/recommendation-status`
+ *
+ * Per-tenant snapshot of the plan-recommendation digest pipeline. Powers
+ * the "Next recommendation review: <date>" status line on the in-app
+ * /billing recommendation card so a tenant who notices the banner but
+ * never received an email can see *when* the next digest is due — or
+ * the one-line reason none is queued (already optimal, no usage yet,
+ * owner opted out, no active subscription).
+ *
+ * Returns 200 with a structured payload for every *expected* state —
+ * a brand-new tenant just gets `reason: 'no_active_subscription'` so
+ * the UI can render a calm placeholder instead of an error, rather
+ * than 4xx-ing on missing data. Only an unexpected helper exception
+ * (e.g. a privileged-pool outage) returns 500, which the React Query
+ * caller treats as transient. The `cooldownDays` / `lookbackMonths`
+ * fields mirror the scheduler's current configuration so the UI can
+ * explain the cadence to a curious admin.
+ */
+router.get('/billing/recommendation-status', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  try {
+    const status = await getTenantRecommendationDigestStatus(tenantId);
+    return res.json({ status });
+  } catch (err) {
+    logger.error('Recommendation digest status lookup failed', {
+      tenantId,
+      error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to load recommendation status' });
   }
 });
 
