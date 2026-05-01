@@ -1886,6 +1886,16 @@ function LiveBillingHealthScreenshotCard() {
     refetchInterval: 5 * 60_000,
     staleTime: 60_000,
   });
+  // The artifactId acts as a stable cache key — when it changes we
+  // know we're looking at a fresh upstream run, so retry the image.
+  // Hook MUST stay above the early returns below so React sees a
+  // consistent hook order across renders (loading → loaded). Moving
+  // it past a conditional return crashes the component with
+  // "Rendered more hooks than during the previous render."
+  const successArtifactId = data?.latestSuccess?.artifactId ?? null;
+  useEffect(() => {
+    setScreenshotMissing(false);
+  }, [successArtifactId]);
 
   if (isLoading) {
     return (
@@ -1923,11 +1933,6 @@ function LiveBillingHealthScreenshotCard() {
   const screenshotUrl = success?.screenshotAvailable
     ? `/api/platform/billing-config-health/last-live-screenshot.png?artifact=${success.artifactId}`
     : null;
-  // The artifactId acts as a stable cache key — when it changes we
-  // know we're looking at a fresh upstream run, so retry the image.
-  useEffect(() => {
-    setScreenshotMissing(false);
-  }, [success?.artifactId]);
   const screenshotRenderable = screenshotUrl && !screenshotMissing;
 
   return (

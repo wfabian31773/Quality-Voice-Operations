@@ -29,14 +29,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
-externalPort = 3000
-
-[[ports]]
-localPort = 5173
-externalPort = 5173
-
-[[ports]]
 localPort = 5174
 externalPort = 3003
 
@@ -62,10 +54,6 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Platform Dev"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "lint"
 
 [[workflows.workflow.tasks]]
@@ -75,18 +63,6 @@ args = "typecheck"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "unit"
-
-[[workflows.workflow]]
-name = "Platform Dev"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash scripts/start-platform-dev.sh"
-waitForPort = 5000
 
 [[workflows.workflow]]
 name = "lint"
