@@ -41,6 +41,7 @@ import {
   getRevenueStats,
   reportUsage,
   listPurchasesForTenant,
+  listInvoicesForPurchase,
 } from '../../../platform/marketplace/MarketplacePurchaseService';
 import {
   createSubmission,
@@ -1771,6 +1772,29 @@ router.get('/marketplace/purchases', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('Failed to list marketplace purchases', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list marketplace purchases' });
+  }
+});
+
+// Per-subscription invoice sub-history surfaced under each recurring
+// marketplace purchase row. Each entry carries its own coupon-aware
+// discount summary so a tenant can see when a coupon expired
+// mid-subscription or stacked on a renewal — the parent
+// `marketplace_purchases` row only stores the latest invoice's
+// discount, hiding renewal-by-renewal drift (Task #1389).
+router.get('/marketplace/purchases/:id/invoices', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const purchaseId = req.params.id;
+  try {
+    const invoices = await listInvoicesForPurchase(tenantId, purchaseId);
+    if (invoices === null) {
+      return res.status(404).json({ error: 'Purchase not found' });
+    }
+    return res.json({ invoices });
+  } catch (err) {
+    logger.error('Failed to list marketplace purchase invoices', {
+      tenantId, purchaseId, error: String(err),
+    });
+    return res.status(500).json({ error: 'Failed to list purchase invoices' });
   }
 });
 

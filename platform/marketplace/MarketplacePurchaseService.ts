@@ -443,6 +443,269 @@ export async function listPurchasesForTenant(
   }
 }
 
+/**
+ * One row in the per-purchase invoice sub-history surfaced under each
+ * recurring marketplace subscription on the Purchases tab. Mirrors the
+ * shape of `/billing/invoices` so the UI can render the same coupon
+ * chip + Receipt PDF link layout — except here every renewal invoice
+ * carries its own discount snapshot, so a tenant can see when a coupon
+ * expired mid-subscription or a new one stacked on top for a renewal
+ * (Task #1389).
+ */
+export interface PurchaseInvoiceRow {
+  id: string;
+  number: string | null;
+  date: string | null;
+  amountCents: number;
+  currency: string;
+  status: string;
+  invoicePdf: string | null;
+  hostedInvoiceUrl: string | null;
+  description: string | null;
+  /**
+   * Every coupon Stripe applied to this specific renewal invoice. A
+   * subscription invoice can stack multiple discounts (customer-level
+   * promo + invoice-level one-off), so the list is rendered chip-by-chip
+   * the same way `Billing.tsx` already renders platform invoice rows.
+   */
+  discounts: PurchaseDiscountSummary[];
+}
+
+/**
+ * Fetch the renewal invoices Stripe has issued for a single recurring
+ * marketplace purchase, each enriched with the coupon-aware discount
+ * summary the Purchases tab renders inline. Scoped to the caller's
+ * tenant — the purchase row must belong to `tenantId` AND carry a
+ * `stripe_subscription_id`. One-off purchases (no subscription id)
+ * return `[]` so the route layer can short-circuit before talking to
+ * Stripe.
+ *
+ * Returns `null` when the purchase id doesn't match anything in the
+ * tenant's history at all, so the route can distinguish "not found"
+ * (404) from "found, but no invoices yet" ([]).
+ */
+export async function listInvoicesForPurchase(
+  tenantId: TenantId,
+  purchaseId: string,
+): Promise<PurchaseInvoiceRow[] | null> {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  let stripeSubscriptionId: string | null = null;
+  try {
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT stripe_subscription_id, price_model
+         FROM marketplace_purchases
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [purchaseId, tenantId],
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+    stripeSubscriptionId = (rows[0].stripe_subscription_id as string | null) ?? null;
+  } finally {
+    client.release();
+  }
+
+  // One-off purchases never have a Stripe subscription id, so there's
+  // no renewal history to surface — bail before touching Stripe.
+  if (!stripeSubscriptionId) {
+    return [];
+  }
+
+  try {
+    const { getStripeClient } = await import('../billing/stripe/client');
+    const stripe = getStripeClient();
+
+    // Walk every Stripe invoice tied to this subscription using the
+    // standard `has_more` / `starting_after` cursor (mirrors the
+    // pagination loop in `platform/billing/stripe/portalConfigCleanup.ts`).
+    // The Done criteria require one sub-row per Stripe invoice, so a
+    // hard `limit: 24` would silently truncate buyers on a long-running
+    // monthly add-on. `MAX_HISTORICAL_INVOICES` only exists as a
+    // belt-and-suspenders guard against a runaway loop — at one
+    // invoice per week that's still ~9 years of history, well past
+    // any reasonable subscription lifetime.
+    const PAGE_SIZE = 100;
+    const MAX_HISTORICAL_INVOICES = 500;
+    const allInvoices: Array<Record<string, unknown>> = [];
+    let startingAfter: string | undefined;
+    for (;;) {
+      const list = await stripe.invoices.list({
+        subscription: stripeSubscriptionId,
+        limit: PAGE_SIZE,
+        expand: ['data.discounts', 'data.discounts.promotion_code'],
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      for (const inv of list.data) {
+        allInvoices.push(inv as unknown as Record<string, unknown>);
+        if (allInvoices.length >= MAX_HISTORICAL_INVOICES) break;
+      }
+      if (allInvoices.length >= MAX_HISTORICAL_INVOICES) {
+        logger.warn('Marketplace purchase invoice history hit safety cap', {
+          tenantId, purchaseId, cap: MAX_HISTORICAL_INVOICES,
+        });
+        break;
+      }
+      if (!list.has_more || list.data.length === 0) break;
+      const lastId = list.data[list.data.length - 1]?.id;
+      if (!lastId || lastId === startingAfter) break;
+      startingAfter = lastId;
+    }
+
+    return allInvoices.map((inv) => {
+      const discounts: PurchaseDiscountSummary[] = [];
+      const rawDiscounts = ((inv as { discounts?: Array<unknown> | null }).discounts ?? []) as Array<unknown>;
+      for (const raw of rawDiscounts) {
+        if (typeof raw !== 'object' || raw === null) continue;
+        const normalized = normalizeHistoricalInvoiceDiscount(
+          raw as DiscountLikeForHistory,
+        );
+        if (normalized) discounts.push(normalized);
+      }
+      // Mirrors the `/billing/invoices` fallback: legacy invoices that
+      // Stripe never re-expanded with the new `discounts` array still
+      // expose `total_discount_amounts` when at least one discount was
+      // applied. Surface a placeholder chip so the row doesn't silently
+      // hide a renewal where the coupon ran but the metadata is sparse.
+      const totalDiscountAmounts = (inv as { total_discount_amounts?: unknown[] | null }).total_discount_amounts;
+      if (
+        discounts.length === 0
+        && Array.isArray(totalDiscountAmounts)
+        && totalDiscountAmounts.length > 0
+      ) {
+        discounts.push({
+          couponId: null,
+          name: null,
+          promotionCode: null,
+          percentOff: null,
+          amountOffCents: null,
+          currency: ((inv as { currency?: string | null }).currency ?? null)?.toLowerCase() ?? null,
+        });
+      }
+
+      const status = (inv as { status?: string | null }).status ?? 'unknown';
+      const amountPaid = (inv as { amount_paid?: number | null }).amount_paid ?? null;
+      const amountDue = (inv as { amount_due?: number | null }).amount_due ?? null;
+      const total = (inv as { total?: number | null }).total ?? null;
+      const amountCents = status === 'paid'
+        ? (amountPaid ?? total ?? 0)
+        : (amountDue ?? total ?? 0);
+      const created = (inv as { created?: number | null }).created ?? null;
+      const lines = (inv as { lines?: { data?: Array<{ description?: string | null }> } | null }).lines;
+
+      return {
+        id: (inv as { id?: string }).id as string,
+        number: ((inv as { number?: string | null }).number) ?? null,
+        date: created ? new Date(created * 1000).toISOString() : null,
+        amountCents,
+        currency: (((inv as { currency?: string | null }).currency) ?? 'usd').toLowerCase(),
+        status,
+        invoicePdf: ((inv as { invoice_pdf?: string | null }).invoice_pdf) ?? null,
+        hostedInvoiceUrl: ((inv as { hosted_invoice_url?: string | null }).hosted_invoice_url) ?? null,
+        description: ((inv as { description?: string | null }).description)
+          ?? (lines?.data?.[0]?.description ?? null),
+        discounts,
+      };
+    });
+  } catch (err) {
+    logger.error('Failed to list Stripe invoices for marketplace purchase', {
+      tenantId, purchaseId, error: String(err),
+    });
+    throw err;
+  }
+}
+
+interface CouponLikeForHistory {
+  id?: string | null;
+  name?: string | null;
+  percent_off?: number | null;
+  amount_off?: number | null;
+  currency?: string | null;
+  // `valid` and `discount.end` are intentionally NOT honored by the
+  // historical normalizer — see `normalizeHistoricalInvoiceDiscount`.
+}
+
+interface PromotionCodeLikeForHistory {
+  id?: string | null;
+  code?: string | null;
+}
+
+interface DiscountSourceLikeForHistory {
+  coupon?: string | CouponLikeForHistory | null;
+  promotion_code?: string | PromotionCodeLikeForHistory | null;
+}
+
+interface DiscountLikeForHistory {
+  coupon?: CouponLikeForHistory | null;
+  promotion_code?: string | PromotionCodeLikeForHistory | null;
+  source?: DiscountSourceLikeForHistory | null;
+}
+
+/**
+ * Coupon-aware normalizer for historical invoice rows surfaced under a
+ * recurring marketplace purchase's expand-able sub-history.
+ *
+ * Why a local copy instead of `effectiveRate.normalizeDiscount`:
+ * `normalizeDiscount` is designed for *active* surfaces (upgrade
+ * preview, current subscription panel, Checkout sessions) and
+ * intentionally suppresses any discount whose `end` is in the past or
+ * whose underlying coupon has been invalidated (`valid === false`). For
+ * an immutable invoice that *did* receive that coupon at the time it
+ * was finalized, suppressing the badge would hide exactly the
+ * scenario this task exists to surface — a coupon expiring
+ * mid-subscription. Stripe stores the discount snapshot on the
+ * historical invoice for a reason; the renewal-history view honors
+ * that snapshot regardless of whether the coupon is still redeemable
+ * today (Task #1389).
+ */
+function normalizeHistoricalInvoiceDiscount(
+  discount: DiscountLikeForHistory | null | undefined,
+): PurchaseDiscountSummary | null {
+  if (!discount) return null;
+  let coupon: CouponLikeForHistory | null | undefined = discount.coupon;
+  if (!coupon && discount.source) {
+    const sourceCoupon = discount.source.coupon;
+    if (sourceCoupon && typeof sourceCoupon === 'object') {
+      coupon = sourceCoupon;
+    }
+  }
+  if (!coupon) return null;
+  const percentOff =
+    coupon.percent_off != null && Number.isFinite(coupon.percent_off)
+      ? coupon.percent_off
+      : null;
+  const amountOffCents =
+    coupon.amount_off != null && Number.isFinite(coupon.amount_off)
+      ? coupon.amount_off
+      : null;
+  // Both null = pure-metadata coupon = no actual savings to surface.
+  // Even on the historical view we don't render an empty chip.
+  if (percentOff == null && amountOffCents == null) return null;
+
+  let promotionCode: string | null = null;
+  const promo = discount.promotion_code ?? discount.source?.promotion_code;
+  if (promo && typeof promo === 'object') {
+    promotionCode = promo.code ?? null;
+  }
+
+  return {
+    couponId: coupon.id ?? null,
+    name: coupon.name ?? null,
+    promotionCode,
+    percentOff,
+    amountOffCents,
+    currency: (coupon.currency ?? null)?.toLowerCase() ?? null,
+  };
+}
+
+// Exported for unit tests so the historical-discount preservation
+// behavior (an expired/invalidated coupon's chip still renders on the
+// invoice it was applied to) can be pinned without round-tripping
+// through Stripe.
+export { normalizeHistoricalInvoiceDiscount };
+
 export async function checkPurchaseAccess(
   tenantId: TenantId,
   templateId: string,

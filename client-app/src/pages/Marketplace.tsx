@@ -4,10 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   Search, Store, ArrowLeft, Download, CheckCircle, Phone, MessageSquare,
-  Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, Shield,
+  Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, ChevronDown, Shield,
   BookOpen, MessageCircle, PlayCircle, Star,
   Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
-  ShoppingCart, Filter, Receipt, BadgePercent,
+  ShoppingCart, Filter, Receipt, BadgePercent, AlertCircle,
 } from 'lucide-react';
 import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
 import { PageHeader } from '../components/ui';
@@ -189,6 +189,27 @@ interface PurchaseHistoryRow {
   createdAt: string;
   completedAt: string | null;
   discount: PurchaseDiscountSummary | null;
+}
+
+/**
+ * One renewal invoice surfaced under an expanded recurring marketplace
+ * subscription row. Each entry carries its own coupon-aware discount
+ * snapshot so a tenant can see when a coupon expired mid-subscription
+ * or stacked on top of a different one for a renewal — the parent
+ * purchase row only stores the latest invoice's discount, hiding that
+ * drift (Task #1389).
+ */
+interface PurchaseInvoiceRow {
+  id: string;
+  number: string | null;
+  date: string | null;
+  amountCents: number;
+  currency: string;
+  status: string;
+  invoicePdf: string | null;
+  hostedInvoiceUrl: string | null;
+  description: string | null;
+  discounts: PurchaseDiscountSummary[];
 }
 
 interface Installation {
@@ -1498,118 +1519,341 @@ function PurchasesView({ onViewTemplate }: { onViewTemplate: (id: string) => voi
 
   return (
     <div className="space-y-3">
-      {purchases.map((p) => {
-        const ccy = (p.currency || tenantCurrency || 'usd').toUpperCase();
-        const amount = formatCentsHelper(p.amountCents, { currency: ccy });
-        const recurring = p.priceModel === 'monthly_subscription';
-        const usageBased = p.priceModel === 'usage_based';
-        const dateStr = (p.completedAt || p.createdAt)
-          ? new Date(p.completedAt || p.createdAt).toLocaleDateString('en-US', {
-              month: 'short', day: 'numeric', year: 'numeric',
-            })
-          : '—';
-        const isPending = p.status === 'pending';
-        const statusTone = p.status === 'completed'
-          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-          : p.status === 'refunded'
-          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-          : p.status === 'failed'
-          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-          : 'bg-surface-hover text-text-secondary';
+      {purchases.map((p) => (
+        <PurchaseRow
+          key={p.id}
+          purchase={p}
+          tenantCurrency={tenantCurrency}
+          onViewTemplate={onViewTemplate}
+        />
+      ))}
+    </div>
+  );
+}
 
-        const discount = p.discount;
-        // Per Task #1373, the chip's tooltip ("hover/expand reveals
-        // coupon name + percent/amount off") must surface the human
-        // coupon NAME alongside the percent/amount, not just the
-        // promo code label that fits on the chip itself. Append the
-        // coupon name when distinct from the promo code so the
-        // tooltip stays informative for finance reconciliation.
-        const discountTooltip = (() => {
-          if (!discount) return '';
-          const base = `Discount applied: ${formatPurchaseDiscountLabel(discount, p.currency)}`;
-          if (discount.name && discount.name !== discount.promotionCode) {
-            return `${base} (coupon: ${discount.name})`;
-          }
-          return base;
-        })();
+/**
+ * Renders one marketplace purchase row. Recurring (subscription /
+ * usage-based) purchases get an expand chevron that, when opened,
+ * fetches the underlying Stripe renewal invoices and renders one
+ * sub-row per invoice with that period's coupon-aware discount badge
+ * and Receipt PDF link. One-off purchases stay collapsed — they only
+ * have a single invoice, already represented by the parent row's
+ * existing discount chip (Task #1389).
+ */
+function PurchaseRow({
+  purchase: p,
+  tenantCurrency,
+  onViewTemplate,
+}: {
+  purchase: PurchaseHistoryRow;
+  tenantCurrency: string;
+  onViewTemplate: (id: string) => void;
+}) {
+  const ccy = (p.currency || tenantCurrency || 'usd').toUpperCase();
+  const amount = formatCentsHelper(p.amountCents, { currency: ccy });
+  const recurring = p.priceModel === 'monthly_subscription';
+  const usageBased = p.priceModel === 'usage_based';
+  // Both subscription and usage-based purchases produce renewal
+  // invoices off the same `stripe_subscription_id`, so both qualify
+  // for the per-invoice sub-history. We only suppress the chevron on
+  // statuses that never reached Stripe (pending) or never created a
+  // subscription (failed) — refunded / canceled rows still have a
+  // historical invoice trail worth surfacing for accounting reasons,
+  // and the service returns `[]` cleanly if Stripe finds nothing.
+  const expandable =
+    (recurring || usageBased) && p.status !== 'pending' && p.status !== 'failed';
+  const dateStr = (p.completedAt || p.createdAt)
+    ? new Date(p.completedAt || p.createdAt).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      })
+    : '—';
+  const isPending = p.status === 'pending';
+  const statusTone = p.status === 'completed'
+    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    : p.status === 'refunded'
+    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+    : p.status === 'failed'
+    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    : 'bg-surface-hover text-text-secondary';
 
-        return (
-          <div
-            key={p.id}
-            className={`bg-surface border border-border rounded-xl p-4 shadow-sm ${
-              isPending ? 'opacity-70' : ''
-            }`}
-            data-testid="marketplace-purchase-row"
-          >
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Receipt className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <button
-                    type="button"
-                    onClick={() => onViewTemplate(p.templateId)}
-                    className="font-semibold text-text-primary hover:text-primary text-left transition-colors"
-                  >
-                    {p.templateName ?? p.templateId}
-                  </button>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${statusTone}`}>
-                    {p.status}
-                  </span>
-                  {recurring && (
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-text-secondary">
-                      Subscription
-                    </span>
-                  )}
-                  {usageBased && (
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-text-secondary">
-                      Usage-based
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
-                  <span>{dateStr}</span>
-                  {p.subscriptionStatus && (
-                    <span className="capitalize">
-                      Sub: {p.subscriptionStatus.replace(/_/g, ' ')}
-                    </span>
-                  )}
-                </div>
-                {discount && (
-                  // Coupon-aware "Discount applied" chip mirrored from the
-                  // invoice metadata stamped by handleInvoiceFinalized
-                  // (Task #1351 → #1373). Hover surfaces the full
-                  // coupon name + percent/amount off, matching the
-                  // wording on the downloaded receipt PDF.
-                  <span
-                    className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-                    title={discountTooltip}
-                    aria-label={discountTooltip}
-                    data-testid="marketplace-purchase-discount-badge"
-                  >
-                    <BadgePercent className="h-3 w-3" />
-                    Discount applied:{' '}
-                    {discount.promotionCode ?? discount.name ?? 'coupon'}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                <span className="text-sm font-semibold text-text-primary">
-                  {amount}
-                  {recurring ? '/mo' : ''}
+  const discount = p.discount;
+  // Per Task #1373, the chip's tooltip ("hover/expand reveals
+  // coupon name + percent/amount off") must surface the human
+  // coupon NAME alongside the percent/amount, not just the
+  // promo code label that fits on the chip itself. Append the
+  // coupon name when distinct from the promo code so the
+  // tooltip stays informative for finance reconciliation.
+  const discountTooltip = (() => {
+    if (!discount) return '';
+    const base = `Discount applied: ${formatPurchaseDiscountLabel(discount, p.currency)}`;
+    if (discount.name && discount.name !== discount.promotionCode) {
+      return `${base} (coupon: ${discount.name})`;
+    }
+    return base;
+  })();
+
+  const [expanded, setExpanded] = useState(false);
+
+  // Lazy-fetch the renewal invoice sub-history only after the row is
+  // first expanded so collapsed subscriptions never hit Stripe. The
+  // result is cached per-purchase so toggling the row open/closed
+  // multiple times doesn't re-fetch.
+  const { data: invoiceData, isLoading: invoiceLoading, error: invoiceError, refetch: refetchInvoices } = useQuery({
+    queryKey: ['marketplace-purchase-invoices', p.id],
+    queryFn: () => api.get<{ invoices: PurchaseInvoiceRow[] }>(
+      `/marketplace/purchases/${p.id}/invoices`,
+    ),
+    enabled: expandable && expanded,
+    staleTime: 60_000,
+  });
+
+  return (
+    <div
+      className={`bg-surface border border-border rounded-xl shadow-sm ${
+        isPending ? 'opacity-70' : ''
+      }`}
+      data-testid="marketplace-purchase-row"
+    >
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          {expandable ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              aria-label={expanded ? 'Hide billing history' : 'Show billing history'}
+              className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 hover:bg-primary/20 transition-colors"
+              data-testid="marketplace-purchase-expand"
+            >
+              {expanded ? (
+                <ChevronDown className="h-5 w-5 text-primary" />
+              ) : (
+                <ChevronRight className="h-5 w-5 text-primary" />
+              )}
+            </button>
+          ) : (
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Receipt className="h-5 w-5 text-primary" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <button
+                type="button"
+                onClick={() => onViewTemplate(p.templateId)}
+                className="font-semibold text-text-primary hover:text-primary text-left transition-colors"
+              >
+                {p.templateName ?? p.templateId}
+              </button>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${statusTone}`}>
+                {p.status}
+              </span>
+              {recurring && (
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-text-secondary">
+                  Subscription
                 </span>
-                {discount && (
-                  <span className="text-[11px] text-text-muted">
-                    {formatPurchaseDiscountLabel(discount, p.currency)}
-                  </span>
-                )}
+              )}
+              {usageBased && (
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-text-secondary">
+                  Usage-based
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+              <span>{dateStr}</span>
+              {p.subscriptionStatus && (
+                <span className="capitalize">
+                  Sub: {p.subscriptionStatus.replace(/_/g, ' ')}
+                </span>
+              )}
+            </div>
+            {discount && (
+              // Coupon-aware "Discount applied" chip mirrored from the
+              // invoice metadata stamped by handleInvoiceFinalized
+              // (Task #1351 → #1373). Hover surfaces the full
+              // coupon name + percent/amount off, matching the
+              // wording on the downloaded receipt PDF. For recurring
+              // subscriptions this only reflects the most recent
+              // invoice's discount — expanding the row reveals the
+              // full per-renewal history (Task #1389).
+              <span
+                className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                title={discountTooltip}
+                aria-label={discountTooltip}
+                data-testid="marketplace-purchase-discount-badge"
+              >
+                <BadgePercent className="h-3 w-3" />
+                Discount applied:{' '}
+                {discount.promotionCode ?? discount.name ?? 'coupon'}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <span className="text-sm font-semibold text-text-primary">
+              {amount}
+              {recurring ? '/mo' : ''}
+            </span>
+            {discount && (
+              <span className="text-[11px] text-text-muted">
+                {formatPurchaseDiscountLabel(discount, p.currency)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {expandable && expanded && (
+        <div
+          className="border-t border-border bg-surface-hover/40 px-4 py-3"
+          data-testid="marketplace-purchase-invoices"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-text-muted mb-2">
+            Billing history
+          </div>
+          {invoiceLoading ? (
+            <div className="space-y-2" aria-busy="true">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="h-12 rounded-lg bg-surface-hover animate-pulse"
+                />
+              ))}
+            </div>
+          ) : invoiceError ? (
+            <div className="flex items-start gap-2 text-xs text-danger">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p>Failed to load billing history.</p>
+                <button
+                  type="button"
+                  onClick={() => refetchInvoices()}
+                  className="mt-1 underline hover:no-underline"
+                >
+                  Try again
+                </button>
               </div>
             </div>
-          </div>
-        );
-      })}
+          ) : !invoiceData?.invoices?.length ? (
+            <p className="text-xs text-text-muted">
+              No renewal invoices have been issued yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {invoiceData.invoices.map((inv) => (
+                <PurchaseInvoiceItem
+                  key={inv.id}
+                  invoice={inv}
+                  fallbackCurrency={p.currency}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Sub-row rendered inside a recurring marketplace purchase's expanded
+ * billing history. Each invoice carries its own coupon-aware discount
+ * chip + Receipt PDF link, mirroring the chip shape used by the parent
+ * row and `Billing.tsx` so a buyer comparing the in-app row with the
+ * downloaded receipt sees the same coupon attribution (Task #1389).
+ */
+function PurchaseInvoiceItem({
+  invoice,
+  fallbackCurrency,
+}: {
+  invoice: PurchaseInvoiceRow;
+  fallbackCurrency: string;
+}) {
+  const ccy = (invoice.currency || fallbackCurrency || 'usd').toUpperCase();
+  const amountStr = formatCentsHelper(invoice.amountCents, { currency: ccy });
+  const dateStr = invoice.date
+    ? new Date(invoice.date).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      })
+    : '—';
+  const statusTone = invoice.status === 'paid'
+    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    : invoice.status === 'open'
+    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    : invoice.status === 'uncollectible' || invoice.status === 'void'
+    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    : 'bg-surface-hover text-text-secondary';
+
+  return (
+    <li
+      className="py-2 flex items-start gap-3"
+      data-testid="marketplace-purchase-invoice-row"
+    >
+      <FileText className="h-4 w-4 text-text-muted mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-text-primary">
+            {invoice.number ?? invoice.id.slice(0, 14)}
+          </span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${statusTone}`}>
+            {invoice.status}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted mt-0.5">
+          <span>{dateStr}</span>
+          {invoice.description && (
+            <span className="truncate">· {invoice.description}</span>
+          )}
+        </div>
+        {invoice.discounts.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {invoice.discounts.map((d, idx) => {
+              const label = formatPurchaseDiscountLabel(d, invoice.currency);
+              const tip = d.name && d.name !== d.promotionCode
+                ? `Discount applied: ${label} (coupon: ${d.name})`
+                : `Discount applied: ${label}`;
+              return (
+                <span
+                  key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  title={tip}
+                  aria-label={tip}
+                  data-testid="marketplace-purchase-invoice-discount-badge"
+                >
+                  <BadgePercent className="h-3 w-3" />
+                  {label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-1 shrink-0">
+        <span className="text-sm font-semibold text-text-primary">{amountStr}</span>
+        {invoice.invoicePdf ? (
+          <a
+            href={invoice.invoicePdf}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 rounded transition-colors"
+            data-testid="marketplace-purchase-invoice-pdf"
+          >
+            <Download className="h-3 w-3" />
+            Receipt PDF
+          </a>
+        ) : invoice.hostedInvoiceUrl ? (
+          <a
+            href={invoice.hostedInvoiceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 rounded transition-colors"
+            data-testid="marketplace-purchase-invoice-pdf"
+          >
+            <FileText className="h-3 w-3" />
+            View invoice
+          </a>
+        ) : null}
+      </div>
+    </li>
   );
 }
 
