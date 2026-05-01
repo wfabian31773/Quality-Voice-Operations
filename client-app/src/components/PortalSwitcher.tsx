@@ -2,12 +2,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Building2, Shield, Radio, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 
 interface Portal {
-  id: string;
-  label: string;
-  badge: string;
+  id: 'tenant' | 'admin' | 'ops';
   icon: typeof Building2;
   path: string;
   badgeColor: string;
@@ -16,24 +15,18 @@ interface Portal {
 const portals: Portal[] = [
   {
     id: 'tenant',
-    label: 'Tenant Portal',
-    badge: 'Tenant',
     icon: Building2,
     path: '/dashboard',
     badgeColor: 'bg-info/30 text-on-sidebar',
   },
   {
     id: 'admin',
-    label: 'Platform Admin',
-    badge: 'Admin',
     icon: Shield,
     path: '/admin/dashboard',
     badgeColor: 'bg-accent/30 text-on-sidebar',
   },
   {
     id: 'ops',
-    label: 'Operations',
-    badge: 'Ops',
     icon: Radio,
     path: '/ops/monitor',
     badgeColor: 'bg-success/30 text-on-sidebar',
@@ -48,6 +41,7 @@ function getCurrentPortal(pathname: string): Portal {
 
 export default function PortalSwitcher() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -58,6 +52,8 @@ export default function PortalSwitcher() {
 
   const current = getCurrentPortal(location.pathname);
   const others = portals.filter((p) => p.id !== current.id);
+  const portalLabel = (id: Portal['id']) => t(`portal_switcher.${id}_label`);
+  const portalBadge = (id: Portal['id']) => t(`portal_switcher.${id}_badge`);
 
   useEffect(() => {
     if (!open) return;
@@ -89,7 +85,7 @@ export default function PortalSwitcher() {
       >
         <div className="flex items-center gap-2">
           <current.icon className="h-3.5 w-3.5" />
-          <span>{current.label}</span>
+          <span>{portalLabel(current.id)}</span>
         </div>
         <ChevronDown
           className={clsx(
@@ -102,7 +98,7 @@ export default function PortalSwitcher() {
       {open && (
         <div className="absolute left-3 right-3 bottom-full mb-1 bg-sidebar-bg border border-on-sidebar/10 rounded-lg shadow-xl overflow-hidden z-50">
           <p className="px-3 py-2 text-[10px] text-on-sidebar/70 uppercase tracking-wider font-semibold">
-            Switch Portal
+            {t('portal_switcher.switch_portal')}
           </p>
           {others.map((portal) => (
             <button
@@ -114,14 +110,14 @@ export default function PortalSwitcher() {
               className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-text hover:text-on-sidebar hover:bg-sidebar-hover transition-colors"
             >
               <portal.icon className="h-4 w-4" />
-              <span className="flex-1 text-left">{portal.label}</span>
+              <span className="flex-1 text-left">{portalLabel(portal.id)}</span>
               <span
                 className={clsx(
                   'text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider',
                   portal.badgeColor,
                 )}
               >
-                {portal.badge}
+                {portalBadge(portal.id)}
               </span>
             </button>
           ))}

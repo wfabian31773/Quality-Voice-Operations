@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Cpu, Filter, Globe } from 'lucide-react';
 import clsx from 'clsx';
 import EvolutionEngine from './EvolutionEngine';
@@ -8,13 +9,14 @@ import GlobalIntelligence from './GlobalIntelligence';
 
 type GovernanceTab = 'evolution' | 'funnel' | 'intelligence';
 
-const TABS: { key: GovernanceTab; label: string; icon: typeof Cpu }[] = [
-  { key: 'evolution', label: 'Evolution Engine', icon: Cpu },
-  { key: 'funnel', label: 'Conversion Funnel', icon: Filter },
-  { key: 'intelligence', label: 'Global Intelligence', icon: Globe },
+const TAB_DEFS: { key: GovernanceTab; labelKey: string; icon: typeof Cpu }[] = [
+  { key: 'evolution', labelKey: 'governance.evolution_engine', icon: Cpu },
+  { key: 'funnel', labelKey: 'governance.conversion_funnel', icon: Filter },
+  { key: 'intelligence', labelKey: 'governance.global_intelligence', icon: Globe },
 ];
 
 export default function Governance() {
+  const { t } = useTranslation('tenant');
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get('tab');
   const activeTab = useMemo<GovernanceTab>(() => {
@@ -33,7 +35,7 @@ export default function Governance() {
   return (
     <div className="space-y-6">
       <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 overflow-x-auto">
-        {TABS.map((tab) => (
+        {TAB_DEFS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setTab(tab.key)}
@@ -45,7 +47,7 @@ export default function Governance() {
             )}
           >
             <tab.icon className="h-4 w-4" />
-            {tab.label}
+            {t(tab.labelKey)}
           </button>
         ))}
       </div>

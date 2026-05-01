@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Wrench } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -46,6 +47,7 @@ function isWhitelisted(pathname: string): boolean {
  * the BL-013 acceptance criteria require.
  */
 function MaintenanceStatusBanner({ state }: { state: MaintenanceState }) {
+  const { t } = useTranslation();
   return (
     <div
       role="status"
@@ -53,11 +55,11 @@ function MaintenanceStatusBanner({ state }: { state: MaintenanceState }) {
       className="bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm flex items-center gap-2 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-100"
     >
       <Wrench className="h-4 w-4 shrink-0" />
-      <span className="font-medium">Maintenance mode is ON.</span>
+      <span className="font-medium">{t('maintenance_banner.label')}</span>
       <span className="truncate">
         {state.message
           ? state.message
-          : 'Tenants are seeing the maintenance screen — admin consoles remain accessible.'}
+          : t('maintenance_banner.default_message')}
       </span>
     </div>
   );
@@ -81,6 +83,7 @@ const POLL_INTERVAL_ON_MS = 5_000;
 export default function MaintenanceGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<MaintenanceState | null>(null);
   const { user } = useAuth();
+  const { t } = useTranslation();
   const location = useLocation();
 
   useEffect(() => {
@@ -174,7 +177,7 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
         data-testid="maintenance-gate-loading"
         className="min-h-screen flex items-center justify-center bg-surface-secondary"
         aria-busy="true"
-        aria-label="Checking system status"
+        aria-label={t('maintenance_banner.checking_status')}
       />
     );
   }

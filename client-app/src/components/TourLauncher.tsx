@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { HelpCircle } from 'lucide-react';
 import ProductTour, { type TourStep, getTourCompleted } from './ProductTour';
 
@@ -32,9 +33,11 @@ export default function TourLauncher({
   steps,
   autoLaunch = true,
   ready = true,
-  buttonLabel = 'What is this?',
+  buttonLabel,
 }: TourLauncherProps) {
+  const { t } = useTranslation('tenant');
   const [open, setOpen] = useState(false);
+  const label = buttonLabel ?? t('tour_launcher.default_label');
 
   useEffect(() => {
     if (!autoLaunch || !ready) return;
@@ -49,8 +52,8 @@ export default function TourLauncher({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={buttonLabel}
-        title={buttonLabel}
+        aria-label={label}
+        title={label}
         data-testid={`tour-launcher-${tourId}`}
         className="inline-flex items-center justify-center h-7 w-7 rounded-full text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
       >

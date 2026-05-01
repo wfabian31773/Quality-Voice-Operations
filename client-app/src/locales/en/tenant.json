@@ -1095,5 +1095,277 @@
     "dismiss": "Dismiss",
     "provider_join_two": "{{a}} and {{b}}",
     "provider_join_many": "{{list}}, and {{last}}"
+  },
+  "trial_banner": {
+    "expired_aria": "Trial expired",
+    "expired_title": "Your trial has ended",
+    "expired_description": "Pick a plan to keep your agents, data, and integrations running. Your account is preserved — you just need to upgrade to continue.",
+    "choose_plan": "Choose a plan",
+    "expires_today": "Trial expires today",
+    "days_left_one": "1 day left in your trial",
+    "days_left_other": "{{count}} days left in your trial",
+    "upgrade_now": "Upgrade now"
+  },
+  "trial_conversion_nudge": {
+    "dismiss": "Dismiss",
+    "view_plans": "View Plans",
+    "see_pro_benefits": "See Pro Benefits",
+    "upgrade_now": "Upgrade Now",
+    "approaching_limit_title": "Approaching Plan Limit",
+    "approaching_limit_calls": "You've used {{pct}}% of your monthly calls. Upgrade to Pro for higher limits and unlock advanced features.",
+    "approaching_limit_minutes": "You've used {{pct}}% of your monthly AI minutes. Upgrade to Pro for higher limits and unlock advanced features.",
+    "calls_milestone_title": "Great Progress!",
+    "calls_milestone_message": "You've completed {{count}} calls. Upgrade to unlock advanced analytics, campaign tools, and higher limits.",
+    "first_call_title": "First Call Complete!",
+    "first_call_message": "Congratulations on your first call! Upgrade to Pro for advanced analytics, unlimited agents, and priority support.",
+    "agent_deployed_title": "Agent Deployed!",
+    "agent_deployed_message": "Your agent is published and ready to handle calls. Upgrade to Pro for more agents, higher call volumes, and priority support."
+  },
+  "onboarding_checklist": {
+    "title": "Activation Progress",
+    "steps_progress": "{{completed}} of {{total}} steps complete",
+    "dismiss": "Dismiss",
+    "progress_aria": "Activation progress: {{completed}} of {{total}} steps complete ({{pct}} percent)",
+    "progress_tooltip": "{{pct}}% of onboarding steps complete",
+    "agent_created_label": "Create your first agent",
+    "agent_created_cta": "Create Agent",
+    "phone_connected_label": "Connect a phone number",
+    "phone_connected_cta": "Add Number",
+    "tools_connected_label": "Connect your tools",
+    "tools_connected_cta": "Connect",
+    "first_call_label": "Complete your first call",
+    "first_call_cta": "Test Call"
+  },
+  "connector_auth_banner": {
+    "needs_reconnect_one": "1 integration needs to be reconnected",
+    "needs_reconnect_other": "{{count}} integrations need to be reconnected",
+    "description": "Authentication failed for {{names}}. Sync is paused until you sign in again.",
+    "fix_now": "Fix now",
+    "dismiss": "Dismiss",
+    "join_two": "{{a}} and {{b}}",
+    "join_many": "{{list}}, and {{last}}"
+  },
+  "notifications_center": {
+    "title": "Notifications",
+    "aria_unread_count": "Notifications — {{count}} unread",
+    "aria_no_unread": "Notifications",
+    "tooltip_unread_one": "You have 1 unread notification",
+    "tooltip_unread_other": "You have {{count}} unread notifications",
+    "tooltip_no_unread": "No new notifications",
+    "preferences_aria": "Notification preferences",
+    "close_aria": "Close",
+    "filter_all": "All",
+    "label_escalations": "Escalations",
+    "label_billing": "Billing",
+    "label_calls": "Calls",
+    "label_sms": "SMS",
+    "label_campaigns": "Campaigns",
+    "label_integrations": "Integrations",
+    "label_updates": "Updates",
+    "loading": "Loading…",
+    "all_caught_up": "You're all caught up",
+    "mark_as_read_aria": "Mark as read",
+    "mark_all_read": "Mark all read",
+    "clear_all": "Clear all",
+    "time_just_now": "just now",
+    "time_minutes_ago": "{{n}}m ago",
+    "time_hours_ago": "{{n}}h ago",
+    "time_days_ago": "{{n}}d ago"
+  },
+  "help_drawer": {
+    "open_aria": "Open help",
+    "close_aria": "Close help",
+    "title": "Help",
+    "tab_article": "This page",
+    "tab_support": "Contact support",
+    "open_in_docs": "Open in docs",
+    "browse_all_docs": "Browse all documentation",
+    "message_sent": "Message sent",
+    "message_received": "We've received your request and will reply by email within one business day.",
+    "message_received_with_id": "We've received your request (ticket {{id}}) and will reply by email within one business day.",
+    "close_after_send": "Close",
+    "intro": "Tell us what's going on. We'll include this page and recent activity automatically to speed things up.",
+    "topic_label": "Topic",
+    "topic_question": "General question",
+    "topic_bug": "Something is broken",
+    "topic_billing": "Billing or plans",
+    "topic_integration": "Integration help",
+    "topic_onboarding": "Onboarding / setup",
+    "topic_feature": "Feature request",
+    "message_label": "Message",
+    "message_placeholder": "Describe what you were doing and what you'd expect to happen...",
+    "recent_errors_label": "Recent errors",
+    "recent_errors_optional": "(optional)",
+    "recent_errors_placeholder": "Paste any error message you saw",
+    "send_message": "Send message",
+    "send_error_default": "Could not send. Try again or email support@qvo.ai."
+  },
+  "help_widget": {
+    "aria": "Help",
+    "title": "Help & resources",
+    "subtitle": "Search docs, get support, see what's new.",
+    "tab_home": "Home",
+    "tab_docs": "Docs",
+    "tab_changelog": "Changelog",
+    "action_take_tour": "Take the product tour",
+    "action_browse_docs": "Browse docs",
+    "action_whats_new": "What's new",
+    "action_shortcuts": "Keyboard shortcuts",
+    "action_open_command": "Open command palette",
+    "action_contact_support": "Contact support",
+    "search_placeholder": "Search docs and pages...",
+    "search_aria": "Search docs and marketing pages",
+    "results_one": "{{count}} result",
+    "results_other": "{{count}} results",
+    "no_matches": "No matches for \"{{query}}\".",
+    "docs_heading": "Docs",
+    "marketing_heading": "Marketing pages",
+    "opens_in_new_tab": "opens in new tab",
+    "changelog_entries": [
+      {
+        "date": "Apr 21",
+        "tag": "New",
+        "text": "Command palette (⌘K) and in-app help widget."
+      },
+      {
+        "date": "Apr 19",
+        "tag": "New",
+        "text": "Guided product tour for first-time users."
+      },
+      {
+        "date": "Apr 17",
+        "tag": "Improved",
+        "text": "Dashboard now shows live bookings and revenue."
+      },
+      {
+        "date": "Apr 15",
+        "tag": "Improved",
+        "text": "Dark-mode polish across analytics charts."
+      }
+    ]
+  },
+  "product_tour": {
+    "step_progress": "Step {{current}} of {{total}}",
+    "close_aria": "Close tour",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish"
+  },
+  "tour_launcher": {
+    "default_label": "What is this?"
+  },
+  "platform_assistant": {
+    "open_aria": "Open assistant",
+    "close_aria": "Close assistant",
+    "title": "QVO Assistant",
+    "subtitle": "Platform guide",
+    "new_chat": "New chat",
+    "send_aria": "Send message",
+    "input_placeholder": "Ask anything...",
+    "intro_message": "Hi! I'm your QVO Platform Assistant. I can help you set up agents, connect integrations, and get the most out of the platform. What would you like help with?",
+    "action_create_agent_label": "Create an agent",
+    "action_create_agent_prompt": "Help me create a new agent",
+    "action_connect_integration_label": "Connect integration",
+    "action_connect_integration_prompt": "How do I connect an integration?",
+    "action_phone_setup_label": "Set up phone number",
+    "action_phone_setup_prompt": "How do I set up a phone number?",
+    "action_billing_label": "Help with billing",
+    "action_billing_prompt": "Tell me about the billing plans",
+    "thinking": "Thinking...",
+    "error_default": "Failed to get a response. Please try again."
+  },
+  "tooltip_walkthrough": {
+    "dismiss_aria": "Dismiss",
+    "got_it": "Got it"
+  },
+  "celebration": {
+    "dismiss_aria": "Dismiss celebration",
+    "default_aria": "Celebration",
+    "default_title": "You did it!",
+    "default_message": "Your first call just completed. This is what activation feels like."
+  },
+  "phone_verification": {
+    "phone_label": "Phone Number",
+    "phone_placeholder": "+1 (555) 000-0000",
+    "send_code": "Send Verification Code",
+    "sending": "Sending...",
+    "send_failed": "Failed to send code",
+    "send_request_failed": "Failed to send verification code",
+    "code_intro": "Enter the 6-digit code sent to {{phone}}",
+    "code_placeholder": "000000",
+    "verify_code": "Verify Code",
+    "verifying": "Verifying...",
+    "verify_failed": "Verification failed",
+    "change_number": "Change phone number",
+    "success": "Phone number verified successfully."
+  },
+  "operations_alerts_banner": {
+    "unack_one": "1 unacknowledged {{noun}}",
+    "unack_other": "{{count}} unacknowledged {{noun}}",
+    "review_in_operations": "Review in Operations",
+    "alert_aria": "{{title}}: {{label}}. Open Operations alerts.",
+    "categories": {
+      "error_rate_spike": {
+        "title": "Call failure rate spike",
+        "description": "A meaningful share of calls in the last hour failed compared to the 7-day baseline.",
+        "noun_one": "failure-rate alert",
+        "noun_other": "failure-rate alerts"
+      },
+      "billing_backfill_cross_day_skipped": {
+        "title": "Manual billing rebalance required",
+        "description": "A cross-day backfill couldn't be auto-rebalanced because old-day rollup rows were missing.",
+        "noun_one": "manual rebalance",
+        "noun_other": "manual rebalances"
+      },
+      "support_email_delivery_failed": {
+        "title": "Support email delivery failed",
+        "description": "An inbound support ticket couldn't be routed to its destination inbox after retries.",
+        "noun_one": "undelivered support email",
+        "noun_other": "undelivered support emails"
+      },
+      "support_reply_delivery_failed": {
+        "title": "Support replies failing",
+        "description": "Outbound replies to a support ticket are failing to deliver after multiple attempts.",
+        "noun_one": "failed reply",
+        "noun_other": "failed replies"
+      },
+      "support_recipient_first_bounce": {
+        "title": "Support recipient bouncing",
+        "description": "A support ticket recipient bounced for the first time — verify the contact address.",
+        "noun_one": "bouncing recipient",
+        "noun_other": "bouncing recipients"
+      },
+      "escalation_spike": {
+        "title": "Escalation spike detected",
+        "description": "Calls are escalating to a human at a much higher rate than the 7-day baseline.",
+        "noun_one": "escalation alert",
+        "noun_other": "escalation alerts"
+      },
+      "booking_rate_drop": {
+        "title": "Completion rate drop",
+        "description": "Calls in the last hour are completing at a much lower rate than the 7-day baseline.",
+        "noun_one": "completion-rate alert",
+        "noun_other": "completion-rate alerts"
+      },
+      "billing_backfill_cross_day": {
+        "title": "Billing needs verification",
+        "description": "A cross-day backfill auto-rebalanced usage between days. Verify the rebalance landed.",
+        "noun_one": "cross-day backfill alert",
+        "noun_other": "cross-day backfill alerts"
+      }
+    }
+  },
+  "changelog": {
+    "title": "What's new",
+    "description": "Recent platform updates, fixes, and improvements.",
+    "mark_all_read": "Mark all read",
+    "empty_title": "No changelog entries yet",
+    "empty_description": "Once the team ships an update we'll surface it here.",
+    "new_badge": "New"
+  },
+  "governance": {
+    "evolution_engine": "Evolution Engine",
+    "conversion_funnel": "Conversion Funnel",
+    "global_intelligence": "Global Intelligence"
   }
 }

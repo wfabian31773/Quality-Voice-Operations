@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef, type CSSProperties } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 
 export interface TourStep {
@@ -31,6 +32,7 @@ interface ProductTourProps {
 export default function ProductTour({ active, onClose, steps, tourId }: ProductTourProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation('tenant');
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const rafRef = useRef<number>(0);
@@ -158,12 +160,12 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
       >
         <div className="flex items-start justify-between mb-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
-            Step {step + 1} of {steps.length}
+            {t('product_tour.step_progress', { current: step + 1, total: steps.length })}
           </span>
           <button
             onClick={finish}
             className="text-text-muted hover:text-text-primary"
-            aria-label="Close tour"
+            aria-label={t('product_tour.close_aria')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -176,7 +178,7 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
             disabled={step === 0}
             className="text-xs font-medium text-text-secondary hover:text-text-primary disabled:opacity-40 inline-flex items-center gap-1"
           >
-            <ChevronLeft className="h-3 w-3" /> Back
+            <ChevronLeft className="h-3 w-3" /> {t('product_tour.back')}
           </button>
           <div className="flex gap-1">
             {steps.map((_, i) => (
@@ -191,14 +193,14 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
               onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))}
               className="text-xs font-medium text-primary hover:text-primary-hover inline-flex items-center gap-1"
             >
-              Next <ChevronRight className="h-3 w-3" />
+              {t('product_tour.next')} <ChevronRight className="h-3 w-3" />
             </button>
           ) : (
             <button
               onClick={finish}
               className="text-xs font-medium bg-primary hover:bg-primary-hover text-white px-3 py-1.5 rounded-lg"
             >
-              Finish
+              {t('product_tour.finish')}
             </button>
           )}
         </div>

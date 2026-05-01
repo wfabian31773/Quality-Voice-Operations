@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { Sparkles, CheckCheck } from 'lucide-react';
 import { PageHeader } from '../components/ui';
@@ -16,6 +17,7 @@ interface Entry {
 
 export default function Changelog() {
   const qc = useQueryClient();
+  const { t, i18n } = useTranslation('tenant');
   const { data, isLoading } = useQuery({
     queryKey: ['changelog'],
     queryFn: () => api.get<{ entries: Entry[] }>('/platform/changelog'),
@@ -41,8 +43,8 @@ export default function Changelog() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <PageHeader
-        title="What's new"
-        description="Recent platform updates, fixes, and improvements."
+        title={t('changelog.title')}
+        description={t('changelog.description')}
         icon={<Sparkles className="h-5 w-5" />}
         actions={
           <button
@@ -50,7 +52,7 @@ export default function Changelog() {
             disabled={readAll.isPending || entries.length === 0}
             className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <CheckCheck className="h-4 w-4" /> Mark all read
+            <CheckCheck className="h-4 w-4" /> {t('changelog.mark_all_read')}
           </button>
         }
       />
@@ -65,8 +67,8 @@ export default function Changelog() {
       {!isLoading && entries.length === 0 && (
         <EmptyState
           icon={Sparkles}
-          title="No changelog entries yet"
-          description="Once the team ships an update we'll surface it here."
+          title={t('changelog.empty_title')}
+          description={t('changelog.empty_description')}
         />
       )}
 
@@ -78,7 +80,7 @@ export default function Changelog() {
           >
             <div className="flex items-center justify-between gap-3 mb-2">
               <time className="text-xs text-text-muted uppercase tracking-wider font-semibold">
-                {new Date(e.published_at).toLocaleDateString(undefined, {
+                {new Date(e.published_at).toLocaleDateString(i18n.language, {
                   year: 'numeric',
                   month: 'short',
                   day: 'numeric',
@@ -86,7 +88,7 @@ export default function Changelog() {
               </time>
               {!e.read && (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary text-on-primary">
-                  New
+                  {t('changelog.new_badge')}
                 </span>
               )}
             </div>

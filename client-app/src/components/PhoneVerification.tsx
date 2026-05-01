@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getToken } from '../lib/api';
 
 export default function PhoneVerification({ onVerified }: { onVerified?: () => void }) {
+  const { t } = useTranslation('tenant');
   const [step, setStep] = useState<'input' | 'verify'>('input');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
@@ -27,12 +29,12 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to send code');
+        setError(data.error || t('phone_verification.send_failed'));
         return;
       }
       setStep('verify');
     } catch {
-      setError('Failed to send verification code');
+      setError(t('phone_verification.send_request_failed'));
     } finally {
       setLoading(false);
     }
@@ -49,13 +51,13 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Verification failed');
+        setError(data.error || t('phone_verification.verify_failed'));
         return;
       }
       setSuccess(true);
       onVerified?.();
     } catch {
-      setError('Verification failed');
+      setError(t('phone_verification.verify_failed'));
     } finally {
       setLoading(false);
     }
@@ -64,7 +66,7 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
   if (success) {
     return (
       <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-700 dark:text-green-300 text-sm">
-        Phone number verified successfully.
+        {t('phone_verification.success')}
       </div>
     );
   }
@@ -74,13 +76,13 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
       {step === 'input' ? (
         <>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Phone Number
+            {t('phone_verification.phone_label')}
           </label>
           <input
             type="tel"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}
-            placeholder="+1 (555) 000-0000"
+            placeholder={t('phone_verification.phone_placeholder')}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           />
           <button
@@ -88,19 +90,19 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
             disabled={loading || !phoneNumber}
             className="w-full py-2 px-4 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
           >
-            {loading ? 'Sending...' : 'Send Verification Code'}
+            {loading ? t('phone_verification.sending') : t('phone_verification.send_code')}
           </button>
         </>
       ) : (
         <>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Enter the 6-digit code sent to {phoneNumber}
+            {t('phone_verification.code_intro', { phone: phoneNumber })}
           </p>
           <input
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="000000"
+            placeholder={t('phone_verification.code_placeholder')}
             maxLength={6}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-2xl tracking-widest"
           />
@@ -109,13 +111,13 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
             disabled={loading || code.length !== 6}
             className="w-full py-2 px-4 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
           >
-            {loading ? 'Verifying...' : 'Verify Code'}
+            {loading ? t('phone_verification.verifying') : t('phone_verification.verify_code')}
           </button>
           <button
             onClick={() => { setStep('input'); setCode(''); }}
             className="w-full py-2 px-4 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm"
           >
-            Change phone number
+            {t('phone_verification.change_number')}
           </button>
         </>
       )}

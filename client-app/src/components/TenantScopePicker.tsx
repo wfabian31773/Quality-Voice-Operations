@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, Globe, Search, Check, Building2 } from 'lucide-react';
 import clsx from 'clsx';
 import { api } from '../lib/api';
@@ -21,6 +22,7 @@ function parseScope(pathname: string): { tenantId: string | null; subpath: strin
 }
 
 export default function TenantScopePicker() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { tenantId: activeTenantId, subpath } = parseScope(location.pathname);
@@ -39,7 +41,7 @@ export default function TenantScopePicker() {
   const tenants = data?.tenants ?? [];
 
   const activeTenant = useMemo(
-    () => tenants.find((t) => t.id === activeTenantId) ?? null,
+    () => tenants.find((tn) => tn.id === activeTenantId) ?? null,
     [tenants, activeTenantId],
   );
 
@@ -72,7 +74,7 @@ export default function TenantScopePicker() {
     const q = query.trim().toLowerCase();
     if (!q) return tenants;
     return tenants.filter(
-      (t) => t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q),
+      (tn) => tn.name.toLowerCase().includes(q) || tn.slug.toLowerCase().includes(q),
     );
   }, [tenants, query]);
 
@@ -89,8 +91,8 @@ export default function TenantScopePicker() {
     }
   };
 
-  const buttonLabel = activeTenant?.name ?? (activeTenantId ?? 'Global');
-  const buttonSub = activeTenant?.slug ?? 'All tenants';
+  const buttonLabel = activeTenant?.name ?? (activeTenantId ?? t('tenant_scope_picker.global_short'));
+  const buttonSub = activeTenant?.slug ?? t('tenant_scope_picker.all_tenants');
   const dotTone = activeTenantId ? 'bg-warning' : 'bg-info';
 
   return (
@@ -100,7 +102,7 @@ export default function TenantScopePicker() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={`Scope: ${buttonLabel} (${buttonSub})`}
+        title={t('tenant_scope_picker.tooltip', { label: buttonLabel, sub: buttonSub })}
         className={clsx(
           'inline-flex items-center gap-2 rounded-md border border-border bg-surface text-text-primary',
           'hover:bg-surface-hover transition-colors text-xs font-medium px-2.5 py-1.5',
@@ -119,7 +121,7 @@ export default function TenantScopePicker() {
       {open && (
         <div
           role="listbox"
-          aria-label="Tenant scope"
+          aria-label={t('tenant_scope_picker.scope_aria')}
           className="absolute z-40 mt-2 w-72 right-0 sm:right-auto sm:left-0 rounded-lg border border-border bg-surface shadow-[var(--elevation-2)] overflow-hidden"
         >
           <div className="p-2 border-b border-border">
@@ -130,7 +132,7 @@ export default function TenantScopePicker() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search tenants…"
+                placeholder={t('tenant_scope_picker.search_placeholder')}
                 className="w-full pl-7 pr-2 py-1.5 text-xs rounded-md border border-border bg-surface-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
@@ -150,28 +152,28 @@ export default function TenantScopePicker() {
               >
                 <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span className="flex-1 min-w-0">
-                  <span className="block font-medium">Global · all tenants</span>
-                  <span className="block text-[10px] text-text-muted">Platform-wide aggregate views</span>
+                  <span className="block font-medium">{t('tenant_scope_picker.global_label')}</span>
+                  <span className="block text-[10px] text-text-muted">{t('tenant_scope_picker.global_subtitle')}</span>
                 </span>
                 {!activeTenantId && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
               </button>
             </li>
 
             {isLoading && (
-              <li className="px-3 py-2 text-[11px] text-text-muted">Loading tenants…</li>
+              <li className="px-3 py-2 text-[11px] text-text-muted">{t('tenant_scope_picker.loading')}</li>
             )}
 
             {!isLoading && filtered.length === 0 && (
-              <li className="px-3 py-2 text-[11px] text-text-muted">No tenants match.</li>
+              <li className="px-3 py-2 text-[11px] text-text-muted">{t('tenant_scope_picker.no_match')}</li>
             )}
 
-            {filtered.map((t) => {
-              const active = t.id === activeTenantId;
+            {filtered.map((tn) => {
+              const active = tn.id === activeTenantId;
               return (
-                <li key={t.id}>
+                <li key={tn.id}>
                   <button
                     type="button"
-                    onClick={() => goTo(t.id)}
+                    onClick={() => goTo(tn.id)}
                     className={clsx(
                       'w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors',
                       active
@@ -181,10 +183,10 @@ export default function TenantScopePicker() {
                   >
                     <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span className="flex-1 min-w-0">
-                      <span className="block font-medium truncate">{t.name}</span>
+                      <span className="block font-medium truncate">{tn.name}</span>
                       <span className="block text-[10px] text-text-muted truncate">
-                        {t.slug}
-                        {t.status && t.status !== 'active' ? ` · ${t.status}` : ''}
+                        {tn.slug}
+                        {tn.status && tn.status !== 'active' ? ` · ${tn.status}` : ''}
                       </span>
                     </span>
                     {active && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}

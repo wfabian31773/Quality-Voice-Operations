@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell, X, Check, Trash2, AlertCircle, CreditCard, MessageSquare, PhoneCall, Megaphone, Wrench, Settings as SettingsIcon, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Link } from 'react-router-dom';
@@ -14,40 +15,47 @@ interface Notification {
   created_at: string;
 }
 
-const TYPE_META: Record<string, { icon: typeof Bell; color: string; label: string }> = {
-  escalation: { icon: AlertCircle, color: 'text-danger bg-red-50 dark:bg-red-500/15', label: 'Escalations' },
-  billing: { icon: CreditCard, color: 'text-warning bg-amber-50 dark:bg-amber-500/15', label: 'Billing' },
-  call: { icon: PhoneCall, color: 'text-primary bg-primary-light', label: 'Calls' },
-  sms: { icon: MessageSquare, color: 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/15', label: 'SMS' },
-  campaign: { icon: Megaphone, color: 'text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/15', label: 'Campaigns' },
-  integration: { icon: Wrench, color: 'text-orange-600 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15', label: 'Integrations' },
-  integration_sms: { icon: Wrench, color: 'text-orange-600 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15', label: 'Integrations' },
-  integration_recovery: { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15', label: 'Integrations' },
+interface TypeMeta {
+  icon: typeof Bell;
+  color: string;
+  labelKey: string;
+}
+
+const TYPE_META: Record<string, TypeMeta> = {
+  escalation: { icon: AlertCircle, color: 'text-danger bg-red-50 dark:bg-red-500/15', labelKey: 'label_escalations' },
+  billing: { icon: CreditCard, color: 'text-warning bg-amber-50 dark:bg-amber-500/15', labelKey: 'label_billing' },
+  call: { icon: PhoneCall, color: 'text-primary bg-primary-light', labelKey: 'label_calls' },
+  sms: { icon: MessageSquare, color: 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/15', labelKey: 'label_sms' },
+  campaign: { icon: Megaphone, color: 'text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/15', labelKey: 'label_campaigns' },
+  integration: { icon: Wrench, color: 'text-orange-600 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15', labelKey: 'label_integrations' },
+  integration_sms: { icon: Wrench, color: 'text-orange-600 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15', labelKey: 'label_integrations' },
+  integration_recovery: { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15', labelKey: 'label_integrations' },
 };
 
 const FILTERS = ['all', 'escalation', 'billing', 'integration'] as const;
 type Filter = typeof FILTERS[number];
 
-function metaFor(type: string) {
-  return TYPE_META[type] ?? { icon: Bell, color: 'text-text-secondary bg-surface-hover', label: 'Updates' };
-}
-
-function timeAgo(iso: string) {
-  const ms = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(ms / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
+function metaFor(type: string): TypeMeta {
+  return TYPE_META[type] ?? { icon: Bell, color: 'text-text-secondary bg-surface-hover', labelKey: 'label_updates' };
 }
 
 export default function NotificationsCenter() {
+  const { t } = useTranslation('tenant');
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const ref = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
+  const timeAgo = (iso: string) => {
+    const ms = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return t('notifications_center.time_just_now');
+    if (m < 60) return t('notifications_center.time_minutes_ago', { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t('notifications_center.time_hours_ago', { n: h });
+    const d = Math.floor(h / 24);
+    return t('notifications_center.time_days_ago', { n: d });
+  };
 
   const { data: countData } = useQuery({
     queryKey: ['notifications-unread'],
@@ -121,13 +129,13 @@ export default function NotificationsCenter() {
         className="relative p-2 rounded-lg hover:bg-surface-hover transition-colors text-text-secondary"
         aria-label={
           count > 0
-            ? `Notifications — ${count} unread`
-            : 'Notifications'
+            ? t('notifications_center.aria_unread_count', { count })
+            : t('notifications_center.aria_no_unread')
         }
         title={
           count > 0
-            ? `You have ${count} unread notification${count === 1 ? '' : 's'}`
-            : 'No new notifications'
+            ? t('notifications_center.tooltip_unread', { count })
+            : t('notifications_center.tooltip_no_unread')
         }
       >
         <Bell className="h-5 w-5" aria-hidden="true" />
@@ -144,21 +152,21 @@ export default function NotificationsCenter() {
       {open && (
         <div className="absolute right-0 mt-2 w-[360px] max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <h3 className="font-semibold text-sm">Notifications</h3>
+            <h3 className="font-semibold text-sm">{t('notifications_center.title')}</h3>
             <div className="flex items-center gap-1">
               <Link
                 to="/settings/notifications"
                 onClick={() => setOpen(false)}
                 className="text-text-muted hover:text-text-primary p-1 rounded"
-                aria-label="Notification preferences"
-                title="Notification preferences"
+                aria-label={t('notifications_center.preferences_aria')}
+                title={t('notifications_center.preferences_aria')}
               >
                 <SettingsIcon className="h-4 w-4" />
               </Link>
               <button
                 onClick={() => setOpen(false)}
                 className="text-text-muted hover:text-text-primary p-1 rounded"
-                aria-label="Close"
+                aria-label={t('notifications_center.close_aria')}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -176,19 +184,19 @@ export default function NotificationsCenter() {
                     : 'text-text-secondary hover:bg-surface-hover'
                 }`}
               >
-                {f === 'all' ? 'All' : metaFor(f).label}
+                {f === 'all' ? t('notifications_center.filter_all') : t(`notifications_center.${metaFor(f).labelKey}`)}
               </button>
             ))}
           </div>
 
           <div className="max-h-[400px] overflow-y-auto">
             {isLoading && (
-              <div className="p-6 text-center text-sm text-text-muted">Loading…</div>
+              <div className="p-6 text-center text-sm text-text-muted">{t('notifications_center.loading')}</div>
             )}
             {!isLoading && filtered.length === 0 && (
               <div className="p-8 text-center">
                 <Bell className="h-8 w-8 mx-auto text-text-muted mb-2" />
-                <p className="text-sm text-text-secondary">You're all caught up</p>
+                <p className="text-sm text-text-secondary">{t('notifications_center.all_caught_up')}</p>
               </div>
             )}
             {filtered.map((n) => {
@@ -219,8 +227,8 @@ export default function NotificationsCenter() {
                         markRead.mutate(n.id);
                       }}
                       className="text-text-muted hover:text-primary p-1"
-                      aria-label="Mark as read"
-                      title="Mark as read"
+                      aria-label={t('notifications_center.mark_as_read_aria')}
+                      title={t('notifications_center.mark_as_read_aria')}
                     >
                       <Check className="h-3.5 w-3.5" />
                     </button>
@@ -250,14 +258,14 @@ export default function NotificationsCenter() {
               disabled={count === 0 || readAll.isPending}
               className="text-text-secondary hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed font-medium"
             >
-              Mark all read
+              {t('notifications_center.mark_all_read')}
             </button>
             <button
               onClick={() => clearAll.mutate()}
               disabled={all.length === 0 || clearAll.isPending}
               className="inline-flex items-center gap-1 text-text-secondary hover:text-danger disabled:opacity-40 disabled:cursor-not-allowed font-medium"
             >
-              <Trash2 className="h-3 w-3" /> Clear all
+              <Trash2 className="h-3 w-3" /> {t('notifications_center.clear_all')}
             </button>
           </div>
         </div>

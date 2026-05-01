@@ -729,19 +729,58 @@
     "dont_show": "Don't show this again",
     "restart_anytime": "You can restart onboarding anytime from Settings.",
     "templates": {
-      "answering-service": { "label": "Answering Service", "description": "General inbound call handling and ticket creation" },
-      "medical-after-hours": { "label": "Medical After-Hours", "description": "Medical triage with urgent escalation" },
-      "dental": { "label": "Dental Practice", "description": "Dental appointment scheduling and emergency routing" },
-      "property-management": { "label": "Property Management", "description": "Maintenance requests and emergency dispatch" },
-      "home-services": { "label": "Home Services", "description": "HVAC, plumbing, and electrical service booking" },
-      "legal": { "label": "Legal Intake", "description": "Consultation scheduling with conflict-of-interest screening" },
-      "customer-support": { "label": "Customer Support Center", "description": "Triage support callers by priority, log tickets, and confirm next steps via SMS" },
-      "outbound-sales": { "label": "Outbound Sales", "description": "Qualify outbound prospects, book demos with reps, and SMS the follow-up details" },
-      "technical-support": { "label": "Technical Support", "description": "Run guided troubleshooting, escalate to Tier 2, and SMS the resolution" },
-      "collections": { "label": "Collections & Recovery", "description": "Verify accounts with mini-Miranda compliance, set up payment plans, and SMS confirmations" },
-      "real-estate": { "label": "Real Estate", "description": "Buyer/seller qualification and showing scheduling" },
-      "restaurant": { "label": "Restaurant Reservations", "description": "Take reservations or add callers to the waitlist" },
-      "salon": { "label": "Salon & Spa", "description": "Book stylist appointments and confirm the day before" }
+      "answering-service": {
+        "label": "Answering Service",
+        "description": "General inbound call handling and ticket creation"
+      },
+      "medical-after-hours": {
+        "label": "Medical After-Hours",
+        "description": "Medical triage with urgent escalation"
+      },
+      "dental": {
+        "label": "Dental Practice",
+        "description": "Dental appointment scheduling and emergency routing"
+      },
+      "property-management": {
+        "label": "Property Management",
+        "description": "Maintenance requests and emergency dispatch"
+      },
+      "home-services": {
+        "label": "Home Services",
+        "description": "HVAC, plumbing, and electrical service booking"
+      },
+      "legal": {
+        "label": "Legal Intake",
+        "description": "Consultation scheduling with conflict-of-interest screening"
+      },
+      "customer-support": {
+        "label": "Customer Support Center",
+        "description": "Triage support callers by priority, log tickets, and confirm next steps via SMS"
+      },
+      "outbound-sales": {
+        "label": "Outbound Sales",
+        "description": "Qualify outbound prospects, book demos with reps, and SMS the follow-up details"
+      },
+      "technical-support": {
+        "label": "Technical Support",
+        "description": "Run guided troubleshooting, escalate to Tier 2, and SMS the resolution"
+      },
+      "collections": {
+        "label": "Collections & Recovery",
+        "description": "Verify accounts with mini-Miranda compliance, set up payment plans, and SMS confirmations"
+      },
+      "real-estate": {
+        "label": "Real Estate",
+        "description": "Buyer/seller qualification and showing scheduling"
+      },
+      "restaurant": {
+        "label": "Restaurant Reservations",
+        "description": "Take reservations or add callers to the waitlist"
+      },
+      "salon": {
+        "label": "Salon & Spa",
+        "description": "Book stylist appointments and confirm the day before"
+      }
     }
   },
   "post_install": {
@@ -795,5 +834,114 @@
     "description": "The link you followed may be broken, or the page may have been moved. Let's get you back on track.",
     "go_dashboard": "Go to dashboard",
     "go_back": "Go back"
+  },
+  "server_error": {
+    "label": "500 — Something went wrong",
+    "title": "An unexpected error occurred",
+    "description": "We've logged the error and our team will take a look. You can try again, or head back to the dashboard.",
+    "try_again": "Try again",
+    "go_dashboard": "Go to dashboard"
+  },
+  "access_denied": {
+    "title": "Access Denied",
+    "default_message": "You do not have permission to view this page. Contact your organization owner to request access.",
+    "go_dashboard": "Go to Dashboard"
+  },
+  "cookie_consent": {
+    "title": "We value your privacy",
+    "message": "We use cookies to keep the site secure and (with your consent) to understand how it's used.",
+    "see_policy": "See our",
+    "privacy_policy_link": "Privacy Policy",
+    "accept_all": "Accept all",
+    "reject_all": "Reject all",
+    "customize": "Customize",
+    "save_preferences": "Save preferences",
+    "dismiss_aria": "Reject all and dismiss",
+    "essential_label": "Essential",
+    "essential_desc": "Required for authentication and session state. Always on.",
+    "analytics_label": "Analytics",
+    "analytics_desc": "Helps us understand which pages and features are used.",
+    "marketing_label": "Marketing",
+    "marketing_desc": "Used to measure campaign effectiveness."
+  },
+  "command_palette": {
+    "aria": "Command palette",
+    "search_placeholder": "Search commands, pages, actions...",
+    "search_aria": "Search commands and pages",
+    "no_matches": "No matches",
+    "navigate_hint": "Navigate with ↑ ↓",
+    "open_anytime": "Open anytime with",
+    "esc": "ESC",
+    "group_navigate": "Navigate",
+    "group_actions": "Actions",
+    "group_help": "Help",
+    "go_dashboard": "Go to Dashboard",
+    "go_agents": "Go to Agents",
+    "go_calls": "Go to Conversations",
+    "go_campaigns": "Go to Campaigns",
+    "go_analytics": "Go to Analytics",
+    "go_sms": "Go to SMS Inbox",
+    "go_scheduling": "Go to Scheduling",
+    "go_tickets": "Go to Tickets",
+    "go_dispatch": "Go to Dispatch",
+    "go_autopilot": "Go to Autopilot",
+    "go_workflows": "Go to Workflows",
+    "go_integrations": "Go to Integrations",
+    "go_knowledge": "Go to Knowledge",
+    "go_marketplace": "Go to Marketplace",
+    "go_phones": "Manage Phone Numbers",
+    "open_settings": "Open Settings",
+    "new_agent": "Create New Agent",
+    "new_campaign": "Create New Campaign",
+    "new_doc": "Add Knowledge Source",
+    "start_tour": "Start Product Tour",
+    "view_shortcuts": "View Keyboard Shortcuts",
+    "open_help": "Open Help & Support"
+  },
+  "keyboard_shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "close": "Close keyboard shortcuts",
+    "command_palette": "Open command palette",
+    "command_palette_win": "Open command palette (Windows / Linux)",
+    "show_panel": "Show this shortcuts panel",
+    "go_dashboard": "Go to Dashboard",
+    "go_agents": "Go to Agents",
+    "go_conversations": "Go to Conversations",
+    "go_analytics": "Go to Analytics",
+    "go_settings": "Go to Settings",
+    "close_modal": "Close any modal or panel"
+  },
+  "portal_switcher": {
+    "tenant_label": "Tenant Portal",
+    "admin_label": "Platform Admin",
+    "ops_label": "Operations",
+    "tenant_badge": "Tenant",
+    "admin_badge": "Admin",
+    "ops_badge": "Ops",
+    "switch_portal": "Switch Portal"
+  },
+  "tenant_scope_picker": {
+    "tooltip": "Scope: {{label}} ({{sub}})",
+    "scope_aria": "Tenant scope",
+    "search_placeholder": "Search tenants…",
+    "global_label": "Global · all tenants",
+    "global_subtitle": "Platform-wide aggregate views",
+    "all_tenants": "All tenants",
+    "global_short": "Global",
+    "loading": "Loading tenants…",
+    "no_match": "No tenants match."
+  },
+  "maintenance_banner": {
+    "label": "Maintenance mode is ON.",
+    "default_message": "Tenants are seeing the maintenance screen — admin consoles remain accessible.",
+    "checking_status": "Checking maintenance status…"
+  },
+  "global_scope_banner": {
+    "tenant_label": "Viewing as admin — tenant: {{name}}",
+    "tenant_unknown": "unknown",
+    "tenant_description_with_slug": "You are inspecting another tenant's data as a platform admin. This is not your own tenant (slug: {{slug}}).",
+    "tenant_description": "You are inspecting another tenant's data as a platform admin. This is not your own tenant.",
+    "global_label": "Global / All Tenants",
+    "global_description": "You are viewing platform-wide data aggregated across every tenant. No single-tenant context applies."
   }
 }

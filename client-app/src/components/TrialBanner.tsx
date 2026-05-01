@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { Sparkles, AlertTriangle, Lock } from 'lucide-react';
 import Modal from './Modal';
@@ -15,6 +16,7 @@ interface TrialStatus {
 }
 
 export default function TrialBanner() {
+  const { t } = useTranslation('tenant');
   // Trial status changes on the order of days (countdown decrements once per
   // day, expiration is a single transition). There is no useful signal in
   // re-fetching this every few minutes, and TrialBanner is mounted on every
@@ -47,7 +49,7 @@ export default function TrialBanner() {
         <Modal
           open
           onClose={() => {}}
-          ariaLabel="Trial expired"
+          ariaLabel={t('trial_banner.expired_aria')}
           closeOnBackdrop={false}
           containerClassName="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
           panelClassName="relative max-w-md w-full bg-surface rounded-2xl shadow-xl p-6 text-center border border-border"
@@ -55,15 +57,15 @@ export default function TrialBanner() {
           <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-red-50 dark:bg-red-500/15 text-danger mb-4">
             <Lock className="h-7 w-7" />
           </div>
-          <h2 className="text-xl font-bold font-display mb-2">Your trial has ended</h2>
+          <h2 className="text-xl font-bold font-display mb-2">{t('trial_banner.expired_title')}</h2>
           <p className="text-text-secondary mb-6">
-            Pick a plan to keep your agents, data, and integrations running. Your account is preserved — you just need to upgrade to continue.
+            {t('trial_banner.expired_description')}
           </p>
           <Link
             to="/billing"
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-white font-medium hover:bg-primary-hover transition-colors w-full"
           >
-            <Sparkles className="h-4 w-4" /> Choose a plan
+            <Sparkles className="h-4 w-4" /> {t('trial_banner.choose_plan')}
           </Link>
         </Modal>
       </>
@@ -89,15 +91,15 @@ export default function TrialBanner() {
           {urgent ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Sparkles className="h-4 w-4 shrink-0" />}
           <span className="truncate font-medium">
             {days === 0
-              ? 'Trial expires today'
-              : `${days} day${days === 1 ? '' : 's'} left in your trial`}
+              ? t('trial_banner.expires_today')
+              : t('trial_banner.days_left', { count: days })}
           </span>
         </div>
         <Link
           to="/billing"
           className="shrink-0 inline-flex items-center gap-1.5 bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 px-3 py-1 rounded-md text-xs font-semibold transition-colors"
         >
-          Upgrade now
+          {t('trial_banner.upgrade_now')}
         </Link>
       </div>
     </div>

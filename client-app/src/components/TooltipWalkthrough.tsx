@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { X, Lightbulb } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ActivationMilestones {
   agent_created: boolean;
@@ -35,6 +36,7 @@ export default function TooltipWalkthrough({
   children,
 }: TooltipWalkthroughProps) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('tenant');
   const [visible, setVisible] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -102,7 +104,7 @@ export default function TooltipWalkthrough({
           <div className={`absolute border-8 ${arrowClasses[position]}`} />
           <button
             onClick={handleDismiss}
-            aria-label="Dismiss"
+            aria-label={t('tooltip_walkthrough.dismiss_aria')}
             className="absolute top-2 right-2 text-white/60 hover:text-white transition-colors"
           >
             <X className="h-3.5 w-3.5" />
@@ -118,7 +120,7 @@ export default function TooltipWalkthrough({
             onClick={handleDismiss}
             className="mt-3 text-xs bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors w-full"
           >
-            Got it
+            {t('tooltip_walkthrough.got_it')}
           </button>
         </div>
       )}

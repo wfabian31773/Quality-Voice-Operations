@@ -1,29 +1,31 @@
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import Modal from './Modal';
 
-const SHORTCUTS = [
-  { keys: ['⌘', 'K'], desc: 'Open command palette' },
-  { keys: ['Ctrl', 'K'], desc: 'Open command palette (Windows / Linux)' },
-  { keys: ['?'], desc: 'Show this shortcuts panel' },
-  { keys: ['G', 'D'], desc: 'Go to Dashboard' },
-  { keys: ['G', 'A'], desc: 'Go to Agents' },
-  { keys: ['G', 'C'], desc: 'Go to Conversations' },
-  { keys: ['G', 'N'], desc: 'Go to Analytics' },
-  { keys: ['G', 'S'], desc: 'Go to Settings' },
-  { keys: ['Esc'], desc: 'Close any modal or panel' },
-];
-
 export default function KeyboardShortcuts({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
+  const SHORTCUTS = [
+    { keys: ['⌘', 'K'], desc: t('keyboard_shortcuts.command_palette') },
+    { keys: ['Ctrl', 'K'], desc: t('keyboard_shortcuts.command_palette_win') },
+    { keys: ['?'], desc: t('keyboard_shortcuts.show_panel') },
+    { keys: ['G', 'D'], desc: t('keyboard_shortcuts.go_dashboard') },
+    { keys: ['G', 'A'], desc: t('keyboard_shortcuts.go_agents') },
+    { keys: ['G', 'C'], desc: t('keyboard_shortcuts.go_conversations') },
+    { keys: ['G', 'N'], desc: t('keyboard_shortcuts.go_analytics') },
+    { keys: ['G', 'S'], desc: t('keyboard_shortcuts.go_settings') },
+    { keys: ['Esc'], desc: t('keyboard_shortcuts.close_modal') },
+  ];
+
   return (
     <Modal open={open} onClose={onClose} labelledBy="keyboard-shortcuts-title">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <h2 id="keyboard-shortcuts-title" className="text-base font-semibold text-text-primary">
-          Keyboard Shortcuts
+          {t('keyboard_shortcuts.title')}
         </h2>
         <button
           onClick={onClose}
           className="text-text-muted hover:text-text-primary"
-          aria-label="Close keyboard shortcuts"
+          aria-label={t('keyboard_shortcuts.close')}
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

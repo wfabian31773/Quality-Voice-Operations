@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   HelpCircle, X, Search, BookOpen, MessageCircle,
   Sparkles, Keyboard, Command, ArrowRight, Map, ExternalLink, Globe,
@@ -60,12 +61,11 @@ function highlight(text: string, query: string) {
   );
 }
 
-const CHANGELOG = [
-  { date: 'Apr 21', tag: 'New', text: 'Command palette (⌘K) and in-app help widget.' },
-  { date: 'Apr 19', tag: 'New', text: 'Guided product tour for first-time users.' },
-  { date: 'Apr 17', tag: 'Improved', text: 'Dashboard now shows live bookings and revenue.' },
-  { date: 'Apr 15', tag: 'Improved', text: 'Dark-mode polish across analytics charts.' },
-];
+interface ChangelogEntry {
+  date: string;
+  tag: string;
+  text: string;
+}
 
 interface HelpWidgetProps {
   open: boolean;
@@ -76,6 +76,7 @@ interface HelpWidgetProps {
 
 export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour }: HelpWidgetProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation('tenant');
   const [tab, setTab] = useState<'home' | 'docs' | 'changelog'>('home');
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -115,7 +116,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
     <>
       <button
         onClick={() => setOpen(!open)}
-        aria-label="Help"
+        aria-label={t('help_widget.aria')}
         className="fixed z-40 bottom-5 right-5 h-12 w-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105"
       >
         {open ? <X className="h-5 w-5" /> : <HelpCircle className="h-5 w-5" />}
@@ -128,26 +129,26 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
         >
           <div className="px-4 py-3 bg-gradient-to-br from-[#123047] to-[#1a4a6b] text-white">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Help & resources</h3>
+              <h3 className="font-semibold text-sm">{t('help_widget.title')}</h3>
               <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-white/70 mt-0.5">Search docs, get support, see what's new.</p>
+            <p className="text-xs text-white/70 mt-0.5">{t('help_widget.subtitle')}</p>
           </div>
 
           <div className="flex border-b border-border">
-            {(['home', 'docs', 'changelog'] as const).map((t) => (
+            {(['home', 'docs', 'changelog'] as const).map((tk) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
+                key={tk}
+                onClick={() => setTab(tk)}
                 className={`flex-1 px-3 py-2 text-xs font-medium capitalize border-b-2 transition-colors ${
-                  tab === t
+                  tab === tk
                     ? 'border-primary text-primary'
                     : 'border-transparent text-text-secondary hover:text-text-primary'
                 }`}
               >
-                {t}
+                {t(`help_widget.tab_${tk}`)}
               </button>
             ))}
           </div>
@@ -155,20 +156,20 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
           <div className="flex-1 overflow-y-auto">
             {tab === 'home' && (
               <div className="p-3 space-y-2">
-                <HelpAction icon={Map} label="Take the product tour" onClick={() => { onStartTour?.(); setOpen(false); }} />
-                <HelpAction icon={BookOpen} label="Browse docs" onClick={() => { setTab('docs'); }} />
-                <HelpAction icon={Sparkles} label="What's new" onClick={() => setTab('changelog')} />
-                <HelpAction icon={Keyboard} label="Keyboard shortcuts" onClick={() => { onOpenShortcuts?.(); setOpen(false); }} />
+                <HelpAction icon={Map} label={t('help_widget.action_take_tour')} onClick={() => { onStartTour?.(); setOpen(false); }} />
+                <HelpAction icon={BookOpen} label={t('help_widget.action_browse_docs')} onClick={() => { setTab('docs'); }} />
+                <HelpAction icon={Sparkles} label={t('help_widget.action_whats_new')} onClick={() => setTab('changelog')} />
+                <HelpAction icon={Keyboard} label={t('help_widget.action_shortcuts')} onClick={() => { onOpenShortcuts?.(); setOpen(false); }} />
                 <HelpAction
                   icon={Command}
-                  label="Open command palette"
+                  label={t('help_widget.action_open_command')}
                   hint="⌘K"
                   onClick={() => {
                     setOpen(false);
                     window.dispatchEvent(new CustomEvent('qvo:open-command-palette'));
                   }}
                 />
-                <HelpAction icon={MessageCircle} label="Contact support" onClick={() => { navigate('/settings/general'); setOpen(false); }} />
+                <HelpAction icon={MessageCircle} label={t('help_widget.action_contact_support')} onClick={() => { navigate('/settings/general'); setOpen(false); }} />
               </div>
             )}
 
@@ -180,26 +181,26 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                     autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search docs and pages..."
-                    aria-label="Search docs and marketing pages"
+                    placeholder={t('help_widget.search_placeholder')}
+                    aria-label={t('help_widget.search_aria')}
                     className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
                   />
                 </div>
                 <div className="space-y-1 mt-2">
                   {query.trim() && (
                     <p className="text-[10px] uppercase tracking-wider text-text-muted px-1 pb-1">
-                      {totalResults} {totalResults === 1 ? 'result' : 'results'}
+                      {t('help_widget.results', { count: totalResults })}
                     </p>
                   )}
                   {query.trim() && totalResults === 0 && (
-                    <p className="text-xs text-text-muted py-3 text-center">No matches for "{query}".</p>
+                    <p className="text-xs text-text-muted py-3 text-center">{t('help_widget.no_matches', { query })}</p>
                   )}
 
                   {results.length > 0 && (
                     <>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted px-1 pt-1 pb-0.5 flex items-center gap-1.5">
                         <BookOpen className="h-3 w-3" />
-                        Docs
+                        {t('help_widget.docs_heading')}
                       </p>
                       {results.map((d) => (
                         <button
@@ -231,7 +232,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                     <>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted px-1 pt-3 pb-0.5 flex items-center gap-1.5">
                         <Globe className="h-3 w-3" />
-                        Marketing pages
+                        {t('help_widget.marketing_heading')}
                       </p>
                       {marketingResults.map((m) => {
                         const Icon = m.icon;
@@ -254,7 +255,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                                 {highlight(m.description, query)}
                               </p>
                               <p className="text-[10px] text-text-muted/70 uppercase tracking-wider mt-1">
-                                {m.categoryLabel} · opens in new tab
+                                {m.categoryLabel} · {t('help_widget.opens_in_new_tab')}
                               </p>
                             </div>
                           </a>
@@ -268,7 +269,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
 
             {tab === 'changelog' && (
               <div className="p-3 space-y-3">
-                {CHANGELOG.map((c, i) => (
+                {(t('help_widget.changelog_entries', { returnObjects: true }) as ChangelogEntry[]).map((c, i) => (
                   <div key={i} className="text-sm">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase">

@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, X, ArrowRight } from 'lucide-react';
 import { api } from '../lib/api';
 
@@ -22,6 +23,7 @@ function isAuthError(message: string | null | undefined): boolean {
 const DISMISS_KEY_PREFIX = 'qvo_connector_auth_banner_dismissed:';
 
 export default function ConnectorAuthBanner() {
+  const { t } = useTranslation('tenant');
   const { data } = useQuery({
     queryKey: ['connectors', 'auth-banner'],
     queryFn: () => api.get<{ connectors: Connector[]; total: number }>('/connectors?limit=100'),
@@ -64,8 +66,8 @@ export default function ConnectorAuthBanner() {
   const names = failing.map((c) => c.name || c.provider);
   let nameSummary: string;
   if (names.length === 1) nameSummary = names[0];
-  else if (names.length === 2) nameSummary = `${names[0]} and ${names[1]}`;
-  else nameSummary = `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+  else if (names.length === 2) nameSummary = t('connector_auth_banner.join_two', { a: names[0], b: names[1] });
+  else nameSummary = t('connector_auth_banner.join_many', { list: names.slice(0, -1).join(', '), last: names[names.length - 1] });
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -85,24 +87,22 @@ export default function ConnectorAuthBanner() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
-            {failing.length === 1
-              ? '1 integration needs to be reconnected'
-              : `${failing.length} integrations need to be reconnected`}
+            {t('connector_auth_banner.needs_reconnect', { count: failing.length })}
           </p>
           <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-0.5">
-            Authentication failed for {nameSummary}. Sync is paused until you sign in again.
+            {t('connector_auth_banner.description', { names: nameSummary })}
           </p>
         </div>
         <Link
           to="/connectors"
           className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 px-3 py-1.5 rounded-lg transition-colors"
         >
-          Fix now <ArrowRight className="h-3 w-3" />
+          {t('connector_auth_banner.fix_now')} <ArrowRight className="h-3 w-3" />
         </Link>
         <button
           type="button"
           onClick={handleDismiss}
-          aria-label="Dismiss"
+          aria-label={t('connector_auth_banner.dismiss')}
           className="p-1 text-amber-700/70 hover:text-amber-900 dark:text-amber-200/70 dark:hover:text-amber-100 transition-colors"
         >
           <X className="h-4 w-4" />
@@ -113,7 +113,7 @@ export default function ConnectorAuthBanner() {
           to="/connectors"
           className="inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 px-3 py-1.5 rounded-lg transition-colors"
         >
-          Fix now <ArrowRight className="h-3 w-3" />
+          {t('connector_auth_banner.fix_now')} <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
     </div>

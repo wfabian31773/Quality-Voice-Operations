@@ -1095,5 +1095,277 @@
     "dismiss": "Ignorer",
     "provider_join_two": "{{a}} et {{b}}",
     "provider_join_many": "{{list}} et {{last}}"
+  },
+  "trial_banner": {
+    "expired_aria": "Essai expiré",
+    "expired_title": "Votre essai est terminé",
+    "expired_description": "Choisissez un forfait pour conserver vos agents, données et intégrations en marche. Votre compte est préservé — il suffit de passer à un forfait payant pour continuer.",
+    "choose_plan": "Choisir un forfait",
+    "expires_today": "L'essai expire aujourd'hui",
+    "days_left_one": "Il vous reste 1 jour d'essai",
+    "days_left_other": "Il vous reste {{count}} jours d'essai",
+    "upgrade_now": "Passer à un forfait"
+  },
+  "trial_conversion_nudge": {
+    "dismiss": "Ignorer",
+    "view_plans": "Voir les forfaits",
+    "see_pro_benefits": "Voir les avantages Pro",
+    "upgrade_now": "Passer à un forfait",
+    "approaching_limit_title": "Limite du forfait proche",
+    "approaching_limit_calls": "Vous avez utilisé {{pct}} % de vos appels mensuels. Passez à Pro pour des limites plus élevées et des fonctionnalités avancées.",
+    "approaching_limit_minutes": "Vous avez utilisé {{pct}} % de vos minutes IA mensuelles. Passez à Pro pour des limites plus élevées et des fonctionnalités avancées.",
+    "calls_milestone_title": "Belle progression !",
+    "calls_milestone_message": "Vous avez complété {{count}} appels. Passez à un forfait supérieur pour débloquer l'analytique avancée, les outils de campagne et de meilleures limites.",
+    "first_call_title": "Premier appel réussi !",
+    "first_call_message": "Félicitations pour votre premier appel ! Passez à Pro pour l'analytique avancée, des agents illimités et un support prioritaire.",
+    "agent_deployed_title": "Agent déployé !",
+    "agent_deployed_message": "Votre agent est publié et prêt à prendre des appels. Passez à Pro pour plus d'agents, davantage de volume d'appels et un support prioritaire."
+  },
+  "onboarding_checklist": {
+    "title": "Progression de l'activation",
+    "steps_progress": "{{completed}} sur {{total}} étapes terminées",
+    "dismiss": "Ignorer",
+    "progress_aria": "Progression de l'activation : {{completed}} sur {{total}} étapes terminées ({{pct}} pour cent)",
+    "progress_tooltip": "{{pct}} % des étapes d'onboarding terminées",
+    "agent_created_label": "Créez votre premier agent",
+    "agent_created_cta": "Créer un agent",
+    "phone_connected_label": "Connectez un numéro de téléphone",
+    "phone_connected_cta": "Ajouter un numéro",
+    "tools_connected_label": "Connectez vos outils",
+    "tools_connected_cta": "Connecter",
+    "first_call_label": "Faites votre premier appel",
+    "first_call_cta": "Appel test"
+  },
+  "connector_auth_banner": {
+    "needs_reconnect_one": "1 intégration doit être reconnectée",
+    "needs_reconnect_other": "{{count}} intégrations doivent être reconnectées",
+    "description": "L'authentification a échoué pour {{names}}. La synchronisation est en pause jusqu'à ce que vous vous reconnectiez.",
+    "fix_now": "Réparer maintenant",
+    "dismiss": "Ignorer",
+    "join_two": "{{a}} et {{b}}",
+    "join_many": "{{list}} et {{last}}"
+  },
+  "notifications_center": {
+    "title": "Notifications",
+    "aria_unread_count": "Notifications — {{count}} non lues",
+    "aria_no_unread": "Notifications",
+    "tooltip_unread_one": "Vous avez 1 notification non lue",
+    "tooltip_unread_other": "Vous avez {{count}} notifications non lues",
+    "tooltip_no_unread": "Aucune nouvelle notification",
+    "preferences_aria": "Préférences de notification",
+    "close_aria": "Fermer",
+    "filter_all": "Toutes",
+    "label_escalations": "Escalades",
+    "label_billing": "Facturation",
+    "label_calls": "Appels",
+    "label_sms": "SMS",
+    "label_campaigns": "Campagnes",
+    "label_integrations": "Intégrations",
+    "label_updates": "Mises à jour",
+    "loading": "Chargement…",
+    "all_caught_up": "Vous êtes à jour",
+    "mark_as_read_aria": "Marquer comme lue",
+    "mark_all_read": "Tout marquer comme lu",
+    "clear_all": "Tout effacer",
+    "time_just_now": "à l'instant",
+    "time_minutes_ago": "il y a {{n}} min",
+    "time_hours_ago": "il y a {{n}} h",
+    "time_days_ago": "il y a {{n}} j"
+  },
+  "help_drawer": {
+    "open_aria": "Ouvrir l'aide",
+    "close_aria": "Fermer l'aide",
+    "title": "Aide",
+    "tab_article": "Cette page",
+    "tab_support": "Contacter le support",
+    "open_in_docs": "Ouvrir dans la documentation",
+    "browse_all_docs": "Parcourir toute la documentation",
+    "message_sent": "Message envoyé",
+    "message_received": "Nous avons reçu votre demande et répondrons par e-mail sous un jour ouvré.",
+    "message_received_with_id": "Nous avons reçu votre demande (ticket {{id}}) et répondrons par e-mail sous un jour ouvré.",
+    "close_after_send": "Fermer",
+    "intro": "Dites-nous ce qu'il se passe. Nous joindrons cette page et l'activité récente automatiquement pour accélérer.",
+    "topic_label": "Sujet",
+    "topic_question": "Question générale",
+    "topic_bug": "Quelque chose ne fonctionne pas",
+    "topic_billing": "Facturation ou forfaits",
+    "topic_integration": "Aide pour une intégration",
+    "topic_onboarding": "Onboarding / configuration",
+    "topic_feature": "Demande de fonctionnalité",
+    "message_label": "Message",
+    "message_placeholder": "Décrivez ce que vous faisiez et ce que vous attendiez...",
+    "recent_errors_label": "Erreurs récentes",
+    "recent_errors_optional": "(facultatif)",
+    "recent_errors_placeholder": "Collez tout message d'erreur que vous avez vu",
+    "send_message": "Envoyer le message",
+    "send_error_default": "Impossible d'envoyer. Réessayez ou écrivez à support@qvo.ai."
+  },
+  "help_widget": {
+    "aria": "Aide",
+    "title": "Aide et ressources",
+    "subtitle": "Recherchez la documentation, obtenez du support, voyez les nouveautés.",
+    "tab_home": "Accueil",
+    "tab_docs": "Documentation",
+    "tab_changelog": "Nouveautés",
+    "action_take_tour": "Faire la visite du produit",
+    "action_browse_docs": "Parcourir la documentation",
+    "action_whats_new": "Nouveautés",
+    "action_shortcuts": "Raccourcis clavier",
+    "action_open_command": "Ouvrir la palette de commandes",
+    "action_contact_support": "Contacter le support",
+    "search_placeholder": "Rechercher la documentation et les pages...",
+    "search_aria": "Rechercher la documentation et les pages marketing",
+    "results_one": "{{count}} résultat",
+    "results_other": "{{count}} résultats",
+    "no_matches": "Aucun résultat pour « {{query}} ».",
+    "docs_heading": "Documentation",
+    "marketing_heading": "Pages marketing",
+    "opens_in_new_tab": "s'ouvre dans un nouvel onglet",
+    "changelog_entries": [
+      {
+        "date": "21 avr.",
+        "tag": "Nouveau",
+        "text": "Palette de commandes (⌘K) et widget d’aide intégré."
+      },
+      {
+        "date": "19 avr.",
+        "tag": "Nouveau",
+        "text": "Visite guidée du produit pour les nouveaux utilisateurs."
+      },
+      {
+        "date": "17 avr.",
+        "tag": "Amélioré",
+        "text": "Le tableau de bord affiche désormais les réservations et le chiffre d’affaires en direct."
+      },
+      {
+        "date": "15 avr.",
+        "tag": "Amélioré",
+        "text": "Améliorations du mode sombre dans les graphiques d’analyse."
+      }
+    ]
+  },
+  "product_tour": {
+    "step_progress": "Étape {{current}} sur {{total}}",
+    "close_aria": "Fermer la visite",
+    "back": "Précédent",
+    "next": "Suivant",
+    "finish": "Terminer"
+  },
+  "tour_launcher": {
+    "default_label": "Qu'est-ce que c'est ?"
+  },
+  "platform_assistant": {
+    "open_aria": "Ouvrir l'assistant",
+    "close_aria": "Fermer l'assistant",
+    "title": "Assistant QVO",
+    "subtitle": "Guide de la plateforme",
+    "new_chat": "Nouvelle discussion",
+    "send_aria": "Envoyer le message",
+    "input_placeholder": "Posez votre question...",
+    "intro_message": "Bonjour ! Je suis votre Assistant de la Plateforme QVO. Je peux vous aider à configurer des agents, connecter des intégrations et tirer le meilleur de la plateforme. Comment puis-je aider ?",
+    "action_create_agent_label": "Créer un agent",
+    "action_create_agent_prompt": "Aide-moi à créer un nouvel agent",
+    "action_connect_integration_label": "Connecter une intégration",
+    "action_connect_integration_prompt": "Comment connecter une intégration ?",
+    "action_phone_setup_label": "Configurer un numéro",
+    "action_phone_setup_prompt": "Comment configurer un numéro de téléphone ?",
+    "action_billing_label": "Aide pour la facturation",
+    "action_billing_prompt": "Parle-moi des forfaits de facturation",
+    "thinking": "Réflexion en cours...",
+    "error_default": "Impossible d'obtenir une réponse. Réessayez."
+  },
+  "tooltip_walkthrough": {
+    "dismiss_aria": "Ignorer",
+    "got_it": "Compris"
+  },
+  "celebration": {
+    "dismiss_aria": "Ignorer la célébration",
+    "default_aria": "Célébration",
+    "default_title": "Bravo !",
+    "default_message": "Votre premier appel vient d'être complété. C'est ça, l'activation."
+  },
+  "phone_verification": {
+    "phone_label": "Numéro de téléphone",
+    "phone_placeholder": "+33 6 00 00 00 00",
+    "send_code": "Envoyer le code de vérification",
+    "sending": "Envoi...",
+    "send_failed": "Impossible d'envoyer le code",
+    "send_request_failed": "Impossible d'envoyer le code de vérification",
+    "code_intro": "Saisissez le code à 6 chiffres envoyé au {{phone}}",
+    "code_placeholder": "000000",
+    "verify_code": "Vérifier le code",
+    "verifying": "Vérification...",
+    "verify_failed": "Échec de la vérification",
+    "change_number": "Changer de numéro",
+    "success": "Numéro de téléphone vérifié avec succès."
+  },
+  "operations_alerts_banner": {
+    "unack_one": "1 {{noun}} non traitée",
+    "unack_other": "{{count}} {{noun}} non traitées",
+    "review_in_operations": "Examiner dans Opérations",
+    "alert_aria": "{{title}} : {{label}}. Ouvrir les alertes Opérations.",
+    "categories": {
+      "error_rate_spike": {
+        "title": "Pic d'échec d'appels",
+        "description": "Une part significative des appels de la dernière heure a échoué par rapport à la base de 7 jours.",
+        "noun_one": "alerte de taux d'échec",
+        "noun_other": "alertes de taux d'échec"
+      },
+      "billing_backfill_cross_day_skipped": {
+        "title": "Rééquilibrage manuel de la facturation requis",
+        "description": "Un backfill inter-jours n'a pas pu être rééquilibré automatiquement car les lignes de rollup du jour précédent manquaient.",
+        "noun_one": "rééquilibrage manuel",
+        "noun_other": "rééquilibrages manuels"
+      },
+      "support_email_delivery_failed": {
+        "title": "Échec d'envoi d'e-mail de support",
+        "description": "Un ticket de support entrant n'a pas pu être routé vers sa boîte de destination après plusieurs tentatives.",
+        "noun_one": "e-mail de support non délivré",
+        "noun_other": "e-mails de support non délivrés"
+      },
+      "support_reply_delivery_failed": {
+        "title": "Échec des réponses de support",
+        "description": "Les réponses sortantes d'un ticket de support échouent après plusieurs tentatives.",
+        "noun_one": "réponse en échec",
+        "noun_other": "réponses en échec"
+      },
+      "support_recipient_first_bounce": {
+        "title": "Destinataire de support en bounce",
+        "description": "Un destinataire de ticket de support a fait un bounce pour la première fois — vérifiez l'adresse de contact.",
+        "noun_one": "destinataire en bounce",
+        "noun_other": "destinataires en bounce"
+      },
+      "escalation_spike": {
+        "title": "Pic d'escalades détecté",
+        "description": "Les appels remontent vers un humain à un rythme bien supérieur à la base de 7 jours.",
+        "noun_one": "alerte d'escalade",
+        "noun_other": "alertes d'escalade"
+      },
+      "booking_rate_drop": {
+        "title": "Chute du taux de complétion",
+        "description": "Les appels de la dernière heure se complètent à un rythme bien inférieur à la base de 7 jours.",
+        "noun_one": "alerte de taux de complétion",
+        "noun_other": "alertes de taux de complétion"
+      },
+      "billing_backfill_cross_day": {
+        "title": "Facturation à vérifier",
+        "description": "Un backfill inter-jours a rééquilibré l'usage automatiquement. Vérifiez que le rééquilibrage a été appliqué.",
+        "noun_one": "alerte de backfill inter-jours",
+        "noun_other": "alertes de backfill inter-jours"
+      }
+    }
+  },
+  "changelog": {
+    "title": "Nouveautés",
+    "description": "Mises à jour, correctifs et améliorations récents de la plateforme.",
+    "mark_all_read": "Tout marquer comme lu",
+    "empty_title": "Pas encore d'entrées dans le changelog",
+    "empty_description": "Dès que l'équipe livre une mise à jour, elle apparaît ici.",
+    "new_badge": "Nouveau"
+  },
+  "governance": {
+    "evolution_engine": "Moteur d'évolution",
+    "conversion_funnel": "Entonnoir de conversion",
+    "global_intelligence": "Intelligence globale"
   }
 }

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { ArrowUpCircle, X, Zap, TrendingUp } from 'lucide-react';
 import { useState, useMemo } from 'react';
@@ -33,6 +34,7 @@ interface NudgeConfig {
 
 export default function TrialConversionNudge() {
   const navigate = useNavigate();
+  const { t } = useTranslation('tenant');
   const [dismissedNudges, setDismissedNudges] = useState<Set<NudgeType>>(() => {
     try {
       const stored = localStorage.getItem('dismissed_nudges');
@@ -78,49 +80,51 @@ export default function TrialConversionNudge() {
     const aiPct = aiLimit > 0 ? aiUsed / aiLimit : 0;
 
     if ((callPct >= 0.8 || aiPct >= 0.8) && !dismissedNudges.has('usage_limit')) {
-      const resource = callPct >= aiPct ? 'calls' : 'AI minutes';
+      const useCalls = callPct >= aiPct;
       const pct = Math.round(Math.max(callPct, aiPct) * 100);
       return {
         type: 'usage_limit',
-        title: 'Approaching Plan Limit',
-        message: `You've used ${pct}% of your monthly ${resource}. Upgrade to Pro for higher limits and unlock advanced features.`,
+        title: t('trial_conversion_nudge.approaching_limit_title'),
+        message: useCalls
+          ? t('trial_conversion_nudge.approaching_limit_calls', { pct })
+          : t('trial_conversion_nudge.approaching_limit_minutes', { pct }),
         icon: ArrowUpCircle,
-        ctaLabel: 'View Plans',
+        ctaLabel: t('trial_conversion_nudge.view_plans'),
       };
     }
 
     if (milestones.first_call_completed && callsUsed >= 3 && !dismissedNudges.has('calls_milestone')) {
       return {
         type: 'calls_milestone',
-        title: 'Great Progress!',
-        message: `You've completed ${callsUsed} calls. Upgrade to unlock advanced analytics, campaign tools, and higher limits.`,
+        title: t('trial_conversion_nudge.calls_milestone_title'),
+        message: t('trial_conversion_nudge.calls_milestone_message', { count: callsUsed }),
         icon: TrendingUp,
-        ctaLabel: 'See Pro Benefits',
+        ctaLabel: t('trial_conversion_nudge.see_pro_benefits'),
       };
     }
 
     if (milestones.first_call_completed && callsUsed < 3 && !dismissedNudges.has('first_call')) {
       return {
         type: 'first_call',
-        title: 'First Call Complete!',
-        message: 'Congratulations on your first call! Upgrade to Pro for advanced analytics, unlimited agents, and priority support.',
+        title: t('trial_conversion_nudge.first_call_title'),
+        message: t('trial_conversion_nudge.first_call_message'),
         icon: TrendingUp,
-        ctaLabel: 'See Pro Benefits',
+        ctaLabel: t('trial_conversion_nudge.see_pro_benefits'),
       };
     }
 
     if (milestones.agent_deployed && !milestones.first_call_completed && !dismissedNudges.has('first_deployment')) {
       return {
         type: 'first_deployment',
-        title: 'Agent Deployed!',
-        message: 'Your agent is published and ready to handle calls. Upgrade to Pro for more agents, higher call volumes, and priority support.',
+        title: t('trial_conversion_nudge.agent_deployed_title'),
+        message: t('trial_conversion_nudge.agent_deployed_message'),
         icon: Zap,
-        ctaLabel: 'Upgrade Now',
+        ctaLabel: t('trial_conversion_nudge.upgrade_now'),
       };
     }
 
     return null;
-  }, [isTrialOrStarter, usageData, activationData, sub, dismissedNudges]);
+  }, [isTrialOrStarter, usageData, activationData, sub, dismissedNudges, t]);
 
   const handleDismiss = (type: NudgeType) => {
     const next = new Set(dismissedNudges);
@@ -140,7 +144,7 @@ export default function TrialConversionNudge() {
       <button
         onClick={() => handleDismiss(nudge.type)}
         className="absolute top-3 right-3 text-white/40 hover:text-white/80 transition-colors"
-        aria-label="Dismiss"
+        aria-label={t('trial_conversion_nudge.dismiss')}
       >
         <X className="h-4 w-4" />
       </button>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Search, LayoutDashboard, Bot, PhoneCall, Megaphone, BarChart3,
   MessageSquare, CalendarClock, ClipboardList, Truck, Network, Plug,
@@ -7,12 +8,14 @@ import {
 } from 'lucide-react';
 import Modal from './Modal';
 
+type CommandGroup = 'navigate' | 'actions' | 'help';
+
 interface Command {
   id: string;
   label: string;
   hint?: string;
   icon: LucideIcon;
-  group: 'Navigate' | 'Actions' | 'Help';
+  group: CommandGroup;
   run: () => void;
   keywords?: string[];
 }
@@ -29,36 +32,43 @@ export default function CommandPalette({
   open, onClose, onOpenHelp, onOpenShortcuts, onStartTour,
 }: CommandPaletteProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const go = (path: string) => () => { navigate(path); onClose(); };
 
+  const groupLabel = (g: CommandGroup): string => {
+    if (g === 'navigate') return t('command_palette.group_navigate');
+    if (g === 'actions') return t('command_palette.group_actions');
+    return t('command_palette.group_help');
+  };
+
   const commands: Command[] = useMemo(() => [
-    { id: 'dashboard', label: 'Go to Dashboard', icon: LayoutDashboard, group: 'Navigate', run: go('/dashboard') },
-    { id: 'agents', label: 'Go to Agents', icon: Bot, group: 'Navigate', run: go('/agents') },
-    { id: 'calls', label: 'Go to Conversations', icon: PhoneCall, group: 'Navigate', keywords: ['calls'], run: go('/calls') },
-    { id: 'campaigns', label: 'Go to Campaigns', icon: Megaphone, group: 'Navigate', run: go('/campaigns') },
-    { id: 'analytics', label: 'Go to Analytics', icon: BarChart3, group: 'Navigate', run: go('/analytics') },
-    { id: 'sms', label: 'Go to SMS Inbox', icon: MessageSquare, group: 'Navigate', run: go('/sms-inbox') },
-    { id: 'scheduling', label: 'Go to Scheduling', icon: CalendarClock, group: 'Navigate', run: go('/scheduling') },
-    { id: 'tickets', label: 'Go to Tickets', icon: ClipboardList, group: 'Navigate', run: go('/tickets') },
-    { id: 'dispatch', label: 'Go to Dispatch', icon: Truck, group: 'Navigate', run: go('/dispatch') },
-    { id: 'autopilot', label: 'Go to Autopilot', icon: Zap, group: 'Navigate', keywords: ['ai', 'business', 'recommendations'], run: go('/autopilot') },
-    { id: 'workflows', label: 'Go to Workflows', icon: Network, group: 'Navigate', run: go('/workflows') },
-    { id: 'integrations', label: 'Go to Integrations', icon: Plug, group: 'Navigate', keywords: ['connectors'], run: go('/connectors') },
-    { id: 'knowledge', label: 'Go to Knowledge', icon: BookOpen, group: 'Navigate', run: go('/knowledge-base') },
-    { id: 'marketplace', label: 'Go to Marketplace', icon: Store, group: 'Navigate', run: go('/marketplace') },
-    { id: 'phones', label: 'Manage Phone Numbers', icon: Phone, group: 'Navigate', run: go('/phone-numbers') },
-    { id: 'settings', label: 'Open Settings', icon: Settings2, group: 'Navigate', run: go('/settings') },
-    { id: 'new-agent', label: 'Create New Agent', icon: Plus, group: 'Actions', run: go('/agents') },
-    { id: 'new-campaign', label: 'Create New Campaign', icon: Plus, group: 'Actions', run: go('/campaigns') },
-    { id: 'new-doc', label: 'Add Knowledge Source', icon: FileText, group: 'Actions', run: go('/knowledge-base') },
-    ...(onStartTour ? [{ id: 'tour', label: 'Start Product Tour', icon: HelpCircle, group: 'Help' as const, run: () => { onStartTour(); onClose(); } }] : []),
-    ...(onOpenShortcuts ? [{ id: 'shortcuts', label: 'View Keyboard Shortcuts', icon: HelpCircle, group: 'Help' as const, run: () => { onOpenShortcuts(); onClose(); } }] : []),
-    ...(onOpenHelp ? [{ id: 'help', label: 'Open Help & Support', icon: HelpCircle, group: 'Help' as const, run: () => { onOpenHelp(); onClose(); } }] : []),
-  ], [navigate, onClose, onOpenHelp, onOpenShortcuts, onStartTour]);
+    { id: 'dashboard', label: t('command_palette.go_dashboard'), icon: LayoutDashboard, group: 'navigate', run: go('/dashboard') },
+    { id: 'agents', label: t('command_palette.go_agents'), icon: Bot, group: 'navigate', run: go('/agents') },
+    { id: 'calls', label: t('command_palette.go_calls'), icon: PhoneCall, group: 'navigate', keywords: ['calls'], run: go('/calls') },
+    { id: 'campaigns', label: t('command_palette.go_campaigns'), icon: Megaphone, group: 'navigate', run: go('/campaigns') },
+    { id: 'analytics', label: t('command_palette.go_analytics'), icon: BarChart3, group: 'navigate', run: go('/analytics') },
+    { id: 'sms', label: t('command_palette.go_sms'), icon: MessageSquare, group: 'navigate', run: go('/sms-inbox') },
+    { id: 'scheduling', label: t('command_palette.go_scheduling'), icon: CalendarClock, group: 'navigate', run: go('/scheduling') },
+    { id: 'tickets', label: t('command_palette.go_tickets'), icon: ClipboardList, group: 'navigate', run: go('/tickets') },
+    { id: 'dispatch', label: t('command_palette.go_dispatch'), icon: Truck, group: 'navigate', run: go('/dispatch') },
+    { id: 'autopilot', label: t('command_palette.go_autopilot'), icon: Zap, group: 'navigate', keywords: ['ai', 'business', 'recommendations'], run: go('/autopilot') },
+    { id: 'workflows', label: t('command_palette.go_workflows'), icon: Network, group: 'navigate', run: go('/workflows') },
+    { id: 'integrations', label: t('command_palette.go_integrations'), icon: Plug, group: 'navigate', keywords: ['connectors'], run: go('/connectors') },
+    { id: 'knowledge', label: t('command_palette.go_knowledge'), icon: BookOpen, group: 'navigate', run: go('/knowledge-base') },
+    { id: 'marketplace', label: t('command_palette.go_marketplace'), icon: Store, group: 'navigate', run: go('/marketplace') },
+    { id: 'phones', label: t('command_palette.go_phones'), icon: Phone, group: 'navigate', run: go('/phone-numbers') },
+    { id: 'settings', label: t('command_palette.open_settings'), icon: Settings2, group: 'navigate', run: go('/settings') },
+    { id: 'new-agent', label: t('command_palette.new_agent'), icon: Plus, group: 'actions', run: go('/agents') },
+    { id: 'new-campaign', label: t('command_palette.new_campaign'), icon: Plus, group: 'actions', run: go('/campaigns') },
+    { id: 'new-doc', label: t('command_palette.new_doc'), icon: FileText, group: 'actions', run: go('/knowledge-base') },
+    ...(onStartTour ? [{ id: 'tour', label: t('command_palette.start_tour'), icon: HelpCircle, group: 'help' as const, run: () => { onStartTour(); onClose(); } }] : []),
+    ...(onOpenShortcuts ? [{ id: 'shortcuts', label: t('command_palette.view_shortcuts'), icon: HelpCircle, group: 'help' as const, run: () => { onOpenShortcuts(); onClose(); } }] : []),
+    ...(onOpenHelp ? [{ id: 'help', label: t('command_palette.open_help'), icon: HelpCircle, group: 'help' as const, run: () => { onOpenHelp(); onClose(); } }] : []),
+  ], [navigate, onClose, onOpenHelp, onOpenShortcuts, onStartTour, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,10 +95,10 @@ export default function CommandPalette({
     return () => window.removeEventListener('keydown', handler);
   }, [open, filtered, active]);
 
-  const groups = filtered.reduce<Record<string, Command[]>>((acc, cmd) => {
+  const groups = filtered.reduce<Record<CommandGroup, Command[]>>((acc, cmd) => {
     (acc[cmd.group] ??= []).push(cmd);
     return acc;
-  }, {});
+  }, {} as Record<CommandGroup, Command[]>);
 
   let runningIndex = 0;
 
@@ -96,7 +106,7 @@ export default function CommandPalette({
     <Modal
       open={open}
       onClose={onClose}
-      ariaLabel="Command palette"
+      ariaLabel={t('command_palette.aria')}
       initialFocusRef={inputRef}
       containerClassName="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4"
       panelClassName="relative w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden"
@@ -107,20 +117,20 @@ export default function CommandPalette({
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search commands, pages, actions..."
-          aria-label="Search commands and pages"
+          placeholder={t('command_palette.search_placeholder')}
+          aria-label={t('command_palette.search_aria')}
           className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted"
         />
-        <kbd className="text-[10px] font-medium text-text-muted bg-surface-hover border border-border px-1.5 py-0.5 rounded">ESC</kbd>
+        <kbd className="text-[10px] font-medium text-text-muted bg-surface-hover border border-border px-1.5 py-0.5 rounded">{t('command_palette.esc')}</kbd>
       </div>
 
       <div className="max-h-[55vh] overflow-y-auto py-1">
         {filtered.length === 0 ? (
-          <p className="text-sm text-text-muted text-center py-8">No matches</p>
+          <p className="text-sm text-text-muted text-center py-8">{t('command_palette.no_matches')}</p>
         ) : (
-          Object.entries(groups).map(([group, items]) => (
+          (Object.entries(groups) as Array<[CommandGroup, Command[]]>).map(([group, items]) => (
             <div key={group} className="py-1">
-              <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">{group}</p>
+              <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">{groupLabel(group)}</p>
               {items.map((cmd) => {
                 const idx = runningIndex++;
                 const Icon = cmd.icon;
@@ -145,8 +155,8 @@ export default function CommandPalette({
         )}
       </div>
       <div className="px-3 py-2 border-t border-border bg-surface-secondary text-[11px] text-text-muted flex items-center justify-between">
-        <span>Navigate with ↑ ↓</span>
-        <span>Open anytime with <kbd className="px-1 py-0.5 bg-surface border border-border rounded">⌘K</kbd> / <kbd className="px-1 py-0.5 bg-surface border border-border rounded">Ctrl K</kbd></span>
+        <span>{t('command_palette.navigate_hint')}</span>
+        <span>{t('command_palette.open_anytime')} <kbd className="px-1 py-0.5 bg-surface border border-border rounded">⌘K</kbd> / <kbd className="px-1 py-0.5 bg-surface border border-border rounded">Ctrl K</kbd></span>
       </div>
     </Modal>
   );

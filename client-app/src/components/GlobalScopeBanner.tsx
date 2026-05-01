@@ -1,4 +1,5 @@
 import { Globe, Eye } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   label?: string;
@@ -17,13 +18,16 @@ export default function GlobalScopeBanner({
   tenantSlug,
   compact = false,
 }: Props) {
+  const { t } = useTranslation();
   const padding = compact ? 'px-3 py-2' : 'px-4 py-3';
 
   if (variant === 'tenant') {
-    const finalLabel = label ?? `Viewing as admin — tenant: ${tenantName ?? 'unknown'}`;
+    const finalLabel = label ?? t('global_scope_banner.tenant_label', { name: tenantName ?? t('global_scope_banner.tenant_unknown') });
     const finalDescription =
       description
-      ?? `You are inspecting another tenant's data as a platform admin. This is not your own tenant${tenantSlug ? ` (slug: ${tenantSlug})` : ''}.`;
+      ?? (tenantSlug
+        ? t('global_scope_banner.tenant_description_with_slug', { slug: tenantSlug })
+        : t('global_scope_banner.tenant_description'));
     return (
       <div
         role="status"
@@ -41,10 +45,10 @@ export default function GlobalScopeBanner({
     );
   }
 
-  const finalLabel = label ?? 'Global / All Tenants';
+  const finalLabel = label ?? t('global_scope_banner.global_label');
   const finalDescription =
     description
-    ?? 'You are viewing platform-wide data aggregated across every tenant. No single-tenant context applies.';
+    ?? t('global_scope_banner.global_description');
   return (
     <div
       role="status"

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   AlertOctagon,
   ArrowRight,
@@ -16,89 +17,21 @@ type BannerTone = 'critical' | 'high' | 'warning' | 'info';
 
 interface AlertCategory {
   type: string;
-  title: string;
-  description: string;
   tone: BannerTone;
   icon: LucideIcon;
-  /** Singular noun used in the count line — pluralized with a trailing `s`. */
-  noun: string;
 }
 
 // Curated set surfaced on the dashboard; order here is the rendered order.
 // Anything not listed still shows up in the Operations alerts panel itself.
 const ALERT_CATEGORIES: AlertCategory[] = [
-  {
-    type: 'error_rate_spike',
-    title: 'Call failure rate spike',
-    description:
-      'A meaningful share of calls in the last hour failed compared to the 7-day baseline.',
-    tone: 'critical',
-    icon: AlertOctagon,
-    noun: 'failure-rate alert',
-  },
-  {
-    type: 'billing_backfill_cross_day_skipped',
-    title: 'Manual billing rebalance required',
-    description:
-      "A cross-day backfill couldn't be auto-rebalanced because old-day rollup rows were missing.",
-    tone: 'critical',
-    icon: Wallet,
-    noun: 'manual rebalance',
-  },
-  {
-    type: 'support_email_delivery_failed',
-    title: 'Support email delivery failed',
-    description:
-      "An inbound support ticket couldn't be routed to its destination inbox after retries.",
-    tone: 'high',
-    icon: Mail,
-    noun: 'undelivered support email',
-  },
-  {
-    type: 'support_reply_delivery_failed',
-    title: 'Support replies failing',
-    description:
-      'Outbound replies to a support ticket are failing to deliver after multiple attempts.',
-    tone: 'high',
-    icon: Mail,
-    noun: 'failed reply',
-  },
-  {
-    type: 'support_recipient_first_bounce',
-    title: 'Support recipient bouncing',
-    description:
-      'A support ticket recipient bounced for the first time — verify the contact address.',
-    tone: 'high',
-    icon: Mail,
-    noun: 'bouncing recipient',
-  },
-  {
-    type: 'escalation_spike',
-    title: 'Escalation spike detected',
-    description:
-      'Calls are escalating to a human at a much higher rate than the 7-day baseline.',
-    tone: 'warning',
-    icon: PhoneOff,
-    noun: 'escalation alert',
-  },
-  {
-    type: 'booking_rate_drop',
-    title: 'Completion rate drop',
-    description:
-      'Calls in the last hour are completing at a much lower rate than the 7-day baseline.',
-    tone: 'warning',
-    icon: TrendingDown,
-    noun: 'completion-rate alert',
-  },
-  {
-    type: 'billing_backfill_cross_day',
-    title: 'Billing needs verification',
-    description:
-      'A cross-day backfill auto-rebalanced usage between days. Verify the rebalance landed.',
-    tone: 'info',
-    icon: CalendarClock,
-    noun: 'cross-day backfill alert',
-  },
+  { type: 'error_rate_spike', tone: 'critical', icon: AlertOctagon },
+  { type: 'billing_backfill_cross_day_skipped', tone: 'critical', icon: Wallet },
+  { type: 'support_email_delivery_failed', tone: 'high', icon: Mail },
+  { type: 'support_reply_delivery_failed', tone: 'high', icon: Mail },
+  { type: 'support_recipient_first_bounce', tone: 'high', icon: Mail },
+  { type: 'escalation_spike', tone: 'warning', icon: PhoneOff },
+  { type: 'booking_rate_drop', tone: 'warning', icon: TrendingDown },
+  { type: 'billing_backfill_cross_day', tone: 'info', icon: CalendarClock },
 ];
 
 interface AlertSummaryResponse {
@@ -147,19 +80,19 @@ const TONE_STYLES: Record<
   },
 };
 
-function countLabel(count: number, noun: string): string {
-  return count === 1 ? `1 unacknowledged ${noun}` : `${count} unacknowledged ${noun}s`;
-}
-
 function BannerRow({ category, count }: { category: AlertCategory; count: number }) {
+  const { t } = useTranslation('tenant');
   const tone = TONE_STYLES[category.tone];
   const Icon = category.icon;
-  const label = countLabel(count, category.noun);
+  const noun = t(`operations_alerts_banner.categories.${category.type}.noun`, { count });
+  const label = t('operations_alerts_banner.unack', { count, noun });
+  const title = t(`operations_alerts_banner.categories.${category.type}.title`);
+  const description = t(`operations_alerts_banner.categories.${category.type}.description`);
   return (
     <Link
       to={`/ops/monitor?alertType=${category.type}#alerts-panel`}
       className={`block rounded-xl focus:outline-none focus-visible:ring-2 ${tone.ringFocus}`}
-      aria-label={`${category.title}: ${label}. Open Operations alerts.`}
+      aria-label={t('operations_alerts_banner.alert_aria', { title, label })}
       data-alert-type={category.type}
     >
       <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${tone.wrapper}`}>
@@ -167,13 +100,13 @@ function BannerRow({ category, count }: { category: AlertCategory; count: number
           <Icon className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-semibold ${tone.title}`}>{category.title}</p>
+          <p className={`text-sm font-semibold ${tone.title}`}>{title}</p>
           <p className={`text-xs mt-0.5 ${tone.subtle}`}>
-            {label}. {category.description}
+            {label}. {description}
           </p>
         </div>
         <div className={`shrink-0 hidden sm:flex items-center gap-1.5 text-xs font-medium ${tone.cta}`}>
-          Review in Operations
+          {t('operations_alerts_banner.review_in_operations')}
           <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </div>
       </div>

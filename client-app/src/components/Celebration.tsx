@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PartyPopper, X } from 'lucide-react';
 
 interface CelebrationProps {
@@ -11,6 +12,7 @@ interface CelebrationProps {
 const COLORS = ['#2E8C83', '#4C9B6B', '#C98A2E', '#3b82f6', '#8b5cf6', '#ef4444'];
 
 export default function Celebration({ show, title, message, onClose }: CelebrationProps) {
+  const { t } = useTranslation('tenant');
   const [exiting, setExiting] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -109,7 +111,7 @@ export default function Celebration({ show, title, message, onClose }: Celebrati
 
       <div
         role="dialog"
-        aria-label={title ?? 'Celebration'}
+        aria-label={title ?? t('celebration.default_aria')}
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
         style={{ animation: `${exiting ? 'qvo-pop-out' : 'qvo-pop-in'} 0.4s ease forwards` }}
       >
@@ -117,7 +119,7 @@ export default function Celebration({ show, title, message, onClose }: Celebrati
           <button
             ref={closeButtonRef}
             onClick={dismiss}
-            aria-label="Dismiss celebration"
+            aria-label={t('celebration.dismiss_aria')}
             className="absolute top-2 right-2 text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
           >
             <X className="h-4 w-4" />
@@ -125,9 +127,9 @@ export default function Celebration({ show, title, message, onClose }: Celebrati
           <div className="mx-auto h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center mb-3">
             <PartyPopper className="h-7 w-7 text-primary" />
           </div>
-          <h3 className="text-lg font-bold text-text-primary">{title ?? 'You did it!'}</h3>
+          <h3 className="text-lg font-bold text-text-primary">{title ?? t('celebration.default_title')}</h3>
           <p className="text-sm text-text-secondary mt-1">
-            {message ?? 'Your first call just completed. This is what activation feels like.'}
+            {message ?? t('celebration.default_message')}
           </p>
         </div>
       </div>

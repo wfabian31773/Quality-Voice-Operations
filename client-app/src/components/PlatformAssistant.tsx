@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { MessageSquare, X, Send, Loader2, Bot, User, Sparkles, AlertCircle } from 'lucide-react';
 
@@ -16,15 +17,18 @@ interface ChatResponse {
   actions: Array<{ action: string; status: string; message?: string; result?: unknown }>;
 }
 
-const QUICK_ACTIONS = [
-  { label: 'Create an agent', prompt: 'Help me create a new agent' },
-  { label: 'Connect integration', prompt: 'How do I connect an integration?' },
-  { label: 'Set up phone number', prompt: 'How do I set up a phone number?' },
-  { label: 'Help with billing', prompt: 'Tell me about the billing plans' },
-];
-
 export default function PlatformAssistant() {
   const location = useLocation();
+  const { t } = useTranslation('tenant');
+  const quickActions = useMemo(
+    () => [
+      { label: t('platform_assistant.action_create_agent_label'), prompt: t('platform_assistant.action_create_agent_prompt') },
+      { label: t('platform_assistant.action_connect_integration_label'), prompt: t('platform_assistant.action_connect_integration_prompt') },
+      { label: t('platform_assistant.action_phone_setup_label'), prompt: t('platform_assistant.action_phone_setup_prompt') },
+      { label: t('platform_assistant.action_billing_label'), prompt: t('platform_assistant.action_billing_prompt') },
+    ],
+    [t],
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState('');
@@ -80,7 +84,7 @@ export default function PlatformAssistant() {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      setError('Failed to get a response. Please try again.');
+      setError(t('platform_assistant.error_default'));
     } finally {
       setIsLoading(false);
     }
@@ -120,7 +124,7 @@ export default function PlatformAssistant() {
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center justify-center group"
-          aria-label="Open assistant"
+          aria-label={t('platform_assistant.open_aria')}
         >
           <Sparkles className="h-6 w-6 group-hover:rotate-12 transition-transform" />
         </button>
@@ -134,8 +138,8 @@ export default function PlatformAssistant() {
                 <Bot className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold">QVO Assistant</h3>
-                <p className="text-xs text-white/70">Platform guide</p>
+                <h3 className="text-sm font-semibold">{t('platform_assistant.title')}</h3>
+                <p className="text-xs text-white/70">{t('platform_assistant.subtitle')}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -144,13 +148,13 @@ export default function PlatformAssistant() {
                   onClick={handleNewChat}
                   className="text-white/60 hover:text-white text-xs bg-white/10 dark:bg-white/10 hover:bg-white/20 dark:hover:bg-white/20 px-2 py-1 rounded transition-colors"
                 >
-                  New chat
+                  {t('platform_assistant.new_chat')}
                 </button>
               )}
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-white/60 hover:text-white transition-colors"
-                aria-label="Close assistant"
+                aria-label={t('platform_assistant.close_aria')}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -165,12 +169,12 @@ export default function PlatformAssistant() {
                     <Bot className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <div className="bg-surface-secondary rounded-xl rounded-tl-sm px-4 py-3 text-sm text-foreground">
-                    Hi! I'm your QVO Platform Assistant. I can help you set up agents, connect integrations, and get the most out of the platform. What would you like help with?
+                    {t('platform_assistant.intro_message')}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pl-10">
-                  {QUICK_ACTIONS.map((action) => (
+                  {quickActions.map((action) => (
                     <button
                       key={action.label}
                       onClick={() => sendMessage(action.prompt)}
@@ -226,7 +230,7 @@ export default function PlatformAssistant() {
                 <div className="bg-surface-secondary rounded-xl rounded-tl-sm px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-muted">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Thinking...
+                    {t('platform_assistant.thinking')}
                   </div>
                 </div>
               </div>
@@ -249,7 +253,7 @@ export default function PlatformAssistant() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask anything..."
+                placeholder={t('platform_assistant.input_placeholder')}
                 className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-foreground placeholder:text-muted"
                 disabled={isLoading}
                 maxLength={2000}
@@ -258,7 +262,7 @@ export default function PlatformAssistant() {
                 type="submit"
                 disabled={!input.trim() || isLoading}
                 className="px-3 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                aria-label="Send message"
+                aria-label={t('platform_assistant.send_aria')}
               >
                 <Send className="h-4 w-4" />
               </button>

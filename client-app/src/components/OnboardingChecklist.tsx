@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { CheckCircle2, Circle, Bot, Phone, Plug, PhoneCall, ArrowRight, X } from 'lucide-react';
 import { useState } from 'react';
@@ -13,14 +14,15 @@ interface ActivationMilestones {
 }
 
 const STEPS = [
-  { key: 'agent_created', label: 'Create your first agent', icon: Bot, path: '/agents', cta: 'Create Agent' },
-  { key: 'phone_connected', label: 'Connect a phone number', icon: Phone, path: '/phone-numbers', cta: 'Add Number' },
-  { key: 'tools_connected', label: 'Connect your tools', icon: Plug, path: '/connectors', cta: 'Connect' },
-  { key: 'first_call_completed', label: 'Complete your first call', icon: PhoneCall, path: '/agents', cta: 'Test Call' },
+  { key: 'agent_created', icon: Bot, path: '/agents', labelKey: 'agent_created_label', ctaKey: 'agent_created_cta' },
+  { key: 'phone_connected', icon: Phone, path: '/phone-numbers', labelKey: 'phone_connected_label', ctaKey: 'phone_connected_cta' },
+  { key: 'tools_connected', icon: Plug, path: '/connectors', labelKey: 'tools_connected_label', ctaKey: 'tools_connected_cta' },
+  { key: 'first_call_completed', icon: PhoneCall, path: '/agents', labelKey: 'first_call_label', ctaKey: 'first_call_cta' },
 ] as const;
 
 export default function OnboardingChecklist() {
   const navigate = useNavigate();
+  const { t } = useTranslation('tenant');
   const [dismissed, setDismissed] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -43,15 +45,15 @@ export default function OnboardingChecklist() {
       <button
         onClick={() => setDismissed(true)}
         className="absolute top-3 right-3 text-white/40 hover:text-white/80 transition-colors"
-        aria-label="Dismiss"
+        aria-label={t('onboarding_checklist.dismiss')}
       >
         <X className="h-4 w-4" />
       </button>
 
       <div className="flex items-center gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-semibold">Activation Progress</h2>
-          <p className="text-sm text-white/70">{completed} of {STEPS.length} steps complete</p>
+          <h2 className="text-lg font-semibold">{t('onboarding_checklist.title')}</h2>
+          <p className="text-sm text-white/70">{t('onboarding_checklist.steps_progress', { completed, total: STEPS.length })}</p>
         </div>
       </div>
 
@@ -61,8 +63,8 @@ export default function OnboardingChecklist() {
         aria-valuenow={Math.round(progress)}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`Activation progress: ${completed} of ${STEPS.length} steps complete (${Math.round(progress)} percent)`}
-        title={`${Math.round(progress)}% of onboarding steps complete`}
+        aria-label={t('onboarding_checklist.progress_aria', { completed, total: STEPS.length, pct: Math.round(progress) })}
+        title={t('onboarding_checklist.progress_tooltip', { pct: Math.round(progress) })}
       >
         <div
           className="bg-green-400 h-2 rounded-full transition-all duration-500"
@@ -84,14 +86,14 @@ export default function OnboardingChecklist() {
               )}
               <Icon className={`h-4 w-4 shrink-0 ${done ? 'text-white/50' : 'text-white/80'}`} />
               <span className={`text-sm flex-1 ${done ? 'text-white/50 line-through' : 'text-white'}`}>
-                {step.label}
+                {t(`onboarding_checklist.${step.labelKey}`)}
               </span>
               {!done && (
                 <button
                   onClick={() => navigate(step.path)}
                   className="text-xs bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
                 >
-                  {step.cta} <ArrowRight className="h-3 w-3" />
+                  {t(`onboarding_checklist.${step.ctaKey}`)} <ArrowRight className="h-3 w-3" />
                 </button>
               )}
             </div>
