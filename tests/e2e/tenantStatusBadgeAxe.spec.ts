@@ -111,8 +111,7 @@ interface PageCheck {
    *     data (jobs, conversations, calls). Under the admin-only seed
    *     used by `admin-e2e.yml` there are no rows yet, so a zero-badge
    *     result is expected and emitted as a warning rather than a
-   *     failure. Tracked by follow-up #1159 (seed demo data) and
-   *     #1158 (migrate Quality to the shared component) so this
+   *     failure. Tracked by follow-up #1159 (seed demo data) so this
    *     leniency can be tightened to `'required'` once that work
    *     lands.
    */
@@ -131,10 +130,12 @@ const PAGES: PageCheck[] = [
   // status pill on first paint regardless of whether any call is in
   // flight, so we can require at least one badge here.
   { path: '/ops/monitor', slug: 'operations',  heading: 'Operations',      expectsBadges: 'required' },
-  // Call Quality currently uses raw `<span>` markup for its score /
-  // sentiment pills (no StatusBadge import, see follow-up #1158).
-  // Flagged as data-dependent until the migration lands.
-  { path: '/quality',     slug: 'quality',     heading: 'Call Quality',    expectsBadges: 'data-dependent' },
+  // Call Quality (task #1158) now renders a chrome-level
+  // StatusBadge in the PageHeader status slot showing the rolling
+  // average score band, plus per-row score StatusBadges in the
+  // Lowest Scoring table when data exists. The chrome badge is
+  // unconditional, so we can require it.
+  { path: '/quality',     slug: 'quality',     heading: 'Call Quality',    expectsBadges: 'required' },
   // Billing chrome renders the subscription-state pill on every render,
   // so we require it.
   { path: '/billing',     slug: 'billing',     heading: 'Billing',         expectsBadges: 'required' },
@@ -312,14 +313,14 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
           reason =
             'no [data-status-badge] / [data-status-dot] nodes found on a page that is expected to render badges — audit cannot run';
         } else {
-          // Soft warning: data-dependent pages (Quality / Dispatch /
-          // SmsInbox) only show badges inside per-row data, and the
-          // admin-only seed used in CI doesn't populate those rows.
-          // Triagers should know the audit no-op'd here; follow-ups
-          // #1158 (Quality migration) and #1159 (seed demo data) will
-          // let us upgrade these to `'required'`.
+          // Soft warning: data-dependent pages (Dispatch / SmsInbox)
+          // only show badges inside per-row data, and the admin-only
+          // seed used in CI doesn't populate those rows. Triagers
+          // should know the audit no-op'd here; follow-up #1159
+          // (seed demo data) will let us upgrade these to
+          // `'required'`.
           console.warn(
-            `[a11y] WARN ${check.path}: no [data-status-badge] / [data-status-dot] nodes found — data-dependent page, audit is a no-op until follow-ups #1158 / #1159 land`,
+            `[a11y] WARN ${check.path}: no [data-status-badge] / [data-status-dot] nodes found — data-dependent page, audit is a no-op until follow-up #1159 lands`,
           );
         }
       } else {

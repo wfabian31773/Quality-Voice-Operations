@@ -152,6 +152,20 @@ export default function Quality() {
         icon={<TrendingUp className="h-5 w-5" />}
         title="Call Quality"
         description="Monitor AI agent performance and manage prompt versions"
+        status={
+          <StatusBadge
+            tone={overallAvg > 0 ? scoreTone(overallAvg) : 'neutral'}
+            tooltip={
+              overallAvg > 0
+                ? `Average quality score ${overallAvg.toFixed(1)} of 10 — ${scoreBand(overallAvg)} (green ≥ 8, yellow 6–7.9, red < 6)`
+                : 'Scores will appear once calls have been graded'
+            }
+          >
+            {overallAvg > 0
+              ? `${overallAvg.toFixed(1)}/10 · ${scoreBand(overallAvg)}`
+              : 'No quality data yet'}
+          </StatusBadge>
+        }
       />
 
       {error && (
