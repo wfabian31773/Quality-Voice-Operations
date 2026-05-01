@@ -7,7 +7,7 @@ import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, Bot, Wrench, Workflow, Globe, Calendar, AlertTriangle } from 'lucide-react';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
-import { EmptyState, SkeletonGrid } from '../components/state';
+import { EmptyState, Skeleton, SkeletonGrid } from '../components/state';
 import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 import SchedulingDriftBanner from '../components/SchedulingDriftBanner';
@@ -430,8 +430,14 @@ function AgentModal({
 
   if (!loaded) {
     return (
-      <Modal open onClose={onClose} ariaLabel={t('agents.modal.loading_aria')} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-8 text-center text-text-secondary">
-        {t('agents.modal.loading')}
+      <Modal open onClose={onClose} ariaLabel={t('agents.modal.loading_aria')} panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-lg p-6">
+        <div className="space-y-3" role="status" aria-busy="true" aria-live="polite" aria-label={t('agents.modal.loading_aria')}>
+          <Skeleton className="h-6 w-1/2" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-24 w-full" rounded="lg" />
+        </div>
       </Modal>
     );
   }

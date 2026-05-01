@@ -9,7 +9,7 @@ import {
   Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
   ShoppingCart, Filter, Receipt, BadgePercent, AlertCircle,
 } from 'lucide-react';
-import { EmptyState, ErrorState, SkeletonGrid } from '../components/state';
+import { EmptyState, ErrorState, SkeletonGrid, SkeletonRows } from '../components/state';
 import { PageHeader } from '../components/ui';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
@@ -921,8 +921,9 @@ function TemplateDetailView({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      <div className="space-y-4 py-6" role="status" aria-busy="true" aria-live="polite" aria-label="Loading">
+        <SkeletonGrid count={3} className="grid gap-4 lg:grid-cols-3" cardClassName="h-40" />
+        <SkeletonRows count={4} rowClassName="h-14" />
       </div>
     );
   }
@@ -1725,14 +1726,7 @@ function PurchaseRow({
             Billing history
           </div>
           {invoiceLoading ? (
-            <div className="space-y-2" aria-busy="true">
-              {[0, 1].map((i) => (
-                <div
-                  key={i}
-                  className="h-12 rounded-lg bg-surface-hover animate-pulse"
-                />
-              ))}
-            </div>
+            <SkeletonRows count={2} rowClassName="h-12" gap="sm" />
           ) : invoiceError ? (
             <div className="flex items-start gap-2 text-xs text-danger">
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -1748,9 +1742,12 @@ function PurchaseRow({
               </div>
             </div>
           ) : !invoiceData?.invoices?.length ? (
-            <p className="text-xs text-text-muted">
-              No renewal invoices have been issued yet.
-            </p>
+            <EmptyState
+              icon={Receipt}
+              title="No renewal invoices yet"
+              description="Renewal invoices will appear here once they are issued."
+              variant="compact"
+            />
           ) : (
             <ul className="divide-y divide-border">
               {invoiceData.invoices.map((inv) => (

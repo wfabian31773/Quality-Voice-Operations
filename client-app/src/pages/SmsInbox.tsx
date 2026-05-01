@@ -1743,7 +1743,14 @@ function AdminView({ isManager }: { isManager: boolean }) {
               </div>
             )}
             {consentHistory.length === 0 && consentPhone && !loadingConsent && (
-              <p className="text-xs text-muted mt-2">No consent records found for this number.</p>
+              <div className="mt-2">
+                <EmptyState
+                  icon={Search}
+                  title="No consent records found"
+                  description="We don't have any opt-in or opt-out history for this number."
+                  variant="compact"
+                />
+              </div>
             )}
           </div>
         </div>

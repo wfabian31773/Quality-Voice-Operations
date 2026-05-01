@@ -27,6 +27,7 @@ import { parseOAuthNotConfigured, type OAuthNotConfigured } from '../lib/oauthEr
 import BrandLogo from '../components/BrandLogo';
 import Modal from '../components/Modal';
 import { PageHeader } from '../components/ui';
+import { EmptyState, PageSkeleton, Skeleton, SkeletonRows } from '../components/state';
 
 interface Connector {
   integrationId: string;
@@ -2515,16 +2516,23 @@ export function OutageAlertHistory({ connectors }: { connectors: Connector[] }) 
       </div>
 
       {isLoading ? (
-        <div className="text-sm text-text-secondary py-6 text-center">Loading alert history…</div>
+        <SkeletonRows count={5} rowClassName="h-10" />
       ) : isError ? (
         <div className="text-sm text-red-600 dark:text-red-400 py-6 text-center">
           Couldn't load alert history. Try refreshing.
         </div>
       ) : alerts.length === 0 ? (
-        <div className="text-sm text-text-secondary py-8 text-center border border-dashed border-border rounded-lg">
-          {filterIsActive
-            ? 'No outage alerts for this integration yet.'
-            : "No outage alerts have been sent. We'll log every email or SMS escalation here so you can audit who got paged."}
+        <div className="border border-dashed border-border rounded-lg">
+          <EmptyState
+            icon={ShieldAlert}
+            title={filterIsActive ? 'No outage alerts yet' : 'No outage alerts sent'}
+            description={
+              filterIsActive
+                ? 'No outage alerts for this integration yet.'
+                : "We'll log every email or SMS escalation here so you can audit who got paged."
+            }
+            variant="compact"
+          />
         </div>
       ) : (
         <>
@@ -2941,7 +2949,12 @@ function OutageAlertDetailPanel({
       </div>
 
       {isLoading ? (
-        <div className="p-6 text-sm text-text-secondary">Loading alert details…</div>
+        <div className="p-6 space-y-3" role="status" aria-busy="true" aria-live="polite" aria-label="Loading alert details">
+          <Skeleton className="h-5 w-1/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-24 w-full" rounded="lg" />
+        </div>
       ) : isError || !data ? (
         <div className="p-6 text-sm text-red-600 dark:text-red-400">
           Couldn't load alert details.{' '}
@@ -3629,7 +3642,7 @@ export default function Connectors() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-12 text-text-secondary">Loading integrations...</div>
+        <PageSkeleton />
       ) : (
         <>
           {connectedDefs.length > 0 ? (

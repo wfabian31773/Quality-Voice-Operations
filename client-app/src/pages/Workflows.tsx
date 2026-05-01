@@ -375,9 +375,13 @@ function WorkflowBuilder({
         <h3 className="text-sm font-semibold text-text-primary">Steps</h3>
 
         {steps.length === 0 && (
-          <div className="bg-surface border border-border border-dashed rounded-xl p-8 text-center">
-            <WorkflowIcon className="h-8 w-8 text-text-muted mx-auto mb-2" />
-            <p className="text-sm text-text-secondary">No steps yet. Add a trigger to start building your workflow.</p>
+          <div className="bg-surface border border-border border-dashed rounded-xl">
+            <EmptyState
+              icon={WorkflowIcon}
+              title="No steps yet"
+              description="Add a trigger to start building your workflow."
+              variant="compact"
+            />
           </div>
         )}
 

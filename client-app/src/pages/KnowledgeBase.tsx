@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Plus, Pencil, Trash2, X, BookOpen, Search, Upload, Globe, FileText, HelpCircle, RefreshCw, Eye, File, ChevronDown, Check, Loader2 } from 'lucide-react';
-import EmptyState from '../components/EmptyState';
-import { Skeleton, SkeletonRows } from '../components/state';
+import { EmptyState, Skeleton, SkeletonRows } from '../components/state';
 import { PageHeader } from '../components/ui';
 import TooltipWalkthrough from '../components/TooltipWalkthrough';
 import { useRole } from '../lib/useRole';
@@ -281,8 +280,14 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
 
   if (!loaded) {
     return (
-      <Modal open onClose={onClose} ariaLabel="Loading article" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl p-8 text-center text-text-secondary">
-        Loading article...
+      <Modal open onClose={onClose} ariaLabel="Loading article" panelClassName="bg-surface border border-border rounded-xl shadow-lg w-full max-w-2xl p-6">
+        <div className="space-y-3" role="status" aria-busy="true" aria-live="polite" aria-label="Loading article">
+          <Skeleton className="h-6 w-1/2" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-32 w-full" rounded="lg" />
+        </div>
       </Modal>
     );
   }
