@@ -1077,3 +1077,106 @@ export function dispatchCompletionPhotosEmail(params: {
 
   return { subject, html, text };
 }
+
+/**
+ * Weekly summary of the upgrade vs. downgrade arms of the billing
+ * recommendation banner. Sent to platform/billing admins so finance can
+ * see how much MRR the recommendation funnel is moving without having
+ * to log in.
+ *
+ * The numbers come from the same `byDirection` aggregation surfaced on
+ * the platform admin dashboard (see `byDirection` in
+ * `server/admin-api/routes/platformAdmin.ts`) so the email and the in-app
+ * tile never disagree.
+ */
+export function recommendationDirectionDigestEmail(params: {
+  windowDays: number;
+  generatedAt: string;
+  dashboardUrl: string;
+  unsubscribeNote?: string;
+  rows: Array<{
+    direction: 'upgrade' | 'downgrade' | 'lateral';
+    impressions: number;
+    clicks: number;
+    completedSwitches: number;
+    monthlySavingsCents: number;
+  }>;
+}): { subject: string; html: string; text: string } {
+  const fmtMoney = (cents: number): string =>
+    `$${(Math.round(cents) / 100).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  const labelFor = (d: 'upgrade' | 'downgrade' | 'lateral'): string =>
+    d === 'upgrade'
+      ? 'Upgrade arm'
+      : d === 'downgrade'
+        ? 'Downgrade arm'
+        : 'Lateral (annual-only)';
+
+  const totals = params.rows.reduce(
+    (acc, r) => ({
+      impressions: acc.impressions + r.impressions,
+      clicks: acc.clicks + r.clicks,
+      completedSwitches: acc.completedSwitches + r.completedSwitches,
+      monthlySavingsCents: acc.monthlySavingsCents + r.monthlySavingsCents,
+    }),
+    { impressions: 0, clicks: 0, completedSwitches: 0, monthlySavingsCents: 0 },
+  );
+
+  const subject = `[QVO Billing] Weekly recommendation digest — ${fmtMoney(totals.monthlySavingsCents)}/mo unlocked across ${totals.completedSwitches} switch${totals.completedSwitches === 1 ? '' : 'es'}`;
+
+  const rowsHtml = params.rows
+    .map(
+      (r) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb"><strong>${labelFor(r.direction)}</strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${r.impressions.toLocaleString('en-US')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${r.clicks.toLocaleString('en-US')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${r.completedSwitches.toLocaleString('en-US')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(r.monthlySavingsCents)}</td>
+      </tr>`,
+    )
+    .join('');
+
+  const html = baseLayout(`
+    <p>Hi,</p>
+    <p>Here is the weekly digest of the billing recommendation banner for the trailing <strong>${params.windowDays} day${params.windowDays === 1 ? '' : 's'}</strong>. Numbers are split by direction so you can see how much MRR each arm of the funnel is moving.</p>
+    <div class="alert-warn">
+      <p style="margin:0"><strong>Combined monthly savings unlocked</strong></p>
+      <p style="margin:4px 0 0">${fmtMoney(totals.monthlySavingsCents)}/month across <strong>${totals.completedSwitches.toLocaleString('en-US')}</strong> completed switch${totals.completedSwitches === 1 ? '' : 'es'} (${totals.impressions.toLocaleString('en-US')} impressions, ${totals.clicks.toLocaleString('en-US')} clicks).</p>
+    </div>
+    <table style="border-collapse:collapse;font-size:13px;width:100%;margin:8px 0 16px">
+      <thead>
+        <tr style="background:#f1f5f9;text-align:left">
+          <th style="padding:8px 12px">Direction</th>
+          <th style="padding:8px 12px;text-align:right">Impressions</th>
+          <th style="padding:8px 12px;text-align:right">Clicks</th>
+          <th style="padding:8px 12px;text-align:right">Switches</th>
+          <th style="padding:8px 12px;text-align:right">$ unlocked /mo</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <p><a href="${params.dashboardUrl}" class="btn">Open Recommendation Dashboard</a></p>
+    <p class="muted">Digest generated ${params.generatedAt}. ${params.unsubscribeNote ?? 'You can turn off billing emails in Settings → Notifications.'}</p>
+  `);
+
+  const textRows = params.rows
+    .map(
+      (r) =>
+        `- ${labelFor(r.direction)}: ${r.impressions.toLocaleString('en-US')} impressions, ${r.clicks.toLocaleString('en-US')} clicks, ${r.completedSwitches.toLocaleString('en-US')} switches, ${fmtMoney(r.monthlySavingsCents)}/mo unlocked`,
+    )
+    .join('\n');
+
+  const text =
+    `${subject}\n\n` +
+    `Window: trailing ${params.windowDays} day${params.windowDays === 1 ? '' : 's'} (generated ${params.generatedAt}).\n\n` +
+    `Combined monthly savings unlocked: ${fmtMoney(totals.monthlySavingsCents)}/month across ${totals.completedSwitches.toLocaleString('en-US')} completed switch${totals.completedSwitches === 1 ? '' : 'es'} (${totals.impressions.toLocaleString('en-US')} impressions, ${totals.clicks.toLocaleString('en-US')} clicks).\n\n` +
+    `By direction:\n${textRows}\n\n` +
+    `Dashboard: ${params.dashboardUrl}\n\n` +
+    `${params.unsubscribeNote ?? 'You can turn off billing emails in Settings → Notifications.'}`;
+
+  return { subject, html, text };
+}

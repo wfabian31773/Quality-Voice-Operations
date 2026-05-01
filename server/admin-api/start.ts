@@ -45,6 +45,7 @@ import { startTenantIsolationScheduler, stopTenantIsolationScheduler } from '../
 import { startEncryptionReminderScheduler, stopEncryptionReminderScheduler } from '../../platform/security/EncryptionReminderScheduler';
 import { startRouteExportArchiveCleanupScheduler, stopRouteExportArchiveCleanupScheduler } from '../../platform/dispatch/RouteExportArchiveCleanupScheduler';
 import { startPlanRecommendationDigestScheduler, stopPlanRecommendationDigestScheduler } from '../../platform/billing/PlanRecommendationDigestScheduler';
+import { startRecommendationDirectionDigestScheduler, stopRecommendationDirectionDigestScheduler } from '../../platform/billing/RecommendationDirectionDigestScheduler';
 import { startStripePriceVerificationScheduler, stopStripePriceVerificationScheduler } from '../../platform/billing/StripePriceVerificationScheduler';
 import { startPortalConfigCleanupScheduler, stopPortalConfigCleanupScheduler } from '../../platform/billing/PortalConfigCleanupScheduler';
 
@@ -130,6 +131,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startEncryptionReminderScheduler();
   startRouteExportArchiveCleanupScheduler();
   startPlanRecommendationDigestScheduler();
+  startRecommendationDirectionDigestScheduler();
   startStripePriceVerificationScheduler();
   startPortalConfigCleanupScheduler();
   startFederalDncSyncScheduler();
@@ -173,6 +175,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopEncryptionReminderScheduler();
   stopRouteExportArchiveCleanupScheduler();
   stopPlanRecommendationDigestScheduler();
+  stopRecommendationDirectionDigestScheduler();
   stopStripePriceVerificationScheduler();
   stopPortalConfigCleanupScheduler();
   stopFederalDncSyncScheduler();
