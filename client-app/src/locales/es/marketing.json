@@ -482,7 +482,10 @@
       "save_badge": "Ahorra {{percent}}%",
       "save_badge_aria": "Ahorra {{percent}}% con facturación anual",
       "save_amount": "Ahorra {{amount}}/año",
-      "save_amount_aria": "Ahorra {{amount}} por año con facturación anual"
+      "save_amount_aria": "Ahorra {{amount}} por año con facturación anual",
+      "discount_badge": "{{label}} aplicado",
+      "discount_badge_aria": "Tu descuento de cuenta de {{label}} se aplica a los precios siguientes",
+      "discount_promo_code": "Código promocional {{code}}"
     },
     "billing_toggle": {
       "monthly": "Mensual",

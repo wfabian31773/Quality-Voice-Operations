@@ -482,7 +482,10 @@
       "save_badge": "{{percent}}% sparen",
       "save_badge_aria": "Mit jährlicher Abrechnung {{percent}}% sparen",
       "save_amount": "Spare {{amount}}/Jahr",
-      "save_amount_aria": "Spare {{amount}} pro Jahr mit jährlicher Abrechnung"
+      "save_amount_aria": "Spare {{amount}} pro Jahr mit jährlicher Abrechnung",
+      "discount_badge": "{{label}} angewendet",
+      "discount_badge_aria": "Dein Kontorabatt von {{label}} wird auf die Preise unten angewendet",
+      "discount_promo_code": "Promo-Code {{code}}"
     },
     "billing_toggle": {
       "monthly": "Monatlich",

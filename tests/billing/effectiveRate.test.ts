@@ -17,6 +17,8 @@ type QueryHandler = (
 let queryHandler: QueryHandler = async () => ({ rows: [] });
 const subscriptionsRetrieve = vi.fn();
 const pricesRetrieve = vi.fn();
+const customersRetrieve = vi.fn();
+const promotionCodesRetrieve = vi.fn();
 let stripeClientShouldThrow = false;
 
 vi.mock('../../platform/db', () => ({
@@ -60,6 +62,12 @@ vi.mock('../../platform/billing/stripe/client', () => ({
       prices: {
         retrieve: pricesRetrieve,
       },
+      customers: {
+        retrieve: customersRetrieve,
+      },
+      promotionCodes: {
+        retrieve: promotionCodesRetrieve,
+      },
     };
   },
 }));
@@ -74,6 +82,7 @@ interface SubRow {
   plan?: string | null;
   stripe_subscription_id?: string | null;
   stripe_price_id?: string | null;
+  stripe_customer_id?: string | null;
 }
 
 function setSubRow(row: SubRow | null) {
@@ -89,6 +98,8 @@ function setSubRow(row: SubRow | null) {
 beforeEach(() => {
   subscriptionsRetrieve.mockReset();
   pricesRetrieve.mockReset();
+  customersRetrieve.mockReset();
+  promotionCodesRetrieve.mockReset();
   stripeClientShouldThrow = false;
   queryHandler = async () => ({ rows: [] });
   // Defensively reset the cross-test process-local Stripe price cache so a
@@ -973,5 +984,284 @@ describe('getTenantEffectiveRate — per-tier metered AI-minutes env override', 
     expect(result.overagePriceId).toBe('price_ai_minutes_negotiated');
     expect(result.overageRatePerMinute).toBeCloseTo(0.05, 6);
     expect(result.overagePriceSource).toBe('stripe');
+  });
+});
+
+/**
+ * Coverage for the customer-level discount surfaced via
+ * `loadActiveCustomerDiscount`. Contract:
+ *   - When the tenant's customer has an active coupon (percent_off or
+ *     amount_off), the resolver returns a normalised `discount` object
+ *     so the public pricing page can render the post-discount price.
+ *   - When there is no customer id, no discount, or the lookup fails,
+ *     `discount` is `null` and every other field stays unchanged
+ *     (catalog/Stripe resolution is independent of the discount path).
+ *   - The discount is also surfaced from the no-subscription branch so
+ *     a tenant with a coupon attached pre-provisioning still sees their
+ *     post-discount preview on the public pricing page.
+ */
+describe('getTenantEffectiveRate — customer-level discount', () => {
+  it('surfaces a percent-off coupon attached to the customer', async () => {
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_pro_with_discount',
+      stripe_price_id: 'price_pro_base',
+      stripe_customer_id: 'cus_with_discount',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_with_discount',
+      discount: {
+        id: 'di_test',
+        coupon: {
+          id: 'PROMO25',
+          name: 'Spring 25% off',
+          percent_off: 25,
+          amount_off: null,
+          currency: null,
+          valid: true,
+        },
+        promotion_code: null,
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(customersRetrieve).toHaveBeenCalledWith(
+      'cus_with_discount',
+      expect.objectContaining({ expand: expect.any(Array) }),
+    );
+    expect(result.discount).toMatchObject({
+      couponId: 'PROMO25',
+      name: 'Spring 25% off',
+      percentOff: 25,
+      amountOffCents: null,
+    });
+    // Base price stays gross (pre-discount) — the FE applies the
+    // discount client-side so the calculator/CTA keep their existing
+    // semantics.
+    expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
+  });
+
+  it('surfaces an amount-off coupon attached to the customer', async () => {
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: 'sub_starter_amount_off',
+      stripe_price_id: 'price_starter_base',
+      stripe_customer_id: 'cus_amount_off',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_starter_base',
+              unit_amount: PLAN_CATALOG.starter.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.starter.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_amount_off',
+      discount: {
+        id: 'di_amount',
+        coupon: {
+          id: 'SAVE50',
+          name: '$50 off',
+          percent_off: null,
+          amount_off: 5_000, // $50 off in cents
+          currency: 'usd',
+          valid: true,
+        },
+        promotion_code: null,
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(result.discount).toMatchObject({
+      couponId: 'SAVE50',
+      percentOff: null,
+      amountOffCents: 5_000,
+      currency: 'usd',
+    });
+  });
+
+  it('returns discount=null when the customer has no active discount', async () => {
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_no_discount',
+      stripe_price_id: 'price_pro_base',
+      stripe_customer_id: 'cus_no_discount',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_no_discount',
+      discount: null,
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(result.discount).toBeNull();
+    expect(result.basePriceSource).toBe('stripe');
+  });
+
+  it('returns discount=null when there is no customer id on the subscription row', async () => {
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_no_customer',
+      stripe_price_id: 'price_pro_base',
+      stripe_customer_id: null,
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(customersRetrieve).not.toHaveBeenCalled();
+    expect(result.discount).toBeNull();
+  });
+
+  it('treats a discount-lookup failure as no discount (degrades silently)', async () => {
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: 'sub_discount_err',
+      stripe_price_id: 'price_pro_base',
+      stripe_customer_id: 'cus_throws',
+    });
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      items: {
+        data: [
+          {
+            price: {
+              id: 'price_pro_base',
+              unit_amount: PLAN_CATALOG.pro.monthlyPriceCents,
+              unit_amount_decimal: String(PLAN_CATALOG.pro.monthlyPriceCents),
+              currency: 'usd',
+              recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
+              metadata: {},
+            },
+          },
+        ],
+      },
+    });
+    customersRetrieve.mockRejectedValueOnce(new Error('Stripe 503'));
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // Discount degrades to null; base resolution is unaffected.
+    expect(result.discount).toBeNull();
+    expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
+    expect(result.basePriceSource).toBe('stripe');
+  });
+
+  it('surfaces a customer-level discount on the no-subscription branch', async () => {
+    // Tenant has a Stripe customer with a coupon attached but hasn't
+    // picked a plan yet (no `stripe_subscription_id`). The public
+    // pricing page should still preview the discounted base price.
+    setSubRow({
+      plan: 'starter',
+      stripe_subscription_id: null,
+      stripe_price_id: null,
+      stripe_customer_id: 'cus_pre_provisioned',
+    });
+    customersRetrieve.mockResolvedValueOnce({
+      id: 'cus_pre_provisioned',
+      discount: {
+        id: 'di_pre',
+        coupon: {
+          id: 'WELCOME10',
+          name: 'Welcome 10% off',
+          percent_off: 10,
+          amount_off: null,
+          currency: null,
+          valid: true,
+        },
+        promotion_code: null,
+      },
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    // No subscription was retrieved (none configured).
+    expect(subscriptionsRetrieve).not.toHaveBeenCalled();
+    expect(customersRetrieve).toHaveBeenCalledWith(
+      'cus_pre_provisioned',
+      expect.objectContaining({ expand: expect.any(Array) }),
+    );
+    expect(result.discount).toMatchObject({
+      couponId: 'WELCOME10',
+      percentOff: 10,
+    });
+    // Base/overage still catalog-sourced, so `source=mixed` (the discount
+    // came from live Stripe data).
+    expect(result.source).toBe('mixed');
+    expect(result.basePriceCents).toBe(PLAN_CATALOG.starter.monthlyPriceCents);
+  });
+
+  it('returns catalog fallback (discount=null) when the no-sub branch has no customer id', async () => {
+    setSubRow({
+      plan: 'pro',
+      stripe_subscription_id: null,
+      stripe_price_id: null,
+      stripe_customer_id: null,
+    });
+
+    const result = await getTenantEffectiveRate(TENANT);
+
+    expect(customersRetrieve).not.toHaveBeenCalled();
+    expect(subscriptionsRetrieve).not.toHaveBeenCalled();
+    expect(result.discount).toBeNull();
+    expect(result.source).toBe('catalog');
+    expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
   });
 });

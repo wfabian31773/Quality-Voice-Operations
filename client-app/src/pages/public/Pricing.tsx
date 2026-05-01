@@ -24,7 +24,7 @@ import {
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../../../shared/billing/planCatalog';
-import { formatDollars } from '../../lib/formatCurrency';
+import { formatDollars, dollarsToCents } from '../../lib/formatCurrency';
 import {
   DEFAULT_DISPLAY_CURRENCY,
   formatPublicPrice,
@@ -60,6 +60,112 @@ export interface EffectiveRateResponse {
   // line when neither field is present.
   smsRatePerMessage?: number;
   smsPriceSource?: 'stripe' | 'catalog';
+  // Active customer-level discount (a Stripe coupon or promotion-code
+  // redemption attached to the tenant's customer record) added in
+  // #1324 so the public pricing page can render the post-discount
+  // monthly/annual base alongside the published rate. Optional for
+  // backward compat with older API responses; treated as no-discount
+  // when absent or `null`.
+  discount?: EffectiveRateDiscount | null;
+}
+
+/**
+ * Customer-level discount as surfaced by `/billing/effective-rate`.
+ * Mirrors the server-side `UpgradeDiscount` shape so the FE can apply
+ * the same post-discount math. `percentOff` is in [0, 100];
+ * `amountOffCents` is in the smallest currency unit. Both are mutually
+ * exclusive on a single Stripe coupon — `percentOff` wins when both
+ * happen to be present (mirrors the server's `applyDiscountToBaseCents`).
+ */
+export interface EffectiveRateDiscount {
+  couponId: string | null;
+  name: string | null;
+  percentOff: number | null;
+  amountOffCents: number | null;
+  currency: string | null;
+  promotionCode: string | null;
+  promotionCodeId: string | null;
+}
+
+/**
+ * Apply a Stripe customer-level discount to a base price expressed in
+ * cents. Mirrors the server-side `applyDiscountToBaseCents` logic so
+ * the public pricing page's discounted-price preview lines up with what
+ * Stripe will actually invoice. `percent_off` wins over `amount_off`
+ * when both are present (Stripe treats them as mutually exclusive on a
+ * single coupon, but defensive code is cheap). Returns the post-discount
+ * price clamped to >= 0.
+ *
+ * IMPORTANT: `baseCents` must be the full per-invoice amount (i.e. the
+ * monthly invoice for monthly subs, the annual invoice for annual subs)
+ * — Stripe's `amount_off` reduces a single invoice by `amount_off`
+ * regardless of cadence, so a monthly-equivalent figure on an annual
+ * sub would over-discount by ~12×. Use `applyDiscountToMonthlyDisplayCents`
+ * when you want to show the post-discount price as a "/month" figure.
+ */
+export function applyDiscountCents(
+  baseCents: number,
+  discount: EffectiveRateDiscount | null | undefined,
+): number {
+  if (!discount) return baseCents;
+  if (discount.percentOff != null && Number.isFinite(discount.percentOff)) {
+    const factor = Math.max(0, Math.min(100, discount.percentOff)) / 100;
+    return Math.max(0, Math.round(baseCents * (1 - factor)));
+  }
+  if (discount.amountOffCents != null && Number.isFinite(discount.amountOffCents)) {
+    return Math.max(0, baseCents - discount.amountOffCents);
+  }
+  return baseCents;
+}
+
+/**
+ * Apply a discount to a monthly-equivalent display price, accounting
+ * for the actual invoice cadence. `monthlyEquivCents` is the "/month"
+ * figure shown on the tier card (annual subs already divide their
+ * yearly invoice by 12 for display); `monthsPerInvoice` is 1 for
+ * monthly subs and 12 for annual subs. The function scales up to the
+ * per-invoice amount, applies the discount once (matching how Stripe
+ * will reduce the invoice), then scales back down to a /month figure
+ * so the strikethrough/displayed prices stay in the same units.
+ *
+ * For `percent_off` coupons the math is identical for both cadences
+ * (a percentage scales linearly), but for `amount_off` coupons the
+ * scale-up step is critical: a $50 amount_off on an annual sub
+ * reduces the YEAR's invoice by $50, which is ~$4.17/mo — not $50/mo.
+ */
+export function applyDiscountToMonthlyDisplayCents(
+  monthlyEquivCents: number,
+  discount: EffectiveRateDiscount | null | undefined,
+  monthsPerInvoice: number,
+): number {
+  if (!discount) return monthlyEquivCents;
+  const safeMonths = Math.max(1, Math.round(monthsPerInvoice));
+  const perInvoiceCents = monthlyEquivCents * safeMonths;
+  const discountedInvoiceCents = applyDiscountCents(perInvoiceCents, discount);
+  return Math.max(0, Math.round(discountedInvoiceCents / safeMonths));
+}
+
+/**
+ * Human-readable "25% off" / "$50 off" label for a discount, used in
+ * the discount badge above the tier cards. Returns `null` when the
+ * discount carries no usable savings (defence against a malformed
+ * payload — the server already filters those out via `normalizeDiscount`).
+ */
+export function formatDiscountLabel(
+  discount: EffectiveRateDiscount | null | undefined,
+): string | null {
+  if (!discount) return null;
+  if (discount.percentOff != null && Number.isFinite(discount.percentOff)) {
+    const pct = Math.max(0, Math.min(100, discount.percentOff));
+    const rounded = Number.isInteger(pct) ? pct : Math.round(pct * 10) / 10;
+    return `${rounded}% off`;
+  }
+  if (discount.amountOffCents != null && Number.isFinite(discount.amountOffCents)) {
+    // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars conversion for display label.
+    const dollars = Math.max(0, discount.amountOffCents) / 100;
+    return `${formatDollars(dollars, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} off`;
+  }
+  return null;
 }
 
 /**
@@ -977,6 +1083,38 @@ export default function Pricing() {
               const annualSavingsDollars = (monthlyPrice - annualMonthlyPrice) * 12;
               const annualSavingsFormatted = formatPriceForCurrency(annualSavingsDollars);
               const signupHref = `/signup?plan=${tier.key}${isAnnual ? '&interval=annual' : ''}`;
+              // Apply the active customer-level discount (if any) so the
+              // card surfaces the post-coupon price the tenant will
+              // actually be invoiced. We work in cents (matching what
+              // Stripe will charge) and convert back to whole dollars
+              // for display via the existing `formatPriceForCurrency`.
+              // Pure UI projection — `displayedPrice` itself is left
+              // untouched so the calculator and signup CTA continue to
+              // point at the published rate.
+              const tierDiscount = effectiveRatePayload?.discount ?? null;
+              const discountLabel = formatDiscountLabel(tierDiscount);
+              // Annual cards show a monthly-equivalent figure but a Stripe
+              // `amount_off` coupon reduces the WHOLE annual invoice by
+              // `amount_off`, not each month. `applyDiscountToMonthlyDisplayCents`
+              // scales up to the invoice cadence before applying the
+              // discount and scales back to /month so the strikethrough
+              // pair stays in the same units we display elsewhere on the
+              // card. (Percent-off scales linearly so this is a no-op
+              // for those coupons.)
+              const monthsPerInvoice = isAnnual ? 12 : 1;
+              const discountedCents = tierDiscount
+                ? applyDiscountToMonthlyDisplayCents(
+                    dollarsToCents(displayedPrice),
+                    tierDiscount,
+                    monthsPerInvoice,
+                  )
+                : dollarsToCents(displayedPrice);
+              // eslint-disable-next-line local/no-cents-divided-by-100 -- post-discount cents → display dollars; staying in cents for the strikethrough comparison below.
+              const discountedPriceDollars = discountedCents / 100;
+              const hasVisibleDiscount =
+                tierDiscount != null
+                && discountLabel != null
+                && discountedCents < dollarsToCents(displayedPrice);
               return (
               <div
                 key={tier.key}
@@ -1014,15 +1152,38 @@ export default function Pricing() {
                       {formatPriceForCurrency(monthlyPrice)}{t('pricing.tier_card.per_month')}
                     </div>
                   )}
+                  {hasVisibleDiscount && (
+                    <div
+                      className="text-xs text-text-primary/40 font-body line-through"
+                      data-testid={`pricing-tier-${tier.key}-pre-discount-price`}
+                    >
+                      {isApprox && '≈ '}{formatPriceForCurrency(displayedPrice)}{t('pricing.tier_card.per_month')}
+                    </div>
+                  )}
                   <span
                     data-testid={`pricing-tier-${tier.key}-price`}
                     data-display-currency={displayCurrency}
+                    data-discount-applied={hasVisibleDiscount ? 'true' : 'false'}
                     className="font-display text-5xl font-bold text-text-primary"
                   >
-                    {isApprox && '≈ '}{formatPriceForCurrency(displayedPrice)}
+                    {isApprox && '≈ '}{formatPriceForCurrency(hasVisibleDiscount ? discountedPriceDollars : displayedPrice)}
                   </span>
                   <span className="text-sm text-text-primary/50 font-body">{t('pricing.tier_card.per_month')}</span>
                 </div>
+                {hasVisibleDiscount && discountLabel && (
+                  <div
+                    data-testid={`pricing-tier-${tier.key}-discount-badge`}
+                    aria-label={t('pricing.tier_card.discount_badge_aria', { label: discountLabel })}
+                    className="inline-flex items-center text-[11px] font-semibold font-body bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-wide mb-1"
+                  >
+                    {t('pricing.tier_card.discount_badge', { label: discountLabel })}
+                    {tierDiscount?.promotionCode && (
+                      <span className="ml-1.5 normal-case font-normal text-text-primary/60">
+                        · {t('pricing.tier_card.discount_promo_code', { code: tierDiscount.promotionCode })}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {isAnnual && (
                   <div
                     data-testid={`pricing-tier-${tier.key}-save-amount`}

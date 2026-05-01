@@ -141,6 +141,27 @@ export interface TenantEffectiveRate {
   annualBasePriceCents: number;
   annualBasePriceSource: 'stripe' | 'catalog';
   annualBasePriceId: string | null;
+  /**
+   * Active customer-level discount we resolved off the tenant's Stripe
+   * customer record (a coupon or promotion-code redemption). `null` when
+   * the tenant has no Stripe customer, no active discount, the discount
+   * has expired, or the lookup failed — every degraded path returns
+   * `null` so the caller can keep its original (gross) price intact.
+   *
+   * Powers the public `/pricing` discounted-price callout: when a
+   * tenant browses pricing while logged in we render the discounted
+   * monthly/annual base alongside the published rate so the marketing
+   * page matches what their next invoice will actually charge.
+   *
+   * Note: applying the discount to `monthlyBasePriceCents` /
+   * `annualBasePriceCents` is the consumer's responsibility — these
+   * fields stay at their gross (pre-discount) values so existing
+   * consumers (BillingEstimator, custom-rate callout) keep their
+   * apples-to-apples comparison against the catalog reference. The
+   * marketing page applies the discount client-side via
+   * `applyDiscountToBaseCents` parity logic.
+   */
+  discount: UpgradeDiscount | null;
 }
 
 /**
@@ -221,6 +242,7 @@ function catalogFor(plan: PlanTier): TenantEffectiveRate {
     annualBasePriceCents: catalogAnnualEquivalentCents(entry.monthlyPriceCents),
     annualBasePriceSource: 'catalog',
     annualBasePriceId: null,
+    discount: null,
   };
 }
 
@@ -429,7 +451,8 @@ export async function getTenantEffectiveRate(
     // quote when the env vars are set in production. Mirrors the
     // resolution `getTenantUpgradePreview` already does for the
     // BillingEstimator's "Next tier up" card.
-    if (!getPlanAiMinutesPriceId(inferredPlan)) return fallback;
+    const customerIdNoSub = subRow?.stripe_customer_id ?? null;
+    if (!getPlanAiMinutesPriceId(inferredPlan) && !customerIdNoSub) return fallback;
     let stripeForOverage: Stripe;
     try {
       stripeForOverage = getStripeClient();
@@ -441,21 +464,38 @@ export async function getTenantEffectiveRate(
       });
       return fallback;
     }
-    const resolved = await resolvePerTierAiMinutesPrice(
-      stripeForOverage,
-      inferredPlan,
-      tenantId,
-    );
-    if (!resolved) return fallback;
+    // Resolve the per-tier metered overage and the customer-level
+    // discount in parallel — the discount is independent of the metered
+    // price, so a tenant with no subscription but an attached coupon
+    // (e.g. provisioned via Sales before they pick a plan) still sees
+    // their post-discount price on the public pricing page.
+    const [resolved, discount] = await Promise.all([
+      getPlanAiMinutesPriceId(inferredPlan)
+        ? resolvePerTierAiMinutesPrice(stripeForOverage, inferredPlan, tenantId)
+        : Promise.resolve(null),
+      customerIdNoSub
+        ? loadActiveCustomerDiscount(stripeForOverage, customerIdNoSub, {
+            tenantId,
+            surface: 'effective_rate',
+          })
+        : Promise.resolve(null),
+    ]);
+    if (!resolved && !discount) return fallback;
     return {
       ...fallback,
-      overageRatePerMinute: resolved.ratePerMinute,
-      overagePriceSource: 'stripe',
-      overagePriceId: resolved.id,
-      overagePriceNickname: resolved.nickname,
+      ...(resolved
+        ? {
+            overageRatePerMinute: resolved.ratePerMinute,
+            overagePriceSource: 'stripe' as const,
+            overagePriceId: resolved.id,
+            overagePriceNickname: resolved.nickname,
+          }
+        : {}),
+      discount,
       // Base/SMS/Twilio still catalog-sourced, so this is a `mixed`
-      // result — only the AI overage came from live Stripe data.
-      source: 'mixed',
+      // result whenever any Stripe data (overage rate OR discount)
+      // came back from the live Stripe call.
+      source: resolved || discount ? 'mixed' : 'catalog',
     };
   }
 
@@ -472,12 +512,29 @@ export async function getTenantEffectiveRate(
     return fallback;
   }
 
+  // Resolve the subscription items AND the customer-level discount in
+  // parallel — the discount lookup is independent of the subscription
+  // shape, and the public pricing page consumes both via a single
+  // `/billing/effective-rate` call. `loadActiveCustomerDiscount` already
+  // swallows its own failures and returns `null`, so a discount lookup
+  // error never knocks out the (more important) base/overage resolution.
+  const customerIdMain = subRow.stripe_customer_id ?? null;
   let subscription: { items?: { data?: ItemLike[] } } | null = null;
+  let customerDiscount: UpgradeDiscount | null = null;
   try {
-    subscription = (await stripe.subscriptions.retrieve(
-      subRow.stripe_subscription_id,
-      { expand: ['items.data.price'] },
-    )) as unknown as { items?: { data?: ItemLike[] } };
+    const [subResult, discountResult] = await Promise.all([
+      stripe.subscriptions.retrieve(subRow.stripe_subscription_id, {
+        expand: ['items.data.price'],
+      }),
+      customerIdMain
+        ? loadActiveCustomerDiscount(stripe, customerIdMain, {
+            tenantId,
+            surface: 'effective_rate',
+          })
+        : Promise.resolve(null),
+    ]);
+    subscription = subResult as unknown as { items?: { data?: ItemLike[] } };
+    customerDiscount = discountResult;
   } catch (err) {
     logger.warn('Failed to retrieve subscription from Stripe', {
       tenantId,
@@ -489,7 +546,11 @@ export async function getTenantEffectiveRate(
 
   const items = subscription?.items?.data ?? [];
   if (items.length === 0) {
-    return fallback;
+    // Carry the customer-level discount through even when the
+    // subscription has no items so a tenant with a coupon attached
+    // pre-provisioning still sees the discounted-price callout on the
+    // public pricing page.
+    return { ...fallback, discount: customerDiscount };
   }
 
   let basePrice: PriceLike | null = null;
@@ -704,6 +765,7 @@ export async function getTenantEffectiveRate(
     annualBasePriceCents,
     annualBasePriceSource,
     annualBasePriceId,
+    discount: customerDiscount,
   };
 }
 

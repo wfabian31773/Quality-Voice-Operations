@@ -482,7 +482,10 @@
       "save_badge": "Save {{percent}}%",
       "save_badge_aria": "Save {{percent}}% with annual billing",
       "save_amount": "Save {{amount}}/yr",
-      "save_amount_aria": "Save {{amount}} per year with annual billing"
+      "save_amount_aria": "Save {{amount}} per year with annual billing",
+      "discount_badge": "{{label}} applied",
+      "discount_badge_aria": "Your account discount of {{label}} is applied to the prices below",
+      "discount_promo_code": "Promo code {{code}}"
     },
     "billing_toggle": {
       "monthly": "Monthly",

@@ -482,7 +482,10 @@
       "save_badge": "Économisez {{percent}}%",
       "save_badge_aria": "Économisez {{percent}}% avec la facturation annuelle",
       "save_amount": "Économisez {{amount}}/an",
-      "save_amount_aria": "Économisez {{amount}} par an avec la facturation annuelle"
+      "save_amount_aria": "Économisez {{amount}} par an avec la facturation annuelle",
+      "discount_badge": "{{label}} appliqué",
+      "discount_badge_aria": "Votre remise de compte de {{label}} est appliquée aux prix ci-dessous",
+      "discount_promo_code": "Code promo {{code}}"
     },
     "billing_toggle": {
       "monthly": "Mensuel",
