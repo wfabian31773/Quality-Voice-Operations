@@ -26,10 +26,21 @@ const ENV_VARS: EnvVar[] = [
   { name: 'STRIPE_PRICE_ENTERPRISE_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Enterprise monthly plan' },
   { name: 'STRIPE_PRICE_ENTERPRISE_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Enterprise annual plan' },
   { name: 'STRIPE_METER_EVENT_CALLS', required: 'production', purpose: 'Stripe meter event name for call usage' },
-  // STRIPE_PRICE_<TIER>_AI_MINUTES (starter/pro/enterprise) is optional —
-  // the upgrade-preview endpoint falls back to the catalog overage rate
-  // when the metered price id is not configured. See OPTIONAL_VARS below.
   { name: 'STRIPE_METER_EVENT_AI_MINUTES', required: 'production', purpose: 'Stripe meter event name for AI minute usage' },
+  // Per-tier metered AI-minutes Stripe Price IDs. Originally optional under
+  // Task #1269 (the upgrade-preview endpoint fell back to the catalog overage
+  // rate when unset) so pre-migration deployments would not break overnight.
+  // Promoted to production-required by Task #1321 now that every production
+  // deployment has been migrated to per-tier metered AI-minutes pricing in
+  // Stripe — a missing price id silently quotes the catalog rate, which is a
+  // billing accuracy bug we no longer tolerate. `validateBillingConfig` also
+  // surfaces these as hard errors at admin-api boot when
+  // `STRIPE_METER_EVENT_AI_MINUTES` is set, providing belt-and-braces
+  // coverage in environments (e.g. local dev opting in for testing) where
+  // the static `production` gate here does not fire.
+  { name: 'STRIPE_PRICE_STARTER_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Starter per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
+  { name: 'STRIPE_PRICE_PRO_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Pro per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
+  { name: 'STRIPE_PRICE_ENTERPRISE_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Enterprise per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
   { name: 'VOICE_GATEWAY_BASE_URL', required: 'production', purpose: 'Public URL of the voice gateway (for Twilio webhooks)' },
   { name: 'ADMIN_API_BASE_URL', required: 'production', purpose: 'Public URL of the admin API' },
   { name: 'SMTP_HOST', required: 'production', purpose: 'SMTP server hostname for transactional email' },
@@ -72,9 +83,6 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'CALENDLY_WEBHOOK_SECRET', required: 'development', purpose: 'HMAC-SHA256 secret for verifying Calendly webhook requests (handled by both the unified /book-demo/calendar-webhook and the dedicated /book-demo/calendly-webhook routes). Conditionally required in production when VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly"' },
   { name: 'CALENDLY_WEBHOOK_TOLERANCE_SECONDS', required: 'development', purpose: 'Optional override (default 300) for Calendly signature timestamp replay window' },
   { name: 'CALENDLY_WEBHOOK_ALLOW_UNSIGNED', required: 'development', purpose: 'Dev/staging only. Set to "1" to accept unsigned Calendly webhook requests when CALENDLY_WEBHOOK_SECRET is not configured. Production always fails closed' },
-  { name: 'STRIPE_PRICE_STARTER_AI_MINUTES', required: 'development', purpose: 'Optional. Stripe metered Price ID for Starter per-minute AI overage. When set, the upgrade-preview endpoint quotes the overage rate from this Stripe price (sub-cent precision); when unset it falls back to the catalog rate.' },
-  { name: 'STRIPE_PRICE_PRO_AI_MINUTES', required: 'development', purpose: 'Optional. Stripe metered Price ID for Pro per-minute AI overage. When set, the upgrade-preview endpoint quotes the overage rate from this Stripe price (sub-cent precision); when unset it falls back to the catalog rate.' },
-  { name: 'STRIPE_PRICE_ENTERPRISE_AI_MINUTES', required: 'development', purpose: 'Optional. Stripe metered Price ID for Enterprise per-minute AI overage. When set, the upgrade-preview endpoint quotes the overage rate from this Stripe price (sub-cent precision); when unset it falls back to the catalog rate.' },
 ];
 
 /**
@@ -205,25 +213,34 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
     warnings.push('CONNECTOR_ENCRYPTION_KEY should be 32 bytes (64 hex chars)');
   }
 
-  // Surface the per-tier metered AI-minutes price warnings from
+  // Surface the per-tier metered AI-minutes price *errors* from
   // `validateBillingConfig` so operators see the same gap during the env
-  // validator pass that the Admin API logs at boot. These are intentionally
-  // non-fatal: `STRIPE_PRICE_<TIER>_AI_MINUTES` is optional (the upgrade-
-  // preview overage falls back to the catalog rate when unset), but once
-  // `STRIPE_METER_EVENT_AI_MINUTES` is configured a missing per-tier metered
-  // price means the upgrade card silently keeps reporting catalog defaults.
-  // We filter to the AI-minutes warnings here to avoid double-reporting the
-  // other billing warnings (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, the
-  // tier × interval base prices) that are already enforced as production-
-  // required entries in the ENV_VARS table above. Gated on isProd so dev
-  // boxes that happen to set STRIPE_METER_EVENT_AI_MINUTES locally don't
-  // get noise — the underlying concern (silent catalog fallback in the
-  // upgrade preview) is a production-environment gap.
+  // validator pass that the Admin API logs at boot. As of Task #1321 these
+  // are hard validation failures: once `STRIPE_METER_EVENT_AI_MINUTES` is
+  // configured, every `STRIPE_PRICE_<TIER>_AI_MINUTES` must be set or the
+  // upgrade-preview overage quote silently keeps reporting catalog defaults
+  // instead of the live Stripe price. The per-tier vars are also listed as
+  // production-required in `ENV_VARS` above (so the static check already
+  // catches them in production); this block provides belt-and-braces
+  // coverage in non-production environments where the static gate does not
+  // fire but `STRIPE_METER_EVENT_AI_MINUTES` has been set (e.g. local dev
+  // opting in for testing). We filter to the AI-minutes errors here to
+  // avoid double-reporting the other billing warnings (STRIPE_SECRET_KEY,
+  // STRIPE_WEBHOOK_SECRET, the tier × interval base prices) that are
+  // already enforced as production-required entries in the ENV_VARS table.
   if (isProd) {
     const billingCheck = validateBillingConfig();
-    const aiMinutesWarnings = billingCheck.warnings.filter(w => w.includes('_AI_MINUTES'));
-    for (const w of aiMinutesWarnings) {
-      warnings.push(w);
+    const aiMinutesErrors = billingCheck.errors.filter(e => e.includes('_AI_MINUTES'));
+    for (const e of aiMinutesErrors) {
+      // Extract the env var name (first whitespace-delimited token) so the
+      // `missing` array stays a list of literal env-var names that
+      // downstream consumers (log scrapers, runbook tooling) can act on.
+      const match = e.match(/^(STRIPE_PRICE_[A-Z]+_AI_MINUTES)/);
+      const envName = match ? match[1] : null;
+      if (envName && !missing.includes(envName)) {
+        console.log(`  FAIL  ${envName} — ${e}`);
+        missing.push(envName);
+      }
     }
   }
 

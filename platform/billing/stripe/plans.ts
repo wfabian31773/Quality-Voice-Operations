@@ -113,8 +113,9 @@ export function getPlanAiMinutesPriceId(tier: PlanTier): string | null {
   return process.env[getPlanAiMinutesPriceEnvKey(tier)] ?? null;
 }
 
-export function validateBillingConfig(): { valid: boolean; warnings: string[] } {
+export function validateBillingConfig(): { valid: boolean; warnings: string[]; errors: string[] } {
   const warnings: string[] = [];
+  const errors: string[] = [];
   const tiers: PlanTier[] = ['starter', 'pro', 'enterprise'];
   const intervals = ['MONTHLY', 'ANNUAL'];
 
@@ -135,26 +136,32 @@ export function validateBillingConfig(): { valid: boolean; warnings: string[] } 
     warnings.push('STRIPE_WEBHOOK_SECRET is not configured — webhook verification will fail');
   }
 
-  // Per-tier metered AI-minutes price ids are *optional* (the upgrade-preview
-  // endpoint falls back to the catalog overage rate when they're unset), so
-  // missing values must not break pre-migration deployments. But once a
-  // deployment has opted into per-tier metered AI-minutes pricing in Stripe
-  // — signalled by `STRIPE_METER_EVENT_AI_MINUTES` being set — a missing
-  // `STRIPE_PRICE_<TIER>_AI_MINUTES` means the upgrade-preview overage quote
-  // silently keeps reporting catalog defaults instead of the live Stripe
-  // price. Emit a non-fatal warning so ops notice the gap during boot.
+  // Once a deployment has opted into per-tier metered AI-minutes pricing in
+  // Stripe — signalled by `STRIPE_METER_EVENT_AI_MINUTES` being set — every
+  // tier MUST have its `STRIPE_PRICE_<TIER>_AI_MINUTES` configured. A missing
+  // value means the upgrade-preview overage quote silently keeps reporting
+  // catalog defaults instead of the live Stripe price, which is a billing
+  // accuracy bug we no longer tolerate now that the per-tier metered-pricing
+  // migration is complete in every environment (see Task #1321). Emit a hard
+  // validation error so admin-api boot fails fast in production rather than
+  // silently quoting the catalog rate.
+  //
+  // History: Task #1269 originally introduced this as a non-fatal warning so
+  // pre-migration deployments would not break overnight. Task #1321 promotes
+  // it to a hard error now that every production deployment has been
+  // migrated.
   if (process.env.STRIPE_METER_EVENT_AI_MINUTES) {
     for (const tier of tiers) {
       const key = getPlanAiMinutesPriceEnvKey(tier);
       if (!process.env[key]) {
-        warnings.push(
-          `${key} is not set — upgrade-preview will fall back to the catalog overage rate for ${tier} instead of the Stripe metered price`,
+        errors.push(
+          `${key} is not set — upgrade-preview would fall back to the catalog overage rate for ${tier} instead of the Stripe metered price. Configure the per-tier metered Stripe Price ID before booting.`,
         );
       }
     }
   }
 
-  return { valid: warnings.length === 0, warnings };
+  return { valid: warnings.length === 0 && errors.length === 0, warnings, errors };
 }
 
 const PRICE_ID_TO_PLAN: Map<string, PlanTier> = new Map();

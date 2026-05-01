@@ -20,6 +20,12 @@ const ALL_PROD_REQUIRED = [
   'STRIPE_PRICE_ENTERPRISE_ANNUAL',
   'STRIPE_METER_EVENT_CALLS',
   'STRIPE_METER_EVENT_AI_MINUTES',
+  // Task #1321: per-tier metered AI-minutes Stripe price ids are now
+  // production-required (promoted from optional now that every production
+  // deployment has been migrated to per-tier metered pricing).
+  'STRIPE_PRICE_STARTER_AI_MINUTES',
+  'STRIPE_PRICE_PRO_AI_MINUTES',
+  'STRIPE_PRICE_ENTERPRISE_AI_MINUTES',
   'VOICE_GATEWAY_BASE_URL',
   'ADMIN_API_BASE_URL',
   'SMTP_HOST',
@@ -73,12 +79,13 @@ function applyAllProductionVars(): void {
   process.env.PLATFORM_DB_POOL_URL = 'postgresql://user:pw@db.example.com:6543/postgres';
   process.env.ADMIN_JWT_SECRET = 'rotated-prod-secret';
   process.env.STRIPE_SECRET_KEY = 'sk_live_xxx';
-  // Per-tier metered AI-minutes Stripe price ids. These are *optional* env
-  // vars but, when STRIPE_METER_EVENT_AI_MINUTES is set (which the loop
-  // above does), `validateBillingConfig` emits a warning for each unset
-  // tier. The "no warnings" baseline test needs them set so the per-tier
-  // AI-minutes warning does not fire by default. Tests that exercise the
-  // warning explicitly delete them.
+  // Per-tier metered AI-minutes Stripe price ids. As of Task #1321 these are
+  // production-required (tracked in `ALL_PROD_REQUIRED` above, so the loop
+  // already sets them) and `validateBillingConfig` flips them from warnings
+  // to hard errors when STRIPE_METER_EVENT_AI_MINUTES is set. We override
+  // them with realistic-looking `price_…` values so the baseline "no
+  // warnings / no failures" tests stay clean. Tests that exercise the
+  // hard-failure path explicitly delete them.
   process.env.STRIPE_PRICE_STARTER_AI_MINUTES = 'price_starter_ai_metered';
   process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_metered';
   process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES = 'price_ent_ai_metered';
@@ -438,7 +445,7 @@ describe('validateEnvironment() — warnings', () => {
   });
 });
 
-describe('validateEnvironment() — per-tier metered AI-minutes warning', () => {
+describe('validateEnvironment() — per-tier metered AI-minutes hard requirement (Task #1321)', () => {
   it('does not surface the AI-minutes warning when STRIPE_METER_EVENT_AI_MINUTES is unset', async () => {
     applyAllProductionVars();
     delete process.env.STRIPE_METER_EVENT_AI_MINUTES;
@@ -448,35 +455,58 @@ describe('validateEnvironment() — per-tier metered AI-minutes warning', () => 
     expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
     // Note: STRIPE_METER_EVENT_AI_MINUTES is itself in ALL_PROD_REQUIRED, so
     // deleting it makes the validator fail. The point of this test is that
-    // *no* AI-minutes warning gets emitted in the warnings array.
+    // *no* AI-minutes warning gets emitted in the warnings array (the per-
+    // tier price ids only error when STRIPE_METER_EVENT_AI_MINUTES is set).
     expect(result.passed).toBe(false);
     expect(result.missing).toContain('STRIPE_METER_EVENT_AI_MINUTES');
   });
 
-  it('surfaces a per-tier warning when STRIPE_METER_EVENT_AI_MINUTES is set but the metered price ids are unset', async () => {
+  it('fails the validator when the per-tier metered price ids are unset in production', async () => {
     applyAllProductionVars();
     // applyAllProductionVars() sets the per-tier STRIPE_PRICE_<TIER>_AI_MINUTES
     // env vars by default so the baseline "no warnings" test stays clean —
-    // delete them here to exercise the warning path explicitly.
+    // delete them here to exercise the hard-failure path explicitly.
     delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
     delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
     delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
     const { validateEnvironment } = await loadValidator();
     const result = validateEnvironment();
 
-    const aiMinutesWarnings = result.warnings.filter(w => w.includes('_AI_MINUTES'));
-    expect(aiMinutesWarnings).toHaveLength(3);
-    expect(aiMinutesWarnings.some(w => w.includes('STRIPE_PRICE_STARTER_AI_MINUTES'))).toBe(true);
-    expect(aiMinutesWarnings.some(w => w.includes('STRIPE_PRICE_PRO_AI_MINUTES'))).toBe(true);
-    expect(aiMinutesWarnings.some(w => w.includes('STRIPE_PRICE_ENTERPRISE_AI_MINUTES'))).toBe(true);
-    // Warnings are non-fatal — the validator still passes.
-    expect(result.missing).toEqual([]);
-    expect(result.passed).toBe(true);
-    // And the warning lines should reach the console output too.
+    // Task #1321: per-tier metered AI-minutes price ids are production-
+    // required, so missing values land in `missing` (not `warnings`) and the
+    // validator now fails closed instead of letting the upgrade-preview
+    // silently quote the catalog overage rate.
+    expect(result.missing).toContain('STRIPE_PRICE_STARTER_AI_MINUTES');
+    expect(result.missing).toContain('STRIPE_PRICE_PRO_AI_MINUTES');
+    expect(result.missing).toContain('STRIPE_PRICE_ENTERPRISE_AI_MINUTES');
+    expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
+    expect(result.passed).toBe(false);
+    // And the FAIL lines should reach the console output too.
     expect(loggedLines()).toMatch(/STRIPE_PRICE_PRO_AI_MINUTES/);
   });
 
-  it('does not surface the AI-minutes warning in development even when STRIPE_METER_EVENT_AI_MINUTES is set without per-tier prices', async () => {
+  it('does not list per-tier AI-minutes price ids in `missing` more than once', async () => {
+    // Sanity check: the static ENV_VARS table reports them as missing in
+    // production, and the validateBillingConfig belt-and-braces block also
+    // tries to add them — the dedupe guard in validate-env.ts ensures each
+    // env var name appears at most once in `missing`.
+    applyAllProductionVars();
+    delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
+    delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
+    delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    const counts = new Map<string, number>();
+    for (const name of result.missing) {
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    expect(counts.get('STRIPE_PRICE_STARTER_AI_MINUTES')).toBe(1);
+    expect(counts.get('STRIPE_PRICE_PRO_AI_MINUTES')).toBe(1);
+    expect(counts.get('STRIPE_PRICE_ENTERPRISE_AI_MINUTES')).toBe(1);
+  });
+
+  it('does not require the per-tier AI-minutes price ids in development', async () => {
     process.env.APP_ENV = 'development';
     process.env.DATABASE_URL = 'postgresql://user:pw@localhost:5432/dev';
     for (const v of ALWAYS_REQUIRED) {
@@ -487,11 +517,14 @@ describe('validateEnvironment() — per-tier metered AI-minutes warning', () => 
     const { validateEnvironment } = await loadValidator();
     const result = validateEnvironment();
 
+    expect(result.missing).not.toContain('STRIPE_PRICE_STARTER_AI_MINUTES');
+    expect(result.missing).not.toContain('STRIPE_PRICE_PRO_AI_MINUTES');
+    expect(result.missing).not.toContain('STRIPE_PRICE_ENTERPRISE_AI_MINUTES');
     expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
     expect(result.passed).toBe(true);
   });
 
-  it('does not surface the AI-minutes warning once every per-tier metered price id is configured', async () => {
+  it('passes once every per-tier metered price id is configured', async () => {
     applyAllProductionVars();
     process.env.STRIPE_PRICE_STARTER_AI_MINUTES = 'price_starter_ai_metered';
     process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_metered';
@@ -500,6 +533,7 @@ describe('validateEnvironment() — per-tier metered AI-minutes warning', () => 
     const result = validateEnvironment();
 
     expect(result.warnings.some(w => w.includes('_AI_MINUTES'))).toBe(false);
+    expect(result.missing).toEqual([]);
     expect(result.passed).toBe(true);
   });
 });

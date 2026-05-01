@@ -85,9 +85,25 @@ server.listen(PORT, '0.0.0.0', async () => {
   await validateDatabaseConnection();
 
   const billingCheck = validateBillingConfig();
-  if (!billingCheck.valid) {
-    for (const warning of billingCheck.warnings) {
-      logger.warn(`[BILLING CONFIG] ${warning}`);
+  for (const warning of billingCheck.warnings) {
+    logger.warn(`[BILLING CONFIG] ${warning}`);
+  }
+  if (billingCheck.errors.length > 0) {
+    for (const error of billingCheck.errors) {
+      logger.error(`[BILLING CONFIG] ${error}`);
+    }
+    // Task #1321: per-tier metered AI-minutes price ids are now hard
+    // requirements once `STRIPE_METER_EVENT_AI_MINUTES` is set. In
+    // production we exit immediately rather than silently quoting the
+    // catalog overage rate. validate-env.ts also catches the same gap
+    // before listen() is even called, so this branch is a defense-in-depth
+    // safety net for staging or operator-edge cases where the static gate
+    // in validate-env.ts has been bypassed.
+    if (isProd) {
+      logger.error(
+        '[BILLING CONFIG] Hard validation failures present — exiting so the deployment is not booted with a broken billing config',
+      );
+      process.exit(1);
     }
   }
 
