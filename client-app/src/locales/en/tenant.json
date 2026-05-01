@@ -358,6 +358,34 @@
       "tools_empty": "No tool executions for this call",
       "duration_ms": "{{ms}}ms",
       "tool_recovery": "Recovery: {{action}}"
+    },
+    "lifecycle": {
+      "CALL_RECEIVED": "Received",
+      "SESSION_INITIALIZED": "Session initialized",
+      "AGENT_CONNECTED": "Agent connected",
+      "ACTIVE_CONVERSATION": "Active conversation",
+      "WORKFLOW_EXECUTION": "Workflow running",
+      "TOOL_EXECUTION": "Running tool",
+      "ESCALATION_CHECK": "Checking escalation",
+      "ESCALATED": "Escalated",
+      "CALL_COMPLETED": "Completed",
+      "CALL_CONNECTED": "Connected",
+      "CALL_ENDED": "Ended",
+      "CALL_FAILED": "Failed",
+      "WORKFLOW_FAILED": "Workflow failed",
+      "ESCALATION_FAILED": "Escalation failed",
+      "HANDOFF": "Handoff",
+      "active": "Active"
+    },
+    "direction": {
+      "inbound": "Inbound",
+      "outbound": "Outbound"
+    },
+    "tool_status": {
+      "success": "Success",
+      "failed": "Failed",
+      "timeout": "Timed out",
+      "pending": "Pending"
     }
   },
   "agents": {

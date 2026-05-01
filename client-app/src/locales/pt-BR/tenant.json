@@ -358,6 +358,34 @@
       "tools_empty": "Nenhuma execução de ferramenta para esta chamada",
       "duration_ms": "{{ms}} ms",
       "tool_recovery": "Recuperação: {{action}}"
+    },
+    "lifecycle": {
+      "CALL_RECEIVED": "Recebida",
+      "SESSION_INITIALIZED": "Sessão iniciada",
+      "AGENT_CONNECTED": "Agente conectado",
+      "ACTIVE_CONVERSATION": "Conversa ativa",
+      "WORKFLOW_EXECUTION": "Fluxo em execução",
+      "TOOL_EXECUTION": "Executando ferramenta",
+      "ESCALATION_CHECK": "Verificando escalonamento",
+      "ESCALATED": "Escalada",
+      "CALL_COMPLETED": "Concluída",
+      "CALL_CONNECTED": "Conectada",
+      "CALL_ENDED": "Encerrada",
+      "CALL_FAILED": "Falhou",
+      "WORKFLOW_FAILED": "Falha no fluxo",
+      "ESCALATION_FAILED": "Falha no escalonamento",
+      "HANDOFF": "Transferência",
+      "active": "Ativa"
+    },
+    "direction": {
+      "inbound": "Recebida",
+      "outbound": "Realizada"
+    },
+    "tool_status": {
+      "success": "Sucesso",
+      "failed": "Falhou",
+      "timeout": "Tempo esgotado",
+      "pending": "Pendente"
     }
   },
   "agents": {

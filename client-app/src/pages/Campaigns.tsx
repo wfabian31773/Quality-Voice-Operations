@@ -1384,7 +1384,7 @@ function CampaignDetail({ campaignId, onBack }: { campaignId: string; onBack: ()
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-text-primary">{campaign.name}</h1>
-            <StatusBadge status={campaign.status} colors={STATUS_COLORS} />
+            <StatusBadge status={campaign.status} colors={STATUS_COLORS} label={statusLabel(tenantT, campaign.status)} />
             {typeDef && typeDef.type !== 'outbound_call' && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">
                 {CAMPAIGN_TYPE_ICONS[typeDef.icon]}

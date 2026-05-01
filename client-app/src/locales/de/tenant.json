@@ -358,6 +358,34 @@
       "tools_empty": "Keine Tool-Ausführungen für diesen Anruf",
       "duration_ms": "{{ms}} ms",
       "tool_recovery": "Wiederherstellung: {{action}}"
+    },
+    "lifecycle": {
+      "CALL_RECEIVED": "Eingegangen",
+      "SESSION_INITIALIZED": "Sitzung gestartet",
+      "AGENT_CONNECTED": "Agent verbunden",
+      "ACTIVE_CONVERSATION": "Aktives Gespräch",
+      "WORKFLOW_EXECUTION": "Workflow läuft",
+      "TOOL_EXECUTION": "Tool wird ausgeführt",
+      "ESCALATION_CHECK": "Eskalation wird geprüft",
+      "ESCALATED": "Eskaliert",
+      "CALL_COMPLETED": "Abgeschlossen",
+      "CALL_CONNECTED": "Verbunden",
+      "CALL_ENDED": "Beendet",
+      "CALL_FAILED": "Fehlgeschlagen",
+      "WORKFLOW_FAILED": "Workflow fehlgeschlagen",
+      "ESCALATION_FAILED": "Eskalation fehlgeschlagen",
+      "HANDOFF": "Übergabe",
+      "active": "Aktiv"
+    },
+    "direction": {
+      "inbound": "Eingehend",
+      "outbound": "Ausgehend"
+    },
+    "tool_status": {
+      "success": "Erfolgreich",
+      "failed": "Fehlgeschlagen",
+      "timeout": "Zeitüberschreitung",
+      "pending": "Ausstehend"
     }
   },
   "agents": {

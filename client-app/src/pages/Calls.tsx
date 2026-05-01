@@ -12,6 +12,11 @@ import { SkeletonRows } from '../components/state';
 import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 import { getAgentLanguageLabel } from '../lib/agentLanguages';
+import {
+  callLifecycleLabel,
+  callDirectionLabel,
+  toolExecStatusLabel,
+} from '../lib/statusLabels';
 import { EMPTY_FILTERS, type FiltersState, type SavedView } from './calls/types';
 
 // The pinned-saved-views bar uses @dnd-kit for drag-to-reorder. dnd-kit pulls
@@ -390,8 +395,8 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                 <StirAttestationBadge call={call} />
               </div>
               <div><span className="text-text-secondary">{t('calls.detail.to')}</span> <span className="font-mono text-xs">{call.called_number}</span></div>
-              <div><span className="text-text-secondary">{t('calls.detail.direction')}</span> {call.direction}</div>
-              <div><span className="text-text-secondary">{t('calls.detail.status')}</span> {call.lifecycle_state}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.direction')}</span> {callDirectionLabel(t, call.direction)}</div>
+              <div><span className="text-text-secondary">{t('calls.detail.status')}</span> {callLifecycleLabel(t, call.lifecycle_state)}</div>
               <div><span className="text-text-secondary">{t('calls.detail.agent')}</span> {call.agent_name || '--'}</div>
               <div data-testid="call-detail-language">
                 <span className="text-text-secondary">{t('calls.detail.language')}</span>{' '}
@@ -562,7 +567,7 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-text-primary font-mono">{exec.toolName}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${exec.status === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : exec.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
-                          {exec.status}
+                          {toolExecStatusLabel(t, exec.status)}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-text-muted mt-1">
@@ -1215,13 +1220,13 @@ export default function Calls() {
                     </td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${call.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
-                        {call.direction}
+                        {callDirectionLabel(tenantT, call.direction)}
                       </span>
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${['CALL_CONNECTED', 'active'].includes(call.lifecycle_state) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-surface-hover text-text-secondary'}`}>
-                          {call.lifecycle_state}
+                          {callLifecycleLabel(tenantT, call.lifecycle_state)}
                         </span>
                         {call.failed_tool_count && call.failed_tool_count > 0 ? (
                           <span

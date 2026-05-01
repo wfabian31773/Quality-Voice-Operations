@@ -13,6 +13,11 @@ import {
   type RetrySkippedTone,
 } from '../lib/smtpErrorClass';
 import {
+  tenantStatusLabel,
+  planLabel,
+  versionStatusLabel,
+} from '../lib/statusLabels';
+import {
   Building2, Users, PhoneCall, DollarSign, ChevronDown, ChevronRight,
   Ban, CheckCircle, Eye, Package, Plus, Play, Archive, AlertCircle,
   BarChart3, Download as DownloadIcon, TrendingUp, TrendingDown, Activity,
@@ -395,6 +400,7 @@ function readPositiveSeconds(body: unknown, key: string): number | null {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t: adminT } = useTranslation('admin');
   const colors: Record<string, string> = {
     active: 'bg-success-light text-success',
     pending: 'bg-warning-light text-warning',
@@ -402,7 +408,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
-      {status}
+      {tenantStatusLabel(adminT, status)}
     </span>
   );
 }
@@ -456,6 +462,7 @@ function RetrySkippedBadge({
 }
 
 function PlanBadge({ plan }: { plan: string }) {
+  const { t: adminT } = useTranslation('admin');
   const colors: Record<string, string> = {
     starter: 'bg-info-light text-info',
     pro: 'bg-accent-light text-accent',
@@ -463,12 +470,13 @@ function PlanBadge({ plan }: { plan: string }) {
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[plan] ?? 'bg-surface-hover text-text-secondary'}`}>
-      {plan}
+      {planLabel(adminT, plan)}
     </span>
   );
 }
 
 function VersionStatusBadge({ status }: { status: string }) {
+  const { t: adminT } = useTranslation('admin');
   const colors: Record<string, string> = {
     draft: 'bg-warning-light text-warning',
     published: 'bg-success-light text-success',
@@ -476,7 +484,7 @@ function VersionStatusBadge({ status }: { status: string }) {
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-surface-hover text-text-secondary'}`}>
-      {status}
+      {versionStatusLabel(adminT, status)}
     </span>
   );
 }
