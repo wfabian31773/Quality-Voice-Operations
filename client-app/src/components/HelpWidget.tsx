@@ -11,6 +11,7 @@ import {
   useSearchMarketingPages,
   type TranslatedMarketingPage,
 } from '../lib/translateMarketingPage';
+import { logEmptyMarketingSearch } from '../lib/logEmptyMarketingSearch';
 
 function extractText(block: DocBlock): string {
   if (block.type === 'p' || block.type === 'h2' || block.type === 'h3') return block.text;
@@ -76,7 +77,7 @@ interface HelpWidgetProps {
 
 export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour }: HelpWidgetProps) {
   const navigate = useNavigate();
-  const { t } = useTranslation('tenant');
+  const { t, i18n } = useTranslation('tenant');
   const [tab, setTab] = useState<'home' | 'docs' | 'changelog'>('home');
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -111,6 +112,28 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
   );
 
   const totalResults = results.length + marketingResults.length;
+
+  // Telemetry — log searches that returned zero **marketing** hits so
+  // platform admins can see which translated phrases are missing from
+  // `client-app/src/locales/<locale>/marketing.json`. We fire whenever
+  // the marketing-page index returns zero results, *independent* of
+  // whether the docs index also matched something. A query that lands
+  // on a help article but fails to surface the relevant marketing page
+  // is still a marketing-keyword gap worth tracking. The logger
+  // collapses typing into one log per (source + locale) and dedupes
+  // the same final phrase within 60 s.
+  useEffect(() => {
+    if (!open || tab !== 'docs') return;
+    if (!query.trim()) return;
+    if (marketingResults.length > 0) return;
+    logEmptyMarketingSearch({
+      query,
+      locale: i18n.language,
+      source: 'help_widget',
+      pagePath:
+        typeof window !== 'undefined' ? window.location.pathname : undefined,
+    });
+  }, [open, tab, query, marketingResults.length, i18n.language]);
 
   return (
     <>

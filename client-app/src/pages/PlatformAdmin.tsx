@@ -24,7 +24,7 @@ import {
   ThumbsUp, ThumbsDown, MessageSquare, BookOpen,
   LifeBuoy, Mail, RotateCw, Plug, XCircle,
   AlertTriangle, ShieldAlert, ExternalLink, Send, MailX, ShieldOff,
-  Clock, ArrowUpDown, Database, PhoneOff, BellRing,
+  Clock, ArrowUpDown, Database, PhoneOff, BellRing, Globe, Search as SearchIcon,
 } from 'lucide-react';
 
 interface DocsFeedbackArticle {
@@ -5701,6 +5701,8 @@ function DocsFeedbackTab() {
 
   return (
     <div className="space-y-6">
+      <MarketingSearchEmptyQueriesPanel />
+
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
           <div>
@@ -5871,6 +5873,218 @@ function DocsFeedbackTab() {
             ))
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface MarketingSearchEmptyRow {
+  query_normalized: string;
+  query_raw_sample: string;
+  locale: string;
+  source: string;
+  hit_count: number;
+  last_seen_at: string;
+  first_seen_at: string;
+  distinct_page_paths: number;
+}
+
+interface MarketingSearchEmptySummary {
+  days: number;
+  rows: MarketingSearchEmptyRow[];
+  locale_totals: { locale: string; total: number }[];
+}
+
+const MARKETING_SEARCH_EMPTY_SOURCE_OPTIONS: { value: string; labelKey: string }[] = [
+  { value: '', labelKey: 'platform_admin.marketing_search_empty.source_any' },
+  { value: 'help_widget', labelKey: 'platform_admin.marketing_search_empty.source_help_widget' },
+  { value: 'resources', labelKey: 'platform_admin.marketing_search_empty.source_resources' },
+];
+
+const MARKETING_SEARCH_EMPTY_DAYS_OPTIONS = [7, 30, 90];
+
+function MarketingSearchEmptyQueriesPanel() {
+  const { t: adminT } = useTranslation('admin');
+  const [days, setDays] = useState(30);
+  const [localeFilter, setLocaleFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['marketing-search-empty-summary', days, localeFilter, sourceFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('days', String(days));
+      params.set('limit', '100');
+      if (localeFilter) params.set('locale', localeFilter);
+      if (sourceFilter) params.set('source', sourceFilter);
+      return api.get<MarketingSearchEmptySummary>(
+        `/marketing/search/empty/summary?${params.toString()}`,
+      );
+    },
+    refetchInterval: 60_000,
+  });
+
+  const rows = data?.rows ?? [];
+  const localeTotals = data?.locale_totals ?? [];
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+            <SearchIcon className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-semibold">
+              {adminT('platform_admin.marketing_search_empty.title')}
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5 max-w-xl">
+              {adminT('platform_admin.marketing_search_empty.subtitle')}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-xs text-text-muted">
+            {adminT('platform_admin.marketing_search_empty.window_label')}
+          </label>
+          <select
+            value={days}
+            onChange={(e) => setDays(parseInt(e.target.value, 10))}
+            className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
+          >
+            {MARKETING_SEARCH_EMPTY_DAYS_OPTIONS.map((d) => (
+              <option key={d} value={d}>
+                {adminT('platform_admin.marketing_search_empty.window_n_days', { count: d })}
+              </option>
+            ))}
+          </select>
+          <label className="text-xs text-text-muted">
+            {adminT('platform_admin.marketing_search_empty.source_label')}
+          </label>
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
+          >
+            {MARKETING_SEARCH_EMPTY_SOURCE_OPTIONS.map((o) => (
+              <option key={o.value || 'any'} value={o.value}>
+                {adminT(o.labelKey)}
+              </option>
+            ))}
+          </select>
+          <label className="text-xs text-text-muted">
+            {adminT('platform_admin.marketing_search_empty.locale_label')}
+          </label>
+          <select
+            value={localeFilter}
+            onChange={(e) => setLocaleFilter(e.target.value)}
+            className="text-sm px-2 py-1.5 rounded border border-border bg-surface"
+          >
+            <option value="">
+              {adminT('platform_admin.marketing_search_empty.locale_any')}
+            </option>
+            {localeTotals.map((l) => (
+              <option key={l.locale} value={l.locale}>
+                {l.locale} ({l.total})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {localeTotals.length > 0 && (
+        <div className="px-4 py-2 border-b border-border bg-surface-secondary/40 flex items-center gap-2 flex-wrap text-xs text-text-muted">
+          <Globe className="h-3.5 w-3.5" />
+          <span className="font-medium">
+            {adminT('platform_admin.marketing_search_empty.totals_by_locale')}:
+          </span>
+          {localeTotals.map((l) => (
+            <span
+              key={l.locale}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-surface"
+            >
+              <span className="font-mono">{l.locale}</span>
+              <span className="text-text-primary font-semibold">{l.total}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-secondary">
+              <th className="text-left px-4 py-3 font-medium text-text-muted">
+                {adminT('platform_admin.marketing_search_empty.header_query')}
+              </th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">
+                {adminT('platform_admin.marketing_search_empty.header_locale')}
+              </th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">
+                {adminT('platform_admin.marketing_search_empty.header_source')}
+              </th>
+              <th className="text-right px-4 py-3 font-medium text-text-muted">
+                {adminT('platform_admin.marketing_search_empty.header_hits')}
+              </th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">
+                {adminT('platform_admin.marketing_search_empty.header_last_seen')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={5} className="text-center py-12 text-text-muted">
+                  {adminT('platform_admin.marketing_search_empty.loading')}
+                </td>
+              </tr>
+            ) : isError ? (
+              <tr>
+                <td colSpan={5} className="text-center py-12 text-danger">
+                  {adminT('platform_admin.marketing_search_empty.load_error')}
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="text-center py-12 text-text-muted">
+                  {adminT('platform_admin.marketing_search_empty.empty')}
+                </td>
+              </tr>
+            ) : (
+              rows.map((r) => (
+                <tr
+                  key={`${r.source}|${r.locale}|${r.query_normalized}`}
+                  className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-xs text-text-primary truncate max-w-md" title={r.query_raw_sample}>
+                      {r.query_normalized}
+                    </div>
+                    {r.distinct_page_paths > 1 && (
+                      <div className="text-[10px] text-text-muted mt-0.5">
+                        {adminT('platform_admin.marketing_search_empty.from_n_pages', {
+                          count: r.distinct_page_paths,
+                        })}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">{r.locale}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">
+                    {adminT(`platform_admin.marketing_search_empty.source_${r.source}`, {
+                      defaultValue: r.source,
+                    })}
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                    {r.hit_count}
+                  </td>
+                  <td className="px-4 py-3 text-text-muted whitespace-nowrap text-xs">
+                    {new Date(r.last_seen_at).toLocaleString()}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

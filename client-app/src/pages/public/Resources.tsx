@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Search, ArrowRight, BookOpen, Clock, Compass } from 'lucide-react';
 import RevealSection from '../../components/RevealSection';
 import { guides, categories, type GuideCategory } from '../../data/guides';
 import { useSearchMarketingPages } from '../../lib/translateMarketingPage';
+import { logEmptyMarketingSearch } from '../../lib/logEmptyMarketingSearch';
 
 export default function Resources() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { t: tm } = useTranslation('marketing');
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<GuideCategory | 'All'>('All');
@@ -24,6 +25,28 @@ export default function Resources() {
 
   const searchMarketing = useSearchMarketingPages();
   const marketingMatches = search.trim() ? searchMarketing(search) : [];
+
+  // Telemetry — log Resources-page searches that produced zero hits in
+  // the **marketing catalog** so platform admins can spot translated
+  // phrases missing from `client-app/src/locales/<locale>/marketing.json`.
+  // We fire whenever the marketing-page search returns nothing for a
+  // user-visible query, *independent* of whether the local guide filter
+  // also matched something — a query that finds a guide but doesn't
+  // surface a related marketing page is still a marketing-keyword gap.
+  // The logger collapses typing into one log per (source + locale) and
+  // dedupes the same final phrase within 60 s.
+  const marketingEmpty = marketingMatches.length === 0;
+  useEffect(() => {
+    if (!search.trim()) return;
+    if (!marketingEmpty) return;
+    logEmptyMarketingSearch({
+      query: search,
+      locale: i18n.language,
+      source: 'resources',
+      pagePath:
+        typeof window !== 'undefined' ? window.location.pathname : undefined,
+    });
+  }, [search, marketingEmpty, i18n.language]);
 
   return (
     <div>
