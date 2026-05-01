@@ -94,6 +94,15 @@ let fetchHandler: FetchHandler = () =>
 
 beforeEach(() => {
   fetchUrls = [];
+  // The Pricing page now reads its initial billing-period selection
+  // from a shared marketing preference persisted in `localStorage` (see
+  // `client-app/src/lib/billingPeriodPreference.ts`). Without an
+  // explicit reset, a test that toggles to Annual leaks that choice
+  // into every subsequent test in this file and breaks the
+  // monthly-default assumptions in the override-callout cases.
+  if (typeof window !== 'undefined') {
+    window.localStorage.clear();
+  }
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {

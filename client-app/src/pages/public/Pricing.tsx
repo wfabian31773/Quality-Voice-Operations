@@ -33,6 +33,11 @@ import {
 import DisplayCurrencyPicker from '../../components/DisplayCurrencyPicker';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
+import {
+  readBillingPeriodPreference,
+  writeBillingPeriodPreference,
+  subscribeBillingPeriodPreference,
+} from '../../lib/billingPeriodPreference';
 
 export interface EffectiveRateResponse {
   plan: PlanTier;
@@ -589,7 +594,22 @@ export default function Pricing() {
     return formatPublicPrice(usd, displayCurrency, { fractionDigits: 0 });
   };
   const { t } = useTranslation('marketing');
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
+  const [billingPeriod, setBillingPeriodState] = useState<BillingPeriod>(
+    () => readBillingPeriodPreference() ?? 'monthly',
+  );
+  const setBillingPeriod = (next: BillingPeriod) => {
+    setBillingPeriodState(next);
+    // Broadcast so other marketing surfaces (chat widget recommendation
+    // card) honor the same choice without a page refresh.
+    writeBillingPeriodPreference(next);
+  };
+  // Reflect changes that happen elsewhere (e.g. the chat widget's
+  // per-card toggle, or another tab/window) so the page stays in sync.
+  useEffect(() => {
+    return subscribeBillingPeriodPreference((next) => {
+      setBillingPeriodState((current) => (current === next ? current : next));
+    });
+  }, []);
   const isAnnual = billingPeriod === 'annual';
   const { user } = useAuth();
 

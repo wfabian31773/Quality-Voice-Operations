@@ -2,6 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageSquare, X, Send, Mic, MicOff, ArrowRight, Phone } from 'lucide-react';
 import { formatCents, formatDollars } from '../lib/formatCurrency';
+import { ANNUAL_DISCOUNT, type BillingPeriod } from './MinutesPricingCalculator';
+import {
+  readBillingPeriodPreference,
+  writeBillingPeriodPreference,
+  subscribeBillingPeriodPreference,
+} from '../lib/billingPeriodPreference';
 
 interface SpeechRecognitionAlternative {
   transcript: string;
@@ -86,6 +92,19 @@ export default function WebsiteSalesWidget() {
   const [isListening, setIsListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  // Page-level billing-period default for new recommendation cards.
+  // Initialised from (and synced with) the shared marketing preference
+  // so a visitor who already toggled "Annual" on /pricing sees Annual
+  // selected here, with the trial CTA carrying ?interval=annual without
+  // a second click in the chat.
+  const [defaultRecommendInterval, setDefaultRecommendInterval] = useState<BillingPeriod>(
+    () => readBillingPeriodPreference() ?? 'monthly',
+  );
+  // Per-card override (keyed by a stable per-action key built from the
+  // message + action index) so a visitor who flips one card doesn't
+  // disturb others — and so multiple recommend_plan cards in a single
+  // assistant message remain independent.
+  const [recommendIntervals, setRecommendIntervals] = useState<Record<string, BillingPeriod>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -126,6 +145,15 @@ export default function WebsiteSalesWidget() {
 
       recognitionRef.current = recognition;
     }
+  }, []);
+
+  // Listen for billing-period changes broadcast by the Pricing page (or
+  // another tab/window) so the chat widget's default interval stays in
+  // lockstep without requiring a remount.
+  useEffect(() => {
+    return subscribeBillingPeriodPreference((next) => {
+      setDefaultRecommendInterval(next);
+    });
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -366,13 +394,54 @@ export default function WebsiteSalesWidget() {
                           typeof a.data.overageRatePerMinute === 'number'
                             ? a.data.overageRatePerMinute
                             : null;
-                        const priceLabel =
+                        const annualMonthlyPriceCents =
                           monthlyPriceCents !== null
-                            ? `${formatCents(monthlyPriceCents, {
+                            ? Math.round(monthlyPriceCents * (1 - ANNUAL_DISCOUNT))
+                            : null;
+                        const cardKey = `${i}:${j}`;
+                        const cardInterval: BillingPeriod =
+                          recommendIntervals[cardKey] ?? defaultRecommendInterval;
+                        const isAnnual = cardInterval === 'annual';
+                        const displayedPriceCents = isAnnual
+                          ? annualMonthlyPriceCents
+                          : monthlyPriceCents;
+                        const priceLabel =
+                          displayedPriceCents !== null
+                            ? `${formatCents(displayedPriceCents, {
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 0,
                               })}/month`
                             : null;
+                        const altPriceLabel =
+                          annualMonthlyPriceCents !== null && monthlyPriceCents !== null
+                            ? isAnnual
+                              ? `${formatCents(monthlyPriceCents, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 0,
+                                })}/mo billed monthly`
+                              : `${formatCents(annualMonthlyPriceCents, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 0,
+                                })}/mo billed annually (save ${Math.round(ANNUAL_DISCOUNT * 100)}%)`
+                            : null;
+                        const ctaHref = `/signup?plan=${plan}${isAnnual ? '&interval=annual' : ''}`;
+                        const setInterval = (next: BillingPeriod) => {
+                          setRecommendIntervals(prev => ({ ...prev, [cardKey]: next }));
+                          // Broadcast the visitor's choice so the
+                          // Pricing page (and any other open chat card)
+                          // honors the same selection.
+                          writeBillingPeriodPreference(next);
+                        };
+                        const togglePillBase =
+                          'px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors';
+                        const activePill =
+                          msg.role === 'user'
+                            ? 'bg-white text-primary'
+                            : 'bg-primary text-white';
+                        const inactivePill =
+                          msg.role === 'user'
+                            ? 'text-white/70 hover:text-white'
+                            : 'text-text-primary/60 hover:text-text-primary';
                         return (
                           <div key={j} className="flex flex-col gap-1 mt-1">
                             <div
@@ -384,6 +453,16 @@ export default function WebsiteSalesWidget() {
                               {planLabel}
                               {priceLabel ? ` — ${priceLabel}` : ''}
                             </div>
+                            {altPriceLabel && (
+                              <div
+                                className={`text-[11px] ${
+                                  msg.role === 'user' ? 'text-white/70' : 'text-text-primary/60'
+                                }`}
+                                data-testid={`recommend-plan-alt-price-${plan}`}
+                              >
+                                {altPriceLabel}
+                              </div>
+                            )}
                             {(includedMinutes !== null || overageRate !== null) && (
                               <div
                                 className={`text-[11px] ${
@@ -399,8 +478,43 @@ export default function WebsiteSalesWidget() {
                                   : ''}
                               </div>
                             )}
+                            {annualMonthlyPriceCents !== null && (
+                              <div
+                                className={`mt-1 inline-flex items-center gap-1 self-start rounded-full p-0.5 ${
+                                  msg.role === 'user'
+                                    ? 'bg-white/15'
+                                    : 'bg-surface-secondary/60 border border-border-strong/20'
+                                }`}
+                                role="group"
+                                aria-label={`Billing interval for ${planLabel} plan`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setInterval('monthly')}
+                                  aria-pressed={!isAnnual}
+                                  data-testid={`recommend-plan-interval-monthly-${plan}`}
+                                  className={`${togglePillBase} ${
+                                    !isAnnual ? activePill : inactivePill
+                                  }`}
+                                >
+                                  Monthly
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setInterval('annual')}
+                                  aria-pressed={isAnnual}
+                                  data-testid={`recommend-plan-interval-annual-${plan}`}
+                                  className={`${togglePillBase} ${
+                                    isAnnual ? activePill : inactivePill
+                                  }`}
+                                >
+                                  Annual −{Math.round(ANNUAL_DISCOUNT * 100)}%
+                                </button>
+                              </div>
+                            )}
                             <button
-                              onClick={() => navigate(`/signup?plan=${plan}`)}
+                              onClick={() => navigate(ctaHref)}
+                              data-testid={`recommend-plan-cta-${plan}`}
                               className={`flex items-center gap-1.5 text-xs font-semibold mt-1 ${
                                 msg.role === 'user'
                                   ? 'text-white/90 hover:text-white'
