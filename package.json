@@ -45,7 +45,7 @@
     "test:e2e:public-hero-visual": "tsx tests/e2e/publicHeroVisualRegression.spec.ts",
     "test:e2e:public-pages-preact-smoke": "tsx tests/e2e/publicPagesPreactSmoke.spec.ts",
     "lint": "eslint \"client-app/src/**/*.{ts,tsx}\" \"platform/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"widget/**/*.{js,ts,tsx}\" \"server/**/*.{ts,tsx}\" \"shared/**/*.{ts,tsx}\"",
-    "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs && node tools/eslint-rules/no-dollars-times-100.test.cjs && node tools/eslint-rules/no-literal-cta-name.test.cjs && node tools/eslint-rules/no-literal-analytics-label.test.cjs && node scripts/check-analytics-constants-used.mjs",
+    "lint:rules": "node tools/eslint-rules/no-cents-divided-by-100.test.cjs && node tools/eslint-rules/no-dollars-times-100.test.cjs && node tools/eslint-rules/no-literal-cta-name.test.cjs && node tools/eslint-rules/no-literal-analytics-label.test.cjs && node tools/eslint-rules/no-raw-marketing-colors.test.cjs && node scripts/check-analytics-constants-used.mjs",
     "typecheck:client": "npm --prefix client-app run typecheck",
     "check:design-tokens": "node scripts/check-design-tokens-sync.mjs",
     "check:public-dark-mode": "tsx tests/e2e/publicDarkModeContrast.spec.ts",

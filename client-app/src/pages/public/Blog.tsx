@@ -49,7 +49,7 @@ export default function Blog() {
         </div>
 
         {filtered.length === 0 ? (
-          <p className="text-center text-slate-500 py-12">
+          <p className="text-center text-text-muted py-12">
             No articles in this category yet.
           </p>
         ) : (
@@ -77,10 +77,10 @@ export default function Blog() {
                   <h2 className="font-display text-xl font-bold text-text-primary mb-3 group-hover:text-primary transition-colors">
                     {article.title}
                   </h2>
-                  <p className="text-sm text-slate-600 leading-relaxed mb-4 flex-1">
+                  <p className="text-sm text-text-secondary leading-relaxed mb-4 flex-1">
                     {article.excerpt}
                   </p>
-                  <div className="flex items-center justify-between text-xs text-slate-400 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between text-xs text-text-muted pt-4 border-t border-border">
                     <div className="flex items-center gap-3">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />

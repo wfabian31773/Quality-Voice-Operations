@@ -2,19 +2,24 @@
 //
 // Scope: this configuration enables a small set of custom rules —
 // `local/no-cents-divided-by-100`, `local/no-dollars-times-100`,
-// `local/no-literal-cta-name`, and `local/no-literal-analytics-label`.
-// The two off-by-100x money rules run across `client-app/src/**`,
-// `platform/**`, `mobile/**`, `widget/**`, `server/**`, and
-// `shared/**` so the same off-by-100x guard protects every part of
-// the workspace that handles money. The two marketing-analytics
-// literal rules stay scoped to `client-app/src/**` and `platform/**`
-// (mobile/widget don't render marketing CTAs or feature funnels).
+// `local/no-literal-cta-name`, `local/no-literal-analytics-label`, and
+// `local/no-raw-marketing-colors`. The two off-by-100x money rules run
+// across `client-app/src/**`, `platform/**`, `mobile/**`, `widget/**`,
+// `server/**`, and `shared/**` so the same off-by-100x guard protects
+// every part of the workspace that handles money. The two
+// marketing-analytics literal rules stay scoped to `client-app/src/**`
+// and `platform/**` (mobile/widget don't render marketing CTAs or
+// feature funnels). The marketing-colors rule (Task #1223) runs over
+// `client-app/src/pages/public/**` and `client-app/src/components/**`
+// to keep raw `bg-white` / `text-slate-600` / `border-gray-200` from
+// leaking back into surfaces that need to flip with dark mode.
 // The goal is to fail CI when contributors reintroduce inline
 // off-by-100x money math after the BL-023 `formatCurrency` /
-// `dollarsToCents` cleanup, or when new marketing analytics labels
-// drift back to one-off string literals (Task #426 /
+// `dollarsToCents` cleanup, when new marketing analytics labels drift
+// back to one-off string literals (Task #426 /
 // `client-app/src/lib/analyticsCtas.ts` and Task #1082 /
-// `client-app/src/lib/analyticsLabels.ts`).
+// `client-app/src/lib/analyticsLabels.ts`), or when raw white/gray
+// utilities re-appear after the dark-mode contrast sweep.
 //
 // To run locally:
 //     npm run lint
@@ -24,6 +29,7 @@
 //     // eslint-disable-next-line local/no-dollars-times-100 -- <reason>
 //     // eslint-disable-next-line local/no-literal-cta-name -- <reason>
 //     // eslint-disable-next-line local/no-literal-analytics-label -- <reason>
+//     // eslint-disable-next-line local/no-raw-marketing-colors -- <reason>
 
 import { createRequire } from 'node:module';
 import tsParser from '@typescript-eslint/parser';
@@ -33,6 +39,7 @@ const noCentsDividedBy100 = require('./tools/eslint-rules/no-cents-divided-by-10
 const noDollarsTimes100 = require('./tools/eslint-rules/no-dollars-times-100.js');
 const noLiteralCtaName = require('./tools/eslint-rules/no-literal-cta-name.js');
 const noLiteralAnalyticsLabel = require('./tools/eslint-rules/no-literal-analytics-label.js');
+const noRawMarketingColors = require('./tools/eslint-rules/no-raw-marketing-colors.js');
 
 const localPlugin = {
   rules: {
@@ -40,6 +47,7 @@ const localPlugin = {
     'no-dollars-times-100': noDollarsTimes100,
     'no-literal-cta-name': noLiteralCtaName,
     'no-literal-analytics-label': noLiteralAnalyticsLabel,
+    'no-raw-marketing-colors': noRawMarketingColors,
   },
 };
 
@@ -181,6 +189,40 @@ export default [
     },
     rules: {
       'local/no-literal-analytics-label': 'error',
+    },
+  },
+  {
+    // Marketing-colors guard (Task #1223). Scope is the marketing /
+    // public surfaces and the shared component layer they pull from —
+    // these are the files where re-introducing `bg-white`,
+    // `text-slate-600`, `border-gray-200` etc. silently breaks dark
+    // mode. The rule keeps `bg-white/10` overlays, the
+    // `LiveTranscriptMock` glass effect, and `bg-white dark:bg-gray-800`
+    // pairings working (see the rule for the full allowlist policy);
+    // it only fails CI when a raw light-mode color appears with no
+    // alpha overlay and no `dark:` partner.
+    files: [
+      'client-app/src/pages/public/**/*.{ts,tsx}',
+      'client-app/src/components/**/*.{ts,tsx}',
+    ],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: 'off',
+    },
+    plugins: {
+      local: localPlugin,
+      'react-hooks': reactHooksStub,
+      '@typescript-eslint': tsEslintStub,
+    },
+    rules: {
+      'local/no-raw-marketing-colors': 'error',
     },
   },
 ];

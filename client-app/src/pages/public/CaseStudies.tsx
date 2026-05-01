@@ -34,7 +34,7 @@ function CaseStudyCard({ study }: { study: CaseStudy }) {
   return (
     <RevealSection>
       <div className="bg-surface rounded-2xl border border-border overflow-hidden hover:shadow-lg transition-shadow">
-        <div className="bg-gradient-to-r from-sidebar-bg to-slate-700 p-6">
+        <div className="bg-gradient-to-r from-sidebar-bg to-[#334155] p-6">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-medium text-primary bg-primary/20 px-2 py-0.5 rounded-full capitalize">
               {study.industry}
@@ -96,7 +96,7 @@ function CaseStudyDetail({ slug }: { slug: string }) {
   return (
     <>
       <SEO title={`${study.title} | QVO Case Study`} description={study.summary} />
-      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-slate-800">
+      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-[#1e293b]">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm font-medium text-primary bg-primary/20 px-3 py-1 rounded-full capitalize">{study.industry}</span>
@@ -182,7 +182,7 @@ export default function CaseStudies() {
         description="See how businesses across healthcare, legal, real estate, and home services use QVO AI voice agents to automate calls and grow revenue."
       />
 
-      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-slate-800">
+      <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-[#1e293b]">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">Customer Success Stories</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
@@ -217,7 +217,7 @@ export default function CaseStudies() {
                 ))}
               </div>
               <div className="text-center bg-surface border border-border/30 rounded-2xl py-10 px-6">
-                <BarChart3 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                <BarChart3 className="h-10 w-10 text-text-muted mx-auto mb-3" />
                 <h3 className="text-lg font-display font-semibold text-text-primary mb-2">Detailed case studies coming soon</h3>
                 <p className="text-text-secondary mb-5 max-w-xl mx-auto text-sm">
                   We are publishing in-depth stories from our healthcare, legal, and home-service customers. In the meantime, request a custom walkthrough.

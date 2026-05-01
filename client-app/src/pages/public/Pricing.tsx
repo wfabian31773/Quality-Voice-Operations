@@ -1073,7 +1073,7 @@ export default function Pricing() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="font-display text-2xl font-bold text-text-primary mb-3">{t('pricing.roi.title')}</h2>
-            <p className="text-slate-600">{t('pricing.roi.subtitle')}</p>
+            <p className="text-text-secondary">{t('pricing.roi.subtitle')}</p>
           </div>
           <ROICalculator displayCurrency={displayCurrency} />
         </div>

@@ -140,7 +140,7 @@ export default function VerticalLanding() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-display font-bold text-text-primary mb-4">{t('vertical_page.not_found.title')}</h1>
-          <p className="text-slate-600 mb-6">{t('vertical_page.not_found.subtitle')}</p>
+          <p className="text-text-secondary mb-6">{t('vertical_page.not_found.subtitle')}</p>
           <Link to="/use-cases" className="text-primary hover:underline">{t('vertical_page.not_found.view_all')} &rarr;</Link>
         </div>
       </div>
@@ -255,7 +255,7 @@ export default function VerticalLanding() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[11px] font-semibold text-text-primary leading-tight">{t('vertical_page.card.pre_built_for', { vertical: verticalName })}</p>
-                    <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{t('vertical_page.card.deploy_minutes')}</p>
+                    <p className="text-[10px] text-text-muted leading-tight mt-0.5">{t('vertical_page.card.deploy_minutes')}</p>
                   </div>
                 </div>
               </div>
@@ -270,7 +270,7 @@ export default function VerticalLanding() {
             {stats.map((stat) => (
               <div key={stat.label} className="text-center">
                 <div className="text-3xl md:text-4xl font-display font-bold text-text-primary">{stat.value}</div>
-                <div className="text-sm text-slate-500 mt-1">{stat.label}</div>
+                <div className="text-sm text-text-muted mt-1">{stat.label}</div>
               </div>
             ))}
           </div>
@@ -284,7 +284,7 @@ export default function VerticalLanding() {
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 {t('vertical_page.problems.title')}
               </h2>
-              <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
                 {t('vertical_page.problems.subtitle', { vertical: verticalName })}
               </p>
             </div>
@@ -299,7 +299,7 @@ export default function VerticalLanding() {
                     </div>
                     <div>
                       <h3 className="font-display font-semibold text-text-primary mb-2">{point.title}</h3>
-                      <p className="text-sm text-slate-600 leading-relaxed">{point.description}</p>
+                      <p className="text-sm text-text-secondary leading-relaxed">{point.description}</p>
                     </div>
                   </div>
                 </div>
@@ -316,7 +316,7 @@ export default function VerticalLanding() {
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 {t('vertical_page.agents.title', { vertical: verticalName })}
               </h2>
-              <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
                 {t('vertical_page.agents.subtitle', { vertical_lower: verticalLower })}
               </p>
             </div>
@@ -324,15 +324,15 @@ export default function VerticalLanding() {
           <div className="grid md:grid-cols-3 gap-8">
             {agentExamples.map((agent, idx) => (
               <RevealSection key={agent.name} delay={`delay-${idx * 150}`}>
-                <div className="bg-surface-secondary rounded-2xl p-6 border border-slate-100 h-full flex flex-col">
+                <div className="bg-surface-secondary rounded-2xl p-6 border border-border h-full flex flex-col">
                   <div className={`w-10 h-10 rounded-xl ${config.color} flex items-center justify-center mb-4`}>
                     <Zap className="h-5 w-5 text-white" />
                   </div>
                   <h3 className="font-display font-semibold text-text-primary text-lg mb-2">{agent.name}</h3>
-                  <p className="text-sm text-slate-600 mb-4 flex-1">{agent.description}</p>
+                  <p className="text-sm text-text-secondary mb-4 flex-1">{agent.description}</p>
                   <ul className="space-y-2">
                     {agent.capabilities.map((cap) => (
-                      <li key={cap} className="flex items-center gap-2 text-sm text-slate-700">
+                      <li key={cap} className="flex items-center gap-2 text-sm text-text-primary">
                         <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                         {cap}
                       </li>
@@ -352,7 +352,7 @@ export default function VerticalLanding() {
               <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
                 {t('vertical_page.roi.title')}
               </h2>
-              <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
                 {t('vertical_page.roi.subtitle', { vertical_lower: verticalLower })}
               </p>
             </div>
@@ -402,7 +402,7 @@ export default function VerticalLanding() {
                     <item.icon className="h-6 w-6 text-primary" />
                   </div>
                   <h3 className="font-display font-semibold text-text-primary text-lg mb-2">{item.title}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed">{item.desc}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed">{item.desc}</p>
                 </div>
               </RevealSection>
             ))}

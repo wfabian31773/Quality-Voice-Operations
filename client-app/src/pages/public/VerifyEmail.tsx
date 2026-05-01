@@ -97,7 +97,7 @@ export default function VerifyEmail() {
               </div>
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{t('verify_email.failed_title')}</h2>
               <p className="text-gray-600 dark:text-gray-300 mb-6">{errorMessage}</p>
-              <Link to="/login" className="inline-block bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+              <Link to="/login" className="inline-block bg-text-secondary hover:bg-text-primary text-on-inverse font-medium py-2 px-6 rounded-lg transition-colors">
                 {t('verify_email.back_to_login')}
               </Link>
             </>
