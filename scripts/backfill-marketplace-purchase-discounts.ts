@@ -78,6 +78,20 @@
  *   APP_ENV=production PLATFORM_DB_POOL_URL=postgres://... STRIPE_SECRET_KEY=sk_live_... \
  *     npx tsx scripts/backfill-marketplace-purchase-discounts.ts --apply
  *
+ * Scheduled drift detection (alerting only — never writes)
+ * --------------------------------------------------------
+ * `platform/billing/MarketplaceDiscountBackfillScheduler.ts` is wired
+ * into the Admin API process (see `server/admin-api/start.ts`) and
+ * invokes `runBackfill` on a 24h cadence in dry-run mode. When the
+ * dry-run reports a non-zero `updated` count it pages ops via the
+ * shared `OPS_SLACK_WEBHOOK_URL` with the affected purchase ids
+ * (truncated to the first 25; the operator gets the full list by
+ * running this script manually). The scheduler hard-codes
+ * `apply: false` and refuses to write — operators promote drift to a
+ * write run by invoking this script with `--apply` after confirming
+ * the diff. Configure the cadence via
+ * `MARKETPLACE_DISCOUNT_BACKFILL_INTERVAL_MS` (5min..7d).
+ *
  * Optional flags:
  *   --apply         Actually issue UPDATEs. Default is dry-run.
  *   --batch=<n>     Per-iteration page size (default 200).

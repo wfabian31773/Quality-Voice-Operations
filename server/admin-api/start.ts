@@ -47,6 +47,7 @@ import { startRouteExportArchiveCleanupScheduler, stopRouteExportArchiveCleanupS
 import { startPlanRecommendationDigestScheduler, stopPlanRecommendationDigestScheduler } from '../../platform/billing/PlanRecommendationDigestScheduler';
 import { startRecommendationDirectionDigestScheduler, stopRecommendationDirectionDigestScheduler } from '../../platform/billing/RecommendationDirectionDigestScheduler';
 import { startStripePriceVerificationScheduler, stopStripePriceVerificationScheduler } from '../../platform/billing/StripePriceVerificationScheduler';
+import { startMarketplaceDiscountBackfillScheduler, stopMarketplaceDiscountBackfillScheduler } from '../../platform/billing/MarketplaceDiscountBackfillScheduler';
 import { startPortalConfigCleanupScheduler, stopPortalConfigCleanupScheduler } from '../../platform/billing/PortalConfigCleanupScheduler';
 
 const logger = createLogger('ADMIN_API');
@@ -133,6 +134,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   startPlanRecommendationDigestScheduler();
   startRecommendationDirectionDigestScheduler();
   startStripePriceVerificationScheduler();
+  startMarketplaceDiscountBackfillScheduler();
   startPortalConfigCleanupScheduler();
   startFederalDncSyncScheduler();
   logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
@@ -177,6 +179,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopPlanRecommendationDigestScheduler();
   stopRecommendationDirectionDigestScheduler();
   stopStripePriceVerificationScheduler();
+  stopMarketplaceDiscountBackfillScheduler();
   stopPortalConfigCleanupScheduler();
   stopFederalDncSyncScheduler();
   stopMetricsRollup();
