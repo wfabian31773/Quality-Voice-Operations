@@ -14,9 +14,9 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { PageHeader } from '../components/ui';
 
 function sentimentBand(score: number): { label: string; icon: typeof Smile; color: string } {
-  if (score >= 0.6) return { label: 'Positive', icon: Smile, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
-  if (score >= 0.3) return { label: 'Neutral', icon: Meh, color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' };
-  return { label: 'Negative', icon: Frown, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
+  if (score >= 0.6) return { label: 'Positive', icon: Smile, color: 'bg-success-light text-success' };
+  if (score >= 0.3) return { label: 'Neutral', icon: Meh, color: 'bg-warning-light text-warning' };
+  return { label: 'Negative', icon: Frown, color: 'bg-danger-light text-danger' };
 }
 
 interface CallSummary {
@@ -144,7 +144,7 @@ function JsonViewer({ data, label }: { data: unknown; label?: string }) {
         {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
       {expanded && (
-        <pre className="mt-1 p-2 bg-gray-900 text-green-400 text-xs rounded-lg overflow-x-auto max-h-60 font-mono">
+        <pre className="mt-1 p-2 bg-surface-inverse text-success text-xs rounded-lg overflow-x-auto max-h-60 font-mono">
           {JSON.stringify(data, null, 2)}
         </pre>
       )}
@@ -154,38 +154,38 @@ function JsonViewer({ data, label }: { data: unknown; label?: string }) {
 
 function TraceIcon({ type }: { type: string }) {
   const iconMap: Record<string, React.ReactNode> = {
-    intent_classified: <Layers className="h-3.5 w-3.5 text-blue-500" />,
-    slot_collected: <MessageSquare className="h-3.5 w-3.5 text-indigo-500" />,
-    tool_invoked: <Wrench className="h-3.5 w-3.5 text-orange-500" />,
-    tool_responded: <Wrench className="h-3.5 w-3.5 text-green-500" />,
-    model_prompted: <Bot className="h-3.5 w-3.5 text-purple-500" />,
-    model_responded: <Bot className="h-3.5 w-3.5 text-violet-500" />,
-    workflow_started: <Activity className="h-3.5 w-3.5 text-cyan-500" />,
-    workflow_step: <ArrowRight className="h-3.5 w-3.5 text-teal-500" />,
-    escalation_check: <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />,
-    call_started: <PhoneCall className="h-3.5 w-3.5 text-green-500" />,
-    call_ended: <PhoneCall className="h-3.5 w-3.5 text-red-500" />,
-    integration_call: <Globe className="h-3.5 w-3.5 text-sky-500" />,
+    intent_classified: <Layers className="h-3.5 w-3.5 text-info" />,
+    slot_collected: <MessageSquare className="h-3.5 w-3.5 text-accent" />,
+    tool_invoked: <Wrench className="h-3.5 w-3.5 text-warning" />,
+    tool_responded: <Wrench className="h-3.5 w-3.5 text-success" />,
+    model_prompted: <Bot className="h-3.5 w-3.5 text-accent" />,
+    model_responded: <Bot className="h-3.5 w-3.5 text-accent" />,
+    workflow_started: <Activity className="h-3.5 w-3.5 text-info" />,
+    workflow_step: <ArrowRight className="h-3.5 w-3.5 text-primary" />,
+    escalation_check: <AlertTriangle className="h-3.5 w-3.5 text-warning" />,
+    call_started: <PhoneCall className="h-3.5 w-3.5 text-success" />,
+    call_ended: <PhoneCall className="h-3.5 w-3.5 text-danger" />,
+    integration_call: <Globe className="h-3.5 w-3.5 text-info" />,
   };
   return <>{iconMap[type] ?? <Activity className="h-3.5 w-3.5 text-text-muted" />}</>;
 }
 
 function traceColor(type: string): string {
   const colors: Record<string, string> = {
-    intent_classified: 'border-blue-500',
-    slot_collected: 'border-indigo-500',
-    tool_invoked: 'border-orange-500',
-    tool_responded: 'border-green-500',
-    model_prompted: 'border-purple-500',
-    model_responded: 'border-violet-500',
-    workflow_started: 'border-cyan-500',
-    workflow_step: 'border-teal-500',
-    escalation_check: 'border-yellow-500',
-    call_started: 'border-green-500',
-    call_ended: 'border-red-500',
-    integration_call: 'border-sky-500',
+    intent_classified: 'border-info',
+    slot_collected: 'border-accent',
+    tool_invoked: 'border-warning',
+    tool_responded: 'border-success',
+    model_prompted: 'border-accent',
+    model_responded: 'border-accent',
+    workflow_started: 'border-info',
+    workflow_step: 'border-primary',
+    escalation_check: 'border-warning',
+    call_started: 'border-success',
+    call_ended: 'border-danger',
+    integration_call: 'border-info',
   };
-  return colors[type] ?? 'border-gray-400';
+  return colors[type] ?? 'border-border-strong';
 }
 
 function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void }) {
@@ -247,7 +247,7 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
   const filteredItems = typeFilter === 'all' ? timelineItems : timelineItems.filter(i => i.type === typeFilter);
 
   if (isLoading) return <div className="text-center py-12 text-text-secondary">Loading call replay...</div>;
-  if (error || !data || !call) return <div className="text-center py-12 text-red-500">Failed to load call replay</div>;
+  if (error || !data || !call) return <div className="text-center py-12 text-danger">Failed to load call replay</div>;
 
   const relativeTime = (ts: string) => {
     if (!callStartTime || !ts) return '';
@@ -276,9 +276,9 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
           <div><span className="text-text-secondary block text-xs mb-0.5">Direction</span><span className="font-medium capitalize">{call.direction as string}</span></div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Status</span>
             <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-              call.lifecycle_state === 'CALL_COMPLETED' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-              call.lifecycle_state === 'CALL_FAILED' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-              'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+              call.lifecycle_state === 'CALL_COMPLETED' ? 'bg-success-light text-success' :
+              call.lifecycle_state === 'CALL_FAILED' ? 'bg-danger-light text-danger' :
+              'bg-warning-light text-warning'
             }`}>{call.lifecycle_state as string}</span>
           </div>
           <div><span className="text-text-secondary block text-xs mb-0.5">Duration</span><span className="font-medium">{call.duration_seconds ? `${call.duration_seconds}s` : '--'}</span></div>
@@ -334,18 +334,18 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
           ) : filteredItems.map(item => (
             <div key={item.id} className="relative pl-12">
               <div className={`absolute left-3.5 top-2 w-3 h-3 rounded-full border-2 border-surface ${
-                item.type === 'transcript' ? 'bg-blue-500' :
-                item.type === 'event' ? 'bg-yellow-500' :
-                item.type === 'tool' ? 'bg-orange-500' :
-                item.type === 'trace' ? 'bg-purple-500' :
-                'bg-sky-500'
+                item.type === 'transcript' ? 'bg-info' :
+                item.type === 'event' ? 'bg-warning' :
+                item.type === 'tool' ? 'bg-warning' :
+                item.type === 'trace' ? 'bg-accent' :
+                'bg-info'
               }`} />
               <span className="absolute left-12 -top-0.5 text-[10px] text-text-muted font-mono">{relativeTime(item.timestamp)}</span>
               <div className="pt-4">
                 {item.type === 'transcript' && (() => {
                   const t = item.data as TranscriptEntry;
                   return (
-                    <div className={`rounded-lg p-3 ${t.role === 'assistant' ? 'bg-primary-light border-l-2 border-primary' : 'bg-surface-hover border-l-2 border-gray-400'}`}>
+                    <div className={`rounded-lg p-3 ${t.role === 'assistant' ? 'bg-primary-light border-l-2 border-primary' : 'bg-surface-hover border-l-2 border-border-strong'}`}>
                       <div className="flex items-center gap-2 mb-1">
                         {t.role === 'assistant' ? <Bot className="h-3.5 w-3.5 text-primary" /> : <User className="h-3.5 w-3.5 text-text-secondary" />}
                         <span className="text-xs font-medium text-text-secondary capitalize">{t.role}</span>
@@ -357,9 +357,9 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                 {item.type === 'event' && (() => {
                   const e = item.data as CallEvent;
                   return (
-                    <div className="bg-surface-hover rounded-lg p-3 border-l-2 border-yellow-500">
+                    <div className="bg-surface-hover rounded-lg p-3 border-l-2 border-warning">
                       <div className="flex items-center gap-2 mb-1">
-                        <Activity className="h-3.5 w-3.5 text-yellow-500" />
+                        <Activity className="h-3.5 w-3.5 text-warning" />
                         <span className="text-xs font-semibold text-text-primary">{e.event_type}</span>
                       </div>
                       {e.from_state && e.to_state && (
@@ -372,22 +372,22 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                 {item.type === 'tool' && (() => {
                   const t = item.data as ToolInvocation;
                   return (
-                    <div className={`bg-surface-hover rounded-lg p-3 border-l-2 ${t.status === 'success' ? 'border-green-500' : t.status === 'failed' ? 'border-red-500' : 'border-orange-500'}`}>
+                    <div className={`bg-surface-hover rounded-lg p-3 border-l-2 ${t.status === 'success' ? 'border-success' : t.status === 'failed' ? 'border-danger' : 'border-warning'}`}>
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <Wrench className="h-3.5 w-3.5 text-orange-500" />
+                          <Wrench className="h-3.5 w-3.5 text-warning" />
                           <span className="text-sm font-semibold font-mono text-text-primary">{t.tool_name}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           {t.duration_ms != null && <span className="text-xs text-text-muted">{t.duration_ms}ms</span>}
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            t.status === 'success' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                            t.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                            'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                            t.status === 'success' ? 'bg-success-light text-success' :
+                            t.status === 'failed' ? 'bg-danger-light text-danger' :
+                            'bg-warning-light text-warning'
                           }`}>{t.status}</span>
                         </div>
                       </div>
-                      {t.error_message && <p className="text-xs text-red-500 mt-1">{t.error_message}</p>}
+                      {t.error_message && <p className="text-xs text-danger mt-1">{t.error_message}</p>}
                       <div className="flex gap-4">
                         <JsonViewer data={t.input} label="Input" />
                         <JsonViewer data={t.output ?? t.result} label="Output" />
@@ -428,7 +428,7 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                               {trace.inputData && (
                                 <div>
                                   <span className="text-xs text-text-muted block mb-1">Input:</span>
-                                  <pre className="text-xs bg-gray-900 text-green-400 p-2 rounded overflow-x-auto max-h-60 font-mono">
+                                  <pre className="text-xs bg-surface-inverse text-success p-2 rounded overflow-x-auto max-h-60 font-mono">
                                     {typeof trace.inputData === 'string' ? trace.inputData : JSON.stringify(trace.inputData, null, 2)}
                                   </pre>
                                 </div>
@@ -436,7 +436,7 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                               {trace.outputData && (
                                 <div className="mt-2">
                                   <span className="text-xs text-text-muted block mb-1">Output:</span>
-                                  <pre className="text-xs bg-gray-900 text-green-400 p-2 rounded overflow-x-auto max-h-60 font-mono">
+                                  <pre className="text-xs bg-surface-inverse text-success p-2 rounded overflow-x-auto max-h-60 font-mono">
                                     {typeof trace.outputData === 'string' ? trace.outputData : JSON.stringify(trace.outputData, null, 2)}
                                   </pre>
                                 </div>
@@ -468,12 +468,12 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                     <div className="bg-surface border border-border rounded-lg p-4 border-l-4 border-l-sky-500">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-sky-500" />
+                          <Globe className="h-4 w-4 text-info" />
                           <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
-                            evt.request_method === 'GET' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                            evt.request_method === 'POST' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                            evt.request_method === 'PUT' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                            evt.request_method === 'GET' ? 'bg-success-light text-success' :
+                            evt.request_method === 'POST' ? 'bg-info-light text-info' :
+                            evt.request_method === 'PUT' ? 'bg-warning-light text-warning' :
+                            'bg-danger-light text-danger'
                           }`}>{evt.request_method}</span>
                           <span className="text-sm font-mono text-text-primary truncate max-w-md">{evt.request_url}</span>
                         </div>
@@ -481,15 +481,15 @@ function CallReplayView({ callId, onBack }: { callId: string; onBack: () => void
                           {evt.latency_ms != null && <span className="text-xs text-text-muted">{evt.latency_ms}ms</span>}
                           {evt.response_status != null && (
                             <span className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${
-                              evt.response_status >= 200 && evt.response_status < 300 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                              evt.response_status >= 400 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                              'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                              evt.response_status >= 200 && evt.response_status < 300 ? 'bg-success-light text-success' :
+                              evt.response_status >= 400 ? 'bg-danger-light text-danger' :
+                              'bg-warning-light text-warning'
                             }`}>{evt.response_status}</span>
                           )}
                         </div>
                       </div>
                       {evt.service_name && <p className="text-xs text-text-muted mb-2">Service: {evt.service_name}</p>}
-                      {evt.error_message && <p className="text-xs text-red-500 mb-2">{evt.error_message}</p>}
+                      {evt.error_message && <p className="text-xs text-danger mb-2">{evt.error_message}</p>}
                       <div className="flex gap-4 flex-wrap">
                         <JsonViewer data={evt.request_headers} label="Request Headers" />
                         <JsonViewer data={evt.request_body} label="Request Body" />
@@ -537,14 +537,14 @@ function LiveOperationsBoard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            <Radio className="h-4 w-4 text-green-500 animate-pulse" />
+            <Radio className="h-4 w-4 text-success animate-pulse" />
             <span className="text-sm text-text-secondary">Active Calls</span>
           </div>
           <p className="text-3xl font-bold text-text-primary">{activeCalls.length}</p>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            <Wrench className="h-4 w-4 text-orange-500" />
+            <Wrench className="h-4 w-4 text-warning" />
             <span className="text-sm text-text-secondary">Tools In Flight</span>
           </div>
           <p className="text-3xl font-bold text-text-primary">
@@ -553,7 +553,7 @@ function LiveOperationsBoard() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            <Activity className="h-4 w-4 text-purple-500" />
+            <Activity className="h-4 w-4 text-accent" />
             <span className="text-sm text-text-secondary">Recent Traces</span>
           </div>
           <p className="text-3xl font-bold text-text-primary">{recentTraces.length}</p>
@@ -571,10 +571,10 @@ function LiveOperationsBoard() {
             <div key={call.id} className="bg-surface border border-border rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-success animate-pulse" />
                   <span className="text-sm font-semibold text-text-primary">{call.agentName}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    call.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    call.direction === 'inbound' ? 'bg-info-light text-info' : 'bg-warning-light text-warning'
                   }`}>{call.direction}</span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -582,7 +582,7 @@ function LiveOperationsBoard() {
                     <Clock className="h-3 w-3" />
                     {Math.floor(call.elapsedSeconds / 60)}:{(call.elapsedSeconds % 60).toString().padStart(2, '0')}
                   </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium bg-warning-light text-warning`}>
                     {call.lifecycleState}
                   </span>
                 </div>
@@ -594,9 +594,9 @@ function LiveOperationsBoard() {
               </div>
               {call.currentStep && (
                 <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
-                  <Activity className="h-3 w-3 text-purple-500" />
+                  <Activity className="h-3 w-3 text-accent" />
                   <span>Current Step:</span>
-                  <span className="font-mono px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 rounded">
+                  <span className="font-mono px-1.5 py-0.5 bg-accent-light text-accent rounded">
                     {call.currentStep.traceType}
                   </span>
                   <span className="text-text-muted">{call.currentStep.stepName}</span>
@@ -607,7 +607,7 @@ function LiveOperationsBoard() {
                   <span className="text-xs font-medium text-text-secondary">Active Tools:</span>
                   <div className="flex flex-wrap gap-2 mt-1">
                     {call.activeToolCalls.map(tc => (
-                      <span key={tc.id} className="text-xs px-2 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded-full font-mono flex items-center gap-1">
+                      <span key={tc.id} className="text-xs px-2 py-1 bg-warning-light text-warning rounded-full font-mono flex items-center gap-1">
                         <Zap className="h-3 w-3" />{tc.toolName}
                       </span>
                     ))}
@@ -959,13 +959,13 @@ export default function CallDebug() {
                         <td className="px-4 py-3 text-text-primary text-sm">{call.agent_name || '--'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            call.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                            call.direction === 'inbound' ? 'bg-info-light text-info' : 'bg-warning-light text-warning'
                           }`}>{call.direction}</span>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            call.lifecycle_state === 'CALL_COMPLETED' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                            call.lifecycle_state === 'CALL_FAILED' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                            call.lifecycle_state === 'CALL_COMPLETED' ? 'bg-success-light text-success' :
+                            call.lifecycle_state === 'CALL_FAILED' ? 'bg-danger-light text-danger' :
                             'bg-surface-hover text-text-secondary'
                           }`}>{call.lifecycle_state}</span>
                         </td>
@@ -991,12 +991,12 @@ export default function CallDebug() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             {call.has_tool_failure && (
-                              <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded" title="Tool Failure">
+                              <span className="text-xs px-1.5 py-0.5 bg-danger-light text-danger rounded" title="Tool Failure">
                                 <AlertTriangle className="h-3 w-3" />
                               </span>
                             )}
                             {call.escalated && (
-                              <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded" title="Escalated">
+                              <span className="text-xs px-1.5 py-0.5 bg-warning-light text-warning rounded" title="Escalated">
                                 <TrendingUp className="h-3 w-3" />
                               </span>
                             )}

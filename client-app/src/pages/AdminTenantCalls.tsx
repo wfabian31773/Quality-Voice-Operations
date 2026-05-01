@@ -183,8 +183,8 @@ function AdminCallDetailDrawer({
           </button>
         </div>
 
-        <div className="px-5 py-3 border-b border-border bg-purple-500/10">
-          <p className="text-xs text-purple-200">
+        <div className="px-5 py-3 border-b border-border bg-accent/10">
+          <p className="text-xs text-accent">
             Viewing as admin — tenant: {tenant?.name ?? callData?.tenant?.name ?? '...'}
           </p>
         </div>
@@ -315,7 +315,7 @@ function AdminCallDetailDrawer({
                     <div key={exec.id} className="bg-surface-hover rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-text-primary font-mono">{exec.toolName}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${exec.status === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : exec.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${exec.status === 'success' ? 'bg-success-light text-success' : exec.status === 'failed' ? 'bg-danger-light text-danger' : 'bg-warning-light text-warning'}`}>
                           {exec.status}
                         </span>
                       </div>
@@ -324,7 +324,7 @@ function AdminCallDetailDrawer({
                         {exec.durationMs != null && <span>{exec.durationMs}ms</span>}
                       </div>
                       {exec.errorMessage && (
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-2">{exec.errorMessage}</p>
+                        <p className="text-xs text-danger mt-2">{exec.errorMessage}</p>
                       )}
                       {exec.recoveryAction && (
                         <p className="text-xs text-text-secondary mt-1 italic">Recovery: {exec.recoveryAction}</p>
@@ -594,7 +594,7 @@ export default function AdminTenantCalls() {
             <button
               type="button"
               onClick={clearFilters}
-              className="text-xs text-purple-300 hover:text-purple-200 inline-flex items-center gap-1"
+              className="text-xs text-accent hover:text-accent inline-flex items-center gap-1"
             >
               <X className="h-3 w-3" />
               Clear filters
@@ -604,7 +604,7 @@ export default function AdminTenantCalls() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
           Failed to load calls for this tenant.
         </div>
       )}
@@ -646,7 +646,7 @@ export default function AdminTenantCalls() {
                     <td className="px-5 py-3 text-text-primary">{c.agent_name || '--'}</td>
                     <td className="px-5 py-3 text-text-secondary">{c.language ? getAgentLanguageLabel(c.language) : '--'}</td>
                     <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${c.direction === 'inbound' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${c.direction === 'inbound' ? 'bg-info-light text-info' : 'bg-warning-light text-warning'}`}>
                         {c.direction}
                       </span>
                     </td>
@@ -658,7 +658,7 @@ export default function AdminTenantCalls() {
                         {c.has_transcript ? (
                           <span
                             title="Transcript available"
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-success-light text-success"
                           >
                             <FileText className="h-3 w-3" />
                             Transcript
@@ -667,7 +667,7 @@ export default function AdminTenantCalls() {
                         {c.has_events ? (
                           <span
                             title="Lifecycle events recorded"
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-accent-light text-accent"
                           >
                             <ListOrdered className="h-3 w-3" />
                             Events
@@ -676,7 +676,7 @@ export default function AdminTenantCalls() {
                         {c.tool_count && c.tool_count > 0 ? (
                           <span
                             title={`${c.tool_count} tool execution${c.tool_count === 1 ? '' : 's'}`}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-warning-light text-warning"
                           >
                             <Wrench className="h-3 w-3" />
                             {c.tool_count}
@@ -685,7 +685,7 @@ export default function AdminTenantCalls() {
                         {c.failed_tool_count && c.failed_tool_count > 0 ? (
                           <span
                             title={`${c.failed_tool_count} failed or timed-out tool execution${c.failed_tool_count === 1 ? '' : 's'}`}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-danger-light text-danger"
                           >
                             <AlertTriangle className="h-3 w-3" />
                             {c.failed_tool_count} failed

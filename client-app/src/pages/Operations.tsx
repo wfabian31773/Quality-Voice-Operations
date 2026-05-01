@@ -262,10 +262,10 @@ function stateBadgeMeta(state: string): { tone: BadgeTone; tooltip: string; icon
 }
 
 function severityColor(severity: string): string {
-  if (severity === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-  if (severity === 'error') return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
-  if (severity === 'warning') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  if (severity === 'critical') return 'bg-danger-light text-danger';
+  if (severity === 'error') return 'bg-warning-light text-warning';
+  if (severity === 'warning') return 'bg-warning-light text-warning';
+  return 'bg-info-light text-info';
 }
 
 function severityBadgeMeta(severity: string): { tone: BadgeTone; tooltip: string } {
@@ -329,7 +329,7 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
           Active Calls
           {calls.length > 0 && (
             <span
-              className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full"
+              className="ml-2 text-xs bg-success-light text-success px-2 py-0.5 rounded-full"
               aria-label={`${calls.length} active call${calls.length === 1 ? '' : 's'} in progress`}
             >
               {calls.length}
@@ -355,8 +355,8 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
                   : 'hover:bg-surface-hover'
               }`}
             >
-              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                <Phone className="h-4 w-4 text-green-700 dark:text-green-400" />
+              <div className="p-2 rounded-lg bg-success-light">
+                <Phone className="h-4 w-4 text-success" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -380,7 +380,7 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
                   <span className="text-xs text-text-secondary">{redactPhone(call.caller_number)}</span>
                   <span className="text-xs text-text-secondary" aria-hidden="true">·</span>
                   <span
-                    className={`text-xs inline-flex items-center gap-1 ${call.direction === 'inbound' ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}
+                    className={`text-xs inline-flex items-center gap-1 ${call.direction === 'inbound' ? 'text-info' : 'text-warning'}`}
                     title={call.direction === 'inbound' ? 'Inbound call — customer dialled in' : 'Outbound call — agent dialled out'}
                   >
                     {call.direction === 'inbound' ? (
@@ -428,7 +428,7 @@ function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: 
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-text-primary">Live Call Monitor</h3>
           {isActive && (
-            <span className="flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+            <span className="flex items-center gap-1 text-[10px] text-success">
               <StatusDot
                 label="Call is live and streaming"
                 tone="success"
@@ -515,10 +515,10 @@ function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: 
               tools.map((tool) => (
                 <div key={tool.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${
                   tool.status === 'running'
-                    ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'
+                    ? 'border-warning bg-warning-light'
                     : 'border-border bg-surface-hover'
                 }`}>
-                  <Wrench className={`h-3.5 w-3.5 shrink-0 ${tool.status === 'running' ? 'text-amber-600' : 'text-text-secondary'}`} />
+                  <Wrench className={`h-3.5 w-3.5 shrink-0 ${tool.status === 'running' ? 'text-warning' : 'text-text-secondary'}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-text-primary truncate">{toolLabel(tool.tool)}</p>
                     <p className="text-[10px] text-text-secondary">
@@ -526,12 +526,12 @@ function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: 
                     </p>
                   </div>
                   {tool.status === 'running' ? (
-                    <div className="flex items-center gap-1 text-[10px] text-amber-600">
+                    <div className="flex items-center gap-1 text-[10px] text-warning">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Running
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1 text-[10px] text-green-600">
+                    <div className="flex items-center gap-1 text-[10px] text-success">
                       <Check className="h-3 w-3" />
                       Done
                     </div>
@@ -582,8 +582,8 @@ function ToolExecutionFeed({ tools, agentFilter, onAgentFilterChange }: {
         <div className="divide-y divide-border max-h-80 overflow-y-auto">
           {filtered.map((tool) => (
             <div key={tool.id} className="px-5 py-3 flex items-center gap-3">
-              <div className={`p-1.5 rounded-lg ${tool.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-amber-100 dark:bg-amber-900/30'}`}>
-                <Wrench className={`h-3.5 w-3.5 ${tool.status === 'completed' ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`} />
+              <div className={`p-1.5 rounded-lg ${tool.status === 'completed' ? 'bg-success-light' : 'bg-warning-light'}`}>
+                <Wrench className={`h-3.5 w-3.5 ${tool.status === 'completed' ? 'text-success' : 'text-warning'}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -642,7 +642,7 @@ export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAckn
           Alerts
           {unacknowledgedCount > 0 && (
             <span
-              className="ml-1 inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full"
+              className="ml-1 inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-danger rounded-full"
               role="status"
               aria-label={`${unacknowledgedCount} unacknowledged ${unacknowledgedCount === 1 ? 'alert' : 'alerts'} need attention`}
               title={`${unacknowledgedCount} unacknowledged ${unacknowledgedCount === 1 ? 'alert' : 'alerts'} need attention`}
@@ -694,7 +694,7 @@ export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAckn
                 key={alert.id}
                 className={`px-5 py-3 flex items-start gap-3 ${
                   isHighlighted
-                    ? 'bg-amber-50 dark:bg-amber-500/10 ring-1 ring-inset ring-amber-400/40'
+                    ? 'bg-warning-light ring-1 ring-inset ring-warning/40'
                     : ''
                 }`}
               >
@@ -729,7 +729,7 @@ export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAckn
                             : 'Daily usage was auto-rebalanced inside the ingest transaction — no manual action required.'
                         }
                         aria-label="Auto-rebalanced — no manual action required"
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success"
                       >
                         <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                         Auto-rebalanced

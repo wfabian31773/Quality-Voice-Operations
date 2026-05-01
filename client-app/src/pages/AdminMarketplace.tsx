@@ -254,7 +254,7 @@ function VersionsModal({ template, onClose }: { template: RegistryTemplate; onCl
                 {versions.map((v) => (
                   <tr key={v.id} className="border-t border-border/40">
                     <td className="py-2.5 text-text-primary">
-                      <div className="font-medium">v{v.version}{v.isLatest && <span className="ml-2 text-xs text-green-400">latest</span>}</div>
+                      <div className="font-medium">v{v.version}{v.isLatest && <span className="ml-2 text-xs text-success">latest</span>}</div>
                       {v.changelog && <div className="text-xs text-text-secondary truncate max-w-md">{v.changelog}</div>}
                     </td>
                     <td className="py-2.5"><StatusBadge status={v.status} /></td>
@@ -285,7 +285,7 @@ function VersionsModal({ template, onClose }: { template: RegistryTemplate; onCl
             </table>
           )}
           {mutationError && (
-            <div className="mt-3 text-sm text-red-400">{mutationError.message}</div>
+            <div className="mt-3 text-sm text-danger">{mutationError.message}</div>
           )}
         </div>
     </Modal>
@@ -627,7 +627,7 @@ function ReviewModal({
               className={clsx(
                 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border',
                 decision === 'approved'
-                  ? 'bg-green-500/10 border-green-500/40 text-green-400'
+                  ? 'bg-success/10 border-success/40 text-success'
                   : 'border-border text-text-secondary hover:text-text-primary',
               )}
             >
@@ -638,7 +638,7 @@ function ReviewModal({
               className={clsx(
                 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border',
                 decision === 'rejected'
-                  ? 'bg-red-500/10 border-red-500/40 text-red-400'
+                  ? 'bg-danger/10 border-danger/40 text-danger'
                   : 'border-border text-text-secondary hover:text-text-primary',
               )}
             >
@@ -658,7 +658,7 @@ function ReviewModal({
           </div>
 
           {mutation.isError && (
-            <div className="text-sm text-red-400">{(mutation.error as Error).message}</div>
+            <div className="text-sm text-danger">{(mutation.error as Error).message}</div>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
@@ -768,12 +768,12 @@ function Stat({ label, value, icon: Icon }: { label: string; value: string; icon
 function StatusBadge({ status }: { status: string }) {
   const cls =
     status === 'active' || status === 'approved' || status === 'published'
-      ? 'bg-green-500/15 text-green-400'
+      ? 'bg-success/15 text-success'
       : status === 'pending' || status === 'draft' || status === 'in_review'
-        ? 'bg-amber-500/15 text-amber-400'
+        ? 'bg-warning/15 text-warning'
         : status === 'rejected' || status === 'deprecated' || status === 'disabled'
-          ? 'bg-red-500/15 text-red-400'
-          : 'bg-gray-500/15 text-text-muted';
+          ? 'bg-danger/15 text-danger'
+          : 'bg-sidebar-hover text-text-muted';
   return (
     <span className={clsx('inline-flex px-2 py-0.5 rounded text-xs font-medium capitalize', cls)}>
       {status.replace(/_/g, ' ')}
@@ -784,15 +784,15 @@ function StatusBadge({ status }: { status: string }) {
 function Loading() {
   return (
     <div className="flex items-center justify-center py-16">
-      <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full" />
+      <div className="animate-spin h-8 w-8 border-4 border-accent border-t-transparent rounded-full" />
     </div>
   );
 }
 
 function ErrorBox({ message }: { message: string }) {
   return (
-    <div className="bg-card border border-red-500/30 rounded-xl p-8 text-center">
-      <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-2" />
+    <div className="bg-card border border-danger/30 rounded-xl p-8 text-center">
+      <AlertCircle className="h-10 w-10 text-danger mx-auto mb-2" />
       <p className="text-text-primary font-medium">Failed to load</p>
       <p className="text-sm text-text-secondary mt-1">{message}</p>
     </div>

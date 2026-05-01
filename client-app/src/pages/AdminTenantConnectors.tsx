@@ -67,7 +67,7 @@ function statusBadge(connector: ConnectorRow) {
       label: 'Disabled',
       icon: <Plug className="h-3.5 w-3.5" />,
       className:
-        'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+        'bg-surface-hover text-text-secondary',
     };
   }
   if (status === 'needs_reconnect') {
@@ -75,7 +75,7 @@ function statusBadge(connector: ConnectorRow) {
       label: 'Needs reconnect',
       icon: <ShieldAlert className="h-3.5 w-3.5" />,
       className:
-        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+        'bg-danger-light text-danger',
     };
   }
   if (status === 'error') {
@@ -83,7 +83,7 @@ function statusBadge(connector: ConnectorRow) {
       label: 'Sync error',
       icon: <AlertCircle className="h-3.5 w-3.5" />,
       className:
-        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+        'bg-warning-light text-warning',
     };
   }
   if (status === 'success') {
@@ -91,14 +91,14 @@ function statusBadge(connector: ConnectorRow) {
       label: 'Healthy',
       icon: <CheckCircle2 className="h-3.5 w-3.5" />,
       className:
-        'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+        'bg-success-light text-success',
     };
   }
   return {
     label: status ?? 'Pending',
     icon: <Clock className="h-3.5 w-3.5" />,
     className:
-      'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+      'bg-surface-hover text-text-secondary',
   };
 }
 
@@ -180,7 +180,7 @@ export default function AdminTenantConnectors() {
       )}
 
       {error && !isForbidden && !isNotFound && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
           Failed to load connectors for this tenant.
           {apiError?.message ? ` ${apiError.message}` : ''}
         </div>
@@ -190,7 +190,7 @@ export default function AdminTenantConnectors() {
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold text-sm text-text-primary">
             Connectors{' '}
-            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent-light text-accent">
               {connectors.length}
             </span>
           </h2>
@@ -237,7 +237,7 @@ export default function AdminTenantConnectors() {
                       className={
                         'border-b border-border last:border-0 align-top ' +
                         (isFocused
-                          ? 'bg-purple-50 dark:bg-purple-900/20 ring-1 ring-inset ring-purple-300 dark:ring-purple-700'
+                          ? 'bg-accent-light ring-1 ring-inset ring-accent'
                           : '')
                       }
                     >
@@ -274,7 +274,7 @@ export default function AdminTenantConnectors() {
                       <td className="px-4 py-3 text-xs">
                         {truncatedError ? (
                           <div
-                            className="font-mono text-red-600 dark:text-red-400 break-all max-w-[420px]"
+                            className="font-mono text-danger break-all max-w-[420px]"
                             title={c.lastSyncError ?? ''}
                           >
                             {truncatedError}

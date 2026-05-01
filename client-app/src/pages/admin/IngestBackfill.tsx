@@ -217,11 +217,11 @@ function escapeCsvField(v: unknown): string {
 }
 
 const STATUS_TONE: Record<BatchRowResult['status'], string> = {
-  inserted: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  duplicate: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  window_rejected: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-  validation_failed: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  inserted: 'bg-success-light text-success',
+  duplicate: 'bg-info-light text-info',
+  window_rejected: 'bg-warning-light text-warning',
+  validation_failed: 'bg-warning-light text-warning',
+  failed: 'bg-danger-light text-danger',
 };
 
 const STATUS_LABEL: Record<BatchRowResult['status'], string> = {
@@ -521,7 +521,7 @@ export default function IngestBackfill() {
 
       <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold flex items-center gap-2">
-          <ShieldAlert className="h-4 w-4 text-amber-500" />
+          <ShieldAlert className="h-4 w-4 text-warning" />
           Attestation
         </h2>
         <p className="text-xs text-muted">
@@ -621,7 +621,7 @@ export default function IngestBackfill() {
         </label>
 
         {parseError && (
-          <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg px-3 py-2">
+          <div className="flex items-start gap-2 text-sm text-danger bg-danger-light border border-danger rounded-lg px-3 py-2">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
               <div className="font-medium">Could not read file</div>
@@ -640,7 +640,7 @@ export default function IngestBackfill() {
 
       <div className="flex items-center justify-end gap-3">
         {submit.isError && (
-          <div className="text-sm text-red-600 dark:text-red-400 mr-auto flex items-center gap-2">
+          <div className="text-sm text-danger mr-auto flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             {(submit.error as Error)?.message ?? 'Batch submission failed'}
           </div>
@@ -746,9 +746,9 @@ export default function IngestBackfill() {
           </div>
 
           {(response.summary.failed > 0 || response.summary.validation_failed > 0) && (
-            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4 text-sm">
+            <div className="bg-warning-light border border-warning rounded-lg p-4 text-sm">
               <div className="font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertTriangle className="h-4 w-4 text-warning" />
                 Some rows did not land
               </div>
               <p className="text-xs text-muted mt-1">
@@ -777,10 +777,10 @@ function SummaryTile({
 }) {
   const toneClasses = {
     default: 'bg-surface',
-    success: 'bg-green-50 dark:bg-green-900/10',
-    info: 'bg-blue-50 dark:bg-blue-900/10',
-    warn: 'bg-amber-50 dark:bg-amber-900/10',
-    danger: 'bg-red-50 dark:bg-red-900/10',
+    success: 'bg-success-light',
+    info: 'bg-info-light',
+    warn: 'bg-warning-light',
+    danger: 'bg-danger-light',
   }[tone];
   return (
     <div className={`rounded-xl border border-border p-3 ${toneClasses}`}>

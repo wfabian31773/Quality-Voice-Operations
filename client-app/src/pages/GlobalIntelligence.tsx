@@ -90,9 +90,9 @@ function formatMetricValue(name: string, value: number): string {
 }
 
 function rankColor(rank: string): string {
-  if (rank === 'top_25') return 'text-green-600 dark:text-green-400';
-  if (rank === 'above_average') return 'text-blue-600 dark:text-blue-400';
-  if (rank === 'below_average') return 'text-red-600 dark:text-red-400';
+  if (rank === 'top_25') return 'text-success';
+  if (rank === 'above_average') return 'text-info';
+  if (rank === 'below_average') return 'text-danger';
   return 'text-text-secondary';
 }
 
@@ -110,8 +110,8 @@ function RankIcon({ rank }: { rank: string }) {
 }
 
 function confidenceBadge(score: number): string {
-  if (score >= 0.8) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (score >= 0.5) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+  if (score >= 0.8) return 'bg-success-light text-success';
+  if (score >= 0.5) return 'bg-warning-light text-warning';
   return 'bg-surface-hover text-text-secondary';
 }
 
@@ -314,17 +314,17 @@ export default function GlobalIntelligence() {
                         onClick={() => setExpandedPattern(isExpanded ? null : pattern.id)}
                       >
                         <div className="flex items-start gap-4">
-                          <div className="p-2.5 rounded-lg shrink-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                          <div className="p-2.5 rounded-lg shrink-0 bg-info-light text-info">
                             <Sparkles className="h-5 w-5" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h3 className="text-sm font-semibold text-text-primary">{pattern.title}</h3>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent-light text-accent">
                                 {PATTERN_TYPE_LABELS[pattern.patternType] || pattern.patternType.replace(/_/g, ' ')}
                               </span>
                               {pattern.industryVertical && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 capitalize">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-info-light text-info capitalize">
                                   {pattern.industryVertical.replace(/_/g, ' ')}
                                 </span>
                               )}
@@ -371,11 +371,11 @@ export default function GlobalIntelligence() {
                 {promptPatterns.map((pp) => (
                   <div key={pp.id} className="bg-surface border border-border rounded-xl p-5">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 capitalize">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent-light text-accent capitalize">
                         {pp.promptCategory.replace(/_/g, ' ')}
                       </span>
                       {pp.industryVertical && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 capitalize">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-info-light text-info capitalize">
                           {pp.industryVertical.replace(/_/g, ' ')}
                         </span>
                       )}
@@ -425,14 +425,14 @@ export default function GlobalIntelligence() {
                       onClick={() => setExpandedRec(isExpanded ? null : rec.id)}
                     >
                       <div className="flex items-start gap-4">
-                        <div className="p-2.5 rounded-lg shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <div className="p-2.5 rounded-lg shrink-0 bg-warning-light text-warning">
                           <Lightbulb className="h-5 w-5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-sm font-semibold text-text-primary">{rec.title}</h3>
                             {rec.industryVertical && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 capitalize">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-info-light text-info capitalize">
                                 {rec.industryVertical.replace(/_/g, ' ')}
                               </span>
                             )}
@@ -455,7 +455,7 @@ export default function GlobalIntelligence() {
                                   e.stopPropagation();
                                   recStatusMutation.mutate({ id: rec.id, status: 'applied' });
                                 }}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 dark:text-green-400 dark:bg-green-900/30 dark:hover:bg-green-900/50 rounded-lg transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-success bg-success-light hover:bg-success-light rounded-lg transition-colors"
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                                 Apply
@@ -473,7 +473,7 @@ export default function GlobalIntelligence() {
                             </>
                           )}
                           {rec.status === 'applied' && (
-                            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                            <span className="flex items-center gap-1 text-xs text-success font-medium">
                               <CheckCircle2 className="h-3.5 w-3.5" /> Applied
                             </span>
                           )}
@@ -517,9 +517,9 @@ export default function GlobalIntelligence() {
               </div>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-              <h3 className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-2">Data Usage Policy</h3>
-              <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1.5">
+            <div className="bg-info-light border border-info rounded-lg p-4 mb-6">
+              <h3 className="text-sm font-medium text-info mb-2">Data Usage Policy</h3>
+              <ul className="text-sm text-info space-y-1.5">
                 <li>Your data is fully anonymized before aggregation - no tenant-identifying information is ever shared</li>
                 <li>All personally identifiable information (PII) is redacted before processing</li>
                 <li>Only aggregate statistical patterns are derived - individual conversations are never exposed</li>
@@ -555,7 +555,7 @@ export default function GlobalIntelligence() {
                   disabled={participationMutation.isPending}
                   className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
                     participation?.ginParticipation
-                      ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
+                      ? 'bg-danger-light text-danger hover:bg-danger-light'
                       : 'bg-primary hover:bg-primary-hover text-white'
                   }`}
                 >

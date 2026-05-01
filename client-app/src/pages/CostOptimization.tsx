@@ -114,15 +114,15 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, color }: {
     <div className="bg-surface border border-border rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-text-secondary">{title}</span>
-        <div className={clsx('p-2 rounded-lg', color ?? 'bg-indigo-50 dark:bg-indigo-900/30')}>
-          <Icon size={16} className="text-indigo-600 dark:text-indigo-400" />
+        <div className={clsx('p-2 rounded-lg', color ?? 'bg-accent-light')}>
+          <Icon size={16} className="text-accent" />
         </div>
       </div>
       <div className="flex items-end gap-2">
         <span className="text-2xl font-bold text-text-primary">{value}</span>
         {trend && (
           <span className={clsx('flex items-center text-xs font-medium mb-1',
-            trend === 'down' ? 'text-green-600' : 'text-red-500'
+            trend === 'down' ? 'text-success' : 'text-danger'
           )}>
             {trend === 'down' ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
           </span>
@@ -358,14 +358,14 @@ export default function CostOptimization() {
           title="Avg Cost / Conversation"
           value={formatCents(a.avgCostPerConversationCents)}
           icon={BarChart3}
-          color="bg-emerald-50 dark:bg-emerald-900/30"
+          color="bg-success-light"
         />
         <KpiCard
           title="Cache Hit Rate"
           value={`${a.cacheHitRate}%`}
           subtitle={`${a.totalCacheHits} hits`}
           icon={Database}
-          color="bg-amber-50 dark:bg-amber-900/30"
+          color="bg-warning-light"
         />
         <KpiCard
           title="Total Savings"
@@ -373,7 +373,7 @@ export default function CostOptimization() {
           subtitle="From caching, routing & compression"
           icon={TrendingDown}
           trend="down"
-          color="bg-green-50 dark:bg-green-900/30"
+          color="bg-success-light"
         />
       </div>
 
@@ -485,12 +485,12 @@ export default function CostOptimization() {
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
                     <span className="text-sm text-text-primary">{item.name}</span>
                   </div>
-                  <span className="text-sm font-medium text-green-600">{formatCents(item.value)}</span>
+                  <span className="text-sm font-medium text-success">{formatCents(item.value)}</span>
                 </div>
               ))}
               <div className="border-t border-border pt-3 flex justify-between">
                 <span className="text-sm font-semibold text-text-primary">Total Saved</span>
-                <span className="text-sm font-bold text-green-600">
+                <span className="text-sm font-bold text-success">
                   {formatCents(a.savingsBreakdown.totalSavingsCents)}
                 </span>
               </div>
@@ -583,7 +583,7 @@ export default function CostOptimization() {
             <button
               onClick={() => saveBudget.mutate(budgetForm)}
               disabled={saveBudget.isPending}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-accent text-white text-sm rounded-lg hover:bg-accent disabled:opacity-50"
             >
               {saveBudget.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               Save Budget Settings
@@ -629,9 +629,9 @@ export default function CostOptimization() {
                   <td className="text-center py-2 px-3">
                     <span className={clsx(
                       'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
-                      c.modelTier === 'economy' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                      c.modelTier === 'standard' && 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
-                      c.modelTier === 'premium' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                      c.modelTier === 'economy' && 'bg-success-light text-success',
+                      c.modelTier === 'standard' && 'bg-accent-light text-accent',
+                      c.modelTier === 'premium' && 'bg-warning-light text-warning',
                     )}>
                       {c.modelTier}
                     </span>

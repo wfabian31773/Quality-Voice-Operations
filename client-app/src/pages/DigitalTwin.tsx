@@ -419,7 +419,7 @@ export default function DigitalTwin() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+        <RefreshCw className="w-6 h-6 animate-spin text-info" />
       </div>
     );
   }
@@ -427,12 +427,12 @@ export default function DigitalTwin() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6" data-testid="digital-twin-content">
       {error && (
-        <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="flex items-center justify-between p-3 bg-danger-light border border-danger rounded-lg">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-500" />
-            <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
+            <AlertTriangle className="w-4 h-4 text-danger" />
+            <span className="text-sm text-danger">{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 text-sm font-medium">Dismiss</button>
+          <button onClick={() => setError(null)} className="text-danger hover:text-danger text-sm font-medium">Dismiss</button>
         </div>
       )}
 
@@ -493,7 +493,7 @@ export default function DigitalTwin() {
                     onClick={() => setTab(t)}
                     className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       tab === t
-                        ? 'bg-surface text-purple-600 dark:text-purple-400 shadow-sm'
+                        ? 'bg-surface text-accent shadow-sm'
                         : 'text-text-secondary hover:text-text-primary'
                     }`}
                   >
@@ -633,7 +633,7 @@ function EmptyState({ onCreateModel }: { onCreateModel: () => void }) {
       </p>
       <button
         onClick={onCreateModel}
-        className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+        className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent"
       >
         Create Your First Model
       </button>
@@ -654,11 +654,11 @@ function ModelSelector({
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between p-4 bg-surface rounded-xl border border-border hover:border-purple-300"
+        className="w-full flex items-center justify-between p-4 bg-surface rounded-xl border border-border hover:border-accent"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-            <Layers className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+          <div className="w-10 h-10 bg-accent-light rounded-lg flex items-center justify-center">
+            <Layers className="w-5 h-5 text-accent" />
           </div>
           <div className="text-left">
             <p className="font-medium text-text-primary">{selected?.name ?? 'Select a model'}</p>
@@ -678,7 +678,7 @@ function ModelSelector({
             <div
               key={m.id}
               className={`flex items-center justify-between p-3 hover:bg-surface-hover cursor-pointer ${
-                selected?.id === m.id ? 'bg-purple-50 dark:bg-purple-900/20' : ''
+                selected?.id === m.id ? 'bg-accent-light' : ''
               }`}
             >
               <div onClick={() => { onSelect(m); setOpen(false); }} className="flex-1">
@@ -687,7 +687,7 @@ function ModelSelector({
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(m.id); }}
-                className="p-1 text-text-muted hover:text-red-500"
+                className="p-1 text-text-muted hover:text-danger"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -727,7 +727,7 @@ function ModelOverview({ model }: { model: DigitalTwinModel }) {
           <h3 className="font-semibold text-text-primary mb-3">Peak Hours</h3>
           <div className="flex gap-2 flex-wrap">
             {(s.peakHours || []).map(h => (
-              <span key={h} className="px-3 py-1 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-full text-sm">
+              <span key={h} className="px-3 py-1 bg-accent-light text-accent rounded-full text-sm">
                 {h}:00
               </span>
             ))}
@@ -813,7 +813,7 @@ function ScenarioLauncher({
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-sm text-text-primary">{scenario.name}</p>
                       {scenario.isPredefined && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium bg-info-light text-info rounded">
                           Built-in
                         </span>
                       )}
@@ -825,7 +825,7 @@ function ScenarioLauncher({
                   <button
                     onClick={() => onRun(scenario.id)}
                     disabled={running}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 disabled:opacity-50 whitespace-nowrap"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white text-xs rounded-lg hover:bg-accent disabled:opacity-50 whitespace-nowrap"
                   >
                     {running ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
                     Run
@@ -875,8 +875,8 @@ function ResultsView({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    run.status === 'completed' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
-                    run.status === 'running' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
+                    run.status === 'completed' ? 'bg-success-light text-success' :
+                    run.status === 'running' ? 'bg-info-light text-info' :
                     'bg-surface-hover text-text-primary'
                   }`}>
                     {run.status}
@@ -954,9 +954,9 @@ function ResultDetail({ result }: { result: SimulationResult }) {
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-text-primary">Simulation Results</h3>
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-          m.riskLevel === 'low' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
-          m.riskLevel === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300' :
-          'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300'
+          m.riskLevel === 'low' ? 'bg-success-light text-success' :
+          m.riskLevel === 'medium' ? 'bg-warning-light text-warning' :
+          'bg-danger-light text-danger'
         }`}>
           {m.riskLevel.toUpperCase()} RISK
         </span>
@@ -988,7 +988,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
               </div>
               {!isNeutral && (
                 <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${
-                  isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  isPositive ? 'text-success' : 'text-danger'
                 }`}>
                   {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                   {c.label.includes('Rate') ? `${(Math.abs(c.delta) * 100).toFixed(1)}pp` : c.format(Math.abs(c.delta))}
@@ -1005,7 +1005,7 @@ function ResultDetail({ result }: { result: SimulationResult }) {
           <ul className="space-y-1">
             {m.insights.map((insight, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
-                <Zap className="w-3 h-3 text-yellow-500 mt-0.5 flex-shrink-0" />
+                <Zap className="w-3 h-3 text-warning mt-0.5 flex-shrink-0" />
                 {insight}
               </li>
             ))}
@@ -1026,7 +1026,7 @@ function ConversationQualityPanel({ quality }: { quality: ConversationQualityRes
   return (
     <div className="border-t border-border pt-4 mt-4">
       <h4 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
-        <Activity className="w-4 h-4 text-blue-500" />
+        <Activity className="w-4 h-4 text-info" />
         Conversation Quality Comparison
       </h4>
 
@@ -1048,7 +1048,7 @@ function ConversationQualityPanel({ quality }: { quality: ConversationQualityRes
               </div>
               {item.delta !== 0 && (
                 <div className={`flex items-center justify-center gap-1 mt-1 text-xs font-medium ${
-                  item.delta > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  item.delta > 0 ? 'text-success' : 'text-danger'
                 }`}>
                   {item.delta > 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                   {item.delta > 0 ? '+' : ''}{item.delta.toFixed(1)}{item.suffix || ''}
@@ -1061,10 +1061,10 @@ function ConversationQualityPanel({ quality }: { quality: ConversationQualityRes
 
       {quality.frictionPoints && quality.frictionPoints.length > 0 && (
         <div className="mt-3">
-          <h5 className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">Friction Points</h5>
+          <h5 className="text-xs font-medium text-danger mb-1">Friction Points</h5>
           <ul className="space-y-1">
             {quality.frictionPoints.map((fp, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-red-600 dark:text-red-300">
+              <li key={i} className="flex items-start gap-2 text-xs text-danger">
                 <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                 {fp}
               </li>
@@ -1101,9 +1101,9 @@ function ForecastsView({
               key={ft.type}
               onClick={() => onGenerate(ft.type, 30)}
               disabled={loading}
-              className="flex flex-col items-center gap-2 p-4 bg-surface-hover rounded-lg border border-border hover:border-purple-300 transition-colors disabled:opacity-50"
+              className="flex flex-col items-center gap-2 p-4 bg-surface-hover rounded-lg border border-border hover:border-accent transition-colors disabled:opacity-50"
             >
-              {loading ? <RefreshCw className="w-5 h-5 animate-spin text-purple-500" /> : <ft.icon className="w-5 h-5 text-purple-500" />}
+              {loading ? <RefreshCw className="w-5 h-5 animate-spin text-accent" /> : <ft.icon className="w-5 h-5 text-accent" />}
               <span className="text-sm font-medium text-text-primary">{ft.label}</span>
               <span className="text-xs text-text-muted">30-day forecast</span>
             </button>
@@ -1158,7 +1158,7 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-1 text-sm font-medium ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className={`flex items-center gap-1 text-sm font-medium ${trend >= 0 ? 'text-success' : 'text-danger'}`}>
             {trend >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
             {Math.abs(trend).toFixed(1)}%
           </div>
@@ -1190,7 +1190,7 @@ function ForecastCard({ forecast }: { forecast: ForecastModel }) {
               return (
                 <div key={i} className="flex-1 group relative" title={`${point.date}: ${formatValue(point.value)}`}>
                   <div
-                    className="bg-purple-500 dark:bg-purple-400 rounded-t-sm transition-all hover:bg-purple-600"
+                    className="bg-accent rounded-t-sm transition-all hover:bg-accent"
                     style={{ height: `${height}%`, minHeight: '2px' }}
                   />
                 </div>
@@ -1278,7 +1278,7 @@ function CreateModelModal({
           <button
             onClick={handleSubmit}
             disabled={!name || !startDate || !endDate || creating}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent disabled:opacity-50"
           >
             {creating ? 'Creating...' : 'Create Model'}
           </button>

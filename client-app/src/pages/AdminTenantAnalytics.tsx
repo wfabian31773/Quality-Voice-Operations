@@ -206,9 +206,9 @@ export default function AdminTenantAnalytics() {
             <div className="text-muted-foreground">Loading...</div>
           ) : (
             <div className="space-y-3">
-              <OutcomeRow label="Completed" count={calls?.completedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-green-500" />
-              <OutcomeRow label="Escalated" count={calls?.escalatedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-yellow-500" />
-              <OutcomeRow label="Failed" count={calls?.failedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-red-500" />
+              <OutcomeRow label="Completed" count={calls?.completedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-success" />
+              <OutcomeRow label="Escalated" count={calls?.escalatedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-warning" />
+              <OutcomeRow label="Failed" count={calls?.failedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-danger" />
             </div>
           )}
         </div>

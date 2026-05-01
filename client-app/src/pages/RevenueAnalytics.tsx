@@ -124,9 +124,9 @@ function formatTopicLabel(topic: string): string {
 }
 
 function sentimentBand(score: number): { label: string; icon: typeof Smile; color: string } {
-  if (score > 0.3) return { label: 'Positive', icon: Smile, color: 'text-green-500' };
-  if (score < -0.3) return { label: 'Negative', icon: Frown, color: 'text-red-500' };
-  return { label: 'Neutral', icon: Meh, color: 'text-yellow-500' };
+  if (score > 0.3) return { label: 'Positive', icon: Smile, color: 'text-success' };
+  if (score < -0.3) return { label: 'Negative', icon: Frown, color: 'text-danger' };
+  return { label: 'Neutral', icon: Meh, color: 'text-warning' };
 }
 
 interface RevenueAnalyticsProps {
@@ -227,26 +227,26 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
           icon={DollarSign}
           label="Total Revenue"
           value={revenueLoading ? '—' : formatCents(revenue?.totalRevenueCents ?? 0)}
-          iconColor="text-green-500"
+          iconColor="text-success"
         />
         <KpiCard
           icon={Target}
           label="Appointments Booked"
           value={revenueLoading ? '—' : String(revenue?.totalAppointmentsBooked ?? 0)}
-          iconColor="text-blue-500"
+          iconColor="text-info"
         />
         <KpiCard
           icon={AlertTriangle}
           label="Missed Revenue"
           value={revenueLoading ? '—' : formatCents(revenue?.missedRevenueCents ?? 0)}
-          iconColor="text-red-500"
+          iconColor="text-danger"
           subtitle={revenueLoading ? '' : `${revenue?.missedOpportunities ?? 0} missed opportunities`}
         />
         <KpiCard
           icon={PhoneIncoming}
           label="Missed Calls Prevented"
           value={revenueLoading ? '—' : String(revenue?.missedCallsPrevented ?? 0)}
-          iconColor="text-emerald-500"
+          iconColor="text-success"
         />
       </div>
 
@@ -291,7 +291,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{stage.count}</span>
                         {idx > 0 && stage.dropOffRate > 0 && (
-                          <span className="text-xs text-red-400">
+                          <span className="text-xs text-danger">
                             -{(stage.dropOffRate * 100).toFixed(0)}%
                           </span>
                         )}
@@ -299,7 +299,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                        className="h-full rounded-full bg-info transition-all duration-500"
                         style={{ width: `${Math.max(width, 2)}%`, opacity: 1 - idx * 0.15 }}
                       />
                     </div>
@@ -411,7 +411,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                         <span className="opacity-75">({a.avgScore > 0 ? '+' : ''}{a.avgScore.toFixed(2)})</span>
                       </span>
                       <span className="text-muted-foreground">{a.callCount} calls</span>
-                      <span className="text-green-500 text-xs">{(a.positiveRate * 100).toFixed(0)}% positive</span>
+                      <span className="text-success text-xs">{(a.positiveRate * 100).toFixed(0)}% positive</span>
                     </div>
                   </div>
                 );

@@ -45,13 +45,13 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const STAGE_COLORS: Record<string, string> = {
-  page_view: 'bg-blue-500',
-  cta_click: 'bg-indigo-500',
-  demo_started: 'bg-purple-500',
-  demo_requested: 'bg-fuchsia-500',
-  roi_report_requested: 'bg-pink-500',
-  signup_started: 'bg-amber-500',
-  signup_completed: 'bg-emerald-500',
+  page_view: 'bg-info',
+  cta_click: 'bg-accent',
+  demo_started: 'bg-accent',
+  demo_requested: 'bg-accent',
+  roi_report_requested: 'bg-accent',
+  signup_started: 'bg-warning',
+  signup_completed: 'bg-success',
   paid: 'bg-primary',
 };
 
@@ -107,7 +107,7 @@ export default function ConversionFunnel() {
         </div>
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="text-sm text-text-secondary mb-1">Overall Conversion</div>
-          <div className="text-2xl font-display font-bold text-emerald-600">{(funnel.overallConversionRate * 100).toFixed(2)}%</div>
+          <div className="text-2xl font-display font-bold text-success">{(funnel.overallConversionRate * 100).toFixed(2)}%</div>
         </div>
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="text-sm text-text-secondary mb-1">Paid Customers</div>
@@ -130,7 +130,7 @@ export default function ConversionFunnel() {
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-text-secondary">{(stage.conversionRate * 100).toFixed(1)}% of total</span>
                   {idx > 0 && stage.dropOffRate > 0 && (
-                    <span className="text-red-500 flex items-center gap-0.5">
+                    <span className="text-danger flex items-center gap-0.5">
                       <ArrowDown className="h-3 w-3" />
                       {(stage.dropOffRate * 100).toFixed(1)}% drop
                     </span>
@@ -139,7 +139,7 @@ export default function ConversionFunnel() {
               </div>
               <div className="h-6 bg-surface-hover rounded-lg overflow-hidden">
                 <div
-                  className={`h-full rounded-lg ${STAGE_COLORS[stage.stage] ?? 'bg-slate-400'} transition-all duration-500`}
+                  className={`h-full rounded-lg ${STAGE_COLORS[stage.stage] ?? 'bg-text-muted'} transition-all duration-500`}
                   style={{ width: `${Math.max(2, (stage.count / maxCount) * 100)}%` }}
                 />
               </div>

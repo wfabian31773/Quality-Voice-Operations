@@ -152,9 +152,9 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
-  new: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  contacted: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
-  closed: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  new: 'bg-warning/15 text-warning border-warning/30',
+  contacted: 'bg-info/15 text-info border-info/30',
+  closed: 'bg-success/15 text-success border-success/30',
 };
 
 function getBookingState(lead: MarketingLead): 'booked' | 'cancelled' | 'no_booking' {
@@ -492,7 +492,7 @@ export default function AdminSalesInbox() {
       />
 
       {exportError && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+        <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-danger text-sm">
           Export failed: {exportError}
         </div>
       )}
@@ -516,8 +516,8 @@ export default function AdminSalesInbox() {
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2 text-sm text-slate-300">
+      <div className="rounded-xl border border-border-strong/60 bg-surface-inverse/60 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 text-sm text-text-muted">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4" />
             <span className="font-semibold">Filters</span>
@@ -527,7 +527,7 @@ export default function AdminSalesInbox() {
               type="button"
               onClick={handleClearFilters}
               title="Reset every filter and return to the default view"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-700 bg-slate-800/80 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border-strong bg-surface-inverse/80 text-xs font-medium text-text-muted hover:bg-sidebar-hover hover:text-white transition-colors"
             >
               <XIcon className="h-3.5 w-3.5" />
               Clear filters
@@ -571,13 +571,13 @@ export default function AdminSalesInbox() {
           <div>
             <label
               htmlFor="lead-acted-on-by"
-              className="block text-xs font-medium text-slate-400 mb-1"
+              className="block text-xs font-medium text-text-muted mb-1"
               title="Show leads with at least one triage action by this teammate"
             >
               Acted on by
             </label>
             <div className="relative">
-              <UserCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <UserCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
               <input
                 id="lead-acted-on-by"
                 type="search"
@@ -585,7 +585,7 @@ export default function AdminSalesInbox() {
                 value={actedOnBy}
                 onChange={(e) => { setActedOnBy(e.target.value); setPage(1); }}
                 placeholder="Anyone"
-                className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full pl-8 pr-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <datalist id="lead-acted-on-by-options">
                 {knownAuthors.map((a) => (
@@ -597,13 +597,13 @@ export default function AdminSalesInbox() {
           <div>
             <label
               htmlFor="lead-inactive-days"
-              className="block text-xs font-medium text-slate-400 mb-1"
+              className="block text-xs font-medium text-text-muted mb-1"
               title="Highlight leads with no events recorded in the last N days"
             >
               Inactive for (days)
             </label>
             <div className="relative">
-              <CalendarClock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <CalendarClock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
               <input
                 id="lead-inactive-days"
                 type="number"
@@ -623,21 +623,21 @@ export default function AdminSalesInbox() {
                   setPage(1);
                 }}
                 placeholder="e.g. 7"
-                className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full pl-8 pr-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
           <div>
-            <label htmlFor="lead-search" className="block text-xs font-medium text-slate-400 mb-1">Search</label>
+            <label htmlFor="lead-search" className="block text-xs font-medium text-text-muted mb-1">Search</label>
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
               <input
                 id="lead-search"
                 type="search"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Email, name, or company"
-                className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full pl-8 pr-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
@@ -653,9 +653,9 @@ export default function AdminSalesInbox() {
         />
       )}
 
-      <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 overflow-hidden">
+      <div className="rounded-xl border border-border-strong/60 bg-surface-inverse/60 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-800/60 text-slate-300 text-xs uppercase tracking-wider">
+          <thead className="bg-surface-inverse/60 text-text-muted text-xs uppercase tracking-wider">
             <tr>
               <th className="px-3 py-3 text-left w-8" />
               <th className="px-3 py-3 text-left">Lead</th>
@@ -684,12 +684,12 @@ export default function AdminSalesInbox() {
               <th className="px-3 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-border">
             {isLoading && (
               <tr><td colSpan={8} className="px-3 py-3"><Skeleton className="h-10 w-full" /></td></tr>
             )}
             {!isLoading && data && data.leads.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">
+              <tr><td colSpan={8} className="px-3 py-12 text-center text-text-muted">
                 No leads match the current filters.
               </td></tr>
             )}
@@ -723,7 +723,7 @@ export default function AdminSalesInbox() {
       </div>
 
       {data && data.total > limit && (
-        <div className="flex items-center justify-between text-sm text-slate-400">
+        <div className="flex items-center justify-between text-sm text-text-muted">
           <span>
             Showing {(data.offset ?? 0) + 1}–{Math.min((data.offset ?? 0) + data.leads.length, data.total)} of {data.total}
           </span>
@@ -731,15 +731,15 @@ export default function AdminSalesInbox() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-50"
+              className="px-3 py-1.5 rounded bg-surface-inverse hover:bg-sidebar-hover text-white disabled:opacity-50"
             >
               Previous
             </button>
-            <span className="text-slate-300">Page {page} / {totalPages}</span>
+            <span className="text-text-muted">Page {page} / {totalPages}</span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-50"
+              className="px-3 py-1.5 rounded bg-surface-inverse hover:bg-sidebar-hover text-white disabled:opacity-50"
             >
               Next
             </button>
@@ -787,7 +787,7 @@ function SortableHeader({
       aria-sort={active ? (activeOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
       className={clsx(
         'inline-flex items-center gap-1 uppercase tracking-wider text-xs font-semibold hover:text-white transition-colors',
-        active ? 'text-white' : 'text-slate-300',
+        active ? 'text-white' : 'text-text-muted',
       )}
     >
       {label}
@@ -815,7 +815,7 @@ function OwnersCell({ lead }: { lead: MarketingLead }) {
 
   if (authors.length === 0 && !lastAuthor) {
     return (
-      <div className="text-xs text-slate-500 inline-flex items-center gap-1.5">
+      <div className="text-xs text-text-secondary inline-flex items-center gap-1.5">
         <Users className="h-3 w-3" />
         Unworked
       </div>
@@ -836,7 +836,7 @@ function OwnersCell({ lead }: { lead: MarketingLead }) {
         ))}
         {overflow > 0 && (
           <span
-            className="inline-flex items-center justify-center h-6 min-w-[1.5rem] px-1.5 rounded-full bg-slate-700 text-slate-200 text-[10px] font-medium border border-slate-900 ring-1 ring-slate-700"
+            className="inline-flex items-center justify-center h-6 min-w-[1.5rem] px-1.5 rounded-full bg-sidebar-hover text-text-muted text-[10px] font-medium border border-border-strong ring-1 ring-border"
             title={authors.slice(MAX_AVATARS).join(', ')}
           >
             +{overflow}
@@ -844,10 +844,10 @@ function OwnersCell({ lead }: { lead: MarketingLead }) {
         )}
       </div>
       {lastAuthor && (
-        <div className="text-[11px] text-slate-400 truncate" title={`Last touched by ${lastAuthor}${lastAt ? ` at ${formatDateTime(lastAt)}` : ''}`}>
-          <span className="text-slate-200">{lastAuthor}</span>
+        <div className="text-[11px] text-text-muted truncate" title={`Last touched by ${lastAuthor}${lastAt ? ` at ${formatDateTime(lastAt)}` : ''}`}>
+          <span className="text-text-muted">{lastAuthor}</span>
           {lastAt && (
-            <span className="text-slate-500"> · {formatRelative(lastAt)}</span>
+            <span className="text-text-secondary"> · {formatRelative(lastAt)}</span>
           )}
         </div>
       )}
@@ -868,9 +868,9 @@ function AuthorAvatar({ author, highlighted }: { author: string; highlighted: bo
     <span
       title={author}
       className={clsx(
-        'inline-flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-semibold uppercase border border-slate-900 ring-1',
+        'inline-flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-semibold uppercase border border-border-strong ring-1',
         colour,
-        highlighted ? 'ring-purple-400' : 'ring-slate-700',
+        highlighted ? 'ring-accent' : 'ring-border',
       )}
     >
       {initials}
@@ -890,14 +890,14 @@ function getInitials(author: string): string {
 }
 
 const AVATAR_PALETTE = [
-  'bg-purple-500/30 text-purple-100',
-  'bg-blue-500/30 text-blue-100',
-  'bg-emerald-500/30 text-emerald-100',
-  'bg-amber-500/30 text-amber-100',
-  'bg-rose-500/30 text-rose-100',
-  'bg-sky-500/30 text-sky-100',
-  'bg-fuchsia-500/30 text-fuchsia-100',
-  'bg-teal-500/30 text-teal-100',
+  'bg-accent/30 text-accent',
+  'bg-info/30 text-info',
+  'bg-success/30 text-success',
+  'bg-warning/30 text-warning',
+  'bg-danger/30 text-danger',
+  'bg-info/30 text-info',
+  'bg-accent/30 text-accent',
+  'bg-primary/30 text-primary',
 ] as const;
 
 function pickAvatarColour(author: string): string {
@@ -911,11 +911,11 @@ function pickAvatarColour(author: string): string {
 function FilterGroup<T extends string>({ label, value, onChange, options }: FilterGroupProps<T>) {
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-text-muted mb-1">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+        className="w-full px-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent"
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -941,62 +941,62 @@ function LeadRow({
   const booking = lead.payload?.booking;
   const bookingState = getBookingState(lead);
   return (
-    <tr id={`lead-${lead.id}`} className="hover:bg-slate-800/30 scroll-mt-24">
+    <tr id={`lead-${lead.id}`} className="hover:bg-surface-inverse/30 scroll-mt-24">
       <td className="px-3 py-3 align-top">
         <button
           onClick={onToggle}
           aria-label={expanded ? 'Collapse lead' : 'Expand lead'}
-          className="text-slate-400 hover:text-white"
+          className="text-text-muted hover:text-white"
         >
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
       </td>
       <td className="px-3 py-3 align-top">
         <div className="font-medium text-white">{lead.name || '(no name)'}</div>
-        <div className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+        <div className="text-xs text-text-muted flex items-center gap-1.5 mt-0.5">
           <Mail className="h-3 w-3" />
-          <a href={`mailto:${lead.email}`} className="hover:text-purple-300 truncate">{lead.email}</a>
+          <a href={`mailto:${lead.email}`} className="hover:text-accent truncate">{lead.email}</a>
         </div>
         {lead.company && (
-          <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+          <div className="text-xs text-text-secondary flex items-center gap-1.5 mt-0.5">
             <Building2 className="h-3 w-3" />
             {lead.company}
           </div>
         )}
         {lead.phone && (
-          <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+          <div className="text-xs text-text-secondary flex items-center gap-1.5 mt-0.5">
             <Phone className="h-3 w-3" />
             {lead.phone}
           </div>
         )}
       </td>
       <td className="px-3 py-3 align-top">
-        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-slate-700/60 text-slate-200">
+        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-sidebar-hover text-text-muted">
           {SOURCE_LABELS[lead.source]}
         </span>
       </td>
       <td className="px-3 py-3 align-top">
         {bookingState === 'no_booking' && (
-          <span className="text-xs text-slate-400 inline-flex items-center gap-1">
+          <span className="text-xs text-text-muted inline-flex items-center gap-1">
             <CalendarClock className="h-3 w-3" /> No booking yet
           </span>
         )}
         {bookingState === 'booked' && booking && (
           <div className="space-y-0.5">
-            <div className="text-xs text-emerald-300 inline-flex items-center gap-1">
+            <div className="text-xs text-success inline-flex items-center gap-1">
               <CalendarCheck className="h-3 w-3" />
               {booking.eventType === 'rescheduled' ? 'Rescheduled' : 'Booked'}
             </div>
-            <div className="text-xs text-slate-200">
+            <div className="text-xs text-text-muted">
               {formatDateTime(booking.startTime)}
-              {booking.timezone ? <span className="text-slate-500"> · {booking.timezone}</span> : null}
+              {booking.timezone ? <span className="text-text-secondary"> · {booking.timezone}</span> : null}
             </div>
             {booking.meetingUrl && (
               <a
                 href={booking.meetingUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-purple-300 hover:underline inline-flex items-center gap-1"
+                className="text-xs text-accent hover:underline inline-flex items-center gap-1"
               >
                 Meeting link <ExternalLink className="h-3 w-3" />
               </a>
@@ -1005,20 +1005,20 @@ function LeadRow({
         )}
         {bookingState === 'cancelled' && booking && (
           <div className="space-y-0.5">
-            <div className="text-xs text-rose-300 inline-flex items-center gap-1">
+            <div className="text-xs text-danger inline-flex items-center gap-1">
               <CalendarX className="h-3 w-3" /> Cancelled
             </div>
             {booking.startTime && (
-              <div className="text-xs text-slate-400 line-through">
+              <div className="text-xs text-text-muted line-through">
                 {formatDateTime(booking.startTime)}
               </div>
             )}
           </div>
         )}
       </td>
-      <td className="px-3 py-3 align-top text-xs text-slate-400">
-        <div className="text-slate-200">{formatRelative(lead.created_at)}</div>
-        <div className="text-slate-500">{formatDateTime(lead.created_at)}</div>
+      <td className="px-3 py-3 align-top text-xs text-text-muted">
+        <div className="text-text-muted">{formatRelative(lead.created_at)}</div>
+        <div className="text-text-secondary">{formatDateTime(lead.created_at)}</div>
       </td>
       <td className="px-3 py-3 align-top">
         <OwnersCell lead={lead} />
@@ -1028,7 +1028,7 @@ function LeadRow({
           {STATUS_LABELS[lead.status]}
         </span>
         {lead.status_updated_by && lead.status !== 'new' && (
-          <div className="text-[10px] text-slate-500 mt-1">
+          <div className="text-[10px] text-text-secondary mt-1">
             by {lead.status_updated_by}
             {lead.status_updated_at ? ` · ${formatRelative(lead.status_updated_at)}` : ''}
           </div>
@@ -1041,7 +1041,7 @@ function LeadRow({
               onClick={() => onMark('contacted')}
               disabled={pending}
               title="Mark as contacted"
-              className="p-1.5 rounded bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 disabled:opacity-50"
+              className="p-1.5 rounded bg-info/10 text-info hover:bg-info/20 disabled:opacity-50"
             >
               <UserCheck className="h-4 w-4" />
             </button>
@@ -1051,7 +1051,7 @@ function LeadRow({
               onClick={() => onMark('closed')}
               disabled={pending}
               title="Mark as closed"
-              className="p-1.5 rounded bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+              className="p-1.5 rounded bg-success/10 text-success hover:bg-success/20 disabled:opacity-50"
             >
               <CheckCircle className="h-4 w-4" />
             </button>
@@ -1061,7 +1061,7 @@ function LeadRow({
               onClick={() => onMark('new')}
               disabled={pending}
               title="Reset to new"
-              className="p-1.5 rounded bg-slate-700/60 text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+              className="p-1.5 rounded bg-sidebar-hover text-text-muted hover:bg-sidebar-hover disabled:opacity-50"
             >
               <XIcon className="h-4 w-4" />
             </button>
@@ -1100,19 +1100,19 @@ function LeadDetail({
   const message = typeof lead.payload?.message === 'string' ? lead.payload.message : null;
 
   return (
-    <tr className="bg-slate-900/40">
+    <tr className="bg-surface-inverse/40">
       <td colSpan={8} className="px-6 py-4 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section className="space-y-2">
-            <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Submission</h4>
+            <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Submission</h4>
             <Detail label="Lead ID" value={`#${lead.id}`} />
             {teamSize && <Detail label="Team size" value={teamSize} />}
             {preferredTime && <Detail label="Preferred time" value={preferredTime} />}
             {useCase && <Detail label="Use case" value={useCase} />}
             {message && (
               <div>
-                <div className="text-xs text-slate-400">Message</div>
-                <div className="text-sm text-slate-200 whitespace-pre-wrap bg-slate-800/40 rounded p-2 mt-1 border border-slate-700/40">
+                <div className="text-xs text-text-muted">Message</div>
+                <div className="text-sm text-text-muted whitespace-pre-wrap bg-surface-inverse/40 rounded p-2 mt-1 border border-border-strong/40">
                   {message}
                 </div>
               </div>
@@ -1121,8 +1121,8 @@ function LeadDetail({
           </section>
 
           <section className="space-y-2">
-            <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Latest booking</h4>
-            {!booking && <p className="text-sm text-slate-500">No booking recorded.</p>}
+            <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Latest booking</h4>
+            {!booking && <p className="text-sm text-text-secondary">No booking recorded.</p>}
             {booking && (
               <>
                 <div>
@@ -1135,19 +1135,19 @@ function LeadDetail({
                 {booking.title && <Detail label="Title" value={booking.title} />}
                 <div className="flex flex-wrap gap-2 mt-2">
                   {booking.meetingUrl && (
-                    <a className="text-xs px-2 py-1 rounded bg-purple-500/15 text-purple-200 hover:bg-purple-500/25 inline-flex items-center gap-1"
+                    <a className="text-xs px-2 py-1 rounded bg-accent/15 text-accent hover:bg-accent/25 inline-flex items-center gap-1"
                        href={booking.meetingUrl} target="_blank" rel="noreferrer">
                       Join meeting <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
                   {booking.rescheduleUrl && (
-                    <a className="text-xs px-2 py-1 rounded bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 inline-flex items-center gap-1"
+                    <a className="text-xs px-2 py-1 rounded bg-warning/15 text-warning hover:bg-warning/25 inline-flex items-center gap-1"
                        href={booking.rescheduleUrl} target="_blank" rel="noreferrer">
                       Reschedule <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
                   {booking.cancelUrl && (
-                    <a className="text-xs px-2 py-1 rounded bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 inline-flex items-center gap-1"
+                    <a className="text-xs px-2 py-1 rounded bg-danger/15 text-danger hover:bg-danger/25 inline-flex items-center gap-1"
                        href={booking.cancelUrl} target="_blank" rel="noreferrer">
                       Cancel <ExternalLink className="h-3 w-3" />
                     </a>
@@ -1157,18 +1157,18 @@ function LeadDetail({
             )}
             {history.length > 1 && (
               <div className="mt-3">
-                <div className="text-xs text-slate-400 mb-1">Booking history ({history.length})</div>
-                <ul className="space-y-1 max-h-40 overflow-y-auto text-xs text-slate-300">
+                <div className="text-xs text-text-muted mb-1">Booking history ({history.length})</div>
+                <ul className="space-y-1 max-h-40 overflow-y-auto text-xs text-text-muted">
                   {history.slice().reverse().map((entry, idx) => (
-                    <li key={idx} className="flex items-center justify-between gap-2 bg-slate-800/40 rounded px-2 py-1 border border-slate-700/40">
+                    <li key={idx} className="flex items-center justify-between gap-2 bg-surface-inverse/40 rounded px-2 py-1 border border-border-strong/40">
                       <span className="flex items-center gap-2 min-w-0 flex-1">
                         <SchedulerBadge provider={entry.provider} size="sm" />
                         <span className="truncate">
-                          <span className="font-medium text-slate-200">{entry.eventType ?? 'created'}</span>
+                          <span className="font-medium text-text-muted">{entry.eventType ?? 'created'}</span>
                           {entry.startTime ? ` · ${formatDateTime(entry.startTime)}` : ''}
                         </span>
                       </span>
-                      <span className="text-slate-500 shrink-0">{formatRelative(entry.recordedAt ?? null)}</span>
+                      <span className="text-text-secondary shrink-0">{formatRelative(entry.recordedAt ?? null)}</span>
                     </li>
                   ))}
                 </ul>
@@ -1177,15 +1177,15 @@ function LeadDetail({
           </section>
 
           <section className="space-y-2">
-            <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Triage notes</h4>
+            <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Triage notes</h4>
             <textarea
               value={notesDraft}
               onChange={(e) => onNotesChange(e.target.value)}
               placeholder="Internal notes for sales follow-up"
               rows={5}
-              className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            <div className="flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center justify-between text-xs text-text-secondary">
               <span>
                 {lead.status_updated_at
                   ? `Last updated ${formatRelative(lead.status_updated_at)}${lead.status_updated_by ? ` by ${lead.status_updated_by}` : ''}`
@@ -1194,7 +1194,7 @@ function LeadDetail({
               <button
                 onClick={onSaveNotes}
                 disabled={saving}
-                className="px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium disabled:opacity-50"
+                className="px-3 py-1.5 rounded bg-accent hover:bg-accent text-white text-xs font-medium disabled:opacity-50"
               >
                 Save notes
               </button>
@@ -1246,22 +1246,22 @@ function ActivityHistory({
   const totalEvents = ordered.length + (syntheticCreated ? 1 : 0);
 
   return (
-    <section className="rounded-lg border border-slate-700/40 bg-slate-900/40 p-4">
-      <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-2 mb-3">
+    <section className="rounded-lg border border-border-strong/40 bg-surface-inverse/40 p-4">
+      <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold flex items-center gap-2 mb-3">
         <History className="h-3.5 w-3.5" />
         Activity history
         {totalEvents > 0 && (
-          <span className="text-[10px] font-normal text-slate-500 normal-case tracking-normal">
+          <span className="text-[10px] font-normal text-text-secondary normal-case tracking-normal">
             ({totalEvents} {totalEvents === 1 ? 'event' : 'events'})
           </span>
         )}
       </h4>
 
       {loading && (
-        <div className="text-sm text-slate-500">Loading history…</div>
+        <div className="text-sm text-text-secondary">Loading history…</div>
       )}
       {error && !loading && (
-        <div className="text-sm text-rose-300">Failed to load history: {error}</div>
+        <div className="text-sm text-danger">Failed to load history: {error}</div>
       )}
 
       {!loading && !error && (
@@ -1281,10 +1281,10 @@ function ActivityHistory({
 function LeadEventRow({ event }: { event: LeadEvent }) {
   const accent =
     event.event_type === 'created'
-      ? 'text-purple-300 bg-purple-500/10 border-purple-500/30'
+      ? 'text-accent bg-accent/10 border-accent/30'
       : event.event_type === 'note'
-        ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
-        : 'text-blue-300 bg-blue-500/10 border-blue-500/30';
+        ? 'text-warning bg-warning/10 border-warning/30'
+        : 'text-info bg-info/10 border-info/30';
   const Icon =
     event.event_type === 'created' ? Sparkles
     : event.event_type === 'note' ? MessageSquare
@@ -1293,22 +1293,22 @@ function LeadEventRow({ event }: { event: LeadEvent }) {
   const author = event.author ? event.author : 'System';
 
   return (
-    <li className="rounded-md border border-slate-700/50 bg-slate-800/40 p-3 flex items-start gap-3">
+    <li className="rounded-md border border-border-strong/50 bg-surface-inverse/40 p-3 flex items-start gap-3">
       <span className={clsx('inline-flex items-center justify-center h-7 w-7 rounded-full border shrink-0', accent)}>
         <Icon className="h-3.5 w-3.5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-sm text-slate-100">
+          <span className="text-sm text-text-muted">
             <span className="font-medium">{author}</span>{' '}
-            <span className="text-slate-300">{summary}</span>
+            <span className="text-text-muted">{summary}</span>
           </span>
-          <span className="text-xs text-slate-500" title={formatDateTime(event.created_at)}>
+          <span className="text-xs text-text-secondary" title={formatDateTime(event.created_at)}>
             {formatRelative(event.created_at)}
           </span>
         </div>
         {event.notes && (
-          <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap bg-slate-900/60 rounded px-2 py-1.5 border border-slate-700/40">
+          <div className="mt-1 text-sm text-text-muted whitespace-pre-wrap bg-surface-inverse/60 rounded px-2 py-1.5 border border-border-strong/40">
             “{event.notes}”
           </div>
         )}
@@ -1347,10 +1347,10 @@ function SchedulerBadge({ provider, size = 'md' }: { provider?: string | null; s
   const lower = (provider || '').toLowerCase();
   const tone =
     lower === 'cal.com' || lower === 'calcom'
-      ? 'bg-blue-500/15 text-blue-200 border-blue-500/30'
+      ? 'bg-info/15 text-info border-info/30'
       : lower === 'calendly'
-        ? 'bg-orange-500/15 text-orange-200 border-orange-500/30'
-        : 'bg-slate-700/50 text-slate-300 border-slate-600/40';
+        ? 'bg-warning/15 text-warning border-warning/30'
+        : 'bg-sidebar-hover text-text-muted border-border-strong/40';
   const sizing =
     size === 'sm'
       ? 'px-1.5 py-0 text-[10px] gap-0.5'
@@ -1373,10 +1373,10 @@ function SchedulerBadge({ provider, size = 'md' }: { provider?: string | null; s
 function Detail({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof Inbox }) {
   return (
     <div className="flex items-start gap-2 text-sm">
-      {Icon && <Icon className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />}
+      {Icon && <Icon className="h-4 w-4 text-text-secondary mt-0.5 shrink-0" />}
       <div className="min-w-0">
-        <div className="text-xs text-slate-400">{label}</div>
-        <div className="text-slate-200 break-words">{value}</div>
+        <div className="text-xs text-text-muted">{label}</div>
+        <div className="text-text-muted break-words">{value}</div>
       </div>
     </div>
   );
@@ -1452,15 +1452,15 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} ariaLabel="Sales-alert settings" panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+    <Modal open onClose={onClose} ariaLabel="Sales-alert settings" panelClassName="bg-surface-inverse border border-border-strong rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-border-strong px-5 py-4">
           <div className="flex items-center gap-2">
-            <Settings className="h-5 w-5 text-purple-400" />
+            <Settings className="h-5 w-5 text-accent" />
             <h3 className="text-lg font-semibold text-white">Sales-alert settings</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+            className="p-1 rounded text-text-muted hover:text-white hover:bg-surface-inverse"
             aria-label="Close"
           >
             <XIcon className="h-5 w-5" />
@@ -1484,13 +1484,13 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
           )}
           {draft && data && (
             <>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-text-muted">
                 Pushed every time a new lead lands or a confirmed Cal.com booking arrives.
-                Each lead row is alerted at most once (tracked by <code className="text-slate-300">marketing_leads.notified</code>).
+                Each lead row is alerted at most once (tracked by <code className="text-text-muted">marketing_leads.notified</code>).
               </p>
 
               <section className="space-y-3">
-                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Channels</h4>
+                <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Channels</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Toggle
                     label="Email"
@@ -1508,7 +1508,7 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
               </section>
 
               <section className="space-y-3">
-                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">When to alert</h4>
+                <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">When to alert</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Toggle
                     label="New lead submitted"
@@ -1539,25 +1539,25 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
 
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Email recipients</h4>
+                  <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Email recipients</h4>
                   {data.fallbacks.envEmail && draft.emailRecipients.length === 0 && (
-                    <span className="text-[11px] text-slate-500">
-                      Falls back to <code className="text-slate-400">{data.fallbacks.envEmail}</code> (env)
+                    <span className="text-[11px] text-text-secondary">
+                      Falls back to <code className="text-text-muted">{data.fallbacks.envEmail}</code> (env)
                     </span>
                   )}
                 </div>
                 <div className="space-y-1.5">
                   {draft.emailRecipients.length === 0 && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-text-secondary">
                       No overrides — alerts go to the address from <code>SALES_NOTIFICATION_EMAIL</code>.
                     </p>
                   )}
                   {draft.emailRecipients.map((addr) => (
-                    <div key={addr} className="flex items-center justify-between bg-slate-800/60 border border-slate-700 rounded px-3 py-1.5">
-                      <span className="text-sm text-slate-200 truncate">{addr}</span>
+                    <div key={addr} className="flex items-center justify-between bg-surface-inverse/60 border border-border-strong rounded px-3 py-1.5">
+                      <span className="text-sm text-text-muted truncate">{addr}</span>
                       <button
                         onClick={() => removeRecipient(addr)}
-                        className="p-1 text-slate-400 hover:text-rose-300"
+                        className="p-1 text-text-muted hover:text-danger"
                         aria-label={`Remove ${addr}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -1572,12 +1572,12 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setNewRecipient(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipient(); } }}
                     placeholder="sales@example.com"
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="flex-1 px-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                   <button
                     onClick={addRecipient}
                     type="button"
-                    className="flex items-center gap-1 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium"
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg bg-accent hover:bg-accent text-white text-sm font-medium"
                   >
                     <Plus className="h-4 w-4" /> Add
                   </button>
@@ -1585,7 +1585,7 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
               </section>
 
               <section className="space-y-2">
-                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Slack webhook (optional)</h4>
+                <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Slack webhook (optional)</h4>
                 <input
                   type="url"
                   value={draft.slackWebhookUrl ?? ''}
@@ -1597,9 +1597,9 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
                       ? 'Override the env-configured webhook (optional)'
                       : 'https://hooks.slack.com/services/…'
                   }
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-text-secondary">
                   When empty, falls back to <code>OPS_SLACK_WEBHOOK_URL</code> (env).
                   {' '}
                   {data.fallbacks.envSlackConfigured ? 'Env webhook is currently set.' : 'Env webhook is not set.'}
@@ -1607,7 +1607,7 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
               </section>
 
               {saveError && (
-                <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+                <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-danger text-sm">
                   {saveError}
                 </div>
               )}
@@ -1619,11 +1619,11 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="border-t border-slate-700 px-5 py-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="border-t border-border-strong px-5 py-3 flex flex-wrap items-center justify-between gap-2">
           <button
             onClick={() => testMutation.mutate()}
             disabled={!data || testMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sm text-white disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-inverse hover:bg-sidebar-hover border border-border-strong text-sm text-white disabled:opacity-50"
             title="Send a test alert through the currently-saved channels (no lead is created)"
           >
             <Send className="h-4 w-4" />
@@ -1632,14 +1632,14 @@ function SalesAlertSettingsModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"
+              className="px-3 py-2 rounded-lg bg-surface-inverse hover:bg-sidebar-hover text-sm text-white"
             >
               Cancel
             </button>
             <button
               onClick={() => draft && saveMutation.mutate(draft)}
               disabled={!draft || saveMutation.isPending}
-              className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium text-white disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-accent hover:bg-accent text-sm font-medium text-white disabled:opacity-50"
             >
               {saveMutation.isPending ? 'Saving…' : 'Save settings'}
             </button>
@@ -1736,15 +1736,15 @@ function DemoSchedulerSettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} ariaLabel="Demo scheduler settings" panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-      <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+    <Modal open onClose={onClose} ariaLabel="Demo scheduler settings" panelClassName="bg-surface-inverse border border-border-strong rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between border-b border-border-strong px-5 py-4">
         <div className="flex items-center gap-2">
-          <CalendarRange className="h-5 w-5 text-purple-400" />
+          <CalendarRange className="h-5 w-5 text-accent" />
           <h3 className="text-lg font-semibold text-white">Demo scheduler settings</h3>
         </div>
         <button
           onClick={onClose}
-          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+          className="p-1 rounded text-text-muted hover:text-white hover:bg-surface-inverse"
           aria-label="Close"
         >
           <XIcon className="h-5 w-5" />
@@ -1764,12 +1764,12 @@ function DemoSchedulerSettingsModal({ onClose }: { onClose: () => void }) {
         )}
         {data && draftProvider !== null && (
           <>
-            <p className="text-xs text-slate-400">
-              Switches the public <code className="text-slate-300">/book-demo</code> embed between Cal.com and Calendly at runtime — no rebuild or redeploy needed. Webhook secrets entered here are AES-256-GCM-encrypted at rest. The verifier prefers the matching env var when one is set and only falls back to a stored secret when the env var is empty, so to fully migrate to a DB-managed secret you must clear the env var first.
+            <p className="text-xs text-text-muted">
+              Switches the public <code className="text-text-muted">/book-demo</code> embed between Cal.com and Calendly at runtime — no rebuild or redeploy needed. Webhook secrets entered here are AES-256-GCM-encrypted at rest. The verifier prefers the matching env var when one is set and only falls back to a stored secret when the env var is empty, so to fully migrate to a DB-managed secret you must clear the env var first.
             </p>
 
             <section className="space-y-3">
-              <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Provider</h4>
+              <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Provider</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <ProviderRadio
                   label="Cal.com"
@@ -1787,17 +1787,17 @@ function DemoSchedulerSettingsModal({ onClose }: { onClose: () => void }) {
             </section>
 
             <section className="space-y-2">
-              <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Embed URL</h4>
+              <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">Embed URL</h4>
               <input
                 type="url"
                 value={draftEmbedUrl}
                 onChange={(e) => setDraftEmbedUrl(e.target.value)}
                 placeholder={data.fallbacks.envEmbedUrl ?? 'https://cal.com/qvo/30min'}
-                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-text-secondary">
                 Loaded into the iframe on the demo page. {data.fallbacks.envEmbedUrl
-                  ? <>Build-time fallback: <code className="text-slate-400">{data.fallbacks.envEmbedUrl}</code>.</>
+                  ? <>Build-time fallback: <code className="text-text-muted">{data.fallbacks.envEmbedUrl}</code>.</>
                   : 'No build-time fallback configured.'}
               </p>
             </section>
@@ -1829,12 +1829,12 @@ function DemoSchedulerSettingsModal({ onClose }: { onClose: () => void }) {
             />
 
             {saveError && (
-              <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200 text-sm">
+              <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-danger text-sm">
                 {saveError}
               </div>
             )}
             {saveSuccess && !saveError && (
-              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-200 text-sm flex items-center gap-2">
+              <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-success text-sm flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" />
                 Saved. The next /book-demo page load will pick up the new configuration.
               </div>
@@ -1843,17 +1843,17 @@ function DemoSchedulerSettingsModal({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      <div className="border-t border-slate-700 px-5 py-3 flex flex-wrap items-center justify-end gap-2">
+      <div className="border-t border-border-strong px-5 py-3 flex flex-wrap items-center justify-end gap-2">
         <button
           onClick={onClose}
-          className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"
+          className="px-3 py-2 rounded-lg bg-surface-inverse hover:bg-sidebar-hover text-sm text-white"
         >
           Cancel
         </button>
         <button
           onClick={handleSave}
           disabled={!data || saveMutation.isPending}
-          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium text-white disabled:opacity-50"
+          className="px-4 py-2 rounded-lg bg-accent hover:bg-accent text-sm font-medium text-white disabled:opacity-50"
         >
           {saveMutation.isPending ? 'Saving…' : 'Save settings'}
         </button>
@@ -1880,19 +1880,19 @@ function ProviderRadio({
       className={clsx(
         'flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
         selected
-          ? 'border-purple-500 bg-purple-500/10'
-          : 'border-slate-700 bg-slate-800/40 hover:bg-slate-800/70',
+          ? 'border-accent bg-accent/10'
+          : 'border-border-strong bg-surface-inverse/40 hover:bg-surface-inverse/70',
       )}
     >
       <div
         className={clsx(
           'mt-0.5 h-4 w-4 rounded-full border-2 flex-shrink-0',
-          selected ? 'border-purple-400 bg-purple-400' : 'border-slate-500',
+          selected ? 'border-accent bg-accent' : 'border-border-strong',
         )}
       />
       <div className="min-w-0">
-        <div className="text-sm font-medium text-slate-100">{label}</div>
-        <div className="text-xs text-slate-400">{description}</div>
+        <div className="text-sm font-medium text-text-muted">{label}</div>
+        <div className="text-xs text-text-muted">{description}</div>
       </div>
     </button>
   );
@@ -1934,14 +1934,14 @@ function SecretField({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold">{label}</h4>
+        <h4 className="text-xs uppercase tracking-wider text-text-muted font-semibold">{label}</h4>
         <span className={clsx(
           'text-[11px] px-2 py-0.5 rounded-full',
           activeSource === 'env'
-            ? 'bg-sky-500/15 text-sky-300'
+            ? 'bg-info/15 text-info'
             : activeSource === 'db'
-              ? 'bg-emerald-500/15 text-emerald-300'
-              : 'bg-rose-500/15 text-rose-300',
+              ? 'bg-success/15 text-success'
+              : 'bg-danger/15 text-danger',
         )}>
           {activeSource === 'env'
             ? 'Env active'
@@ -1958,13 +1958,13 @@ function SecretField({
           placeholder={configured ? '•••••••• (leave blank to keep current)' : 'Paste new signing key to enable'}
           disabled={clear}
           autoComplete="new-password"
-          className="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-40"
+          className="flex-1 px-3 py-2 rounded-lg bg-surface-inverse border border-border-strong text-sm text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
         />
         <button
           type="button"
           onClick={onToggleShow}
           disabled={clear}
-          className="px-2 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-40"
+          className="px-2 py-2 rounded-lg bg-surface-inverse border border-border-strong text-text-muted hover:text-white hover:bg-sidebar-hover disabled:opacity-40"
           aria-label={show ? 'Hide secret' : 'Show secret'}
           title={show ? 'Hide secret' : 'Show secret'}
         >
@@ -1972,17 +1972,17 @@ function SecretField({
         </button>
       </div>
       {configured && (
-        <label className="inline-flex items-center gap-2 text-xs text-slate-400">
+        <label className="inline-flex items-center gap-2 text-xs text-text-muted">
           <input
             type="checkbox"
             checked={clear}
             onChange={onToggleClear}
-            className="h-3.5 w-3.5 accent-rose-500"
+            className="h-3.5 w-3.5 accent-danger"
           />
           Clear stored secret on save (revert to env fallback)
         </label>
       )}
-      <p className="text-[11px] text-slate-500">{status}</p>
+      <p className="text-[11px] text-text-secondary">{status}</p>
     </section>
   );
 }
@@ -2007,10 +2007,10 @@ function TestAlertBanner({ result, error }: { result: TestAlertResponse | null; 
   const allSkipped = result.email === 'skipped' && result.slack === 'skipped';
 
   const tone = anyFailed
-    ? 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+    ? 'border-danger/40 bg-danger/10 text-danger'
     : anySent
-      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-      : 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+      ? 'border-success/40 bg-success/10 text-success'
+      : 'border-warning/40 bg-warning/10 text-warning';
 
   const Icon = anyFailed ? AlertTriangle : anySent ? CheckCircle : AlertTriangle;
   const headline = anyFailed
@@ -2049,10 +2049,10 @@ function ChannelStatusLine({
 }) {
   const dot =
     status === 'sent'
-      ? 'bg-emerald-400'
+      ? 'bg-success'
       : status === 'failed'
-        ? 'bg-rose-400'
-        : 'bg-slate-400';
+        ? 'bg-danger'
+        : 'bg-text-muted';
   return (
     <div className="text-xs flex items-start gap-2">
       <span className={clsx('mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0', dot)} />
@@ -2077,16 +2077,16 @@ function Toggle({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-700 bg-slate-800/40 cursor-pointer hover:bg-slate-800/70">
+    <label className="flex items-start gap-3 p-3 rounded-lg border border-border-strong bg-surface-inverse/40 cursor-pointer hover:bg-surface-inverse/70">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 accent-purple-500"
+        className="mt-0.5 h-4 w-4 accent-accent"
       />
       <div className="min-w-0">
-        <div className="text-sm font-medium text-slate-100">{label}</div>
-        {description && <div className="text-xs text-slate-400">{description}</div>}
+        <div className="text-sm font-medium text-text-muted">{label}</div>
+        {description && <div className="text-xs text-text-muted">{description}</div>}
       </div>
     </label>
   );

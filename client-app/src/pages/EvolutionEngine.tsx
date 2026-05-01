@@ -138,18 +138,18 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  low: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  critical: 'bg-danger-light text-danger',
+  high: 'bg-warning-light text-warning',
+  medium: 'bg-warning-light text-warning',
+  low: 'bg-success-light text-success',
 };
 
 const STATE_COLORS: Record<string, string> = {
   draft: 'bg-surface-hover text-text-primary',
-  active: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  paused: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  concluded: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  active: 'bg-info-light text-info',
+  paused: 'bg-warning-light text-warning',
+  concluded: 'bg-success-light text-success',
+  cancelled: 'bg-danger-light text-danger',
 };
 
 function ScoreBar({ score, max = 10, label }: { score: number; max?: number; label: string }) {
@@ -159,7 +159,7 @@ function ScoreBar({ score, max = 10, label }: { score: number; max?: number; lab
       <span className="w-28 text-text-secondary truncate">{label}</span>
       <div className="flex-1 h-1.5 bg-surface-hover rounded-full overflow-hidden">
         <div
-          className={clsx('h-full rounded-full', pct >= 70 ? 'bg-teal-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-gray-400')}
+          className={clsx('h-full rounded-full', pct >= 70 ? 'bg-primary' : pct >= 40 ? 'bg-warning' : 'bg-text-muted')}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -284,7 +284,7 @@ export default function EvolutionEngine() {
               'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
               tab === key
                 ? 'bg-surface text-text-primary shadow-sm'
-                : 'text-text-secondary hover:text-text-primary dark:hover:text-text-muted',
+                : 'text-text-secondary hover:text-text-primary',
             )}
           >
             <Icon className="w-4 h-4" />
@@ -307,12 +307,12 @@ export default function EvolutionEngine() {
               </div>
 
               {dash.recommendations.topRecommendation && (
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
+                <div className="bg-gradient-to-r from-accent-light to-accent-light border border-accent rounded-xl p-6">
                   <div className="flex items-start gap-3">
-                    <Brain className="w-6 h-6 text-purple-600 dark:text-purple-400 mt-1 flex-shrink-0" />
+                    <Brain className="w-6 h-6 text-accent mt-1 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-200">Top Recommendation</h3>
+                        <h3 className="text-sm font-semibold text-accent">Top Recommendation</h3>
                         <span className={clsx('px-2 py-0.5 rounded text-xs font-medium', PRIORITY_COLORS[dash.recommendations.topRecommendation.recommended_priority] || PRIORITY_COLORS.medium)}>
                           {dash.recommendations.topRecommendation.recommended_priority}
                         </span>
@@ -326,7 +326,7 @@ export default function EvolutionEngine() {
                         </p>
                       )}
                       {dash.recommendations.topRecommendation.estimated_revenue_impact_cents > 0 && (
-                        <p className="text-xs text-purple-700 dark:text-purple-300 mt-2 font-medium">
+                        <p className="text-xs text-accent mt-2 font-medium">
                           Est. revenue impact: {formatCents(dash.recommendations.topRecommendation.estimated_revenue_impact_cents)}
                         </p>
                       )}
@@ -338,7 +338,7 @@ export default function EvolutionEngine() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-surface rounded-xl border border-border p-5">
                   <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-teal-500" />
+                    <TrendingUp className="w-4 h-4 text-primary" />
                     Top Opportunities This Quarter
                   </h3>
                   {dash.opportunities.top5.length === 0 ? (
@@ -347,7 +347,7 @@ export default function EvolutionEngine() {
                     <div className="space-y-3">
                       {dash.opportunities.top5.map((opp) => (
                         <div key={opp.id} className="flex items-center gap-3 p-3 bg-surface-hover rounded-lg">
-                          <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-700 dark:text-purple-300">
+                          <div className="w-8 h-8 rounded-lg bg-accent-light flex items-center justify-center text-xs font-bold text-accent">
                             {opp.composite_score.toFixed(1)}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -366,7 +366,7 @@ export default function EvolutionEngine() {
                 <div className="space-y-6">
                   <div className="bg-surface rounded-xl border border-border p-5">
                     <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-                      <ArrowUpRight className="w-4 h-4 text-green-500" />
+                      <ArrowUpRight className="w-4 h-4 text-success" />
                       Fastest-Growing Verticals
                     </h3>
                     {dash.verticalGrowth.length === 0 ? (
@@ -388,7 +388,7 @@ export default function EvolutionEngine() {
 
                   <div className="bg-surface rounded-xl border border-border p-5">
                     <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-orange-500" />
+                      <Zap className="w-4 h-4 text-warning" />
                       Most Requested Integrations
                     </h3>
                     {dash.topIntegrations.length === 0 ? (
@@ -414,7 +414,7 @@ export default function EvolutionEngine() {
                 <div className="bg-surface rounded-xl border border-border p-5">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text-primary">Approved Roadmap Revenue Impact</h3>
-                    <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                    <span className="text-lg font-bold text-success">
                       {formatCents(dash.recommendations.approvedRevenueCents)}
                     </span>
                   </div>
@@ -460,16 +460,16 @@ export default function EvolutionEngine() {
                 <div
                   key={opp.id}
                   onClick={() => setSelectedOpp(selectedOpp?.id === opp.id ? null : opp)}
-                  className="bg-surface border border-border rounded-xl p-4 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
+                  className="bg-surface border border-border rounded-xl p-4 cursor-pointer hover:border-accent transition-colors"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-                      <span className="text-sm font-bold text-purple-700 dark:text-purple-300">{opp.compositeScore.toFixed(1)}</span>
+                    <div className="w-12 h-12 rounded-xl bg-accent-light flex items-center justify-center flex-shrink-0">
+                      <span className="text-sm font-bold text-accent">{opp.compositeScore.toFixed(1)}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="text-sm font-semibold text-text-primary truncate">{opp.title}</h3>
-                        <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        <span className="px-2 py-0.5 rounded text-xs bg-accent-light text-accent">
                           {TYPE_LABELS[opp.opportunityType] || opp.opportunityType}
                         </span>
                       </div>
@@ -553,7 +553,7 @@ export default function EvolutionEngine() {
                         <span className={clsx('px-2 py-0.5 rounded text-xs font-medium', PRIORITY_COLORS[rec.recommendedPriority] || PRIORITY_COLORS.medium)}>
                           {rec.recommendedPriority}
                         </span>
-                        <span className={clsx('px-2 py-0.5 rounded text-xs', rec.status === 'proposed' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : rec.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary')}>
+                        <span className={clsx('px-2 py-0.5 rounded text-xs', rec.status === 'proposed' ? 'bg-info-light text-info' : rec.status === 'approved' ? 'bg-success-light text-success' : 'bg-surface-hover text-text-secondary')}>
                           {rec.status}
                         </span>
                       </div>
@@ -562,7 +562,7 @@ export default function EvolutionEngine() {
                     {rec.estimatedRevenueImpactCents > 0 && (
                       <div className="text-right flex-shrink-0">
                         <p className="text-xs text-text-secondary">Est. Revenue Impact</p>
-                        <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCents(rec.estimatedRevenueImpactCents)}</p>
+                        <p className="text-lg font-bold text-success">{formatCents(rec.estimatedRevenueImpactCents)}</p>
                       </div>
                     )}
                   </div>
@@ -570,12 +570,12 @@ export default function EvolutionEngine() {
                   {rec.aiExplanation && (
                     <div
                       onClick={() => setSelectedRec(selectedRec?.id === rec.id ? null : rec)}
-                      className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg p-4 mb-3 cursor-pointer"
+                      className="bg-accent-light border border-accent rounded-lg p-4 mb-3 cursor-pointer"
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                        <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">AI Product Strategist</span>
-                        <ChevronDown className={clsx('w-3 h-3 text-purple-400 ml-auto transition-transform', selectedRec?.id === rec.id && 'rotate-180')} />
+                        <Brain className="w-4 h-4 text-accent" />
+                        <span className="text-xs font-semibold text-accent">AI Product Strategist</span>
+                        <ChevronDown className={clsx('w-3 h-3 text-accent ml-auto transition-transform', selectedRec?.id === rec.id && 'rotate-180')} />
                       </div>
                       <p className={clsx('text-sm text-text-primary', selectedRec?.id !== rec.id && 'line-clamp-2')}>
                         {rec.aiExplanation}
@@ -595,21 +595,21 @@ export default function EvolutionEngine() {
                         <button
                           onClick={() => updateRecStatus.mutate({ id: rec.id, status: 'approved' })}
                           disabled={updateRecStatus.isPending}
-                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50"
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-success-light text-success rounded-lg hover:bg-success-light"
                         >
                           <CheckCircle className="w-3 h-3" /> Approve
                         </button>
                         <button
                           onClick={() => updateRecStatus.mutate({ id: rec.id, status: 'rejected' })}
                           disabled={updateRecStatus.isPending}
-                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-danger-light text-danger rounded-lg hover:bg-danger-light"
                         >
                           <XCircle className="w-3 h-3" /> Reject
                         </button>
                         <button
                           onClick={() => updateRecStatus.mutate({ id: rec.id, status: 'deferred' })}
                           disabled={updateRecStatus.isPending}
-                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-900/50"
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-warning-light text-warning rounded-lg hover:bg-warning-light"
                         >
                           <Clock className="w-3 h-3" /> Defer
                         </button>
@@ -643,7 +643,7 @@ export default function EvolutionEngine() {
             </div>
             <button
               onClick={() => setShowNewExperiment(!showNewExperiment)}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary text-sm font-medium"
             >
               <FlaskConical className="w-4 h-4" />
               New Experiment
@@ -701,7 +701,7 @@ export default function EvolutionEngine() {
                 <button
                   onClick={() => createExp.mutate(newExp)}
                   disabled={!newExp.experimentName || createExp.isPending}
-                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium disabled:opacity-50"
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary text-sm font-medium disabled:opacity-50"
                 >
                   {createExp.isPending ? 'Creating...' : 'Create'}
                 </button>
@@ -756,7 +756,7 @@ export default function EvolutionEngine() {
                         <button
                           onClick={() => updateExpState.mutate({ id: exp.id, state: 'active' })}
                           disabled={updateExpState.isPending}
-                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-lg hover:bg-blue-200"
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-info-light text-info rounded-lg hover:bg-info-light"
                         >
                           <Play className="w-3 h-3" /> Activate
                         </button>
@@ -766,14 +766,14 @@ export default function EvolutionEngine() {
                           <button
                             onClick={() => updateExpState.mutate({ id: exp.id, state: 'paused' })}
                             disabled={updateExpState.isPending}
-                            className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 rounded-lg hover:bg-yellow-200"
+                            className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-warning-light text-warning rounded-lg hover:bg-warning-light"
                           >
                             Pause
                           </button>
                           <button
                             onClick={() => updateExpState.mutate({ id: exp.id, state: 'concluded' })}
                             disabled={updateExpState.isPending}
-                            className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-lg hover:bg-green-200"
+                            className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-success-light text-success rounded-lg hover:bg-success-light"
                           >
                             <CheckCircle className="w-3 h-3" /> Conclude
                           </button>
@@ -783,7 +783,7 @@ export default function EvolutionEngine() {
                         <button
                           onClick={() => updateExpState.mutate({ id: exp.id, state: 'active' })}
                           disabled={updateExpState.isPending}
-                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-lg hover:bg-blue-200"
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-info-light text-info rounded-lg hover:bg-info-light"
                         >
                           <Play className="w-3 h-3" /> Resume
                         </button>

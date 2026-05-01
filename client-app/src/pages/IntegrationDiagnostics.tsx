@@ -101,13 +101,13 @@ function StatusIcon({ status }: { status: string }) {
   switch (status) {
     case 'delivered':
     case 'sent':
-      return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+      return <CheckCircle2 className="h-4 w-4 text-success" />;
     case 'failed':
     case 'dead_letter':
-      return <XCircle className="h-4 w-4 text-red-500" />;
+      return <XCircle className="h-4 w-4 text-danger" />;
     case 'pending':
     case 'processing':
-      return <Clock className="h-4 w-4 text-amber-500" />;
+      return <Clock className="h-4 w-4 text-warning" />;
     default:
       return <AlertCircle className="h-4 w-4 text-text-muted" />;
   }
@@ -115,12 +115,12 @@ function StatusIcon({ status }: { status: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    delivered: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    sent: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    dead_letter: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    delivered: 'bg-success-light text-success',
+    sent: 'bg-success-light text-success',
+    pending: 'bg-warning-light text-warning',
+    processing: 'bg-info-light text-info',
+    failed: 'bg-danger-light text-danger',
+    dead_letter: 'bg-danger-light text-danger',
   };
 
   return (
@@ -132,9 +132,9 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function HealthIndicator({ rate }: { rate: number }) {
-  if (rate <= 5) return <span className="flex h-2.5 w-2.5 rounded-full bg-green-500" title="Healthy" />;
-  if (rate <= 20) return <span className="flex h-2.5 w-2.5 rounded-full bg-amber-500" title="Degraded" />;
-  return <span className="flex h-2.5 w-2.5 rounded-full bg-red-500" title="Unhealthy" />;
+  if (rate <= 5) return <span className="flex h-2.5 w-2.5 rounded-full bg-success" title="Healthy" />;
+  if (rate <= 20) return <span className="flex h-2.5 w-2.5 rounded-full bg-warning" title="Degraded" />;
+  return <span className="flex h-2.5 w-2.5 rounded-full bg-danger" title="Unhealthy" />;
 }
 
 // Bin a series of (bucket -> count) points returned from the API into a
@@ -228,11 +228,11 @@ function OutboxStatCard({
 }) {
   const buckets = useMemo(() => buildHourBuckets(series), [series]);
   const TONES: Record<typeof tone, { value: string; spark: string }> = {
-    pending: { value: 'text-amber-600 dark:text-amber-400', spark: 'text-amber-500' },
-    processing: { value: 'text-blue-600 dark:text-blue-400', spark: 'text-blue-500' },
-    failed: { value: 'text-red-600 dark:text-red-400', spark: 'text-red-500' },
-    dead_letter: { value: 'text-red-700 dark:text-red-300', spark: 'text-red-600' },
-    delivered: { value: 'text-green-600 dark:text-green-400', spark: 'text-green-500' },
+    pending: { value: 'text-warning', spark: 'text-warning' },
+    processing: { value: 'text-info', spark: 'text-info' },
+    failed: { value: 'text-danger', spark: 'text-danger' },
+    dead_letter: { value: 'text-danger', spark: 'text-danger' },
+    delivered: { value: 'text-success', spark: 'text-success' },
   };
   return (
     <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-2">
@@ -315,9 +315,9 @@ function WebhookRow({ webhook, onRetry, retrying }: {
       {expanded && (
         <div className="px-4 pb-4 border-t border-border pt-3 space-y-3">
           {webhook.last_error && (
-            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg p-3">
-              <p className="text-xs font-medium text-red-700 dark:text-red-400 mb-1">Last Error</p>
-              <p className="text-xs text-red-600 dark:text-red-300 font-mono break-all">{webhook.last_error}</p>
+            <div className="bg-danger-light border border-danger rounded-lg p-3">
+              <p className="text-xs font-medium text-danger mb-1">Last Error</p>
+              <p className="text-xs text-danger font-mono break-all">{webhook.last_error}</p>
             </div>
           )}
           <div>
@@ -449,7 +449,7 @@ export default function IntegrationDiagnostics() {
         <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
-              <Inbox className="h-4 w-4 text-emerald-500" />
+              <Inbox className="h-4 w-4 text-success" />
               Outbox Health
             </h2>
             <p className="text-xs text-muted mt-1">
@@ -547,9 +547,9 @@ export default function IntegrationDiagnostics() {
                       <tr key={`${row.provider}-${row.integration_name}`} className="hover:bg-surface-secondary/50 transition-colors">
                         <td className="px-5 py-2 text-text-primary">{formatProviderLabel(row.provider)}</td>
                         <td className="px-5 py-2 text-muted">{row.integration_name}</td>
-                        <td className="px-5 py-2 text-right font-mono text-amber-600 dark:text-amber-400">{row.pending}</td>
-                        <td className="px-5 py-2 text-right font-mono text-red-600 dark:text-red-400">{row.failed}</td>
-                        <td className="px-5 py-2 text-right font-mono text-red-700 dark:text-red-300">{row.dead_letter}</td>
+                        <td className="px-5 py-2 text-right font-mono text-warning">{row.pending}</td>
+                        <td className="px-5 py-2 text-right font-mono text-danger">{row.failed}</td>
+                        <td className="px-5 py-2 text-right font-mono text-danger">{row.dead_letter}</td>
                         <td className="px-5 py-2 text-right text-xs text-muted">
                           {row.last_failure_at ? formatRelativeAge(row.last_failure_at) + ' ago' : '—'}
                         </td>
@@ -611,7 +611,7 @@ export default function IntegrationDiagnostics() {
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <HealthIndicator rate={h.error_rate} />
-                        <span className={`text-xs ${h.is_enabled ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`text-xs ${h.is_enabled ? 'text-success' : 'text-danger'}`}>
                           {h.is_enabled ? 'Active' : 'Disabled'}
                         </span>
                       </div>
@@ -624,10 +624,10 @@ export default function IntegrationDiagnostics() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-right font-mono">{h.total_events}</td>
-                    <td className="px-5 py-3 text-right font-mono text-green-600">{h.successful_events}</td>
-                    <td className="px-5 py-3 text-right font-mono text-red-600">{h.failed_events}</td>
+                    <td className="px-5 py-3 text-right font-mono text-success">{h.successful_events}</td>
+                    <td className="px-5 py-3 text-right font-mono text-danger">{h.failed_events}</td>
                     <td className="px-5 py-3 text-right font-mono">
-                      <span className={h.error_rate > 20 ? 'text-red-600' : h.error_rate > 5 ? 'text-amber-600' : 'text-green-600'}>
+                      <span className={h.error_rate > 20 ? 'text-danger' : h.error_rate > 5 ? 'text-warning' : 'text-success'}>
                         {h.error_rate.toFixed(1)}%
                       </span>
                     </td>
@@ -699,10 +699,10 @@ export default function IntegrationDiagnostics() {
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                             d.status === 'success'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              ? 'bg-success-light text-success'
                               : authError
-                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                ? 'bg-warning-light text-warning'
+                                : 'bg-danger-light text-danger'
                           }`}
                         >
                           {d.status === 'success' ? (
@@ -726,7 +726,7 @@ export default function IntegrationDiagnostics() {
                         {d.responseStatus ?? '—'}
                       </td>
                       <td
-                        className="px-5 py-3 text-xs text-red-600 dark:text-red-400 max-w-[320px] truncate"
+                        className="px-5 py-3 text-xs text-danger max-w-[320px] truncate"
                         title={d.errorMessage ?? ''}
                       >
                         {d.errorMessage ?? '—'}
@@ -826,8 +826,8 @@ export default function IntegrationDiagnostics() {
             <div
               className={`text-sm flex items-center gap-2 p-2 rounded ${
                 bulkFeedback.kind === 'success'
-                  ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
-                  : 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
+                  ? 'text-success bg-success-light'
+                  : 'text-danger bg-danger-light'
               }`}
             >
               {bulkFeedback.kind === 'success' ? (
@@ -847,12 +847,12 @@ export default function IntegrationDiagnostics() {
             </div>
           ) : isError ? (
             <div className="text-center py-12">
-              <AlertCircle className="h-8 w-8 text-red-400 mx-auto mb-2" />
+              <AlertCircle className="h-8 w-8 text-danger mx-auto mb-2" />
               <p className="text-sm text-muted">Failed to load diagnostics data</p>
             </div>
           ) : webhooks.length === 0 ? (
             <div className="text-center py-12" data-testid="integration-webhooks-loaded">
-              <CheckCircle2 className="h-8 w-8 text-green-400 mx-auto mb-2" />
+              <CheckCircle2 className="h-8 w-8 text-success mx-auto mb-2" />
               <p className="text-sm text-muted">
                 {statusFilter === 'all' && outboxProviderFilter === 'all'
                   ? 'No outbox events found'
@@ -875,7 +875,7 @@ export default function IntegrationDiagnostics() {
 
         {retryMutation.isError && (
           <div className="px-5 pb-4">
-            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+            <div className="text-sm text-danger bg-danger-light p-2 rounded">
               Retry failed: {(retryMutation.error as Error).message}
             </div>
           </div>
@@ -883,7 +883,7 @@ export default function IntegrationDiagnostics() {
 
         {retryMutation.isSuccess && (
           <div className="px-5 pb-4">
-            <div className="text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded flex items-center gap-2">
+            <div className="text-sm text-success bg-success-light p-2 rounded flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" /> Retry queued successfully
             </div>
           </div>

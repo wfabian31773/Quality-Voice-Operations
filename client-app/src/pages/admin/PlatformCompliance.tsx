@@ -213,8 +213,8 @@ function formatDateOnly(d: string | null): string {
 }
 
 function severityClasses(sev: string): string {
-  if (sev === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
-  if (sev === 'warning') return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
+  if (sev === 'critical') return 'bg-danger-light text-danger';
+  if (sev === 'warning') return 'bg-warning-light text-warning';
   return 'bg-surface-hover text-text-secondary';
 }
 
@@ -313,19 +313,19 @@ function OverviewTab() {
         </h3>
         <ul className="text-sm text-muted space-y-2">
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
             Audit log is append-only at the database level (UPDATE/DELETE blocked by trigger).
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
             Every tenant is isolated by Row-Level Security policies that this view re-tests on demand.
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
             Tenant secrets and PII fields are encrypted with per-tenant data encryption keys (AES-256-GCM).
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
             All third parties that process customer data are listed publicly at <code>/subprocessors</code>.
           </li>
         </ul>
@@ -690,15 +690,15 @@ function EncryptionTab() {
       )}
 
       {needsInit > 0 && (
-        <div className="rounded-xl border border-yellow-300 dark:border-yellow-700/60 bg-yellow-50 dark:bg-yellow-900/10 p-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
+        <div className="rounded-xl border border-warning bg-warning-light p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-warning mt-0.5 shrink-0" />
           <div className="flex-1 text-sm">
-            <div className="font-semibold text-yellow-900 dark:text-yellow-200">
+            <div className="font-semibold text-warning">
               {needsInit === 1
                 ? '1 tenant has not enabled encryption yet'
                 : `${needsInit} tenants have not enabled encryption yet`}
             </div>
-            <p className="text-yellow-800/90 dark:text-yellow-200/80 mt-1">
+            <p className="text-warning mt-1">
               These tenants are running without an active data encryption key. Send the owner a templated reminder, or initialize encryption on their behalf where policy allows. Both actions are written to the platform audit log.
             </p>
           </div>
@@ -726,8 +726,8 @@ function EncryptionTab() {
         <div
           className={`rounded-lg border p-3 text-sm flex items-start gap-2 ${
             actionMessage.kind === 'success'
-              ? 'border-green-300 dark:border-green-700/60 bg-green-50 dark:bg-green-900/10 text-green-800 dark:text-green-200'
-              : 'border-red-300 dark:border-red-700/60 bg-red-50 dark:bg-red-900/10 text-red-800 dark:text-red-200'
+              ? 'border-success bg-success-light text-success'
+              : 'border-danger bg-danger-light text-danger'
           }`}
         >
           {actionMessage.kind === 'success' ? (
@@ -794,7 +794,7 @@ function EncryptionTab() {
                       key={t.tenant_id}
                       className={`border-b border-border last:border-0 ${
                         needsInitialization
-                          ? 'bg-yellow-50/50 dark:bg-yellow-900/5'
+                          ? 'bg-warning-light'
                           : ''
                       }`}
                     >
@@ -805,7 +805,7 @@ function EncryptionTab() {
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
                           t.tenant_status === 'active'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                            ? 'bg-success-light text-success'
                             : 'bg-surface-hover text-text-secondary'
                         }`}>
                           {t.tenant_status}
@@ -813,11 +813,11 @@ function EncryptionTab() {
                       </td>
                       <td className="px-4 py-3">
                         {t.active_keys > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1 text-success text-xs font-medium">
                             <KeyRound className="h-3.5 w-3.5" /> {t.active_keys}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-[11px] font-medium">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning-light text-warning text-[11px] font-medium">
                             <AlertTriangle className="h-3 w-3" /> Not initialized
                           </span>
                         )}
@@ -901,7 +901,7 @@ function EncryptionTab() {
                                 }
                               }}
                               disabled={isRemindingThis || isInitializingThis || isPausingThis}
-                              className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-warning hover:text-warning disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <Zap className="h-3.5 w-3.5" />
                               {isInitializingThis ? 'Initializing…' : 'Initialize now'}
@@ -948,7 +948,7 @@ function EncryptionTab() {
                             </button>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-success">
                             <CheckCircle2 className="h-3.5 w-3.5" /> Compliant
                           </span>
                         )}
@@ -1093,7 +1093,7 @@ function SubprocessorsTab() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         s.is_active
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                          ? 'bg-success-light text-success'
                           : 'bg-surface-hover text-text-secondary'
                       }`}>
                         {s.is_active ? 'Published' : 'Hidden'}
@@ -1113,7 +1113,7 @@ function SubprocessorsTab() {
                             if (confirm(adminT('platform_admin.compliance.confirm_delete_subprocessor', { name: s.name }))) deleteMutation.mutate(s.id);
                           }}
                           disabled={deleteMutation.isPending}
-                          className="text-xs text-red-500 font-medium hover:text-red-700"
+                          className="text-xs text-danger font-medium hover:text-danger"
                         >
                           Delete
                         </button>
@@ -1195,9 +1195,9 @@ function DeletionRequestsTab() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
                         r.status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                          ? 'bg-warning-light text-warning'
                           : r.status === 'completed'
-                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                            ? 'bg-danger-light text-danger'
                             : 'bg-surface-hover text-text-secondary'
                       }`}>
                         {r.status}
@@ -1355,9 +1355,9 @@ function IsolationTab() {
             {data.lastRun.map((r) => (
               <li key={r.id} className="flex items-start gap-2">
                 {r.test_result === 'pass' ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
                 ) : (
-                  <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <AlertTriangle className="h-4 w-4 text-danger mt-0.5 shrink-0" />
                 )}
                 <div>
                   <div className="font-medium text-xs">{r.test_name}</div>
@@ -1404,8 +1404,8 @@ function IsolationTab() {
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       r.test_result === 'pass'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                        ? 'bg-success-light text-success'
+                        : 'bg-danger-light text-danger'
                     }`}>
                       {r.test_result}
                     </span>
@@ -1451,19 +1451,19 @@ function federalStatusTone(status: string | null): {
   if (status === 'completed') {
     return {
       label: 'Completed',
-      classes: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+      classes: 'bg-success-light text-success',
     };
   }
   if (status === 'failed') {
     return {
       label: 'Failed',
-      classes: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+      classes: 'bg-danger-light text-danger',
     };
   }
   if (status === 'skipped') {
     return {
       label: 'Skipped',
-      classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+      classes: 'bg-warning-light text-warning',
     };
   }
   return {
@@ -1546,8 +1546,8 @@ function FederalDncTab() {
             role="status"
             className={`text-sm rounded-lg px-3 py-2 border ${
               actionMessage.kind === 'success'
-                ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800/40 dark:text-green-300'
-                : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800/40 dark:text-red-300'
+                ? 'bg-success-light border-success text-success'
+                : 'bg-danger-light border-danger text-danger'
             }`}
           >
             {actionMessage.text}
@@ -1605,11 +1605,11 @@ function FederalDncTab() {
         ) : null}
 
         {state?.lastError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/40 p-3">
-            <div className="text-[11px] uppercase tracking-wide text-red-700 dark:text-red-300 font-semibold">
+          <div className="rounded-lg border border-danger bg-danger-light p-3">
+            <div className="text-[11px] uppercase tracking-wide text-danger font-semibold">
               Last error
             </div>
-            <div className="text-xs text-red-800 dark:text-red-200 mt-1 font-mono break-words whitespace-pre-wrap">
+            <div className="text-xs text-danger mt-1 font-mono break-words whitespace-pre-wrap">
               {state.lastError}
             </div>
           </div>
