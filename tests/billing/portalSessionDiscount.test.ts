@@ -206,6 +206,124 @@ describe('buildPortalDiscountHeadline', () => {
     expect(buildPortalDiscountHeadline(null)).toBeNull();
     expect(buildPortalDiscountHeadline(undefined)).toBeNull();
   });
+
+  it('appends a "+ N more" tail when additional stacked discounts are present', () => {
+    expect(
+      buildPortalDiscountHeadline(
+        {
+          couponId: 'coupon_promo25',
+          name: 'Spring Promo',
+          percentOff: 25,
+          amountOffCents: null,
+          currency: null,
+          promotionCode: 'PROMO25',
+          promotionCodeId: 'promo_xyz',
+        },
+        { additionalCount: 1 },
+      ),
+    ).toBe('Active discount: 25% off — PROMO25 + 1 more');
+
+    expect(
+      buildPortalDiscountHeadline(
+        {
+          couponId: 'coupon_promo25',
+          name: 'Spring Promo',
+          percentOff: 25,
+          amountOffCents: null,
+          currency: null,
+          promotionCode: 'PROMO25',
+          promotionCodeId: 'promo_xyz',
+        },
+        { additionalCount: 4 },
+      ),
+    ).toBe('Active discount: 25% off — PROMO25 + 4 more');
+  });
+
+  it('omits the "+ N more" tail when additionalCount is zero, negative, or non-finite', () => {
+    const discount = {
+      couponId: 'coupon_promo25',
+      name: null,
+      percentOff: 25,
+      amountOffCents: null,
+      currency: null,
+      promotionCode: 'PROMO25',
+      promotionCodeId: 'promo_xyz',
+    };
+    const expected = 'Active discount: 25% off — PROMO25';
+    expect(buildPortalDiscountHeadline(discount, { additionalCount: 0 })).toBe(
+      expected,
+    );
+    expect(buildPortalDiscountHeadline(discount, { additionalCount: -2 })).toBe(
+      expected,
+    );
+    expect(
+      buildPortalDiscountHeadline(discount, { additionalCount: Number.NaN }),
+    ).toBe(expected);
+    expect(
+      buildPortalDiscountHeadline(discount, {
+        additionalCount: Number.POSITIVE_INFINITY,
+      }),
+    ).toBe(expected);
+  });
+
+  it('floors a fractional additionalCount to a whole number', () => {
+    expect(
+      buildPortalDiscountHeadline(
+        {
+          couponId: 'coupon_promo25',
+          name: null,
+          percentOff: 25,
+          amountOffCents: null,
+          currency: null,
+          promotionCode: 'PROMO25',
+          promotionCodeId: 'promo_xyz',
+        },
+        { additionalCount: 2.7 },
+      ),
+    ).toBe('Active discount: 25% off — PROMO25 + 2 more');
+  });
+
+  it('drops the "+ N more" tail before the promo-code tail when the headline overflows', () => {
+    // 25% off + a promo code that, with " + 1 more" appended, would
+    // exceed the 60-char Stripe cap. The richest fitting form drops
+    // the count tail first so the tenant still sees which specific
+    // coupon Stripe is applying.
+    const promo = 'PROMO_THIRTY_FIVE_CHAR_LONG_AB';
+    const head = buildPortalDiscountHeadline(
+      {
+        couponId: 'coupon_long',
+        name: null,
+        percentOff: 25,
+        amountOffCents: null,
+        currency: null,
+        promotionCode: promo,
+        promotionCodeId: 'promo_long',
+      },
+      { additionalCount: 1 },
+    );
+    expect(head).toBe(`Active discount: 25% off — ${promo}`);
+    expect((head ?? '').length).toBeLessThanOrEqual(60);
+  });
+
+  it('drops both the "+ N more" tail and the promo-code tail before mid-word truncation', () => {
+    // Both the count tail AND the promo-code tail have to go before we
+    // give up and keep just the off-figure.
+    const longCode = 'SUPER_LONG_CUSTOM_PROMOTIONAL_CODE_1234567890';
+    const head = buildPortalDiscountHeadline(
+      {
+        couponId: 'coupon_long',
+        name: null,
+        percentOff: 25,
+        amountOffCents: null,
+        currency: null,
+        promotionCode: longCode,
+        promotionCodeId: 'promo_long',
+      },
+      { additionalCount: 3 },
+    );
+    expect(head).toBe('Active discount: 25% off');
+    expect((head ?? '').length).toBeLessThanOrEqual(60);
+  });
 });
 
 describe('createPortalSession discount headline', () => {
@@ -556,7 +674,7 @@ describe('createPortalSession discount headline', () => {
     });
   });
 
-  it('uses the first usable subscription-level discount when several are stacked', async () => {
+  it('uses the first usable subscription-level discount when several are stacked and surfaces "+ N more"', async () => {
     customersRetrieve.mockResolvedValue({
       id: 'cus_portal_123',
       discount: null,
@@ -582,7 +700,47 @@ describe('createPortalSession discount headline', () => {
       ],
     });
     portalConfigurationsList.mockResolvedValue({ data: [DEFAULT_PORTAL_CONFIG] });
-    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_first_only' });
+    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_first_plus_one' });
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    const createArgs = portalConfigurationsCreate.mock.calls[0][0];
+    // The headline leads with the first usable discount and explicitly
+    // tells the tenant there's one more attached, so a stacked-coupon
+    // setup doesn't appear to silently drop the second coupon.
+    expect(createArgs.business_profile.headline).toBe(
+      'Active discount: 15% off — FIRST15 + 1 more',
+    );
+    expect(createArgs.metadata.couponId).toBe('coupon_first');
+    expect(createArgs.metadata.additionalDiscountCount).toBe('1');
+  });
+
+  it('reports "+ N more" with the correct count when three or more discounts are stacked', async () => {
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: null,
+    });
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: { id: 'coupon_a', percent_off: 25, valid: true },
+          promotion_code: { id: 'promo_a', code: 'PROMO25' },
+        },
+        {
+          coupon: { id: 'coupon_b', percent_off: 5, valid: true },
+          promotion_code: { id: 'promo_b', code: 'PROMO5' },
+        },
+        {
+          coupon: { id: 'coupon_c', percent_off: 10, valid: true },
+          promotion_code: { id: 'promo_c', code: 'PROMO10' },
+        },
+      ],
+    });
+    portalConfigurationsList.mockResolvedValue({ data: [DEFAULT_PORTAL_CONFIG] });
+    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_three_stacked' });
 
     await createPortalSession({
       tenantId: TENANT,
@@ -591,9 +749,39 @@ describe('createPortalSession discount headline', () => {
 
     const createArgs = portalConfigurationsCreate.mock.calls[0][0];
     expect(createArgs.business_profile.headline).toBe(
-      'Active discount: 15% off — FIRST15',
+      'Active discount: 25% off — PROMO25 + 2 more',
     );
-    expect(createArgs.metadata.couponId).toBe('coupon_first');
+    expect(createArgs.metadata.additionalDiscountCount).toBe('2');
+  });
+
+  it('omits the "+ N more" tail (and metadata) when only a single subscription discount is active', async () => {
+    customersRetrieve.mockResolvedValue({
+      id: 'cus_portal_123',
+      discount: null,
+    });
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: { id: 'coupon_solo', percent_off: 20, valid: true },
+          promotion_code: { id: 'promo_solo', code: 'SOLO20' },
+        },
+      ],
+    });
+    portalConfigurationsList.mockResolvedValue({ data: [DEFAULT_PORTAL_CONFIG] });
+    portalConfigurationsCreate.mockResolvedValue({ id: 'bpc_solo_sub' });
+
+    await createPortalSession({
+      tenantId: TENANT,
+      returnUrl: 'https://example.test/dashboard',
+    });
+
+    const createArgs = portalConfigurationsCreate.mock.calls[0][0];
+    expect(createArgs.business_profile.headline).toBe(
+      'Active discount: 20% off — SOLO20',
+    );
+    // No stacking -> no metadata bloat. Keeps the existing single-coupon
+    // configuration cache key (and dashboard view) unchanged.
+    expect('additionalDiscountCount' in createArgs.metadata).toBe(false);
   });
 
   it('prefers the customer-level discount over the subscription-level one when both exist', async () => {

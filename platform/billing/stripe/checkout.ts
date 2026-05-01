@@ -188,6 +188,28 @@ export async function createCheckoutSession(params: {
 }
 
 /**
+ * Optional knobs for `buildPortalDiscountHeadline`. Currently just the
+ * "+ N more" stack indicator surfaced when a tenant has multiple
+ * subscription-level discounts attached at once.
+ */
+export interface BuildPortalDiscountHeadlineOptions {
+  /**
+   * Number of *additional* usable discounts stacked on the subscription
+   * beyond the headline discount itself. When > 0 the headline appends
+   * a `+ N more` tail so the tenant doesn't wonder why the second/third
+   * coupon they attached appears to be "missing" from the portal — the
+   * in-app subscription card and the receipt PDF both already render
+   * every stacked discount as its own chip, but the Stripe-hosted
+   * portal allows only a single headline string.
+   *
+   * Negative / non-finite values are treated as 0 (defensive — the
+   * caller derives this from `subDiscounts.length - 1`, which is always
+   * a small non-negative integer in practice).
+   */
+  additionalCount?: number;
+}
+
+/**
  * Build the customer-facing headline shown at the top of the Stripe
  * hosted billing portal when the tenant is on a discounted subscription.
  * Mirrors the wording the in-app subscription card uses
@@ -197,15 +219,25 @@ export async function createCheckoutSession(params: {
  * helper closes is the customer-portal surface, the only one that
  * previously had no badge at all.
  *
+ * When `options.additionalCount > 0` the headline grows a `+ N more`
+ * tail so a tenant who attached multiple stacked subscription-level
+ * coupons can see at a glance that the portal page is showing one of
+ * several active discounts (matching the multiple chips already
+ * rendered by the in-app subscription card and the receipt PDF). Stripe
+ * only permits one headline string, so we lead with the first usable
+ * discount and append the count of the rest.
+ *
  * Returns `null` when the discount carries no usable percent / amount-off
  * (defensive — `loadActiveCustomerDiscount` already drops these). The
  * result is capped at Stripe's 60-character `business_profile.headline`
- * limit; when the combined "Active discount: <amount> — <code>" form
- * would overflow, the promo-code tail is dropped first so the customer
- * still sees the dollar/percent figure rather than a truncated mid-word.
+ * limit; when the combined "Active discount: <amount> — <code> + N more"
+ * form would overflow, the `+ N more` tail is dropped first, then the
+ * promo-code/name tail, so the customer always at least sees the
+ * dollar/percent figure rather than a truncated mid-word.
  */
 export function buildPortalDiscountHeadline(
   discount: UpgradeDiscount | null | undefined,
+  options: BuildPortalDiscountHeadlineOptions = {},
 ): string | null {
   if (!discount) return null;
 
@@ -227,12 +259,30 @@ export function buildPortalDiscountHeadline(
   if (!offPart) return null;
 
   const labelTail = (discount.promotionCode ?? discount.name ?? '').trim();
+  const additionalCountRaw = options.additionalCount;
+  const additionalCount =
+    typeof additionalCountRaw === 'number'
+    && Number.isFinite(additionalCountRaw)
+    && additionalCountRaw > 0
+      ? Math.floor(additionalCountRaw)
+      : 0;
+  const moreSuffix = additionalCount > 0 ? ` + ${additionalCount} more` : '';
+
+  // Try the richest form first (off + code + "+ N more") and degrade in
+  // priority order: drop the stack indicator before the promo code,
+  // drop the promo code before mid-word truncation. The numeric
+  // off-figure is always preserved.
+  const withTailAndMore = labelTail
+    ? `Active discount: ${offPart} — ${labelTail}${moreSuffix}`
+    : `Active discount: ${offPart}${moreSuffix}`;
+  if (withTailAndMore.length <= PORTAL_HEADLINE_MAX_CHARS) return withTailAndMore;
+
   const withTail = labelTail
     ? `Active discount: ${offPart} — ${labelTail}`
     : `Active discount: ${offPart}`;
   if (withTail.length <= PORTAL_HEADLINE_MAX_CHARS) return withTail;
 
-  // Drop the promo-code/name tail first so the customer still sees the
+  // Drop the promo-code/name tail next so the customer still sees the
   // numeric amount-off rather than a mid-word slice.
   const withoutTail = `Active discount: ${offPart}`;
   if (withoutTail.length <= PORTAL_HEADLINE_MAX_CHARS) return withoutTail;
@@ -314,9 +364,12 @@ function stripNulls<T>(value: T): T {
 async function resolveDiscountedPortalConfigId(
   stripe: Stripe,
   discount: UpgradeDiscount | null,
-  ctx: { tenantId: TenantId },
+  ctx: { tenantId: TenantId; additionalDiscountCount?: number },
 ): Promise<string | null> {
-  const headline = buildPortalDiscountHeadline(discount);
+  const additionalDiscountCount = ctx.additionalDiscountCount ?? 0;
+  const headline = buildPortalDiscountHeadline(discount, {
+    additionalCount: additionalDiscountCount,
+  });
   if (!headline) return null;
 
   let defaultConfig: Stripe.BillingPortal.Configuration | null = null;
@@ -381,6 +434,14 @@ async function resolveDiscountedPortalConfigId(
           ...(discount?.couponId ? { couponId: discount.couponId } : {}),
           ...(discount?.promotionCodeId
             ? { promotionCodeId: discount.promotionCodeId }
+            : {}),
+          // Stamp the stack size so the cleanup sweep / dashboard
+          // operator can tell at a glance which configurations were
+          // minted for stacked-discount tenants vs. single-coupon
+          // tenants. Only present when > 0 to keep the metadata
+          // bag small for the common single-discount case.
+          ...(additionalDiscountCount > 0
+            ? { additionalDiscountCount: String(additionalDiscountCount) }
             : {}),
         },
       });
@@ -477,6 +538,13 @@ export async function createPortalSession(params: {
       tenantId,
       surface: 'portal_session',
     });
+    // Number of *additional* usable subscription-level discounts beyond
+    // the one chosen as the headline. Stays at 0 for the legacy
+    // customer-level path (Stripe only allows one customer.discount), so
+    // the "+ N more" tail only shows up for the modern stacked-
+    // subscription-discount shape, which is the only one that can
+    // actually exceed a single coupon.
+    let additionalDiscountCount = 0;
     if (!discount && subscriptionId) {
       const subDiscounts = await loadActiveSubscriptionDiscounts(
         stripe,
@@ -484,9 +552,13 @@ export async function createPortalSession(params: {
         { tenantId, surface: 'portal_session' },
       );
       discount = subDiscounts[0] ?? null;
+      if (subDiscounts.length > 1) {
+        additionalDiscountCount = subDiscounts.length - 1;
+      }
     }
     const configurationId = await resolveDiscountedPortalConfigId(stripe, discount, {
       tenantId,
+      additionalDiscountCount,
     });
 
     const session = await stripe.billingPortal.sessions.create({
