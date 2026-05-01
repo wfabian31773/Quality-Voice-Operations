@@ -2373,6 +2373,15 @@ interface OutageAlertDetail extends OutageAlert {
   integration: OutageAlertIntegrationContext | null;
 }
 
+// Email provider terminal events that indicate the message did not reach
+// the recipient's inbox. Used by the outage detail panel to label the
+// post-send bounce diagnostic with a "Reason:" hint.
+const ADVERSE_EMAIL_PROVIDER_EVENTS: ReadonlySet<string> = new Set([
+  'bounced',
+  'dropped',
+  'spam',
+]);
+
 function formatOutageMinutes(minutes: number | null): string | null {
   if (minutes === null || !Number.isFinite(minutes) || minutes < 0) return null;
   if (minutes < 1) return '<1 min';
@@ -3272,11 +3281,37 @@ function OutageAlertDetailBody({
                             : ''}
                       </span>
                     </div>
-                    {recipient.deliveryError && (
-                      <div className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words">
-                        {recipient.deliveryError}
-                      </div>
-                    )}
+                    {recipient.deliveryError &&
+                      (() => {
+                        // Email rows: when the provider's bounce webhook
+                        // reported an adverse terminal event, label the
+                        // diagnostic with a "Reason:" hint so admins can
+                        // tell it came from the post-send webhook (vs. an
+                        // original send-time failure). SMS rendering and
+                        // the original send-time error path are unchanged.
+                        const isAdverseEmailBounce =
+                          !isSms &&
+                          recipient.emailProviderEvent != null &&
+                          ADVERSE_EMAIL_PROVIDER_EVENTS.has(
+                            recipient.emailProviderEvent,
+                          );
+                        if (isAdverseEmailBounce) {
+                          return (
+                            <div
+                              className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words"
+                              data-testid="recipient-bounce-reason"
+                            >
+                              <span className="font-medium">Reason:</span>{' '}
+                              {recipient.deliveryError}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words">
+                            {recipient.deliveryError}
+                          </div>
+                        );
+                      })()}
                   </li>
                 );
               });
