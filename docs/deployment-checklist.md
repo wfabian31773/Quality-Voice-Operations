@@ -81,6 +81,30 @@ This checks all required variables are set and validates the database connection
 
 The validation also runs automatically on server startup. In production, it will **exit the process** if any required variable is missing.
 
+> **Automated as a deploy gate.** `.replit`'s `[deployment].build` chains
+> `npm run validate:env:prod` after the type-checks and **before** the slow
+> Vite build (and before `verify:stripe-prices`), so any missing or empty
+> required env var **fails the publish before the new image goes live** —
+> the validator exits non-zero and Replit Deployments aborts the build.
+> This is the same `scripts/validate-env.ts` covered by the vitest suite in
+> `tests/scripts/validateEnv.test.ts`, invoked with `--skip-db` so the
+> build sandbox doesn't have to reach the Supabase pooler (the boot-time
+> path on the Admin API still runs `validateDatabaseConnection()` against
+> the live pooler at process start, so the migrations check is not
+> skipped at runtime — only at build time). You no longer need to
+> remember to run it by hand for production deploys; just make sure every
+> required var listed above is set in the deployment's secrets before
+> clicking Publish. To re-run the same check from a developer laptop:
+>
+> ```bash
+> npm run validate:env:prod
+> ```
+>
+> A clean run prints `PASS: 0 missing, …` and exits 0; any missing
+> required var is listed under `Required variables:` with a `FAIL` prefix
+> and exits 1. Warnings (e.g. dev-looking `ADMIN_JWT_SECRET`) do **not**
+> fail the deploy — only missing required vars do.
+
 ### Stripe Price ID Spot-Check
 
 After setting the `STRIPE_PRICE_<TIER>_<INTERVAL>` env vars (six total — STARTER/PRO/ENTERPRISE × MONTHLY/ANNUAL), each one is verified against Stripe to confirm it resolves to a price with the expected `recurring.interval` so the live-rate badge engages on the public pricing calculator and the in-app billing estimator.

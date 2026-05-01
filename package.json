@@ -62,6 +62,8 @@
     "db:seed": "tsx scripts/seed-demo.ts",
     "db:verify-rls": "tsx scripts/verify-rls.ts",
     "verify:stripe-prices": "tsx scripts/verify-stripe-prices.ts",
+    "validate:env": "tsx scripts/validate-env.ts",
+    "validate:env:prod": "APP_ENV=production tsx scripts/validate-env.ts --skip-db",
     "analyze": "npm --prefix client-app run analyze",
     "analyze:json": "npm --prefix client-app run analyze:json"
   },

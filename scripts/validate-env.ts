@@ -261,8 +261,20 @@ export async function validateDatabaseConnection(): Promise<boolean> {
 
 if (require.main === module) {
   (async () => {
+    // `--skip-db` lets the deploy build hook run env validation without
+    // requiring DB connectivity from the build environment. The boot-time
+    // path on the Admin API still calls validateDatabaseConnection() at
+    // process start, so the migrations check is not skipped at runtime —
+    // we just don't insist the build sandbox reach the pooler. See
+    // docs/deployment-checklist.md §2 (Pre-deployment Validation).
+    const skipDb = process.argv.includes('--skip-db');
     const result = validateEnvironment();
-    const dbOk = await validateDatabaseConnection();
+    let dbOk = true;
+    if (!skipDb) {
+      dbOk = await validateDatabaseConnection();
+    } else {
+      console.log('  DB connection: SKIPPED (--skip-db)');
+    }
     if (!result.passed || !dbOk) {
       process.exit(1);
     }
