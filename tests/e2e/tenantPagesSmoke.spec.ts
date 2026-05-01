@@ -14,17 +14,27 @@
  *   2. The expected `<h1>` (or test-id sentinel) renders within the timeout
  *      — i.e. the route resolved, the lazy chunk loaded, and the top-level
  *      component rendered without throwing into the ErrorBoundary.
- *   3. The ErrorBoundary fallback ("An unexpected error occurred", from
+ *   3. A page-specific "data hydrated" sentinel testid renders within the
+ *      timeout — added by task #1213 to catch the much more common
+ *      regression where the shell renders fine but every card under it
+ *      stays stuck on a skeleton/loader because its backing /api/* route
+ *      changed shape. Each `dataSentinel` testid is wired into the source
+ *      page on a node that only mounts after the primary fetch resolved
+ *      (e.g. the post-load list wrapper, the post-load content container
+ *      after the page-level loading guard returns, or the KPI grid that
+ *      lives inside `!isLoading`).
+ *   4. The ErrorBoundary fallback ("An unexpected error occurred", from
  *      `client-app/src/pages/ServerError.tsx`) is NOT visible.
- *   4. The RoleGuard's AccessDenied panel is NOT visible (would mean the
+ *   5. The RoleGuard's AccessDenied panel is NOT visible (would mean the
  *      seeded tenant_owner role on admin-org somehow regressed).
- *   5. No uncaught page errors fired during navigation.
- *
- * It also surfaces (soft warnings, no fail) any 5xx responses from /api/*
- * during the page load. We don't fail on those because individual cards on
- * a page are expected to handle their own empty/error states gracefully —
- * if a 5xx took down the whole page, assertions 2-4 will catch it. The
- * warnings still land in the spec log for triagers.
+ *   6. No uncaught page errors fired during navigation.
+ *   7. No 5xx responses from /api/* during page load (task #1213 turned
+ *      the previous soft-warning into a hard fail). A backing route that
+ *      starts returning 500 is exactly the regression class this spec
+ *      exists to catch — and the prior "log a warning then move on"
+ *      behaviour meant CI stayed green even when half the cards on a page
+ *      were silently broken. 4xx is still allowed (auth/empty-row
+ *      handling is each card's responsibility).
  *
  * Runs against a real Chromium browser via the `playwright` runtime API
  * (no @playwright/test dependency required). Standalone — no test runner.
@@ -62,7 +72,7 @@ interface PageCheck {
   /** Human-friendly slug used for screenshot filenames. */
   slug: string;
   /**
-   * One of:
+   * Top-level shell sentinel. One of:
    *   - { kind: 'heading'; text: string }       waits for an <h1>/<h2> with
    *       the given text content.
    *   - { kind: 'testid'; testid: string }      waits for [data-testid="..."].
@@ -73,34 +83,102 @@ interface PageCheck {
    *       populates the input actually resolved (a missing/404'd fetch
    *       would leave the input on its empty initial state, while a testid
    *       on the shell would falsely pass).
+   * Proves the route resolved and the lazy chunk mounted without throwing.
    */
   expect:
     | { kind: 'heading'; text: string }
     | { kind: 'testid'; testid: string }
     | { kind: 'displayValue'; value: string };
+  /**
+   * Per-page "data hydrated" sentinel testid (task #1213). Must be wired
+   * into the source page on a node that only mounts after the page's
+   * primary data fetch resolved successfully. Without this, the spec
+   * could pass even when every panel under the heading is stuck on a
+   * skeleton because /api/* changed shape. Required — every page in
+   * PAGES below has one.
+   *
+   * For pages whose `expect` already targets a post-fetch element (e.g.
+   * Agent Builder's `displayValue` against the agent name input — that
+   * input only populates after GET /api/agents/:id resolves), the
+   * `dataSentinel` is allowed to point at the same/equivalent post-load
+   * shell node; the hydration signal is already covered by `expect` and
+   * adding a redundant testid would just be noise.
+   */
+  dataSentinel: string;
 }
 
 const PAGES: PageCheck[] = [
   // Dashboard — first page most tenant users see after login. Heading comes
   // from the i18n key `tenant:dashboard.page_title` ("Dashboard").
-  { path: '/dashboard', slug: 'tenant-dashboard', expect: { kind: 'heading', text: 'Dashboard' } },
+  //
+  // dataSentinel: the five-up StatCard grid. The grid renders
+  // unconditionally inside the post-header JSX but its values are fed by
+  // /api/calls/today, /api/agents and /api/usage fetches; combined with
+  // the new 5xx /api hard-fail (assertion #7), a backing 500 or shape
+  // regression on any of those routes now reliably fails the spec
+  // instead of leaving the cards stuck on `?? 0` placeholders.
+  {
+    path: '/dashboard',
+    slug: 'tenant-dashboard',
+    expect: { kind: 'heading', text: 'Dashboard' },
+    dataSentinel: 'tenant-dashboard-stats',
+  },
 
   // Agents — `tenant:agents.page_title` ("Agents"). Heavy lazy chunk.
-  { path: '/agents', slug: 'tenant-agents', expect: { kind: 'heading', text: 'Agents' } },
+  //
+  // dataSentinel: the post-isLoading agent list wrapper. The testid is
+  // wired onto BOTH the empty-state card and the populated grid, so
+  // admin-org's empty (or seeded) agent list still resolves the
+  // sentinel — but a /api/agents 5xx or schema break leaves the page on
+  // its skeleton and this assertion fails closed.
+  {
+    path: '/agents',
+    slug: 'tenant-agents',
+    expect: { kind: 'heading', text: 'Agents' },
+    dataSentinel: 'tenant-agents-list',
+  },
 
   // Calls / Conversations — `tenant:calls.page_title` is "Conversations".
   // The page also kicks off a /api/calls list fetch on mount, which is the
   // most common backend regression vector.
-  { path: '/calls', slug: 'tenant-calls', expect: { kind: 'heading', text: 'Conversations' } },
+  //
+  // dataSentinel: the post-isLoading list wrapper. Same dual-branch
+  // wiring as Agents — empty state + populated table both carry the
+  // testid, so admin-org's empty call list still resolves while a
+  // /api/calls regression keeps the skeleton mounted and fails closed.
+  {
+    path: '/calls',
+    slug: 'tenant-calls',
+    expect: { kind: 'heading', text: 'Conversations' },
+    dataSentinel: 'tenant-calls-list',
+  },
 
   // Workflows — RoleGuard minRole="manager"; the admin-org tenant_owner
   // seeded by seed-admin clears that bar. PageHeader title="Workflows".
-  { path: '/workflows', slug: 'tenant-workflows', expect: { kind: 'heading', text: 'Workflows' } },
+  //
+  // dataSentinel: the post-isLoading workflow list wrapper, wired onto
+  // both the empty-state card and the populated grid so a missing seed
+  // doesn't false-fail.
+  {
+    path: '/workflows',
+    slug: 'tenant-workflows',
+    expect: { kind: 'heading', text: 'Workflows' },
+    dataSentinel: 'tenant-workflows-list',
+  },
 
   // Dispatch Center — PageHeader title="Dispatch Center". Field-service
   // page with a wide map + table that has historically been brittle when
   // a single backend route changes shape.
-  { path: '/dispatch', slug: 'tenant-dispatch', expect: { kind: 'heading', text: 'Dispatch Center' } },
+  //
+  // dataSentinel: the top-level post-loading container. The page bails
+  // out to <PageSkeleton /> while its initial fetches are in flight, so
+  // the testid only mounts after the dispatch resources/jobs hydrate.
+  {
+    path: '/dispatch',
+    slug: 'tenant-dispatch',
+    expect: { kind: 'heading', text: 'Dispatch Center' },
+    dataSentinel: 'dispatch-center-loaded',
+  },
 
   // NOTE: /ops/reliability used to live in this list because it was the
   // only Ops Console page covered anywhere in CI. As of task #1153 the
@@ -111,35 +189,93 @@ const PAGES: PageCheck[] = [
   // SMS Inbox — PageHeader title="SMS Console". The customer-flow messaging
   // workspace fetches conversation lists on mount and has historically broken
   // silently when the /api/sms/* response shape changed.
-  { path: '/sms-inbox', slug: 'tenant-sms-inbox', expect: { kind: 'heading', text: 'SMS Console' } },
+  //
+  // dataSentinel: the top-level post-loading container. The page bails
+  // out to <PageSkeleton /> while the conversations fetch is in flight,
+  // so the testid only mounts once /api/sms-inbox/* has resolved.
+  {
+    path: '/sms-inbox',
+    slug: 'tenant-sms-inbox',
+    expect: { kind: 'heading', text: 'SMS Console' },
+    dataSentinel: 'sms-inbox-loaded',
+  },
 
   // Tickets — PageHeader title="Tickets". High-traffic for home-services and
   // legal verticals; the list-fetch endpoint has changed shape before.
-  { path: '/tickets', slug: 'tenant-tickets', expect: { kind: 'heading', text: 'Tickets' } },
+  //
+  // dataSentinel: the post-loading list wrapper. The page renders
+  // <PageSkeleton /> while loading, then the testid lands on either the
+  // empty-state card or the populated table — admin-org's seeded fixture
+  // ticket lights up the populated branch.
+  {
+    path: '/tickets',
+    slug: 'tenant-tickets',
+    expect: { kind: 'heading', text: 'Tickets' },
+    dataSentinel: 'tenant-tickets-list',
+  },
 
   // Tickets Reporting — renders an explicit `<h1>Ticket Reports</h1>` (no
   // PageHeader). Charts/aggregations are fed by their own /api/tickets/*
   // analytics endpoints.
-  { path: '/tickets/reporting', slug: 'tenant-tickets-reporting', expect: { kind: 'heading', text: 'Ticket Reports' } },
+  //
+  // dataSentinel: the top-level post-loading container. The page early-
+  // returns to a spinner while the analytics fetch is pending, so the
+  // testid only mounts once the report payload arrives.
+  {
+    path: '/tickets/reporting',
+    slug: 'tenant-tickets-reporting',
+    expect: { kind: 'heading', text: 'Ticket Reports' },
+    dataSentinel: 'ticket-reporting-loaded',
+  },
 
   // Ticket Admin — RoleGuard minRole="manager" (admin-org tenant_owner clears
   // it). TicketAdmin.tsx renders an explicit `<h1>Ticket Administration</h1>`
   // and fans out to ~8 /api/ticket-* config endpoints in parallel on mount.
   // Historically broke silently when one of those route handlers returned
   // an unexpected shape (the page would stay on its loading spinner).
-  { path: '/tickets/admin', slug: 'tenant-tickets-admin', expect: { kind: 'heading', text: 'Ticket Administration' } },
+  //
+  // dataSentinel: the top-level post-loading container, wired into the
+  // main JSX after the early loading-return. A 5xx on any of the parallel
+  // /api/ticket-* fetches either keeps `loading` true (sentinel never
+  // mounts) or trips the new 5xx hard-fail (assertion #7).
+  {
+    path: '/tickets/admin',
+    slug: 'tenant-tickets-admin',
+    expect: { kind: 'heading', text: 'Ticket Administration' },
+    dataSentinel: 'ticket-admin-loaded',
+  },
 
   // Ticket Detail — TicketDetail.tsx fetches /api/tickets/:id on mount and
   // renders an `<h1>` with the ticket subject. Needs a real id, so
   // scripts/seed-admin.ts seeds a fixture row with a stable id+subject
   // ("admin-org-smoke-ticket" / "Smoke Test Ticket") on the admin-org
   // tenant — keep the values here in sync with that script.
-  { path: '/tickets/admin-org-smoke-ticket', slug: 'tenant-ticket-detail', expect: { kind: 'heading', text: 'Smoke Test Ticket' } },
+  //
+  // dataSentinel: the post-loading content container. The page only
+  // mounts this wrapper after the ticket payload resolved (the
+  // !ticket / loading branches return separate JSX), so the sentinel
+  // doubles as proof the seeded fixture row was actually fetched.
+  {
+    path: '/tickets/admin-org-smoke-ticket',
+    slug: 'tenant-ticket-detail',
+    expect: { kind: 'heading', text: 'Smoke Test Ticket' },
+    dataSentinel: 'ticket-detail-loaded',
+  },
 
   // Scheduling — PageHeader title="Scheduling". Enterprise appointment
   // management; pulls from multiple endpoints (appointments, types,
   // reminders) on mount.
-  { path: '/scheduling', slug: 'tenant-scheduling', expect: { kind: 'heading', text: 'Scheduling' } },
+  //
+  // dataSentinel: the top-level post-loading container. The calendar tab
+  // (which is the default landing tab) early-returns to <PageSkeleton />
+  // while loading is true, so this testid only mounts once the
+  // scheduling fetches resolve.
+  {
+    path: '/scheduling',
+    slug: 'tenant-scheduling',
+    expect: { kind: 'heading', text: 'Scheduling' },
+    dataSentinel: 'scheduling-loaded',
+  },
 
   // Agent Builder — the heaviest agent surface. Loads its own lazy chunk
   // and fans out to several /api/agents/* fetches on mount, so it has
@@ -162,10 +298,16 @@ const PAGES: PageCheck[] = [
   // assertion fails closed when the seeded fixture row is missing OR
   // when the primary agent fetch returns the wrong shape, which is the
   // exact regression class this entry exists to catch.
+  //
+  // dataSentinel: the post-isLoading shell wrapper. The hydration check
+  // is already covered by `expect` (displayValue against the populated
+  // input), so this just doubles as a stable shell-loaded marker for
+  // assertion #3 — they fail/pass together by construction.
   {
     path: '/agents/admin-org-smoke-agent/builder',
     slug: 'tenant-agent-builder',
     expect: { kind: 'displayValue', value: 'Smoke Test Agent' },
+    dataSentinel: 'agent-builder-loaded',
   },
 ];
 
@@ -261,6 +403,20 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
       }
     }
 
+    // Per-page "data hydrated" sentinel (task #1213). Wait for the
+    // testid that's wired into the source page on a node that only
+    // mounts once the primary data fetch has resolved. Without this,
+    // the spec would happily pass a page whose shell rendered fine but
+    // whose every panel is silently stuck on a skeleton.
+    if (!reason) {
+      const sentinel = page.locator(`[data-testid="${check.dataSentinel}"]`).first();
+      try {
+        await sentinel.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
+      } catch (err) {
+        reason = `data sentinel [data-testid="${check.dataSentinel}"] never appeared — page shell rendered but its data widget never hydrated (${(err as Error).message})`;
+      }
+    }
+
     // Even if the heading was found, the ErrorBoundary may have rendered
     // *under* it for a child component. Guard against that explicitly.
     if (!reason) {
@@ -290,23 +446,25 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
     if (!reason && pageErrors.length > 0) {
       reason = `uncaught page error(s): ${pageErrors.slice(0, 3).join(' | ')}`;
     }
+
+    // Hard-fail on 5xx /api responses (task #1213). Previously these
+    // were logged as soft warnings and the spec moved on — which meant
+    // a backing route returning 500 stayed green in CI as long as the
+    // calling card swallowed the error and rendered an empty state.
+    // That's exactly the regression class this spec exists to catch,
+    // so a 5xx during the page load is now grounds for failure. 4xx is
+    // still tolerated (auth / not-found / empty-row handling is each
+    // card's responsibility, not this spec's).
+    if (!reason && serverErrors.length > 0) {
+      reason = `${serverErrors.length} 5xx response(s) from /api/* during page load: ${serverErrors
+        .slice(0, 5)
+        .map((e) => `${e.status} ${e.url}`)
+        .join(' | ')}`;
+    }
   } finally {
     page.off('console', onConsole);
     page.off('pageerror', onPageError);
     page.off('response', onResponse);
-  }
-
-  // Soft-warn on 5xx /api responses regardless of pass/fail. These are
-  // useful triage info but don't fail the spec on their own — a card with
-  // an empty/error state on a page that otherwise rendered shouldn't block
-  // the PR.
-  if (serverErrors.length > 0) {
-    console.warn(
-      `[e2e] WARN ${check.path}: ${serverErrors.length} 5xx response(s) from /api/*: ${serverErrors
-        .slice(0, 5)
-        .map((e) => `${e.status} ${e.url}`)
-        .join(' | ')}`,
-    );
   }
 
   if (!reason) {
@@ -323,6 +481,17 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
   console.error(`[e2e]   screenshot: ${shotPath}`);
   if (consoleErrors.length > 0) {
     console.error(`[e2e]   console errors (${consoleErrors.length}): ${consoleErrors.slice(0, 5).join(' | ')}`);
+  }
+  // Surface 5xx /api responses in the failure log even when the spec
+  // failed for a different reason — e.g. a 500 caused the data sentinel
+  // to never appear, and triagers want both signals in one place.
+  if (serverErrors.length > 0 && !reason.includes('5xx response')) {
+    console.error(
+      `[e2e]   5xx /api responses (${serverErrors.length}): ${serverErrors
+        .slice(0, 5)
+        .map((e) => `${e.status} ${e.url}`)
+        .join(' | ')}`,
+    );
   }
 
   return { page: check, reason, consoleErrors, pageErrors, serverErrors };

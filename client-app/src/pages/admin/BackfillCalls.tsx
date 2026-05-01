@@ -568,7 +568,10 @@ export default function BackfillCalls() {
         />
       )}
 
-      <section className="bg-surface border border-border rounded-xl p-5 space-y-4">
+      <section
+        className="bg-surface border border-border rounded-xl p-5 space-y-4"
+        data-testid="backfill-attestation-form"
+      >
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-primary" />
           Attestation

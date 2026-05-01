@@ -482,7 +482,7 @@ export default function Workflows() {
           onRetry={() => refetch()}
         />
       ) : workflows.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl">
+        <div className="bg-surface border border-border rounded-xl" data-testid="tenant-workflows-list">
           <EmptyState
             icon={WorkflowIcon}
             title="No workflows yet"
@@ -498,7 +498,7 @@ export default function Workflows() {
           />
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="tenant-workflows-list">
           {workflows.map((wf) => (
             <div key={wf.id} className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-2">

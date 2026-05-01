@@ -438,7 +438,10 @@ export default function Dashboard() {
 
       <ExampleWorkflowCards navigate={navigate} t={tenantT} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
+        data-testid="tenant-dashboard-stats"
+      >
         <StatCard icon={PhoneCall} label={tenantT('dashboard.stats.calls_today_card')} value={totalToday} tone="info" />
         <StatCard icon={CalendarCheck} label={tenantT('dashboard.stats.bookings_today')} value={bookingsToday} sub={bookingsToday === 0 ? tenantT('dashboard.stats.no_bookings') : undefined} tone="primary" />
         <StatCard icon={Bot} label={tenantT('dashboard.stats.active_agents_card')} value={agentCount} tone="accent" />

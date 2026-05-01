@@ -926,13 +926,19 @@ export default function CallDebug() {
           {isLoading ? (
             <div className="text-center py-12 text-text-secondary">Loading...</div>
           ) : calls.length === 0 ? (
-            <div className="bg-surface border border-border rounded-xl p-12 text-center">
+            <div
+              className="bg-surface border border-border rounded-xl p-12 text-center"
+              data-testid="call-search-results"
+            >
               <PhoneCall className="h-12 w-12 text-text-muted mx-auto mb-3" />
               <p className="text-text-secondary">{activeFilterCount > 0 ? 'No calls match your filters' : 'No calls found'}</p>
             </div>
           ) : (
             <>
-              <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+              <div
+                className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden"
+                data-testid="call-search-results"
+              >
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left">

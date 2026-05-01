@@ -851,7 +851,7 @@ export default function IntegrationDiagnostics() {
               <p className="text-sm text-muted">Failed to load diagnostics data</p>
             </div>
           ) : webhooks.length === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12" data-testid="integration-webhooks-loaded">
               <CheckCircle2 className="h-8 w-8 text-green-400 mx-auto mb-2" />
               <p className="text-sm text-muted">
                 {statusFilter === 'all' && outboxProviderFilter === 'all'
@@ -860,14 +860,16 @@ export default function IntegrationDiagnostics() {
               </p>
             </div>
           ) : (
-            webhooks.map((wh) => (
-              <WebhookRow
-                key={wh.id}
-                webhook={wh}
-                onRetry={(id) => retryMutation.mutate(id)}
-                retrying={retryMutation.isPending && retryMutation.variables === wh.id}
-              />
-            ))
+            <div data-testid="integration-webhooks-loaded" className="space-y-2">
+              {webhooks.map((wh) => (
+                <WebhookRow
+                  key={wh.id}
+                  webhook={wh}
+                  onRetry={(id) => retryMutation.mutate(id)}
+                  retrying={retryMutation.isPending && retryMutation.variables === wh.id}
+                />
+              ))}
+            </div>
           )}
         </div>
 

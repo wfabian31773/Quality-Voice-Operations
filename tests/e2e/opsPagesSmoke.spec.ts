@@ -20,17 +20,27 @@
  *      timeout — i.e. the route resolved, the lazy chunk loaded, and the
  *      top-level component rendered without throwing into the
  *      ErrorBoundary.
- *   3. The ErrorBoundary fallback ("An unexpected error occurred", from
+ *   3. A page-specific "data hydrated" sentinel testid renders within
+ *      the timeout — added by task #1213 to catch the much more common
+ *      regression where the shell renders fine but every card under it
+ *      stays stuck on a skeleton/loader because its backing /api/* route
+ *      changed shape. Each `dataSentinel` testid is wired into the
+ *      source page on a node that only mounts after the primary fetch
+ *      resolved (e.g. the KPI grid inside `!isLoading`, the post-load
+ *      table wrapper, or the post-load content container after the
+ *      page-level loading guard returns).
+ *   4. The ErrorBoundary fallback ("An unexpected error occurred", from
  *      `client-app/src/pages/ServerError.tsx`) is NOT visible.
- *   4. The OpsGuard / RoleGuard AccessDenied panel is NOT visible (would
+ *   5. The OpsGuard / RoleGuard AccessDenied panel is NOT visible (would
  *      mean the seeded role on admin-org somehow regressed).
- *   5. No uncaught page errors fired during navigation.
- *
- * It also surfaces (soft warnings, no fail) any 5xx responses from /api/*
- * during the page load. We don't fail on those because individual cards
- * on a page are expected to handle their own empty/error states
- * gracefully — if a 5xx took down the whole page, assertions 2-4 will
- * catch it. The warnings still land in the spec log for triagers.
+ *   6. No uncaught page errors fired during navigation.
+ *   7. No 5xx responses from /api/* during page load (task #1213 turned
+ *      the previous soft-warning into a hard fail). A backing route that
+ *      starts returning 500 is exactly the regression class this spec
+ *      exists to catch — and the prior "log a warning then move on"
+ *      behaviour meant CI stayed green even when half the cards on a
+ *      page were silently broken. 4xx is still allowed (auth/empty-row
+ *      handling is each card's responsibility).
  *
  * Runs against a real Chromium browser via the `playwright` runtime API
  * (no @playwright/test dependency required). Standalone — no test runner.
@@ -69,14 +79,23 @@ interface PageCheck {
   /** Human-friendly slug used for screenshot filenames. */
   slug: string;
   /**
-   * One of:
+   * Top-level shell sentinel. One of:
    *   - { kind: 'heading'; text: string }   waits for an <h1>/<h2> with the
    *       given text content.
    *   - { kind: 'testid'; testid: string }  waits for [data-testid="..."].
-   * The first matching shape wins; if both are provided, both must appear.
+   * Proves the route resolved and the lazy chunk mounted without throwing.
    */
   expect: { kind: 'heading'; text: string } | { kind: 'testid'; testid: string };
-  /** Optional follow-up testid that must also be visible. */
+  /**
+   * Per-page "data hydrated" sentinel testid (task #1213). Must be wired
+   * into the source page on a node that only mounts after the page's
+   * primary data fetch resolved successfully. Without this, the spec
+   * could pass even when every panel under the heading is stuck on a
+   * skeleton because /api/* changed shape. Required — every page in
+   * PAGES below has one.
+   */
+  dataSentinel: string;
+  /** Optional secondary follow-up testid that must also be visible. */
   alsoExpectTestId?: string;
 }
 
@@ -88,40 +107,110 @@ const PAGES: PageCheck[] = [
   // page also subscribes to the live agent feed on mount, so a regression
   // in /api/operations/* routes typically blows up the top-level render
   // before the heading paints.
-  { path: '/ops/monitor', slug: 'ops-monitor', expect: { kind: 'heading', text: 'Operations' } },
+  //
+  // dataSentinel: the KPI grid wrapping all six StatCards. The grid
+  // mounts unconditionally inside the post-header JSX, so its presence
+  // proves the page rendered past the header — combined with the new
+  // 5xx /api hard-fail (assertion #7), a /api/operations/metrics 500 or
+  // shape regression now reliably fails the spec instead of leaving the
+  // cards stuck on `?? 0` placeholders.
+  {
+    path: '/ops/monitor',
+    slug: 'ops-monitor',
+    expect: { kind: 'heading', text: 'Operations' },
+    dataSentinel: 'ops-monitor-stats',
+  },
 
   // Reliability — ToolHealth.tsx PageHeader title="Platform Reliability".
   // Previously covered by tenantPagesSmoke; relocated here so the Ops
   // surface owns its own coverage.
-  { path: '/ops/reliability', slug: 'ops-reliability', expect: { kind: 'heading', text: 'Platform Reliability' } },
+  //
+  // dataSentinel: the four-up KPI grid that lives inside the
+  // `: healthData && (...)` branch in the source file — it only renders
+  // after the tool-health fetch resolves with a payload, so a missing
+  // or wrong-shape /api/operations/tool-health response leaves the page
+  // stuck on the skeleton and this assertion fails closed.
+  {
+    path: '/ops/reliability',
+    slug: 'ops-reliability',
+    expect: { kind: 'heading', text: 'Platform Reliability' },
+    dataSentinel: 'reliability-kpis',
+  },
 
   // Backfill calls — admin/BackfillCalls.tsx <h1> "Backfill calls". Form
-  // page that also hydrates the tenant context on mount.
-  { path: '/ops/backfill-calls', slug: 'ops-backfill-calls', expect: { kind: 'heading', text: 'Backfill calls' } },
+  // page that also hydrates the tenant context on mount. There's no GET
+  // on mount (it's a paste-and-submit form), so the data sentinel here
+  // just proves the Attestation form rendered — the most common silent
+  // regression on this page is the form not mounting at all when the
+  // shared StatCard / OperationStatusPanel imports change shape.
+  {
+    path: '/ops/backfill-calls',
+    slug: 'ops-backfill-calls',
+    expect: { kind: 'heading', text: 'Backfill calls' },
+    dataSentinel: 'backfill-attestation-form',
+  },
 
   // Debugger — CallDebug.tsx PageHeader title="Call Debugging". Heaviest
   // lazy chunk in the Ops Console (search + replay + live tabs).
-  { path: '/ops/call-debug', slug: 'ops-call-debug', expect: { kind: 'heading', text: 'Call Debugging' } },
+  //
+  // dataSentinel: the post-isLoading search results container. The
+  // testid is wired onto BOTH the empty-state card and the populated
+  // table wrapper, so admin-org's empty call list still resolves the
+  // sentinel — but a /api/calls 5xx or schema break leaves the page on
+  // the "Loading..." text and this assertion fails closed.
+  {
+    path: '/ops/call-debug',
+    slug: 'ops-call-debug',
+    expect: { kind: 'heading', text: 'Call Debugging' },
+    dataSentinel: 'call-search-results',
+  },
 
   // Integration Diagnostics — IntegrationDiagnostics.tsx <h1>
   // "Integration Diagnostics". Pulls webhook/outbox status on mount, so
   // /api/integration-diagnostics regressions surface here first.
-  { path: '/ops/integration-diagnostics', slug: 'ops-integration-diagnostics', expect: { kind: 'heading', text: 'Integration Diagnostics' } },
+  //
+  // dataSentinel: the post-isLoading webhook list wrapper. The source
+  // wires the testid onto both the empty-state ("No outbox events
+  // found") and the populated rows wrapper, so admin-org's empty
+  // outbox still resolves the sentinel; a /api/operations/integration-
+  // diagnostics 500 keeps the spinner mounted and fails this assertion.
+  {
+    path: '/ops/integration-diagnostics',
+    slug: 'ops-integration-diagnostics',
+    expect: { kind: 'heading', text: 'Integration Diagnostics' },
+    dataSentinel: 'integration-webhooks-loaded',
+  },
 
   // Cost — CostOptimization.tsx PageHeader title="Cost Optimization".
-  // The recompute panel renders alongside the analytics fetch, so its
-  // testid must be visible on every load.
+  // The recompute panel (`cost-recompute-panel`) renders unconditionally
+  // at the top of the page so it can't tell us the analytics fetch
+  // succeeded. The KPI grid below it lives inside the `!isLoading`
+  // branch, so it only appears after /api/operations/cost-analytics
+  // resolves — that's the real "data hydrated" signal.
   {
     path: '/ops/cost',
     slug: 'ops-cost',
     expect: { kind: 'heading', text: 'Cost Optimization' },
+    dataSentinel: 'cost-kpi-grid',
     alsoExpectTestId: 'cost-recompute-panel',
   },
 
   // Digital Twin — DigitalTwin.tsx PageHeader title contains "Digital
   // Twin" wrapped in a span with a tour launcher; getByRole('heading')
   // matches on accessible name, which still resolves to "Digital Twin".
-  { path: '/ops/digital-twin', slug: 'ops-digital-twin', expect: { kind: 'heading', text: 'Digital Twin' } },
+  //
+  // dataSentinel: the post-loading content container. The page returns
+  // a spinner-only fragment while `loading` is true, so the testid only
+  // mounts after the /api/digital-twin/models fetch resolves. The
+  // admin-org tenant has no twin models seeded, so the EmptyState path
+  // is the expected branch in CI — both branches sit inside this same
+  // wrapper, so the sentinel resolves either way.
+  {
+    path: '/ops/digital-twin',
+    slug: 'ops-digital-twin',
+    expect: { kind: 'heading', text: 'Digital Twin' },
+    dataSentinel: 'digital-twin-content',
+  },
 ];
 
 const ERROR_BOUNDARY_TEXT = 'An unexpected error occurred';
@@ -209,6 +298,20 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
       }
     }
 
+    // Per-page "data hydrated" sentinel (task #1213). Wait for the
+    // testid that's wired into the source page on a node that only
+    // mounts once the primary data fetch has resolved. Without this,
+    // the spec would happily pass a page whose shell rendered fine but
+    // whose every panel is silently stuck on a skeleton.
+    if (!reason) {
+      const sentinel = page.locator(`[data-testid="${check.dataSentinel}"]`).first();
+      try {
+        await sentinel.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
+      } catch (err) {
+        reason = `data sentinel [data-testid="${check.dataSentinel}"] never appeared — page shell rendered but its data widget never hydrated (${(err as Error).message})`;
+      }
+    }
+
     if (!reason && check.alsoExpectTestId) {
       const secondary = page.locator(`[data-testid="${check.alsoExpectTestId}"]`).first();
       try {
@@ -248,23 +351,25 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
     if (!reason && pageErrors.length > 0) {
       reason = `uncaught page error(s): ${pageErrors.slice(0, 3).join(' | ')}`;
     }
+
+    // Hard-fail on 5xx /api responses (task #1213). Previously these
+    // were logged as soft warnings and the spec moved on — which meant
+    // a backing route returning 500 stayed green in CI as long as the
+    // calling card swallowed the error and rendered an empty state.
+    // That's exactly the regression class this spec exists to catch,
+    // so a 5xx during the page load is now grounds for failure. 4xx is
+    // still tolerated (auth / not-found / empty-row handling is each
+    // card's responsibility, not this spec's).
+    if (!reason && serverErrors.length > 0) {
+      reason = `${serverErrors.length} 5xx response(s) from /api/* during page load: ${serverErrors
+        .slice(0, 5)
+        .map((e) => `${e.status} ${e.url}`)
+        .join(' | ')}`;
+    }
   } finally {
     page.off('console', onConsole);
     page.off('pageerror', onPageError);
     page.off('response', onResponse);
-  }
-
-  // Soft-warn on 5xx /api responses regardless of pass/fail. These are
-  // useful triage info but don't fail the spec on their own — a card with
-  // an empty/error state on a page that otherwise rendered shouldn't
-  // block the PR.
-  if (serverErrors.length > 0) {
-    console.warn(
-      `[e2e] WARN ${check.path}: ${serverErrors.length} 5xx response(s) from /api/*: ${serverErrors
-        .slice(0, 5)
-        .map((e) => `${e.status} ${e.url}`)
-        .join(' | ')}`,
-    );
   }
 
   if (!reason) {
@@ -281,6 +386,17 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
   console.error(`[e2e]   screenshot: ${shotPath}`);
   if (consoleErrors.length > 0) {
     console.error(`[e2e]   console errors (${consoleErrors.length}): ${consoleErrors.slice(0, 5).join(' | ')}`);
+  }
+  // Surface 5xx /api responses in the failure log even when the spec
+  // failed for a different reason — e.g. a 500 caused the data sentinel
+  // to never appear, and triagers want both signals in one place.
+  if (serverErrors.length > 0 && !reason.includes('5xx response')) {
+    console.error(
+      `[e2e]   5xx /api responses (${serverErrors.length}): ${serverErrors
+        .slice(0, 5)
+        .map((e) => `${e.status} ${e.url}`)
+        .join(' | ')}`,
+    );
   }
 
   return { page: check, reason, consoleErrors, pageErrors, serverErrors };

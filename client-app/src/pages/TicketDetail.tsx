@@ -438,7 +438,7 @@ export default function TicketDetail() {
   const statusCfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="ticket-detail-loaded">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/tickets')} className="p-1.5 rounded-lg hover:bg-surface-secondary">
           <ArrowLeft className="h-5 w-5 text-muted" />

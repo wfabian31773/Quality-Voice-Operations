@@ -1066,7 +1066,7 @@ export default function Scheduling() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="scheduling-loaded">
       <PageHeader
         icon={<Calendar className="h-5 w-5" />}
         title="Scheduling"

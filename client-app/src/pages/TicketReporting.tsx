@@ -224,7 +224,7 @@ export default function TicketReporting() {
   const workloadMax = Math.max(...data.agentWorkload.map(d => parseInt(d.open_count) + parseInt(d.resolved_count)), 1);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="ticket-reporting-loaded">
       <PageHeader
         icon={<BarChart3 className="h-5 w-5" />}
         title="Ticket Reports"

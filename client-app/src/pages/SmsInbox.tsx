@@ -428,7 +428,7 @@ export default function SmsInbox() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="sms-inbox-loaded">
       <PageHeader
         icon={<MessageSquare className="h-5 w-5" />}
         title="SMS Console"

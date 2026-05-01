@@ -291,7 +291,10 @@ export default function ToolHealth() {
             </div>
           ) : healthData && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+                data-testid="reliability-kpis"
+              >
                 <div className="bg-surface border border-border rounded-xl p-4">
                   <div className="flex items-center gap-2 text-muted text-sm mb-1">
                     <Wrench className="w-4 h-4" />

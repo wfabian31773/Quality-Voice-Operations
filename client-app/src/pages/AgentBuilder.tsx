@@ -2849,7 +2849,7 @@ function AgentBuilderInner() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-background" data-testid="agent-builder-loaded">
       <div className="px-4 py-2 border-b border-border bg-surface z-10">
         <PageHeader
           size="compact"

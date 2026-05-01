@@ -1177,7 +1177,7 @@ export default function Calls() {
       {isLoading ? (
         <SkeletonRows count={6} rowClassName="h-16" />
       ) : calls.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl">
+        <div className="bg-surface border border-border rounded-xl" data-testid="tenant-calls-list">
           {activeFilterCount > 0 ? (
             <EmptyState
               icon={Filter}
@@ -1198,7 +1198,10 @@ export default function Calls() {
         </div>
       ) : (
         <>
-          <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+          <div
+            className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden"
+            data-testid="tenant-calls-list"
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">

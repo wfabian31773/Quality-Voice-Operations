@@ -629,7 +629,7 @@ export default function Dispatch() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="dispatch-center-loaded">
       <PageHeader
         icon={<Truck className="h-5 w-5" />}
         title="Dispatch Center"

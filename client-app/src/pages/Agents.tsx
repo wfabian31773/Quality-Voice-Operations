@@ -760,7 +760,7 @@ export default function Agents() {
       {isLoading ? (
         <SkeletonGrid count={6} />
       ) : agents.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl">
+        <div className="bg-surface border border-border rounded-xl" data-testid="tenant-agents-list">
           <EmptyState
             icon={Bot}
             title={tenantT('agents.empty_state.title')}
@@ -773,7 +773,7 @@ export default function Agents() {
           />
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="tenant-agents-list">
           {agents.map((agent) => {
             const isFederated = agent.execution_mode === 'federated';
             const schedulingDrift = !!(

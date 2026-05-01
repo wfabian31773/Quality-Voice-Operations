@@ -447,7 +447,7 @@ export default function Tickets() {
       )}
 
       {tickets.length === 0 ? (
-        <div className="bg-surface border border-border rounded-xl">
+        <div className="bg-surface border border-border rounded-xl" data-testid="tenant-tickets-list">
           <EmptyState
             icon={Ticket}
             title="No tickets found"
@@ -458,7 +458,7 @@ export default function Tickets() {
           />
         </div>
       ) : (
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="bg-surface border border-border rounded-xl overflow-hidden" data-testid="tenant-tickets-list">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
