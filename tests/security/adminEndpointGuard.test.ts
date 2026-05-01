@@ -113,6 +113,7 @@ describe('Admin marketplace/analytics routes are guarded', () => {
     "'/platform/stats'",
     "'/platform/template-analytics'",
     "'/platform/cost-monitoring'",
+    "'/platform/plan-recommendation-emails'",
   ];
 
   for (const route of adminMarketplaceRoutes) {

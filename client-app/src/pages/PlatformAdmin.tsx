@@ -4403,7 +4403,8 @@ type PlatformAdminTab =
   | 'connector-health'
   | 'push-health'
   | 'billing-health'
-  | 'retention';
+  | 'retention'
+  | 'plan-emails';
 
 type RecommendationTier = 'starter' | 'pro' | 'enterprise';
 const RECOMMENDATION_TIERS_ORDER: readonly RecommendationTier[] = [
@@ -5166,6 +5167,7 @@ const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: type
   { key: 'push-health', labelKey: 'platform_admin.tabs.push_health', icon: BellRing },
   { key: 'billing-health', labelKey: 'platform_admin.tabs.billing_health', icon: DollarSign },
   { key: 'retention', labelKey: 'platform_admin.tabs.retention', icon: Database },
+  { key: 'plan-emails', labelKey: 'platform_admin.tabs.plan_emails', icon: Mail },
 ];
 
 export default function PlatformAdmin() {
@@ -5642,6 +5644,15 @@ export default function PlatformAdmin() {
       {activeTab === 'docs-feedback' && <DocsFeedbackTab />}
 
       {activeTab === 'support' && <SupportInboxTab />}
+
+      {activeTab === 'plan-emails' && (
+        <PlanRecommendationEmailsTab
+          onViewTenant={(tenantId) => {
+            setActiveTab('tenants');
+            setExpandedTenant(tenantId);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -8790,6 +8801,359 @@ function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMe
               ))}
               {metrics.length === 0 && (
                 <tr><td colSpan={12} className="text-center py-12 text-text-muted">{adminT('platform_admin.activation_metrics.no_tenant_data')}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Plan Recommendation Emails tab
+// ---------------------------------------------------------------------------
+//
+// Lists `billing.plan_recommendation_email_sent` audit rows so support
+// can answer "did Tenant X get the cheaper-plan email this month?"
+// without writing SQL. Default window is "this calendar month"; admins
+// can broaden / narrow with the date inputs. Each row deep-links to
+// the Tenants tab (auto-expanded for that tenant) and to the
+// Compliance audit log filtered to the same tenant + action so the
+// raw JSON `changes` payload is one click away.
+//
+// We DON'T mutate query state on tab clicks: this is a read-only
+// support surface and the audit-log endpoint is the source of truth.
+
+interface PlanRecommendationEmailEvent {
+  auditLogId: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  tenantPlan: string | null;
+  tenantStatus: string | null;
+  ownerEmail: string | null;
+  currentPlan: string | null;
+  currentPlanName: string | null;
+  recommendedPlan: string | null;
+  recommendedPlanName: string | null;
+  monthlySavings: number | null;
+  annualSavings: number | null;
+  averageMinutes: number | null;
+  periodStart: string | null;
+  occurredAt: string | null;
+}
+
+interface PlanRecommendationEmailsResponse {
+  events: PlanRecommendationEmailEvent[];
+  total: number;
+  limit: number;
+  since: string;
+  until: string | null;
+  action: string;
+}
+
+function toIsoDateInput(value: string | null): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  // YYYY-MM-DD in UTC so the value matches what we send to the server.
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function startOfCurrentMonthIso(): string {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
+  ).toISOString();
+}
+
+function formatWholeDollars(amount: number | null): string {
+  if (amount === null || !Number.isFinite(amount)) return '—';
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function PlanRecommendationEmailsTab({
+  onViewTenant,
+}: {
+  onViewTenant: (tenantId: string) => void;
+}) {
+  const { t: adminT } = useTranslation('admin');
+
+  // Default window: start-of-current-month -> now. The server defaults
+  // to the same window; we mirror it client-side so the date inputs
+  // render with the correct seed values.
+  const [sinceInput, setSinceInput] = useState<string>(() =>
+    toIsoDateInput(startOfCurrentMonthIso()),
+  );
+  const [untilInput, setUntilInput] = useState<string>('');
+
+  const params = new URLSearchParams();
+  if (sinceInput) {
+    params.set('since', new Date(`${sinceInput}T00:00:00Z`).toISOString());
+  }
+  if (untilInput) {
+    params.set('until', new Date(`${untilInput}T23:59:59Z`).toISOString());
+  }
+  params.set('limit', '200');
+
+  const queryString = params.toString();
+
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ['platform-plan-recommendation-emails', sinceInput, untilInput],
+    queryFn: () =>
+      api.get<PlanRecommendationEmailsResponse>(
+        `/platform/plan-recommendation-emails?${queryString}`,
+      ),
+    refetchInterval: 60_000,
+  });
+
+  const events = data?.events ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="font-semibold">
+              {adminT('platform_admin.plan_emails.title')}
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5 max-w-2xl">
+              {adminT('platform_admin.plan_emails.subtitle')}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-col text-xs text-text-muted">
+              <span className="mb-1">
+                {adminT('platform_admin.plan_emails.since_label')}
+              </span>
+              <input
+                type="date"
+                value={sinceInput}
+                onChange={(e) => setSinceInput(e.target.value)}
+                className="px-2 py-1.5 rounded-md border border-border bg-surface text-sm"
+              />
+            </label>
+            <label className="flex flex-col text-xs text-text-muted">
+              <span className="mb-1">
+                {adminT('platform_admin.plan_emails.until_label')}
+              </span>
+              <input
+                type="date"
+                value={untilInput}
+                onChange={(e) => setUntilInput(e.target.value)}
+                className="px-2 py-1.5 rounded-md border border-border bg-surface text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="px-3 py-2 rounded-md border border-border text-sm hover:bg-surface-secondary disabled:opacity-60"
+            >
+              {adminT('platform_admin.plan_emails.refresh')}
+            </button>
+          </div>
+        </div>
+        {data && (
+          <p className="mt-3 text-xs text-text-muted">
+            {adminT('platform_admin.plan_emails.total_count', {
+              count: data.total,
+            })}
+          </p>
+        )}
+        {data && data.total > events.length && (
+          <p
+            className="mt-1 text-xs text-warning"
+            data-testid="plan-emails-truncation-warning"
+          >
+            {adminT('platform_admin.plan_emails.truncation_warning', {
+              shown: events.length,
+              total: data.total,
+            })}
+          </p>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-secondary">
+                <th className="text-left px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_tenant')}
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_current_plan')}
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_recommended_plan')}
+                </th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_monthly_savings')}
+                </th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_annual_savings')}
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_owner_email')}
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_sent_at')}
+                </th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">
+                  {adminT('platform_admin.plan_emails.header_actions')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="text-center py-12 text-text-muted"
+                  >
+                    {adminT('platform_admin.common_loading')}
+                  </td>
+                </tr>
+              ) : isError ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="text-center py-12 text-danger"
+                  >
+                    {adminT('platform_admin.plan_emails.load_error')}
+                  </td>
+                </tr>
+              ) : events.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="text-center py-12 text-text-muted"
+                  >
+                    {adminT('platform_admin.plan_emails.empty')}
+                  </td>
+                </tr>
+              ) : (
+                events.map((event) => {
+                  // Deep-link into the Compliance audit log filtered
+                  // to this tenant + action + the day of the send. The
+                  // audit log page's date inputs are day-precision, so
+                  // we bracket to the same UTC day as `occurredAt` to
+                  // narrow the result list to (typically) just this
+                  // send. We also pass `auditLogId` so the audit tab
+                  // can highlight the exact matching row.
+                  const auditHref = (() => {
+                    const auditParams = new URLSearchParams();
+                    auditParams.set('tab', 'audit');
+                    auditParams.set('action', data?.action ?? '');
+                    if (event.tenantId) {
+                      auditParams.set('tenantId', event.tenantId);
+                    }
+                    if (event.occurredAt) {
+                      const sameDay = toIsoDateInput(event.occurredAt);
+                      if (sameDay) {
+                        auditParams.set('since', sameDay);
+                        auditParams.set('until', sameDay);
+                      }
+                    } else {
+                      if (data?.since) {
+                        const sinceDate = toIsoDateInput(data.since);
+                        if (sinceDate) auditParams.set('since', sinceDate);
+                      }
+                      if (data?.until) {
+                        const untilDate = toIsoDateInput(data.until);
+                        if (untilDate) auditParams.set('until', untilDate);
+                      }
+                    }
+                    auditParams.set('auditLogId', event.auditLogId);
+                    return `/admin/security?${auditParams.toString()}`;
+                  })();
+
+                  return (
+                    <tr
+                      key={event.auditLogId}
+                      className="border-b border-border last:border-0 hover:bg-surface-secondary/50"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">
+                          {event.tenantName ?? (
+                            <span className="text-text-muted italic">
+                              {adminT(
+                                'platform_admin.plan_emails.tenant_deleted',
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        {event.tenantSlug && (
+                          <div className="text-xs text-text-muted font-mono">
+                            {event.tenantSlug}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {event.currentPlanName ?? event.currentPlan ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {event.recommendedPlanName ??
+                          event.recommendedPlan ??
+                          '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {formatWholeDollars(event.monthlySavings)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-text-muted">
+                        {formatWholeDollars(event.annualSavings)}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted text-xs font-mono break-all">
+                        {event.ownerEmail ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted whitespace-nowrap">
+                        {event.occurredAt
+                          ? new Date(event.occurredAt).toLocaleString()
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          {event.tenantId ? (
+                            <button
+                              type="button"
+                              onClick={() => onViewTenant(event.tenantId!)}
+                              className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
+                              title={adminT(
+                                'platform_admin.plan_emails.view_tenant',
+                              )}
+                              aria-label={adminT(
+                                'platform_admin.plan_emails.view_tenant',
+                              )}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                          <a
+                            href={auditHref}
+                            className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
+                            title={adminT(
+                              'platform_admin.plan_emails.view_audit',
+                            )}
+                            aria-label={adminT(
+                              'platform_admin.plan_emails.view_audit',
+                            )}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

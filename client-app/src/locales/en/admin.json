@@ -22,7 +22,8 @@
       "connector_health": "Connector Health",
       "retention": "Call Event Retention",
       "push_health": "Push Health",
-      "billing_health": "Billing config health"
+      "billing_health": "Billing config health",
+      "plan_emails": "Plan Emails"
     },
     "overview": {
       "active_tenants": "Active tenants",
@@ -1062,6 +1063,28 @@
       "header_progress": "Progress",
       "no_tenant_data": "No tenant data yet",
       "milestones_progress": "{{done}}/{{total}}"
+    },
+    "plan_emails": {
+      "title": "Plan Recommendation Emails",
+      "subtitle": "Tenants who received the monthly \"switch to a cheaper plan\" digest. Defaults to the current calendar month — broaden the date range to look further back.",
+      "since_label": "From",
+      "until_label": "Until",
+      "refresh": "Refresh",
+      "total_count": "{{count}} email(s) in window",
+      "truncation_warning": "Showing {{shown}} of {{total}} matching emails — narrow the date range to see all results.",
+      "header_tenant": "Tenant",
+      "header_current_plan": "Current plan",
+      "header_recommended_plan": "Recommended plan",
+      "header_monthly_savings": "Monthly savings",
+      "header_annual_savings": "Annual savings",
+      "header_owner_email": "Owner email",
+      "header_sent_at": "Sent at",
+      "header_actions": "Actions",
+      "view_tenant": "View tenant details",
+      "view_audit": "Open audit log entry",
+      "tenant_deleted": "Tenant deleted",
+      "load_error": "Failed to load plan recommendation emails.",
+      "empty": "No plan recommendation emails were sent in this window."
     }
   }
 }

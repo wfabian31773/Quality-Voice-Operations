@@ -14,6 +14,8 @@ import { redactPHI } from '../../../platform/core/phi/redact';
 import { getConversationCost } from '../../../platform/billing/cost';
 import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 import { PLAN_MONTHLY_PRICE_CENTS, type PlanTier } from '../../../platform/billing/stripe/plans';
+import { PLAN_RECOMMENDATION_AUDIT_ACTION } from '../../../platform/billing/PlanRecommendationDigestScheduler';
+import { PLAN_CATALOG } from '../../../shared/billing/planCatalog';
 import { listToolExecutions } from '../../../platform/tools/ToolExecutionService';
 import {
   iterateLeadsForExport,
@@ -2192,6 +2194,188 @@ router.get(
       return res.status(500).json({
         error: 'Failed to load billing discount metrics',
       });
+    }
+  },
+);
+
+// Surfaces the audit-log trail of `billing.plan_recommendation_email_sent`
+// rows so support can spot-check which tenants got the monthly digest
+// email -- without writing SQL against `audit_logs`. Filters default to
+// the start of the current calendar month so the most common question
+// ("did Tenant X get the email this month?") works out of the box.
+//
+// One row per audit entry (i.e. per email send), not collapsed per
+// tenant. The cooldown in PlanRecommendationDigestScheduler means
+// duplicates inside a single month are very rare, but if support
+// extends the window we want each send to remain visible / linkable.
+router.get('/platform/plan-recommendation-emails', requireAuth, requirePlatformAdmin, async (req, res) => {
+    const sinceParam = (req.query.since as string | undefined)?.trim();
+    const untilParam = (req.query.until as string | undefined)?.trim();
+
+    // Reject non-numeric / malformed `limit` with a 400 instead of
+    // silently coercing NaN -> Math.max(NaN, 1) = NaN and 500'ing on
+    // the SQL bind. We accept "100" or "100.0" but anything else (e.g.
+    // "abc", "10e9") falls into the validation error path.
+    const limitRaw = req.query.limit;
+    let limit = 100;
+    if (limitRaw !== undefined) {
+      const parsed = Number(limitRaw);
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+        return res
+          .status(400)
+          .json({ error: 'Invalid `limit` (must be a positive integer)' });
+      }
+      limit = Math.min(parsed, 500);
+    }
+
+    // Default window: from the start of the current calendar month
+    // (UTC) through "now". Matches the natural question "which tenants
+    // got the email this month?" without requiring the admin to pick
+    // dates first.
+    const now = new Date();
+    const defaultSince = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
+    );
+
+    let since: Date;
+    if (sinceParam) {
+      const parsed = new Date(sinceParam);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: 'Invalid `since` timestamp' });
+      }
+      since = parsed;
+    } else {
+      since = defaultSince;
+    }
+
+    let until: Date | null = null;
+    if (untilParam) {
+      const parsed = new Date(untilParam);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: 'Invalid `until` timestamp' });
+      }
+      until = parsed;
+    }
+
+    try {
+      const result = await withPrivilegedClient(async (client) => {
+        const conditions: string[] = [
+          'a.action = $1',
+          'a.occurred_at >= $2',
+        ];
+        const values: unknown[] = [
+          PLAN_RECOMMENDATION_AUDIT_ACTION,
+          since.toISOString(),
+        ];
+        let idx = 3;
+        if (until) {
+          conditions.push(`a.occurred_at <= $${idx++}`);
+          values.push(until.toISOString());
+        }
+        const where = conditions.join(' AND ');
+
+        const { rows } = await client.query(
+          `SELECT a.id AS audit_log_id,
+                  a.tenant_id,
+                  a.occurred_at,
+                  a.changes,
+                  t.name AS tenant_name,
+                  t.slug AS tenant_slug,
+                  t.plan AS tenant_plan,
+                  t.status AS tenant_status
+           FROM audit_logs a
+           LEFT JOIN tenants t ON t.id = a.tenant_id
+           WHERE ${where}
+           ORDER BY a.occurred_at DESC
+           LIMIT $${idx}`,
+          [...values, limit],
+        );
+
+        const { rows: countRows } = await client.query(
+          `SELECT COUNT(*)::int AS total FROM audit_logs a WHERE ${where}`,
+          values,
+        );
+
+        return { rows, total: countRows[0]?.total ?? 0 };
+      });
+
+      const planName = (tier: unknown): string | null => {
+        if (typeof tier !== 'string') return null;
+        const entry = (PLAN_CATALOG as Record<string, { name: string }>)[tier];
+        return entry?.name ?? tier;
+      };
+
+      const events = result.rows.map((row) => {
+        const changes = (row.changes ?? {}) as Record<string, unknown>;
+        const recommendedTier =
+          typeof changes.recommendedPlan === 'string'
+            ? (changes.recommendedPlan as string)
+            : null;
+        const currentTier =
+          typeof changes.currentPlan === 'string'
+            ? (changes.currentPlan as string)
+            : null;
+        const monthlySavings =
+          typeof changes.monthlySavings === 'number'
+            ? (changes.monthlySavings as number)
+            : null;
+        const annualSavings =
+          typeof changes.annualSavings === 'number'
+            ? (changes.annualSavings as number)
+            : null;
+        const averageMinutes =
+          typeof changes.averageMinutes === 'number'
+            ? (changes.averageMinutes as number)
+            : null;
+        const ownerEmail =
+          typeof changes.ownerEmail === 'string'
+            ? (changes.ownerEmail as string)
+            : null;
+        const periodStart =
+          typeof changes.periodStart === 'string'
+            ? (changes.periodStart as string)
+            : null;
+
+        const occurredAt =
+          row.occurred_at instanceof Date
+            ? row.occurred_at.toISOString()
+            : (row.occurred_at as string | null);
+
+        return {
+          auditLogId: row.audit_log_id as string,
+          tenantId: row.tenant_id as string | null,
+          tenantName: (row.tenant_name as string | null) ?? null,
+          tenantSlug: (row.tenant_slug as string | null) ?? null,
+          tenantPlan: (row.tenant_plan as string | null) ?? null,
+          tenantStatus: (row.tenant_status as string | null) ?? null,
+          ownerEmail,
+          currentPlan: currentTier,
+          currentPlanName: planName(currentTier),
+          recommendedPlan: recommendedTier,
+          recommendedPlanName: planName(recommendedTier),
+          monthlySavings,
+          annualSavings,
+          averageMinutes,
+          periodStart,
+          occurredAt,
+        };
+      });
+
+      return res.json({
+        events,
+        total: result.total,
+        limit,
+        since: since.toISOString(),
+        until: until ? until.toISOString() : null,
+        action: PLAN_RECOMMENDATION_AUDIT_ACTION,
+      });
+    } catch (err) {
+      logger.error('Failed to list plan recommendation emails', {
+        error: String(err),
+      });
+      return res
+        .status(500)
+        .json({ error: 'Failed to list plan recommendation emails' });
     }
   },
 );

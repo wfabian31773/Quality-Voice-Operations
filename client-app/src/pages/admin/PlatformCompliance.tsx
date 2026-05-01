@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
@@ -342,12 +342,33 @@ const SEVERITY_OPTIONS = [
 ];
 
 function PlatformAuditTab() {
+  // Honor query-string seed values so other admin surfaces can deep-link
+  // straight into a pre-filtered audit view (e.g. the Plan Recommendation
+  // Emails table opens an exact-match audit drilldown for a single
+  // tenant + action). Read once on mount; further edits live in local
+  // state so the user can broaden the filter without the URL fighting
+  // them back.
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-  const [tenantId, setTenantId] = useState('');
-  const [action, setAction] = useState('');
-  const [severity, setSeverity] = useState('');
-  const [since, setSince] = useState('');
-  const [until, setUntil] = useState('');
+  const [tenantId, setTenantId] = useState(
+    () => searchParams.get('tenantId')?.trim() ?? '',
+  );
+  const [action, setAction] = useState(
+    () => searchParams.get('action')?.trim() ?? '',
+  );
+  const [severity, setSeverity] = useState(
+    () => searchParams.get('severity')?.trim() ?? '',
+  );
+  const [since, setSince] = useState(() => searchParams.get('since') ?? '');
+  const [until, setUntil] = useState(() => searchParams.get('until') ?? '');
+  // When deep-linked from another admin surface (e.g. the Plan
+  // Recommendation Emails table), highlight + scroll to the exact
+  // matching audit row. Held in a ref so it doesn't survive a manual
+  // filter change after the user starts exploring.
+  const highlightAuditLogId = useMemo(
+    () => searchParams.get('auditLogId')?.trim() ?? '',
+    [searchParams],
+  );
   const limit = 50;
 
   const params = new URLSearchParams();
@@ -366,6 +387,20 @@ function PlatformAuditTab() {
   });
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / limit)) : 1;
+
+  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    if (!highlightAuditLogId) return;
+    if (!data?.events.some((e) => e.id === highlightAuditLogId)) return;
+    // Defer to next tick so the row mounts before we scroll.
+    const t = window.setTimeout(() => {
+      highlightedRowRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [highlightAuditLogId, data]);
 
   const handleExport = () => {
     const exportParams = new URLSearchParams();
@@ -452,8 +487,20 @@ function PlatformAuditTab() {
               ) : !data?.events.length ? (
                 <tr><td colSpan={7} className="p-0"><EmptyState icon={FileText} title="No matching audit events" variant="compact" /></td></tr>
               ) : (
-                data.events.map((e) => (
-                  <tr key={e.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                data.events.map((e) => {
+                  const isHighlighted =
+                    !!highlightAuditLogId && e.id === highlightAuditLogId;
+                  return (
+                  <tr
+                    key={e.id}
+                    ref={isHighlighted ? highlightedRowRef : undefined}
+                    data-testid={
+                      isHighlighted ? 'audit-row-highlighted' : undefined
+                    }
+                    className={`border-b border-border last:border-0 hover:bg-surface-secondary/50 ${
+                      isHighlighted ? 'bg-primary/10 ring-2 ring-primary/40' : ''
+                    }`}
+                  >
                     <td className="px-4 py-3 whitespace-nowrap text-muted text-xs">{formatDate(e.occurred_at)}</td>
                     <td className="px-4 py-3">
                       <TenantLink tenantId={e.tenant_id} name={e.tenant_name} slug={e.tenant_slug} compact />
@@ -478,7 +525,8 @@ function PlatformAuditTab() {
                     </td>
                     <td className="px-4 py-3 text-muted text-xs font-mono">{e.ip_address ?? '—'}</td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1618,8 +1666,31 @@ function PlatformAdminsTab() {
   );
 }
 
+const VALID_COMPLIANCE_TABS: readonly Tab[] = [
+  'overview',
+  'audit',
+  'encryption',
+  'federal-dnc',
+  'subprocessors',
+  'deletions',
+  'isolation',
+  'admins',
+];
+
+function isComplianceTab(value: string | null): value is Tab {
+  return value !== null && (VALID_COMPLIANCE_TABS as readonly string[]).includes(value);
+}
+
 export default function PlatformCompliance() {
-  const [tab, setTab] = useState<Tab>('overview');
+  // Allow other admin pages (notably the Plan Recommendation Emails
+  // table in PlatformAdmin) to deep-link into a specific compliance
+  // tab. We only seed once on mount; further user clicks update local
+  // state so navigating tabs in-page does not rewrite the URL.
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get('tab');
+    return isComplianceTab(requested) ? requested : 'overview';
+  });
 
   return (
     <div className="space-y-6">
