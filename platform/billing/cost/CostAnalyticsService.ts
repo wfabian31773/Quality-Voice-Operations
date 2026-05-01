@@ -195,6 +195,92 @@ export async function getCostOptimizationAnalytics(
   }
 }
 
+export interface CostAnalyticsRecomputeResult {
+  tenantId: string;
+  from: string;
+  to: string;
+  rowsScanned: number;
+  rowsRepaired: number;
+  durationMs: number;
+  recomputedAt: string;
+  summary: CostAnalyticsSummary;
+}
+
+// Repair drifting `total_cost_cents` rows in the window, then re-run
+// the dashboard aggregation. Returns scan/repair counts plus the same
+// summary shape the GET endpoint serves so callers can hydrate the
+// dashboard without a second round-trip.
+export async function recomputeCostAnalytics(
+  tenantId: string,
+  from: Date,
+  to: Date,
+): Promise<CostAnalyticsRecomputeResult> {
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  const startedAt = Date.now();
+  let rowsScanned = 0;
+  let rowsRepaired = 0;
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+
+    const { rows: scanRows } = await client.query(
+      `SELECT COUNT(*)::int AS scanned
+         FROM conversation_costs
+        WHERE tenant_id = $1
+          AND created_at BETWEEN $2 AND $3`,
+      [tenantId, from.toISOString(), to.toISOString()],
+    );
+    rowsScanned = scanRows[0]?.scanned ?? 0;
+
+    const updateResult = await client.query(
+      `UPDATE conversation_costs
+          SET total_cost_cents = stt_cost_cents
+                               + llm_cost_cents
+                               + tts_cost_cents
+                               + infra_cost_cents,
+              updated_at = NOW()
+        WHERE tenant_id = $1
+          AND created_at BETWEEN $2 AND $3
+          AND total_cost_cents <> (
+            stt_cost_cents + llm_cost_cents + tts_cost_cents + infra_cost_cents
+          )`,
+      [tenantId, from.toISOString(), to.toISOString()],
+    );
+    rowsRepaired = updateResult.rowCount ?? 0;
+
+    await client.query('COMMIT');
+
+    logger.info('Cost analytics recompute completed', {
+      tenantId,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      rowsScanned,
+      rowsRepaired,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to recompute cost analytics', { tenantId, error: String(err) });
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const summary = await getCostOptimizationAnalytics(tenantId, from, to);
+  const finishedAt = Date.now();
+
+  return {
+    tenantId,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    rowsScanned,
+    rowsRepaired,
+    durationMs: finishedAt - startedAt,
+    recomputedAt: new Date(finishedAt).toISOString(),
+    summary,
+  };
+}
+
 export async function getConversationCosts(
   tenantId: string,
   from: Date,

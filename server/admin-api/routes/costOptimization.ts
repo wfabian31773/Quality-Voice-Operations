@@ -9,6 +9,7 @@ import {
   getCacheStats,
   getRoutingDistribution,
   getConversationCost,
+  recomputeCostAnalytics,
 } from '../../../platform/billing/cost';
 import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 
@@ -58,6 +59,45 @@ router.get('/cost-optimization/analytics', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('Failed to fetch cost optimization analytics', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to fetch cost analytics' });
+  }
+});
+
+router.post('/cost-optimization/recompute', requireAuth, async (req, res) => {
+  const { tenantId } = req.user!;
+  const dateRange = parseDateRange({
+    ...(req.query as Record<string, unknown>),
+    ...(req.body as Record<string, unknown> | undefined ?? {}),
+  });
+  if (!dateRange) {
+    return res.status(400).json({ error: 'Invalid date parameters' });
+  }
+
+  try {
+    const [result, currency] = await Promise.all([
+      recomputeCostAnalytics(tenantId, dateRange.from, dateRange.to),
+      getTenantBillingCurrency(tenantId),
+    ]);
+    logger.info('Cost analytics recompute requested', {
+      tenantId,
+      from: result.from,
+      to: result.to,
+      rowsScanned: result.rowsScanned,
+      rowsRepaired: result.rowsRepaired,
+      durationMs: result.durationMs,
+    });
+    return res.json({
+      tenantId: result.tenantId,
+      from: result.from,
+      to: result.to,
+      rowsScanned: result.rowsScanned,
+      rowsRepaired: result.rowsRepaired,
+      durationMs: result.durationMs,
+      recomputedAt: result.recomputedAt,
+      analytics: { ...result.summary, currency },
+    });
+  } catch (err) {
+    logger.error('Failed to recompute cost analytics', { tenantId, error: String(err) });
+    return res.status(500).json({ error: 'Failed to recompute cost analytics' });
   }
 });
 

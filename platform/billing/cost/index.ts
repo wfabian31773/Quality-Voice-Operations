@@ -41,7 +41,9 @@ export {
 export {
   getCostOptimizationAnalytics,
   getConversationCosts,
+  recomputeCostAnalytics,
   type CostAnalyticsSummary,
+  type CostAnalyticsRecomputeResult,
   type CostPerConversation,
 } from './CostAnalyticsService';
 

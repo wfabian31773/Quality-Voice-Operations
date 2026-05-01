@@ -63,6 +63,17 @@ interface CostAnalytics {
   savingsBreakdown: SavingsBreakdown;
 }
 
+interface RecomputeResponse {
+  tenantId: string;
+  from: string;
+  to: string;
+  rowsScanned: number;
+  rowsRepaired: number;
+  durationMs: number;
+  recomputedAt: string;
+  analytics: CostAnalytics & { currency?: string };
+}
+
 interface BudgetSettings {
   maxCostPerConversationCents: number;
   alertThresholdPercent: number;
@@ -144,7 +155,6 @@ export default function CostOptimization() {
     isError,
     error: analyticsError,
     dataUpdatedAt,
-    refetch,
   } = useQuery({
     queryKey: ['cost-optimization-analytics', range],
     queryFn: () => api.get<CostAnalytics & { currency?: string }>(`/cost-optimization/analytics?range=${range}`),
@@ -153,27 +163,52 @@ export default function CostOptimization() {
   const currency = useTenantCurrency(analytics?.currency);
   const formatCents = makeFormatCents(currency);
 
-  // Track when the current recompute kicked off so the panel can show
-  // elapsed time and so we can display a stable "ran in Xs" once it
-  // settles. We can't get this from react-query alone — `dataUpdatedAt`
-  // is the *finish* time, not the start.
-  const [recomputeStartedAt, setRecomputeStartedAt] = useState<number | null>(null);
-  const wasFetchingRef = useRef(false);
-  useEffect(() => {
-    if (isFetching && !wasFetchingRef.current) {
-      setRecomputeStartedAt(Date.now());
-    }
-    wasFetchingRef.current = isFetching;
-  }, [isFetching]);
+  // Recompute is range-scoped: we key the stored result and the cache
+  // hydration off the mutation's range argument, not the currently-
+  // selected range, so switching range mid-recompute can't mix windows.
+  const [lastRecompute, setLastRecompute] =
+    useState<{ range: Range; result: RecomputeResponse } | null>(null);
+  const recompute = useMutation({
+    mutationFn: (r: Range) =>
+      api.post<RecomputeResponse>(`/cost-optimization/recompute?range=${r}`),
+    onSuccess: (data, variables) => {
+      setLastRecompute({ range: variables, result: data });
+      queryClient.setQueryData(
+        ['cost-optimization-analytics', variables],
+        data.analytics,
+      );
+      queryClient.invalidateQueries({ queryKey: ['cost-optimization-conversations', variables] });
+    },
+  });
+  const activeRecompute =
+    lastRecompute && lastRecompute.range === range ? lastRecompute.result : null;
 
-  // Tick once per second while the recompute is in flight so the
-  // OperationStatusPanel's elapsed timer updates without re-fetching.
+  // Reset mutation state when the user switches range so a failed
+  // recompute on one window doesn't keep the panel red on another.
+  useEffect(() => {
+    recompute.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
+
+  // Tick to drive the OperationStatusPanel elapsed timer while pending.
   const [, forceTick] = useState(0);
   useEffect(() => {
-    if (!isFetching) return;
+    if (!recompute.isPending) return;
     const t = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(t);
-  }, [isFetching]);
+  }, [recompute.isPending]);
+
+  // Track when the current recompute kicked off so the panel can show
+  // elapsed time while it runs. Once it settles, we prefer the
+  // server-reported `durationMs` from the recompute response.
+  const [recomputeStartedAt, setRecomputeStartedAt] = useState<number | null>(null);
+  const wasPendingRef = useRef(false);
+  useEffect(() => {
+    if (recompute.isPending && !wasPendingRef.current) {
+      setRecomputeStartedAt(Date.now());
+    }
+    wasPendingRef.current = recompute.isPending;
+  }, [recompute.isPending]);
 
   const { data: budget } = useQuery({
     queryKey: ['cost-optimization-budget'],
@@ -235,23 +270,35 @@ export default function CostOptimization() {
     { name: 'Compression Savings', value: a.savingsBreakdown.compressionSavingsCents },
   ].filter(d => d.value > 0);
 
-  // Map react-query state into the OperationStatusPanel vocabulary so the
-  // ops console shows a consistent "running / failed / completed" pill for
-  // the recompute, instead of the bare spinner that used to gate the page.
-  const opStatus: OperationStatus = isFetching
+  // Recompute mutation drives the panel; fall back to the GET query
+  // state when no recompute has run yet.
+  const opStatus: OperationStatus = recompute.isPending
     ? 'running'
-    : isError
+    : recompute.isError
       ? 'failed'
-      : analytics
+      : activeRecompute || analytics
         ? 'success'
-        : 'idle';
-  const recomputeFinishedAt = !isFetching && dataUpdatedAt > 0 ? dataUpdatedAt : null;
-  const elapsedMs = recomputeStartedAt
-    ? (recomputeFinishedAt ?? Date.now()) - recomputeStartedAt
-    : null;
-  const errorMessage = isError
-    ? (analyticsError instanceof Error ? analyticsError.message : 'Failed to recompute cost analytics.')
-    : null;
+        : isFetching
+          ? 'running'
+          : isError
+            ? 'failed'
+            : 'idle';
+
+  const elapsedMs = recompute.isPending && recomputeStartedAt
+    ? Date.now() - recomputeStartedAt
+    : activeRecompute
+      ? activeRecompute.durationMs
+      : null;
+  const recomputeError = recompute.error instanceof Error ? recompute.error.message : null;
+  const errorMessage = recompute.isError
+    ? (recomputeError ?? 'Failed to recompute cost analytics.')
+    : isError && !analytics
+      ? (analyticsError instanceof Error ? analyticsError.message : 'Failed to load cost analytics.')
+      : null;
+  const triggerRecompute = () => recompute.mutate(range);
+  const lastFinishedAtMs = activeRecompute
+    ? new Date(activeRecompute.recomputedAt).getTime()
+    : dataUpdatedAt;
 
   return (
     <div className="space-y-6">
@@ -278,11 +325,12 @@ export default function CostOptimization() {
             </div>
             <button
               type="button"
-              onClick={() => refetch()}
-              disabled={isFetching}
+              onClick={triggerRecompute}
+              disabled={recompute.isPending || isFetching}
+              data-testid="cost-recompute-trigger"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={clsx('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+              <RefreshCw className={clsx('h-3.5 w-3.5', recompute.isPending && 'animate-spin')} />
               Recompute
             </button>
           </div>
@@ -292,35 +340,43 @@ export default function CostOptimization() {
       <OperationStatusPanel
         title="Cost recompute"
         description={
-          isFetching
-            ? `Aggregating ${range} of conversation costs from the billing pipeline.`
-            : isError
-              ? 'The most recent cost recompute failed. Use Recompute to retry.'
-              : analytics
-                ? `Latest recompute aggregated ${analytics.totalConversations.toLocaleString()} conversation${analytics.totalConversations === 1 ? '' : 's'} across the last ${range}.`
-                : 'No cost analytics have been computed yet.'
+          recompute.isPending
+            ? `Repairing & re-aggregating ${range} of conversation costs from the billing pipeline.`
+            : recompute.isError
+              ? 'The most recent cost recompute failed. Use Run again to retry.'
+              : activeRecompute
+                ? `Recompute scanned ${activeRecompute.rowsScanned.toLocaleString()} conversation${activeRecompute.rowsScanned === 1 ? '' : 's'}${activeRecompute.rowsRepaired > 0
+                    ? `, repaired ${activeRecompute.rowsRepaired.toLocaleString()} drifting row${activeRecompute.rowsRepaired === 1 ? '' : 's'}`
+                    : ', no drift detected'}.`
+                : analytics
+                  ? `Showing the cached aggregation across the last ${range}. Run Recompute to repair any drift in stored totals.`
+                  : 'No cost analytics have been computed yet.'
         }
         status={opStatus}
-        progress={isFetching ? undefined : analytics ? 1 : undefined}
-        eta={isFetching && elapsedMs !== null ? `Elapsed ${formatElapsedSeconds(elapsedMs)}` : undefined}
+        progress={recompute.isPending ? undefined : (activeRecompute || analytics) ? 1 : undefined}
+        eta={recompute.isPending && elapsedMs !== null ? `Elapsed ${formatElapsedSeconds(elapsedMs)}` : undefined}
         meta={analytics ? [
           { label: 'Range', value: range },
           { label: 'Conversations', value: analytics.totalConversations.toLocaleString() },
           { label: 'Total cost', value: formatCents(analytics.totalCostCents) },
+          ...(activeRecompute
+            ? [{ label: 'Rows repaired', value: activeRecompute.rowsRepaired.toLocaleString() }]
+            : []),
           {
-            label: isFetching ? 'Started' : 'Last finished',
-            value: isFetching && recomputeStartedAt
+            label: recompute.isPending ? 'Started' : 'Last finished',
+            value: recompute.isPending && recomputeStartedAt
               ? new Date(recomputeStartedAt).toLocaleTimeString()
-              : dataUpdatedAt > 0
-                ? new Date(dataUpdatedAt).toLocaleTimeString()
+              : lastFinishedAtMs > 0
+                ? new Date(lastFinishedAtMs).toLocaleTimeString()
                 : '—',
           },
         ] : undefined}
         actions={
-          !isFetching && (isError || (analytics && elapsedMs !== null)) ? (
+          !recompute.isPending && (recompute.isError || activeRecompute || analytics) ? (
             <button
               type="button"
-              onClick={() => refetch()}
+              onClick={triggerRecompute}
+              data-testid="cost-recompute-rerun"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-primary/40 bg-primary-light text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
             >
               <RefreshCw className="h-3.5 w-3.5" /> Run again
@@ -329,8 +385,8 @@ export default function CostOptimization() {
         }
         error={errorMessage}
         updatedAt={
-          !isFetching && dataUpdatedAt > 0
-            ? `${new Date(dataUpdatedAt).toLocaleTimeString()}${elapsedMs !== null ? ` · took ${formatElapsedSeconds(elapsedMs)}` : ''}`
+          !recompute.isPending && lastFinishedAtMs > 0
+            ? `${new Date(lastFinishedAtMs).toLocaleTimeString()}${elapsedMs !== null ? ` · took ${formatElapsedSeconds(elapsedMs)}` : ''}`
             : undefined
         }
         testId="cost-recompute-panel"
