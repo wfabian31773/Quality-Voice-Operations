@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Calculator, Sparkles, MessageSquare } from 'lucide-react';
+import { Calculator, Sparkles, MessageSquare, Phone } from 'lucide-react';
 import { formatDollars } from '../lib/formatCurrency';
 import {
   DEFAULT_DISPLAY_CURRENCY,
@@ -63,6 +63,19 @@ export interface CurrentPlanOverride {
    */
   smsRatePerMessage?: number | null;
   smsPriceSource?: 'stripe' | 'catalog' | null;
+  /**
+   * Per-minute Twilio (carrier) rate (in dollars) and its provenance,
+   * sourced from `/billing/effective-rate.twilioRatePerMinute`. Like
+   * the SMS rate, it's tenant-wide (does not vary by AI tier or
+   * billing interval) so the calculator surfaces it as a single line
+   * below the tier cards alongside the SMS row. The "Live Stripe rate"
+   * badge engages when `twilioPriceSource === 'stripe'`, matching the
+   * convention used for the AI base/overage and SMS rates so a tenant
+   * comparing tiers on /pricing sees the same negotiated Twilio rate
+   * that the in-app Billing screen surfaces (task #1356).
+   */
+  twilioRatePerMinute?: number | null;
+  twilioPriceSource?: 'stripe' | 'catalog' | null;
 }
 
 export type BillingPeriod = 'monthly' | 'annual';
@@ -283,6 +296,20 @@ export default function MinutesPricingCalculator({
       ? currentPlanOverride.smsRatePerMessage
       : null;
   const smsFromStripe = currentPlanOverride?.smsPriceSource === 'stripe';
+
+  // Per-minute Twilio (carrier) rate is tenant-wide too, so we surface
+  // it once below the tier cards on the row right after SMS — same
+  // gating convention: row mounts when a numeric rate is present, the
+  // "Live Stripe rate" badge only engages when the rate was actually
+  // sourced from Stripe so we never falsely imply the env-default
+  // fallback (`TWILIO_COST_PER_MINUTE_CENTS`) was a negotiated rate.
+  const twilioRate =
+    currentPlanOverride?.twilioRatePerMinute != null
+    && Number.isFinite(currentPlanOverride.twilioRatePerMinute)
+    && currentPlanOverride.twilioRatePerMinute >= 0
+      ? currentPlanOverride.twilioRatePerMinute
+      : null;
+  const twilioFromStripe = currentPlanOverride?.twilioPriceSource === 'stripe';
 
   return (
     <div className="bg-surface rounded-2xl border border-border-strong/50 shadow-sm overflow-hidden">
@@ -514,6 +541,45 @@ export default function MinutesPricingCalculator({
                 data-testid="calc-sms-source"
                 className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
                 title="Live Stripe SMS rate for your account — pulled from your subscription. Overrides the env-default fallback."
+              >
+                Live Stripe rate
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {twilioRate != null && (
+        <div
+          data-testid="calc-twilio-rate"
+          data-twilio-source={twilioFromStripe ? 'stripe' : 'catalog'}
+          className="px-6 lg:px-8 py-3 bg-surface-secondary/40 border-t border-border-strong/30 flex flex-wrap items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+              <Phone className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-display font-semibold uppercase tracking-wide text-text-primary/70">
+                Per-minute Twilio rate
+              </div>
+              <div className="text-[11px] text-text-primary/50 font-body mt-0.5">
+                Carrier (Twilio) per-minute charge — same rate posted to your Stripe metered usage.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              data-testid="calc-twilio-rate-value"
+              className="text-sm font-display font-semibold text-text-primary"
+            >
+              {isApprox && '≈ '}{formatPerMinute(twilioRate, displayCurrency)}/min
+            </span>
+            {twilioFromStripe && (
+              <span
+                data-testid="calc-twilio-source"
+                className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-success bg-success/10 px-2 py-0.5 rounded-full"
+                title="Live Stripe Twilio rate for your account — pulled from your subscription. Overrides the env-default fallback."
               >
                 Live Stripe rate
               </span>

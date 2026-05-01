@@ -181,6 +181,13 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     expect(screen.queryByTestId('calc-sms-rate-value')).toBeNull();
     expect(screen.queryByTestId('calc-sms-source')).toBeNull();
 
+    // Same gate as SMS for the per-minute Twilio rate row (task #1356):
+    // anonymous visitors have no negotiated carrier rate to surface, so
+    // the row must stay hidden and the badge must never mount.
+    expect(screen.queryByTestId('calc-twilio-rate')).toBeNull();
+    expect(screen.queryByTestId('calc-twilio-rate-value')).toBeNull();
+    expect(screen.queryByTestId('calc-twilio-source')).toBeNull();
+
     // No /billing/* fetches for an anonymous visitor.
     expect(
       fetchUrls.some((u) => u.includes('/billing/')),
@@ -402,6 +409,177 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     expect(screen.queryByTestId('calc-sms-rate')).toBeNull();
     expect(screen.queryByTestId('calc-sms-rate-value')).toBeNull();
     expect(screen.queryByTestId('calc-sms-source')).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Task #1356: a logged-in tenant on a custom Stripe Twilio (carrier) rate
+  // must see their negotiated $/min rate on the public /pricing calculator
+  // with the "Live Stripe rate" badge — same treatment as the SMS row added
+  // in #1314. Locks the Twilio-rendered case end-to-end so a future
+  // regression in the buildOverride → MinutesPricingCalculator wiring (or
+  // in the calc-twilio-rate render gate) surfaces here.
+  // -------------------------------------------------------------------------
+  it('renders the negotiated Twilio rate with the "Live Stripe rate" badge for a logged-in tenant on a custom Stripe Twilio price (task #1356)', async () => {
+    mockUser = { tenantId: 'tenant-twilio-negotiated' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            // Catalog AI/base/overage on Pro — the only Stripe-sourced
+            // override is on the Twilio side. Mirrors the SMS-only
+            // scenario above: a tenant on a published AI plan who has
+            // separately negotiated a custom Twilio carrier rate must
+            // still see that rate (and badge) on the public calculator.
+            basePriceCents: 39900,
+            overageRatePerMinute: 0.12,
+            currency: 'usd',
+            source: 'catalog',
+            basePriceSource: 'catalog',
+            overagePriceSource: 'catalog',
+            monthlyBasePriceCents: 39900,
+            monthlyBasePriceSource: 'catalog',
+            annualBasePriceCents: 31920,
+            annualBasePriceSource: 'catalog',
+            // Negotiated $0.011/min vs typical env default ~$0.013/min.
+            // Picked deliberately so a regression that fell back to a
+            // catalog default (or dropped the override entirely) would
+            // surface as a wrong rendered dollar value rather than a
+            // silently-passing assertion on a coincidental match.
+            twilioRatePerMinute: 0.011,
+            twilioPriceSource: 'stripe',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    // Twilio row mounts on the calculator.
+    const twilioRow = await waitFor(() => screen.getByTestId('calc-twilio-rate'));
+    expect(twilioRow.getAttribute('data-twilio-source')).toBe('stripe');
+
+    // Rendered $/min matches the negotiated rate, formatted to three
+    // fraction digits per MinutesPricingCalculator.formatPerMinute so
+    // a sub-cent rate is never quietly truncated.
+    const valueEl = screen.getByTestId('calc-twilio-rate-value');
+    const valueText = valueEl.textContent ?? '';
+    expect(valueText).toContain('$0.011');
+    expect(valueText).toContain('/min');
+
+    // "Live Stripe rate" badge engages because twilioPriceSource === 'stripe'.
+    const badge = screen.getByTestId('calc-twilio-source');
+    expect(badge.textContent ?? '').toMatch(/live stripe rate/i);
+
+    // The AI side stayed on catalog — none of the per-tier "Live Stripe
+    // rate" badges should have mounted just because Twilio was Stripe-sourced.
+    expect(screen.queryByTestId('calc-source-starter')).toBeNull();
+    expect(screen.queryByTestId('calc-source-pro')).toBeNull();
+    expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
+  });
+
+  it('renders the Twilio row WITHOUT the "Live Stripe rate" badge when the Twilio price is catalog-sourced (task #1356)', async () => {
+    // Counterpart to the positive Twilio test: a tenant on a Stripe-
+    // sourced AI plan whose Twilio rate IS present on the payload but
+    // flagged twilioPriceSource === 'catalog' (i.e. the env-default
+    // fallback the backend resolved when the tenant has no negotiated
+    // Stripe Twilio price). MinutesPricingCalculator's render gate is
+    // keyed on the numeric rate being present — so the row mounts —
+    // but the "Live Stripe rate" badge MUST stay hidden so we don't
+    // falsely imply the env-default fallback was a negotiated rate.
+    mockUser = { tenantId: 'tenant-twilio-catalog' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            basePriceCents: 34900,
+            overageRatePerMinute: 0.07,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            // Twilio rate value is present (env default), but provenance
+            // is catalog. Picked at $0.013/min so a regression that
+            // started rendering the badge for catalog-sourced Twilio
+            // would surface here instead of silently passing.
+            twilioRatePerMinute: 0.013,
+            twilioPriceSource: 'catalog',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    // Wait for the AI-side override to engage so we know the page has
+    // finished its effective-rate fetch before asserting on the Twilio row.
+    await waitFor(() => {
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+    });
+
+    // Row mounts because the rate value is present, but data-twilio-source
+    // reflects the catalog provenance and the badge is suppressed.
+    const twilioRow = screen.getByTestId('calc-twilio-rate');
+    expect(twilioRow.getAttribute('data-twilio-source')).toBe('catalog');
+    expect(screen.queryByTestId('calc-twilio-source')).toBeNull();
+
+    // Rendered $/min still shows the env-default value so the calculator
+    // isn't lying about what the tenant pays — it just isn't claiming
+    // the rate came from a negotiated Stripe price.
+    const valueText = screen.getByTestId('calc-twilio-rate-value').textContent ?? '';
+    expect(valueText).toContain('$0.013');
+    expect(valueText).toContain('/min');
+  });
+
+  it('does NOT render the Twilio row at all when the override carries no Twilio rate value (task #1356)', async () => {
+    // Separate guard for the "no Twilio rate at all" case (e.g. a
+    // tenant whose backend response simply omits twilioRatePerMinute).
+    // The MinutesPricingCalculator gate is keyed on the numeric value,
+    // so missing rate => row is suppressed entirely, regardless of
+    // source — same behaviour as the SMS row.
+    mockUser = { tenantId: 'tenant-twilio-missing' };
+    fetchHandler = (url) => {
+      if (url.includes('/billing/effective-rate')) {
+        return new Response(
+          JSON.stringify({
+            plan: 'pro',
+            basePriceCents: 34900,
+            overageRatePerMinute: 0.07,
+            currency: 'usd',
+            source: 'stripe',
+            basePriceSource: 'stripe',
+            overagePriceSource: 'stripe',
+            // No twilioRatePerMinute / twilioPriceSource fields at all.
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await renderUnderPublicBundleProviders();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId('calc-twilio-rate')).toBeNull();
+    expect(screen.queryByTestId('calc-twilio-rate-value')).toBeNull();
+    expect(screen.queryByTestId('calc-twilio-source')).toBeNull();
   });
 
   it('shows the custom-rate callout above the calculator when the tenant pays LESS than catalog (task #1210)', async () => {
@@ -1237,6 +1415,61 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
     });
     expect(override?.smsRatePerMessage).toBeNull();
     expect(override?.smsPriceSource).toBeNull();
+  });
+
+  // Task #1356: a Twilio-only Stripe quote (catalog AI/SMS rates) must
+  // still produce an override so the calculator can surface the
+  // negotiated $/min Twilio carrier rate. Mirrors the SMS-only test
+  // above — without this, buildOverride would bail out for tenants on
+  // a custom Twilio price + catalog AI plan and the row would never
+  // mount on the public /pricing calculator.
+  it('engages the override when only the Twilio side is Stripe-sourced (task #1356)', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 39900,
+      overageRatePerMinute: 0.08,
+      basePriceSource: 'catalog',
+      overagePriceSource: 'catalog',
+      monthlyBasePriceCents: 39900,
+      monthlyBasePriceSource: 'catalog',
+      annualBasePriceCents: 31900,
+      annualBasePriceSource: 'catalog',
+      twilioRatePerMinute: 0.011,
+      twilioPriceSource: 'stripe',
+    });
+    expect(override).toBeDefined();
+    expect(override?.basePriceSource).toBe('catalog');
+    expect(override?.twilioRatePerMinute).toBe(0.011);
+    expect(override?.twilioPriceSource).toBe('stripe');
+  });
+
+  it('passes Twilio fields through unchanged when the override is engaged for AI reasons (task #1356)', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 30000,
+      overageRatePerMinute: 0.07,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      twilioRatePerMinute: 0.012,
+      twilioPriceSource: 'stripe',
+    });
+    expect(override?.twilioRatePerMinute).toBe(0.012);
+    expect(override?.twilioPriceSource).toBe('stripe');
+  });
+
+  it('normalises missing Twilio fields to null on the override (task #1356)', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 30000,
+      overageRatePerMinute: 0.07,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+    });
+    expect(override?.twilioRatePerMinute).toBeNull();
+    expect(override?.twilioPriceSource).toBeNull();
   });
 });
 

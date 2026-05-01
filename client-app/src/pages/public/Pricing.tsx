@@ -60,6 +60,14 @@ export interface EffectiveRateResponse {
   // line when neither field is present.
   smsRatePerMessage?: number;
   smsPriceSource?: 'stripe' | 'catalog';
+  // Per-minute Twilio (carrier) rate (in dollars) and its provenance,
+  // added in #1356 so the public pricing calculator can surface a
+  // tenant's negotiated Twilio carrier rate alongside the AI and SMS
+  // rates — same field the in-app Billing screen now reads. Optional
+  // for backward compat with older API responses; the calculator
+  // hides the Twilio line when neither field is present.
+  twilioRatePerMinute?: number;
+  twilioPriceSource?: 'stripe' | 'catalog';
   // Active customer-level discount (a Stripe coupon or promotion-code
   // redemption attached to the tenant's customer record) added in
   // #1324 so the public pricing page can render the post-discount
@@ -474,6 +482,11 @@ export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverri
     && payload.overagePriceSource !== 'stripe'
     && payload.annualBasePriceSource !== 'stripe'
     && payload.smsPriceSource !== 'stripe'
+    // Twilio counts as a Stripe-sourced signal too (task #1356): a
+    // tenant on a negotiated Twilio carrier rate (with catalog AI/SMS
+    // rates) still deserves to see their rate surfaced on the
+    // calculator's Twilio row, mirroring the SMS gating above.
+    && payload.twilioPriceSource !== 'stripe'
   ) {
     return undefined;
   }
@@ -491,6 +504,13 @@ export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverri
     // rate that's driving their SMS line on the invoice.
     smsRatePerMessage: payload.smsRatePerMessage ?? null,
     smsPriceSource: payload.smsPriceSource ?? null,
+    // Twilio carrier rate is tenant-wide and interval-agnostic too,
+    // so it flows through verbatim alongside the SMS fields. Missing
+    // values are normalised to `null` so the calculator's render
+    // gate (keyed on the numeric value being present) suppresses the
+    // row for older API responses that don't yet carry the field.
+    twilioRatePerMinute: payload.twilioRatePerMinute ?? null,
+    twilioPriceSource: payload.twilioPriceSource ?? null,
   };
 }
 
