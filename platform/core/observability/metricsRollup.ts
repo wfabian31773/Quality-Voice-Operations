@@ -4,6 +4,31 @@ import { createLogger } from '../logger';
 
 const logger = createLogger('METRICS_ROLLUP');
 
+/**
+ * Normalize a `pg` DATE column value to the ISO `YYYY-MM-DD` form Postgres
+ * expects when we feed it back in via `$N::date`.
+ *
+ * `node-postgres` parses DATE columns into JS `Date` objects by default, so
+ * `String(date)` returns something like `"Wed Apr 29 2026 00:00:00 GMT+0000"`,
+ * and a naive `.slice(0, 10)` would yield `"Wed Apr 29"` — which Postgres then
+ * rejects with `invalid input syntax for type date`.
+ */
+function formatDay(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  const str = String(value);
+  // Already an ISO date (e.g. when pg is configured to return DATE as string).
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+  const parsed = new Date(str);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return str.slice(0, 10);
+}
+
 export async function runMetricsRollup(): Promise<void> {
   try {
     const rows = await withPrivilegedClient(async (client) => {
@@ -25,7 +50,7 @@ export async function runMetricsRollup(): Promise<void> {
 
     for (const row of rows) {
       const tenantId = row.tenant_id as string;
-      const day = String(row.day).slice(0, 10);
+      const day = formatDay(row.day);
       const totalCalls = row.total_calls as number;
       const avgDuration = parseFloat(String(row.avg_duration));
 
