@@ -425,7 +425,10 @@ async function handleRefreshFailure(config: ConnectorConfig, err: unknown): Prom
   try {
     await writeAuditLog({
       tenantId: config.tenantId,
-      actorUserId: 'system',
+      // null actor — `audit_logs.actor_user_id` FK-references `users(id)`,
+      // so a literal 'system' string would silently violate the constraint
+      // (Task #1514).
+      actorUserId: null,
       actorRole: 'system',
       action: 'connector.token_refresh_failed',
       resourceType: 'connector',

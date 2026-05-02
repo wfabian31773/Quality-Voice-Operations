@@ -507,7 +507,9 @@ export async function writeFederalDncBlockAuditLog(params: {
   try {
     await writeAuditLog({
       tenantId: params.tenantId,
-      actorUserId: 'system',
+      // null actor — `audit_logs.actor_user_id` FK-references `users(id)`,
+      // so a literal 'system' would violate the constraint (Task #1514).
+      actorUserId: null,
       actorRole: 'system',
       action: 'campaign.federal_dnc_block',
       resourceType: 'campaign_contact',

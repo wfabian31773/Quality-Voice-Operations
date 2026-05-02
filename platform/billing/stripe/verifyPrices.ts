@@ -13,6 +13,7 @@ export type PriceCheckKind = 'base' | 'metered-ai-minutes';
 export type PriceCheckStatus =
   | 'ok'
   | 'missing-env'
+  | 'skipped'
   | 'stripe-error'
   | 'wrong-interval'
   | 'no-amount'
@@ -44,6 +45,18 @@ export interface VerifyStripePricesSummary {
   total: number;
   ok: number;
   failed: number;
+  /**
+   * Number of checks that did not run because their precondition was
+   * not met (e.g. per-tier `STRIPE_PRICE_<TIER>_AI_MINUTES` env vars
+   * left unset on a development deployment that has not opted in to
+   * per-tier metered AI billing yet). Skipped checks are counted in
+   * `total` and excluded from `ok` and `failed`. The hourly drift
+   * scheduler treats skipped-only cycles as `ok` so dev environments
+   * don't generate hourly Slack noise; the hard `validateBillingConfig`
+   * gate at admin-api boot still fails fast in production when these
+   * env vars are missing.
+   */
+  skipped: number;
   status: 'ok' | 'failed' | 'no-stripe-key';
   message?: string;
 }
@@ -182,10 +195,16 @@ async function checkMeteredAiMinutes(
   }
 
   if (!priceId) {
+    // Soft skip — `validateBillingConfig` already hard-fails admin-api
+    // boot in production when this env is missing (Task #1321), so the
+    // hourly drift scheduler doesn't need to repeat the same noisy
+    // alert every cycle on dev environments where the per-tier metered
+    // AI-minutes prices haven't been provisioned yet. Counted as
+    // `skipped` in the summary so the cycle still reports `ok` overall.
     return {
       ...base,
-      status: 'missing-env',
-      message: `${envKey} is not set — set it once the metered AI-minutes price exists in Stripe, or unset STRIPE_METER_EVENT_AI_MINUTES if this deployment has not opted in yet`,
+      status: 'skipped',
+      message: `${envKey} is not set — skipping metered AI-minutes verification for ${plan} (set the env var once the metered price exists in Stripe, or unset STRIPE_METER_EVENT_AI_MINUTES to skip the metered gate entirely)`,
     };
   }
 
@@ -259,6 +278,7 @@ export async function verifyStripePrices(options?: {
         total: 0,
         ok: 0,
         failed: 0,
+        skipped: 0,
         status: 'no-stripe-key',
         message: 'STRIPE_SECRET_KEY is not set — cannot verify prices.',
       },
@@ -284,14 +304,16 @@ export async function verifyStripePrices(options?: {
   }
   const results = await Promise.all(tasks);
 
-  const failed = results.filter((r) => r.status !== 'ok').length;
-  const ok = results.length - failed;
+  const failed = results.filter((r) => r.status !== 'ok' && r.status !== 'skipped').length;
+  const skipped = results.filter((r) => r.status === 'skipped').length;
+  const ok = results.length - failed - skipped;
 
   const baseChecked = results.filter((r) => r.kind === 'base').length;
   const meteredChecked = results.filter((r) => r.kind === 'metered-ai-minutes').length;
+  const skippedSuffix = skipped > 0 ? ` (${skipped} metered AI-minute check${skipped === 1 ? '' : 's'} skipped — env unset)` : '';
   const okSummary =
     meteredChecked > 0
-      ? `All ${results.length} Stripe prices verified (${baseChecked} base + ${meteredChecked} metered AI-minutes).`
+      ? `All ${ok} of ${results.length} Stripe prices verified (${baseChecked} base + ${meteredChecked} metered AI-minutes)${skippedSuffix}.`
       : `All ${results.length} STRIPE_PRICE_<TIER>_<INTERVAL> env vars verified.`;
 
   return {
@@ -299,8 +321,9 @@ export async function verifyStripePrices(options?: {
       total: results.length,
       ok,
       failed,
+      skipped,
       status: failed === 0 ? 'ok' : 'failed',
-      message: failed === 0 ? okSummary : `${failed} of ${results.length} checks failed.`,
+      message: failed === 0 ? okSummary : `${failed} of ${results.length} checks failed${skippedSuffix}.`,
     },
     results,
     generatedAt,

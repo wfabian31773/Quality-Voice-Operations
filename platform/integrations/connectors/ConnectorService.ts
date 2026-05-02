@@ -667,7 +667,10 @@ export class ConnectorService {
         try {
           await writeAuditLog({
             tenantId,
-            actorUserId: 'system',
+            // null actor — `audit_logs.actor_user_id` FK-references
+            // `users(id)`, so a literal 'system' string violates the
+            // constraint and silently drops the row (Task #1514).
+            actorUserId: null,
             actorRole: 'system',
             action: 'connector.scheduling_provider_drift',
             resourceType: phoneNumberId ? 'phone_number' : agentId ? 'agent' : 'tenant',

@@ -7,8 +7,9 @@ import {
 
 function printBaseRow(r: PriceCheckResult): void {
   const ok = r.status === 'ok';
-  const icon = ok ? 'OK ' : 'FAIL';
-  const mark = ok ? '\u2713' : '\u2717';
+  const skipped = r.status === 'skipped';
+  const icon = ok ? 'OK  ' : skipped ? 'SKIP' : 'FAIL';
+  const mark = ok ? '\u2713' : skipped ? '\u00b7' : '\u2717';
   const monthlyEq = r.monthlyEquivalentCents;
   const catalog = r.catalogMonthlyCents;
   const catalogCmp =
@@ -30,8 +31,9 @@ function printBaseRow(r: PriceCheckResult): void {
 
 function printMeteredRow(r: PriceCheckResult): void {
   const ok = r.status === 'ok';
-  const icon = ok ? 'OK ' : 'FAIL';
-  const mark = ok ? '\u2713' : '\u2717';
+  const skipped = r.status === 'skipped';
+  const icon = ok ? 'OK  ' : skipped ? 'SKIP' : 'FAIL';
+  const mark = ok ? '\u2713' : skipped ? '\u00b7' : '\u2717';
   console.log(
     `[${icon}] ${mark} ${r.envKey.padEnd(34)} plan=${r.plan.padEnd(10)} ` +
       `kind=metered priceId=${r.priceId ?? '(unset)'}`,

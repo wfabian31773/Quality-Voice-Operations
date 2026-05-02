@@ -107,7 +107,7 @@ describe('RouteExportArchiveCleanupScheduler', () => {
       1,
       expect.objectContaining({
         tenantId: 'tenant-a',
-        actorUserId: 'system',
+        actorUserId: null,
         action: 'dispatch.route_export.archive_purged',
         resourceType: 'dispatch_route_export_job',
         resourceId: 'exp-1',

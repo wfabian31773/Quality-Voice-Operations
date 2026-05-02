@@ -291,11 +291,12 @@ describe('verifyStripePrices', () => {
       ).toHaveLength(0);
     });
 
-    it('reports missing-env for an unset _AI_MINUTES var when the gate is on', async () => {
+    it('soft-skips an unset _AI_MINUTES var so the hourly scheduler does not spam alerts (Task #1514, F-12)', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
       process.env.STRIPE_METER_EVENT_AI_MINUTES = 'ai_minutes';
       process.env.STRIPE_METER_AI_MINUTES = 'mtr_test_aiminutes';
       setPriceEnvVars();
+      // STRIPE_PRICE_STARTER_AI_MINUTES intentionally unset
       process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai';
       process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES = 'price_enterprise_ai';
 
@@ -306,15 +307,43 @@ describe('verifyStripePrices', () => {
       });
 
       const report = await verifyStripePrices();
-      expect(report.summary.status).toBe('failed');
+      // No real failures, only a soft skip — overall status stays `ok`
+      // so the hourly drift scheduler doesn't escalate.
+      expect(report.summary.status).toBe('ok');
+      expect(report.summary.failed).toBe(0);
+      expect(report.summary.skipped).toBe(1);
       const starter = report.results.find(
         (r) => r.envKey === 'STRIPE_PRICE_STARTER_AI_MINUTES',
       );
-      expect(starter?.status).toBe('missing-env');
+      expect(starter?.status).toBe('skipped');
       expect(starter?.priceId).toBeNull();
+      expect(starter?.message).toMatch(/skipping metered AI-minutes/i);
       expect(
         retrieveMock.mock.calls.filter((c) => c[0] === 'price_starter_ai'),
       ).toHaveLength(0);
+      expect(report.summary.message).toMatch(/1 metered AI-minute check skipped/);
+    });
+
+    it('reports skipped status without affecting summary when ALL metered AI-minute envs are unset', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+      process.env.STRIPE_METER_EVENT_AI_MINUTES = 'ai_minutes';
+      process.env.STRIPE_METER_AI_MINUTES = 'mtr_test_aiminutes';
+      setPriceEnvVars();
+      // none of the STRIPE_PRICE_<TIER>_AI_MINUTES envs are set
+
+      retrieveMock.mockImplementation(async (priceId: string) => {
+        const isAnnual = priceId.endsWith('_a');
+        return makePrice(isAnnual ? 'year' : 'month', isAnnual ? 1_200_00 : 100_00);
+      });
+
+      const report = await verifyStripePrices();
+      expect(report.summary.status).toBe('ok');
+      expect(report.summary.skipped).toBe(3);
+      expect(report.summary.ok).toBe(6);
+      expect(report.summary.failed).toBe(0);
+      const meteredRows = report.results.filter((r) => r.kind === 'metered-ai-minutes');
+      expect(meteredRows).toHaveLength(3);
+      for (const row of meteredRows) expect(row.status).toBe('skipped');
     });
 
     it('rejects a licensed price wired into a metered AI-minute slot', async () => {

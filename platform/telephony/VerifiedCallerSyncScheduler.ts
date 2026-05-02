@@ -221,9 +221,10 @@ async function dispatchVerifiedNotification(
  * scheduler. Best-effort: if the audit write fails the cycle continues
  * (the actual DB row was already updated by `syncCallerIdStatus`).
  *
- * Uses `actorUserId = 'system'` to mirror the convention from
- * `ConnectorAuthAlertScheduler` so admin tooling can filter
- * scheduler-driven transitions out of human-actor reports.
+ * Uses `actorUserId = null, actorRole = 'system'` so the row clears the
+ * `audit_logs.actor_user_id` FK to `users(id)` while still letting
+ * admin tooling filter scheduler-driven transitions out of human-actor
+ * reports via `actor_role = 'system'` (Task #1514, F-14).
  */
 async function recordAutoTransitionAudit(
   caller: VerifiedCallerId,
@@ -232,7 +233,7 @@ async function recordAutoTransitionAudit(
   try {
     await writeAuditLog({
       tenantId: caller.tenantId,
-      actorUserId: 'system',
+      actorUserId: null,
       actorRole: 'system',
       action:
         transition === 'verified'

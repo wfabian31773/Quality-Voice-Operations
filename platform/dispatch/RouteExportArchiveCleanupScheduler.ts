@@ -126,7 +126,10 @@ export async function runRouteExportArchiveCleanupCycle(
       // entry so per-tenant compliance review can see the deletion.
       await writeAuditLog({
         tenantId: row.tenant_id,
-        actorUserId: 'system',
+        // `audit_logs.actor_user_id` FK-references `users(id)` — a literal
+        // 'system' string would violate the constraint and silently drop
+        // the row (Task #1514). Pass null + actorRole='system' instead.
+        actorUserId: null,
         actorRole: 'system',
         action: 'dispatch.route_export.archive_purged',
         resourceType: 'dispatch_route_export_job',

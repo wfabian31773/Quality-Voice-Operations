@@ -131,7 +131,7 @@ describe('runVerifiedCallerSyncCycle', () => {
     expect(writeAuditLogMock).toHaveBeenCalledTimes(1);
     const auditArgs = writeAuditLogMock.mock.calls[0][0] as Record<string, unknown>;
     expect(auditArgs.tenantId).toBe('tenant-1');
-    expect(auditArgs.actorUserId).toBe('system');
+    expect(auditArgs.actorUserId).toBeNull();
     expect(auditArgs.actorRole).toBe('system');
     expect(auditArgs.action).toBe('trusted_caller.auto_verified');
     expect(auditArgs.resourceType).toBe('trusted_caller');
@@ -180,7 +180,7 @@ describe('runVerifiedCallerSyncCycle', () => {
     const auditArgs = writeAuditLogMock.mock.calls[0][0] as Record<string, unknown>;
     expect(auditArgs.action).toBe('trusted_caller.auto_failed');
     expect(auditArgs.severity).toBe('warning');
-    expect(auditArgs.actorUserId).toBe('system');
+    expect(auditArgs.actorUserId).toBeNull();
     expect((auditArgs.changes as Record<string, unknown>).reason).toBe(
       'verification_window_expired',
     );

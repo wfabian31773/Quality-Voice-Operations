@@ -291,7 +291,7 @@ describe('runConnectorAutoDisableCycle', () => {
     expect(writeAuditLogMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 'tenant-1',
-        actorUserId: 'system',
+        actorUserId: null,
         action: 'connector.auto_disabled',
         resourceType: 'connector',
         resourceId: 'integration-1',

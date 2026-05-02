@@ -1492,7 +1492,10 @@ export async function runConnectorAutoDisableCycle(
     try {
       await writeAuditLog({
         tenantId,
-        actorUserId: 'system',
+        // null actor — `audit_logs.actor_user_id` FK-references `users(id)`,
+        // so a literal 'system' would silently violate the constraint
+        // (Task #1514). Pass null + actorRole='system' instead.
+        actorUserId: null,
         actorRole: 'system',
         action: 'connector.auto_disabled',
         resourceType: 'connector',

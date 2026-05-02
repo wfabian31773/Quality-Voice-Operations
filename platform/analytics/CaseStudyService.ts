@@ -70,7 +70,7 @@ async function getTenantCallStats(client: { query: (sql: string, values?: unknow
     `SELECT
        COUNT(*)::int AS total,
        COUNT(*) FILTER (WHERE escalated = true)::int AS escalated,
-       COALESCE(AVG(EXTRACT(EPOCH FROM (ended_at - created_at))), 0)::float AS avg_duration
+       COALESCE(AVG(EXTRACT(EPOCH FROM (end_time - start_time))), 0)::float AS avg_duration
      FROM call_sessions WHERE tenant_id = $1`,
     [tenantId],
   );

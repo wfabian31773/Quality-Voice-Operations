@@ -237,7 +237,12 @@ async function emitFailureAuditLog(params: {
   try {
     await writeAuditLog({
       tenantId: params.tenantId,
-      actorUserId: 'system',
+      // `audit_logs.actor_user_id` is FK-constrained to `users(id)`, so a
+      // synthetic 'system' string violates the constraint and the row is
+      // silently dropped (Task #1514, F-14). Pass null + actorRole='system'
+      // so the row persists and scheduler-attributed audit entries stay
+      // queryable in Platform Compliance → Audit Trail.
+      actorUserId: null,
       actorRole: 'system',
       action: 'platform.isolation_tests.scheduled_failure',
       resourceType: 'tenant_isolation',
