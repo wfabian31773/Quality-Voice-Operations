@@ -250,6 +250,14 @@ jobs:
           npm run test:e2e:billing-tier-upgrade-success-banner-copy 2>&1 \
             | tee .ci-logs/billing-tier-upgrade-success-banner-copy.log
 
+      - name: Run Billing tier-upgrade success-banner legacy discount e2e
+        id: spec-billing-tier-upgrade-success-legacy-discount
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e:billing-tier-upgrade-success-legacy-discount 2>&1 \
+            | tee .ci-logs/billing-tier-upgrade-success-legacy-discount.log
+
       - name: Capture Platform Dev logs
         if: always()
         run: |
@@ -259,7 +267,7 @@ jobs:
           fi
 
       - name: Upload Platform Dev + spec logs and screenshots on failure
-        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-agent-builder-template-localization.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure' || steps.spec-billing-annual-switch-success-stacked-discounts.outcome == 'failure' || steps.spec-billing-annual-switch-success-legacy-discount.outcome == 'failure' || steps.spec-billing-tier-upgrade-success-banner-copy.outcome == 'failure'
+        if: failure() || steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-agent-builder-template-localization.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure' || steps.spec-billing-annual-switch-success-stacked-discounts.outcome == 'failure' || steps.spec-billing-annual-switch-success-legacy-discount.outcome == 'failure' || steps.spec-billing-tier-upgrade-success-banner-copy.outcome == 'failure' || steps.spec-billing-tier-upgrade-success-legacy-discount.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: admin-e2e-artifacts
@@ -295,7 +303,7 @@ jobs:
       # spec failed. Without it, `continue-on-error: true` above would make
       # the whole job pass even though specs broke.
       - name: Fail job if any spec failed
-        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-agent-builder-template-localization.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure' || steps.spec-billing-annual-switch-success-stacked-discounts.outcome == 'failure' || steps.spec-billing-annual-switch-success-legacy-discount.outcome == 'failure' || steps.spec-billing-tier-upgrade-success-banner-copy.outcome == 'failure'
+        if: steps.spec-sales-inbox-filters.outcome == 'failure' || steps.spec-admin-pages-smoke.outcome == 'failure' || steps.spec-tenant-pages-smoke.outcome == 'failure' || steps.spec-ops-pages-smoke.outcome == 'failure' || steps.spec-onboarding-dismiss-restart.outcome == 'failure' || steps.spec-onboarding-resume-saved-step.outcome == 'failure' || steps.spec-onboarding-progress-dots-back-nav.outcome == 'failure' || steps.spec-onboarding-progress-dots-no-skip-ahead.outcome == 'failure' || steps.spec-onboarding-template-updates-agent.outcome == 'failure' || steps.spec-onboarding-template-update-failure-surfaces.outcome == 'failure' || steps.spec-tenant-status-badge-axe.outcome == 'failure' || steps.spec-agent-builder-starter-templates.outcome == 'failure' || steps.spec-agent-builder-template-localization.outcome == 'failure' || steps.spec-tenant-visual-smoke.outcome == 'failure' || steps.spec-billing-downgrade-credit-copy.outcome == 'failure' || steps.spec-billing-annual-switch-success-stacked-discounts.outcome == 'failure' || steps.spec-billing-annual-switch-success-legacy-discount.outcome == 'failure' || steps.spec-billing-tier-upgrade-success-banner-copy.outcome == 'failure' || steps.spec-billing-tier-upgrade-success-legacy-discount.outcome == 'failure'
         run: |
           echo "::error::One or more admin e2e specs failed:"
           echo "  sales-inbox-filters:                ${{ steps.spec-sales-inbox-filters.outcome }}"
@@ -316,4 +324,5 @@ jobs:
           echo "  billing-annual-switch-success-stacked-discounts:${{ steps.spec-billing-annual-switch-success-stacked-discounts.outcome }}"
           echo "  billing-annual-switch-success-legacy-discount:${{ steps.spec-billing-annual-switch-success-legacy-discount.outcome }}"
           echo "  billing-tier-upgrade-success-banner-copy:${{ steps.spec-billing-tier-upgrade-success-banner-copy.outcome }}"
+          echo "  billing-tier-upgrade-success-legacy-discount:${{ steps.spec-billing-tier-upgrade-success-legacy-discount.outcome }}"
           exit 1
