@@ -10,11 +10,11 @@ const sections = [
   { id: 'retention', title: '4. Data Retention', body: 'Account data is retained for the life of the account. Call recordings and transcripts are retained per tenant settings (default 90 days). Audit logs are retained for 1 year. Backups are retained for 30 days. We delete data within 30 days after account termination unless required to retain by law.' },
   { id: 'sharing', title: '5. Sharing & Sub-processors', body: 'We share Personal Data only with sub-processors required to deliver the Service (telephony, AI providers, payment processors, hosting). Our current sub-processor list is published at /subprocessors and is updated when changes occur.' },
   { id: 'transfers', title: '6. International Transfers', body: 'Personal Data may be processed in the United States and other jurisdictions. For transfers from the EEA/UK, we rely on Standard Contractual Clauses and additional safeguards in our DPA.' },
-  { id: 'rights', title: '7. Your Rights', body: 'Subject to applicable law, you have the right to access, rectify, delete, restrict, port, and object to processing of your Personal Data. Tenant owners can self-serve data export and deletion requests from Settings → Privacy. Contact privacy@qvo.example to exercise other rights.' },
+  { id: 'rights', title: '7. Your Rights', body: 'Subject to applicable law, you have the right to access, rectify, delete, restrict, port, and object to processing of your Personal Data. Tenant owners can self-serve data export and deletion requests from Settings → Privacy. Contact privacy@qvo.ai to exercise other rights.' },
   { id: 'children', title: '8. Children', body: 'The Service is not directed to anyone under 16. We do not knowingly collect Personal Data from children. If you believe we have, contact us to remove it.' },
   { id: 'security', title: '9. Security', body: 'We use TLS 1.2+ in transit, AES-256 at rest, tenant-isolated databases via Row Level Security, role-based access, and immutable audit logging. See our Security page for details.' },
   { id: 'cookies', title: '10. Cookies', body: 'We use essential cookies for authentication and session state, and (with your consent) analytics cookies to improve the Service. You can manage preferences via the cookie banner on public pages.' },
-  { id: 'contact', title: '11. Contact & DPO', body: 'Privacy questions: privacy@qvo.example. Data Protection Officer: dpo@qvo.example. EU representative: TBD.' },
+  { id: 'contact', title: '11. Contact & DPO', body: 'Privacy questions: privacy@qvo.ai. Data Protection Officer: dpo@qvo.ai. EU representative: QVO Europe Privacy Services Ltd., 38 Fitzwilliam Place, Dublin 2, D02 NX53, Ireland.' },
 ];
 
 export default function Privacy() {
@@ -25,10 +25,7 @@ export default function Privacy() {
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <h1 className="font-display text-4xl font-bold mb-3">Privacy Policy</h1>
-          <p className="text-white/70 font-body">Last updated: {new Date().toISOString().slice(0, 10)}</p>
-          <div className="mt-4 inline-block bg-accent/15 border border-accent/30 px-3 py-1.5 rounded-md text-xs text-accent font-medium">
-            DRAFT — pending legal review
-          </div>
+          <p className="text-white/70 font-body">Last updated: April 15, 2026</p>
         </div>
       </section>
       <section className="py-16">

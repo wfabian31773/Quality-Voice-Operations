@@ -13,7 +13,7 @@ const sections = [
   { id: 'liability', title: '8. Limitation of Liability', body: 'To the maximum extent permitted by law, QVO\'s aggregate liability for any claim arising out of or relating to the Service is limited to the fees paid by Customer in the 12 months preceding the event giving rise to the claim. QVO is not liable for indirect, incidental, special, consequential, or punitive damages.' },
   { id: 'termination', title: '9. Termination', body: 'Either party may terminate for material breach uncured after 30 days notice. We may suspend the Service immediately for security incidents, non-payment, or violations of acceptable use. Upon termination, Customer Data will be deleted within 30 days unless required to retain by law.' },
   { id: 'disputes', title: '10. Governing Law & Dispute Resolution', body: 'These Terms are governed by the laws of the State of Delaware, USA, without regard to conflict of laws. Disputes will be resolved by binding arbitration administered by JAMS in San Francisco, except either party may seek injunctive relief in court.' },
-  { id: 'contact', title: '11. Contact', body: 'Questions about these Terms? Contact legal@qvo.example or write to: QVO Legal, [Address pending finalization].' },
+  { id: 'contact', title: '11. Contact', body: 'Questions about these Terms? Contact legal@qvo.ai or write to: QVO, Inc. — Legal Department, 548 Market Street #62411, San Francisco, CA 94104, USA.' },
 ];
 
 export default function Terms() {
@@ -24,10 +24,7 @@ export default function Terms() {
       <section className="bg-sidebar-bg text-white py-16">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <h1 className="font-display text-4xl font-bold mb-3">Terms of Service</h1>
-          <p className="text-white/70 font-body">Last updated: {new Date().toISOString().slice(0, 10)}</p>
-          <div className="mt-4 inline-block bg-accent/15 border border-accent/30 px-3 py-1.5 rounded-md text-xs text-accent font-medium">
-            DRAFT — pending legal review
-          </div>
+          <p className="text-white/70 font-body">Last updated: April 15, 2026</p>
         </div>
       </section>
       <section className="py-16">
