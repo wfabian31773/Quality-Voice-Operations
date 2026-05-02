@@ -1,12 +1,22 @@
 import '../styles/tw-public.css';
 import { useState } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
 import { api, setToken } from '../lib/api';
 import { LogIn, UserPlus } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { safeRedirect } from '../lib/safeRedirect';
+
+/**
+ * `next` is the canonical "where were you headed?" query parameter that
+ * `<ProtectedRoute>` and the API 401-recovery path use today (Task #1513).
+ * `redirectTo` is the legacy name; we keep accepting it so any in-flight
+ * deep links bookmarked before the rename still work.
+ */
+function readPostLoginTarget(searchParams: URLSearchParams): string | null {
+  return searchParams.get('next') ?? searchParams.get('redirectTo');
+}
 
 export default function Login() {
   const { t } = useTranslation();
@@ -29,12 +39,13 @@ export default function Login() {
     return '/dashboard';
   }
 
-  // BL-012: `redirectTo` is allowed but is sanitized so an attacker can't
-  // weaponize a phishing link like `/login?redirectTo=https://evil.com`.
-  // `safeRedirect` falls back to the role-aware landing path whenever the
-  // value isn't a same-origin relative path.
+  // Task #1513 / BL-012: `next` (and the legacy `redirectTo`) is allowed
+  // but is sanitized so an attacker can't weaponize a phishing link like
+  // `/login?next=https://evil.com`. `safeRedirect` falls back to the
+  // role-aware landing path whenever the value isn't a same-origin
+  // relative path.
   function destinationFor(u: { isPlatformAdmin?: boolean; role: string }) {
-    return safeRedirect(searchParams.get('redirectTo'), getLandingPath(u));
+    return safeRedirect(readPostLoginTarget(searchParams), getLandingPath(u));
   }
 
   if (user) {
@@ -51,7 +62,7 @@ export default function Login() {
       if (currentUser) {
         navigate(destinationFor(currentUser));
       } else {
-        navigate(safeRedirect(searchParams.get('redirectTo'), '/dashboard'));
+        navigate(safeRedirect(readPostLoginTarget(searchParams), '/dashboard'));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('auth.login_failed'));
@@ -131,13 +142,24 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                 placeholder={t('auth.email_placeholder')}
               />
             </div>
 
             <div>
-              <label htmlFor="login-password" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.password')}</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="login-password" className="block text-sm font-medium text-text-primary">{t('auth.password')}</label>
+                {mode === 'login' && (
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs text-primary hover:underline font-medium"
+                  >
+                    {t('auth.forgot_password_link')}
+                  </Link>
+                )}
+              </div>
               <input
                 id="login-password"
                 type="password"
@@ -145,6 +167,10 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={mode === 'signup' ? 8 : undefined}
+                // F-5: tell the browser/password-manager which credential
+                // form this field belongs to so it can autofill / save the
+                // right value (and it silences the React DOM warning).
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                 placeholder={mode === 'signup' ? t('auth.password_min_placeholder') : t('auth.password_placeholder')}
               />

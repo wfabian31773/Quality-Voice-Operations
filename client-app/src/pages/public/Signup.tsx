@@ -251,6 +251,7 @@ export default function Signup() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.email_placeholder')}
                   />
@@ -265,6 +266,9 @@ export default function Signup() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
+                    // F-5: signal to password managers that this is a brand
+                    // new credential so they offer to save / generate one.
+                    autoComplete="new-password"
                     className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition placeholder:text-text-muted"
                     placeholder={t('auth.password_min_8_placeholder')}
                   />

@@ -21,6 +21,7 @@ const PublicLayout = lazy(() => import('./components/PublicLayout'));
 const PlatformAssistant = lazy(() => import('./components/PlatformAssistant'));
 
 const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Agents = lazy(() => import('./pages/Agents'));
 const PhoneNumbers = lazy(() => import('./pages/PhoneNumbers'));
@@ -116,6 +117,17 @@ function SettingsRedirect() {
   return <Navigate to="/settings/general" replace />;
 }
 
+/**
+ * `/signin` -> `/login`, preserving any `?next=…` (or other) query params.
+ * We can't use a static `<Navigate to="/login" />` because that drops the
+ * search string, which is exactly the deep-link breadcrumb we need to keep.
+ */
+function SigninRedirect() {
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString();
+  return <Navigate to={qs ? `/login?${qs}` : '/login'} replace />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -123,6 +135,11 @@ export default function App() {
     <Suspense fallback={<PageSkeleton />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* `/signin` is a common alias users (and external links) try; normalize
+          to the canonical `/login` while preserving the query string so the
+          `next=` round-trip from <ProtectedRoute> still works. */}
+      <Route path="/signin" element={<SigninRedirect />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/auth/verify-email" element={<VerifyEmail />} />
       <Route path="/internal/design-directions" element={<DesignDirections />} />
@@ -276,6 +293,10 @@ export default function App() {
 
       {/* Legacy redirects kept for backward-compatible deep links */}
       <Route path="/revenue-analytics" element={<Navigate to="/analytics" replace />} />
+      {/* Bare /admin had previously fallen through to NotFound, leaving
+          platform admins on a dead URL when they typed the parent path.
+          Normalize to the dashboard so muscle-memory deep links land. */}
+      <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>

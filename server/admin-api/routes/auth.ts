@@ -712,6 +712,239 @@ router.post('/auth/accept-invite', async (req, res) => {
   }
 });
 
+/**
+ * Task #1513: "send recovery email" surface backing `/forgot-password`.
+ *
+ * Security model:
+ *   - We ALWAYS respond 200 with the same generic body, regardless of
+ *     whether the email exists, whether it's verified, or whether the
+ *     account is disabled. This page must not be usable as an account-
+ *     enumeration oracle ("does foo@bar.com have an account here?").
+ *   - We DO real work only when the lookup hits an active user with a
+ *     password-auth account: mint a single-use token, persist it to
+ *     `password_reset_tokens` with a 60-minute TTL, and queue the email.
+ *     Email failures are logged but never bubble up to the response.
+ *   - The token-consumption / actual password-change endpoint is a
+ *     follow-up (no UI surface yet); this endpoint deliberately ships
+ *     standalone so the live smoke pass stops finding a dead route.
+ */
+const PASSWORD_RESET_TTL_MINUTES = 60;
+
+router.post('/auth/forgot-password', async (req, res) => {
+  const { email } = req.body as { email?: string };
+
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ error: 'email is required' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Generic "you'll get an email if the address is registered" response.
+  // We send this BEFORE the work happens so timing-channel snooping is
+  // less informative — the client always sees the same fast 200.
+  const genericResponse = {
+    ok: true,
+    message: 'If an account exists for that email, a recovery link has been sent.',
+  };
+
+  // Fire-and-forget the lookup + token mint + email send. We intentionally
+  // don't `await` this in the request path to keep response timing flat.
+  void (async () => {
+    const pool = getPlatformPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SET LOCAL row_security = off`);
+
+      const { rows } = await client.query(
+        `SELECT u.id, u.tenant_id, u.email, u.first_name, u.is_active, u.password_hash
+           FROM users u
+          WHERE u.email = $1
+          LIMIT 1`,
+        [normalizedEmail],
+      );
+
+      if (rows.length === 0) {
+        await client.query('ROLLBACK');
+        logger.info('Password reset requested for unknown email', { email: normalizedEmail });
+        return;
+      }
+
+      const user = rows[0] as {
+        id: string;
+        tenant_id: string;
+        email: string;
+        first_name: string | null;
+        is_active: boolean;
+        password_hash: string | null;
+      };
+
+      // Skip silently for disabled accounts and SSO-only accounts (no
+      // password to reset). The caller still got the same 200.
+      if (!user.is_active || !user.password_hash) {
+        await client.query('ROLLBACK');
+        logger.info('Password reset requested for ineligible account', {
+          userId: user.id,
+          isActive: user.is_active,
+          hasPassword: Boolean(user.password_hash),
+        });
+        return;
+      }
+
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+
+      await client.query(
+        `INSERT INTO password_reset_tokens (tenant_id, user_id, token, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [user.tenant_id, user.id, token, expiresAt],
+      );
+
+      await client.query('COMMIT');
+
+      try {
+        const { sendEmail, passwordResetEmail } = await import('../../../platform/email');
+        const appUrl = process.env.APP_URL ?? `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`;
+        const resetUrl = `${appUrl}/forgot-password?token=${encodeURIComponent(token)}`;
+        const emailContent = passwordResetEmail({
+          resetUrl,
+          expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+        });
+        await sendEmail({ to: user.email, ...emailContent });
+        logger.info('Password reset email queued', { userId: user.id });
+      } catch (emailErr) {
+        logger.error('Failed to send password reset email', {
+          userId: user.id,
+          error: String(emailErr),
+        });
+      }
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.error('Password reset processing failed', {
+        email: normalizedEmail,
+        error: String(err),
+      });
+    } finally {
+      client.release();
+    }
+  })();
+
+  return res.json(genericResponse);
+});
+
+/**
+ * Task #1513: companion to /auth/forgot-password — consume a single-use
+ * reset token and replace the user's password hash.
+ *
+ * The token is what we minted in /auth/forgot-password, persisted to
+ * `password_reset_tokens` with a 60-minute TTL. We deliberately echo the
+ * SAME generic error string for "token not found", "token expired", and
+ * "token already used" so a brute-force probe can't tell which case it
+ * hit. A successful reset marks the token used, hashes the new password
+ * with the same bcrypt parameters as signup, and returns 200 — we do NOT
+ * auto-issue a session cookie here on purpose: the user is then bounced
+ * to /login to sign in with the new credential, which exercises the full
+ * login pipeline (audit log, last_login_at, isPlatformAdmin routing).
+ */
+router.post('/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'token is required' });
+  }
+  if (!password || typeof password !== 'string') {
+    return res.status(400).json({ error: 'password is required' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  const INVALID_TOKEN_MESSAGE = 'This reset link is no longer valid. Please request a new one.';
+
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL row_security = off`);
+
+    // Lock the token row so a parallel double-submit can't redeem it twice.
+    const { rows } = await client.query(
+      `SELECT id, user_id, tenant_id, used_at, expires_at
+         FROM password_reset_tokens
+        WHERE token = $1
+        FOR UPDATE`,
+      [token],
+    );
+
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: INVALID_TOKEN_MESSAGE });
+    }
+
+    const row = rows[0] as {
+      id: string;
+      user_id: string;
+      tenant_id: string;
+      used_at: Date | null;
+      expires_at: Date;
+    };
+
+    if (row.used_at) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: INVALID_TOKEN_MESSAGE });
+    }
+    if (new Date(row.expires_at).getTime() <= Date.now()) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: INVALID_TOKEN_MESSAGE });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await client.query(
+      `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+      [passwordHash, row.user_id],
+    );
+
+    // Mark the token used. Also invalidate any OTHER outstanding tokens
+    // for the same user — if the original "I forgot my password" email got
+    // forwarded around, we don't want a second link still floating live.
+    await client.query(
+      `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
+      [row.id],
+    );
+    await client.query(
+      `UPDATE password_reset_tokens
+          SET used_at = NOW()
+        WHERE user_id = $1 AND id <> $2 AND used_at IS NULL`,
+      [row.user_id, row.id],
+    );
+
+    await client.query('COMMIT');
+
+    logger.info('Password reset completed', { userId: row.user_id });
+
+    await writeAuditLog({
+      tenantId: row.tenant_id,
+      actorUserId: row.user_id,
+      actorRole: 'self',
+      action: 'user.password_reset',
+      resourceType: 'user',
+      resourceId: row.user_id,
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Password reset failed', { error: String(err) });
+    return res.status(500).json({ error: 'Password reset failed' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/auth/refresh', requireAuth, (req, res) => {
   const user = req.user!;
   const token = issueToken(user);

@@ -69,18 +69,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const publicPaths = ['/demo', '/login', '/accept-invite', '/pricing'];
       const isPublicPage = publicPaths.some((p) => window.location.pathname.startsWith(p));
       if (!isPublicPage) {
-        // Task #499: preserve the page the user was on so we can bring them
-        // back after they sign in again. Login.tsx already runs the value
-        // through `safeRedirect()`, but we ALSO build a same-origin relative
-        // path here (matching the guard in ProtectedRoute.tsx) so a tampered
-        // location can never become an open-redirect vector.
+        // Task #499 / #1513: preserve the page the user was on so we can
+        // bring them back after they sign in again. Login.tsx already runs
+        // the value through `safeRedirect()`, but we ALSO build a
+        // same-origin relative path here (matching the guard in
+        // ProtectedRoute.tsx) so a tampered location can never become an
+        // open-redirect vector.
         const { pathname, search, hash } = window.location;
         const target = `${pathname}${search}${hash}`;
         const isSameOriginPath =
           target.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\');
         window.location.href =
           isSameOriginPath && target !== '/'
-            ? `/login?redirectTo=${encodeURIComponent(target)}`
+            ? `/login?next=${encodeURIComponent(target)}`
             : '/login';
       }
     }

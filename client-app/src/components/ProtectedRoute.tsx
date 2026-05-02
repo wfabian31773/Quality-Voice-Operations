@@ -16,25 +16,29 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!user) {
-    // BL-012: preserve the page the user was trying to reach so we can
-    // bring them back after they log in. Login.tsx sanitizes this value
-    // through `safeRedirect()`, but we ALSO build a same-origin relative
-    // path here so a malicious deep link can't poison it before it ever
-    // reaches the login page.
+    // Task #1513 / BL-012: preserve the page the user was trying to reach
+    // so we can bring them back after they log in. Login.tsx sanitizes this
+    // value through `safeRedirect()`, but we ALSO build a same-origin
+    // relative path here so a malicious deep link can't poison it before
+    // it ever reaches the login page.
     //
-    // Compliance hardening: the resulting `/login?redirectTo=…` URL ends
-    // up in server access logs, the Referer header on outbound asset
-    // loads from the login page, and analytics events. So before we
-    // serialize the target into the login URL, we run it through
-    // `sanitizeRedirectPath()` to drop the URL fragment and strip any
-    // query params that look like tokens, codes, or email addresses.
+    // The query parameter is named `next` (the conventional name across
+    // most auth flows). Login.tsx still accepts the legacy `redirectTo`
+    // name for backward compatibility with any in-flight bookmarks.
+    //
+    // Compliance hardening: the resulting `/login?next=…` URL ends up in
+    // server access logs, the Referer header on outbound asset loads from
+    // the login page, and analytics events. So before we serialize the
+    // target into the login URL, we run it through `sanitizeRedirectPath()`
+    // to drop the URL fragment and strip any query params that look like
+    // tokens, codes, or email addresses.
     const rawTarget = `${location.pathname}${location.search}${location.hash}`;
     const isSameOriginPath =
       rawTarget.startsWith('/') && !rawTarget.startsWith('//') && !rawTarget.startsWith('/\\');
     const target = isSameOriginPath ? sanitizeRedirectPath(rawTarget) : rawTarget;
     const loginUrl =
       isSameOriginPath && target !== '/'
-        ? `/login?redirectTo=${encodeURIComponent(target)}`
+        ? `/login?next=${encodeURIComponent(target)}`
         : '/login';
     return <Navigate to={loginUrl} replace />;
   }
