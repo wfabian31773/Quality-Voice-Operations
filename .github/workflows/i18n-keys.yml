@@ -1,0 +1,57 @@
+name: i18n keys
+
+# Pre-merge gate for translation drift (task #1488).
+#
+# Runs `scripts/check-i18n-keys.mjs` on every PR so that adding a new key to
+# `client-app/src/locales/en/*.json` without translating it into the other four
+# shipped locales (es, pt-BR, fr, de) — or copy-pasting an English value into
+# a non-English file — fails the PR's check before merge, instead of going red
+# in the post-merge run (`scripts/post-merge.sh`) where it's already too late.
+#
+# Why this is its own workflow instead of a step inside `typecheck.yml`:
+#   * The script depends on zero npm packages (it imports only Node built-ins
+#     and reads the locale JSONs + `client-app/src/lib/i18n.ts`), so wedging
+#     it inside the typecheck job forces a full `npm ci` of client-app for a
+#     check that would otherwise complete in under a second.
+#   * Bundled with typecheck, an unrelated tsc failure short-circuits the
+#     i18n step — the drift gets discovered later than necessary.
+#   * As its own job it surfaces as its own required check in branch
+#     protection, named "i18n keys", so reviewers see exactly which gate
+#     failed without digging into the typecheck log.
+#
+# The post-merge invocation in `scripts/post-merge.sh` is intentionally kept
+# as a defense-in-depth safety net (see task #1488 spec). The redundant step
+# in `typecheck.yml` is also kept for the same reason — having the same gate
+# fire from multiple surfaces is cheap and means a single workflow file typo
+# does not silently disable the check.
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: i18n-keys-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: i18n key + same-as-English drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No `npm ci` — the script uses only Node built-ins (`node:fs`,
+      # `node:url`, `node:path`). Skipping install keeps this gate well under
+      # a minute end-to-end so it's never the long-pole on a PR.
+      - name: Run i18n key + same-as-English drift check
+        run: node scripts/check-i18n-keys.mjs
