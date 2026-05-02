@@ -270,12 +270,12 @@ export default function App() {
         <Route path="/ops/reliability" element={<ToolHealth />} />
         <Route path="/ops/backfill-calls" element={<BackfillCalls />} />
         <Route path="/ops/digital-twin" element={<DigitalTwin />} />
+        <Route path="/ops/tool-logs" element={<Navigate to="/ops/reliability" replace />} />
+        <Route path="/ops/observability" element={<Navigate to="/ops/reliability" replace />} />
       </Route>
 
       {/* Legacy redirects kept for backward-compatible deep links */}
       <Route path="/revenue-analytics" element={<Navigate to="/analytics" replace />} />
-      <Route path="/ops/tool-logs" element={<Navigate to="/ops/reliability" replace />} />
-      <Route path="/ops/observability" element={<Navigate to="/ops/reliability" replace />} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>
