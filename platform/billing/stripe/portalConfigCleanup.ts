@@ -21,12 +21,20 @@
  *
  * Match rules (in priority order):
  *   1. `metadata.couponId` is in the set of currently-active coupons on
- *      one of our tenant Stripe customers — KEEP.
- *   2. `metadata.promotionCodeId` is in the active set — KEEP.
+ *      one of our tenant Stripe customers — KEEP. Stacked configs
+ *      (those stamped with `metadata.additionalDiscountCount > 0`)
+ *      additionally require the stamped count to match a currently-
+ *      observed stack size for that coupon, otherwise the "+ N more"
+ *      headline is now factually wrong and the config is treated as
+ *      stale.
+ *   2. `metadata.promotionCodeId` is in the active set — KEEP. Same
+ *      stacked-count refinement as rule #1 applies.
  *   3. `metadata.headline` exactly matches a headline that
  *      `buildPortalDiscountHeadline` would produce for any currently
  *      active discount — KEEP. (Fallback for older configurations
- *      created before the coupon/promo metadata was stamped.)
+ *      created before the coupon/promo metadata was stamped. The
+ *      headline string already encodes the stack size as the
+ *      "+ N more" tail, so this rule is naturally stack-aware.)
  *   4. Otherwise — DEACTIVATE.
  *
  * The "active customer discount" set is built by walking the
@@ -137,6 +145,22 @@ interface ActiveDiscountSet {
   headlines: Set<string>;
   couponIds: Set<string>;
   promotionCodeIds: Set<string>;
+  /**
+   * For every currently-active coupon, the set of `additionalDiscountCount`
+   * values observed across the subscriptions where that coupon is
+   * attached. A subscription whose `subscription.discounts[]` length is
+   * `N` contributes `N - 1` (clamped to 0) for every coupon in it; a
+   * customer-level coupon contributes `0`.
+   *
+   * Used by the cleanup loop to deactivate stale "stacked" portal
+   * configurations after a tenant detaches one of multiple coupons:
+   * the underlying `couponId` is still active (so rule #1 alone would
+   * keep the config alive), but its `metadata.additionalDiscountCount`
+   * no longer matches any currently-observed stack size, so the
+   * "+ N more" headline is now factually wrong.
+   */
+  couponIdToAdditionalCounts: Map<string, Set<number>>;
+  promotionCodeIdToAdditionalCounts: Map<string, Set<number>>;
   customersConsidered: number;
   truncated: boolean;
 }
@@ -227,6 +251,21 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
   const headlines = new Set<string>();
   const couponIds = new Set<string>();
   const promotionCodeIds = new Set<string>();
+  const couponIdToAdditionalCounts = new Map<string, Set<number>>();
+  const promotionCodeIdToAdditionalCounts = new Map<string, Set<number>>();
+
+  function rememberAdditionalCount(
+    map: Map<string, Set<number>>,
+    key: string,
+    additionalCount: number,
+  ): void {
+    let set = map.get(key);
+    if (!set) {
+      set = new Set();
+      map.set(key, set);
+    }
+    set.add(additionalCount);
+  }
 
   function recordDiscount(
     discount: UpgradeDiscount,
@@ -245,8 +284,26 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
       const stacked = buildPortalDiscountHeadline(discount, { additionalCount });
       if (stacked) headlines.add(stacked);
     }
-    if (discount.couponId) couponIds.add(discount.couponId);
-    if (discount.promotionCodeId) promotionCodeIds.add(discount.promotionCodeId);
+    if (discount.couponId) {
+      couponIds.add(discount.couponId);
+      // Track the stack size this coupon is currently observed at.
+      // The cleanup matching loop uses this to detect stale stacked
+      // configs whose `metadata.additionalDiscountCount` no longer
+      // matches any current observation for the coupon.
+      rememberAdditionalCount(
+        couponIdToAdditionalCounts,
+        discount.couponId,
+        additionalCount,
+      );
+    }
+    if (discount.promotionCodeId) {
+      promotionCodeIds.add(discount.promotionCodeId);
+      rememberAdditionalCount(
+        promotionCodeIdToAdditionalCounts,
+        discount.promotionCodeId,
+        additionalCount,
+      );
+    }
   }
 
   // Walk the customer list with bounded concurrency so we don't burst
@@ -327,6 +384,8 @@ async function buildActiveDiscountSet(stripe: Stripe): Promise<ActiveDiscountSet
     headlines,
     couponIds,
     promotionCodeIds,
+    couponIdToAdditionalCounts,
+    promotionCodeIdToAdditionalCounts,
     customersConsidered: consideredCustomerIds.length,
     truncated,
   };
@@ -376,6 +435,19 @@ export async function runDiscountPortalConfigCleanup(): Promise<PortalConfigClea
       const couponId = typeof md.couponId === 'string' ? md.couponId : null;
       const promotionCodeId =
         typeof md.promotionCodeId === 'string' ? md.promotionCodeId : null;
+      // Parse the stacked-discount stamp. Defensive against junk values
+      // (Stripe metadata is always strings, and very old configs won't
+      // have stamped this at all). Negative / non-finite / sub-1 values
+      // collapse to 0 so the matching path treats the config as a
+      // singular headline, which is the safe historical behaviour.
+      const stampedAdditionalRaw = md.additionalDiscountCount;
+      let stampedAdditionalCount = 0;
+      if (typeof stampedAdditionalRaw === 'string' && stampedAdditionalRaw.length > 0) {
+        const parsed = Number.parseInt(stampedAdditionalRaw, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          stampedAdditionalCount = parsed;
+        }
+      }
 
       // Without a complete active set we can't safely judge configurations
       // whose customers we never dereferenced. Keep them this cycle so the
@@ -385,10 +457,36 @@ export async function runDiscountPortalConfigCleanup(): Promise<PortalConfigClea
         continue;
       }
 
+      // For stacked configs (those minted with `additionalDiscountCount > 0`),
+      // a bare coupon-id / promotion-code-id match is no longer enough:
+      // if the tenant has since detached one of the stacked coupons,
+      // the underlying primary `couponId` is still attached but the
+      // "+ N more" claim baked into the headline is now wrong. Require
+      // the stamped count to match a currently-observed stack size for
+      // that coupon (or promo) before keeping the config alive.
+      // Singular configs (stamped 0 / unstamped) keep the original
+      // membership-only semantics so the common case is unchanged.
+      const couponMatchesById =
+        couponId !== null
+        && activeSet.couponIds.has(couponId)
+        && (stampedAdditionalCount === 0
+          || activeSet.couponIdToAdditionalCounts
+            .get(couponId)
+            ?.has(stampedAdditionalCount) === true);
+      const promotionCodeMatchesById =
+        promotionCodeId !== null
+        && activeSet.promotionCodeIds.has(promotionCodeId)
+        && (stampedAdditionalCount === 0
+          || activeSet.promotionCodeIdToAdditionalCounts
+            .get(promotionCodeId)
+            ?.has(stampedAdditionalCount) === true);
+      // Headline match is naturally stack-aware (the headline string
+      // includes the "+ N more" tail), so it stays as a straight set
+      // membership lookup regardless of `stampedAdditionalCount`.
+      const headlineMatches = headline !== null && activeSet.headlines.has(headline);
+
       const stillUsed =
-        (couponId !== null && activeSet.couponIds.has(couponId)) ||
-        (promotionCodeId !== null && activeSet.promotionCodeIds.has(promotionCodeId)) ||
-        (headline !== null && activeSet.headlines.has(headline));
+        couponMatchesById || promotionCodeMatchesById || headlineMatches;
 
       if (stillUsed) {
         keptConfigurationIds.push(cfg.id);

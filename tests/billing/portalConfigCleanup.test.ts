@@ -558,6 +558,87 @@ describe('runDiscountPortalConfigCleanup', () => {
     expect(result.keptConfigurationIds).toEqual(['bpc_legacy_stacked']);
   });
 
+  it('deactivates stale stacked configs after a tenant detaches one of multiple coupons', async () => {
+    // Regression: a tenant previously had two stacked subscription
+    // discounts, so `createPortalSession` minted a stacked-headline
+    // portal config (`metadata.additionalDiscountCount = '1'`,
+    // headline "...+ 1 more"). The tenant has since detached the
+    // secondary coupon, leaving only the primary on the subscription.
+    // The next portal open mints a fresh singular-headline config for
+    // the same coupon; the old stacked config must NOT keep matching
+    // by `metadata.couponId` alone (rule #1) — its "+ 1 more" claim
+    // is now factually wrong.
+    //
+    // Done looks like: the cleanup deactivates the stale stacked
+    // config while keeping the freshly-minted singular config alive.
+    platformPoolQuery.mockResolvedValue({
+      rows: [
+        {
+          stripe_customer_id: 'cus_drop_one',
+          stripe_subscription_id: 'sub_now_singular',
+        },
+      ],
+    });
+    customersRetrieve.mockResolvedValue(customer('cus_drop_one', null));
+    // Subscription state AFTER the secondary coupon has been detached:
+    // only the primary discount remains, so the cleanup must observe
+    // an additional-count of 0 for `coupon_primary` and reject any
+    // stacked config that still claims `additionalDiscountCount > 0`
+    // for it.
+    subscriptionsRetrieve.mockResolvedValue({
+      discounts: [
+        {
+          coupon: {
+            id: 'coupon_primary',
+            name: 'Primary Coupon',
+            percent_off: 30,
+            valid: true,
+          },
+          promotion_code: { id: 'promo_primary', code: 'STACK30' },
+        },
+      ],
+      discount: null,
+    });
+    portalConfigurationsList.mockResolvedValue({
+      data: [
+        // Stale stacked config minted back when the subscription had
+        // two discounts. Same primary `couponId` as the freshly-minted
+        // singular config below, but the stamped stack size (1) no
+        // longer matches the current subscription state (0).
+        activeDiscountedConfig('bpc_stale_stacked', {
+          headline: 'Active discount: 30% off — STACK30 + 1 more',
+          couponId: 'coupon_primary',
+          promotionCodeId: 'promo_primary',
+          additionalDiscountCount: '1',
+          defaultConfigId: 'bpc_default',
+        }),
+        // Freshly-minted singular config for the same coupon. Must be
+        // kept alive — its stamped stack size (implicitly 0) matches
+        // the current subscription state.
+        activeDiscountedConfig('bpc_fresh_singular', {
+          headline: 'Active discount: 30% off — STACK30',
+          couponId: 'coupon_primary',
+          promotionCodeId: 'promo_primary',
+          defaultConfigId: 'bpc_default',
+        }),
+      ],
+      has_more: false,
+    });
+    portalConfigurationsUpdate.mockResolvedValue({
+      id: 'bpc_stale_stacked',
+      active: false,
+    });
+
+    const result = await runDiscountPortalConfigCleanup();
+
+    expect(portalConfigurationsUpdate).toHaveBeenCalledTimes(1);
+    expect(portalConfigurationsUpdate).toHaveBeenCalledWith('bpc_stale_stacked', {
+      active: false,
+    });
+    expect(result.deactivatedConfigurationIds).toEqual(['bpc_stale_stacked']);
+    expect(result.keptConfigurationIds).toEqual(['bpc_fresh_singular']);
+  });
+
   it('evicts the in-process configuration cache for every deactivated id', async () => {
     platformPoolQuery.mockResolvedValue({ rows: [] });
     portalConfigurationsList.mockResolvedValue({
