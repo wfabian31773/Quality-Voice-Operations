@@ -870,6 +870,14 @@
     "default_message": "Você não tem permissão para ver esta página. Fale com o responsável pela sua organização para solicitar acesso.",
     "go_dashboard": "Ir para o painel"
   },
+  "ops_access_denied": {
+    "title": "Acesso negado",
+    "subtitle": "Você não tem acesso a {{pageName}}.",
+    "role_requirement": "Esta página é restrita a funções internas de operações: {{roles}}.",
+    "signed_in_as": "Conectado como {{email}}.",
+    "take_me_back": "Voltar",
+    "ops_page_fallback": "esta página do console de operações"
+  },
   "cookie_consent": {
     "title": "Valorizamos sua privacidade",
     "message": "Usamos cookies para manter o site seguro e (com seu consentimento) entender como ele é usado.",

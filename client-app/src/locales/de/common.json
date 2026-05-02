@@ -870,6 +870,14 @@
     "default_message": "Du hast keine Berechtigung, diese Seite zu sehen. Wende dich an den Inhaber deiner Organisation, um Zugriff anzufordern.",
     "go_dashboard": "Zum Dashboard"
   },
+  "ops_access_denied": {
+    "title": "Zugriff verweigert",
+    "subtitle": "Du hast keinen Zugriff auf {{pageName}}.",
+    "role_requirement": "Diese Seite ist auf interne Operations-Rollen beschränkt: {{roles}}.",
+    "signed_in_as": "Angemeldet als {{email}}.",
+    "take_me_back": "Zurück zum Dashboard",
+    "ops_page_fallback": "diese Seite der Operations Console"
+  },
   "cookie_consent": {
     "title": "Wir schätzen deine Privatsphäre",
     "message": "Wir verwenden Cookies, um die Website sicher zu halten und (mit deiner Zustimmung) die Nutzung zu verstehen.",

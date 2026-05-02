@@ -1,5 +1,5 @@
-import { Navigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import OpsAccessDenied from './OpsAccessDenied';
 
 export default function OpsGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -10,7 +10,7 @@ export default function OpsGuard({ children }: { children: React.ReactNode }) {
     user?.role === 'operations_manager';
 
   if (!isOpsUser) {
-    return <Navigate to="/dashboard" replace />;
+    return <OpsAccessDenied />;
   }
 
   return <>{children}</>;

@@ -870,6 +870,14 @@
     "default_message": "You do not have permission to view this page. Contact your organization owner to request access.",
     "go_dashboard": "Go to Dashboard"
   },
+  "ops_access_denied": {
+    "title": "Access denied",
+    "subtitle": "You don't have access to {{pageName}}.",
+    "role_requirement": "This page is restricted to internal operations roles: {{roles}}.",
+    "signed_in_as": "Signed in as {{email}}.",
+    "take_me_back": "Take me back",
+    "ops_page_fallback": "this Operations Console page"
+  },
   "cookie_consent": {
     "title": "We value your privacy",
     "message": "We use cookies to keep the site secure and (with your consent) to understand how it's used.",

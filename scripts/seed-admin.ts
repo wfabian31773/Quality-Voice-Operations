@@ -4,6 +4,16 @@ import bcrypt from 'bcryptjs';
 const ADMIN_TENANT_ID = 'admin-org';
 const ADMIN_TENANT_SLUG = 'admin-org';
 
+// Stable id+slug for the fixture tenant that hosts the non-ops fixture
+// user used by tests/e2e/opsPagesSmoke.spec.ts to exercise the OpsGuard
+// AccessDenied path. Keeping the member on its own tenant (rather than
+// piling another role onto admin-org) keeps the admin login response
+// deterministic — the /auth/login route picks a single role per user
+// from user_roles ORDER BY created_at DESC and a second admin-org role
+// would race with the seeded tenant_owner one.
+const MEMBER_TENANT_ID = 'member-org';
+const MEMBER_TENANT_SLUG = 'member-org';
+
 // Stable id+subject for the fixture ticket used by
 // tests/e2e/tenantPagesSmoke.spec.ts (Ticket Detail page check).
 // Keep these strings in sync with PAGES in that spec.
@@ -35,6 +45,14 @@ async function main() {
       'Usage: ADMIN_PASSWORD=YourPassword npx tsx scripts/seed-admin.ts'
     );
   }
+
+  // Non-ops fixture user for the OpsGuard deny-path coverage in
+  // tests/e2e/opsPagesSmoke.spec.ts. Defaults match the spec's defaults
+  // so a clean checkout works out of the box. Password reuses
+  // ADMIN_PASSWORD by default — override with MEMBER_PASSWORD if you
+  // want them split.
+  const memberEmail = process.env.MEMBER_EMAIL ?? 'member@voiceaihub.dev';
+  const memberPassword = process.env.MEMBER_PASSWORD ?? adminPassword;
 
   const url = process.env.DATABASE_URL ?? '';
   if (!url) {
@@ -146,8 +164,67 @@ async function main() {
       [SMOKE_AGENT_ID, ADMIN_TENANT_ID, SMOKE_AGENT_NAME],
     );
 
+    // Seed the non-ops fixture tenant + user that
+    // tests/e2e/opsPagesSmoke.spec.ts logs in as to exercise the
+    // OpsGuard AccessDenied path. The role 'support_reviewer' is
+    // intentionally NOT in OpsGuard's allow-set (tenant_owner,
+    // operations_manager, platform_admin) — so any /ops/* URL renders
+    // OpsAccessDenied for this user.
+    console.log('[SEED-ADMIN] Upserting non-ops fixture tenant...');
+    await client.query(
+      `INSERT INTO tenants (id, name, slug, status, plan, settings, feature_flags)
+       VALUES ($1, 'Member Fixture Organization', $2, 'active', 'starter',
+               '{"timezone": "America/New_York"}'::jsonb,
+               '{}'::jsonb)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         status = 'active',
+         updated_at = NOW()`,
+      [MEMBER_TENANT_ID, MEMBER_TENANT_SLUG],
+    );
+
+    console.log('[SEED-ADMIN] Upserting non-ops fixture subscription...');
+    await client.query(
+      `INSERT INTO subscriptions (tenant_id, plan, status, billing_interval,
+         monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled)
+       VALUES ($1, 'starter', 'active', 'monthly', 1000, 1000, 1000, false)
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         plan = EXCLUDED.plan,
+         status = 'active',
+         updated_at = NOW()`,
+      [MEMBER_TENANT_ID],
+    );
+
+    const memberPasswordHash = await bcrypt.hash(memberPassword, 12);
+
+    console.log('[SEED-ADMIN] Upserting non-ops fixture user...');
+    const memberResult = await client.query(
+      `INSERT INTO users (email, password_hash, role, is_platform_admin, is_active, email_verified)
+       VALUES ($1, $2, 'support_reviewer', false, true, true)
+       ON CONFLICT (email) DO UPDATE SET
+         password_hash = EXCLUDED.password_hash,
+         is_platform_admin = false,
+         is_active = true,
+         email_verified = true,
+         updated_at = NOW()
+       RETURNING id`,
+      [memberEmail, memberPasswordHash],
+    );
+    const memberId = memberResult.rows[0]?.id;
+
+    if (memberId) {
+      console.log('[SEED-ADMIN] Upserting non-ops fixture user_roles...');
+      await client.query(
+        `INSERT INTO user_roles (user_id, tenant_id, role)
+         VALUES ($1, $2, 'support_reviewer')
+         ON CONFLICT (user_id, tenant_id, role) DO NOTHING`,
+        [memberId, MEMBER_TENANT_ID],
+      );
+    }
+
     await client.query('COMMIT');
     console.log('[SEED-ADMIN] Admin user seeded successfully.');
+    console.log(`[SEED-ADMIN] Non-ops fixture user: ${memberEmail} (tenant=${MEMBER_TENANT_ID}, role=support_reviewer)`);
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[SEED-ADMIN] Failed:', err);

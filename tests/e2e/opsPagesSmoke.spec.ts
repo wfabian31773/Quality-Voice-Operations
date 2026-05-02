@@ -60,6 +60,12 @@
  *   E2E_BASE_URL           default http://localhost:5000   (vite dev preview)
  *   E2E_ADMIN_EMAIL        default admin@voiceaihub.dev
  *   E2E_ADMIN_PASSWORD     default test-password-123
+ *   E2E_MEMBER_EMAIL       default member@voiceaihub.dev   (non-ops fixture)
+ *   E2E_MEMBER_PASSWORD    default <E2E_ADMIN_PASSWORD>    (seeded by
+ *                          scripts/seed-admin.ts using the same value
+ *                          as ADMIN_PASSWORD unless MEMBER_PASSWORD is
+ *                          set; keeping the spec default in lockstep
+ *                          mirrors that choice).
  *   E2E_ARTIFACT_DIR       default .ci-logs/screenshots    (failure shots)
  */
 import { chromium, type Browser, type Page, type Response } from 'playwright';
@@ -69,6 +75,8 @@ import path from 'path';
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5000';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@voiceaihub.dev';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'test-password-123';
+const MEMBER_EMAIL = process.env.E2E_MEMBER_EMAIL ?? 'member@voiceaihub.dev';
+const MEMBER_PASSWORD = process.env.E2E_MEMBER_PASSWORD ?? ADMIN_PASSWORD;
 const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR ?? '.ci-logs/screenshots';
 
 const SPEC_NAME = 'ops-pages-smoke';
@@ -231,10 +239,10 @@ function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`ASSERT FAILED: ${msg}`);
 }
 
-async function login(page: Page): Promise<void> {
+async function login(page: Page, email: string = ADMIN_EMAIL, password: string = ADMIN_PASSWORD): Promise<void> {
   await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', password);
   await Promise.all([
     page.waitForURL((u) => !u.toString().endsWith('/login'), { timeout: 15_000 }),
     page.click('button[type="submit"]'),
@@ -414,6 +422,90 @@ async function captureGlobalFailureScreenshot(page: Page | undefined): Promise<v
   }
 }
 
+/**
+ * Deny-path coverage (task #1505). Logs in as the seeded non-ops
+ * fixture user and verifies that opening an /ops/* URL renders the
+ * OpsAccessDenied panel rather than silently bouncing the user back to
+ * /dashboard. Asserts:
+ *
+ *   1. The user stays on the /ops/* URL (no redirect to /dashboard).
+ *   2. The OpsAccessDenied panel mounts (testid `ops-access-denied`).
+ *   3. The panel names the page they tried to reach (the rendered ops
+ *      nav label, e.g. "Live Monitor").
+ *   4. The panel names the required role(s) — at minimum, the
+ *      Operations manager role label appears in the role line.
+ *
+ * Uses a fresh browser context so the admin's auth cookie from the
+ * earlier loop doesn't bleed in.
+ */
+async function runDenyPath(browser: Browser): Promise<{ ok: boolean; reason?: string }> {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  const denyPath = '/ops/monitor';
+  const expectedPageName = 'Live Monitor';
+  const expectedRoleLabel = 'Operations manager';
+
+  try {
+    await login(page, MEMBER_EMAIL, MEMBER_PASSWORD);
+    console.log(`[e2e] logged in as ${MEMBER_EMAIL} (non-ops fixture)`);
+
+    await page.goto(`${BASE_URL}${denyPath}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: PAGE_TIMEOUT_MS,
+    });
+
+    const landed = page.url();
+    if (!landed.includes(denyPath)) {
+      const shotPath = path.join(ARTIFACT_DIR, `${SPEC_NAME}-deny-redirected.png`);
+      await mkdir(path.dirname(shotPath), { recursive: true }).catch(() => undefined);
+      await page.screenshot({ path: shotPath, fullPage: true }).catch(() => undefined);
+      return {
+        ok: false,
+        reason: `non-ops user was redirected away from ${denyPath} (landed at ${landed}) — OpsGuard should now render OpsAccessDenied in place, not Navigate`,
+      };
+    }
+
+    const panel = page.locator('[data-testid="ops-access-denied"]').first();
+    try {
+      await panel.waitFor({ state: 'visible', timeout: PAGE_TIMEOUT_MS });
+    } catch (err) {
+      const shotPath = path.join(ARTIFACT_DIR, `${SPEC_NAME}-deny-panel-missing.png`);
+      await mkdir(path.dirname(shotPath), { recursive: true }).catch(() => undefined);
+      await page.screenshot({ path: shotPath, fullPage: true }).catch(() => undefined);
+      return {
+        ok: false,
+        reason: `OpsAccessDenied panel ([data-testid="ops-access-denied"]) never appeared on ${denyPath} for non-ops user (${(err as Error).message})`,
+      };
+    }
+
+    const pageNameLine = await page
+      .locator('[data-testid="ops-access-denied-page-name"]')
+      .first()
+      .textContent();
+    if (!pageNameLine || !pageNameLine.includes(expectedPageName)) {
+      return {
+        ok: false,
+        reason: `OpsAccessDenied did not name the page being denied — expected to find "${expectedPageName}" in "${pageNameLine ?? '(no text)'}"`,
+      };
+    }
+
+    const rolesLine = await page
+      .locator('[data-testid="ops-access-denied-roles"]')
+      .first()
+      .textContent();
+    if (!rolesLine || !rolesLine.includes(expectedRoleLabel)) {
+      return {
+        ok: false,
+        reason: `OpsAccessDenied did not name the required role — expected to find "${expectedRoleLabel}" in "${rolesLine ?? '(no text)'}"`,
+      };
+    }
+
+    return { ok: true };
+  } finally {
+    await ctx.close().catch(() => undefined);
+  }
+}
+
 async function run(): Promise<void> {
   let browser: Browser | undefined;
   // Holding the page reference outside the try block lets us capture a
@@ -421,6 +513,7 @@ async function run(): Promise<void> {
   // throws before checkPage() has a chance to write its own.
   let page: Page | undefined;
   const failures: PageFailure[] = [];
+  let denyPathFailure: string | null = null;
   try {
     browser = await chromium.launch({ headless: true });
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -438,6 +531,21 @@ async function run(): Promise<void> {
         console.log(`[e2e]    OK`);
       }
     }
+
+    // Free the admin context before opening the deny-path one — keeps
+    // the spec to a single browser instance with at most two contexts
+    // open at a time.
+    await ctx.close().catch(() => undefined);
+    page = undefined;
+
+    console.log(`[e2e] -> deny-path: ${MEMBER_EMAIL} hits /ops/monitor`);
+    const denyResult = await runDenyPath(browser);
+    if (denyResult.ok) {
+      console.log('[e2e]    OK');
+    } else {
+      denyPathFailure = denyResult.reason ?? 'unknown deny-path failure';
+      console.error(`[e2e] FAIL deny-path: ${denyPathFailure}`);
+    }
   } catch (err) {
     // Bootstrap or unexpected throw — checkPage's per-page screenshot
     // hook never ran, so capture whatever the browser is currently
@@ -448,15 +556,21 @@ async function run(): Promise<void> {
     if (browser) await browser.close().catch(() => undefined);
   }
 
-  if (failures.length > 0) {
-    console.error(`[e2e] ${failures.length} of ${PAGES.length} ops page(s) failed:`);
-    for (const f of failures) {
-      console.error(`[e2e]   - ${f.page.path}: ${f.reason}`);
+  if (failures.length > 0 || denyPathFailure) {
+    if (failures.length > 0) {
+      console.error(`[e2e] ${failures.length} of ${PAGES.length} ops page(s) failed:`);
+      for (const f of failures) {
+        console.error(`[e2e]   - ${f.page.path}: ${f.reason}`);
+      }
     }
-    assert(false, `${failures.length} ops page smoke check(s) failed`);
+    if (denyPathFailure) {
+      console.error(`[e2e] deny-path failed: ${denyPathFailure}`);
+    }
+    const totalFailures = failures.length + (denyPathFailure ? 1 : 0);
+    assert(false, `${totalFailures} ops page smoke check(s) failed`);
   }
 
-  console.log(`[e2e] PASS — all ${PAGES.length} ops pages rendered cleanly`);
+  console.log(`[e2e] PASS — all ${PAGES.length} ops pages rendered cleanly + deny-path verified`);
 }
 
 run().catch((err) => {

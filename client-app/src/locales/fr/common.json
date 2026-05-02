@@ -870,6 +870,14 @@
     "default_message": "Vous n'avez pas l'autorisation de voir cette page. Contactez le propriétaire de votre organisation pour demander l'accès.",
     "go_dashboard": "Aller au tableau de bord"
   },
+  "ops_access_denied": {
+    "title": "Accès refusé",
+    "subtitle": "Vous n'avez pas accès à {{pageName}}.",
+    "role_requirement": "Cette page est réservée aux rôles internes d'opérations : {{roles}}.",
+    "signed_in_as": "Connecté en tant que {{email}}.",
+    "take_me_back": "Retour",
+    "ops_page_fallback": "cette page de la console d'opérations"
+  },
   "cookie_consent": {
     "title": "Nous respectons votre vie privée",
     "message": "Nous utilisons des cookies pour sécuriser le site et (avec votre consentement) comprendre son utilisation.",

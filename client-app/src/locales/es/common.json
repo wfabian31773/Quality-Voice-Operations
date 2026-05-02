@@ -870,6 +870,14 @@
     "default_message": "No tienes permiso para ver esta página. Contacta al propietario de tu organización para solicitar acceso.",
     "go_dashboard": "Ir al panel"
   },
+  "ops_access_denied": {
+    "title": "Acceso denegado",
+    "subtitle": "No tienes acceso a {{pageName}}.",
+    "role_requirement": "Esta página está restringida a roles internos de operaciones: {{roles}}.",
+    "signed_in_as": "Has iniciado sesión como {{email}}.",
+    "take_me_back": "Volver",
+    "ops_page_fallback": "esta página de la consola de operaciones"
+  },
   "cookie_consent": {
     "title": "Valoramos tu privacidad",
     "message": "Usamos cookies para mantener el sitio seguro y (con tu consentimiento) entender cómo se utiliza.",
