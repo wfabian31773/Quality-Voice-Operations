@@ -574,13 +574,6 @@ export default function Product() {
                 cta: t('product.deeper.ingest_cta'),
               },
               {
-                to: '/product/global-intelligence-network',
-                eyebrow: t('product.deeper.gin_eyebrow'),
-                title: t('product.deeper.gin_title'),
-                desc: t('product.deeper.gin_desc'),
-                cta: t('product.deeper.gin_cta'),
-              },
-              {
                 to: '/industries/vertical-agents',
                 eyebrow: t('product.deeper.vertical_eyebrow'),
                 title: t('product.deeper.vertical_title'),

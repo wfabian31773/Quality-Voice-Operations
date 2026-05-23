@@ -29,7 +29,6 @@ const GuideDetail = lazy(() => import('./pages/public/GuideDetail'));
 const VerticalLanding = lazy(() => import('./pages/public/VerticalLanding'));
 const VerticalAgents = lazy(() => import('./pages/public/VerticalAgents'));
 const FederatedIngest = lazy(() => import('./pages/public/FederatedIngest'));
-const GlobalIntelligenceNetwork = lazy(() => import('./pages/public/GlobalIntelligenceNetwork'));
 const CaseStudies = lazy(() => import('./pages/public/CaseStudies'));
 const BookDemo = lazy(() => import('./pages/public/BookDemo'));
 const Terms = lazy(() => import('./pages/public/Terms'));
@@ -50,7 +49,6 @@ export default function PublicApp() {
               <Route path="/" element={<Landing />} />
               <Route path="/product" element={<Product />} />
               <Route path="/product/federated-ingest" element={<FederatedIngest />} />
-              <Route path="/product/global-intelligence-network" element={<GlobalIntelligenceNetwork />} />
               <Route path="/features" element={<Features />} />
               <Route path="/ai-agents" element={<AgentsShowcase />} />
               <Route path="/pricing" element={<Pricing />} />
