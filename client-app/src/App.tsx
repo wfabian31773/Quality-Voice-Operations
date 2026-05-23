@@ -15,10 +15,6 @@ const TenantLayout = lazy(() => import('./components/TenantLayout'));
 const AdminLayout = lazy(() => import('./components/AdminLayout'));
 const OpsLayout = lazy(() => import('./components/OpsLayout'));
 const PublicLayout = lazy(() => import('./components/PublicLayout'));
-// PlatformAssistant is only mounted on a couple of layout-less routes
-// (Onboarding, AgentBuilder); the in-app layouts mount their own copy
-// internally so it doesn't need to be eager either.
-const PlatformAssistant = lazy(() => import('./components/PlatformAssistant'));
 
 const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -180,10 +176,7 @@ export default function App() {
         path="/onboarding"
         element={
           <ProtectedRoute>
-            <>
-              <Onboarding />
-              <PlatformAssistant />
-            </>
+            <Onboarding />
           </ProtectedRoute>
         }
       />
@@ -191,10 +184,7 @@ export default function App() {
         path="/agents/:id/builder"
         element={
           <ProtectedRoute>
-            <>
-              <AgentBuilder />
-              <PlatformAssistant />
-            </>
+            <AgentBuilder />
           </ProtectedRoute>
         }
       />

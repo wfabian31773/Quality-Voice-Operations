@@ -13,7 +13,6 @@ import {
 import { useState, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
 import NotificationsCenter from './NotificationsCenter';
@@ -280,8 +279,6 @@ export default function AdminLayout() {
         </main>
         <AppFooter />
       </div>
-
-      <PlatformAssistant />
     </div>
   );
 }
