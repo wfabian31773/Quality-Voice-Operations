@@ -9,7 +9,6 @@ const OPS_PAGE_NAME_KEYS: Record<string, string> = {
   '/ops/call-debug': 'admin_nav.ops.debugger',
   '/ops/integration-diagnostics': 'admin_nav.ops.diagnostics',
   '/ops/cost': 'admin_nav.ops.cost',
-  '/ops/digital-twin': 'admin_nav.ops.digital_twin',
   '/ops/backfill-calls': 'admin_nav.ops.backfill_calls',
   // Legacy aliases kept for backward-compatible deep links (App.tsx
   // redirects `/ops/tool-logs` and `/ops/observability` to

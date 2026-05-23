@@ -55,7 +55,6 @@ export default function CommandPalette({
     { id: 'scheduling', label: t('command_palette.go_scheduling'), icon: CalendarClock, group: 'navigate', run: go('/scheduling') },
     { id: 'tickets', label: t('command_palette.go_tickets'), icon: ClipboardList, group: 'navigate', run: go('/tickets') },
     { id: 'dispatch', label: t('command_palette.go_dispatch'), icon: Truck, group: 'navigate', run: go('/dispatch') },
-    { id: 'autopilot', label: t('command_palette.go_autopilot'), icon: Zap, group: 'navigate', keywords: ['ai', 'business', 'recommendations'], run: go('/autopilot') },
     { id: 'workflows', label: t('command_palette.go_workflows'), icon: Network, group: 'navigate', run: go('/workflows') },
     { id: 'integrations', label: t('command_palette.go_integrations'), icon: Plug, group: 'navigate', keywords: ['connectors'], run: go('/connectors') },
     { id: 'knowledge', label: t('command_palette.go_knowledge'), icon: BookOpen, group: 'navigate', run: go('/knowledge-base') },

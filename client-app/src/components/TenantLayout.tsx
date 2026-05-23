@@ -43,7 +43,6 @@ export const tenantLinks: NavItem[] = [
 ];
 
 export const operationsLinks: NavItem[] = [
-  { to: '/autopilot', icon: Zap, i18nKey: 'tenant_nav.autopilot' },
   { to: '/sms-inbox', icon: MessageSquare, i18nKey: 'tenant_nav.sms_inbox' },
   { to: '/scheduling', icon: CalendarClock, i18nKey: 'tenant_nav.scheduling' },
   { to: '/tickets', icon: ClipboardList, i18nKey: 'tenant_nav.tickets' },

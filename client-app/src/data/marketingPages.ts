@@ -76,19 +76,6 @@ export const marketingPages: MarketingPage[] = [
       'webhooks', 'rest', 'endpoints', 'idempotency', 'backfill', 'integration',
     ],
   },
-  {
-    slug: 'global-intelligence-network',
-    path: '/product/global-intelligence-network',
-    title: 'Global Intelligence Network',
-    description:
-      'Cross-tenant benchmarks for answer rate, AHT, conversion, and CSAT — see how your operation stacks up against the median and top quartile in your vertical, with privacy-first aggregation.',
-    category: 'Product',
-    icon: Globe,
-    keywords: [
-      'global intelligence', 'gin', 'benchmarks', 'cross-tenant', 'cohort',
-      'median', 'top quartile', 'vertical', 'analytics', 'comparison',
-    ],
-  },
 
   // ---------- Industries ----------
   {

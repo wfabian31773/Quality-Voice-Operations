@@ -85,12 +85,6 @@ export default function PublicLayout() {
               description: t('public_nav_desc.federated_ingest'),
               isNew: true,
             },
-            {
-              to: '/product/global-intelligence-network',
-              label: t('public_nav.gin'),
-              description: t('public_nav_desc.gin'),
-              isNew: true,
-            },
           ],
         },
       ],
@@ -449,7 +443,6 @@ export default function PublicLayout() {
                 <li><Link to="/pricing" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.pricing')}</Link></li>
                 <li><Link to="/integrations" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.integrations')}</Link></li>
                 <li><Link to="/product/federated-ingest" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.federated_ingest')}</Link></li>
-                <li><Link to="/product/global-intelligence-network" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.gin')}</Link></li>
                 <li><Link to="/demo" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.live_demo')}</Link></li>
                 <li><Link to="/book-demo" className="text-sm hover:text-on-sidebar transition-colors">{t('actions.book_demo')}</Link></li>
               </ul>

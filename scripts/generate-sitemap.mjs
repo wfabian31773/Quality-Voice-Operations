@@ -61,7 +61,6 @@ export const STATIC_ROUTES = [
   { path: '/',                                           changefreq: 'weekly',  priority: '1.0' },
   { path: '/product',                                    changefreq: 'weekly',  priority: '0.8' },
   { path: '/product/federated-ingest',                   changefreq: 'monthly', priority: '0.7' },
-  { path: '/product/global-intelligence-network',        changefreq: 'monthly', priority: '0.7' },
   { path: '/features',                                   changefreq: 'weekly',  priority: '0.8' },
   { path: '/ai-agents',                                  changefreq: 'weekly',  priority: '0.8' },
   { path: '/pricing',                                    changefreq: 'weekly',  priority: '0.8' },

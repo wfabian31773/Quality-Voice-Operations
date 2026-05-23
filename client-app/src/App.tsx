@@ -50,7 +50,6 @@ const Operations = lazy(() => import('./pages/Operations'));
 const UpdateCenter = lazy(() => import('./pages/UpdateCenter'));
 const PostInstallSetup = lazy(() => import('./pages/PostInstallSetup'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
-const DigitalTwin = lazy(() => import('./pages/DigitalTwin'));
 const Governance = lazy(() => import('./pages/Governance'));
 const ToolHealth = lazy(() => import('./pages/ToolHealth'));
 const CostOptimization = lazy(() => import('./pages/CostOptimization'));
@@ -59,7 +58,6 @@ const Compliance = lazy(() => import('./pages/Compliance'));
 const PlatformCompliance = lazy(() => import('./pages/admin/PlatformCompliance'));
 const IngestBackfill = lazy(() => import('./pages/admin/IngestBackfill'));
 const BackfillCalls = lazy(() => import('./pages/admin/BackfillCalls'));
-const Autopilot = lazy(() => import('./pages/Autopilot'));
 const IntegrationDiagnostics = lazy(() => import('./pages/IntegrationDiagnostics'));
 const Workflows = lazy(() => import('./pages/Workflows'));
 const SmsInbox = lazy(() => import('./pages/SmsInbox'));
@@ -92,7 +90,6 @@ const GuideDetail = lazy(() => import('./pages/public/GuideDetail'));
 const VerticalLanding = lazy(() => import('./pages/public/VerticalLanding'));
 const VerticalAgents = lazy(() => import('./pages/public/VerticalAgents'));
 const FederatedIngest = lazy(() => import('./pages/public/FederatedIngest'));
-const GlobalIntelligenceNetwork = lazy(() => import('./pages/public/GlobalIntelligenceNetwork'));
 const CaseStudies = lazy(() => import('./pages/public/CaseStudies'));
 const BookDemo = lazy(() => import('./pages/public/BookDemo'));
 const Terms = lazy(() => import('./pages/public/Terms'));
@@ -145,7 +142,6 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/product" element={<Product />} />
         <Route path="/product/federated-ingest" element={<FederatedIngest />} />
-        <Route path="/product/global-intelligence-network" element={<GlobalIntelligenceNetwork />} />
         <Route path="/features" element={<Features />} />
         <Route path="/ai-agents" element={<AgentsShowcase />} />
         <Route path="/pricing" element={<Pricing />} />
@@ -229,7 +225,6 @@ export default function App() {
         <Route path="/tickets/admin" element={<RoleGuard minRole="manager"><TicketAdmin /></RoleGuard>} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route path="/dispatch" element={<Dispatch />} />
-        <Route path="/autopilot" element={<RoleGuard minRole="manager"><Autopilot /></RoleGuard>} />
         <Route path="/changelog" element={<Changelog />} />
       </Route>
 
@@ -254,9 +249,7 @@ export default function App() {
         <Route path="/admin/billing" element={<Billing />} />
         <Route path="/admin/security" element={<PlatformCompliance />} />
         <Route path="/admin/governance" element={<Governance />} />
-        <Route path="/admin/evolution" element={<Navigate to="/admin/governance?tab=evolution" replace />} />
-        <Route path="/admin/conversion" element={<Navigate to="/admin/governance?tab=funnel" replace />} />
-        <Route path="/admin/intelligence" element={<Navigate to="/admin/governance?tab=intelligence" replace />} />
+        <Route path="/admin/conversion" element={<Navigate to="/admin/governance" replace />} />
         <Route path="/admin/ingest-backfill" element={<IngestBackfill />} />
       </Route>
 
@@ -276,7 +269,6 @@ export default function App() {
         <Route path="/ops/cost" element={<CostOptimization />} />
         <Route path="/ops/reliability" element={<ToolHealth />} />
         <Route path="/ops/backfill-calls" element={<BackfillCalls />} />
-        <Route path="/ops/digital-twin" element={<DigitalTwin />} />
         <Route path="/ops/tool-logs" element={<Navigate to="/ops/reliability" replace />} />
         <Route path="/ops/observability" element={<Navigate to="/ops/reliability" replace />} />
       </Route>
