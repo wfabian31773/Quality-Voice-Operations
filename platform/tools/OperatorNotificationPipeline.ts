@@ -1,5 +1,4 @@
 import { createLogger } from '../core/logger';
-import { createInAppNotification } from '../autopilot/NotificationService';
 import { onToolFailure, type ToolFailureEvent } from './RetryOrchestrator';
 import type { TenantId } from '../core/types';
 
@@ -63,30 +62,24 @@ export function getOperatorSmsRecipients(tenantId: TenantId): string[] {
 async function handleToolFailureNotification(event: ToolFailureEvent): Promise<void> {
   if (!event.finalFailure) return;
 
-  try {
-    const severity = 'critical';
-    const title = `Tool Failure: ${event.toolName}`;
-    const body = `Tool "${event.toolName}" failed after ${event.retryCount} attempt(s) during call session ${event.callSessionId}. ` +
-      `Error: ${event.error.substring(0, 200)}` +
-      (event.fallbackAttempted ? (event.fallbackSuccess ? ' (fallback succeeded)' : ' (fallback also failed)') : '');
+  const severity = 'critical';
+  const title = `Tool Failure: ${event.toolName}`;
+  const body = `Tool "${event.toolName}" failed after ${event.retryCount} attempt(s) during call session ${event.callSessionId}. ` +
+    `Error: ${event.error.substring(0, 200)}` +
+    (event.fallbackAttempted ? (event.fallbackSuccess ? ' (fallback succeeded)' : ' (fallback also failed)') : '');
 
-    await createInAppNotification(event.tenantId, {
-      severity,
-      title,
-      body,
-    });
-
-    logger.info('In-app tool failure notification created', {
-      tenantId: event.tenantId,
-      tool: event.toolName,
-      callId: event.callSessionId,
-    });
-  } catch (err) {
-    logger.error('Failed to create in-app notification for tool failure', {
-      tenantId: event.tenantId,
-      error: String(err),
-    });
-  }
+  // NOTE: the in-app notification path (createInAppNotification → autopilot_notifications
+  // table) was removed when platform/autopilot was archived in PR #10. That path only
+  // wrote to a table whose only UI consumer is also archived. The SMS alert below
+  // remains the operational fallback.
+  logger.info('Operator tool failure (would have been in-app notification)', {
+    tenantId: event.tenantId,
+    tool: event.toolName,
+    callId: event.callSessionId,
+    severity,
+    title,
+    body,
+  });
 
   const smsRecipients = getOperatorSmsRecipients(event.tenantId);
   if (smsRecipients.length === 0) return;
