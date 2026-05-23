@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import {
   Radio, Bug, Plug2, Coins, ShieldCheck,
-  LogOut, Moon, Sun, Menu, X, Cpu, Repeat, ScrollText,
+  LogOut, Moon, Sun, Menu, X, Repeat, ScrollText,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
@@ -41,7 +41,6 @@ const OPS_GROUPS: NavGroup[] = [
       { to: '/ops/call-debug', icon: Bug, i18nKey: 'admin_nav.ops.debugger' },
       { to: '/ops/integration-diagnostics', icon: Plug2, i18nKey: 'admin_nav.ops.diagnostics' },
       { to: '/ops/cost', icon: Coins, i18nKey: 'admin_nav.ops.cost' },
-      { to: '/ops/digital-twin', icon: Cpu, i18nKey: 'admin_nav.ops.digital_twin' },
     ],
   },
   {
