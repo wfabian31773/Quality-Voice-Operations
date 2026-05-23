@@ -1,0 +1,40 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ESLint + custom rule self-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies (root)
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install dependencies (client-app)
+        working-directory: client-app
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Custom ESLint rule self-tests
+        run: npm run lint:rules
