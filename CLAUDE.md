@@ -11,7 +11,7 @@ Multi-tenant SaaS for managing AI-powered voice operations at enterprise scale. 
 - **Voice:** OpenAI Realtime API + Twilio SIP trunking
 - **Billing:** Stripe (checkout, portal, metered billing, webhooks)
 - **Mobile:** Expo / React Native (`mobile/`)
-- **Package manager:** pnpm workspaces
+- **Package manager:** npm
 
 ## Layout
 
