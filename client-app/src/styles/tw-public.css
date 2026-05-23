@@ -51,27 +51,6 @@
 
 /* ----- Public marketing custom CSS ------------------------------- */
 
-.hero-gradient-text {
-  background: linear-gradient(135deg, #2E8C83, #4CC9BB, #2E8C83);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: gradient-shift 4s ease-in-out infinite;
-}
-
-@keyframes gradient-shift {
-  0%, 100% { background-position: 0% center; }
-  50% { background-position: 100% center; }
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
 /* Translucent surface used by light-tinted public marketing cards. The
  * legacy hard-coded `rgba(255,255,255,0.6)` rendered as a near-white
  * slab on top of the dark navy `bg-surface-secondary` in dark mode,
@@ -131,10 +110,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-gradient-text {
-    animation: none;
-  }
-
   .scroll-reveal {
     opacity: 1;
     transform: none;
