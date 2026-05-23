@@ -29,6 +29,18 @@ CREATE POLICY tenant_isolation_call_saved_view_pins ON call_saved_view_pins
 -- Backfill: any view that was previously pinned globally becomes a per-user
 -- pin for its owner so they don't lose their sidebar shortcut, carrying
 -- the previously-saved pin_order through.
+--
+-- Defensive ADD COLUMN: the sibling migration `063_call_saved_views_pin_order.sql`
+-- is also numbered 063, but alphabetic sort puts THIS file first
+-- (`063_call_saved_view_pins` < `063_call_saved_views_pin_order` because `_` < `s`).
+-- On a fresh DB that runs migrations in order, the SELECT below would
+-- otherwise fail because `call_saved_views.pin_order` doesn't exist yet.
+-- Adding the column here is idempotent — the sibling migration's own
+-- ADD COLUMN IF NOT EXISTS becomes a no-op when it runs next, and the
+-- subsequent `065_call_saved_views_drop_pin_order.sql` still works.
+ALTER TABLE call_saved_views
+  ADD COLUMN IF NOT EXISTS pin_order INTEGER NOT NULL DEFAULT 0;
+
 INSERT INTO call_saved_view_pins (user_id, view_id, tenant_id, pin_order)
 SELECT created_by, id, tenant_id, COALESCE(pin_order, 0)
 FROM call_saved_views
