@@ -13,7 +13,6 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import PlatformAssistant from './PlatformAssistant';
 import PortalSwitcher from './PortalSwitcher';
 import AppFooter from './AppFooter';
 import { HelpDrawer } from './HelpDrawer';
@@ -361,7 +360,6 @@ export default function TenantLayout() {
         <AppFooter />
       </div>
 
-      <PlatformAssistant />
       <HelpDrawer />
 
       <div data-tour="help">
