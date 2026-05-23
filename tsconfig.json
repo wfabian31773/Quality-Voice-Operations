@@ -11,5 +11,6 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["server", "platform", "scripts"]
+  "include": ["server", "platform", "scripts"],
+  "exclude": ["node_modules", "**/_archived/**"]
 }
