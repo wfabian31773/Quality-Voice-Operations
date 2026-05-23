@@ -18,7 +18,6 @@ import { registerTemplateTools } from '../../platform/tools/registerTemplateTool
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
 import { startInsightsScheduler, stopInsightsScheduler, startCallViewDigestScheduler, stopCallViewDigestScheduler, startCsatExpirationScheduler, stopCsatExpirationScheduler } from '../../platform/analytics';
 import { startWorkforceScheduler, stopWorkforceScheduler } from '../../platform/workforce/WorkforceScheduler';
-import { startGinScheduler, stopGinScheduler } from '../../platform/gin';
 import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
 import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
 import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
@@ -125,7 +124,6 @@ server.listen(PORT, '0.0.0.0', async () => {
   startCallViewDigestScheduler();
   startCsatExpirationScheduler();
   startWorkforceScheduler();
-  startGinScheduler();
   startMilestoneScheduler();
   startDocsFeedbackAlertScheduler();
   startDocsFeedbackReplyDigestScheduler();
@@ -170,7 +168,6 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopCallViewDigestScheduler();
   stopCsatExpirationScheduler();
   stopWorkforceScheduler();
-  stopGinScheduler();
   stopMilestoneScheduler();
   stopDocsFeedbackAlertScheduler();
   stopDocsFeedbackReplyDigestScheduler();
