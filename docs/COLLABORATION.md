@@ -12,30 +12,34 @@
 ## The flow
 
 ```
-Wayne decides what to do
+Wayne decides what to do (in chat)
    ↓
 Claude writes plan / opens issue
    ↓
-Wayne approves
+Wayne approves direction (in chat — "yes" / "go" / etc.)
    ↓
 Claude writes code on a claude/<task-slug> branch
    ↓
-Claude pushes + opens PR (uses the PR template)
+Claude pushes + opens PR (uses the PR template, applies labels)
    ↓
-GitHub Actions runs lint + typecheck + (eventually) voice-path smoke test
+GitHub Actions runs CI (lint + typecheck + voice-path smoke when wired)
    ↓
-Wayne reviews PR
-   ↓
-Wayne merges to main
+Claude merges PR to main once CI is green
    ↓
 Wayne pulls main in Replit + republishes
    ↓
 Wayne (or Azul staff) verifies via real phone number
    ↓
+If broken: Wayne tells Claude in chat → Claude reverts or fixes via a new PR
+   ↓
 Claude updates CHANGELOG + memory
 ```
 
-**Claude never publishes to Replit. Wayne is the production gate.**
+**Claude does all the git work** — opens PRs, monitors CI, merges to `main`. Wayne never touches GitHub's merge button. The production gate is the **Replit publish step** — Wayne owns that exclusively.
+
+**Wayne can ask Claude to "wait on merge"** for any PR in chat. Default behavior is: CI green → Claude merges immediately.
+
+**Pre-merge review is optional**; post-merge verification (Wayne pulling in Replit before republishing) is the real safety gate.
 
 ## Rules
 
@@ -67,10 +71,11 @@ Every issue + PR gets:
 
 | Can | Cannot |
 |---|---|
-| Read & write files in this repo | Push to `main` directly (PRs only) |
-| Read both production repos via `gh` (Remix, 5Star) | Publish to Replit |
-| Run lint/test/build commands locally | Call demo phone numbers |
-| Open PRs, create issues, manage labels | Use Phreesia / NextGen / EHR sandboxes |
-| Use Supabase MCP for schema introspection + migration proposals | Modify Azul's production data directly |
-| Dispatch background research subagents | Sign legal documents (BAAs, contracts) |
-| Read `.env` files Wayne points to (e.g. Twilio creds in `Developer Tools/`) | Echo secret values back to chat |
+| Read & write files in this repo | Push commits directly to `main` (PRs only, even when merging) |
+| Open, push, **merge** PRs once CI is green | Publish to Replit |
+| Read both production repos via `gh` (Remix, 5Star) | Call demo phone numbers |
+| Run lint/test/build commands locally | Use Phreesia / NextGen / EHR sandboxes |
+| Create issues, manage labels | Modify Azul's production data directly |
+| Use Supabase MCP for schema introspection + migration proposals | Sign legal documents (BAAs, contracts) |
+| Dispatch background research subagents | Echo secret values back to chat |
+| Read `.env` files Wayne points to (e.g. Twilio creds in `Developer Tools/`) | |

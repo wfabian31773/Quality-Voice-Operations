@@ -15,5 +15,6 @@ Workflow foundation committed. Repo now has a written plan + workflow contract o
 - `.github/pull_request_template.md` added — forces what / why / Replit-test / principle / phase / rollback
 - `.github/workflows/lint.yml` added — runs `lint` + `lint:rules` on every PR (typecheck already covered by existing `typecheck.yml`)
 - GitHub labels created: `phase:0`-`phase:6`, `phase:ongoing`, `scope:voice`, `scope:billing`, `scope:tickets`, `scope:tenant`, `scope:ui`, `scope:infra`, `scope:docs`, `gate:hipaa`, `gate:billing`, `gate:stability`, `gate:voice-quality`, `principle:ease-of-use`
+- **Protocol correction (mid-session):** `docs/COLLABORATION.md` updated — Claude does all the git work including merges; Wayne's only repo-side step is pulling `main` and republishing in Replit. Pre-merge GitHub review is optional, post-merge Replit verification is the real safety gate.
 
 **Next session resumes at:** Phase 1 — archive ~14 speculative `platform/` modules to `platform/_archived/`.
