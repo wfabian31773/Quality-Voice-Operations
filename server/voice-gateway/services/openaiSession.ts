@@ -744,14 +744,13 @@ export interface OpenAISessionConfigInput {
 }
 
 export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
-  // IMPORTANT: keep transcription model as `gpt-4o-mini-transcribe`. The
-  // realtime API only fully supports g711_ulaw input on the *mini* variant;
-  // switching to the full `gpt-4o-transcribe` model has been observed to
-  // produce garbled / static audio because of an input-format mismatch on
-  // the Twilio PSTN pipeline.
+  // Use `whisper-1` for transcription. It is the most battle-tested model
+  // for narrow-band telephony audio (g711_ulaw, 8 kHz) and avoids the
+  // input-format mismatch that caused garbled / static audio when we tried
+  // the `gpt-4o-transcribe` family on the Twilio PSTN pipeline.
   const transcription = input.language && input.language !== 'en'
-    ? { model: 'gpt-4o-mini-transcribe' as const, language: input.language }
-    : { model: 'gpt-4o-mini-transcribe' as const };
+    ? { model: 'whisper-1' as const, language: input.language }
+    : { model: 'whisper-1' as const };
   return {
     voice: input.voice,
     audio: {
