@@ -744,13 +744,14 @@ export interface OpenAISessionConfigInput {
 }
 
 export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
-  // Use `whisper-1` for transcription. It is the most battle-tested model
-  // for narrow-band telephony audio (g711_ulaw, 8 kHz) and avoids the
-  // input-format mismatch that caused garbled / static audio when we tried
-  // the `gpt-4o-transcribe` family on the Twilio PSTN pipeline.
+  // Use `gpt-realtime-whisper` — OpenAI's purpose-built streaming Whisper
+  // for the Realtime API (released May 2026, documented in
+  // shared/voice/realtimeModels.ts). It streams partial transcripts the way
+  // semantic_vad needs to commit turns quickly, while avoiding the input-
+  // format mismatch that the `gpt-4o-transcribe` family had with g711_ulaw.
   const transcription = input.language && input.language !== 'en'
-    ? { model: 'whisper-1' as const, language: input.language }
-    : { model: 'whisper-1' as const };
+    ? { model: 'gpt-realtime-whisper' as const, language: input.language }
+    : { model: 'gpt-realtime-whisper' as const };
   return {
     voice: input.voice,
     audio: {
