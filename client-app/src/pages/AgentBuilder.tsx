@@ -1824,7 +1824,7 @@ function AgentBuilderInner() {
 
   const [agentSettings, setAgentSettings] = useState({
     voice: 'alloy',
-    model: 'gpt-4o-realtime-preview',
+    model: DEFAULT_REALTIME_MODEL,
     temperature: 0.7,
     system_prompt: '',
     welcome_greeting: '',
@@ -1902,7 +1902,7 @@ function AgentBuilderInner() {
       const templatedGreeting = getTemplatedWelcomeGreeting(agentType, lang, name);
       setAgentSettings({
         voice: (wdSettings?.voice as string) || a.voice || 'alloy',
-        model: (wdSettings?.model as string) || a.model || 'gpt-4o-realtime-preview',
+        model: (wdSettings?.model as string) || a.model || DEFAULT_REALTIME_MODEL,
         temperature: (wdSettings?.temperature as number) ?? a.temperature ?? 0.7,
         system_prompt: rawPrompt || getDefaultSystemPrompt(lang),
         welcome_greeting: rawGreeting || templatedGreeting || getDefaultWelcomeGreeting(lang),

@@ -29,6 +29,7 @@ import {
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import { getDefaultWelcomeGreeting, useBuilderUiT } from '../lib/agentBuilderI18n';
+import { REALTIME_MODELS, DEFAULT_REALTIME_MODEL } from '../../../shared/voice/realtimeModels';
 
 interface Tenant {
   id: string;
@@ -65,10 +66,7 @@ function normalizeBillingCurrencyCode(value: string | null | undefined): string 
   return trimmed;
 }
 
-const VOICE_MODELS = [
-  { value: 'gpt-4o-realtime-preview', label: 'GPT-4o Realtime' },
-  { value: 'gpt-4o-mini-realtime-preview', label: 'GPT-4o Mini Realtime' },
-];
+const VOICE_MODELS = REALTIME_MODELS.map((m) => ({ value: m.id, label: m.label }));
 
 const ALL_TIMEZONES: string[] = (() => {
   const intlExt = Intl as typeof Intl & {
@@ -209,7 +207,7 @@ function GeneralSettings() {
         timezone:
           tenant.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
-        defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
+        defaultVoiceModel: s.defaultVoiceModel ?? DEFAULT_REALTIME_MODEL,
         defaultVoice: s.defaultVoice ?? 'sage',
         defaultAgentType: s.defaultAgentType ?? 'general',
         billingCurrency: normalizeBillingCurrencyCode(tenant.billing_currency),
@@ -288,7 +286,7 @@ function GeneralSettings() {
       timezone:
         tenant.timezone ?? s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       primaryLanguage: normalizeAgentLanguage(s.primaryLanguage ?? DEFAULT_AGENT_LANGUAGE),
-      defaultVoiceModel: s.defaultVoiceModel ?? 'gpt-4o-realtime-preview',
+      defaultVoiceModel: s.defaultVoiceModel ?? DEFAULT_REALTIME_MODEL,
       defaultVoice: s.defaultVoice ?? 'sage',
       defaultAgentType: s.defaultAgentType ?? 'general',
       billingCurrency: normalizeBillingCurrencyCode(tenant.billing_currency),

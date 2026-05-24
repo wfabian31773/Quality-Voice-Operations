@@ -13,6 +13,7 @@ import {
   normalizeAgentLanguage,
 } from '../../../platform/agent-templates/agentLanguages';
 import { recordActivationEvent } from '../../../platform/activation/ActivationService';
+import { isRealtimeModel, DEFAULT_REALTIME_MODEL, REALTIME_MODEL_IDS } from '../../../shared/voice/realtimeModels';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -73,6 +74,13 @@ function validateAgentInput(body: Record<string, unknown>, isCreate: boolean): s
     }
   }
 
+  if (body.model !== undefined && body.model !== null && body.model !== '') {
+    if (typeof body.model !== 'string' || !isRealtimeModel(body.model)) {
+      const ids = [...REALTIME_MODEL_IDS].join(', ');
+      return `model must be a supported OpenAI Realtime model. Allowed: ${ids}`;
+    }
+  }
+
   return null;
 }
 
@@ -117,7 +125,7 @@ router.get('/agents', requireAuth, async (req, res) => {
 router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
-  const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-4o-realtime-preview',
+  const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = DEFAULT_REALTIME_MODEL,
           temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null,
           language = DEFAULT_AGENT_LANGUAGE, workflow_definition = null } = body;
 
@@ -956,7 +964,7 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     const draftSettings = (wd.settings || {}) as Record<string, unknown>;
 
     const publishVoice = (draftSettings.voice as string) || agent.voice || 'alloy';
-    const publishModel = (draftSettings.model as string) || agent.model || 'gpt-4o-realtime-preview';
+    const publishModel = (draftSettings.model as string) || agent.model || DEFAULT_REALTIME_MODEL;
     const publishTemp = (draftSettings.temperature as number) ?? agent.temperature ?? 0.8;
     const publishGreeting = (draftSettings.welcome_greeting as string) ?? agent.welcome_greeting ?? '';
     const publishName = (draftSettings.name as string) || agent.name;
