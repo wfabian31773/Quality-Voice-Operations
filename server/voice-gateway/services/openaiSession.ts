@@ -759,9 +759,12 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
         transcription,
         turnDetection: {
           type: 'semantic_vad' as const,
-          // 'low' waits noticeably longer before deciding the caller has finished
-          // speaking — fewer mid-thought interruptions on slow / paused speech.
-          eagerness: 'low' as const,
+          // 'auto' is the SDK default and balances responsiveness against
+          // patience. 'low' was tried but combined with whisper-1 (which does
+          // not stream partial transcripts the way gpt-4o-transcribe does)
+          // it left the VAD without enough signal to commit, so the model
+          // never produced a follow-up turn after the caller's first reply.
+          eagerness: 'auto' as const,
           createResponse: true,
           interruptResponse: true,
         },
