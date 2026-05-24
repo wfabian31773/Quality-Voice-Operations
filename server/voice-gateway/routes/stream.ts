@@ -198,9 +198,22 @@ export function attachWebSocket(server: HTTPServer, options: { pathPrefix?: stri
           slog.error('Failed to record call usage metrics', { error: String(err) });
         });
 
+        // Iron-out 9 observability: log finalize check inputs BEFORE the
+        // sessionResult branch so we can tell, from prod logs alone, whether
+        // we took the cost-recording path at all for a given call.
+        slog.info('finalize_check', {
+          event: 'finalize_check',
+          callSessionId,
+          tenantId,
+          hasSessionResult: !!sessionResult,
+          hasTenantId: !!tenantId,
+          hasCallSessionId: !!callSessionId,
+          durationSeconds,
+        });
+
         if (sessionResult) {
           const ct = sessionResult.costTracker;
-          recordConversationCost({
+          const costPayload = {
             tenantId: tenantId!,
             callSessionId: callSessionId!,
             durationSeconds,
@@ -212,12 +225,66 @@ export function attachWebSocket(server: HTTPServer, options: { pathPrefix?: stri
             cacheHits: ct.cacheHits,
             cacheMisses: ct.cacheMisses,
             promptTokensSaved: ct.promptTokensSaved,
-          }).catch((err) => {
-            slog.error('Failed to record conversation cost', { error: String(err) });
+          };
+          // Iron-out 9 observability: log full payload BEFORE attempting the
+          // INSERT so we can correlate the DB write with the routing/tier
+          // decisions the session actually made.
+          slog.info('cost_record_attempt', {
+            event: 'cost_record_attempt',
+            callSessionId,
+            payload: costPayload,
           });
+          recordConversationCost(costPayload)
+            .then((row) => {
+              if (row) {
+                slog.info('cost_recorded', {
+                  event: 'cost_recorded',
+                  callSessionId,
+                  tenantId,
+                  costRowId: row.id,
+                  sttCostCents: row.sttCostCents,
+                  llmCostCents: row.llmCostCents,
+                  ttsCostCents: row.ttsCostCents,
+                  infraCostCents: row.infraCostCents,
+                  totalCostCents: row.totalCostCents,
+                  modelTier: row.modelTier,
+                  modelUsed: row.modelUsed,
+                });
+              } else {
+                // recordConversationCost returned null — meaning the inner
+                // try/catch swallowed an error. The service already logs the
+                // error in CostTrackingService.ts (logger.error there), but
+                // we emit a 'cost_record_failed' event here too so a single
+                // grep on the event name in deploy logs surfaces every miss.
+                slog.error('cost_record_failed', {
+                  event: 'cost_record_failed',
+                  callSessionId,
+                  tenantId,
+                  reason: 'recordConversationCost returned null (see CostTrackingService logs for SQL error detail)',
+                  payload: costPayload,
+                });
+              }
+            })
+            .catch((err: unknown) => {
+              const e = err as { message?: string; code?: string; stack?: string };
+              slog.error('cost_record_failed', {
+                event: 'cost_record_failed',
+                callSessionId,
+                tenantId,
+                error: String(err),
+                errorCode: e?.code,
+                errorMessage: e?.message,
+                stack: e?.stack,
+                payload: costPayload,
+              });
+            });
 
           for (const decision of ct.routingDecisions) {
-            logRoutingDecision(tenantId!, callSessionId!, decision).catch(() => {});
+            // Silent catch is intentional here: routing-decision rows are
+            // best-effort analytics. A DB blip must not break the call
+            // finalize path. recordConversationCost above is the canonical
+            // money-impacting write and IS observable.
+            logRoutingDecision(tenantId!, callSessionId!, decision).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
           }
         }
 
@@ -472,7 +539,7 @@ export function attachWebSocket(server: HTTPServer, options: { pathPrefix?: stri
                     return rows[0] as { team_id: string } | undefined;
                   });
                 } catch (queryErr) {
-                  await hClient.query('ROLLBACK').catch(() => {});
+                  await hClient.query('ROLLBACK').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
                   throw queryErr;
                 }
                 if (teamResult) {
@@ -782,7 +849,7 @@ export function attachWebSocket(server: HTTPServer, options: { pathPrefix?: stri
           });
 
           for (const decision of ct.routingDecisions) {
-            logRoutingDecision(tenantId!, callSessionId!, decision).catch(() => {});
+            logRoutingDecision(tenantId!, callSessionId!, decision).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
           }
         }
 
@@ -810,7 +877,7 @@ export function attachWebSocket(server: HTTPServer, options: { pathPrefix?: stri
         writeCallMetric(tenantId, durationSeconds, {
           callSessionId,
           outcome: 'completed',
-        }).catch(() => {});
+        }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
         sessionManager.unregister(callSessionId);
       }
     }

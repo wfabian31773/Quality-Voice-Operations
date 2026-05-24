@@ -266,7 +266,7 @@ function buildToolHandler(
           } catch (swapErr) {
             logger.error('Session swap failed after handoff routing', { tenantId, callId: callSessionId, error: String(swapErr) });
             if (handoffResult.routingInfo) {
-              await workforceRouter.recordHandoff(tenantId, { ...handoffResult.routingInfo, reason: `Session swap failed: ${String(swapErr)}`, duration_ms: Date.now() - startTime, outcome: 'failed' }).catch(() => {});
+              await workforceRouter.recordHandoff(tenantId, { ...handoffResult.routingInfo, reason: `Session swap failed: ${String(swapErr)}`, duration_ms: Date.now() - startTime, outcome: 'failed' }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
             }
             await completeToolExecution({
               tenantId,
@@ -906,7 +906,7 @@ export async function createRealtimeSession(
 
   const isAzulVision = agentConfig.metadata?.practiceName === 'Azul Vision' || agentConfig.metadata?.practiceName === 'Azul Vision Eye Center';
   if (isAzulVision) {
-    wakeUpTicketing().catch(() => {});
+    wakeUpTicketing().catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
   }
 
   await writeCallEvent(tenantId, callSessionId, 'call_received', null, 'CALL_RECEIVED', {
@@ -1102,7 +1102,7 @@ export async function createRealtimeSession(
             );
             writeCallEvent(tenantId, callSessionId, 'silence_recovery', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
               prompt: recovery.recoveryPrompt,
-            }).catch(() => {});
+            }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
           }
         } catch (silenceErr) {
           slog.warn('Silence recovery handler failed', { error: String(silenceErr) });
@@ -1116,6 +1116,32 @@ export async function createRealtimeSession(
   const attachSessionListeners = (targetSession: RealtimeSession): void => {
     targetSession.on('history_added', (item: RealtimeItem) => {
       const msg = item as RealtimeMessageItem;
+      // Iron-out 9 observability: log every history_added event the SDK
+      // emits, even ones we ignore (type !== 'message'), so we can prove the
+      // listener is firing throughout the call and not silently disconnected.
+      try {
+        const role = (msg as { role?: string }).role ?? 'unknown';
+        let textLen = 0;
+        if (Array.isArray((msg as { content?: unknown }).content)) {
+          for (const c of (msg as { content: Array<{ text?: string; transcript?: string }> }).content) {
+            const t = c.text ?? c.transcript;
+            if (typeof t === 'string') textLen += t.length;
+          }
+        }
+        slog.info('history_added_received', {
+          event: 'history_added_received',
+          callSessionId,
+          itemType: msg.type,
+          role,
+          textLen,
+          itemId: (msg as { itemId?: string; id?: string }).itemId ?? (msg as { id?: string }).id,
+        });
+      } catch (logErr) {
+        slog.warn('history_added_received log failed (non-fatal)', {
+          callSessionId,
+          error: String(logErr),
+        });
+      }
       if (msg.type !== 'message') return;
 
       resetSilenceTimer();
@@ -1165,7 +1191,7 @@ export async function createRealtimeSession(
                 fromTier: prevTier,
                 toTier: activeModelTier,
                 reason: utteranceRouting.reason,
-              }).catch(() => {});
+              }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
             }
 
             recordTrace({
@@ -1181,7 +1207,7 @@ export async function createRealtimeSession(
                 activeTools: agentTools.map(t => (t as { name?: string }).name ?? 'unknown'),
               },
               metadata: { model: agentConfig.model, agentId: agentConfig.agentId, voice: agentConfig.voice },
-            }).catch(() => {});
+            }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
 
             let classifiedIntent = 'unknown';
             let classifiedConfidence: 'high' | 'medium' | 'low' = 'low';
@@ -1232,16 +1258,16 @@ export async function createRealtimeSession(
                   tool: reasoningResult.toolToExecute,
                   missingSlots: reasoningResult.traceEntry.missingSlots,
                   escalation: reasoningResult.escalation?.trigger,
-                }).catch(() => {});
+                }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
 
                 if (reasoningResult.action === 'escalate_to_human' && ctx.onEscalation) {
                   const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
-                  updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
+                  updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
                   writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
                     trigger: reasoningResult.escalation?.trigger,
                     output: reasoningResult.escalation?.output,
                     reason: escalationReason,
-                  }).catch(() => {});
+                  }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
                   ctx.onEscalation(callSessionId, callSid, escalationReason).catch((escErr) => {
                     slog.error('Reasoning-triggered escalation failed', { error: String(escErr) });
                   });
@@ -1252,7 +1278,7 @@ export async function createRealtimeSession(
                     question: reasoningResult.clarifyingQuestion,
                     missingSlots: reasoningResult.traceEntry.missingSlots,
                     fallbackStep: reasoningResult.fallbackStep,
-                  }).catch(() => {});
+                  }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
 
                   try {
                     injectConversationItem(
@@ -1276,7 +1302,7 @@ export async function createRealtimeSession(
                 if (reasoningResult.action === 'complete_interaction') {
                   writeCallEvent(tenantId, callSessionId, 'reasoning_complete', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
                     reason: reasoningResult.reasoning,
-                  }).catch(() => {});
+                  }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
                 }
 
                 if (
@@ -1326,7 +1352,7 @@ export async function createRealtimeSession(
               stepName: 'OpenAIRealtimeSession',
               outputData: { response: redactPHI(c.text), role: 'assistant' },
               metadata: { model: agentConfig.model, agentId: agentConfig.agentId },
-            }).catch(() => {});
+            }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
 
             if (reasoningEngine) {
               try {
@@ -1337,7 +1363,7 @@ export async function createRealtimeSession(
                     .map((v) => v.description);
                   writeCallEvent(tenantId, callSessionId, 'safety_response_blocked', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
                     violations: criticalViolations,
-                  }).catch(() => {});
+                  }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
                   slog.warn('Safety gate blocked assistant response — cancelling and correcting', {
                     violations: criticalViolations,
                   });
@@ -1365,7 +1391,61 @@ export async function createRealtimeSession(
       }
 
       if (line) {
-        lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
+        // Iron-out 9 observability: appendTranscript writes the per-turn
+        // line to call_sessions.context.transcript. Failures were silent —
+        // the prod call on 2026-05-24 produced 0 transcript lines despite
+        // a 76-second back-and-forth conversation. Log both the attempt
+        // and the resolution so we can prove this path runs end-to-end.
+        const redactedLine = redactPHI(line);
+        slog.info('transcript_persist_attempt', {
+          event: 'transcript_persist_attempt',
+          callSessionId,
+          lineLen: redactedLine.length,
+          rolePrefix: redactedLine.slice(0, 8),
+        });
+        try {
+          const persistResult = lifecycleCoordinator.appendTranscript(callSessionId, redactedLine) as unknown;
+          if (persistResult && typeof (persistResult as { then?: unknown }).then === 'function') {
+            (persistResult as Promise<unknown>)
+              .then(() => {
+                slog.info('transcript_persisted', {
+                  event: 'transcript_persisted',
+                  callSessionId,
+                  lineLen: redactedLine.length,
+                });
+              })
+              .catch((persistErr: unknown) => {
+                const e = persistErr as { message?: string; stack?: string; code?: string };
+                slog.error('transcript_persist_failed', {
+                  event: 'transcript_persist_failed',
+                  callSessionId,
+                  error: String(persistErr),
+                  errorMessage: e?.message,
+                  errorCode: e?.code,
+                  stack: e?.stack,
+                  lineLen: redactedLine.length,
+                });
+              });
+          } else {
+            slog.info('transcript_persisted', {
+              event: 'transcript_persisted',
+              callSessionId,
+              lineLen: redactedLine.length,
+              sync: true,
+            });
+          }
+        } catch (persistErr) {
+          const e = persistErr as { message?: string; stack?: string; code?: string };
+          slog.error('transcript_persist_failed', {
+            event: 'transcript_persist_failed',
+            callSessionId,
+            error: String(persistErr),
+            errorMessage: e?.message,
+            errorCode: e?.code,
+            stack: e?.stack,
+            lineLen: redactedLine.length,
+          });
+        }
       }
     });
 
@@ -1443,7 +1523,7 @@ export async function createRealtimeSession(
           writeCallEvent(tenantId, callSessionId, 'reasoning_trace', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
             reasoningTrace: reasoningEngine.getTraceEntries(),
             callSummary: reasoningSummary,
-          }).catch(() => {});
+          }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
           slog.info('Reasoning trace persisted', {
             totalTurns: (reasoningSummary as Record<string, unknown>).totalTurns,
             escalationCount: (reasoningSummary as Record<string, unknown>).escalationCount,
@@ -1453,8 +1533,8 @@ export async function createRealtimeSession(
         }
       }
 
-      updateCallState(tenantId, callSessionId, 'CALL_COMPLETED').catch(() => {});
-      writeCallEvent(tenantId, callSessionId, 'session_closed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED').catch(() => {});
+      updateCallState(tenantId, callSessionId, 'CALL_COMPLETED').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
+      writeCallEvent(tenantId, callSessionId, 'session_closed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
       lifecycleCoordinator.handleOpenAiSessionEnd(callSessionId);
       sessionManager.unregister(callSessionId);
     });
@@ -1495,15 +1575,62 @@ export async function createRealtimeSession(
   };
 
   const triggerGreeting = (): void => {
+    // Iron-out 9 observability: greeting source resolution was opaque —
+    // the prod call on 2026-05-24 played the generic "Hello, how can I
+    // help you today?" fallback even though the agents row had a custom
+    // welcome_greeting. agentConfig.greeting is the only field consulted
+    // here. The agentLoader emits a 'greeting_resolved' event with the
+    // upstream source breakdown (meta.greeting vs welcome_greeting vs
+    // template fallback); this log proves which string actually fires.
+    const greetingMeta = (agentConfig.metadata ?? {}) as Record<string, unknown>;
+    const metaGreeting = typeof greetingMeta.greeting === 'string' ? greetingMeta.greeting : null;
+    const metaWelcomeGreeting = typeof greetingMeta.welcomeGreeting === 'string'
+      ? greetingMeta.welcomeGreeting
+      : (typeof greetingMeta.welcome_greeting === 'string'
+        ? (greetingMeta.welcome_greeting as string)
+        : null);
+    let firedSource: 'agent_config' | 'agent_type_template' | 'hardcoded' | 'none';
+    if (!agentConfig.greeting) {
+      firedSource = 'none';
+    } else if (metaGreeting && agentConfig.greeting === metaGreeting) {
+      firedSource = 'agent_config';
+    } else if (agentConfig.greeting === 'Hello, how can I help you today?') {
+      firedSource = 'hardcoded';
+    } else {
+      firedSource = 'agent_type_template';
+    }
+    slog.info('greeting_resolved', {
+      event: 'greeting_resolved',
+      callSessionId,
+      agentId: agentConfig.agentId,
+      firedSource,
+      greetingPreview: agentConfig.greeting ? agentConfig.greeting.substring(0, 80) : null,
+      greetingLen: agentConfig.greeting?.length ?? 0,
+      metaGreetingValue: metaGreeting,
+      metaWelcomeGreetingValue: metaWelcomeGreeting,
+      metaGreetingTruthy: !!metaGreeting,
+      metaWelcomeGreetingTruthy: !!metaWelcomeGreeting,
+    });
     if (!agentConfig.greeting) return;
     activeTransport.on('session.created', () => {
       try {
         injectConversationItem(
           `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]`,
         );
-        slog.info('Greeting triggered', { greeting: agentConfig.greeting.substring(0, 50) });
+        slog.info('greeting_triggered', {
+          event: 'greeting_triggered',
+          callSessionId,
+          firedSource,
+          greetingPreview: agentConfig.greeting.substring(0, 80),
+        });
       } catch (err) {
-        slog.error('Failed to trigger greeting', { error: String(err) });
+        slog.error('greeting_trigger_failed', {
+          event: 'greeting_trigger_failed',
+          callSessionId,
+          firedSource,
+          error: String(err),
+          stack: (err as { stack?: string })?.stack,
+        });
       }
     });
   };
@@ -1650,7 +1777,7 @@ export async function createRealtimeSession(
             toModel: activeModel,
             reason: 'budget_threshold',
             percentUsed: budgetResult.percentUsed,
-          }).catch(() => {});
+          }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
         } catch (downgradeErr) {
           slog.error('Model downgrade failed', { error: String(downgradeErr) });
           activeModelTier = prevTier;
@@ -1663,7 +1790,7 @@ export async function createRealtimeSession(
           currentCostCents,
           budgetCents: budgetResult.budgetCents,
           percentUsed: budgetResult.percentUsed,
-        }).catch(() => {});
+        }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
       }
     } catch (budgetErr) {
       slog.warn('Budget check failed', { error: String(budgetErr) });

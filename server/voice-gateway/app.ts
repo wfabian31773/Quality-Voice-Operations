@@ -25,7 +25,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     service: 'voice-gateway',
     stackTrace: err.stack,
     extra: { type: 'expressMiddleware' },
-  }).catch(() => {});
+  }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
   }
