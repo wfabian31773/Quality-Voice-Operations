@@ -1083,6 +1083,17 @@ export async function createRealtimeSession(
         for (const c of msg.content) {
           const text = c.text || c.transcript;
           if (text) {
+            // Skip our own system-prompt injections (greetings, clarifications, etc).
+            // They are sent as conversation.item.create with role:'user' so the model
+            // treats them as instructions, but the SDK echoes them back through
+            // history_added — without this guard, the reasoning engine treats each
+            // injection as a fresh caller utterance and recursively injects another
+            // clarification, producing hundreds of turns per second and the
+            // `conversation_already_has_active_response` error storm.
+            if (text.startsWith('[System:')) {
+              line = null;
+              break;
+            }
             line = `CALLER: ${text}`;
             costTracker.addUtterance('user', text);
 
