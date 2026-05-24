@@ -23,6 +23,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { api } from '../lib/api';
+import { REALTIME_MODELS, DEFAULT_REALTIME_MODEL } from '../../../shared/voice/realtimeModels';
 import {
   AGENT_LANGUAGES,
   DEFAULT_AGENT_LANGUAGE,
@@ -114,8 +115,6 @@ interface VersionInfo {
   published_by: string | null;
   created_at: string;
 }
-
-const MODELS = ['gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview'];
 
 interface NodeCategory {
   label: string;
@@ -883,7 +882,7 @@ function VoiceConfigPanel({
             onChange={(e) => onChange('model', e.target.value)}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm"
           >
-            {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+            {REALTIME_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
         </div>
         <div>

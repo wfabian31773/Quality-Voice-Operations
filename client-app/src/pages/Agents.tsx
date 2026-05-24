@@ -12,6 +12,7 @@ import { PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 import SchedulingDriftBanner from '../components/SchedulingDriftBanner';
 import VoicePicker from '../components/VoicePicker';
+import { REALTIME_MODELS, DEFAULT_REALTIME_MODEL } from '../../../shared/voice/realtimeModels';
 import {
   AGENT_LANGUAGES,
   DEFAULT_AGENT_LANGUAGE,
@@ -77,7 +78,6 @@ interface AgentToolsResponse {
   templatePermissions: { allowedTools: string[]; deniedTools: string[] };
 }
 
-const MODELS = ['gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview'];
 const AGENT_TYPES = [
   'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
   'appointment-confirmation', 'custom', 'dental', 'property-management',
@@ -277,7 +277,7 @@ function AgentModal({
       name: '',
       type: 'general',
       voice: getDefaultVoiceForLanguage(initialLanguage),
-      model: 'gpt-4o-realtime-preview',
+      model: DEFAULT_REALTIME_MODEL,
       language: initialLanguage,
       system_prompt: getDefaultSystemPrompt(initialLanguage),
       welcome_greeting: getDefaultWelcomeGreeting(initialLanguage),
@@ -321,7 +321,7 @@ function AgentModal({
         name: a.name ?? '',
         type: a.type ?? 'general',
         voice,
-        model: a.model ?? 'gpt-4o-realtime-preview',
+        model: a.model ?? DEFAULT_REALTIME_MODEL,
         language,
         system_prompt: a.system_prompt ?? '',
         welcome_greeting: a.welcome_greeting ?? '',
@@ -516,7 +516,7 @@ function AgentModal({
               <label className="block text-sm font-medium text-text-primary mb-1">{t('agents.modal.field_model')}</label>
               <select value={form.model} onChange={(e) => set('model', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm">
-                {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {REALTIME_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </div>
             {templateFallbackHint && (
