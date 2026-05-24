@@ -5,6 +5,7 @@ import {
   type PlanTier,
 } from '../../../shared/billing/planCatalog';
 import { getPlanAiMinutesPriceEnvKey } from './plans';
+import { dollarsToCents } from '../../core/formatCurrency';
 
 export type PriceInterval = 'monthly' | 'annual';
 
@@ -286,7 +287,7 @@ async function checkMeteredAiMinutes(
           message: `Price ${priceId} tiered overage tier has no unit_amount`,
         };
       }
-      const expectedOverageCents = Math.round(catalogOverageRatePerMinute * 100);
+      const expectedOverageCents = dollarsToCents(catalogOverageRatePerMinute);
       if (overageCents !== expectedOverageCents) {
         return {
           ...result,
