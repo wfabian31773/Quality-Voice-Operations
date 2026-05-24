@@ -759,21 +759,14 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
         format: 'g711_ulaw' as const,
         transcription,
         turnDetection: {
-          // Switched from semantic_vad to server_vad for predictable,
-          // deterministic end-of-turn detection. semantic_vad was waiting a
-          // few seconds too long — right up against our silence-watchdog —
-          // before committing. server_vad commits a fixed silenceDurationMs
-          // after speech stops, so the agent replies promptly.
-          type: 'server_vad' as const,
-          // 600 ms of silence after speech ends → commit turn. Snappy
-          // without clipping callers who pause briefly mid-sentence.
-          silenceDurationMs: 600,
-          // 300 ms of audio captured before VAD-detected speech start
-          // (helps preserve leading consonants).
-          prefixPaddingMs: 300,
-          // Volume threshold for what counts as speech. 0.5 is the API
-          // default; lower → more sensitive to soft talkers.
-          threshold: 0.5,
+          // semantic_vad understands speech vs echo (the agent's own audio
+          // bleeding back through the phone line); server_vad is purely
+          // volume-based and was triggering false end-of-turn commits from
+          // echo, so the agent talked over itself and never yielded.
+          // 'high' eagerness keeps semantic_vad's echo-awareness while
+          // committing turns quickly — the snappy-but-safe sweet spot.
+          type: 'semantic_vad' as const,
+          eagerness: 'high' as const,
           createResponse: true,
           interruptResponse: true,
         },
