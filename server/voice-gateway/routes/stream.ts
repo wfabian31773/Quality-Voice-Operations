@@ -75,13 +75,17 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return Buffer.from(buffer).toString('base64');
 }
 
-export function attachWebSocket(server: HTTPServer): void {
+export function attachWebSocket(server: HTTPServer, options: { pathPrefix?: string } = {}): void {
+  const rawPrefix = options.pathPrefix ?? '';
+  const pathPrefix = rawPrefix && !rawPrefix.startsWith('/') ? `/${rawPrefix}` : rawPrefix;
+  const twilioStreamPath = `${pathPrefix}/twilio/stream`;
+  const widgetStreamPath = `${pathPrefix}/widget/stream`;
   const wss = new WebSocketServer({ noServer: true });
   const widgetWss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
-    if (url.pathname === '/twilio/stream') {
+    if (url.pathname === twilioStreamPath || url.pathname === '/twilio/stream') {
       if (!validateStreamOrigin(request)) {
         logger.warn('WebSocket connection rejected — invalid stream token', {
           remoteAddress: request.socket?.remoteAddress,
@@ -93,7 +97,7 @@ export function attachWebSocket(server: HTTPServer): void {
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
       });
-    } else if (url.pathname === '/widget/stream') {
+    } else if (url.pathname === widgetStreamPath || url.pathname === '/widget/stream') {
       const widgetToken = url.searchParams.get('token');
       if (!widgetToken) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
