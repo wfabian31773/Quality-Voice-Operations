@@ -755,7 +755,9 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
         transcription,
         turnDetection: {
           type: 'semantic_vad' as const,
-          eagerness: 'medium' as const,
+          // 'low' waits noticeably longer before deciding the caller has finished
+          // speaking — fewer mid-thought interruptions on slow / paused speech.
+          eagerness: 'low' as const,
           createResponse: true,
           interruptResponse: true,
         },
@@ -941,9 +943,22 @@ export async function createRealtimeSession(
   const systemPromptComplexity = classifyAgentComplexity(agentTypeHint, systemPromptWithMemory, agentConfig.tools);
   const initialRouting = routeQuery(systemPromptComplexity.sampleQuery);
   let activeModelTier: ModelTier = initialRouting.tier;
-  let activeModel = TIER_MODEL_MAP[activeModelTier];
+  // Honor the agent's explicitly configured realtime model when set; otherwise
+  // fall back to tier-based defaults. This lets operators pin an agent to a
+  // specific model (e.g. gpt-realtime-2) from the Agent Settings UI without
+  // being silently overridden by the cost-routing heuristic.
+  let activeModel = agentConfig.model && agentConfig.model.startsWith('gpt-realtime')
+    ? agentConfig.model
+    : TIER_MODEL_MAP[activeModelTier];
 
-  slog.info('Model routing decision', { agentType: agentTypeHint, tier: activeModelTier, model: activeModel, reason: initialRouting.reason });
+  slog.info('Model routing decision', {
+    agentType: agentTypeHint,
+    tier: activeModelTier,
+    model: activeModel,
+    reason: agentConfig.model && agentConfig.model.startsWith('gpt-realtime')
+      ? `Agent-pinned model (${agentConfig.model})`
+      : initialRouting.reason,
+  });
 
   const conversationHistory: ConversationMessage[] = [];
   const COMPRESSION_TURN_THRESHOLD = 20;
