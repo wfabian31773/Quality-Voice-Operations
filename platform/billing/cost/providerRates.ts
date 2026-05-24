@@ -8,6 +8,8 @@ export const MODEL_RATES: Record<string, ModelRate> = {
   'gpt-4o-mini': { inputPer1kTokens: 0.015, outputPer1kTokens: 0.06 },
   'gpt-4-turbo': { inputPer1kTokens: 1.0, outputPer1kTokens: 3.0 },
   'gpt-3.5-turbo': { inputPer1kTokens: 0.05, outputPer1kTokens: 0.15 },
+  'gpt-4o-realtime-preview': { inputPer1kTokens: 0.5, outputPer1kTokens: 2.0 },
+  'gpt-4o-mini-realtime-preview': { inputPer1kTokens: 0.06, outputPer1kTokens: 0.24 },
 };
 
 export const STT_COST_PER_MINUTE_CENTS = parseFloat(process.env.STT_COST_PER_MINUTE_CENTS ?? '0.6');
@@ -16,14 +18,19 @@ export const INFRA_COST_PER_MINUTE_CENTS = parseFloat(process.env.INFRA_COST_PER
 
 export type ModelTier = 'economy' | 'standard' | 'premium';
 
+// NOTE: These models drive the OpenAI Realtime API session (createRealtimeSession
+// in server/voice-gateway/services/openaiSession.ts). Only realtime-capable
+// models are valid here — using a standard chat model (e.g. "gpt-4o") causes
+// the Realtime API to reject the session with "invalid_model" and the call
+// connects but produces no audio. Keep entries in sync with MODEL_RATES above.
 export const TIER_MODEL_MAP: Record<ModelTier, string> = {
-  economy: 'gpt-4o-mini',
-  standard: 'gpt-4o',
-  premium: 'gpt-4-turbo',
+  economy: 'gpt-4o-mini-realtime-preview',
+  standard: 'gpt-4o-realtime-preview',
+  premium: 'gpt-4o-realtime-preview',
 };
 
 export function getModelRate(model: string): ModelRate {
-  return MODEL_RATES[model] ?? MODEL_RATES['gpt-4o'];
+  return MODEL_RATES[model] ?? MODEL_RATES['gpt-4o-realtime-preview'];
 }
 
 export function calculateLlmCostCents(model: string, inputTokens: number, outputTokens: number): number {
