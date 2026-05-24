@@ -2,24 +2,39 @@ import { useParams, Link } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Phone, Clock, DollarSign, Users, CheckCircle2, ArrowRight,
-  Stethoscope, Home, Scale, Wrench, Smile, BarChart3, Shield,
-  Calendar, MessageSquare, TrendingUp, Star, Zap, Target,
-  PawPrint, Car, Landmark, Hotel,
+  CheckCircle2,
+  Phone,
+  Stethoscope,
+  Home,
+  Scale,
+  Wrench,
+  Smile,
+  PawPrint,
+  Car,
+  Landmark,
+  Hotel,
+  HeadphonesIcon,
 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import RevealSection from '../../components/RevealSection';
 import ROICalculator from '../../components/ROICalculator';
-import { trackPageView, trackVerticalEngagement, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
+import { PageHero, Pillars, BottomCTA } from '../../components/marketing';
+import {
+  trackPageView,
+  trackVerticalEngagement,
+  trackCTAClick,
+  trackConversionEvent,
+  captureUtmOnLoad,
+} from '../../lib/analytics';
 import { VERTICAL_ACTION, CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
 interface VerticalConfig {
   slug: string;
   icon: typeof Phone;
-  color: string;
-  heroImage: string;
-  heroOverlayAccent: string;
+  heroLight: string;
+  heroDark: string;
+  avatar: string;
   demoAgent: string;
 }
 
@@ -27,18 +42,15 @@ interface PainPoint {
   title: string;
   description: string;
 }
-
 interface AgentExample {
   name: string;
   description: string;
   capabilities: string[];
 }
-
 interface Stat {
   value: string;
   label: string;
 }
-
 interface Testimonial {
   quote: string;
   author: string;
@@ -50,74 +62,82 @@ const verticals: Record<string, VerticalConfig> = {
   healthcare: {
     slug: 'healthcare',
     icon: Stethoscope,
-    color: 'bg-blue-600',
-    heroImage: '/industry-hero/healthcare.jpg',
-    heroOverlayAccent: 'from-blue-500/20 to-primary/10',
+    heroLight: '/assets/sections-web/V1-consultation-suite.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/medical.jpg',
     demoAgent: 'medical-intake',
   },
   'real-estate': {
     slug: 'real-estate',
     icon: Home,
-    color: 'bg-emerald-600',
-    heroImage: '/industry-hero/real-estate.jpg',
-    heroOverlayAccent: 'from-emerald-500/20 to-primary/10',
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/real-estate.jpg',
     demoAgent: 'real-estate',
   },
   legal: {
     slug: 'legal',
     icon: Scale,
-    color: 'bg-amber-600',
-    heroImage: '/industry-hero/legal.jpg',
-    heroOverlayAccent: 'from-amber-600/20 to-orange-500/10',
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/legal.jpg',
     demoAgent: 'legal-intake',
   },
   'home-services': {
     slug: 'home-services',
     icon: Wrench,
-    color: 'bg-orange-600',
-    heroImage: '/industry-hero/home-services.jpg',
-    heroOverlayAccent: 'from-orange-500/20 to-amber-500/10',
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/hvac.jpg',
     demoAgent: 'hvac-home-services',
   },
   dental: {
     slug: 'dental',
     icon: Smile,
-    color: 'bg-cyan-600',
-    heroImage: '/industry-hero/dental.jpg',
-    heroOverlayAccent: 'from-cyan-500/20 to-primary/10',
+    heroLight: '/assets/sections-web/V1-consultation-suite.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/dental.jpg',
     demoAgent: 'dental-scheduling',
   },
   veterinary: {
     slug: 'veterinary',
     icon: PawPrint,
-    color: 'bg-green-600',
-    heroImage: '/industry-hero/veterinary.jpg',
-    heroOverlayAccent: 'from-green-500/20 to-primary/10',
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/medical.jpg',
     demoAgent: 'veterinary-scheduling',
   },
   automotive: {
     slug: 'automotive',
     icon: Car,
-    color: 'bg-slate-700',
-    heroImage: '/industry-hero/automotive.jpg',
-    heroOverlayAccent: 'from-slate-500/25 to-blue-500/10',
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/automotive.jpg',
     demoAgent: 'automotive-service',
   },
   finance: {
     slug: 'finance',
     icon: Landmark,
-    color: 'bg-indigo-700',
-    heroImage: '/industry-hero/finance.jpg',
-    heroOverlayAccent: 'from-indigo-500/25 to-blue-500/10',
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/insurance.jpg',
     demoAgent: 'finance-prospect',
   },
   hospitality: {
     slug: 'hospitality',
     icon: Hotel,
-    color: 'bg-amber-700',
-    heroImage: '/industry-hero/hospitality.jpg',
-    heroOverlayAccent: 'from-amber-500/25 to-rose-500/10',
+    heroLight: '/assets/sections-web/L2-waiting-room.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/customer-support.jpg',
     demoAgent: 'hospitality-reservations',
+  },
+  'customer-support': {
+    slug: 'customer-support',
+    icon: HeadphonesIcon,
+    heroLight: '/assets/sections-web/L1-notebook-phone.jpg',
+    heroDark: '/assets/sections-web/D1-dark-office.jpg',
+    avatar: '/assets/avatars-v2-web/customer-support.jpg',
+    demoAgent: 'customer-support',
   },
 };
 
@@ -139,15 +159,20 @@ export default function VerticalLanding() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-display font-bold text-text-primary mb-4">{t('vertical_page.not_found.title')}</h1>
-          <p className="text-text-secondary mb-6">{t('vertical_page.not_found.subtitle')}</p>
-          <Link to="/use-cases" className="text-primary hover:underline">{t('vertical_page.not_found.view_all')} &rarr;</Link>
+          <h1 className="text-2xl font-display font-bold text-text-primary mb-4">
+            {t('vertical_page.not_found.title')}
+          </h1>
+          <p className="text-text-secondary mb-6">
+            {t('vertical_page.not_found.subtitle')}
+          </p>
+          <Link to="/use-cases" className="text-primary hover:underline">
+            {t('vertical_page.not_found.view_all')} &rarr;
+          </Link>
         </div>
       </div>
     );
   }
 
-  const Icon = config.icon;
   const dataKey = `vertical_data.${config.slug}`;
   const verticalName = t(`${dataKey}.name`);
   const verticalLower = verticalName.toLocaleLowerCase();
@@ -159,6 +184,47 @@ export default function VerticalLanding() {
   const agentExamples = t(`${dataKey}.agentExamples`, { returnObjects: true }) as AgentExample[];
   const stats = t(`${dataKey}.stats`, { returnObjects: true }) as Stat[];
   const testimonial = t(`${dataKey}.testimonial`, { returnObjects: true }) as Testimonial;
+
+  // Floating live-performance card rendered in the hero's right column on lg+.
+  const heroRightCard = (
+    <div className="relative max-w-sm w-full">
+      <div className="rounded-2xl bg-black/55 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
+        <div className="flex items-center gap-2 mb-5">
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-primary-light">
+            {t('vertical_page.card.live_performance')}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-5">
+          {stats.slice(0, 4).map((stat) => (
+            <div key={stat.label}>
+              <p className="font-display text-2xl font-bold text-white leading-none tabular-nums">
+                {stat.value}
+              </p>
+              <p className="text-[11px] text-white/65 mt-1.5">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 pt-4 border-t border-white/15 flex items-center gap-2 text-[11px] text-white/70">
+          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+          {t('vertical_page.card.from_customers_in', { vertical: verticalLower })}
+        </div>
+      </div>
+      <div className="absolute -bottom-4 -left-4 rounded-xl bg-surface shadow-xl border border-border p-3 flex items-center gap-3 max-w-[260px]">
+        <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-muted ring-1 ring-border/60 shrink-0">
+          <img src={config.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-text-primary leading-tight">
+            {t('vertical_page.card.pre_built_for', { vertical: verticalName })}
+          </p>
+          <p className="text-[10px] text-text-muted leading-tight mt-0.5">
+            {t('vertical_page.card.deploy_minutes')}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -172,136 +238,92 @@ export default function VerticalLanding() {
           name: metaTitle,
           description: metaDescription,
           url: `https://qvo.ai/industries/${config.slug}`,
-          provider: {
-            '@type': 'Organization',
-            name: 'QVO',
-            url: 'https://qvo.ai',
-          },
+          provider: { '@type': 'Organization', name: 'QVO', url: 'https://qvo.ai' },
         }}
       />
 
-      <section className="relative overflow-hidden">
-        {/* Background photo */}
-        <div className="absolute inset-0">
-          <img
-            src={config.heroImage}
-            alt={`${verticalName} workspace`}
-            className="w-full h-full object-cover"
-          />
-          {/* Dark base for text contrast (left-weighted) */}
-          <div className="absolute inset-0 bg-gradient-to-r from-sidebar-bg via-sidebar-bg/85 to-sidebar-bg/30 lg:to-sidebar-bg/10" />
-          <div className="absolute inset-0 bg-gradient-to-t from-sidebar-bg/80 via-transparent to-sidebar-bg/40" />
-          {/* Accent wash */}
-          <div className={`absolute inset-0 bg-gradient-to-br opacity-70 mix-blend-soft-light ${config.heroOverlayAccent}`} />
-        </div>
+      {/* 1 · HERO via shared component, with floating stats card */}
+      <PageHero
+        lightSrc={config.heroLight}
+        darkSrc={config.heroDark}
+        eyebrow={verticalName}
+        title={headline}
+        description={subheadline}
+        ctas={[
+          {
+            label: t('vertical_page.hero.start_trial'),
+            to: '/signup',
+            variant: 'primary',
+            onClick: () => {
+              trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'hero');
+              trackConversionEvent(
+                CONVERSION_STAGE.CTA_CLICK,
+                `/industries/${config.slug}`,
+                { cta: 'signup' },
+              );
+            },
+          },
+          {
+            label: t('vertical_page.hero.try_demo'),
+            to: `/demo?agent=${config.demoAgent}`,
+            variant: 'ghost',
+            trailingIcon: <Phone className="h-4 w-4" />,
+            onClick: () => {
+              trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'hero');
+              trackConversionEvent(
+                CONVERSION_STAGE.DEMO_STARTED,
+                `/industries/${config.slug}`,
+              );
+            },
+          },
+        ]}
+        rightContent={heroRightCard}
+      />
 
-        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
-          <div className="grid lg:grid-cols-[1.1fr,1fr] gap-12 items-center">
-            <div className="max-w-2xl">
-              <div className="flex items-center gap-3 mb-6">
-                <div className={`w-10 h-10 rounded-xl ${config.color} flex items-center justify-center shadow-lg`}>
-                  <Icon className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-sm font-medium text-primary uppercase tracking-[0.2em]">{verticalName}</span>
-              </div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold text-white leading-[1.05] mb-6">
-                {headline}
-              </h1>
-              <p className="text-lg md:text-xl text-white/80 leading-relaxed mb-8">
-                {subheadline}
-              </p>
-              <div className="flex flex-wrap gap-4">
-                <Link
-                  to="/signup"
-                  onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'hero'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, `/industries/${config.slug}`, { cta: 'signup' }); }}
-                  className="btn-primary-glow inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-on-primary px-6 py-3 rounded-xl font-medium transition-colors duration-[var(--motion-base)] min-h-[44px]"
-                >
-                  {t('vertical_page.hero.start_trial')} <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  to={`/demo?agent=${config.demoAgent}`}
-                  onClick={() => { trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'hero'); trackConversionEvent(CONVERSION_STAGE.DEMO_STARTED, `/industries/${config.slug}`); }}
-                  className="inline-flex items-center gap-2 bg-white/15 dark:bg-white/15 hover:bg-white/25 dark:hover:bg-white/25 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm border border-white/20 dark:border-white/20"
-                >
-                  {t('vertical_page.hero.try_demo')} <Phone className="h-4 w-4" />
-                </Link>
-              </div>
-            </div>
-
-            {/* Right-side floating stats card — desktop only */}
-            <div className="hidden lg:flex justify-end">
-              <div className="relative max-w-sm w-full">
-                <div className="rounded-2xl bg-sidebar-bg/70 backdrop-blur-md border border-white/15 dark:border-white/15 p-6 shadow-2xl">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-success">{t('vertical_page.card.live_performance')}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {stats.slice(0, 4).map((stat) => (
-                      <div key={stat.label}>
-                        <p className="font-display text-2xl font-bold text-white leading-none">{stat.value}</p>
-                        <p className="text-[11px] text-white/60 mt-1.5">{stat.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-5 pt-4 border-t border-white/10 dark:border-white/10 flex items-center gap-2 text-[11px] text-white/70">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                    {t('vertical_page.card.from_customers_in', { vertical: verticalLower })}
-                  </div>
-                </div>
-                <div className="absolute -bottom-3 -left-3 rounded-xl bg-surface shadow-xl border border-border p-3 flex items-center gap-2.5 max-w-[220px]">
-                  <div className={`w-8 h-8 rounded-lg ${config.color} flex items-center justify-center shrink-0`}>
-                    <Icon className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-text-primary leading-tight">{t('vertical_page.card.pre_built_for', { vertical: verticalName })}</p>
-                    <p className="text-[10px] text-text-muted leading-tight mt-0.5">{t('vertical_page.card.deploy_minutes')}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-12 bg-surface border-b border-border">
+      {/* 2 · STATS STRIP */}
+      <section className="bg-surface py-14 border-b border-border/60">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat) => (
               <div key={stat.label} className="text-center">
-                <div className="text-3xl md:text-4xl font-display font-bold text-text-primary">{stat.value}</div>
-                <div className="text-sm text-text-muted mt-1">{stat.label}</div>
+                <p className="font-display text-3xl md:text-4xl font-bold text-text-primary tabular-nums">
+                  {stat.value}
+                </p>
+                <p className="text-xs lg:text-sm text-text-secondary font-body mt-2 uppercase tracking-wider">
+                  {stat.label}
+                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="py-20 bg-surface-secondary">
+      {/* 3 · PAIN POINTS */}
+      <section className="bg-surface-secondary py-24 lg:py-32">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
+            <div className="max-w-3xl mb-16">
+              <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary mb-3">
+                {t('vertical_page.problems.eyebrow', 'The phone is leaking')}
+              </p>
+              <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.1] mb-5 [text-wrap:balance]">
                 {t('vertical_page.problems.title')}
               </h2>
-              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
+              <p className="font-body text-lg text-text-secondary leading-relaxed">
                 {t('vertical_page.problems.subtitle', { vertical: verticalName })}
               </p>
             </div>
           </RevealSection>
           <div className="grid md:grid-cols-2 gap-6">
-            {painPoints.map((point, idx) => (
-              <RevealSection key={point.title} delay={`delay-${idx * 100}`}>
-                <div className="bg-surface rounded-2xl p-6 border border-border hover:shadow-lg transition-shadow">
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/15 flex items-center justify-center shrink-0 mt-0.5">
-                      <Target className="h-4 w-4 text-red-500" />
-                    </div>
-                    <div>
-                      <h3 className="font-display font-semibold text-text-primary mb-2">{point.title}</h3>
-                      <p className="text-sm text-text-secondary leading-relaxed">{point.description}</p>
-                    </div>
-                  </div>
+            {painPoints.map((point, i) => (
+              <RevealSection key={point.title} delay={`scroll-delay-${(i % 4) + 1}`}>
+                <div className="border-l-2 border-primary/40 hover:border-primary pl-6 py-2 transition-colors">
+                  <h3 className="font-display text-xl font-semibold text-text-primary mb-3 [text-wrap:balance]">
+                    {point.title}
+                  </h3>
+                  <p className="font-body text-base text-text-secondary leading-relaxed">
+                    {point.description}
+                  </p>
                 </div>
               </RevealSection>
             ))}
@@ -309,32 +331,37 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-surface">
+      {/* 4 · AGENT EXAMPLES */}
+      <section className="bg-surface py-24 lg:py-32">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
+            <div className="max-w-3xl mb-16">
+              <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary mb-3">
+                {t('vertical_page.agents.eyebrow', 'Pre-built agents')}
+              </p>
+              <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.1] mb-5 [text-wrap:balance]">
                 {t('vertical_page.agents.title', { vertical: verticalName })}
               </h2>
-              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
+              <p className="font-body text-lg text-text-secondary leading-relaxed">
                 {t('vertical_page.agents.subtitle', { vertical_lower: verticalLower })}
               </p>
             </div>
           </RevealSection>
-          <div className="grid md:grid-cols-3 gap-8">
-            {agentExamples.map((agent, idx) => (
-              <RevealSection key={agent.name} delay={`delay-${idx * 150}`}>
-                <div className="bg-surface-secondary rounded-2xl p-6 border border-border h-full flex flex-col">
-                  <div className={`w-10 h-10 rounded-xl ${config.color} flex items-center justify-center mb-4`}>
-                    <Zap className="h-5 w-5 text-white" />
-                  </div>
-                  <h3 className="font-display font-semibold text-text-primary text-lg mb-2">{agent.name}</h3>
-                  <p className="text-sm text-text-secondary mb-4 flex-1">{agent.description}</p>
-                  <ul className="space-y-2">
+          <div className="grid md:grid-cols-3 gap-6">
+            {agentExamples.map((agent, i) => (
+              <RevealSection key={agent.name} delay={`scroll-delay-${(i % 3) + 1}`}>
+                <div className="bg-surface-secondary border border-border/60 rounded-2xl p-7 h-full flex flex-col hover:border-primary/40 hover:shadow-[0_12px_40px_-12px_rgba(14,39,56,0.15)] transition-all">
+                  <h3 className="font-display text-lg font-semibold text-text-primary mb-3 [text-wrap:balance]">
+                    {agent.name}
+                  </h3>
+                  <p className="font-body text-sm text-text-secondary leading-relaxed mb-6 flex-1">
+                    {agent.description}
+                  </p>
+                  <ul className="space-y-2.5">
                     {agent.capabilities.map((cap) => (
-                      <li key={cap} className="flex items-center gap-2 text-sm text-text-primary">
-                        <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-                        {cap}
+                      <li key={cap} className="flex items-start gap-2.5 text-sm text-text-primary">
+                        <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                        <span className="font-body">{cap}</span>
                       </li>
                     ))}
                   </ul>
@@ -345,14 +372,18 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-surface-secondary">
+      {/* 5 · ROI CALCULATOR */}
+      <section className="bg-surface-secondary py-24 lg:py-32 border-y border-border/60">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <RevealSection>
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
+            <div className="max-w-3xl mb-12">
+              <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary mb-3">
+                {t('vertical_page.roi.eyebrow', 'Run the numbers')}
+              </p>
+              <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.1] mb-5 [text-wrap:balance]">
                 {t('vertical_page.roi.title')}
               </h2>
-              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
+              <p className="font-body text-lg text-text-secondary leading-relaxed">
                 {t('vertical_page.roi.subtitle', { vertical_lower: verticalLower })}
               </p>
             </div>
@@ -361,83 +392,85 @@ export default function VerticalLanding() {
         </div>
       </section>
 
-      <section className="py-20 bg-sidebar-bg">
-        <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
+      {/* 6 · TESTIMONIAL */}
+      <section className="bg-sidebar-bg py-24 lg:py-32">
+        <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <RevealSection>
-            <div className="flex justify-center mb-4">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} className="h-5 w-5 text-yellow-400 fill-yellow-400" />
-              ))}
-            </div>
-            <blockquote className="text-xl md:text-2xl text-white font-display leading-relaxed mb-6">
-              "{testimonial.quote}"
+            <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary-light mb-6 text-center">
+              {t('vertical_page.testimonial.eyebrow', 'From the front desk')}
+            </p>
+            <blockquote className="font-display text-2xl lg:text-[34px] text-white font-bold leading-[1.25] text-center max-w-3xl mx-auto mb-10 [text-wrap:balance]">
+              &ldquo;{testimonial.quote}&rdquo;
             </blockquote>
-            <div className="text-white/70">
-              <span className="font-semibold text-white">{testimonial.author}</span>
-              <span className="mx-2">·</span>
-              {testimonial.role}, {testimonial.company}
+            <div className="flex items-center justify-center gap-4">
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-white/10 ring-1 ring-white/20 shrink-0">
+                <img src={config.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
+              </div>
+              <div className="text-left">
+                <p className="font-display text-sm font-semibold text-white">{testimonial.author}</p>
+                <p className="font-body text-xs text-white/65 mt-0.5">
+                  {testimonial.role} · {testimonial.company}
+                </p>
+              </div>
             </div>
           </RevealSection>
         </div>
       </section>
 
-      <section className="py-20 bg-surface">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <RevealSection>
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-display font-bold text-text-primary mb-4">
-                {t('vertical_page.why.title', { vertical: verticalName })}
-              </h2>
-            </div>
-          </RevealSection>
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              { icon: Shield, title: t('vertical_page.why.industry_expertise_title'), desc: t('vertical_page.why.industry_expertise_desc', { vertical_lower: verticalLower }) },
-              { icon: Clock, title: t('vertical_page.why.deploy_title'), desc: t('vertical_page.why.deploy_desc') },
-              { icon: BarChart3, title: t('vertical_page.why.roi_title'), desc: t('vertical_page.why.roi_desc') },
-            ].map((item, idx) => (
-              <RevealSection key={item.title} delay={`delay-${idx * 150}`}>
-                <div className="text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <item.icon className="h-6 w-6 text-primary" />
-                  </div>
-                  <h3 className="font-display font-semibold text-text-primary text-lg mb-2">{item.title}</h3>
-                  <p className="text-sm text-text-secondary leading-relaxed">{item.desc}</p>
-                </div>
-              </RevealSection>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* 7 · WHY US via shared Pillars */}
+      <Pillars
+        eyebrow={t('vertical_page.why.eyebrow', 'Why QVO')}
+        title={t('vertical_page.why.title', { vertical: verticalName })}
+        items={[
+          {
+            num: '01',
+            title: t('vertical_page.why.industry_expertise_title'),
+            body: t('vertical_page.why.industry_expertise_desc', {
+              vertical_lower: verticalLower,
+            }),
+          },
+          {
+            num: '02',
+            title: t('vertical_page.why.deploy_title'),
+            body: t('vertical_page.why.deploy_desc'),
+          },
+          {
+            num: '03',
+            title: t('vertical_page.why.roi_title'),
+            body: t('vertical_page.why.roi_desc'),
+          },
+        ]}
+      />
 
-      <section className="py-20 bg-gradient-to-br from-primary to-primary-hover">
-        <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-4">
-            {t('vertical_page.bottom_cta.title', { vertical: verticalName })}
-          </h2>
-          <p className="text-lg text-white/80 mb-8 max-w-2xl mx-auto">
-            {t('vertical_page.bottom_cta.subtitle', { vertical_lower: verticalLower })}
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link
-              to="/signup"
-              onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'bottom-cta'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, `/industries/${config.slug}`, { cta: 'signup_bottom' }); }}
-              className="inline-flex items-center gap-2 bg-surface text-primary hover:bg-surface-hover px-8 py-3.5 rounded-xl font-semibold transition-colors"
-            >
-              {t('vertical_page.bottom_cta.start_trial')} <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              to={`/demo?agent=${config.demoAgent}`}
-              onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'bottom-cta')}
-              className="inline-flex items-center gap-2 bg-white/20 dark:bg-white/20 hover:bg-white/30 dark:hover:bg-white/30 text-white px-8 py-3.5 rounded-xl font-semibold transition-colors backdrop-blur-sm"
-            >
-              {t('vertical_page.bottom_cta.see_demo')} <Phone className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
+      {/* 8 · BOTTOM CTA */}
+      <BottomCTA
+        eyebrow={t('vertical_page.bottom_cta.eyebrow', 'Ready when you are')}
+        title={t('vertical_page.bottom_cta.title', { vertical: verticalName })}
+        body={t('vertical_page.bottom_cta.subtitle', { vertical_lower: verticalLower })}
+        ctas={[
+          {
+            label: t('vertical_page.bottom_cta.start_trial'),
+            to: '/signup',
+            variant: 'primary',
+            onClick: () => {
+              trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'bottom-cta');
+              trackConversionEvent(
+                CONVERSION_STAGE.CTA_CLICK,
+                `/industries/${config.slug}`,
+                { cta: 'signup_bottom' },
+              );
+            },
+          },
+          {
+            label: t('vertical_page.bottom_cta.see_demo'),
+            to: `/demo?agent=${config.demoAgent}`,
+            variant: 'ghost',
+            trailingIcon: <Phone className="h-4 w-4" />,
+            onClick: () =>
+              trackCTAClick(CTA.TRY_LIVE_DEMO, `industry-${config.slug}`, 'bottom-cta'),
+          },
+        ]}
+      />
     </>
   );
 }
-
-export const VERTICAL_SLUGS = Object.keys(verticals);
