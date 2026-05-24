@@ -1365,7 +1365,64 @@ export async function createRealtimeSession(
       }
 
       if (line) {
-        lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
+        // Defer to the transport-level transcript events when possible so
+        // dedup works end-to-end. Fall back to writing here only if the
+        // item_id is missing (defensive — should not happen in practice).
+        const itemIdAny =
+          (item as { itemId?: string; id?: string }).itemId ??
+          (item as { itemId?: string; id?: string }).id ??
+          null;
+        if (itemIdAny) {
+          if (!persistedTranscriptItemIds.has(itemIdAny)) {
+            persistedTranscriptItemIds.add(itemIdAny);
+            slog.info('transcript_persist_attempt', {
+              event: 'transcript_persist_attempt',
+              callSessionId,
+              itemId: itemIdAny,
+              role: msg.role,
+              source: 'history_added',
+              textLen: line.length,
+            });
+            try {
+              const maybeP = lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
+              Promise.resolve(maybeP)
+                .then(() => {
+                  slog.info('transcript_persisted', {
+                    event: 'transcript_persisted',
+                    callSessionId,
+                    itemId: itemIdAny,
+                    role: msg.role,
+                    source: 'history_added',
+                    lineLen: line.length,
+                  });
+                })
+                .catch((err) => {
+                  slog.error('transcript_persist_failed', {
+                    event: 'transcript_persist_failed',
+                    callSessionId,
+                    itemId: itemIdAny,
+                    role: msg.role,
+                    source: 'history_added',
+                    error: err instanceof Error ? err.message : String(err),
+                    stack: err instanceof Error ? err.stack : undefined,
+                  });
+                });
+            } catch (err) {
+              slog.error('transcript_persist_failed', {
+                event: 'transcript_persist_failed',
+                callSessionId,
+                itemId: itemIdAny,
+                role: msg.role,
+                source: 'history_added',
+                error: err instanceof Error ? err.message : String(err),
+                stack: err instanceof Error ? err.stack : undefined,
+              });
+            }
+          }
+        } else {
+          // No item_id available — write anyway, accepting potential duplicate.
+          lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
+        }
       }
     });
 
@@ -1478,6 +1535,127 @@ export async function createRealtimeSession(
     activeTransport.on('audio', handler);
   };
 
+  // Per-session set of item_ids we've already persisted a transcript for. The
+  // OpenAI Realtime API emits multiple events that carry transcript text:
+  //
+  //   - `history_added`: fires when an item is INSERTED. For audio items the
+  //     transcript is empty at this point (textLen=0 in the observability
+  //     log), so the existing history_added handler skips them.
+  //   - `conversation.item.input_audio_transcription.completed`: fires LATER
+  //     when STT finishes for a caller audio item. Carries `transcript` +
+  //     `item_id`.
+  //   - `response.audio_transcript.done`: same idea for assistant audio
+  //     output. Carries `transcript` + `item_id` (+ `response_id`).
+  //
+  // We subscribe to the late events here so the transcript actually persists
+  // for audio-driven conversations (which is every voice call). The dedup
+  // set guards against the rare case where `history_added` already carried
+  // populated text for a text-only item (e.g. our `[System: ...]` injections,
+  // though those are also filtered upstream) and the transcript event later
+  // re-fires for the same item.
+  const persistedTranscriptItemIds = new Set<string>();
+
+  function persistTranscriptOnce(args: {
+    itemId: string | null | undefined;
+    role: 'user' | 'assistant';
+    transcript: string | null | undefined;
+    source: 'history_added' | 'input_audio_transcription_completed' | 'audio_transcript_done';
+  }): void {
+    const { itemId, role, transcript, source } = args;
+    if (!itemId || !transcript) return;
+    const trimmed = transcript.trim();
+    if (!trimmed) return;
+    if (persistedTranscriptItemIds.has(itemId)) {
+      slog.debug('transcript_skip_duplicate', {
+        event: 'transcript_skip_duplicate',
+        callSessionId,
+        itemId,
+        role,
+        source,
+        textLen: trimmed.length,
+      });
+      return;
+    }
+    persistedTranscriptItemIds.add(itemId);
+
+    const line = role === 'user' ? `CALLER: ${trimmed}` : `AGENT: ${trimmed}`;
+    slog.info('transcript_persist_attempt', {
+      event: 'transcript_persist_attempt',
+      callSessionId,
+      itemId,
+      role,
+      source,
+      textLen: trimmed.length,
+    });
+    try {
+      const maybeP = lifecycleCoordinator.appendTranscript(callSessionId, redactPHI(line));
+      Promise.resolve(maybeP)
+        .then(() => {
+          slog.info('transcript_persisted', {
+            event: 'transcript_persisted',
+            callSessionId,
+            itemId,
+            role,
+            source,
+            lineLen: line.length,
+          });
+        })
+        .catch((err) => {
+          slog.error('transcript_persist_failed', {
+            event: 'transcript_persist_failed',
+            callSessionId,
+            itemId,
+            role,
+            source,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          });
+        });
+    } catch (err) {
+      slog.error('transcript_persist_failed', {
+        event: 'transcript_persist_failed',
+        callSessionId,
+        itemId,
+        role,
+        source,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
+  }
+
+  // Attach the two raw OpenAI Realtime transport events that carry the
+  // populated transcript text. These are the ones that actually fire when
+  // speech-to-text completes; `history_added` fires too early for audio.
+  //
+  // Called once for the initial transport, then re-called on handoff against
+  // the new transport so a mid-call agent swap doesn't lose transcript flow.
+  function attachTranscriptListeners(transport: typeof activeTransport): void {
+    const t = transport as unknown as {
+      on(event: string, listener: (...args: unknown[]) => void): void;
+    };
+    t.on('conversation.item.input_audio_transcription.completed', (event: unknown) => {
+      const e = event as { item_id?: string; transcript?: string };
+      persistTranscriptOnce({
+        itemId: e?.item_id,
+        role: 'user',
+        transcript: e?.transcript,
+        source: 'input_audio_transcription_completed',
+      });
+    });
+    t.on('response.audio_transcript.done', (event: unknown) => {
+      const e = event as { item_id?: string; transcript?: string };
+      persistTranscriptOnce({
+        itemId: e?.item_id,
+        role: 'assistant',
+        transcript: e?.transcript,
+        source: 'audio_transcript_done',
+      });
+    });
+  }
+
+  attachTranscriptListeners(activeTransport);
+
   const sendRealtimeEvent = (event: Record<string, unknown>): void => {
     (activeTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
   };
@@ -1581,6 +1759,12 @@ export async function createRealtimeSession(
     if (audioOutputHandler) {
       newTransport.on('audio', audioOutputHandler);
     }
+
+    // Re-attach transcript listeners against the new transport so the
+    // handoff doesn't break transcript persistence mid-call. Dedup set is
+    // shared (closure-scoped) so an item_id persisted before the swap won't
+    // be written again if its tail event fires post-swap.
+    attachTranscriptListeners(newTransport);
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (apiKey) {
