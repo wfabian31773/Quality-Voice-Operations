@@ -209,11 +209,16 @@ async function checkMeteredAiMinutes(
   }
 
   try {
-    const price = await stripe.prices.retrieve(priceId);
+    // Expand tiers so we can verify tiered metered prices against the
+    // catalog overage rate. Stripe omits the `tiers` array on the price
+    // object by default — without `expand`, a tiered price would look
+    // indistinguishable from one with no pricing data.
+    const price = await stripe.prices.retrieve(priceId, { expand: ['tiers'] });
     const actualInterval = price.recurring?.interval ?? null;
     const actualUsageType = price.recurring?.usage_type ?? null;
     const actualMeter = price.recurring?.meter ?? null;
     const rawCents = price.unit_amount ?? null;
+    const billingScheme = price.billing_scheme ?? null;
 
     const result: PriceCheckResult = {
       ...base,
@@ -240,11 +245,64 @@ async function checkMeteredAiMinutes(
       };
     }
 
+    // Tiered metered prices are the canonical shape for "first N minutes
+    // included, then $X per overage minute" — verified against the
+    // catalog's overage rate rather than a single flat `unit_amount`. We
+    // reverse-engineer the overage cents from the last (unbounded) tier
+    // because that's the one Stripe will bill against once a tenant
+    // exceeds their included minutes for the period. Tier1 (up_to=N,
+    // unit_amount=0) is informational here — Wayne can audit the
+    // included-minutes ladder directly in the dashboard.
+    //
+    // Falls through to the legacy flat-`unit_amount` check below for any
+    // tier that's still configured as `billing_scheme=per_unit` (e.g.
+    // older deployments that haven't migrated to tiered metered yet).
+    if (billingScheme === 'tiered') {
+      const tiers = (price.tiers ?? []) as Array<{
+        up_to: number | 'inf' | null;
+        unit_amount: number | null;
+        unit_amount_decimal: string | null;
+      }>;
+      if (tiers.length === 0) {
+        return {
+          ...result,
+          status: 'no-amount',
+          message: `Price ${priceId} is tiered but has no tiers array — expand may have failed`,
+        };
+      }
+      // The overage tier is the unbounded one (up_to == null in the
+      // Stripe API response, which serializes as the JSON `null` and was
+      // submitted by us as 'inf' on creation).
+      const overageTier = tiers.find((t) => t.up_to === null) ?? tiers[tiers.length - 1];
+      const overageCents =
+        overageTier.unit_amount ??
+        (overageTier.unit_amount_decimal != null
+          ? Math.round(Number(overageTier.unit_amount_decimal))
+          : null);
+      if (overageCents == null) {
+        return {
+          ...result,
+          status: 'no-amount',
+          message: `Price ${priceId} tiered overage tier has no unit_amount`,
+        };
+      }
+      const expectedOverageCents = Math.round(catalogOverageRatePerMinute * 100);
+      if (overageCents !== expectedOverageCents) {
+        return {
+          ...result,
+          unitAmountCents: overageCents,
+          status: 'wrong-amount',
+          message: `Price ${priceId} tiered overage = ${overageCents}¢/min, expected ${expectedOverageCents}¢/min (catalog overageRatePerMinute=$${catalogOverageRatePerMinute})`,
+        };
+      }
+      return { ...result, unitAmountCents: overageCents };
+    }
+
     if (rawCents == null && (price.unit_amount_decimal ?? null) == null) {
       return {
         ...result,
         status: 'no-amount',
-        message: `Price ${priceId} has no unit_amount or unit_amount_decimal (tiered or missing)`,
+        message: `Price ${priceId} has no unit_amount or unit_amount_decimal (and billing_scheme is not 'tiered' — set billing_scheme=tiered with a free included-minutes tier and an overage tier, or set a flat unit_amount matching catalog overage rate)`,
       };
     }
 

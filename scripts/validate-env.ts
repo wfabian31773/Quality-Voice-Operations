@@ -10,7 +10,7 @@ interface EnvVar {
 const ENV_VARS: EnvVar[] = [
   { name: 'APP_ENV', required: 'always', purpose: 'Environment selector (development | staging | production)' },
   { name: 'DATABASE_URL', required: 'development', purpose: 'Local PostgreSQL connection string (Replit)' },
-  { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Supabase transaction pooler URL (port 6543, SSL)' },
+  { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Supabase session pooler URL (port 5432, SSL) — DO NOT use transaction pooler (6543), see note in script' },
   { name: 'OPENAI_API_KEY', required: 'always', purpose: 'OpenAI Realtime API key for voice AI' },
   { name: 'TWILIO_ACCOUNT_SID', required: 'always', purpose: 'Twilio account SID' },
   { name: 'TWILIO_AUTH_TOKEN', required: 'always', purpose: 'Twilio auth token' },
@@ -205,8 +205,29 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
     warnings.push('ADMIN_JWT_SECRET appears to be an auto-generated dev secret — use a strong random secret in production');
   }
 
-  if (isProd && process.env.PLATFORM_DB_POOL_URL && !process.env.PLATFORM_DB_POOL_URL.includes('6543')) {
-    warnings.push('PLATFORM_DB_POOL_URL may not be using transaction pooler port 6543');
+  // PLATFORM_DB_POOL_URL pooler-mode sanity check.
+  //
+  // Supabase exposes the same database through three entrypoints:
+  //   - direct          db.<ref>.supabase.co:5432   (IPv6-only by default)
+  //   - session pooler  ...pooler.supabase.com:5432 (IPv4+IPv6, full Postgres feature set)
+  //   - txn pooler      ...pooler.supabase.com:6543 (IPv4+IPv6, no LISTEN/NOTIFY, no prepared statements)
+  //
+  // We previously hard-recommended the transaction pooler (port 6543), but
+  // that's the wrong default for a long-running Node container like our
+  // Replit Reserved VM — the `pg` driver's prepared-statement caching and
+  // any code path that relies on session-level state breaks under 6543.
+  // The session pooler (also port 5432) gets us IPv4 reachability without
+  // those limitations, and is the recommended choice for QVO.
+  //
+  // The only configuration we want to warn about now is the *transaction*
+  // pooler (6543), since it silently breaks features we use.
+  if (isProd && process.env.PLATFORM_DB_POOL_URL?.includes(':6543')) {
+    warnings.push(
+      'PLATFORM_DB_POOL_URL is using the Supabase transaction pooler (port 6543). ' +
+        'The voice gateway relies on prepared statements and session-level state, ' +
+        'which the transaction pooler does not support. Use the session pooler (port 5432) instead: ' +
+        'postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require',
+    );
   }
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {
