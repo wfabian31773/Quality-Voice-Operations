@@ -759,13 +759,21 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
         format: 'g711_ulaw' as const,
         transcription,
         turnDetection: {
-          type: 'semantic_vad' as const,
-          // 'auto' is the SDK default and balances responsiveness against
-          // patience. 'low' was tried but combined with whisper-1 (which does
-          // not stream partial transcripts the way gpt-4o-transcribe does)
-          // it left the VAD without enough signal to commit, so the model
-          // never produced a follow-up turn after the caller's first reply.
-          eagerness: 'auto' as const,
+          // Switched from semantic_vad to server_vad for predictable,
+          // deterministic end-of-turn detection. semantic_vad was waiting a
+          // few seconds too long — right up against our silence-watchdog —
+          // before committing. server_vad commits a fixed silenceDurationMs
+          // after speech stops, so the agent replies promptly.
+          type: 'server_vad' as const,
+          // 600 ms of silence after speech ends → commit turn. Snappy
+          // without clipping callers who pause briefly mid-sentence.
+          silenceDurationMs: 600,
+          // 300 ms of audio captured before VAD-detected speech start
+          // (helps preserve leading consonants).
+          prefixPaddingMs: 300,
+          // Volume threshold for what counts as speech. 0.5 is the API
+          // default; lower → more sensitive to soft talkers.
+          threshold: 0.5,
           createResponse: true,
           interruptResponse: true,
         },
