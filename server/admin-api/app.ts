@@ -174,6 +174,67 @@ app.use('/', productionEssentialsRoutes);
 app.use('/', voicePreviewRoutes);
 app.use('/', marketingSearchAnalyticsRoutes);
 
+// Client UI (client-app/src/lib/api.ts BASE = "/api") prefixes every
+// request with /api, but the routers above are mounted at /. Mirror
+// the same handlers under /api so the SPA can reach them. /health and
+// the voice-gateway under /vg keep their root paths so external probes
+// (Twilio webhooks, uptime monitors) keep working unchanged.
+app.use('/api', authRoutes);
+app.use('/api', tenantRoutes);
+app.use('/api', agentRoutes);
+app.use('/api', phoneNumberRoutes);
+app.use('/api', trustedCallerRoutes);
+app.use('/api', callsLiveRoutes);
+app.use('/api', callRoutes);
+app.use('/api', userRoutes);
+app.use('/api', connectorRoutes);
+app.use('/api', connectorOAuthRoutes);
+app.use('/api', billingRoutes);
+app.use('/api', campaignRoutes);
+app.use('/api', observabilityRoutes);
+app.use('/api', analyticsRoutes);
+app.use('/api', demoRoutes);
+app.use('/api', demoLiveRoutes);
+app.use('/api', contactRoutes);
+app.use('/api', apiKeyRoutes);
+app.use('/api', qualityRoutes);
+app.use('/api', csatRoutes);
+app.use('/api', auditLogRoutes);
+app.use('/api', platformAdminRoutes);
+app.use('/api', platformIntegrationsStatusRoutes);
+app.use('/api', platformConnectorHealthRoutes);
+app.use('/api', platformPushHealthRoutes);
+app.use('/api', platformBillingHealthRoutes);
+app.use('/api', platformCallEventsRetentionRoutes);
+app.use('/api', platformPortalConfigCleanupRoutes);
+app.use('/api', knowledgeBaseRoutes);
+app.use('/api', knowledgeDocumentsRoutes);
+app.use('/api', publicApiRoutes);
+app.use('/api', mobileApiRoutes);
+app.use('/api', widgetRoutes);
+app.use('/api', marketplaceRoutes);
+app.use('/api', toolExecutionRoutes);
+app.use('/api', operationsRoutes);
+app.use('/api', improvementsRoutes);
+app.use('/api', toolHealthRoutes);
+app.use('/api', costOptimizationRoutes);
+app.use('/api', callDebugRoutes);
+app.use('/api', complianceRoutes);
+app.use('/api', platformComplianceRoutes);
+app.use('/api', caseStudyRoutes);
+app.use('/api', conversionRoutes);
+app.use('/api', workflowRoutes);
+app.use('/api', smsInboxRoutes);
+app.use('/api', schedulingRoutes);
+app.use('/api', ticketRoutes);
+app.use('/api', dispatchRoutes);
+app.use('/api', ingestRoutes);
+app.use('/api', legalComplianceRoutes);
+app.use('/api', supportRoutes);
+app.use('/api', productionEssentialsRoutes);
+app.use('/api', voicePreviewRoutes);
+app.use('/api', marketingSearchAnalyticsRoutes);
+
 const clientDistPath = path.resolve(__dirname, '../../client-app/dist');
 
 if (isProductionBoot()) {
