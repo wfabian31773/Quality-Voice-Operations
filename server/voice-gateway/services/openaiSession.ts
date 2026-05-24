@@ -744,15 +744,23 @@ export interface OpenAISessionConfigInput {
 }
 
 export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
+  // Higher-accuracy transcription model. `gpt-4o-transcribe` is markedly
+  // better than the `-mini` variant on short utterances, accents, and
+  // background noise — the typical phone-call profile.
   const transcription = input.language && input.language !== 'en'
-    ? { model: 'gpt-4o-mini-transcribe' as const, language: input.language }
-    : { model: 'gpt-4o-mini-transcribe' as const };
+    ? { model: 'gpt-4o-transcribe' as const, language: input.language }
+    : { model: 'gpt-4o-transcribe' as const };
   return {
     voice: input.voice,
     audio: {
       input: {
         format: 'g711_ulaw' as const,
         transcription,
+        // Twilio PSTN audio is far-field (phone speaker / background noise
+        // through a handset mic). Setting this lets the SDK strip background
+        // hiss before it hits VAD, which cuts down on false turn detections
+        // when the caller is in a noisy environment.
+        noiseReduction: { type: 'far_field' as const },
         turnDetection: {
           type: 'semantic_vad' as const,
           // 'low' waits noticeably longer before deciding the caller has finished
@@ -760,6 +768,10 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
           eagerness: 'low' as const,
           createResponse: true,
           interruptResponse: true,
+          // Native idle-timeout: SDK will auto-prompt the agent after 30 s of
+          // pure silence, replacing our brittle FALLBACK_MANAGER post-close
+          // recovery path (the one logging `WebSocket is not connected`).
+          idleTimeoutMs: 30000,
         },
       },
       output: {
