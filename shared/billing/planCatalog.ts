@@ -67,12 +67,33 @@ export const CATALOG_TWILIO_RATE_PER_MINUTE = 0.02;
 
 /**
  * Discount applied to the published monthly base price when a tenant
- * commits to annual billing (e.g. 0.2 == 20% off). Lives in the shared
- * catalog so the public pricing page, the in-app billing estimator, and
- * the plan-recommendation engine can all reason about annual pricing
- * with the same constant.
+ * commits to annual billing. Lives in the shared catalog so the public
+ * pricing page, the in-app billing estimator, and the plan-recommendation
+ * engine can all reason about annual pricing with the same constant.
+ *
+ * Model: "2 months free" — pay 10 months upfront, get 12 months of service.
+ * Mathematically this is 2/12 = 16.6667% off the published monthly rate,
+ * so any UI that renders the discount as a whole-number percent shows "17%"
+ * (`Math.round(ANNUAL_DISCOUNT * 100)`). Preferred marketing language is
+ * "save 2 months when you pay yearly" rather than "17% off" — the percent
+ * form just falls out of the math for the legacy `−{N}%` badge surfaces.
+ *
+ * MUST match the structure of the Stripe annual licensed prices
+ * (`STRIPE_PRICE_<TIER>_ANNUAL`), which are configured at
+ * `monthly_price_cents × 10` to encode the same "2 months free" model.
+ * Verified against QVO sandbox 2026-05-24:
+ *   Starter:    monthly $99    × 10 = annual $990    ✓
+ *   Pro:        monthly $399   × 10 = annual $3,990  ✓
+ *   Enterprise: monthly $999   × 10 = annual $9,990  ✓
+ *
+ * History: previously 0.2 (20% off, monthly × 9.6 = annual). Stripe was
+ * separately configured at "monthly × 10" since launch; the two were never
+ * reconciled and the resulting drift quoted customers an annual savings
+ * (-20%) that the actual Stripe checkout did not honor (-16.67%). Iron-out
+ * #5 (2026-05-24) chose the Stripe model as source of truth and updated
+ * this constant accordingly.
  */
-export const ANNUAL_DISCOUNT = 0.2;
+export const ANNUAL_DISCOUNT = 2 / 12;
 
 export function getPlan(tier: PlanTier): PlanCatalogEntry {
   return PLAN_CATALOG[tier];
