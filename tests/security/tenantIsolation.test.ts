@@ -14,7 +14,33 @@ async function getPool() {
   return pool;
 }
 
+// Tests that INSERT into audit_logs (immutability + cross-tenant write) need
+// the fake tenant rows to exist first — audit_logs.tenant_id has a FK to
+// tenants.id, so the INSERT would otherwise fail with a foreign-key violation
+// BEFORE the immutability trigger or RLS WITH CHECK ever fires, masking what
+// the test is actually trying to verify.
+async function seedFakeTenants(): Promise<void> {
+  const p = await getPool();
+  await p.query(
+    `INSERT INTO tenants (id, name, slug, status, plan)
+     VALUES ($1, 'rls-test-a', 'rls-test-a', 'active', 'starter'),
+            ($2, 'rls-test-b', 'rls-test-b', 'active', 'starter')
+     ON CONFLICT (id) DO NOTHING`,
+    [FAKE_TENANT_A, FAKE_TENANT_B],
+  );
+}
+
+async function cleanupFakeTenants(): Promise<void> {
+  const p = await getPool();
+  // audit_logs FK is ON DELETE CASCADE? If not, clean them first.
+  await p.query(`DELETE FROM audit_logs WHERE tenant_id = ANY($1::text[])`, [[FAKE_TENANT_A, FAKE_TENANT_B]]);
+  await p.query(`DELETE FROM tenants WHERE id = ANY($1::text[])`, [[FAKE_TENANT_A, FAKE_TENANT_B]]);
+}
+
 describe('Tenant Isolation - RLS Enforcement', () => {
+  beforeAll(seedFakeTenants);
+  afterAll(cleanupFakeTenants);
+
   const RLS_TABLES = [
     'agents', 'phone_numbers', 'call_sessions', 'integrations',
     'connector_configs', 'campaigns', 'campaign_contacts',
@@ -73,29 +99,45 @@ describe('Tenant Isolation - RLS Enforcement', () => {
       const p = await getPool();
       const client = await p.connect();
       let blocked = false;
+      let blockReason = '';
       try {
         await client.query('BEGIN');
+        // Switch to platform_rls_tester so RLS WITH CHECK actually enforces.
+        // postgres has BYPASSRLS, so without this the test could pass for the
+        // wrong reason (FK violation, not RLS).
+        await client.query('SET LOCAL ROLE platform_rls_tester');
         await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [FAKE_TENANT_A]);
 
+        // actor_user_id intentionally NULL to avoid a FK violation that would
+        // mask whether RLS WITH CHECK is the thing blocking the insert.
         await client.query(
           `INSERT INTO audit_logs (tenant_id, actor_user_id, action, resource_type)
-           VALUES ($1, $2, $3, $4)`,
-          [FAKE_TENANT_B, 'test-user', 'test.cross_tenant_write', 'test'],
+           VALUES ($1, NULL, $2, $3)`,
+          [FAKE_TENANT_B, 'test.cross_tenant_write', 'test'],
         );
         await client.query('ROLLBACK');
         blocked = false;
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         blocked = true;
+        blockReason = String(err);
       } finally {
         client.release();
       }
-      expect(blocked).toBe(true);
+      expect(blocked, `expected RLS to block cross-tenant write, got: ${blockReason}`).toBe(true);
+      // RLS row-level violation has SQLSTATE 42501 / message includes
+      // "violates row-level security policy". FK violation would be 23503.
+      expect(blockReason, 'expected RLS error, not FK violation').toMatch(/row-level security|policy/i);
     });
   });
 
   describe('Audit log immutability', () => {
-    const TEST_TENANT = randomUUID();
+    // Reuse FAKE_TENANT_A which is pre-seeded by beforeAll, otherwise the
+    // INSERT below fails with a FK violation on audit_logs.tenant_id ->
+    // tenants.id BEFORE the immutability trigger gets a chance to fire.
+    // actor_user_id is intentionally NULL — it has a FK to users.id which we
+    // don't need to satisfy for an immutability test.
+    const TEST_TENANT = FAKE_TENANT_A;
 
     it('should prevent UPDATE on audit_logs', async () => {
       const p = await getPool();
@@ -106,9 +148,9 @@ describe('Tenant Isolation - RLS Enforcement', () => {
 
         const { rows } = await client.query(
           `INSERT INTO audit_logs (tenant_id, actor_user_id, action, resource_type)
-           VALUES ($1, $2, $3, $4)
+           VALUES ($1, NULL, $2, $3)
            RETURNING id`,
-          [TEST_TENANT, 'test-immutability-user', 'test.immutability_check', 'test'],
+          [TEST_TENANT, 'test.immutability_check', 'test'],
         );
         const insertedId = rows[0].id as string;
 
@@ -133,9 +175,9 @@ describe('Tenant Isolation - RLS Enforcement', () => {
 
         const { rows } = await client.query(
           `INSERT INTO audit_logs (tenant_id, actor_user_id, action, resource_type)
-           VALUES ($1, $2, $3, $4)
+           VALUES ($1, NULL, $2, $3)
            RETURNING id`,
-          [TEST_TENANT, 'test-immutability-user', 'test.immutability_check', 'test'],
+          [TEST_TENANT, 'test.immutability_check', 'test'],
         );
         const insertedId = rows[0].id as string;
 
