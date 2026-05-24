@@ -1474,18 +1474,13 @@ function BuilderShortcutsModal({
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4"
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="builder-shortcuts-title"
+      containerClassName="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4"
+      panelClassName="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl bg-surface border border-border shadow-xl"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="builder-shortcuts-title"
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl bg-surface border border-border shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="flex items-start justify-between px-6 py-4 border-b border-border">
           <div>
             <h2 id="builder-shortcuts-title" className="text-base font-semibold text-text-primary">
@@ -1533,8 +1528,7 @@ function BuilderShortcutsModal({
             </section>
           ))}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1660,21 +1654,14 @@ function CommandBar({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-drawer flex items-start justify-center pt-24 bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      ariaLabel={t('commandBarTitle')}
+      containerClassName="fixed inset-0 z-drawer flex items-start justify-center pt-24 bg-black/40 backdrop-blur-sm"
+      panelClassName="w-full max-w-xl mx-4 bg-surface rounded-xl shadow-2xl border border-border overflow-hidden"
     >
-      <div
-        className="w-full max-w-xl mx-4 bg-surface rounded-xl shadow-2xl border border-border overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('commandBarTitle')}
-      >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Search className="h-4 w-4 text-text-muted flex-shrink-0" aria-hidden="true" />
           <input
@@ -1725,8 +1712,7 @@ function CommandBar({
           <p className="text-[10px] text-text-muted">{t('commandBarHint')}</p>
           <p className="text-[10px] text-text-muted">{t('commandBarKeyboardHint')}</p>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -3699,30 +3685,16 @@ function SaveTemplateModal({
   isSaving: boolean;
   t: BuilderT;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [onClose]);
   const trimmed = form.name.trim();
   const canSave = trimmed.length > 0 && trimmed.length <= 120 && !isSaving;
   return (
-    <div
-      className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="save-template-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="save-template-title"
+      containerClassName="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4"
+      panelClassName="w-full max-w-md bg-surface border border-border rounded-xl shadow-xl"
     >
-      <div
-        ref={dialogRef}
-        className="w-full max-w-md bg-surface border border-border rounded-xl shadow-xl"
-      >
         <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <h2 id="save-template-title" className="text-sm font-semibold text-text-primary">
             {t('saveTemplateTitle')}
@@ -3816,8 +3788,7 @@ function SaveTemplateModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

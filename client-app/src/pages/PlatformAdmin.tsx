@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api, getToken } from '../lib/api';
+import Modal from '../components/Modal';
 import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
 import { formatCents as formatCentsHelper } from '../lib/formatCurrency';
 import { StatCard, PageHeader } from '../components/ui';
@@ -2072,61 +2073,54 @@ function LiveBillingHealthScreenshotCard() {
         </div>
       </div>
 
-      {previewOpen && screenshotRenderable && (
-        <div
-          className="fixed inset-0 z-modal bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setPreviewOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Last live billing-health screenshot"
-        >
-          <div
-            className="bg-surface border border-border rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-              <div className="text-sm font-semibold flex items-center gap-2">
-                <Camera className="h-4 w-4 text-primary" />
-                Live billing-health screenshot
-                {successAt && (
-                  <span className="text-xs text-text-muted font-normal">· {successAt}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {success?.htmlUrl && (
-                  <a
-                    href={success.htmlUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
-                  >
-                    Source run <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setPreviewOpen(false)}
-                  className="p-1 rounded hover:bg-surface-secondary"
-                  aria-label="Close preview"
-                >
-                  <XIcon className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="overflow-auto p-4 bg-surface-secondary flex items-center justify-center">
-              <img
-                src={screenshotUrl ?? undefined}
-                alt="Last live billing-health screenshot"
-                className="max-w-full h-auto rounded shadow-sm"
-                onError={() => {
-                  setScreenshotMissing(true);
-                  setPreviewOpen(false);
-                }}
-              />
-            </div>
+      <Modal
+        open={previewOpen && screenshotRenderable}
+        onClose={() => setPreviewOpen(false)}
+        ariaLabel="Last live billing-health screenshot"
+        containerClassName="fixed inset-0 z-modal bg-black/70 flex items-center justify-center p-4"
+        panelClassName="bg-surface border border-border rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+          <div className="text-sm font-semibold flex items-center gap-2">
+            <Camera className="h-4 w-4 text-primary" />
+            Live billing-health screenshot
+            {successAt && (
+              <span className="text-xs text-text-muted font-normal">· {successAt}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {success?.htmlUrl && (
+              <a
+                href={success.htmlUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
+              >
+                Source run <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(false)}
+              className="p-1 rounded hover:bg-surface-secondary"
+              aria-label="Close preview"
+            >
+              <XIcon className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      )}
+        <div className="overflow-auto p-4 bg-surface-secondary flex items-center justify-center">
+          <img
+            src={screenshotUrl ?? undefined}
+            alt="Last live billing-health screenshot"
+            className="max-w-full h-auto rounded shadow-sm"
+            onError={() => {
+              setScreenshotMissing(true);
+              setPreviewOpen(false);
+            }}
+          />
+        </div>
+      </Modal>
     </>
   );
 }
