@@ -28,13 +28,31 @@ function getPoolUrl(): string {
   return url;
 }
 
+// Strip query-string `sslmode` (and the related `ssl=true`) from the connection
+// string before handing it to `pg`. When both are present `pg` honours the URL
+// `sslmode` and ignores the explicit `ssl: { rejectUnauthorized: false }`
+// config we pass below, which causes Supabase TLS chains to fail in production
+// with "self-signed certificate in certificate chain" because the Replit VM
+// doesn't ship Supabase's intermediate CA. Removing the URL-level hint lets
+// our explicit ssl config win, which is the documented Supabase pooler setup.
+function stripSslModeFromUrl(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    url.searchParams.delete('sslmode');
+    url.searchParams.delete('ssl');
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 function getPoolConfig(): ConstructorParameters<typeof Pool>[0] {
   const env = process.env.APP_ENV ?? 'development';
-  const connectionString = getPoolUrl();
+  const rawConnectionString = getPoolUrl();
 
   if (env === 'development') {
     return {
-      connectionString,
+      connectionString: rawConnectionString,
       max: 8,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
@@ -42,7 +60,7 @@ function getPoolConfig(): ConstructorParameters<typeof Pool>[0] {
   }
 
   return {
-    connectionString,
+    connectionString: stripSslModeFromUrl(rawConnectionString),
     max: 8,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
