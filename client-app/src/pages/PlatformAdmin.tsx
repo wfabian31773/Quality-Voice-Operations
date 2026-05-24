@@ -1723,6 +1723,7 @@ type BillingPriceCheckStatus =
   | 'stripe-error'
   | 'wrong-interval'
   | 'no-amount'
+  | 'wrong-amount'
   | 'wrong-usage-type'
   | 'wrong-meter';
 
@@ -1790,6 +1791,8 @@ function billingStatusLabel(s: BillingPriceCheckStatus): string {
       return 'Wrong interval';
     case 'no-amount':
       return 'No unit amount';
+    case 'wrong-amount':
+      return 'Wrong amount';
     case 'wrong-usage-type':
       return 'Not metered';
     case 'wrong-meter':

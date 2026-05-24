@@ -18,6 +18,7 @@ export type PriceCheckStatus =
   | 'stripe-error'
   | 'wrong-interval'
   | 'no-amount'
+  | 'wrong-amount'
   | 'wrong-usage-type'
   | 'wrong-meter';
 
