@@ -78,10 +78,18 @@ export async function getAgentConfig(tenantId: string, agentId: string) {
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
+    // welcome_greeting is intentionally pulled here even though it overlaps
+    // with the agent_type template fallback in agentLoader. Without it the
+    // loader sees `dbAgent.welcome_greeting === undefined` and silently
+    // drops back to the hardcoded "Hello, how can I help you today?" string
+    // — confirmed by the [AGENT_LOADER] greeting_resolved log
+    // (`dbAgentHasWelcomeGreetingField: false`) on the first prod calls
+    // 2026-05-24 against tenant Azul Vision, where the agent row had a
+    // configured greeting but it never reached `triggerGreeting()`.
     const { rows } = await client.query(
       `SELECT id, name, type, system_prompt, voice, model, temperature,
               max_response_output_tokens, tools, knowledge_base,
-              escalation_config, metadata, language
+              escalation_config, metadata, language, welcome_greeting
        FROM agents WHERE id = $1`,
       [agentId],
     );
