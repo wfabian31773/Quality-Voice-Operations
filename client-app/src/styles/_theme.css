@@ -101,6 +101,29 @@
   --focus-ring-offset: 2px;
   --focus-ring-width: 2px;
   --touch-target-min: 44px;
+
+  /* ---------- Overlay stacking layers ----------
+   * Replaces every ad-hoc `z-50` / `z-[90]` / `z-[100]` in the codebase.
+   * Tailwind v4 auto-generates utilities from `--z-index-{name}` tokens:
+   *   `.z-sticky-header` `.z-popover` `.z-dropdown` `.z-drawer` `.z-modal`
+   *   `.z-toast` `.z-paywall` `.z-palette` `.z-tour` `.z-celebration`
+   *
+   * Pick the layer that matches the UI ROLE (not just "what number was
+   * the previous code using"). Two components at the same layer stack by
+   * DOM order — that is intentional within a layer.
+   *
+   * Spacing is generous (10 between layers) so future intermediate
+   * layers can slot in without renumbering. */
+  --z-index-sticky-header: 10;   /* sticky table thead, sticky page headers, drawer headers */
+  --z-index-popover:       20;   /* hover-cards, inline previews, tooltips */
+  --z-index-dropdown:      30;   /* select menus, NotificationsCenter, PortalSwitcher */
+  --z-index-drawer:        40;   /* side panels, slide-outs, mobile menus, HelpDrawer, PlatformAssistant */
+  --z-index-modal:         50;   /* primary modal/dialog stacking layer */
+  --z-index-toast:         60;   /* notification toasts, cookie banners */
+  --z-index-paywall:       70;   /* trial paywall / hard-blocking overlays */
+  --z-index-palette:       80;   /* CommandPalette ⌘K, DocBlocks Lightbox */
+  --z-index-tour:          90;   /* ProductTour scrim + coachmarks */
+  --z-index-celebration:  100;   /* Celebration / confetti — always on top */
 }
 
 /* =================================================================

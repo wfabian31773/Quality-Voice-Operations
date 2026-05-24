@@ -156,7 +156,7 @@ export default function OpsLayout() {
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         ariaLabel={t('actions.open_menu')}
-        containerClassName="fixed inset-0 z-50 flex lg:hidden print:hidden"
+        containerClassName="fixed inset-0 z-drawer flex lg:hidden print:hidden"
         panelClassName="relative w-64 h-full bg-sidebar-bg focus:outline-none"
       >
         <aside className="h-full w-full">

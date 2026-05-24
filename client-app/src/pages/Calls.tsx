@@ -378,10 +378,10 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
       open
       onClose={onClose}
       ariaLabel={t('calls.detail.title')}
-      containerClassName="fixed inset-0 z-50 flex justify-end"
+      containerClassName="fixed inset-0 z-drawer flex justify-end"
       panelClassName="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border"
     >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-sticky-header">
           <h2 className="text-lg font-semibold text-text-primary">{t('calls.detail.title')}</h2>
           <button onClick={onClose} aria-label={t('calls.detail.close_aria')}><X className="h-5 w-5 text-text-secondary hover:text-text-primary" /></button>
         </div>

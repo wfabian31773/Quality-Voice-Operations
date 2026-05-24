@@ -142,7 +142,7 @@ export default function PublicLayout() {
   return (
     <div className="public-surface min-h-screen flex flex-col bg-surface-secondary font-body text-text-primary">
       <header
-        className="bg-sidebar-bg text-on-sidebar sticky top-0 z-50 border-b border-on-sidebar/5"
+        className="bg-sidebar-bg text-on-sidebar sticky top-0 z-dropdown border-b border-on-sidebar/5"
         style={{ boxShadow: 'var(--elevation-1)' }}
       >
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -197,7 +197,7 @@ export default function PublicLayout() {
                     {isOpen && (
                       <div
                         onMouseLeave={() => setOpenDropdown(null)}
-                        className="absolute left-0 top-full pt-2 z-50"
+                        className="absolute left-0 top-full pt-2 z-dropdown"
                       >
                         <div
                           className="w-[28rem] bg-surface text-text-primary border border-border overflow-hidden"

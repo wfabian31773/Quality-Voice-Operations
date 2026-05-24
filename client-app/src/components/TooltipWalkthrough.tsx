@@ -99,7 +99,7 @@ export default function TooltipWalkthrough({
       {children}
       {visible && (
         <div
-          className={`absolute z-50 ${positionClasses[position]} w-72 bg-primary text-white rounded-xl p-4 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-300`}
+          className={`absolute z-popover ${positionClasses[position]} w-72 bg-primary text-white rounded-xl p-4 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-300`}
         >
           <div className={`absolute border-8 ${arrowClasses[position]}`} />
           <button

@@ -63,7 +63,7 @@ export default function Docs() {
               className="w-full pl-11 pr-4 py-3 bg-white/10 dark:bg-white/10 border border-white/15 dark:border-white/15 rounded-xl text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
             />
             {query && (
-              <div className="absolute top-full mt-2 left-0 right-0 bg-surface rounded-xl border border-border/50 shadow-2xl max-h-96 overflow-y-auto z-30">
+              <div className="absolute top-full mt-2 left-0 right-0 bg-surface rounded-xl border border-border/50 shadow-2xl max-h-96 overflow-y-auto z-dropdown">
                 {results.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-text-primary/50 font-body">No matches for "{query}".</p>
                 ) : (

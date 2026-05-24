@@ -68,7 +68,7 @@ export default function PrimitivesShowcase() {
 
   return (
     <div className="bg-bg text-text-primary" data-testid="primitives-showcase">
-      <div className="sticky top-0 z-20 border-b border-border bg-surface/80 backdrop-blur">
+      <div className="sticky top-0 z-popover border-b border-border bg-surface/80 backdrop-blur">
         <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Badge variant="accent" dot>

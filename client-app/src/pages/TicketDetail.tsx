@@ -482,7 +482,7 @@ export default function TicketDetail() {
                     <Zap className="h-4 w-4" />
                   </button>
                   {showMacroMenu && macros.length > 0 && (
-                    <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg z-20 w-56">
+                    <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg z-popover w-56">
                       {macros.map(m => (
                         <button key={m.id} onClick={() => applyMacro(m.id)} className="w-full text-left px-3 py-2 text-sm text-heading hover:bg-surface-secondary first:rounded-t-lg last:rounded-b-lg">
                           <div className="font-medium">{m.name}</div>
@@ -729,7 +729,7 @@ export default function TicketDetail() {
                       Templates
                     </button>
                     {showTemplateMenu && templates.length > 0 && (
-                      <div className="absolute right-0 bottom-full mb-1 bg-surface border border-border rounded-lg shadow-lg z-20 w-48">
+                      <div className="absolute right-0 bottom-full mb-1 bg-surface border border-border rounded-lg shadow-lg z-popover w-48">
                         {templates.map(t => (
                           <button key={t.id} onClick={() => insertTemplate(t)} className="w-full text-left px-3 py-2 text-sm text-heading hover:bg-surface-secondary first:rounded-t-lg last:rounded-b-lg">
                             {t.name}

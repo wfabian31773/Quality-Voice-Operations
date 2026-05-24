@@ -1308,10 +1308,10 @@ function HistoryDrawer({
       open
       onClose={onClose}
       ariaLabel={`History for ${caller.phoneNumber}`}
-      containerClassName="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40"
+      containerClassName="fixed inset-0 z-drawer flex items-stretch justify-end bg-black/40"
       panelClassName="bg-surface border-l border-border shadow-xl w-full max-w-md h-full overflow-y-auto"
     >
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-sticky-header">
         <div>
           <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
             <History className="h-4 w-4" /> Audit history

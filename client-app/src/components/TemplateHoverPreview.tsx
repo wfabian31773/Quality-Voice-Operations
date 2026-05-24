@@ -32,7 +32,7 @@ export function TemplateHoverPreview({
 }: TemplateHoverPreviewProps) {
   const rtl = isRtlLanguage(language);
   const positionClasses = floating
-    ? 'absolute right-full top-full mt-1 mr-2 w-72 z-30 pointer-events-none'
+    ? 'absolute right-full top-full mt-1 mr-2 w-72 z-popover pointer-events-none'
     : 'w-72';
   return (
     <div

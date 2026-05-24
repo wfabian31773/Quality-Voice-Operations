@@ -108,7 +108,7 @@ export default function CommandPalette({
       onClose={onClose}
       ariaLabel={t('command_palette.aria')}
       initialFocusRef={inputRef}
-      containerClassName="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4"
+      containerClassName="fixed inset-0 z-palette flex items-start justify-center pt-[10vh] px-4"
       panelClassName="relative w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden"
     >
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">

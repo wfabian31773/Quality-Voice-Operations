@@ -419,7 +419,7 @@ export default function Tickets() {
               Bulk Actions <ChevronDown className="h-3 w-3" />
             </button>
             {showBulkMenu && (
-              <div className="absolute left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg z-20 w-56 max-h-80 overflow-y-auto">
+              <div className="absolute left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg z-popover w-56 max-h-80 overflow-y-auto">
                 <div className="px-3 py-1 text-[10px] font-semibold text-muted uppercase border-b border-border">Status</div>
                 <button onClick={() => bulkAction({ status: 'open' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set Open</button>
                 <button onClick={() => bulkAction({ status: 'in_progress' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set In Progress</button>

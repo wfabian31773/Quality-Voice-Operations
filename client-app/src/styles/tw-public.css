@@ -15,6 +15,9 @@
 @import "tailwindcss" source(none);
 @import "./_theme.css";
 
+/* Overlay stacking layers — safelist (see tw-app.css for full doc). */
+@source inline("z-sticky-header z-popover z-dropdown z-drawer z-modal z-toast z-paywall z-palette z-tour z-celebration");
+
 /* Components used on the public marketing surface */
 @source "../components/PublicLayout.tsx";
 @source "../components/AppFooter.tsx";

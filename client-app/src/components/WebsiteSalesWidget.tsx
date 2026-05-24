@@ -342,7 +342,7 @@ export default function WebsiteSalesWidget() {
   return (
     <>
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[380px] max-h-[560px] rounded-2xl overflow-hidden z-[999999] shadow-2xl flex flex-col bg-surface border border-border-strong/20 animate-in slide-in-from-bottom-4 duration-300 max-[420px]:w-[calc(100vw-32px)] max-[420px]:right-4 max-[420px]:bottom-20">
+        <div className="fixed bottom-24 right-6 w-[380px] max-h-[560px] rounded-2xl overflow-hidden z-celebration shadow-2xl flex flex-col bg-surface border border-border-strong/20 animate-in slide-in-from-bottom-4 duration-300 max-[420px]:w-[calc(100vw-32px)] max-[420px]:right-4 max-[420px]:bottom-20">
           <div className="bg-sidebar-bg px-5 py-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
@@ -626,7 +626,7 @@ export default function WebsiteSalesWidget() {
 
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 z-[999999] flex items-center justify-center max-[420px]:bottom-4 max-[420px]:right-4 ${
+        className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 z-celebration flex items-center justify-center max-[420px]:bottom-4 max-[420px]:right-4 ${
           isOpen
             ? 'bg-sidebar-bg hover:bg-sidebar-hover'
             : 'bg-primary hover:bg-primary-hover hover:scale-105'

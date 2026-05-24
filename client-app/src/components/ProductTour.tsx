@@ -121,7 +121,7 @@ export default function ProductTour({ active, onClose, steps, tourId }: ProductT
   const tooltipPos = computeTooltipPosition(rect, current.placement ?? 'bottom');
 
   return (
-    <div className="fixed inset-0 z-[110] pointer-events-none">
+    <div className="fixed inset-0 z-tour pointer-events-none">
       <svg className="absolute inset-0 w-full h-full pointer-events-auto" onClick={finish}>
         <defs>
           <mask id="qvo-tour-mask">

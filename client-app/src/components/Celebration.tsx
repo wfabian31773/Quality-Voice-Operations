@@ -76,7 +76,7 @@ export default function Celebration({ show, title, message, onClose }: Celebrati
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] pointer-events-none overflow-hidden">
+    <div className="fixed inset-0 z-celebration pointer-events-none overflow-hidden">
       <style>{`
         @keyframes qvo-confetti-fall {
           0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }

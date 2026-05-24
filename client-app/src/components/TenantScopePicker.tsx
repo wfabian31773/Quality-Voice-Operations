@@ -122,7 +122,7 @@ export default function TenantScopePicker() {
         <div
           role="listbox"
           aria-label={t('tenant_scope_picker.scope_aria')}
-          className="absolute z-40 mt-2 w-72 right-0 sm:right-auto sm:left-0 rounded-lg border border-border bg-surface shadow-[var(--elevation-2)] overflow-hidden"
+          className="absolute z-dropdown mt-2 w-72 right-0 sm:right-auto sm:left-0 rounded-lg border border-border bg-surface shadow-[var(--elevation-2)] overflow-hidden"
         >
           <div className="p-2 border-b border-border">
             <div className="relative">

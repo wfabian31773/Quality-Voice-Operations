@@ -123,7 +123,7 @@ export default function PlatformAssistant() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center justify-center group"
+          className="fixed bottom-6 right-6 z-drawer w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center justify-center group"
           aria-label={t('platform_assistant.open_aria')}
         >
           <Sparkles className="h-6 w-6 group-hover:rotate-12 transition-transform" />
@@ -131,7 +131,7 @@ export default function PlatformAssistant() {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 max-h-[600px] bg-surface border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-6 right-6 z-drawer w-96 max-h-[600px] bg-surface border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
           <div className="bg-primary text-white px-5 py-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-white/20 dark:bg-white/20 flex items-center justify-center">

@@ -127,7 +127,7 @@ export default function Modal({
 
   return (
     <div
-      className={containerClassName ?? 'fixed inset-0 z-[90] flex items-center justify-center px-4'}
+      className={containerClassName ?? 'fixed inset-0 z-modal flex items-center justify-center px-4'}
       onClick={() => {
         if (closeOnBackdrop) onClose();
       }}

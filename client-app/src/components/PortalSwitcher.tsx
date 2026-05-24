@@ -96,7 +96,7 @@ export default function PortalSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute left-3 right-3 bottom-full mb-1 bg-sidebar-bg border border-on-sidebar/10 rounded-lg shadow-xl overflow-hidden z-50">
+        <div className="absolute left-3 right-3 bottom-full mb-1 bg-sidebar-bg border border-on-sidebar/10 rounded-lg shadow-xl overflow-hidden z-dropdown">
           <p className="px-3 py-2 text-[10px] text-on-sidebar/70 uppercase tracking-wider font-semibold">
             {t('portal_switcher.switch_portal')}
           </p>

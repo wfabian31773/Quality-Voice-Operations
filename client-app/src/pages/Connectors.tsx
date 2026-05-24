@@ -2925,10 +2925,10 @@ function OutageAlertDetailPanel({
       open={open}
       onClose={onClose}
       ariaLabel="Outage alert details"
-      containerClassName="fixed inset-0 z-[90] flex items-stretch justify-end"
+      containerClassName="fixed inset-0 z-drawer flex items-stretch justify-end"
       panelClassName="relative w-full max-w-xl h-full bg-surface border-l border-border shadow-2xl overflow-y-auto"
     >
-      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 p-5 bg-surface border-b border-border">
+      <div className="sticky top-0 z-sticky-header flex items-start justify-between gap-3 p-5 bg-surface border-b border-border">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />

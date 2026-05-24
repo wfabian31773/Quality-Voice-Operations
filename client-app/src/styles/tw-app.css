@@ -15,6 +15,20 @@
 @import "tailwindcss" source(none);
 @import "./_theme.css";
 
+/* =================================================================
+ * OVERLAY STACKING LAYERS — SAFELIST
+ *
+ * Canonical z-index utilities generated from the `--z-index-*` tokens
+ * in `_theme.css`. Safelisted here so they're always available, even
+ * for components added later that haven't yet been added to the
+ * `@source` list below. This also doubles as living documentation of
+ * the layer scale — if you're tempted to write `z-[123]`, pick one
+ * of these names instead.
+ *
+ * See `_theme.css` for the numeric values and per-layer guidance.
+ * ================================================================= */
+@source inline("z-sticky-header z-popover z-dropdown z-drawer z-modal z-toast z-paywall z-palette z-tour z-celebration");
+
 /* In-app layouts + the components they pull in */
 @source "../components/TenantLayout.tsx";
 @source "../components/AdminLayout.tsx";

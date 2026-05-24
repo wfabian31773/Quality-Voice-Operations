@@ -799,7 +799,7 @@ function InboxView({
                 <button className="p-1.5 rounded-lg hover:bg-surface-secondary text-muted" title="Priority">
                   <Flag className="h-4 w-4" />
                 </button>
-                <div className="hidden group-hover:block absolute right-0 top-full z-10 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[100px]">
+                <div className="hidden group-hover:block absolute right-0 top-full z-dropdown bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[100px]">
                   {['normal', 'high', 'urgent'].map(p => (
                     <button
                       key={p}
@@ -815,7 +815,7 @@ function InboxView({
                 <button className="p-1.5 rounded-lg hover:bg-surface-secondary text-muted" title="Status">
                   <ChevronDown className="h-4 w-4" />
                 </button>
-                <div className="hidden group-hover:block absolute right-0 top-full z-10 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[120px]">
+                <div className="hidden group-hover:block absolute right-0 top-full z-dropdown bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[120px]">
                   {['open', 'pending', 'closed', 'escalated', 'archived'].map(s => (
                     <button
                       key={s}
@@ -831,7 +831,7 @@ function InboxView({
                 <button className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.assigneeUserId || selectedConv.assigneeTeam ? 'text-primary' : 'text-muted'}`} title="Assign">
                   <Users className="h-4 w-4" />
                 </button>
-                <div className="hidden group-hover:block absolute right-0 top-full z-10 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                <div className="hidden group-hover:block absolute right-0 top-full z-dropdown bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
                   <div className="px-3 py-1 text-[10px] text-muted font-semibold uppercase">Assign to Team</div>
                   {['sales', 'support', 'billing', 'general'].map(team => (
                     <button

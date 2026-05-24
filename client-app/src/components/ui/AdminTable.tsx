@@ -30,7 +30,7 @@ export default function AdminTable({
           className={clsx(
             'w-full text-sm tabular-nums',
             cellPad,
-            '[&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10',
+            '[&_thead]:sticky [&_thead]:top-0 [&_thead]:z-sticky-header',
             '[&_thead_tr]:bg-surface-secondary [&_thead_tr]:border-b [&_thead_tr]:border-border',
             '[&_th]:px-4 [&_th]:font-medium [&_th]:text-text-secondary [&_th]:text-left [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider',
             '[&_td]:px-4 [&_td]:text-text-primary [&_td]:align-middle',

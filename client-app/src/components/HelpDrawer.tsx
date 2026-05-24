@@ -70,7 +70,7 @@ export function HelpDrawer() {
       <button
         onClick={() => setOpen(true)}
         aria-label={t('help_drawer.open_aria')}
-        className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-colors"
+        className="fixed bottom-6 right-6 z-drawer w-12 h-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-colors"
       >
         <HelpCircle className="h-5 w-5" />
       </button>
@@ -79,7 +79,7 @@ export function HelpDrawer() {
         open={open}
         onClose={() => setOpen(false)}
         ariaLabel={t('help_drawer.title')}
-        containerClassName="fixed inset-0 z-50 flex justify-end"
+        containerClassName="fixed inset-0 z-drawer flex justify-end"
         panelClassName="relative w-full sm:w-[480px] h-full bg-surface shadow-2xl flex flex-col focus:outline-none"
       >
         <aside className="flex flex-col h-full">

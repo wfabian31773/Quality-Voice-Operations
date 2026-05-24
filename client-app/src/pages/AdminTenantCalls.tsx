@@ -173,10 +173,10 @@ function AdminCallDetailDrawer({
       open
       onClose={onClose}
       ariaLabel="Call Details"
-      containerClassName="fixed inset-0 z-50 flex justify-end"
+      containerClassName="fixed inset-0 z-drawer flex justify-end"
       panelClassName="w-full max-w-lg bg-surface h-full overflow-y-auto shadow-xl border-l border-border"
     >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-10">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface z-sticky-header">
           <h2 className="text-lg font-semibold text-text-primary">Call Details</h2>
           <button onClick={onClose} aria-label="Close">
             <X className="h-5 w-5 text-text-secondary hover:text-text-primary" />

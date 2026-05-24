@@ -77,7 +77,7 @@ export default function CookieConsent() {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:max-w-sm z-[60]">
+    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:max-w-sm z-toast">
       <div className="bg-surface rounded-2xl shadow-2xl border border-border overflow-hidden">
         <div className="p-5">
           <div className="flex items-start justify-between mb-3">

@@ -51,7 +51,7 @@ export default function TrialBanner() {
           onClose={() => {}}
           ariaLabel={t('trial_banner.expired_aria')}
           closeOnBackdrop={false}
-          containerClassName="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          containerClassName="fixed inset-0 z-paywall flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
           panelClassName="relative max-w-md w-full bg-surface rounded-2xl shadow-xl p-6 text-center border border-border"
         >
           <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-red-50 dark:bg-red-500/15 text-danger mb-4">

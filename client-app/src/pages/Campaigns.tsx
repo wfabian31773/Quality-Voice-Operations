@@ -404,7 +404,7 @@ function TypeConfigFields({
         <h3 className="text-sm font-medium text-text-primary">{tenantT('campaigns.create_modal.type_settings', { type: typeDef.label })}</h3>
         <div className="group relative">
           <Info className="h-3.5 w-3.5 text-text-muted cursor-help" />
-          <div className="hidden group-hover:block absolute left-0 top-5 z-10 w-64 p-2 bg-surface border border-border rounded-lg shadow-lg text-xs text-text-muted">
+          <div className="hidden group-hover:block absolute left-0 top-5 z-popover w-64 p-2 bg-surface border border-border rounded-lg shadow-lg text-xs text-text-muted">
             {tenantT('campaigns.create_modal.type_tooltip', { type: typeDef.label.toLowerCase() })}
           </div>
         </div>

@@ -1475,7 +1475,7 @@ function BuilderShortcutsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4"
       onClick={onClose}
       role="presentation"
     >
@@ -1664,7 +1664,7 @@ function CommandBar({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-drawer flex items-start justify-center pt-24 bg-black/40 backdrop-blur-sm"
       onClick={onClose}
       role="presentation"
     >
@@ -2850,7 +2850,7 @@ function AgentBuilderInner() {
 
   return (
     <div className="flex flex-col h-screen bg-background" data-testid="agent-builder-loaded">
-      <div className="px-4 py-2 border-b border-border bg-surface z-10">
+      <div className="px-4 py-2 border-b border-border bg-surface z-sticky-header">
         <PageHeader
           size="compact"
           className="mb-0 sm:items-center"
@@ -2935,7 +2935,7 @@ function AgentBuilderInner() {
             </button>
             <div
               role="menu"
-              className={`absolute right-0 top-full mt-1 w-72 bg-surface border border-border rounded-lg shadow-lg z-20 group-hover:block overflow-hidden ${
+              className={`absolute right-0 top-full mt-1 w-72 bg-surface border border-border rounded-lg shadow-lg z-popover group-hover:block overflow-hidden ${
                 templatesOpen ? 'block' : 'hidden'
               }`}
               onMouseLeave={() => setHoveredTemplateKey(null)}
@@ -3080,7 +3080,7 @@ function AgentBuilderInner() {
               const tplEdges = (tpl.workflow_definition?.edges as WorkflowEdge[]) || [];
               return (
                 <div
-                  className="absolute right-full top-full mt-1 mr-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-30 p-3 pointer-events-none"
+                  className="absolute right-full top-full mt-1 mr-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-popover p-3 pointer-events-none"
                   aria-hidden="true"
                 >
                   <p className="text-xs font-semibold text-text-primary mb-1 truncate">{tpl.name}</p>
@@ -3119,7 +3119,7 @@ function AgentBuilderInner() {
             {overflowOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-full mt-1 w-56 bg-surface border border-border rounded-lg shadow-lg z-30 py-1"
+                className="absolute right-0 top-full mt-1 w-56 bg-surface border border-border rounded-lg shadow-lg z-popover py-1"
               >
                 <button
                   type="button"
@@ -3711,7 +3711,7 @@ function SaveTemplateModal({
   const canSave = trimmed.length > 0 && trimmed.length <= 120 && !isSaving;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="save-template-title"

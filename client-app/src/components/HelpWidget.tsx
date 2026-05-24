@@ -140,7 +140,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
       <button
         onClick={() => setOpen(!open)}
         aria-label={t('help_widget.aria')}
-        className="fixed z-40 bottom-5 right-5 h-12 w-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105"
+        className="fixed z-drawer bottom-5 right-5 h-12 w-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105"
       >
         {open ? <X className="h-5 w-5" /> : <HelpCircle className="h-5 w-5" />}
       </button>
@@ -148,7 +148,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
       {open && (
         <div
           ref={ref}
-          className="fixed z-40 bottom-20 right-5 w-[360px] max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]"
+          className="fixed z-drawer bottom-20 right-5 w-[360px] max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]"
         >
           <div className="px-4 py-3 bg-gradient-to-br from-[#123047] to-[#1a4a6b] text-white">
             <div className="flex items-center justify-between">

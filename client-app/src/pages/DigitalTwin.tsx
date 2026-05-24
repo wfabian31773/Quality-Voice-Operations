@@ -673,7 +673,7 @@ function ModelSelector({
         {open ? <ChevronDown className="w-5 h-5 text-text-muted" /> : <ChevronRight className="w-5 h-5 text-text-muted" />}
       </button>
       {open && (
-        <div className="absolute z-10 w-full mt-1 bg-surface rounded-xl border border-border shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute z-dropdown w-full mt-1 bg-surface rounded-xl border border-border shadow-lg max-h-64 overflow-y-auto">
           {models.map(m => (
             <div
               key={m.id}
