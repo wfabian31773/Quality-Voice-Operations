@@ -918,7 +918,25 @@ export async function createRealtimeSession(
     logger.error('Failed to check knowledge availability', { tenantId, error: String(err) });
   }
 
-  let systemPromptWithMemory = agentConfig.systemPrompt;
+  // Voice-conversation discipline preamble. Realtime models will otherwise
+  // read their entire instruction set out loud as a monologue. This block
+  // forces single-question turns and an explicit hand-back so the caller
+  // can actually reply.
+  const VOICE_DISCIPLINE_PREAMBLE = [
+    '===== VOICE CONVERSATION RULES (HIGHEST PRIORITY) =====',
+    'You are speaking on a live phone call. Follow these rules at all times:',
+    '1. Ask ONE question at a time, then STOP talking and wait for the caller to answer.',
+    '2. Keep each turn to 1–2 short sentences (≈ 15 seconds max). Never deliver a monologue.',
+    '3. After you finish a sentence that ends in a question, you MUST stop and yield the floor. Do not continue with another question or statement in the same turn.',
+    '4. If the caller is silent for a moment, give them time to think — do not fill the silence with more talking.',
+    '5. Acknowledge what the caller just said before moving on (e.g. "Got it, thanks.").',
+    '6. Never recite a checklist of things you plan to do. Walk through the conversation one step at a time, gated by the caller\'s responses.',
+    '7. If the caller interrupts you, stop immediately and listen.',
+    '======================================================',
+    '',
+  ].join('\n');
+
+  let systemPromptWithMemory = `${VOICE_DISCIPLINE_PREAMBLE}\n${agentConfig.systemPrompt}`;
   if (reasoningEngine) {
     const safetyPolicy = reasoningEngine.getSafetyPolicyPrompt();
     if (safetyPolicy) {
