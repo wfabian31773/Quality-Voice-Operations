@@ -15,6 +15,10 @@ import { validateEnvironment, validateDatabaseConnection } from '../../scripts/v
 import { assertProductionSecrets } from './middleware/security';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
+import { registerRetrieveKnowledgeTool } from '../../platform/tools/knowledge/retrieveKnowledgeTool';
+import { attachWebSocket } from '../voice-gateway/routes/stream';
+import { createTwilioAdapterFromEnv } from '../voice-gateway/services/twilioAdapter';
+import { setTwilioAdapter } from '../voice-gateway/routes/twilio';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
 import { startInsightsScheduler, stopInsightsScheduler, startCallViewDigestScheduler, stopCallViewDigestScheduler, startCsatExpirationScheduler, stopCsatExpirationScheduler } from '../../platform/analytics';
 import { startWorkforceScheduler, stopWorkforceScheduler } from '../../platform/workforce/WorkforceScheduler';
@@ -53,11 +57,19 @@ const logger = createLogger('ADMIN_API');
 
 registerCoreTools();
 registerTemplateTools();
+registerRetrieveKnowledgeTool();
 initOperatorNotificationPipeline();
 initToolHealthTracking();
 ensureReliabilityTables().catch((err) => {
   logger.warn('Reliability tables setup deferred', { error: String(err) });
 });
+
+const twilioAdapter = createTwilioAdapterFromEnv();
+if (twilioAdapter) {
+  setTwilioAdapter(twilioAdapter);
+  logger.info('Twilio transfer adapter registered (consolidated voice-gateway)');
+}
+
 const PORT = parseInt(process.env.ADMIN_API_PORT ?? process.env.PORT ?? '3002', 10);
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
@@ -73,6 +85,11 @@ if (!envResult.passed && !isProd) {
 assertProductionSecrets();
 
 const server = http.createServer(app);
+
+// Mount the voice-gateway WebSocket upgrade handler on the same HTTP server
+// so Twilio Media Streams (wss://.../vg/twilio/stream) and the embedded
+// website widget (wss://.../vg/widget/stream) share port 5000 in production.
+attachWebSocket(server, { pathPrefix: '/vg' });
 
 server.listen(PORT, '0.0.0.0', async () => {
   logger.info(`Admin API listening on port ${PORT}`, {

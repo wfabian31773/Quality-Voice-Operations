@@ -214,7 +214,7 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
 
       activeDemoCalls.set(visitorIp, { callSid, startedAt: Date.now(), ipHash, agentType });
       incrementDemoCallCount();
-      recordDemoAnalyticsEvent('call_started', ipHash, agentType).catch(() => {});
+      recordDemoAnalyticsEvent('call_started', ipHash, agentType).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
     }
 
     if (tenantId !== DEMO_TENANT_ID) {
@@ -368,7 +368,7 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
       if (entry.callSid === callSid) {
         activeDemoCalls.delete(visitorIp);
         const eventType = callStatus === 'completed' ? 'call_completed' : 'call_abandoned';
-        recordDemoAnalyticsEvent(eventType, entry.ipHash, entry.agentType, callDuration).catch(() => {});
+        recordDemoAnalyticsEvent(eventType, entry.ipHash, entry.agentType, callDuration).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
 
         try {
           const pool = getPlatformPool();
@@ -543,7 +543,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
   if (await checkTenantSuspended(tenantId)) {
     logger.warn('Outbound call blocked — tenant suspended', { tenantId, callSid });
     if (contactId) {
-      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Account suspended', 'failed').catch(() => {});
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Account suspended', 'failed').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
     }
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
@@ -560,7 +560,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     if (phoneRows.length > 0 && !(phoneRows[0].phone_verified as boolean)) {
       logger.warn('Outbound call blocked — phone not verified', { tenantId, callSid });
       if (contactId) {
-        updateContactStatus(tenantId, contactId, 'failed', callSid, 'Phone not verified', 'failed').catch(() => {});
+        updateContactStatus(tenantId, contactId, 'failed', callSid, 'Phone not verified', 'failed').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
       }
       res.type('text/xml').send(
         `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
@@ -577,7 +577,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
   if (!hourlyCheck.allowed) {
     logger.warn('Outbound call blocked by hourly rate limit', { tenantId, callSid, reason: hourlyCheck.reason });
     if (contactId) {
-      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Hourly rate limit exceeded', 'failed').catch(() => {});
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Hourly rate limit exceeded', 'failed').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
     }
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
@@ -589,7 +589,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
   if (!dailyCheck.allowed) {
     logger.warn('Outbound call blocked by daily minute cap', { tenantId, callSid, reason: dailyCheck.reason });
     if (contactId) {
-      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Daily minute cap exceeded', 'failed').catch(() => {});
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Daily minute cap exceeded', 'failed').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
     }
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
@@ -606,7 +606,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
       usage: budgetResult.usage,
     });
     if (contactId) {
-      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Budget exceeded', 'failed').catch(() => {});
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Budget exceeded', 'failed').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
     }
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
@@ -637,14 +637,14 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
         callDurationSeconds: 0,
         streamEstablished: false,
       });
-      updateContactStatus(tenantId, contactId, 'voicemail', callSid, answeredBy, outcome).catch(() => {});
+      updateContactStatus(tenantId, contactId, 'voicemail', callSid, answeredBy, outcome).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
 
       if (campaignId) {
         getCampaign(tenantId, campaignId).then((campaign) => {
           if (campaign && campaign.type && campaign.type !== 'outbound_call') {
-            updateContactTypeDisposition(tenantId!, campaignId!, contactId!, 'no_response').catch(() => {});
+            updateContactTypeDisposition(tenantId!, campaignId!, contactId!, 'no_response').catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
           }
-        }).catch(() => {});
+        }).catch((err) => { logger.debug('silent_catch_audited', { error: String(err) }); });
       }
     }
 

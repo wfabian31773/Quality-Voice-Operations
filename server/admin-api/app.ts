@@ -107,6 +107,14 @@ app.use((req, _res, next) => {
 
 app.use(auditMutation());
 
+// Mount the entire voice-gateway HTTP app under /vg so Twilio webhooks
+// (/vg/twilio/voice, /vg/twilio/sms, /vg/twilio/status, etc.) and the
+// voice-gateway health/metrics/admin endpoints all share port 5000 with
+// the Admin API in production. WebSocket upgrades for /vg/twilio/stream
+// and /vg/widget/stream are wired up in start.ts via attachWebSocket().
+import voiceGatewayApp from '../voice-gateway/app';
+app.use('/vg', voiceGatewayApp);
+
 app.use('/', healthRoutes);
 app.use('/', authRoutes);
 

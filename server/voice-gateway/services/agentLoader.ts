@@ -415,6 +415,44 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   const meta = (dbAgent?.metadata ?? {}) as Record<string, unknown>;
   const dbTools: AgentToolDef[] = Array.isArray(dbAgent?.tools) ? (dbAgent.tools as AgentToolDef[]) : [];
   const language = normalizeAgentLanguage(dbAgent?.language ?? (meta as Record<string, unknown>).language);
+
+  // Iron-out 9 observability: greeting resolution defect. The DB column
+  // agents.welcome_greeting is never consulted by this loader — only
+  // dbAgent.metadata.greeting is read in every switch case below. Log the
+  // raw inputs the loader has access to so we can prove from prod logs
+  // whether (a) dbAgent.metadata.greeting was populated, (b) the welcome
+  // string is hiding in a sibling field, or (c) nothing was passed in at
+  // all and the template fallback wins. Keep this log at agent-load time
+  // so it fires once per call before triggerGreeting().
+  const metaGreetingRaw = meta.greeting;
+  const metaWelcomeGreetingRaw = (meta as Record<string, unknown>).welcomeGreeting
+    ?? (meta as Record<string, unknown>).welcome_greeting;
+  const dbAgentBag = (dbAgent ?? {}) as Record<string, unknown>;
+  const dbWelcomeGreetingRaw = dbAgentBag.welcome_greeting ?? dbAgentBag.welcomeGreeting;
+  const resolvedSource: 'meta.greeting' | 'agent_type_template' | 'hardcoded' =
+    typeof metaGreetingRaw === 'string' && metaGreetingRaw.length > 0
+      ? 'meta.greeting'
+      : (templateKey === 'unknown' || templateKey === agentType ? 'hardcoded' : 'agent_type_template');
+  logger.info('greeting_resolved', {
+    event: 'greeting_resolved',
+    tenantId,
+    agentId,
+    agentType,
+    templateKey,
+    resolvedSource,
+    metaGreetingType: typeof metaGreetingRaw,
+    metaGreetingTruthy: !!metaGreetingRaw,
+    metaGreetingPreview: typeof metaGreetingRaw === 'string' ? metaGreetingRaw.substring(0, 80) : null,
+    metaWelcomeGreetingType: typeof metaWelcomeGreetingRaw,
+    metaWelcomeGreetingTruthy: !!metaWelcomeGreetingRaw,
+    dbAgentHasWelcomeGreetingField: dbWelcomeGreetingRaw !== undefined,
+    dbAgentWelcomeGreetingPreview: typeof dbWelcomeGreetingRaw === 'string'
+      ? (dbWelcomeGreetingRaw as string).substring(0, 80)
+      : null,
+    metaKeys: Object.keys(meta),
+    dbAgentKeys: dbAgent ? Object.keys(dbAgent) : [],
+  });
+
   const finalize = (cfg: LoadedAgentConfigWithoutLanguage): LoadedAgentConfig => {
     let prompt = cfg.systemPrompt;
     if (language && language !== DEFAULT_AGENT_LANGUAGE) {
