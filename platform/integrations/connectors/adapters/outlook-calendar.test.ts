@@ -11,7 +11,7 @@ const TENANT: TenantId = 'tenant-test' as TenantId;
 const CONFIG: ConnectorConfig = {
   integrationId: 'int-outlook',
   tenantId: TENANT,
-  connectorType: 'calendar',
+  connectorType: 'scheduling',
   provider: 'outlook-calendar',
   isEnabled: true,
   credentials: { access_token: 'tok-graph' },
