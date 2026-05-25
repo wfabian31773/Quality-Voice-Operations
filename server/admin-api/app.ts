@@ -100,6 +100,21 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Strip the `/api` prefix off SPA requests in production. In development
+// Vite's dev-server proxy (client-app/vite.config.ts) already rewrites
+// `/api/*` -> `/*` before forwarding to this Express app. In production
+// there is no proxy in front of us, so the SPA's `/api/auth/login` etc.
+// would 404 against the route mounts at `/`. Mirror the dev-time rewrite
+// here so both environments behave the same.
+app.use((req, _res, next) => {
+  if (req.url === '/api') {
+    req.url = '/';
+  } else if (req.url.startsWith('/api/')) {
+    req.url = req.url.slice(4);
+  }
+  next();
+});
+
 app.use(securityHeaders());
 app.use((req, _res, next) => {
   if (req.method !== 'GET' || req.path.includes('auth')) {
