@@ -189,7 +189,7 @@ These are production-affecting bugs the audit caught.
 1. **Dashboard.tsx (675 lines)** — every tenant lands here.
 2. **Calls.tsx (1,271)** — operator's daily tool; 21 lucide imports, z-50 detail pane below default Modal z-[90].
 3. **Billing.tsx (3,056)** — dual-mounted admin/tenant with 10+ scattered `isAdmin` branches; split or add single top-level branch.
-4. **PlatformAdmin.tsx (10,037)** — split the 13 tabs into actual child routes under `/admin`. Single highest-leverage refactor in the codebase.
+4. ✅ **PlatformAdmin.tsx (was 10,037, now 9,824)** — DONE 2026-05-25 (commits `afd22bd`, `8cee51f`, `94d3031`, `5315986`, `615ae44`). 13 tabs now live at `/admin/dashboard/<tab>` as nested React Router routes under `PlatformAdminLayout`. Each tab is a self-contained component owning its data + state (`TenantsTable` deep-links via `?expand=`; `TemplateAnalyticsTab` owns its sort state; etc.). Inactive tabs unmount their queries — the audit's "8 uncoordinated 60s polls on backgrounded tab" goes away naturally. Cross-tab navigation goes through URL (bouncedRecipients StatCard → `/admin/dashboard/support#bounced-recipients-panel`; plan-emails → `/admin/dashboard/tenants?expand=<id>`). Old root function deleted in step E. Follow-up: peel the largest panels (DocsFeedbackTab 993 lines, PushDeliveryHealthPanel, ConnectorHealthPanel, BillingConfigHealthPanel, VerifiedCallerHealthPanel) into their own files — route imports already use named imports so it's a 1-line path change per panel.
 5. **Settings.tsx (2,248)** — 6 tabs; near-clean already, but big.
 
 ### P1 — WORST OFFENDERS BY VIOLATION DENSITY
