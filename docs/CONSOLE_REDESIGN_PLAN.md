@@ -278,13 +278,19 @@ The four full audit reports live in [`docs/CONSOLE_REDESIGN/`](CONSOLE_REDESIGN/
 
 ### Immediate options after user review
 
-**P0 USER-VISIBLE BUGS** (6 remaining, each 1–2h):
-- SmsInbox dropdowns clipped by `overflow-hidden` (production bug — users can't change priority/status/assign from toolbar)
-- Connectors dual-z overlay trap (mitigated by P0/1 but two modals still openable)
-- Dispatch silent `catch {}` × 7 on highest-stakes page
-- Operations SSE no reconnect / no stale disclosure (live-ops monitor lies during server hiccups)
-- DigitalTwin model selector clip — **already fixed by P0/1**
-- ToolHealth silent fetch error swallows on health tab
+**P0 USER-VISIBLE BUGS** — 4 of 6 done as of 2026-05-25 morning:
+- ✅ **P0/5** SmsInbox dropdowns clipped — `45275d1` (outer `overflow-hidden` dropped, inner messages region keeps its own clip)
+- ⏳ **P0/8** Connectors dual-z overlay trap — mitigated by P0/1 z-index scale but two modals still openable. ~30 min fix.
+- ✅ **P0/7** Dispatch silent `catch {}` × 7 — `c400325` (each catch now logs + adds to `supportDataWarnings` set; warning strip with retry below main error banner)
+- ⏳ **P0/9** Operations SSE no reconnect / no stale disclosure — live-ops monitor lies during server hiccups. **Larger** — needs new `useReconnectingSSE` hook + `<LiveDataStaleness>` indicator. See plan §5 item #7.
+- ✅ DigitalTwin model selector — fixed by P0/1 z-index scale, no work needed
+- ✅ **P0/6** ToolHealth silent fetch — `66cf5fe` (outer try/catch now sets `fetchError`; danger banner + retry button below PageHeader; per-action errors get a separate warning slot)
+
+**Session 2026-05-25 ops findings (separate from redesign work):**
+- Force-pusher mystery resolved by background agent: ONE force-push at 2026-05-24 18:50:29 UTC from Replit's "Publish your App" job running off a stale `a8d23993` checkout, rewinding past PR #22/#23 merge commits. NO continuous loop. origin/main has been stable at `9a533c0` for 14+ hours.
+- Recommendation: turn on GitHub branch protection for `main` ("Do not allow force pushes") + ensure Replit fast-forwards before any future publish (`git fetch origin && git reset --hard origin/main` in the workspace shell as a publish prerequisite).
+- Recovery branches preserved on GitHub: `claude-safe/merged-iron-out-9-2026-05-24` (full merged state including the PR #22/#23 fixes) and `claude-merge/wayne-local-2026-05-24` (Wayne's local snapshot).
+- Temp admin password from yesterday (`QvoLaunch!4ae5886c11a5`) — Wayne to rotate via Settings post-compact.
 
 **P1 PAGE REBUILDS** (largest impact first):
 - Split `PlatformAdmin.tsx` 10K-line god file into 13 route-level files
