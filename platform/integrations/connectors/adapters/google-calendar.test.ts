@@ -11,7 +11,7 @@ const TENANT: TenantId = 'tenant-test' as TenantId;
 const CONFIG: ConnectorConfig = {
   integrationId: 'int-gcal',
   tenantId: TENANT,
-  connectorType: 'calendar',
+  connectorType: 'scheduling',
   provider: 'google-calendar',
   isEnabled: true,
   credentials: { access_token: 'tok-gcal', calendar_id: 'primary' },
