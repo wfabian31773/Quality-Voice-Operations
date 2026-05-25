@@ -240,7 +240,11 @@ async function checkMeteredAiMinutes(
       };
     }
 
-    if (rawCents == null && (price.unit_amount_decimal ?? null) == null) {
+    if (
+      rawCents == null &&
+      (price.unit_amount_decimal ?? null) == null &&
+      price.billing_scheme !== 'tiered'
+    ) {
       return {
         ...result,
         status: 'no-amount',
