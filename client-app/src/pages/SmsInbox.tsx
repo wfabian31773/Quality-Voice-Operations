@@ -762,8 +762,19 @@ function InboxView({
       </div>
 
       {/* Center - message thread */}
+      {/*
+        Outer container intentionally does NOT use `overflow-hidden` even though
+        it has `rounded-xl`. The toolbar in the header hosts 3 CSS-hover
+        dropdowns (priority / status / assign) that use `absolute top-full` to
+        drop BELOW the toolbar. With `overflow-hidden` on this container the
+        dropdowns were getting clipped — users could not change priority,
+        status, or assign from the toolbar at all. The inner messages region
+        (`flex flex-1 overflow-hidden` further down) clips message overflow on
+        its own, so the rounded-xl look is preserved.
+        P0 user-visible bug from console redesign audit (2026-05-24).
+      */}
       {selectedConv ? (
-        <div className="flex flex-col flex-1 bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="flex flex-col flex-1 bg-surface border border-border rounded-xl">
           <div className="flex items-center gap-3 p-3 border-b border-border">
             <button onClick={() => setSelectedConv(null)} className="lg:hidden text-muted hover:text-heading">
               <ArrowLeft className="h-5 w-5" />
