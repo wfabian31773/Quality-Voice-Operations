@@ -278,9 +278,9 @@ The four full audit reports live in [`docs/CONSOLE_REDESIGN/`](CONSOLE_REDESIGN/
 
 ### Immediate options after user review
 
-**P0 USER-VISIBLE BUGS** — 4 of 6 done as of 2026-05-25 morning:
+**P0 USER-VISIBLE BUGS** — 5 of 6 done as of 2026-05-25 afternoon:
 - ✅ **P0/5** SmsInbox dropdowns clipped — `45275d1` (outer `overflow-hidden` dropped, inner messages region keeps its own clip)
-- ⏳ **P0/8** Connectors dual-z overlay trap — mitigated by P0/1 z-index scale but two modals still openable. ~30 min fix.
+- ✅ **P0/8** Connectors dual-overlay trap — `9281d86` (`selectedAlertId` lifted to parent; `openConnectTarget` / `openAlertDetail` close the peer overlay before opening, so Escape no longer dismisses two dialogs at once)
 - ✅ **P0/7** Dispatch silent `catch {}` × 7 — `c400325` (each catch now logs + adds to `supportDataWarnings` set; warning strip with retry below main error banner)
 - ⏳ **P0/9** Operations SSE no reconnect / no stale disclosure — live-ops monitor lies during server hiccups. **Larger** — needs new `useReconnectingSSE` hook + `<LiveDataStaleness>` indicator. See plan §5 item #7.
 - ✅ DigitalTwin model selector — fixed by P0/1 z-index scale, no work needed
