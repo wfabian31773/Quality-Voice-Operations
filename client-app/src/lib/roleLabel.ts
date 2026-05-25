@@ -31,8 +31,16 @@ export interface NavGroup {
 
 /**
  * Map a raw user role (and platform-admin flag) to the i18n key under
- * `admin_nav.role.*`. Keep this in sync with the locale files in
- * `client-app/src/locales/*/admin.json`.
+ * `admin_nav.role.<role>`. Keep this in sync with the locale files in
+ * `client-app/src/locales/<locale>/admin.json`.
+ *
+ * NB: the previous version of this comment used `locales/* /admin.json`
+ * with a literal wildcard, but the `*` followed by `/` formed a `* /`
+ * sequence that esbuild correctly read as the end-of-comment marker,
+ * which then made the trailing backtick on this line look like an
+ * unterminated template literal. tsc's parser was lenient about it;
+ * esbuild (and therefore the Vite production build) is not. See
+ * commit message for full diagnosis.
  */
 export function roleI18nKey(
   rawRole: string | undefined,
