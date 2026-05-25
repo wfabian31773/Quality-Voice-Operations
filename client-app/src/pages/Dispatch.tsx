@@ -443,6 +443,13 @@ export default function Dispatch() {
   const [approachSort, setApproachSort] = useState<'desc' | 'asc' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // P0/7 from console redesign audit: the 7 background fetchers (counts,
+  // resources, territories, skillTypes, notifTemplates, assignmentRules,
+  // reporting) used to swallow errors silently. Each now logs + adds its
+  // label to this set on failure / removes on success. A small warning strip
+  // below the main error banner surfaces the failed scopes so operators
+  // know the board may be showing stale options.
+  const [supportDataWarnings, setSupportDataWarnings] = useState<Set<string>>(new Set());
   const [showJobForm, setShowJobForm] = useState(false);
   const [editingJob, setEditingJob] = useState<DispatchJob | null>(null);
   const [jobDetail, setJobDetail] = useState<{ job: DispatchJob; events: JobEvent[]; exceptions: JobException[]; attachments: JobAttachment[]; live_eta: LiveEta | null } | null>(null);
@@ -494,49 +501,98 @@ export default function Dispatch() {
     try {
       const data = await api.get<{ counts: Record<string, number> }>('/dispatch/jobs/counts');
       setStatusCounts(data.counts);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('counts')) return prev; const n = new Set(prev); n.delete('counts'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchCounts failed', err);
+      setSupportDataWarnings(prev => prev.has('counts') ? prev : new Set(prev).add('counts'));
+    }
   }, []);
 
   const fetchResources = useCallback(async () => {
     try {
       const data = await api.get<{ resources: Resource[] }>('/dispatch/resources?limit=200');
       setResources(data.resources);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('resources')) return prev; const n = new Set(prev); n.delete('resources'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchResources failed', err);
+      setSupportDataWarnings(prev => prev.has('resources') ? prev : new Set(prev).add('resources'));
+    }
   }, []);
 
   const fetchTerritories = useCallback(async () => {
     try {
       const data = await api.get<{ territories: Territory[] }>('/dispatch/territories');
       setTerritories(data.territories);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('territories')) return prev; const n = new Set(prev); n.delete('territories'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchTerritories failed', err);
+      setSupportDataWarnings(prev => prev.has('territories') ? prev : new Set(prev).add('territories'));
+    }
   }, []);
 
   const fetchSkillTypes = useCallback(async () => {
     try {
       const data = await api.get<{ skillTypes: SkillType[] }>('/dispatch/skill-types');
       setSkillTypes(data.skillTypes);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('skillTypes')) return prev; const n = new Set(prev); n.delete('skillTypes'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchSkillTypes failed', err);
+      setSupportDataWarnings(prev => prev.has('skillTypes') ? prev : new Set(prev).add('skillTypes'));
+    }
   }, []);
 
   const fetchNotifTemplates = useCallback(async () => {
     try {
       const data = await api.get<{ templates: NotificationTemplate[] }>('/dispatch/notification-templates');
       setNotifTemplates(data.templates);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('notifTemplates')) return prev; const n = new Set(prev); n.delete('notifTemplates'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchNotifTemplates failed', err);
+      setSupportDataWarnings(prev => prev.has('notifTemplates') ? prev : new Set(prev).add('notifTemplates'));
+    }
   }, []);
 
   const fetchAssignmentRules = useCallback(async () => {
     try {
       const data = await api.get<{ rules: AssignmentRule[] }>('/dispatch/assignment-rules');
       setAssignmentRules(data.rules);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('assignmentRules')) return prev; const n = new Set(prev); n.delete('assignmentRules'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchAssignmentRules failed', err);
+      setSupportDataWarnings(prev => prev.has('assignmentRules') ? prev : new Set(prev).add('assignmentRules'));
+    }
   }, []);
 
   const fetchReporting = useCallback(async () => {
     try {
       const data = await api.get<ReportingData>('/dispatch/reporting');
       setReportingData(data);
-    } catch {}
+      setSupportDataWarnings(prev => { if (!prev.has('reporting')) return prev; const n = new Set(prev); n.delete('reporting'); return n; });
+    } catch (err) {
+      // P0/7 from console redesign audit: this was previously a
+      // silent `} catch {}` block. Now we log + flag the warning so
+      // operators see when background data isn't current.
+      console.error('[Dispatch] fetchReporting failed', err);
+      setSupportDataWarnings(prev => prev.has('reporting') ? prev : new Set(prev).add('reporting'));
+    }
   }, []);
 
   useEffect(() => {
@@ -553,7 +609,14 @@ export default function Dispatch() {
     if (activeTab === 'admin') { fetchSkillTypes(); fetchTerritories(); fetchNotifTemplates(); fetchAssignmentRules(); }
   }, [activeTab, fetchResources, fetchSkillTypes, fetchReporting, fetchTerritories, fetchNotifTemplates, fetchAssignmentRules]);
 
-  const refreshAll = () => { fetchJobs(); fetchCounts(); setError(null); };
+  const refreshAll = () => {
+    fetchJobs();
+    fetchCounts();
+    setError(null);
+    // Clear the support-data warning set so retries don't leak stale labels.
+    // Each fetcher will re-add its label only if it still fails (P0/7).
+    setSupportDataWarnings(new Set());
+  };
 
   const getJobsByStatus = (s: string) => jobs.filter(j => j.status === s);
 
@@ -652,6 +715,25 @@ export default function Dispatch() {
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-2 underline text-xs">Dismiss</button>
+        </div>
+      )}
+
+      {/*
+        P0/7 from console redesign audit: silent background-data warnings.
+        Each of the 7 fetchers (counts/resources/territories/skill-types/
+        notif-templates/assignment-rules/reporting) adds its label here on
+        failure. The board can still operate without these, but options may
+        be stale or empty — surface so operators know.
+      */}
+      {supportDataWarnings.size > 0 && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2.5 text-xs text-yellow-800 dark:text-yellow-200 flex items-center justify-between gap-2">
+          <span>
+            Background data didn't load: <strong>{Array.from(supportDataWarnings).sort().join(', ')}</strong>. Some board options may be missing or stale.
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={refreshAll} className="underline font-medium">Retry</button>
+            <button onClick={() => setSupportDataWarnings(new Set())} className="underline opacity-70 hover:opacity-100">Dismiss</button>
+          </div>
         </div>
       )}
 
