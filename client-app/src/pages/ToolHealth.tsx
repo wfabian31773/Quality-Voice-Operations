@@ -165,9 +165,19 @@ export default function ToolHealth() {
   const [webhookSecurityError, setWebhookSecurityError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  // Iron-out from console redesign audit (2026-05-24): the outer fetchData
+  // try/catch used to swallow every error silently — when the health tab's
+  // /tool-health/metrics call failed (or the escalations Promise.all rejected)
+  // the page rendered blank with no banner, no retry, no console trace. Now
+  // we capture the failure here and surface it as a banner above the tab
+  // content. Per-action errors (handleUpdateTask) go to a separate slot so
+  // the broader fetch banner doesn't get clobbered by a task-update failure.
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       if (tab === 'health') {
         const data = await apiFetch(`/tool-health/metrics?window=${window}`);
@@ -197,8 +207,16 @@ export default function ToolHealth() {
           setWebhookSecurityError(err instanceof Error ? err.message : 'Failed to load');
         }
       }
-    } catch {
-      // silently handle fetch errors
+    } catch (err) {
+      // P0/6 from console redesign audit (2026-05-24): this used to be
+      // `catch {}` — silent. Now surface to the user via the banner rendered
+      // below PageHeader. The Refresh button in the page header re-runs
+      // fetchData, which clears `fetchError` on entry.
+      const message = err instanceof Error ? err.message : 'Failed to load tool health data';
+      setFetchError(message);
+      // Best-effort console trace so an operator with DevTools open can see
+      // the full stack rather than just the prose message.
+      console.error('[ToolHealth] fetchData failed', err);
     } finally {
       setLoading(false);
     }
@@ -213,6 +231,7 @@ export default function ToolHealth() {
   }, [tab, fetchData]);
 
   const handleUpdateTask = async (taskId: string, status: string) => {
+    setActionError(null);
     try {
       await apiFetch(`/escalation-tasks/${taskId}`, {
         method: 'PATCH',
@@ -220,8 +239,13 @@ export default function ToolHealth() {
         body: JSON.stringify({ status }),
       });
       fetchData();
-    } catch {
-      // silently handle
+    } catch (err) {
+      // P0/6 audit follow-up: the previous `catch {}` here made
+      // "mark resolved" buttons feel like dead clicks on failure. Now we
+      // surface an inline error and trace to the console.
+      const message = err instanceof Error ? err.message : 'Failed to update task';
+      setActionError(`Couldn't update task ${taskId}: ${message}`);
+      console.error('[ToolHealth] handleUpdateTask failed', { taskId, status, err });
     }
   };
 
@@ -241,6 +265,50 @@ export default function ToolHealth() {
           </button>
         }
       />
+
+      {/*
+        Failure banner. P0/6 from console redesign audit: previously a fetch
+        error left the page blank with no banner / retry / trace. Now the
+        outer fetchData catch sets `fetchError` and we render this slot above
+        the tab content. The page-header Refresh button is the retry — it
+        clears the error on the next fetchData entry.
+      */}
+      {fetchError && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger"
+        >
+          <ShieldAlert className="w-5 h-5 mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">Couldn't load reliability data</div>
+            <div className="mt-0.5 text-danger/80 break-words">{fetchError}</div>
+          </div>
+          <button
+            onClick={fetchData}
+            className="shrink-0 px-2.5 py-1 rounded-md border border-danger/40 hover:bg-danger/20 text-xs font-medium transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Per-action error (handleUpdateTask). Dismissible. */}
+      {actionError && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+        >
+          <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="flex-1 min-w-0 break-words">{actionError}</div>
+          <button
+            onClick={() => setActionError(null)}
+            className="shrink-0 px-2 py-0.5 rounded-md hover:bg-warning/20 text-xs font-medium transition-colors"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
