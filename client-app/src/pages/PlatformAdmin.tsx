@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { api, getToken } from '../lib/api';
 import Modal from '../components/Modal';
 import OperationsAlertsBanner from '../components/OperationsAlertsBanner';
@@ -5823,11 +5824,55 @@ const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: type
   { key: 'plan-emails', labelKey: 'platform_admin.tabs.plan_emails', icon: Mail },
 ];
 
+// Set of valid tab keys, derived from PLATFORM_ADMIN_TABS so adding a
+// tab to the array is the only place changes need to happen. Used to
+// validate the `?tab=…` URL param — unknown values fall back to the
+// default ('tenants').
+const PLATFORM_ADMIN_TAB_KEYS: ReadonlySet<PlatformAdminTab> = new Set(
+  PLATFORM_ADMIN_TABS.map((t) => t.key),
+);
+const DEFAULT_PLATFORM_ADMIN_TAB: PlatformAdminTab = 'tenants';
+
 export default function PlatformAdmin() {
   const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<PlatformAdminTab>('tenants');
+
+  // Tab persistence in the URL via `?tab=X` — so admins can deep-link
+  // to a specific tab (e.g. share `/admin/dashboard?tab=billing-health`),
+  // and so browser back/forward actually navigates between tabs.
+  // This is the first step toward the full nested-route split in plan §6
+  // — once every consumer of `setActiveTab` goes through `setActiveTabUrl`
+  // the route conversion is mechanical. Validation falls back to the
+  // default tab on unknown/missing values so a stray query string can't
+  // 404 the dashboard.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab: PlatformAdminTab =
+    tabParam && PLATFORM_ADMIN_TAB_KEYS.has(tabParam as PlatformAdminTab)
+      ? (tabParam as PlatformAdminTab)
+      : DEFAULT_PLATFORM_ADMIN_TAB;
+  const setActiveTab = useCallback(
+    (key: PlatformAdminTab) => {
+      setSearchParams(
+        (prev) => {
+          // Preserve any other params (e.g. deep-link callouts like
+          // `?expand=<tenantId>` that future tabs may use) and only
+          // touch the tab key.
+          const next = new URLSearchParams(prev);
+          if (key === DEFAULT_PLATFORM_ADMIN_TAB) {
+            next.delete('tab');
+          } else {
+            next.set('tab', key);
+          }
+          return next;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
