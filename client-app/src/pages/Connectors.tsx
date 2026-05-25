@@ -2415,11 +2415,23 @@ function providerLabelFromAlert(alert: OutageAlert): string {
   return 'Integration';
 }
 
-export function OutageAlertHistory({ connectors }: { connectors: Connector[] }) {
+export function OutageAlertHistory({
+  connectors,
+  selectedAlertId,
+  setSelectedAlertId,
+}: {
+  connectors: Connector[];
+  // Lifted to parent so the connect modal and outage drawer can be
+  // mutually-exclusive — see P0/8 in docs/CONSOLE_REDESIGN_PLAN.md §3.1.
+  // Without this, both overlays could open at once and Escape would close
+  // both at the same time (their keydown handlers both registered on
+  // document in capture phase), trapping the user on a busy screen.
+  selectedAlertId: string | null;
+  setSelectedAlertId: (id: string | null) => void;
+}) {
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
   const [integrationFilter, setIntegrationFilter] = useState<string>('');
-  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
 
   // Reset back to page 1 whenever the integration filter changes so admins
   // don't end up looking at an empty page that no longer exists for the
@@ -3376,6 +3388,22 @@ function formatSchedulingProvider(provider: string): string {
 export default function Connectors() {
   const { t: tenantT } = useTranslation('tenant');
   const [connectTarget, setConnectTarget] = useState<ConnectorDefinition | null>(null);
+  // Lifted from OutageAlertHistory so the connect modal and the outage
+  // alert drawer can mutually exclude. Audited as P0/8 in
+  // docs/CONSOLE_REDESIGN_PLAN.md §3.1 — pre-P0/1 both were z-[90] and
+  // covered each other; named-scale migration put them at z-modal /
+  // z-drawer but they could still both open and trap the user.
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  // Mutual-exclusion openers. Closing peers use the raw setters since
+  // closing one overlay never needs to also close another.
+  const openConnectTarget = (def: ConnectorDefinition | null) => {
+    if (def !== null) setSelectedAlertId(null);
+    setConnectTarget(def);
+  };
+  const openAlertDetail = (id: string | null) => {
+    if (id !== null) setConnectTarget(null);
+    setSelectedAlertId(id);
+  };
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
   const queryClient = useQueryClient();
@@ -3422,7 +3450,7 @@ export default function Connectors() {
       const match = list.find((c) => c.integrationId === targetId);
       if (match) {
         const def = CONNECTOR_DEFINITIONS.find((d) => d.provider === match.provider);
-        if (def) setConnectTarget(def);
+        if (def) openConnectTarget(def);
       }
       el = document.querySelector<HTMLElement>(
         `[data-integration-id="${escapeAttr(targetId)}"]`,
@@ -3662,7 +3690,7 @@ export default function Connectors() {
                       definition={def}
                       connector={existing}
                       isManager={isManager}
-                      onReconnect={() => setConnectTarget(def)}
+                      onReconnect={() => openConnectTarget(def)}
                       onDisconnect={() => {
                         if (
                           confirm(tenantT('common.confirms.disconnect_connector', { name: def.name }))
@@ -3693,7 +3721,7 @@ export default function Connectors() {
                   return (
                     <button
                       key={def.id}
-                      onClick={() => setConnectTarget(def)}
+                      onClick={() => openConnectTarget(def)}
                       disabled={oauthUnavailable}
                       aria-disabled={oauthUnavailable}
                       title={
@@ -3765,7 +3793,7 @@ export default function Connectors() {
                     key={def.id}
                     definition={def}
                     isManager={isManager}
-                    onConnect={() => setConnectTarget(def)}
+                    onConnect={() => openConnectTarget(def)}
                     oauthAvailability={
                       def.oauthProvider ? oauthAvailability?.[def.oauthProvider] : undefined
                     }
@@ -3775,7 +3803,11 @@ export default function Connectors() {
             )}
           </div>
 
-          <OutageAlertHistory connectors={data?.connectors ?? []} />
+          <OutageAlertHistory
+            connectors={data?.connectors ?? []}
+            selectedAlertId={selectedAlertId}
+            setSelectedAlertId={openAlertDetail}
+          />
 
           <div className="bg-surface border border-border rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text-primary mb-2">Event Bus</h3>
