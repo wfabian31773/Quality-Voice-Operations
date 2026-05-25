@@ -70,7 +70,7 @@ export function HelpDrawer() {
       <button
         onClick={() => setOpen(true)}
         aria-label={t('help_drawer.open_aria')}
-        className="fixed bottom-6 right-6 z-drawer w-12 h-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-colors"
+        className="fixed bottom-44 right-6 z-drawer w-12 h-12 rounded-full bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-colors"
       >
         <HelpCircle className="h-5 w-5" />
       </button>
