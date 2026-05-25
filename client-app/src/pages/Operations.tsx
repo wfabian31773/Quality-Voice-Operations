@@ -1,10 +1,12 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { PageHeader, StatCard, StatusBadge, StatusDot, type BadgeTone } from '../components/ui';
+import LiveDataStaleness from '../components/LiveDataStaleness';
+import { useReconnectingSSE } from '../hooks/useReconnectingSSE';
 import {
-  PhoneCall, Bot, Clock, TrendingUp, AlertTriangle, Wifi, WifiOff,
+  PhoneCall, Bot, Clock, TrendingUp, AlertTriangle,
   Wrench, Check, Loader2, X, Bell, BellOff, ChevronDown, ChevronUp,
   Phone, User, Activity, Filter, Pause, Play, ExternalLink,
   CheckCircle2, XCircle, AlertCircle, Timer, Zap, Eye,
@@ -85,75 +87,77 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
 
 function useSSEActiveCalls() {
   const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
-  const [connected, setConnected] = useState(false);
   const queryClient = useQueryClient();
-  const esRef = useRef<EventSource | null>(null);
 
-  useEffect(() => {
-    const es = new EventSource('/api/calls/live', { withCredentials: true });
-    esRef.current = es;
-
-    es.addEventListener('active_calls', (event: MessageEvent) => {
-      try {
+  // Memoize the listener map so useReconnectingSSE doesn't see a new
+  // identity each render. The listenersRef pattern inside the hook would
+  // tolerate it, but the memo also lets future devs `useMemo` deps catch
+  // accidental closures over fresh state.
+  const listeners = useMemo(
+    () => ({
+      active_calls: (event: MessageEvent) => {
+        // JSON parse failures used to be swallowed by `catch {}` (per
+        // audit §3.4); the hook now logs them via console.error.
         const data = JSON.parse(event.data) as ActiveCall[];
         setActiveCalls(data);
-        setConnected(true);
-      } catch {}
-    });
+      },
+      call_started: () => invalidate(queryClient),
+      call_connected: () => invalidate(queryClient),
+      call_completed: () => invalidate(queryClient),
+      call_failed: () => invalidate(queryClient),
+      call_escalated: () => invalidate(queryClient),
+      call_updated: () => invalidate(queryClient),
+    }),
+    [queryClient],
+  );
 
-    const handleLifecycleEvent = () => {
-      setConnected(true);
-      queryClient.invalidateQueries({ queryKey: ['operations-metrics'] });
-      queryClient.invalidateQueries({ queryKey: ['operations-alerts'] });
-    };
+  const sse = useReconnectingSSE({
+    url: '/api/calls/live',
+    listeners,
+    label: 'operations:active-calls',
+  });
 
-    es.addEventListener('call_started', handleLifecycleEvent);
-    es.addEventListener('call_connected', handleLifecycleEvent);
-    es.addEventListener('call_completed', handleLifecycleEvent);
-    es.addEventListener('call_failed', handleLifecycleEvent);
-    es.addEventListener('call_escalated', handleLifecycleEvent);
-    es.addEventListener('call_updated', handleLifecycleEvent);
+  return {
+    activeCalls,
+    status: sse.status,
+    lastMessageAt: sse.lastMessageAt,
+    retryCount: sse.retryCount,
+    reconnect: sse.reconnect,
+  };
+}
 
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
-  }, [queryClient]);
-
-  return { activeCalls, connected };
+function invalidate(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['operations-metrics'] });
+  queryClient.invalidateQueries({ queryKey: ['operations-alerts'] });
 }
 
 function useCallSSE(callId: string | null) {
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const [tools, setTools] = useState<ToolExecution[]>([]);
   const [callState, setCallState] = useState<string | null>(null);
-  const esRef = useRef<EventSource | null>(null);
   const msgCounter = useRef(0);
   const toolCounter = useRef(0);
 
+  // Reset accumulated data whenever the selected call changes. The hook
+  // itself closes the prior EventSource when `url` changes, but state
+  // owned by THIS hook (transcript/tools/callState) needs to be cleared
+  // independently so the new panel doesn't briefly show the previous
+  // call's data while the new SSE warms up.
   useEffect(() => {
-    if (!callId) {
-      setTranscript([]);
-      setTools([]);
-      setCallState(null);
-      return;
-    }
+    setTranscript([]);
+    setTools([]);
+    setCallState(null);
+    msgCounter.current = 0;
+    toolCounter.current = 0;
+  }, [callId]);
 
-    const es = new EventSource(`/api/operations/calls/${callId}/live`, { withCredentials: true });
-    esRef.current = es;
-
-    es.addEventListener('call_state', (event: MessageEvent) => {
-      try {
+  const listeners = useMemo(
+    () => ({
+      call_state: (event: MessageEvent) => {
         const data = JSON.parse(event.data);
         setCallState(data.state);
-      } catch {}
-    });
-
-    es.addEventListener('transcript', (event: MessageEvent) => {
-      try {
+      },
+      transcript: (event: MessageEvent) => {
         const data = JSON.parse(event.data);
         const msg: TranscriptMessage = {
           id: `msg-${++msgCounter.current}`,
@@ -162,11 +166,8 @@ function useCallSSE(callId: string | null) {
           timestamp: data.timestamp,
         };
         setTranscript((prev) => [...prev, msg]);
-      } catch {}
-    });
-
-    es.addEventListener('tool_start', (event: MessageEvent) => {
-      try {
+      },
+      tool_start: (event: MessageEvent) => {
         const data = JSON.parse(event.data);
         const toolExec: ToolExecution = {
           id: data.invocationId ?? `tool-${++toolCounter.current}`,
@@ -175,11 +176,8 @@ function useCallSSE(callId: string | null) {
           startedAt: data.timestamp,
         };
         setTools((prev) => [...prev, toolExec]);
-      } catch {}
-    });
-
-    es.addEventListener('tool_end', (event: MessageEvent) => {
-      try {
+      },
+      tool_end: (event: MessageEvent) => {
         const data = JSON.parse(event.data);
         const pairedId = data.pairedStartId;
         setTools((prev) =>
@@ -193,16 +191,26 @@ function useCallSSE(callId: string | null) {
             return t;
           }),
         );
-      } catch {}
-    });
+      },
+    }),
+    [],
+  );
 
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
-  }, [callId]);
+  const sse = useReconnectingSSE({
+    url: callId ? `/api/operations/calls/${callId}/live` : null,
+    listeners,
+    label: `operations:call:${callId ?? 'none'}`,
+  });
 
-  return { transcript, tools, callState };
+  return {
+    transcript,
+    tools,
+    callState,
+    status: sse.status,
+    lastMessageAt: sse.lastMessageAt,
+    retryCount: sse.retryCount,
+    reconnect: sse.reconnect,
+  };
 }
 
 function formatDuration(seconds: number): string {
@@ -404,11 +412,29 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
   );
 }
 
-function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: {
+function LiveTranscriptPanel({
+  transcript,
+  tools,
+  callState,
+  callId,
+  sseStatus,
+  sseLastMessageAt,
+  sseRetryCount,
+  onReconnectSSE,
+  onClose,
+}: {
   transcript: TranscriptMessage[];
   tools: ToolExecution[];
   callState: string | null;
   callId: string;
+  // SSE health props let the per-call panel show the same staleness
+  // disclosure as the page header — silence in transcript/tools doesn't
+  // necessarily mean the call went quiet; it could mean the per-call
+  // SSE dropped. See docs/CONSOLE_REDESIGN_PLAN.md §3.3.
+  sseStatus: import('../hooks/useReconnectingSSE').SSEStatus;
+  sseLastMessageAt: Date | null;
+  sseRetryCount: number;
+  onReconnectSSE: () => void;
   onClose: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -437,6 +463,20 @@ function LiveTranscriptPanel({ transcript, tools, callState, callId, onClose }: 
               />
               Live
             </span>
+          )}
+          {/* Per-call SSE disclosure — independent from the page-level
+              "Live" pulse above, which only reflects call lifecycle. This
+              one reflects whether the transcript/tool stream is actually
+              flowing. Hidden while the call has ended (`isActive` false)
+              because we expect the stream to wind down then. */}
+          {isActive && (
+            <LiveDataStaleness
+              status={sseStatus}
+              lastMessageAt={sseLastMessageAt}
+              retryCount={sseRetryCount}
+              onReconnect={onReconnectSSE}
+              staleAfterMs={120_000}
+            />
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -812,8 +852,22 @@ export default function Operations() {
   const [searchParams] = useSearchParams();
   const highlightAlertType = searchParams.get('alertType');
 
-  const { activeCalls, connected } = useSSEActiveCalls();
-  const { transcript, tools, callState } = useCallSSE(selectedCallId);
+  const {
+    activeCalls,
+    status: liveStatus,
+    lastMessageAt: liveLastMessageAt,
+    retryCount: liveRetryCount,
+    reconnect: liveReconnect,
+  } = useSSEActiveCalls();
+  const {
+    transcript,
+    tools,
+    callState,
+    status: callStatus,
+    lastMessageAt: callLastMessageAt,
+    retryCount: callRetryCount,
+    reconnect: callReconnect,
+  } = useCallSSE(selectedCallId);
 
   // When linked here from the dashboard banner with ?alertType=…, scroll the
   // alerts panel into view once it has rendered. We delay until after the
@@ -879,13 +933,12 @@ export default function Operations() {
           </div>
         }
         status={
-          <span className="inline-flex items-center gap-1.5 text-xs">
-            {connected ? (
-              <><Wifi className="h-3.5 w-3.5 text-success" /><span className="text-success font-medium">Live</span></>
-            ) : (
-              <><WifiOff className="h-3.5 w-3.5 text-text-muted" /><span className="text-text-secondary">Connecting...</span></>
-            )}
-          </span>
+          <LiveDataStaleness
+            status={liveStatus}
+            lastMessageAt={liveLastMessageAt}
+            retryCount={liveRetryCount}
+            onReconnect={liveReconnect}
+          />
         }
       />
 
@@ -968,6 +1021,10 @@ export default function Operations() {
               tools={tools}
               callState={callState}
               callId={selectedCallId}
+              sseStatus={callStatus}
+              sseLastMessageAt={callLastMessageAt}
+              sseRetryCount={callRetryCount}
+              onReconnectSSE={callReconnect}
               onClose={() => setSelectedCallId(null)}
             />
           )}
