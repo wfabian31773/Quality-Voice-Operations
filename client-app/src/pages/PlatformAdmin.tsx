@@ -1845,7 +1845,7 @@ function LiveBillingHealthScreenshotCard() {
       </div>
 
       <Modal
-        open={previewOpen && screenshotRenderable}
+        open={!!(previewOpen && screenshotRenderable)}
         onClose={() => setPreviewOpen(false)}
         ariaLabel="Last live billing-health screenshot"
         containerClassName="fixed inset-0 z-modal bg-black/70 flex items-center justify-center p-4"
