@@ -184,7 +184,7 @@ function DocsFeedbackAutoRetryBadge({
   );
 }
 
-interface PlatformStats {
+export interface PlatformStats {
   active_tenants: string;
   total_tenants: string;
   total_users: string;
@@ -199,7 +199,7 @@ interface PlatformStats {
 // table — total distinct addresses we've ever paged ops about for a hard
 // bounce, plus the last-7d / last-30d windows that make a sender-reputation
 // regression visible at a glance.
-interface BouncedRecipientStats {
+export interface BouncedRecipientStats {
   total: number;
   last_7d: number;
   last_30d: number;
@@ -369,7 +369,7 @@ interface ValidationResult {
   checks: ValidationCheck[];
 }
 
-function formatCents(cents: string | number): string {
+export function formatCents(cents: string | number): string {
   return formatCentsHelper(cents);
 }
 
@@ -1085,7 +1085,7 @@ function formatRelativeTime(iso: string | null, t: (k: string, opts?: any) => st
   return date.toLocaleDateString();
 }
 
-function ConnectorHealthPanel() {
+export function ConnectorHealthPanel() {
   const { t: adminT } = useTranslation('admin');
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-connector-health'],
@@ -1351,7 +1351,7 @@ interface PushHealthResponse {
   recentFailuresLimit: number;
 }
 
-function PushDeliveryHealthPanel() {
+export function PushDeliveryHealthPanel() {
   const { t: adminT } = useTranslation('admin');
   const [windowDays, setWindowDays] = useState<number>(7);
   const { data, isLoading, error, refetch, isFetching } = useQuery({
@@ -2133,7 +2133,7 @@ function LiveBillingHealthScreenshotCard() {
  * or is investigating a sudden live-rate badge regression — they can spot
  * a typo/wrong-interval wiring without redeploying.
  */
-function BillingConfigHealthPanel() {
+export function BillingConfigHealthPanel() {
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-billing-config-health'],
     queryFn: () => api.get<BillingConfigHealthResponse>('/platform/billing-config-health'),
@@ -4217,7 +4217,7 @@ function formatRelativeAge(iso: string | null, t: (k: string, opts?: any) => str
   return t('platform_admin.common.days_ago', { count: days });
 }
 
-function CallEventsRetentionPanel() {
+export function CallEventsRetentionPanel() {
   const { t: adminT } = useTranslation('admin');
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-call-events-retention'],
@@ -4502,7 +4502,7 @@ interface IntegrationsStatusResponse {
   };
 }
 
-function IntegrationsStatusPanel() {
+export function IntegrationsStatusPanel() {
   const { t: adminT } = useTranslation('admin');
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['platform-integrations-status'],
@@ -4700,7 +4700,7 @@ function IntegrationsStatusPanel() {
   );
 }
 
-type PlatformAdminTab =
+export type PlatformAdminTab =
   | 'tenants'
   | 'templates'
   | 'analytics'
@@ -4726,14 +4726,14 @@ const RECOMMENDATION_TIERS_ORDER: readonly RecommendationTier[] = [
 // Mirrors the server enum and order: upgrade first (historical default
 // arm), downgrade second (so the "savings unlocked" row sits next to
 // it), lateral last (only meaningful for the annual-only pitch).
-type RecommendationDirection = 'upgrade' | 'downgrade' | 'lateral';
+export type RecommendationDirection = 'upgrade' | 'downgrade' | 'lateral';
 const RECOMMENDATION_DIRECTION_ORDER: readonly RecommendationDirection[] = [
   'upgrade',
   'downgrade',
   'lateral',
 ];
 
-interface RecommendationStatsShape {
+export interface RecommendationStatsShape {
   windowDays: number;
   impressions: number;
   clicks: number;
@@ -5179,7 +5179,7 @@ function AnnualOnlyTenantsPanel() {
 // the recommendation tile. Splits the trailing-30d funnel by recommended
 // tier so we can answer "which recommendation is actually moving MRR" —
 // not just "did anyone click the banner".
-function RecommendationBreakdownPanel({
+export function RecommendationBreakdownPanel({
   stats,
   loading,
   onClose,
@@ -5645,7 +5645,7 @@ function RecommendationBreakdownPanel({
 // recommendation-funnel shape but rolled up by (couponId, promotionCode)
 // so admins can see "which active discounts moved the needle in the
 // last 30d" — the row the discount badge tracking exists to answer.
-interface DiscountStatsShape {
+export interface DiscountStatsShape {
   windowDays: number;
   impressions: number;
   clicks: number;
@@ -5670,7 +5670,7 @@ interface DiscountStatsShape {
 // clicks the discount tile. One row per (couponId, promotionCode) with
 // the funnel + last-seen so we can answer "which active discounts have
 // been seen / clicked / completed in the last 30 days".
-function DiscountBreakdownPanel({
+export function DiscountBreakdownPanel({
   stats,
   loading,
   onClose,
@@ -5808,7 +5808,7 @@ function DiscountBreakdownPanel({
   );
 }
 
-const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: typeof Building2 }[] = [
+export const PLATFORM_ADMIN_TABS: { key: PlatformAdminTab; labelKey: string; icon: typeof Building2 }[] = [
   { key: 'tenants', labelKey: 'platform_admin.tabs.tenants', icon: Building2 },
   { key: 'templates', labelKey: 'platform_admin.tabs.templates', icon: Package },
   { key: 'analytics', labelKey: 'platform_admin.tabs.analytics', icon: BarChart3 },
@@ -6389,7 +6389,7 @@ export default function PlatformAdmin() {
 
 type DocsFeedbackReplyStateFilter = 'any' | 'failed' | 'hard_bounce';
 
-function DocsFeedbackTab() {
+export function DocsFeedbackTab() {
   const { t: adminT } = useTranslation('admin');
   const [sort, setSort] = useState<DocsFeedbackSort>('lowest_ratio');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
@@ -7382,7 +7382,7 @@ interface SupportReply {
   created_at: string;
 }
 
-function SupportInboxTab() {
+export function SupportInboxTab() {
   const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'resolved' | 'closed'>('open');
@@ -9854,7 +9854,7 @@ function formatWholeDollars(amount: number | null): string {
   }).format(amount);
 }
 
-function PlanRecommendationEmailsTab({
+export function PlanRecommendationEmailsTab({
   onViewTenant,
 }: {
   onViewTenant: (tenantId: string) => void;

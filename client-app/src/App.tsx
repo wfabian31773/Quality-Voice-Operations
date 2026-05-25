@@ -49,7 +49,23 @@ const Widget = lazy(() => import('./pages/Widget'));
 const AgentBuilder = lazy(() => import('./pages/AgentBuilder'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
 const DeveloperPortal = lazy(() => import('./pages/DeveloperPortal'));
-const PlatformAdmin = lazy(() => import('./pages/PlatformAdmin'));
+// PlatformAdmin Dashboard — split into a layout + 13 nested route files
+// per the audit's "single highest-leverage refactor" recommendation.
+// docs/CONSOLE_REDESIGN_PLAN.md §6 item #1.
+const PlatformAdminLayout = lazy(() => import('./pages/admin/dashboard/PlatformAdminLayout'));
+const PlatformAdminTenantsRoute = lazy(() => import('./pages/admin/dashboard/routes/TenantsRoute'));
+const PlatformAdminTemplatesRoute = lazy(() => import('./pages/admin/dashboard/routes/TemplatesRoute'));
+const PlatformAdminAnalyticsRoute = lazy(() => import('./pages/admin/dashboard/routes/AnalyticsRoute'));
+const PlatformAdminCostMonitoringRoute = lazy(() => import('./pages/admin/dashboard/routes/CostMonitoringRoute'));
+const PlatformAdminActivationRoute = lazy(() => import('./pages/admin/dashboard/routes/ActivationRoute'));
+const PlatformAdminDocsFeedbackRoute = lazy(() => import('./pages/admin/dashboard/routes/DocsFeedbackRoute'));
+const PlatformAdminSupportRoute = lazy(() => import('./pages/admin/dashboard/routes/SupportRoute'));
+const PlatformAdminIntegrationsRoute = lazy(() => import('./pages/admin/dashboard/routes/IntegrationsRoute'));
+const PlatformAdminConnectorHealthRoute = lazy(() => import('./pages/admin/dashboard/routes/ConnectorHealthRoute'));
+const PlatformAdminPushHealthRoute = lazy(() => import('./pages/admin/dashboard/routes/PushHealthRoute'));
+const PlatformAdminBillingHealthRoute = lazy(() => import('./pages/admin/dashboard/routes/BillingHealthRoute'));
+const PlatformAdminRetentionRoute = lazy(() => import('./pages/admin/dashboard/routes/RetentionRoute'));
+const PlatformAdminPlanEmailsRoute = lazy(() => import('./pages/admin/dashboard/routes/PlanEmailsRoute'));
 const Operations = lazy(() => import('./pages/Operations'));
 const UpdateCenter = lazy(() => import('./pages/UpdateCenter'));
 const PostInstallSetup = lazy(() => import('./pages/PostInstallSetup'));
@@ -253,7 +269,26 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/admin/dashboard" element={<PlatformAdmin />} />
+        {/* Platform Admin Dashboard — nested under the shared layout
+            so the chrome (PageHeader, alerts banner, StatCard grid, tab
+            nav) renders once and each tab is its own real URL.
+            See docs/CONSOLE_REDESIGN_PLAN.md §6 item #1. */}
+        <Route path="/admin/dashboard" element={<PlatformAdminLayout />}>
+          <Route index element={<Navigate to="tenants" replace />} />
+          <Route path="tenants" element={<PlatformAdminTenantsRoute />} />
+          <Route path="templates" element={<PlatformAdminTemplatesRoute />} />
+          <Route path="analytics" element={<PlatformAdminAnalyticsRoute />} />
+          <Route path="cost-monitoring" element={<PlatformAdminCostMonitoringRoute />} />
+          <Route path="activation" element={<PlatformAdminActivationRoute />} />
+          <Route path="docs-feedback" element={<PlatformAdminDocsFeedbackRoute />} />
+          <Route path="support" element={<PlatformAdminSupportRoute />} />
+          <Route path="integrations" element={<PlatformAdminIntegrationsRoute />} />
+          <Route path="connector-health" element={<PlatformAdminConnectorHealthRoute />} />
+          <Route path="push-health" element={<PlatformAdminPushHealthRoute />} />
+          <Route path="billing-health" element={<PlatformAdminBillingHealthRoute />} />
+          <Route path="retention" element={<PlatformAdminRetentionRoute />} />
+          <Route path="plan-emails" element={<PlatformAdminPlanEmailsRoute />} />
+        </Route>
         <Route path="/admin/analytics" element={<AdminAnalytics />} />
         <Route path="/admin/analytics/tenants/:tenantId" element={<AdminTenantAnalytics />} />
         <Route path="/admin/analytics/tenants/:tenantId/calls" element={<AdminTenantCalls />} />
