@@ -33,6 +33,7 @@
 @source "../components/TenantLayout.tsx";
 @source "../components/AdminLayout.tsx";
 @source "../components/OpsLayout.tsx";
+@source "../components/console/ConsoleShell.tsx";
 
 @source "../components/AccessDenied.tsx";
 @source "../components/AppFooter.tsx";
