@@ -5833,10 +5833,257 @@ const PLATFORM_ADMIN_TAB_KEYS: ReadonlySet<PlatformAdminTab> = new Set(
 );
 const DEFAULT_PLATFORM_ADMIN_TAB: PlatformAdminTab = 'tenants';
 
+/**
+ * Tenants tab body. Lifted out of the PlatformAdmin root render block as
+ * step B of the god-file split (plan §6 item #1) — the data, the row-
+ * expand state, and the suspend/reactivate mutation now travel together
+ * with the markup that uses them, so the parent doesn't have to know
+ * about per-tab concerns.
+ *
+ * Reads `?expand=<tenantId>` on mount so cross-tab navigation (e.g. the
+ * plan-emails tab's "view tenant" action) can deep-link directly to an
+ * already-expanded row. Updates the search param when the user toggles
+ * a row so the URL stays in sync.
+ */
+export function TenantsTable() {
+  const { t: adminT } = useTranslation('admin');
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The expanded-row state lives in the URL (`?expand=<id>`) rather than
+  // local state so deep links land on an already-expanded row. Mirrors
+  // the URL-as-source-of-truth pattern from step A.
+  const expandedTenant = searchParams.get('expand');
+
+  const setExpandedTenant = useCallback(
+    (id: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id === null) {
+            next.delete('expand');
+          } else {
+            next.set('expand', id);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const { data: tenantsData, isLoading: tenantsLoading } = useQuery({
+    queryKey: ['platform-tenants'],
+    queryFn: () => api.get<{ tenants: Tenant[] }>('/platform/tenants'),
+    refetchInterval: 60_000,
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.patch(`/platform/tenants/${id}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-stats'] });
+    },
+  });
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border">
+        <h2 className="font-semibold">{adminT('platform_admin.tenants.title')}</h2>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-secondary">
+              <th className="w-8 px-2"></th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_tenant')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_status')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_plan')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_timezone')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_onboarding')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_users')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_calls_30d')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_last_activity')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tenantsLoading ? (
+              <tr><td colSpan={10} className="text-center py-12 text-text-muted">{adminT('platform_admin.common_loading')}</td></tr>
+            ) : !tenantsData?.tenants.length ? (
+              <tr><td colSpan={10} className="text-center py-12 text-text-muted">{adminT('platform_admin.tenants.no_tenants')}</td></tr>
+            ) : (
+              tenantsData.tenants.map((tenant) => (
+                <Fragment key={tenant.id}>
+                  <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
+                    <td className="px-2">
+                      <button
+                        onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
+                        className="p-1 rounded hover:bg-surface-secondary"
+                      >
+                        {expandedTenant === tenant.id
+                          ? <ChevronDown className="h-4 w-4 text-text-muted" />
+                          : <ChevronRight className="h-4 w-4 text-text-muted" />}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{tenant.name}</div>
+                      <div className="text-xs text-text-muted font-mono">{tenant.slug}</div>
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={tenant.status} /></td>
+                    <td className="px-4 py-3"><PlanBadge plan={tenant.plan} /></td>
+                    <td className="px-4 py-3 text-text-muted whitespace-nowrap font-mono text-xs">
+                      {tenant.timezone ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Server returns NULL for both onboarding fields only when the tenant
+                          has no active owner row. When an owner exists, `step` is server-clamped
+                          to [1..3] and `completed` is COALESCE'd to a clean boolean, so we only
+                          need to gate on `step` here. */}
+                      {tenant.latest_owner_onboarding_step === null ? (
+                        <span className="text-xs text-text-muted">—</span>
+                      ) : (
+                        <OwnerOnboardingBadge
+                          step={tenant.latest_owner_onboarding_step}
+                          completed={tenant.latest_owner_onboarding_completed ?? false}
+                        />
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted">{tenant.user_count}</td>
+                    <td className="px-4 py-3 text-text-muted">{tenant.calls_last_30d}</td>
+                    <td className="px-4 py-3 text-text-muted whitespace-nowrap">
+                      {tenant.last_call_at ? new Date(tenant.last_call_at).toLocaleDateString() : adminT('platform_admin.common.never')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
+                          className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
+                          title={adminT('platform_admin.tenants.view_details')}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        {tenant.status === 'active' ? (
+                          <button
+                            onClick={() => {
+                              if (confirm(adminT('platform_admin.tenants.confirm_suspend', { name: tenant.name }))) {
+                                statusMutation.mutate({ id: tenant.id, status: 'suspended' });
+                              }
+                            }}
+                            className="p-1.5 rounded hover:bg-danger-light text-text-muted hover:text-danger"
+                            title={adminT('platform_admin.tenants.suspend_tenant')}
+                          >
+                            <Ban className="h-4 w-4" />
+                          </button>
+                        ) : tenant.status === 'suspended' ? (
+                          <button
+                            onClick={() => {
+                              if (confirm(adminT('platform_admin.tenants.confirm_reactivate', { name: tenant.name }))) {
+                                statusMutation.mutate({ id: tenant.id, status: 'active' });
+                              }
+                            }}
+                            className="p-1.5 rounded hover:bg-success-light text-text-muted hover:text-success"
+                            title={adminT('platform_admin.tenants.reactivate_tenant')}
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedTenant === tenant.id && (
+                    <tr className="border-b border-border">
+                      <td colSpan={10} className="p-0">
+                        <TenantDetailPanel tenantId={tenant.id} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Templates tab body. Same lift-out treatment as TenantsTable —
+ * query + expanded-row state live with the markup. Self-contained.
+ */
+export function TemplatesTable() {
+  const { t: adminT } = useTranslation('admin');
+  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
+
+  const { data: templatesData, isLoading: templatesLoading } = useQuery({
+    queryKey: ['platform-templates-list'],
+    queryFn: () =>
+      api.get<{ templates: TemplateListItem[] }>(
+        '/marketplace/templates?status=active&limit=100',
+      ),
+  });
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border">
+        <h2 className="font-semibold">{adminT('platform_admin.templates.title')}</h2>
+        <p className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.templates.subtitle')}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-secondary">
+              <th className="w-8 px-2"></th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_template')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_slug')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_current_version')}</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_status')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {templatesLoading ? (
+              <tr><td colSpan={5} className="text-center py-12 text-text-muted">{adminT('platform_admin.templates.loading')}</td></tr>
+            ) : !templatesData?.templates.length ? (
+              <tr><td colSpan={5} className="text-center py-12 text-text-muted">{adminT('platform_admin.templates.no_templates')}</td></tr>
+            ) : (
+              templatesData.templates.map((t) => (
+                <Fragment key={t.id}>
+                  <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50 cursor-pointer"
+                      onClick={() => setExpandedTemplate(expandedTemplate === t.id ? null : t.id)}>
+                    <td className="px-2">
+                      <button aria-label={expandedTemplate === t.id ? adminT('platform_admin.templates.collapse_aria') : adminT('platform_admin.templates.expand_aria')} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
+                        {expandedTemplate === t.id
+                          ? <ChevronDown className="h-4 w-4 text-text-muted" />
+                          : <ChevronRight className="h-4 w-4 text-text-muted" />}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 font-medium">{t.displayName}</td>
+                    <td className="px-4 py-3 text-text-muted font-mono text-xs">{t.slug}</td>
+                    <td className="px-4 py-3 font-mono text-sm">v{t.currentVersion}</td>
+                    <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
+                  </tr>
+                  {expandedTemplate === t.id && (
+                    <tr className="border-b border-border">
+                      <td colSpan={5} className="p-0">
+                        <TemplateVersionManager templateId={t.id} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function PlatformAdmin() {
   const { t: adminT } = useTranslation('admin');
   const queryClient = useQueryClient();
-  const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
 
   // Tab persistence in the URL via `?tab=X` — so admins can deep-link
   // to a specific tab (e.g. share `/admin/dashboard?tab=billing-health`),
@@ -5873,7 +6120,6 @@ export default function PlatformAdmin() {
     [setSearchParams],
   );
 
-  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('totalInstalls');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -5921,17 +6167,10 @@ export default function PlatformAdmin() {
   });
   const [showDiscountDetails, setShowDiscountDetails] = useState(false);
 
-  const { data: tenantsData, isLoading: tenantsLoading } = useQuery({
-    queryKey: ['platform-tenants'],
-    queryFn: () => api.get<{ tenants: Tenant[] }>('/platform/tenants'),
-    refetchInterval: 60_000,
-  });
-
-  const { data: templatesData, isLoading: templatesLoading } = useQuery({
-    queryKey: ['platform-templates-list'],
-    queryFn: () => api.get<{ templates: TemplateListItem[] }>('/marketplace/templates?status=active&limit=100'),
-    enabled: activeTab === 'templates',
-  });
+  // The tenants and templates queries were lifted into TenantsTable /
+  // TemplatesTable along with their expanded-row state — see those
+  // components above. Removing them here also drops the always-on 60s
+  // polling on /platform/tenants when the tenants tab isn't visible.
 
   const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
     queryKey: ['platform-template-analytics'],
@@ -5954,14 +6193,8 @@ export default function PlatformAdmin() {
     refetchInterval: 60_000,
   });
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/platform/tenants/${id}/status`, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] });
-      queryClient.invalidateQueries({ queryKey: ['platform-stats'] });
-    },
-  });
+  // statusMutation (suspend/reactivate) was lifted into TenantsTable
+  // since it's only fired from within that table's rows.
 
   const stats = statsData?.stats;
 
@@ -6138,181 +6371,9 @@ export default function PlatformAdmin() {
       {activeTab === 'billing-health' && <BillingConfigHealthPanel />}
       {activeTab === 'retention' && <CallEventsRetentionPanel />}
 
-      {activeTab === 'tenants' && (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h2 className="font-semibold">{adminT('platform_admin.tenants.title')}</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface-secondary">
-                  <th className="w-8 px-2"></th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_tenant')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_status')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_plan')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_timezone')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_onboarding')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_users')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_calls_30d')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_last_activity')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.tenants.header_actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenantsLoading ? (
-                  <tr><td colSpan={10} className="text-center py-12 text-text-muted">{adminT('platform_admin.common_loading')}</td></tr>
-                ) : !tenantsData?.tenants.length ? (
-                  <tr><td colSpan={10} className="text-center py-12 text-text-muted">{adminT('platform_admin.tenants.no_tenants')}</td></tr>
-                ) : (
-                  tenantsData.tenants.map((tenant) => (
-                    <Fragment key={tenant.id}>
-                      <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
-                        <td className="px-2">
-                          <button
-                            onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
-                            className="p-1 rounded hover:bg-surface-secondary"
-                          >
-                            {expandedTenant === tenant.id
-                              ? <ChevronDown className="h-4 w-4 text-text-muted" />
-                              : <ChevronRight className="h-4 w-4 text-text-muted" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium">{tenant.name}</div>
-                          <div className="text-xs text-text-muted font-mono">{tenant.slug}</div>
-                        </td>
-                        <td className="px-4 py-3"><StatusBadge status={tenant.status} /></td>
-                        <td className="px-4 py-3"><PlanBadge plan={tenant.plan} /></td>
-                        <td className="px-4 py-3 text-text-muted whitespace-nowrap font-mono text-xs">
-                          {tenant.timezone ?? '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          {/* Server returns NULL for both onboarding fields only when the tenant
-                              has no active owner row. When an owner exists, `step` is server-clamped
-                              to [1..3] and `completed` is COALESCE'd to a clean boolean, so we only
-                              need to gate on `step` here. */}
-                          {tenant.latest_owner_onboarding_step === null ? (
-                            <span className="text-xs text-text-muted">—</span>
-                          ) : (
-                            <OwnerOnboardingBadge
-                              step={tenant.latest_owner_onboarding_step}
-                              completed={tenant.latest_owner_onboarding_completed ?? false}
-                            />
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-text-muted">{tenant.user_count}</td>
-                        <td className="px-4 py-3 text-text-muted">{tenant.calls_last_30d}</td>
-                        <td className="px-4 py-3 text-text-muted whitespace-nowrap">
-                          {tenant.last_call_at ? new Date(tenant.last_call_at).toLocaleDateString() : adminT('platform_admin.common.never')}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
-                              className="p-1.5 rounded hover:bg-surface-secondary text-text-muted hover:text-text-primary"
-                              title={adminT('platform_admin.tenants.view_details')}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            {tenant.status === 'active' ? (
-                              <button
-                                onClick={() => {
-                                  if (confirm(adminT('platform_admin.tenants.confirm_suspend', { name: tenant.name }))) {
-                                    statusMutation.mutate({ id: tenant.id, status: 'suspended' });
-                                  }
-                                }}
-                                className="p-1.5 rounded hover:bg-danger-light text-text-muted hover:text-danger"
-                                title={adminT('platform_admin.tenants.suspend_tenant')}
-                              >
-                                <Ban className="h-4 w-4" />
-                              </button>
-                            ) : tenant.status === 'suspended' ? (
-                              <button
-                                onClick={() => {
-                                  if (confirm(adminT('platform_admin.tenants.confirm_reactivate', { name: tenant.name }))) {
-                                    statusMutation.mutate({ id: tenant.id, status: 'active' });
-                                  }
-                                }}
-                                className="p-1.5 rounded hover:bg-success-light text-text-muted hover:text-success"
-                                title={adminT('platform_admin.tenants.reactivate_tenant')}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedTenant === tenant.id && (
-                        <tr className="border-b border-border">
-                          <td colSpan={10} className="p-0">
-                            <TenantDetailPanel tenantId={tenant.id} />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {activeTab === 'tenants' && <TenantsTable />}
 
-      {activeTab === 'templates' && (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h2 className="font-semibold">{adminT('platform_admin.templates.title')}</h2>
-            <p className="text-xs text-text-muted mt-0.5">{adminT('platform_admin.templates.subtitle')}</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface-secondary">
-                  <th className="w-8 px-2"></th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_template')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_slug')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_current_version')}</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-muted">{adminT('platform_admin.templates.header_status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {templatesLoading ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">{adminT('platform_admin.templates.loading')}</td></tr>
-                ) : !templatesData?.templates.length ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-text-muted">{adminT('platform_admin.templates.no_templates')}</td></tr>
-                ) : (
-                  templatesData.templates.map((t) => (
-                    <Fragment key={t.id}>
-                      <tr className="border-b border-border last:border-0 hover:bg-surface-secondary/50 cursor-pointer"
-                          onClick={() => setExpandedTemplate(expandedTemplate === t.id ? null : t.id)}>
-                        <td className="px-2">
-                          <button aria-label={expandedTemplate === t.id ? adminT('platform_admin.templates.collapse_aria') : adminT('platform_admin.templates.expand_aria')} aria-expanded={expandedTemplate === t.id} className="p-1 rounded hover:bg-surface-secondary">
-                            {expandedTemplate === t.id
-                              ? <ChevronDown className="h-4 w-4 text-text-muted" />
-                              : <ChevronRight className="h-4 w-4 text-text-muted" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 font-medium">{t.displayName}</td>
-                        <td className="px-4 py-3 text-text-muted font-mono text-xs">{t.slug}</td>
-                        <td className="px-4 py-3 font-mono text-sm">v{t.currentVersion}</td>
-                        <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                      </tr>
-                      {expandedTemplate === t.id && (
-                        <tr className="border-b border-border">
-                          <td colSpan={5} className="p-0">
-                            <TemplateVersionManager templateId={t.id} />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {activeTab === 'templates' && <TemplatesTable />}
 
       {activeTab === 'analytics' && (
         <TemplateAnalyticsTab
@@ -6346,8 +6407,18 @@ export default function PlatformAdmin() {
       {activeTab === 'plan-emails' && (
         <PlanRecommendationEmailsTab
           onViewTenant={(tenantId) => {
-            setActiveTab('tenants');
-            setExpandedTenant(tenantId);
+            // Cross-tab deep link: switch to the tenants tab AND open
+            // the requested tenant's expansion row. TenantsTable reads
+            // `?expand=<id>` on mount so this is a single URL update.
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.set('tab', 'tenants');
+                next.set('expand', tenantId);
+                return next;
+              },
+              { replace: false },
+            );
           }}
         />
       )}
