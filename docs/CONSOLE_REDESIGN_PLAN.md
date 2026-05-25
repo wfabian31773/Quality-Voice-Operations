@@ -263,13 +263,39 @@ The four full audit reports live in [`docs/CONSOLE_REDESIGN/`](CONSOLE_REDESIGN/
 
 ---
 
-## 9. Recommended starting move
+## 9. Foundation status — ALL 4 P0 FIXES SHIPPED (2026-05-24)
 
-**Begin with P0 STRUCTURAL FOUNDATION, items 1–4 in order:**
+| # | Fix | Commit | Result |
+|---|---|---|---|
+| P0/1 | Named z-index scale | `7718207` | 10 layers in `_theme.css`; safelist in tw-app/public/shell.css; 49 literals across 25 files migrated. Fixes DigitalTwin clip, Connectors drawer above modal, PublicLayout nav z-50 collision, WebsiteSalesWidget z-999999 outlier. |
+| P0/2 | Modal portal + stack-aware | `16c9fbc` | `Modal.tsx` now portals into `#overlay-root`; body-scroll lock ref-counted; focus restore stale-element-aware. 4 hand-rolled dialogs folded onto `<Modal>` (PlatformAdmin screenshot preview, AgentBuilder shortcuts/commandbar/save-template). |
+| P0/3 | Triple-FAB pile | `71548d7` | TenantLayout FABs stack vertically: PlatformAssistant `bottom-6`, HelpWidget `bottom-24`, HelpDrawer `bottom-44`. No functionality removed. |
+| P0/4 | `ConsoleShell` extraction | `aa4d706` | New `components/console/ConsoleShell.tsx` + `lib/roleLabel.ts`. AdminLayout 287→121; OpsLayout 231→58. Fixes the LanguageSwitcher drift the audit caught (Ops now gets it by default). |
 
-1. Add the z-index scale to `tailwind.config` (cheap, mechanical, blocks nothing)
-2. Portal-mount `<Modal>` (medium, fixes a whole class of bug)
-3. Kill the triple-FAB pile (immediate visible win on every tenant page)
-4. Extract `<ConsoleShell>` (high-effort but unlocks every shared-chrome fix downstream)
+**TenantLayout intentionally not refactored onto ConsoleShell** — Tenant has a different chrome (search header instead of role pill, sidebar theme toggle, multiple floating widgets, provisioning/onboarding routing) that doesn't fit ConsoleShell's API without ballooning the prop list. Tenant cleanup is a separate scoped follow-up.
 
-Then attack the P0 USER-VISIBLE BUGS individually — they're each 1–2 hours of focused work and they include the SmsInbox dropdown bug + Connectors overlay trap, both of which are visible failures today.
+## 10. What's next
+
+### Immediate options after user review
+
+**P0 USER-VISIBLE BUGS** (6 remaining, each 1–2h):
+- SmsInbox dropdowns clipped by `overflow-hidden` (production bug — users can't change priority/status/assign from toolbar)
+- Connectors dual-z overlay trap (mitigated by P0/1 but two modals still openable)
+- Dispatch silent `catch {}` × 7 on highest-stakes page
+- Operations SSE no reconnect / no stale disclosure (live-ops monitor lies during server hiccups)
+- DigitalTwin model selector clip — **already fixed by P0/1**
+- ToolHealth silent fetch error swallows on health tab
+
+**P1 PAGE REBUILDS** (largest impact first):
+- Split `PlatformAdmin.tsx` 10K-line god file into 13 route-level files
+- Rebuild `Dashboard.tsx` (every tenant lands here)
+- Rebuild `Billing.tsx` (split admin/tenant `isAdmin` branches or share `useBillingData()` hook)
+- Rebuild `Calls.tsx` (operator's daily tool, 21 lucide imports)
+- Rebuild `Settings.tsx` 6 tabs (near-clean already, but big)
+
+**P1 RAINBOW CLEANUP** (worst offenders):
+- `Dispatch.tsx` (5,414 lines, 266 rainbow Tailwind hits)
+- `Connectors.tsx` (3,809 lines, 232 rainbow)
+- `Autopilot.tsx` (961 lines, 134 rainbow — highest per-LOC density)
+
+**MARKETING SURFACE** (23 pages remaining, paused for Higgsfield bespoke heroes — user is generating manually via Higgsfield web app)
