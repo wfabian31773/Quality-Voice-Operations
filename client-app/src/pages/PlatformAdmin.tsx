@@ -6120,8 +6120,8 @@ export default function PlatformAdmin() {
     [setSearchParams],
   );
 
-  const [sortField, setSortField] = useState<SortField>('totalInstalls');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  // sortField / sortDir were lifted into TemplateAnalyticsTab as part
+  // of step C — that tab is the only consumer.
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['platform-stats'],
@@ -6167,31 +6167,11 @@ export default function PlatformAdmin() {
   });
   const [showDiscountDetails, setShowDiscountDetails] = useState(false);
 
-  // The tenants and templates queries were lifted into TenantsTable /
-  // TemplatesTable along with their expanded-row state — see those
-  // components above. Removing them here also drops the always-on 60s
-  // polling on /platform/tenants when the tenants tab isn't visible.
-
-  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
-    queryKey: ['platform-template-analytics'],
-    queryFn: () => api.get<{ templates: TemplateAnalytics[] }>('/platform/template-analytics'),
-    enabled: activeTab === 'analytics',
-    refetchInterval: 60_000,
-  });
-
-  const { data: costData, isLoading: costLoading } = useQuery({
-    queryKey: ['platform-cost-monitoring'],
-    queryFn: () => api.get<{ monitoring: CostMonitoringData }>('/platform/cost-monitoring'),
-    enabled: activeTab === 'cost-monitoring',
-    refetchInterval: 30_000,
-  });
-
-  const { data: activationData, isLoading: activationLoading } = useQuery({
-    queryKey: ['platform-activation-metrics'],
-    queryFn: () => api.get<{ metrics: ActivationMetricRow[] }>('/platform/activation-metrics'),
-    enabled: activeTab === 'activation',
-    refetchInterval: 60_000,
-  });
+  // tenants, templates, analytics, cost-monitoring, activation
+  // queries — all lifted into their respective tab components in
+  // steps B and C. The parent no longer keeps any tab-specific data
+  // queries alive; only the always-on chrome queries (stats,
+  // bouncedStats, recommendation, discount) remain.
 
   // statusMutation (suspend/reactivate) was lifted into TenantsTable
   // since it's only fired from within that table's rows.
@@ -6375,30 +6355,11 @@ export default function PlatformAdmin() {
 
       {activeTab === 'templates' && <TemplatesTable />}
 
-      {activeTab === 'analytics' && (
-        <TemplateAnalyticsTab
-          data={analyticsData}
-          loading={analyticsLoading}
-          sortField={sortField}
-          sortDir={sortDir}
-          onSort={(field) => {
-            if (field === sortField) {
-              setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-            } else {
-              setSortField(field);
-              setSortDir('desc');
-            }
-          }}
-        />
-      )}
+      {activeTab === 'analytics' && <TemplateAnalyticsTab />}
 
-      {activeTab === 'cost-monitoring' && (
-        <CostMonitoringTab data={costData} loading={costLoading} />
-      )}
+      {activeTab === 'cost-monitoring' && <CostMonitoringTab />}
 
-      {activeTab === 'activation' && (
-        <ActivationMetricsTab data={activationData} loading={activationLoading} />
-      )}
+      {activeTab === 'activation' && <ActivationMetricsTab />}
 
       {activeTab === 'docs-feedback' && <DocsFeedbackTab />}
 
@@ -9136,8 +9097,17 @@ function PlanChangeDirectionsPanel() {
   );
 }
 
-function CostMonitoringTab({ data, loading }: { data: { monitoring: CostMonitoringData } | undefined; loading: boolean }) {
+// Self-contained as of step C. The cost-monitoring query lives with
+// the markup, so the parent no longer has to keep it alive when other
+// tabs are showing. Same shape as TenantsTable / TemplatesTable from
+// step B.
+export function CostMonitoringTab() {
   const { t: adminT } = useTranslation('admin');
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['platform-cost-monitoring'],
+    queryFn: () => api.get<{ monitoring: CostMonitoringData }>('/platform/cost-monitoring'),
+    refetchInterval: 30_000,
+  });
   if (loading) return <div className="text-center py-12 text-text-muted">{adminT('platform_admin.cost_monitoring.loading')}</div>;
   if (!data) return <div className="text-center py-12 text-text-muted">{adminT('platform_admin.cost_monitoring.no_data')}</div>;
 
@@ -9363,14 +9333,29 @@ function BarChart({ data, labelKey, valueKey, secondaryKey, barColor, secondaryC
   );
 }
 
-function TemplateAnalyticsTab({ data, loading, sortField, sortDir, onSort }: {
-  data: { templates: TemplateAnalytics[] } | undefined;
-  loading: boolean;
-  sortField: SortField;
-  sortDir: SortDir;
-  onSort: (f: SortField) => void;
-}) {
+// Self-contained as of step C. Lifts in the analytics query AND the
+// sort-column state — both were previously owned by the parent and
+// flattened back down here as props, which made it impossible to use
+// the component standalone (e.g. as a route entry point) and pinned
+// the always-on 60s query to the parent even when this tab wasn't
+// visible.
+export function TemplateAnalyticsTab() {
   const { t: adminT } = useTranslation('admin');
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['platform-template-analytics'],
+    queryFn: () => api.get<{ templates: TemplateAnalytics[] }>('/platform/template-analytics'),
+    refetchInterval: 60_000,
+  });
+  const [sortField, setSortField] = useState<SortField>('totalInstalls');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const onSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+  };
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -9659,8 +9644,14 @@ function OnboardingFunnelCards() {
   );
 }
 
-function ActivationMetricsTab({ data, loading }: { data: { metrics: ActivationMetricRow[] } | undefined; loading: boolean }) {
+// Self-contained as of step C — same pattern as CostMonitoringTab.
+export function ActivationMetricsTab() {
   const { t: adminT } = useTranslation('admin');
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['platform-activation-metrics'],
+    queryFn: () => api.get<{ metrics: ActivationMetricRow[] }>('/platform/activation-metrics'),
+    refetchInterval: 60_000,
+  });
   // Render the wizard funnel even if the per-tenant activation table is
   // still loading or empty — the two are independent queries and product
   // cares about the funnel even on a fresh platform with no completed
