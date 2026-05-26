@@ -381,7 +381,7 @@ function PaletteSwatch({
           fontWeight: 500,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
-          color: "var(--text-muted, #506575)",
+          color: "var(--text-text-muted, #506575)",
         }}
       >
         {label}

@@ -318,9 +318,9 @@ export default function AdminAnalytics() {
         {tenantsLoading ? (
           <SkeletonRows count={6} rowClassName="h-10" />
         ) : !tenants.length ? (
-          <div className="text-muted-foreground">No tenants on the platform</div>
+          <div className="text-text-muted-foreground">No tenants on the platform</div>
         ) : !filteredSortedTenants.length ? (
-          <div className="text-muted-foreground">No tenants match "{tenantSearch}"</div>
+          <div className="text-text-muted-foreground">No tenants match "{tenantSearch}"</div>
         ) : (
           <AdminTable density="dense">
             <thead>
@@ -391,12 +391,12 @@ export default function AdminAnalytics() {
         {templatesLoading ? (
           <SkeletonRows count={5} rowClassName="h-10" />
         ) : !templates.length ? (
-          <div className="text-muted-foreground">No templates published</div>
+          <div className="text-text-muted-foreground">No templates published</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
+                <tr className="border-b border-border text-left text-text-muted-foreground">
                   <th className="pb-2 font-medium">Template</th>
                   <th className="pb-2 font-medium">Status</th>
                   <th className="pb-2 font-medium text-right">Active Installs</th>
@@ -431,7 +431,7 @@ export default function AdminAnalytics() {
 function KpiCard({ label, value, sublabel }: { label: string; value: string; sublabel?: string }) {
   return (
     <div className="bg-card border border-border rounded-xl p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-sm text-text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold mt-1 text-text-primary">{value}</p>
       {sublabel && <p className="text-xs text-text-secondary mt-0.5">{sublabel}</p>}
     </div>
@@ -478,8 +478,8 @@ function SortableTh({
 
 function Row({ label, value, bold, muted, hint }: { label: string; value: string; bold?: boolean; muted?: boolean; hint?: string }) {
   return (
-    <div className={clsx('flex justify-between text-sm', bold && 'font-semibold text-text-primary', muted && 'text-muted-foreground')}>
-      <span className={muted ? '' : 'text-muted-foreground'}>
+    <div className={clsx('flex justify-between text-sm', bold && 'font-semibold text-text-primary', muted && 'text-text-muted-foreground')}>
+      <span className={muted ? '' : 'text-text-muted-foreground'}>
         {label}
         {hint && <span className="ml-1 text-xs text-text-secondary">({hint})</span>}
       </span>

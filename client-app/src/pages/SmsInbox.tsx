@@ -444,7 +444,7 @@ export default function SmsInbox() {
                 if (tab === 'analytics') loadAnalytics();
               }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === tab ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'
+                activeTab === tab ? 'bg-primary text-white' : 'text-text-muted hover:bg-surface-secondary'
               }`}
             >
               {tab === 'inbox' && <Inbox className="h-4 w-4 inline mr-1" />}
@@ -616,7 +616,7 @@ function InboxView({
       <div className={`${selectedConv ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-80 shrink-0 bg-surface border border-border rounded-xl overflow-hidden`}>
         <div className="p-3 border-b border-border space-y-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
             <input
               type="text"
               value={searchQuery}
@@ -632,7 +632,7 @@ function InboxView({
                 key={f.key}
                 onClick={() => setActiveFilter(f.key)}
                 className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  activeFilter === f.key ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'
+                  activeFilter === f.key ? 'bg-primary text-white' : 'text-text-muted hover:bg-surface-secondary'
                 }`}
               >
                 {f.label}
@@ -646,7 +646,7 @@ function InboxView({
 
         {selectedConvIds.size > 0 && (
           <div className="p-2 border-b border-border bg-surface-secondary flex items-center gap-2">
-            <span className="text-xs text-muted">{selectedConvIds.size} selected</span>
+            <span className="text-xs text-text-muted">{selectedConvIds.size} selected</span>
             <select
               value={bulkAction}
               onChange={e => setBulkAction(e.target.value)}
@@ -660,7 +660,7 @@ function InboxView({
             <button onClick={handleBulkAction} disabled={!bulkAction} className="text-xs px-2 py-1 bg-primary text-white rounded disabled:opacity-50">
               Apply
             </button>
-            <button onClick={() => { setSelectedConvIds(new Set()); setBulkAction(''); }} className="text-xs text-muted hover:text-heading" title="Clear selection">
+            <button onClick={() => { setSelectedConvIds(new Set()); setBulkAction(''); }} className="text-xs text-text-muted hover:text-heading" title="Clear selection">
               <X className="h-3 w-3" />
             </button>
           </div>
@@ -709,9 +709,9 @@ function InboxView({
                       {conv.followUp && <Bell className="h-3 w-3 text-yellow-500 dark:text-yellow-400 shrink-0" />}
                     </div>
                     {conv.contactName && (
-                      <div className="text-[11px] text-muted">{conv.remoteNumber}</div>
+                      <div className="text-[11px] text-text-muted">{conv.remoteNumber}</div>
                     )}
-                    <p className="text-xs text-muted mt-0.5 truncate">{conv.lastMessagePreview || 'No messages yet'}</p>
+                    <p className="text-xs text-text-muted mt-0.5 truncate">{conv.lastMessagePreview || 'No messages yet'}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <ConversationStatusBadge status={conv.status} />
                       {(() => {
@@ -746,9 +746,9 @@ function InboxView({
                         const PIcon = pi.icon;
                         return <PIcon className={`h-3 w-3 ${pi.color}`} />;
                       })()}
-                      {conv.assigneeUserId && <User className="h-3 w-3 text-muted" />}
+                      {conv.assigneeUserId && <User className="h-3 w-3 text-text-muted" />}
                       {conv.lastMessageAt && (
-                        <span className="text-[10px] text-muted ml-auto">
+                        <span className="text-[10px] text-text-muted ml-auto">
                           {formatRelativeTime(conv.lastMessageAt)}
                         </span>
                       )}
@@ -776,7 +776,7 @@ function InboxView({
       {selectedConv ? (
         <div className="flex flex-col flex-1 bg-surface border border-border rounded-xl">
           <div className="flex items-center gap-3 p-3 border-b border-border">
-            <button onClick={() => setSelectedConv(null)} className="lg:hidden text-muted hover:text-heading">
+            <button onClick={() => setSelectedConv(null)} className="lg:hidden text-text-muted hover:text-heading">
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div className="flex-1 min-w-0">
@@ -786,7 +786,7 @@ function InboxView({
                 </h3>
                 <ConversationStatusBadge status={selectedConv.status} />
               </div>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-text-muted">
                 {selectedConv.contactName ? selectedConv.remoteNumber + ' · ' : ''}{messages.length} messages
                 {selectedConv.assigneeUserId && ` · Assigned`}
               </p>
@@ -794,20 +794,20 @@ function InboxView({
             <div className="flex items-center gap-1">
               <button
                 onClick={() => updateConversation({ pinned: !selectedConv.pinned })}
-                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.pinned ? 'text-primary' : 'text-muted'}`}
+                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.pinned ? 'text-primary' : 'text-text-muted'}`}
                 title="Pin"
               >
                 <Pin className="h-4 w-4" />
               </button>
               <button
                 onClick={() => updateConversation({ followUp: !selectedConv.followUp })}
-                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.followUp ? 'text-yellow-500 dark:text-yellow-400' : 'text-muted'}`}
+                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.followUp ? 'text-yellow-500 dark:text-yellow-400' : 'text-text-muted'}`}
                 title="Follow-up"
               >
                 <Bell className="h-4 w-4" />
               </button>
               <div className="relative group">
-                <button className="p-1.5 rounded-lg hover:bg-surface-secondary text-muted" title="Priority">
+                <button className="p-1.5 rounded-lg hover:bg-surface-secondary text-text-muted" title="Priority">
                   <Flag className="h-4 w-4" />
                 </button>
                 <div className="hidden group-hover:block absolute right-0 top-full z-dropdown bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[100px]">
@@ -823,7 +823,7 @@ function InboxView({
                 </div>
               </div>
               <div className="relative group">
-                <button className="p-1.5 rounded-lg hover:bg-surface-secondary text-muted" title="Status">
+                <button className="p-1.5 rounded-lg hover:bg-surface-secondary text-text-muted" title="Status">
                   <ChevronDown className="h-4 w-4" />
                 </button>
                 <div className="hidden group-hover:block absolute right-0 top-full z-dropdown bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[120px]">
@@ -839,11 +839,11 @@ function InboxView({
                 </div>
               </div>
               <div className="relative group">
-                <button className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.assigneeUserId || selectedConv.assigneeTeam ? 'text-primary' : 'text-muted'}`} title="Assign">
+                <button className={`p-1.5 rounded-lg hover:bg-surface-secondary ${selectedConv.assigneeUserId || selectedConv.assigneeTeam ? 'text-primary' : 'text-text-muted'}`} title="Assign">
                   <Users className="h-4 w-4" />
                 </button>
                 <div className="hidden group-hover:block absolute right-0 top-full z-dropdown bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
-                  <div className="px-3 py-1 text-[10px] text-muted font-semibold uppercase">Assign to Team</div>
+                  <div className="px-3 py-1 text-[10px] text-text-muted font-semibold uppercase">Assign to Team</div>
                   {['sales', 'support', 'billing', 'general'].map(team => (
                     <button
                       key={team}
@@ -872,14 +872,14 @@ function InboxView({
               </div>
               <button
                 onClick={() => { setShowNotes(!showNotes); setShowContactPanel(false); }}
-                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${showNotes ? 'text-primary' : 'text-muted'}`}
+                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${showNotes ? 'text-primary' : 'text-text-muted'}`}
                 title="Notes"
               >
                 <StickyNote className="h-4 w-4" />
               </button>
               <button
                 onClick={() => { setShowContactPanel(!showContactPanel); setShowNotes(false); }}
-                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${showContactPanel ? 'text-primary' : 'text-muted'}`}
+                className={`p-1.5 rounded-lg hover:bg-surface-secondary ${showContactPanel ? 'text-primary' : 'text-text-muted'}`}
                 title="Contact info"
               >
                 <User className="h-4 w-4" />
@@ -898,7 +898,7 @@ function InboxView({
                         : 'bg-surface-secondary text-heading'
                     }`}>
                       <p className="whitespace-pre-wrap">{msg.body}</p>
-                      <div className={`text-[10px] mt-1 flex items-center gap-1 ${msg.direction === 'outbound' ? 'text-white/70' : 'text-muted'}`}>
+                      <div className={`text-[10px] mt-1 flex items-center gap-1 ${msg.direction === 'outbound' ? 'text-white/70' : 'text-text-muted'}`}>
                         {msg.createdAt && new Date(msg.createdAt).toLocaleTimeString()}
                         {msg.status === 'delivered' && <CheckCircle className="h-3 w-3" />}
                         {msg.status === 'failed' && <XCircle className="h-3 w-3 text-red-400" />}
@@ -923,22 +923,22 @@ function InboxView({
                           className="w-full text-left px-2 py-1.5 text-xs hover:bg-surface rounded transition-colors"
                         >
                           <span className="font-medium text-heading">{t.title}</span>
-                          {t.category && <span className="text-muted ml-1">({t.category})</span>}
-                          <p className="text-muted truncate">{t.body}</p>
+                          {t.category && <span className="text-text-muted ml-1">({t.category})</span>}
+                          <p className="text-text-muted truncate">{t.body}</p>
                         </button>
                       ))}
                     </div>
                   )}
                   {showSchedule && (
                     <div className="flex items-center gap-2 bg-surface-secondary rounded-lg p-2">
-                      <Calendar className="h-4 w-4 text-muted" />
+                      <Calendar className="h-4 w-4 text-text-muted" />
                       <input
                         type="datetime-local"
                         value={scheduleDate}
                         onChange={e => setScheduleDate(e.target.value)}
                         className="flex-1 text-xs bg-transparent border-none outline-none text-heading"
                       />
-                      <button onClick={() => { setShowSchedule(false); setScheduleDate(''); }} className="text-muted hover:text-heading">
+                      <button onClick={() => { setShowSchedule(false); setScheduleDate(''); }} className="text-text-muted hover:text-heading">
                         <X className="h-3 w-3" />
                       </button>
                     </div>
@@ -994,7 +994,7 @@ function InboxView({
                         className={
                           showReplySegmentWarning
                             ? 'text-amber-700 dark:text-amber-400 font-medium'
-                            : 'text-muted'
+                            : 'text-text-muted'
                         }
                       >
                         {replySegmentInfo.characters}{' '}
@@ -1030,7 +1030,7 @@ function InboxView({
                   {notes.map(note => (
                     <div key={note.id} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2 text-xs">
                       <p className="text-heading">{note.body}</p>
-                      <p className="text-muted mt-1">{note.userName} &middot; {new Date(note.createdAt).toLocaleDateString()}</p>
+                      <p className="text-text-muted mt-1">{note.userName} &middot; {new Date(note.createdAt).toLocaleDateString()}</p>
                     </div>
                   ))}
                 </div>
@@ -1054,7 +1054,7 @@ function InboxView({
                   {activityLog.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {activityLog.slice(0, 10).map(entry => (
-                        <div key={entry.id} className="text-[11px] text-muted">
+                        <div key={entry.id} className="text-[11px] text-text-muted">
                           <span className="font-medium">{entry.actorName || 'System'}</span>{' '}
                           {entry.action.replace(/_/g, ' ')}{' '}
                           <span className="text-[10px]">{formatRelativeTime(entry.createdAt)}</span>
@@ -1073,24 +1073,24 @@ function InboxView({
                 </h4>
                 <div className="space-y-2 text-xs">
                   <div className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 text-muted" />
+                    <Phone className="h-3.5 w-3.5 text-text-muted" />
                     <span className="text-heading">{selectedConv.remoteNumber}</span>
                   </div>
                   {selectedConv.contactName && (
                     <div className="flex items-center gap-2">
-                      <User className="h-3.5 w-3.5 text-muted" />
+                      <User className="h-3.5 w-3.5 text-text-muted" />
                       <span className="text-heading">{selectedConv.contactName}</span>
                     </div>
                   )}
                   {selectedConv.contactEmail && (
                     <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-muted" />
+                      <Mail className="h-3.5 w-3.5 text-text-muted" />
                       <span className="text-heading">{selectedConv.contactEmail}</span>
                     </div>
                   )}
                   {selectedConv.contactLocation && (
                     <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 text-muted" />
+                      <MapPin className="h-3.5 w-3.5 text-text-muted" />
                       <span className="text-heading">{selectedConv.contactLocation}</span>
                     </div>
                   )}
@@ -1100,7 +1100,7 @@ function InboxView({
                   <h5 className="text-xs font-medium text-heading mb-1">Tags</h5>
                   <div className="flex flex-wrap gap-1">
                     {(selectedConv.tags ?? []).map((tag, i) => (
-                      <span key={i} className="bg-surface-secondary text-muted text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                      <span key={i} className="bg-surface-secondary text-text-muted text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1">
                         <Hash className="h-2.5 w-2.5" />{tag}
                       </span>
                     ))}
@@ -1136,7 +1136,7 @@ function InboxView({
           </div>
         </div>
       ) : (
-        <div className="hidden lg:flex flex-col flex-1 bg-surface border border-border rounded-xl overflow-hidden items-center justify-center text-muted text-sm">
+        <div className="hidden lg:flex flex-col flex-1 bg-surface border border-border rounded-xl overflow-hidden items-center justify-center text-text-muted text-sm">
           <Inbox className="h-10 w-10 mx-auto mb-3 opacity-40" />
           <p>Select a conversation to view messages</p>
         </div>
@@ -1253,7 +1253,7 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
                 {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
               </p>
             )}
-            <p className="mt-1 text-[11px] text-muted">
+            <p className="mt-1 text-[11px] text-text-muted">
               Supported tokens:{' '}
               {SMS_CANNED_RESPONSE_TOKENS.map((t, i) => (
                 <span key={t}>
@@ -1278,7 +1278,7 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
             >
               Save
             </button>
-            <button onClick={() => { setShowForm(false); setEditId(null); }} className="px-4 py-2 text-muted text-sm hover:text-heading">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="px-4 py-2 text-text-muted text-sm hover:text-heading">Cancel</button>
           </div>
         </div>
       )}
@@ -1293,17 +1293,17 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
               </div>
               {isManager && (
                 <div className="flex gap-1">
-                  <button onClick={() => startEdit(t)} className="p-1 text-muted hover:text-heading"><Edit className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => deleteTemplate(t.id)} className="p-1 text-muted hover:text-red-500 dark:hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => startEdit(t)} className="p-1 text-text-muted hover:text-heading"><Edit className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => deleteTemplate(t.id)} className="p-1 text-text-muted hover:text-red-500 dark:hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
-            <p className="text-xs text-muted mt-2 line-clamp-3">{t.body}</p>
+            <p className="text-xs text-text-muted mt-2 line-clamp-3">{t.body}</p>
             {t.shortcut && <p className="text-[10px] text-primary mt-1 font-mono">{t.shortcut}</p>}
             {t.variables.length > 0 && (
               <div className="flex gap-1 mt-2 flex-wrap">
                 {t.variables.map((v, i) => (
-                  <span key={i} className="text-[10px] bg-surface text-muted px-1.5 py-0.5 rounded">{`{{${v}}}`}</span>
+                  <span key={i} className="text-[10px] bg-surface text-text-muted px-1.5 py-0.5 rounded">{`{{${v}}}`}</span>
                 ))}
               </div>
             )}
@@ -1475,7 +1475,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
                   {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
                 </p>
               )}
-              <p className="mt-1 text-[11px] text-muted">
+              <p className="mt-1 text-[11px] text-text-muted">
                 Supported tokens:{' '}
                 {SMS_CANNED_RESPONSE_TOKENS.map((t, i) => (
                   <span key={t}>
@@ -1495,7 +1495,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
               >
                 Save
               </button>
-              <button onClick={() => { setShowAutoForm(false); setAutoFormError(null); }} className="px-4 py-2 text-muted text-sm hover:text-heading">Cancel</button>
+              <button onClick={() => { setShowAutoForm(false); setAutoFormError(null); }} className="px-4 py-2 text-text-muted text-sm hover:text-heading">Cancel</button>
             </div>
           </div>
         )}
@@ -1521,13 +1521,13 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
                     {rule.enabled ? 'Active' : 'Disabled'}
                   </SharedStatusBadge>
                 </span>
-                <p className="text-xs text-muted mt-0.5">
+                <p className="text-xs text-text-muted mt-0.5">
                   {rule.ruleType === 'keyword' ? `Keyword: "${rule.keyword}"` : 'Business hours rule'}
                   {' — '}{rule.replyBody.slice(0, 60)}{rule.replyBody.length > 60 ? '...' : ''}
                 </p>
               </div>
               {isManager && (
-                <button onClick={() => deleteAutoRule(rule.id)} className="p-1.5 text-muted hover:text-red-500 dark:hover:text-red-400">
+                <button onClick={() => deleteAutoRule(rule.id)} className="p-1.5 text-text-muted hover:text-red-500 dark:hover:text-red-400">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
@@ -1570,7 +1570,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
             </div>
             <div className="flex gap-2">
               <button onClick={createAssignRule} className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90">Save</button>
-              <button onClick={() => setShowAssignForm(false)} className="px-4 py-2 text-muted text-sm hover:text-heading">Cancel</button>
+              <button onClick={() => setShowAssignForm(false)} className="px-4 py-2 text-text-muted text-sm hover:text-heading">Cancel</button>
             </div>
           </div>
         )}
@@ -1580,12 +1580,12 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
             <div key={rule.id} className="flex items-center justify-between bg-surface-secondary rounded-lg p-3">
               <div>
                 <span className="text-sm font-medium text-heading">{rule.name}</span>
-                <p className="text-xs text-muted mt-0.5">
+                <p className="text-xs text-text-muted mt-0.5">
                   When {rule.matchField} matches "{rule.matchValue}" &rarr; Assign to {rule.assignToTeam || rule.assignToUserId || 'unassigned'}
                 </p>
               </div>
               {isManager && (
-                <button onClick={() => deleteAssignRule(rule.id)} className="p-1.5 text-muted hover:text-red-500 dark:hover:text-red-400">
+                <button onClick={() => deleteAssignRule(rule.id)} className="p-1.5 text-text-muted hover:text-red-500 dark:hover:text-red-400">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
@@ -1636,7 +1636,7 @@ function AnalyticsView({ analytics, loadAnalytics }: { analytics: Analytics | nu
         <h2 className="text-lg font-semibold text-heading flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-primary" /> SMS Analytics
         </h2>
-        <button onClick={loadAnalytics} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted hover:text-heading">
+        <button onClick={loadAnalytics} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-muted hover:text-heading">
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
       </div>
@@ -1648,7 +1648,7 @@ function AnalyticsView({ analytics, loadAnalytics }: { analytics: Analytics | nu
             <div key={i} className="bg-surface border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Icon className={`h-4 w-4 ${card.color}`} />
-                <span className="text-xs text-muted">{card.label}</span>
+                <span className="text-xs text-text-muted">{card.label}</span>
               </div>
               <p className="text-xl font-bold text-heading">{card.value}</p>
             </div>
@@ -1663,9 +1663,9 @@ function AnalyticsView({ analytics, loadAnalytics }: { analytics: Analytics | nu
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-2 text-muted font-medium">Agent</th>
-                  <th className="text-right py-2 text-muted font-medium">Messages Sent</th>
-                  <th className="text-right py-2 text-muted font-medium">Conversations</th>
+                  <th className="text-left py-2 text-text-muted font-medium">Agent</th>
+                  <th className="text-right py-2 text-text-muted font-medium">Messages Sent</th>
+                  <th className="text-right py-2 text-text-muted font-medium">Conversations</th>
                 </tr>
               </thead>
               <tbody>
@@ -1702,8 +1702,8 @@ function AdminView({ isManager }: { isManager: boolean }) {
   if (!isManager) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center">
-        <Settings className="h-10 w-10 mx-auto mb-3 text-muted opacity-40" />
-        <p className="text-muted">Admin access required</p>
+        <Settings className="h-10 w-10 mx-auto mb-3 text-text-muted opacity-40" />
+        <p className="text-text-muted">Admin access required</p>
       </div>
     );
   }
@@ -1718,7 +1718,7 @@ function AdminView({ isManager }: { isManager: boolean }) {
         <div className="space-y-4">
           <div>
             <h3 className="text-sm font-medium text-heading mb-2">STOP/HELP Processing</h3>
-            <p className="text-xs text-muted mb-2">
+            <p className="text-xs text-text-muted mb-2">
               The system automatically processes STOP, UNSUBSCRIBE, CANCEL, QUIT, END keywords from inbound messages.
               Numbers that send these keywords are added to the Do Not Contact list and a consent record is created.
               HELP keyword responses are handled via auto-reply rules.
@@ -1746,9 +1746,9 @@ function AdminView({ isManager }: { isManager: boolean }) {
                     <span className={`font-medium ${entry.action === 'opt_out' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                       {entry.action === 'opt_out' ? 'Opted Out' : 'Opted In'}
                     </span>
-                    {entry.keyword && <span className="text-muted">Keyword: {entry.keyword}</span>}
-                    <span className="text-muted">Source: {entry.source}</span>
-                    <span className="text-muted ml-auto">{new Date(entry.createdAt).toLocaleString()}</span>
+                    {entry.keyword && <span className="text-text-muted">Keyword: {entry.keyword}</span>}
+                    <span className="text-text-muted">Source: {entry.source}</span>
+                    <span className="text-text-muted ml-auto">{new Date(entry.createdAt).toLocaleString()}</span>
                   </div>
                 ))}
               </div>

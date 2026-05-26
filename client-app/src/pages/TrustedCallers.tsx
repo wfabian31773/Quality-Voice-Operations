@@ -137,7 +137,7 @@ function trustHubBadgeClass(status: string | null | undefined): string {
   if (s === 'twilio-approved') return 'bg-success/10 text-success';
   if (s === 'twilio-rejected') return 'bg-danger/10 text-danger';
   if (s === 'pending-review' || s === 'in-review') return 'bg-warning/10 text-warning';
-  return 'bg-text-muted/10 text-text-muted';
+  return 'bg-text-text-muted/10 text-text-muted';
 }
 
 export function aggregateTrustHubStatus(
@@ -167,7 +167,7 @@ const STATUS_STYLES: Record<CallerStatus, { label: string; color: string; Icon: 
   verified: { label: 'Verified', color: 'bg-success/10 text-success', Icon: ShieldCheck },
   pending: { label: 'Pending', color: 'bg-warning/10 text-warning', Icon: ShieldQuestion },
   failed: { label: 'Failed', color: 'bg-danger/10 text-danger', Icon: ShieldAlert },
-  rotated: { label: 'Rotated', color: 'bg-text-muted/10 text-text-muted', Icon: RotateCw },
+  rotated: { label: 'Rotated', color: 'bg-text-text-muted/10 text-text-muted', Icon: RotateCw },
 };
 
 /**
@@ -256,7 +256,7 @@ function expiryBadge(caller: TrustedCaller): {
   if (status === 'unknown') {
     return {
       label: 'Unknown',
-      className: 'bg-text-muted/10 text-text-muted',
+      className: 'bg-text-text-muted/10 text-text-muted',
       Icon: ShieldQuestion,
       title: detail || 'Health check did not run — Twilio credentials may be unset.',
     };
@@ -1165,7 +1165,7 @@ function prettyAction(action: string): string {
 }
 
 const HISTORY_SEVERITY_STYLES: Record<AuditEvent['severity'], string> = {
-  info: 'bg-text-muted/10 text-text-muted',
+  info: 'bg-text-text-muted/10 text-text-muted',
   warning: 'bg-warning/10 text-warning',
   critical: 'bg-danger/10 text-danger',
 };

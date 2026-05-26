@@ -80,9 +80,9 @@ const DIRECTION_BAR_COLOR: Record<keyof CheckoutDirectionTotals, string> = {
   upgrade: 'bg-success',
   downgrade: 'bg-danger',
   interval_change: 'bg-info',
-  same: 'bg-text-muted/40',
+  same: 'bg-text-text-muted/40',
   new: 'bg-primary',
-  unknown: 'bg-text-muted/30',
+  unknown: 'bg-text-text-muted/30',
 };
 
 function PlanChangeDirectionsPanel() {

@@ -57,7 +57,7 @@ function OperationsPanel({ isReadOnly }: { isReadOnly: boolean }) {
     <div className="p-6 space-y-6">
       <div className="border border-border rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-heading">SLA Breach Detection</h3>
-        <p className="text-xs text-muted">Scan all active tickets for SLA breaches. Tickets with breached resolution times are automatically escalated.</p>
+        <p className="text-xs text-text-muted">Scan all active tickets for SLA breaches. Tickets with breached resolution times are automatically escalated.</p>
         {!isReadOnly && (
           <button onClick={runSlaBreach} disabled={running === 'sla'} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50">
             {running === 'sla' ? 'Processing...' : 'Run SLA Breach Check'}
@@ -72,14 +72,14 @@ function OperationsPanel({ isReadOnly }: { isReadOnly: boolean }) {
 
       <div className="border border-border rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-heading">Auto-Close Inactive Tickets</h3>
-        <p className="text-xs text-muted">Automatically close tickets that have been resolved or pending beyond the configured thresholds.</p>
+        <p className="text-xs text-text-muted">Automatically close tickets that have been resolved or pending beyond the configured thresholds.</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-muted mb-1">Close resolved after (days)</label>
+            <label className="block text-xs text-text-muted mb-1">Close resolved after (days)</label>
             <input type="number" value={daysResolved} onChange={e => setDaysResolved(parseInt(e.target.value) || 14)} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm" />
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1">Close pending after (days)</label>
+            <label className="block text-xs text-text-muted mb-1">Close pending after (days)</label>
             <input type="number" value={daysPending} onChange={e => setDaysPending(parseInt(e.target.value) || 30)} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm" />
           </div>
         </div>
@@ -262,7 +262,7 @@ export default function TicketAdmin() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              tab === t.key ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-heading'
+              tab === t.key ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-heading'
             }`}
           >
             <t.icon className="h-4 w-4" /> {t.label}
@@ -274,17 +274,17 @@ export default function TicketAdmin() {
         {tab === 'categories' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Description</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Description</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
             </tr></thead>
             <tbody>
-              {categories.length === 0 ? <tr><td colSpan={4} className="text-center py-8 text-sm text-muted">No categories configured</td></tr> :
+              {categories.length === 0 ? <tr><td colSpan={4} className="text-center py-8 text-sm text-text-muted">No categories configured</td></tr> :
               categories.map(c => (
                 <tr key={c.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{c.name}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{c.description || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{c.description || '-'}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${c.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{c.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -301,21 +301,21 @@ export default function TicketAdmin() {
         {tab === 'sla' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Priority</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">First Response</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Resolution</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Priority</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">First Response</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Resolution</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
             </tr></thead>
             <tbody>
-              {slaPolicies.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-muted">No SLA policies configured</td></tr> :
+              {slaPolicies.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-text-muted">No SLA policies configured</td></tr> :
               slaPolicies.map(p => (
                 <tr key={p.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{p.name}</td>
-                  <td className="px-4 py-3 text-sm text-muted capitalize">{p.priority}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{p.first_response_minutes}m ({Math.round(p.first_response_minutes / 60)}h)</td>
-                  <td className="px-4 py-3 text-sm text-muted">{p.resolution_minutes}m ({Math.round(p.resolution_minutes / 60)}h)</td>
+                  <td className="px-4 py-3 text-sm text-text-muted capitalize">{p.priority}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{p.first_response_minutes}m ({Math.round(p.first_response_minutes / 60)}h)</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{p.resolution_minutes}m ({Math.round(p.resolution_minutes / 60)}h)</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -332,19 +332,19 @@ export default function TicketAdmin() {
         {tab === 'macros' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Description</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Actions</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Manage</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Description</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Manage</th>
             </tr></thead>
             <tbody>
-              {macros.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-sm text-muted">No macros configured</td></tr> :
+              {macros.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-sm text-text-muted">No macros configured</td></tr> :
               macros.map(m => (
                 <tr key={m.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{m.name}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{m.description || '-'}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{Array.isArray(m.actions) ? m.actions.length : 0} action(s)</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{m.description || '-'}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{Array.isArray(m.actions) ? m.actions.length : 0} action(s)</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${m.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{m.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -361,19 +361,19 @@ export default function TicketAdmin() {
         {tab === 'templates' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Subject</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Category</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Subject</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Category</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
             </tr></thead>
             <tbody>
-              {templates.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-sm text-muted">No templates configured</td></tr> :
+              {templates.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-sm text-text-muted">No templates configured</td></tr> :
               templates.map(t => (
                 <tr key={t.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{t.name}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{t.subject || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{t.category_name || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{t.subject || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{t.category_name || '-'}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${t.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{t.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -390,21 +390,21 @@ export default function TicketAdmin() {
         {tab === 'fields' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Key</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Type</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Required</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Key</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Type</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Required</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
             </tr></thead>
             <tbody>
-              {customFields.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-muted">No custom fields configured</td></tr> :
+              {customFields.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-text-muted">No custom fields configured</td></tr> :
               customFields.map(f => (
                 <tr key={f.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{f.name}</td>
-                  <td className="px-4 py-3 text-xs text-muted font-mono">{f.field_key}</td>
-                  <td className="px-4 py-3 text-sm text-muted capitalize">{f.field_type.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{f.is_required ? 'Yes' : 'No'}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted font-mono">{f.field_key}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted capitalize">{f.field_type.replace('_', ' ')}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{f.is_required ? 'Yes' : 'No'}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${f.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{f.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -421,19 +421,19 @@ export default function TicketAdmin() {
         {tab === 'rules' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Trigger</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Description</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Trigger</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Description</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
             </tr></thead>
             <tbody>
-              {workflowRules.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-sm text-muted">No workflow rules configured</td></tr> :
+              {workflowRules.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-sm text-text-muted">No workflow rules configured</td></tr> :
               workflowRules.map(r => (
                 <tr key={r.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{r.name}</td>
-                  <td className="px-4 py-3 text-xs text-muted capitalize">{r.trigger_event.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-3 text-sm text-muted">{r.description || '-'}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted capitalize">{r.trigger_event.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{r.description || '-'}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${r.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -450,21 +450,21 @@ export default function TicketAdmin() {
         {tab === 'queues' && (
           <table className="w-full">
             <thead><tr className="border-b border-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Strategy</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Agents</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Max/Agent</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Strategy</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Agents</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Max/Agent</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
             </tr></thead>
             <tbody>
-              {queueConfigs.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-muted">No queue configurations</td></tr> :
+              {queueConfigs.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-text-muted">No queue configurations</td></tr> :
               queueConfigs.map(q => (
                 <tr key={q.id} className="border-b border-border">
                   <td className="px-4 py-3 text-sm text-heading font-medium">{q.name}</td>
-                  <td className="px-4 py-3 text-xs text-muted capitalize">{q.assignment_strategy.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{q.eligible_user_ids?.length || 0} agents</td>
-                  <td className="px-4 py-3 text-xs text-muted">{q.max_tickets_per_agent || 'Unlimited'}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted capitalize">{q.assignment_strategy.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{q.eligible_user_ids?.length || 0} agents</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{q.max_tickets_per_agent || 'Unlimited'}</td>
                   <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${q.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{q.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     {!isReadOnly && <>
@@ -482,21 +482,21 @@ export default function TicketAdmin() {
           <div>
             <table className="w-full">
               <thead><tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Target Status</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Days After Close</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Action</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Target Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Days After Close</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Action</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-text-muted">Actions</th>
               </tr></thead>
               <tbody>
-                {retentionPolicies.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-muted">No retention policies configured</td></tr> :
+                {retentionPolicies.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-text-muted">No retention policies configured</td></tr> :
                 retentionPolicies.map(p => (
                   <tr key={p.id} className="border-b border-border">
                     <td className="px-4 py-3 text-sm text-heading font-medium">{p.name}</td>
-                    <td className="px-4 py-3 text-xs text-muted capitalize">{p.target_status}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{p.days_after_close} days</td>
-                    <td className="px-4 py-3 text-xs text-muted capitalize">{p.action}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted capitalize">{p.target_status}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{p.days_after_close} days</td>
+                    <td className="px-4 py-3 text-xs text-text-muted capitalize">{p.action}</td>
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-surface-hover text-text-secondary'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
                     <td className="px-4 py-3 text-right">
                       {!isReadOnly && <>
@@ -536,17 +536,17 @@ export default function TicketAdmin() {
         <Modal open onClose={() => { setShowModal(false); setEditItem(null); }} ariaLabel={`${editItem._isNew ? 'Create' : 'Edit'} ${tab.replace(/s$/, '')}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">{editItem._isNew ? 'Create' : 'Edit'} {tab.replace(/s$/, '')}</h3>
-              <button onClick={() => { setShowModal(false); setEditItem(null); }} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+              <button onClick={() => { setShowModal(false); setEditItem(null); }} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Name *</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Name *</label>
                 <input type="text" value={(editItem.name as string) || ''} onChange={e => setEditItem(p => ({ ...p!, name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
 
               {(tab === 'categories' || tab === 'sla' || tab === 'macros' || tab === 'rules' || tab === 'queues' || tab === 'retention') && (
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Description</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Description</label>
                   <textarea value={(editItem.description as string) || ''} onChange={e => setEditItem(p => ({ ...p!, description: e.target.value }))} rows={2} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
               )}
@@ -554,18 +554,18 @@ export default function TicketAdmin() {
               {tab === 'sla' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Priority *</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Priority *</label>
                     <select value={(editItem.priority as string) || 'medium'} onChange={e => setEditItem(p => ({ ...p!, priority: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                       {['low', 'medium', 'high', 'urgent'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">First Response (minutes)</label>
+                      <label className="block text-xs font-medium text-text-muted mb-1">First Response (minutes)</label>
                       <input type="number" value={(editItem.first_response_minutes as number) || 480} onChange={e => setEditItem(p => ({ ...p!, first_response_minutes: parseInt(e.target.value) }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">Resolution (minutes)</label>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Resolution (minutes)</label>
                       <input type="number" value={(editItem.resolution_minutes as number) || 2880} onChange={e => setEditItem(p => ({ ...p!, resolution_minutes: parseInt(e.target.value) }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                   </div>
@@ -575,11 +575,11 @@ export default function TicketAdmin() {
               {tab === 'templates' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Subject</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Subject</label>
                     <input type="text" value={(editItem.subject as string) || ''} onChange={e => setEditItem(p => ({ ...p!, subject: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Body *</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Body *</label>
                     <textarea
                       value={(editItem.body as string) || ''}
                       onChange={e => setEditItem(p => ({ ...p!, body: e.target.value }))}
@@ -608,7 +608,7 @@ export default function TicketAdmin() {
                         {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
                       </p>
                     )}
-                    <p className="mt-1 text-[11px] text-muted">
+                    <p className="mt-1 text-[11px] text-text-muted">
                       Supported tokens:{' '}
                       {TICKET_TEMPLATE_TOKENS.map((t, i) => (
                         <span key={t}>
@@ -625,25 +625,25 @@ export default function TicketAdmin() {
               {tab === 'fields' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Field Key *</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Field Key *</label>
                     <input type="text" value={(editItem.field_key as string) || ''} onChange={e => setEditItem(p => ({ ...p!, field_key: e.target.value }))} placeholder="e.g., customer_type" className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Field Type *</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Field Type *</label>
                     <select value={(editItem.field_type as string) || 'text'} onChange={e => setEditItem(p => ({ ...p!, field_type: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                       {['text', 'number', 'select', 'multi_select', 'date', 'boolean', 'url'].map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="checkbox" checked={!!editItem.is_required} onChange={e => setEditItem(p => ({ ...p!, is_required: e.target.checked }))} className="rounded border-border" />
-                    <label className="text-xs text-muted">Required field</label>
+                    <label className="text-xs text-text-muted">Required field</label>
                   </div>
                 </>
               )}
 
               {tab === 'rules' && (
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Trigger Event *</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Trigger Event *</label>
                   <select value={(editItem.trigger_event as string) || 'ticket_created'} onChange={e => setEditItem(p => ({ ...p!, trigger_event: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                     {['ticket_created', 'status_change', 'priority_change', 'assigned', 'sla_breach', 'time_based'].map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
                   </select>
@@ -653,7 +653,7 @@ export default function TicketAdmin() {
               {tab === 'queues' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Assignment Strategy *</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Assignment Strategy *</label>
                     <select value={(editItem.assignment_strategy as string) || 'round_robin'} onChange={e => setEditItem(p => ({ ...p!, assignment_strategy: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                       <option value="manual">Manual</option>
                       <option value="round_robin">Round Robin</option>
@@ -661,16 +661,16 @@ export default function TicketAdmin() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Eligible Agent User IDs (comma-separated)</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Eligible Agent User IDs (comma-separated)</label>
                     <input type="text" value={((editItem.eligible_user_ids as string[]) || []).join(', ')} onChange={e => setEditItem(p => ({ ...p!, eligible_user_ids: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))} placeholder="user-id-1, user-id-2" className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">Filter Department</label>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Filter Department</label>
                       <input type="text" value={(editItem.filter_department as string) || ''} onChange={e => setEditItem(p => ({ ...p!, filter_department: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">Max Tickets/Agent</label>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Max Tickets/Agent</label>
                       <input type="number" value={(editItem.max_tickets_per_agent as number) || 0} onChange={e => setEditItem(p => ({ ...p!, max_tickets_per_agent: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                   </div>
@@ -681,19 +681,19 @@ export default function TicketAdmin() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">Target Status</label>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Target Status</label>
                       <select value={(editItem.target_status as string) || 'closed'} onChange={e => setEditItem(p => ({ ...p!, target_status: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                         <option value="closed">Closed</option>
                         <option value="resolved">Resolved</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">Days After Close</label>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Days After Close</label>
                       <input type="number" value={(editItem.days_after_close as number) || 90} onChange={e => setEditItem(p => ({ ...p!, days_after_close: parseInt(e.target.value) || 90 }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Action *</label>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Action *</label>
                     <select value={(editItem.action as string) || 'archive'} onChange={e => setEditItem(p => ({ ...p!, action: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                       <option value="archive">Archive</option>
                       <option value="delete">Delete</option>
@@ -704,7 +704,7 @@ export default function TicketAdmin() {
               )}
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
-              <button onClick={() => { setShowModal(false); setEditItem(null); }} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
+              <button onClick={() => { setShowModal(false); setEditItem(null); }} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button
                 onClick={saveItem}
                 disabled={tab === 'templates' && hasUnknownTemplateTokens}

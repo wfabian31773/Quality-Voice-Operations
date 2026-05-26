@@ -328,7 +328,7 @@ function ClosestApproachBadge({
       ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
       : meters > warnM
       ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-      : 'bg-surface-hover text-muted';
+      : 'bg-surface-hover text-text-muted';
   const title =
     meters > badThresholdM
       ? `Closest GPS ping was ${formatDistance(meters)} from the address — likely never reached the right location (threshold ${badThresholdM} m)`
@@ -740,7 +740,7 @@ export default function Dispatch() {
       <div className="flex gap-1 border-b border-border">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-heading'}`}>
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-heading'}`}>
             <t.icon className="h-4 w-4" />{t.label}
           </button>
         ))}
@@ -1151,7 +1151,7 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
   if (rows === null && !error) {
     return (
       <div className="border-t border-border pt-3">
-        <div className="text-[10px] font-medium text-muted mb-1.5">Recent exports</div>
+        <div className="text-[10px] font-medium text-text-muted mb-1.5">Recent exports</div>
         <SkeletonRows count={2} rowClassName="h-10" gap="sm" />
       </div>
     );
@@ -1160,7 +1160,7 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
   if (rows && rows.length === 0 && !error) {
     return (
       <div className="border-t border-border pt-3">
-        <div className="text-[10px] font-medium text-muted mb-1.5">Recent exports</div>
+        <div className="text-[10px] font-medium text-text-muted mb-1.5">Recent exports</div>
         <EmptyState
           icon={Download}
           title="No background exports yet"
@@ -1174,11 +1174,11 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
   return (
     <div className="border-t border-border pt-3">
       <div className="flex items-center justify-between mb-1.5">
-        <div className="text-[10px] font-medium text-muted">Recent exports</div>
+        <div className="text-[10px] font-medium text-text-muted">Recent exports</div>
         <button
           type="button"
           onClick={() => { void load(); }}
-          className="text-[10px] text-muted hover:text-heading inline-flex items-center gap-1"
+          className="text-[10px] text-text-muted hover:text-heading inline-flex items-center gap-1"
           title="Refresh"
         >
           <RefreshCw className="h-3 w-3" />
@@ -1213,7 +1213,7 @@ function RecentExportRow({ row, retrying, onRetry }: {
     switch (row.status) {
       case 'pending':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-secondary text-muted">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-secondary text-text-muted">
             <Clock className="h-2.5 w-2.5" /> Pending
           </span>
         );
@@ -1246,7 +1246,7 @@ function RecentExportRow({ row, retrying, onRetry }: {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {statusBadge}
-          <span className="text-[11px] text-muted uppercase">{row.format}</span>
+          <span className="text-[11px] text-text-muted uppercase">{row.format}</span>
           <span className="text-[11px] text-heading truncate">
             {row.job_count != null ? `${row.job_count} jobs` : '—'}
           </span>
@@ -1276,7 +1276,7 @@ function RecentExportRow({ row, retrying, onRetry }: {
           )}
         </div>
       </div>
-      <div className="mt-1 flex items-center gap-2 text-[10px] text-muted">
+      <div className="mt-1 flex items-center gap-2 text-[10px] text-text-muted">
         <span title={new Date(row.created_at).toLocaleString()}>
           Requested {formatExportTimestamp(row.created_at)}
         </span>
@@ -1460,15 +1460,15 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
         <h3 className="font-semibold text-heading flex items-center gap-2">
           <Download className="h-4 w-4" /> Download routes
         </h3>
-        <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+        <button onClick={onClose} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
       </div>
       <div className="p-4 space-y-4">
-        <p className="text-xs text-muted leading-relaxed">
+        <p className="text-xs text-text-muted leading-relaxed">
           Bundles every selected (or filter-matching) job's GPS breadcrumb into a single archive of <code>route-&lt;jobId&gt;-YYYY-MM-DD</code> files plus a <code>manifest.csv</code> index. Filenames match the per-job export so they line up side-by-side.
         </p>
 
         <div>
-          <label className="block text-[10px] font-medium text-muted mb-1">Scope</label>
+          <label className="block text-[10px] font-medium text-text-muted mb-1">Scope</label>
           <div className="flex gap-2">
             <button
               type="button"
@@ -1504,7 +1504,7 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
         {mode === 'filtered' && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1">From</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1">From</label>
               <input
                 type="date"
                 value={dateFrom}
@@ -1513,7 +1513,7 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1">To</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1">To</label>
               <input
                 type="date"
                 value={dateTo}
@@ -1526,7 +1526,7 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] font-medium text-muted mb-1">Format</label>
+            <label className="block text-[10px] font-medium text-text-muted mb-1">Format</label>
             <select value={format} onChange={e => setFormat(e.target.value as 'gpx' | 'csv')} className={inputCls}>
               <option value="gpx">GPX (mapping tools)</option>
               <option value="csv">CSV (spreadsheet)</option>
@@ -1546,7 +1546,7 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
         </div>
 
         <div>
-          <label className="block text-[10px] font-medium text-muted mb-1">Delivery</label>
+          <label className="block text-[10px] font-medium text-text-muted mb-1">Delivery</label>
           <div className="flex gap-2">
             <button
               type="button"
@@ -1571,7 +1571,7 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
               Email me the archive
             </button>
           </div>
-          <p className="text-[11px] text-muted mt-1 leading-relaxed">
+          <p className="text-[11px] text-text-muted mt-1 leading-relaxed">
             {delivery === 'download'
               ? 'Streams the ZIP straight to your browser. Capped at 500 jobs — pick "Email me" for larger audits.'
               : 'Builds the archive in the background and emails you a download link (good for up to 5,000 jobs / quarter-long audits).'}
@@ -1836,7 +1836,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
         <div className="flex items-center gap-2 flex-wrap">
           {STATUS_FLOW.map(s => (
             <button key={s.key} onClick={() => setFilters(prev => ({ ...prev, status: prev.status === s.key ? '' : s.key }))}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${filters.status === s.key ? s.bg : 'bg-surface-secondary text-muted hover:text-heading'}`}>
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${filters.status === s.key ? s.bg : 'bg-surface-secondary text-text-muted hover:text-heading'}`}>
               {s.label} <span className="ml-1 opacity-70">{statusCounts[s.key] || 0}</span>
             </button>
           ))}
@@ -1862,7 +1862,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
             onClearSelection={() => setSelectedJobs(new Set())}
           />
           <button onClick={() => setShowFilters(!showFilters)}
-            className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-primary/10 text-primary' : 'text-muted hover:text-heading hover:bg-surface-secondary'}`}>
+            className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-primary/10 text-primary' : 'text-text-muted hover:text-heading hover:bg-surface-secondary'}`}>
             <Filter className="h-4 w-4" />
           </button>
         </div>
@@ -1871,15 +1871,15 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
       {showFilters && (
         <div className="bg-surface border border-border rounded-lg p-3 flex flex-wrap gap-3">
           <div className="flex-1 min-w-[150px]">
-            <label className="block text-[10px] font-medium text-muted mb-1">Search</label>
+            <label className="block text-[10px] font-medium text-text-muted mb-1">Search</label>
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
               <input type="text" value={filters.search} onChange={e => { const v = e.target.value; setFilters(prev => ({ ...prev, search: v })); }}
                 placeholder="Search jobs..." aria-label="Search dispatch jobs" className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           </div>
           <div className="min-w-[120px]">
-            <label className="block text-[10px] font-medium text-muted mb-1">Priority</label>
+            <label className="block text-[10px] font-medium text-text-muted mb-1">Priority</label>
             <select value={filters.priority} onChange={e => { const v = e.target.value; setFilters(prev => ({ ...prev, priority: v })); }}
               className="w-full px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs">
               <option value="">All</option>
@@ -1887,7 +1887,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
             </select>
           </div>
           <div className="min-w-[120px]">
-            <label className="block text-[10px] font-medium text-muted mb-1">Territory</label>
+            <label className="block text-[10px] font-medium text-text-muted mb-1">Territory</label>
             <select value={filters.territory_id} onChange={e => { const v = e.target.value; setFilters(prev => ({ ...prev, territory_id: v })); }}
               className="w-full px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs">
               <option value="">All</option>
@@ -1895,7 +1895,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
             </select>
           </div>
           <div className="min-w-[120px]">
-            <label className="block text-[10px] font-medium text-muted mb-1">Resource</label>
+            <label className="block text-[10px] font-medium text-text-muted mb-1">Resource</label>
             <select value={filters.resource_id} onChange={e => { const v = e.target.value; setFilters(prev => ({ ...prev, resource_id: v })); }}
               className="w-full px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-xs">
               <option value="">All</option>
@@ -1903,7 +1903,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
             </select>
           </div>
           <button onClick={() => setFilters({ status: '', priority: '', territory_id: '', resource_id: '', search: '' })}
-            className="self-end px-3 py-1.5 text-xs text-muted hover:text-heading bg-surface-secondary rounded-lg">Clear</button>
+            className="self-end px-3 py-1.5 text-xs text-text-muted hover:text-heading bg-surface-secondary rounded-lg">Clear</button>
         </div>
       )}
 
@@ -1916,7 +1916,7 @@ function BoardView({ jobs, statusCounts, filters, setFilters, showFilters, setSh
               <div className="p-2.5 border-b border-border">
                 <h3 className="text-xs font-semibold text-heading flex items-center justify-between">
                   {col.label}
-                  <span className="text-[10px] font-normal text-muted bg-surface-secondary rounded-full px-2 py-0.5">{colJobs.length}</span>
+                  <span className="text-[10px] font-normal text-text-muted bg-surface-secondary rounded-full px-2 py-0.5">{colJobs.length}</span>
                 </h3>
               </div>
               <div className="p-1.5 space-y-1.5 overflow-y-auto max-h-[500px]">
@@ -2004,14 +2004,14 @@ function JobCard({ job, isReadOnly, selected, liveEta, enRouteSince, now, longEn
   // card scream for attention.
   const longThreshold = longEnRouteThresholdMin ?? LONG_EN_ROUTE_THRESHOLD_MIN_DEFAULT;
   const drivingTone = (() => {
-    if (drivingMinutes == null) return 'text-muted';
+    if (drivingMinutes == null) return 'text-text-muted';
     if (drivingMinutes >= longThreshold * 2) {
       return 'text-red-700 dark:text-red-300 font-semibold';
     }
     if (drivingMinutes >= longThreshold) {
       return 'text-amber-700 dark:text-amber-300 font-semibold';
     }
-    return 'text-muted';
+    return 'text-text-muted';
   })();
   return (
     <div onClick={onClick}
@@ -2026,21 +2026,21 @@ function JobCard({ job, isReadOnly, selected, liveEta, enRouteSince, now, longEn
         </div>
         <PriorityBadge priority={job.priority} sizeClass="text-[8px] uppercase" />
       </div>
-      {job.description && <p className="text-[10px] text-muted mt-1 line-clamp-1">{job.description}</p>}
+      {job.description && <p className="text-[10px] text-text-muted mt-1 line-clamp-1">{job.description}</p>}
       <div className="flex items-center justify-between mt-1.5">
-        <div className="flex items-center gap-1 text-[10px] text-muted">
+        <div className="flex items-center gap-1 text-[10px] text-text-muted">
           <User className="h-2.5 w-2.5" />
           <span className="truncate max-w-[80px]">{job.resource_name || job.contact_name || job.assignee_email || 'Unassigned'}</span>
         </div>
         {job.territory_name && (
-          <div className="flex items-center gap-0.5 text-[10px] text-muted">
+          <div className="flex items-center gap-0.5 text-[10px] text-text-muted">
             <MapPin className="h-2.5 w-2.5" />
             <span className="truncate max-w-[50px]">{job.territory_name}</span>
           </div>
         )}
       </div>
       {job.scheduled_at && (
-        <div className="flex items-center gap-1 text-[10px] text-muted mt-1">
+        <div className="flex items-center gap-1 text-[10px] text-text-muted mt-1">
           <Clock className="h-2.5 w-2.5" />
           <span>{new Date(job.scheduled_at).toLocaleDateString()} {new Date(job.scheduled_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
         </div>
@@ -2059,7 +2059,7 @@ function JobCard({ job, isReadOnly, selected, liveEta, enRouteSince, now, longEn
               <span className="font-semibold text-cyan-700 dark:text-cyan-300">
                 ~{liveEta.minutes} min away
               </span>
-              <span className="text-muted">
+              <span className="text-text-muted">
                 · {new Date(liveEta.arrival_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
               </span>
             </>
@@ -2545,14 +2545,14 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           <span className="text-heading font-medium">
             {visibleCount} tech{visibleCount === 1 ? '' : 's'} {filterActive ? 'shown' : 'reporting'}
           </span>
-          <span className="text-muted">· {activeCount} on a job · {idleCount} idle</span>
+          <span className="text-text-muted">· {activeCount} on a job · {idleCount} idle</span>
           {filterActive && (
-            <span className="text-xs text-muted">of {locations.length} total</span>
+            <span className="text-xs text-text-muted">of {locations.length} total</span>
           )}
-          {refreshedAt && <span className="text-xs text-muted">Updated {refreshedAt.toLocaleTimeString()}</span>}
+          {refreshedAt && <span className="text-xs text-text-muted">Updated {refreshedAt.toLocaleTimeString()}</span>}
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <label className="text-muted">Show pings within</label>
+          <label className="text-text-muted">Show pings within</label>
           <select value={staleness} onChange={(e) => { setStaleness(parseInt(e.target.value, 10)); fittedRef.current = false; }}
             className="px-2 py-1 rounded border border-border bg-surface text-heading">
             <option value={300}>5 min</option>
@@ -2573,7 +2573,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
         the map is otherwise covered in green dots.
       */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted font-medium uppercase tracking-wide">Focus</span>
+        <span className="text-text-muted font-medium uppercase tracking-wide">Focus</span>
         <button
           type="button"
           onClick={() => setOffTargetFilter('all')}
@@ -2581,7 +2581,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           className={`px-2.5 py-1 rounded-full font-medium transition-colors ${
             offTargetFilter === 'all'
               ? 'bg-primary text-white'
-              : 'bg-surface-secondary text-muted hover:text-heading'
+              : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
           All ({locations.length})
@@ -2596,7 +2596,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
               ? 'bg-amber-500 text-white'
               : offTargetCounts.amberPlus > 0
                 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50'
-                : 'bg-surface-secondary text-muted hover:text-heading'
+                : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
           <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'amber' ? 'bg-white' : 'bg-amber-500'}`} />
@@ -2612,7 +2612,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
               ? 'bg-red-600 text-white'
               : offTargetCounts.bad > 0
                 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900/50'
-                : 'bg-surface-secondary text-muted hover:text-heading'
+                : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
           <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'bad' ? 'bg-white' : 'bg-red-600'}`} />
@@ -2622,7 +2622,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           <button
             type="button"
             onClick={() => setOffTargetFilter('all')}
-            className="text-muted hover:text-heading underline-offset-2 hover:underline"
+            className="text-text-muted hover:text-heading underline-offset-2 hover:underline"
           >
             Clear filter
           </button>
@@ -2647,7 +2647,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
 
       <div className="bg-surface border border-border rounded-xl p-3">
         <div className="flex flex-wrap gap-3 items-center text-xs">
-          <span className="text-muted font-medium uppercase tracking-wide">Status legend</span>
+          <span className="text-text-muted font-medium uppercase tracking-wide">Status legend</span>
           {STATUS_FLOW.filter((s) => ['en_route', 'on_site', 'in_progress', 'assigned', 'scheduled'].includes(s.key)).map((s) => (
             <span key={s.key} className="flex items-center gap-1.5">
               <span className="inline-block w-3 h-3 rounded-full" style={{ background: STATUS_HEX[s.key] }}></span>
@@ -2655,7 +2655,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
             </span>
           ))}
         </div>
-        <p className="text-[11px] text-muted mt-2">
+        <p className="text-[11px] text-text-muted mt-2">
           Locations come from the technician mobile app and are only collected while a job is en route, on site, or in progress.
           Tracking stops automatically when the job is completed or cancelled.
         </p>
@@ -2754,12 +2754,12 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1 flex-wrap">
           <button onClick={() => setQueueFilter('')}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${!queueFilter ? 'bg-primary text-white' : 'bg-surface-secondary text-muted hover:text-heading'}`}>
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${!queueFilter ? 'bg-primary text-white' : 'bg-surface-secondary text-text-muted hover:text-heading'}`}>
             All ({jobs.length})
           </button>
           {STATUS_FLOW.map(s => (
             <button key={s.key} onClick={() => setQueueFilter(s.key)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${queueFilter === s.key ? s.bg : 'bg-surface-secondary text-muted hover:text-heading'}`}>
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${queueFilter === s.key ? s.bg : 'bg-surface-secondary text-text-muted hover:text-heading'}`}>
               {s.label} ({statusCounts[s.key] || 0})
             </button>
           ))}
@@ -2792,13 +2792,13 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
               {!isReadOnly && <th className="p-2 w-8"><input type="checkbox" onChange={e => { setSelectedJobs(e.target.checked ? new Set(filteredJobs.map(j=>j.id)) : new Set()); }} className="rounded border-border h-3 w-3" /></th>}
-              <th className="p-2 text-left text-muted font-medium">Title</th>
-              <th className="p-2 text-left text-muted font-medium">Status</th>
-              <th className="p-2 text-left text-muted font-medium">Priority</th>
-              <th className="p-2 text-left text-muted font-medium">Resource</th>
-              <th className="p-2 text-left text-muted font-medium">Territory</th>
-              <th className="p-2 text-left text-muted font-medium">Scheduled</th>
-              <th className="p-2 text-left text-muted font-medium">
+              <th className="p-2 text-left text-text-muted font-medium">Title</th>
+              <th className="p-2 text-left text-text-muted font-medium">Status</th>
+              <th className="p-2 text-left text-text-muted font-medium">Priority</th>
+              <th className="p-2 text-left text-text-muted font-medium">Resource</th>
+              <th className="p-2 text-left text-text-muted font-medium">Territory</th>
+              <th className="p-2 text-left text-text-muted font-medium">Scheduled</th>
+              <th className="p-2 text-left text-text-muted font-medium">
                 <button
                   type="button"
                   onClick={() => setApproachSort(s => s === 'desc' ? 'asc' : s === 'asc' ? null : 'desc')}
@@ -2816,7 +2816,7 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
                   )}
                 </button>
               </th>
-              <th className="p-2 text-left text-muted font-medium">Actions</th>
+              <th className="p-2 text-left text-text-muted font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -2831,13 +2831,13 @@ function QueueView({ jobs, statusCounts, filters, setFilters, territories, resou
                 )}
                 <td className="p-2">
                   <div className="font-medium text-heading">{job.title}</div>
-                  <div className="text-muted truncate max-w-[200px]">{job.contact_name}</div>
+                  <div className="text-text-muted truncate max-w-[200px]">{job.contact_name}</div>
                 </td>
                 <td className="p-2"><StatusBadge status={job.status} /></td>
                 <td className="p-2"><PriorityBadge priority={job.priority} /></td>
-                <td className="p-2 text-muted">{job.resource_name || '-'}</td>
-                <td className="p-2 text-muted">{job.territory_name || '-'}</td>
-                <td className="p-2 text-muted">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleDateString() : '-'}</td>
+                <td className="p-2 text-text-muted">{job.resource_name || '-'}</td>
+                <td className="p-2 text-text-muted">{job.territory_name || '-'}</td>
+                <td className="p-2 text-text-muted">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleDateString() : '-'}</td>
                 <td className="p-2">
                   {SHOW_CLOSEST_APPROACH_STATUSES.has(job.status) && job.closest_approach_m != null
                     ? <ClosestApproachBadge meters={job.closest_approach_m} badThresholdM={badThresholdM} compact />
@@ -3004,13 +3004,13 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-heading">{r.name}</h3>
-                <p className="text-xs text-muted">{r.role} {r.territory_name ? `- ${r.territory_name}` : ''}</p>
+                <p className="text-xs text-text-muted">{r.role} {r.territory_name ? `- ${r.territory_name}` : ''}</p>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[r.current_status] || statusColors.unavailable}`}>
                 {r.current_status.replace(/_/g, ' ')}
               </span>
             </div>
-            <div className="mt-3 space-y-1.5 text-xs text-muted">
+            <div className="mt-3 space-y-1.5 text-xs text-text-muted">
               {r.email && <div className="flex items-center gap-1.5"><MessageSquare className="h-3 w-3" />{r.email}</div>}
               {r.phone && <div className="flex items-center gap-1.5"><Activity className="h-3 w-3" />{r.phone}</div>}
               <div className="flex items-center gap-1.5"><Clock className="h-3 w-3" />{r.shift_start} - {r.shift_end}</div>
@@ -3031,7 +3031,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
                   <option value="off_shift">Off Shift</option>
                   <option value="unavailable">Unavailable</option>
                 </select>
-                <button onClick={() => openForm(r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
+                <button onClick={() => openForm(r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
                 <button
                   onClick={() => issuePairingCode(r)}
                   title="Generate a one-time code that pairs this technician's mobile device for live location sharing"
@@ -3064,26 +3064,26 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
         <Modal open onClose={() => setShowForm(false)} ariaLabel={editingResource ? 'Edit Resource' : 'New Resource'} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">{editingResource ? 'Edit Resource' : 'New Resource'}</h3>
-              <button onClick={() => setShowForm(false)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+              <button onClick={() => setShowForm(false)} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Name *</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Name *</label>
                 <input type="text" value={formData.name} onChange={e => setFormData(p => ({...p, name: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Email</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Email</label>
                   <input type="email" value={formData.email} onChange={e => setFormData(p => ({...p, email: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Phone</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Phone</label>
                   <input type="tel" value={formData.phone} onChange={e => setFormData(p => ({...p, phone: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Role</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Role</label>
                   <select value={formData.role} onChange={e => setFormData(p => ({...p, role: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm">
                     <option value="field_worker">Field Worker</option>
                     <option value="technician">Technician</option>
@@ -3092,7 +3092,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Territory</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Territory</label>
                   <select value={formData.territory_id} onChange={e => setFormData(p => ({...p, territory_id: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm">
                     <option value="">None</option>
                     {territories.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -3101,28 +3101,28 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Shift Start</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Shift Start</label>
                   <input type="time" value={formData.shift_start} onChange={e => setFormData(p => ({...p, shift_start: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Shift End</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Shift End</label>
                   <input type="time" value={formData.shift_end} onChange={e => setFormData(p => ({...p, shift_end: e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Max Jobs</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Max Jobs</label>
                   <input type="number" min={1} max={20} value={formData.max_concurrent_jobs} onChange={e => setFormData(p => ({...p, max_concurrent_jobs: parseInt(e.target.value)||3}))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm" />
                 </div>
               </div>
               {skillTypes.length > 0 && (
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Skills</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Skills</label>
                   <div className="flex flex-wrap gap-2">
                     {skillTypes.map(st => {
                       const sel = selectedSkills.includes(st.name);
                       return (
                         <button key={st.id} type="button"
                           onClick={() => setSelectedSkills(prev => sel ? prev.filter(s => s !== st.name) : [...prev, st.name])}
-                          className={`px-2 py-1 rounded text-xs border ${sel ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-border text-muted'}`}
+                          className={`px-2 py-1 rounded text-xs border ${sel ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-border text-text-muted'}`}
                         >
                           {st.name}
                         </button>
@@ -3133,7 +3133,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               )}
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button onClick={saveResource} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
             </div>
         </Modal>
@@ -3148,18 +3148,18 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
         >
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h3 className="font-semibold text-heading">Pair {pairingModal.resource.name}</h3>
-            <button onClick={() => setPairingModal(null)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+            <button onClick={() => setPairingModal(null)} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
           </div>
           <div className="p-4 space-y-3">
             {pairingModal.status === 'loading' && (
-              <p className="text-sm text-muted">Generating pairing code…</p>
+              <p className="text-sm text-text-muted">Generating pairing code…</p>
             )}
             {pairingModal.status === 'error' && (
               <p className="text-sm text-red-600 dark:text-red-400">{pairingModal.error}</p>
             )}
             {pairingModal.status === 'success' && (
               <>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-text-muted">
                   Share this one-time code with the technician. They enter it once
                   in the mobile app under Profile → Live location, and the device
                   is then bound to <strong className="text-heading">{pairingModal.resource.name}</strong> for live
@@ -3170,11 +3170,11 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
                   <div className="text-3xl font-mono font-bold tracking-[0.5em] text-heading select-all">
                     {pairingModal.code}
                   </div>
-                  <div className="text-[11px] text-muted mt-2">
+                  <div className="text-[11px] text-text-muted mt-2">
                     Expires {new Date(pairingModal.expiresAt).toLocaleString()}
                   </div>
                 </div>
-                <p className="text-[11px] text-muted">
+                <p className="text-[11px] text-text-muted">
                   We only show the code once — copy it now or generate a new one
                   if it gets lost.
                 </p>
@@ -3209,7 +3209,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-heading">Dispatch Analytics</h2>
-        <button onClick={fetchReporting} className="p-2 text-muted hover:text-heading"><RefreshCw className="h-4 w-4" /></button>
+        <button onClick={fetchReporting} className="p-2 text-text-muted hover:text-heading"><RefreshCw className="h-4 w-4" /></button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -3240,7 +3240,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
                     <div className="w-24 h-2 bg-surface-secondary rounded-full overflow-hidden">
                       <div className="h-full bg-red-400 rounded-full" style={{ width: `${Math.min(100, (e.count / Math.max(1, m.exceptionCount as number)) * 100)}%` }} />
                     </div>
-                    <span className="text-xs text-muted w-6 text-right">{e.count}</span>
+                    <span className="text-xs text-text-muted w-6 text-right">{e.count}</span>
                   </div>
                 </div>
               ))}
@@ -3258,7 +3258,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
                 <div key={t.territory_name} className="flex items-center justify-between">
                   <span className="text-xs text-heading">{t.territory_name}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted">{t.completed}/{t.total_jobs}</span>
+                    <span className="text-xs text-text-muted">{t.completed}/{t.total_jobs}</span>
                     <div className="w-20 h-2 bg-surface-secondary rounded-full overflow-hidden">
                       <div className="h-full bg-green-400 rounded-full" style={{ width: `${t.total_jobs > 0 ? (t.completed / t.total_jobs) * 100 : 0}%` }} />
                     </div>
@@ -3279,21 +3279,21 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="p-2 text-left text-muted font-medium">Resource</th>
-                  <th className="p-2 text-right text-muted font-medium">Total</th>
-                  <th className="p-2 text-right text-muted font-medium">Completed</th>
-                  <th className="p-2 text-right text-muted font-medium">Rate</th>
-                  <th className="p-2 text-right text-muted font-medium">Avg Duration</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Resource</th>
+                  <th className="p-2 text-right text-text-muted font-medium">Total</th>
+                  <th className="p-2 text-right text-text-muted font-medium">Completed</th>
+                  <th className="p-2 text-right text-text-muted font-medium">Rate</th>
+                  <th className="p-2 text-right text-text-muted font-medium">Avg Duration</th>
                 </tr>
               </thead>
               <tbody>
                 {data.resourcePerformance.map(r => (
                   <tr key={r.resource_name} className="border-b border-border">
                     <td className="p-2 text-heading font-medium">{r.resource_name}</td>
-                    <td className="p-2 text-right text-muted">{r.total_jobs}</td>
-                    <td className="p-2 text-right text-muted">{r.completed}</td>
+                    <td className="p-2 text-right text-text-muted">{r.total_jobs}</td>
+                    <td className="p-2 text-right text-text-muted">{r.completed}</td>
                     <td className="p-2 text-right text-heading">{r.total_jobs > 0 ? ((r.completed/r.total_jobs)*100).toFixed(0) : 0}%</td>
-                    <td className="p-2 text-right text-muted">{r.avg_duration ? `${Math.round(r.avg_duration)}m` : '-'}</td>
+                    <td className="p-2 text-right text-text-muted">{r.avg_duration ? `${Math.round(r.avg_duration)}m` : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3327,7 +3327,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
             })}
           </div>
         )}
-        <div className="flex gap-4 mt-2 text-[10px] text-muted">
+        <div className="flex gap-4 mt-2 text-[10px] text-text-muted">
           <span className="flex items-center gap-1"><div className="w-2 h-2 bg-blue-400 rounded" /> Created</span>
           <span className="flex items-center gap-1"><div className="w-2 h-2 bg-green-400 rounded" /> Completed</span>
         </div>
@@ -3358,7 +3358,7 @@ function ApproachQualityCard({
       <div className="bg-surface border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold text-heading">Visit-the-Right-House Score</h3>
-          <span className="text-[10px] text-muted">Closest GPS ping vs. address</span>
+          <span className="text-[10px] text-text-muted">Closest GPS ping vs. address</span>
         </div>
         <EmptyState
           icon={MapPin}
@@ -3388,18 +3388,18 @@ function ApproachQualityCard({
       <div className="flex items-start justify-between mb-3 gap-3 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-heading">Visit-the-Right-House Score</h3>
-          <p className="text-[11px] text-muted mt-0.5">
+          <p className="text-[11px] text-text-muted mt-0.5">
             Share of completed jobs whose closest GPS ping landed within each distance band of the customer address.
           </p>
         </div>
         <div className="flex items-baseline gap-3">
           <div>
             <div className="text-2xl font-semibold text-heading leading-none">{approach.good_rate}%</div>
-            <div className="text-[10px] text-muted mt-1">within 50 m</div>
+            <div className="text-[10px] text-text-muted mt-1">within 50 m</div>
           </div>
           <div>
             <div className="text-2xl font-semibold text-red-500 dark:text-red-400 leading-none">{approach.bad_rate}%</div>
-            <div className="text-[10px] text-muted mt-1">over 250 m</div>
+            <div className="text-[10px] text-text-muted mt-1">over 250 m</div>
           </div>
         </div>
       </div>
@@ -3430,10 +3430,10 @@ function ApproachQualityCard({
             <>
               <div className="flex items-center gap-1.5 mb-1">
                 <div className={`w-2 h-2 rounded ${b.tone}`} />
-                <span className="text-[11px] text-muted">{b.label}</span>
+                <span className="text-[11px] text-text-muted">{b.label}</span>
               </div>
               <div className="text-sm font-semibold text-heading">{pct.toFixed(1)}%</div>
-              <div className="text-[10px] text-muted">{b.count} job{b.count === 1 ? '' : 's'}</div>
+              <div className="text-[10px] text-text-muted">{b.count} job{b.count === 1 ? '' : 's'}</div>
             </>
           );
           if (clickable) {
@@ -3463,8 +3463,8 @@ function ApproachQualityCard({
       {/* Trend line: % within 50 m per day */}
       <div className="border-t border-border pt-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-medium text-muted">% within 50 m — daily trend</span>
-          <span className="text-[10px] text-muted">{approachTrend.length} day{approachTrend.length === 1 ? '' : 's'}</span>
+          <span className="text-[11px] font-medium text-text-muted">% within 50 m — daily trend</span>
+          <span className="text-[10px] text-text-muted">{approachTrend.length} day{approachTrend.length === 1 ? '' : 's'}</span>
         </div>
         {approachTrend.length === 0 ? (
           <EmptyState icon={TrendingUp} title="No trend data in this window" variant="compact" />
@@ -3474,7 +3474,7 @@ function ApproachQualityCard({
       </div>
 
       {approach.no_data > 0 && (
-        <p className="text-[10px] text-muted mt-3">
+        <p className="text-[10px] text-text-muted mt-3">
           {approach.no_data} completed job{approach.no_data === 1 ? '' : 's'} excluded — missing address geocode or technician GPS breadcrumbs.
         </p>
       )}
@@ -3531,9 +3531,9 @@ function ApproachTrendSparkline({
           </circle>
         ))}
       </svg>
-      <div className="flex justify-between text-[9px] text-muted mt-1">
+      <div className="flex justify-between text-[9px] text-text-muted mt-1">
         <span>{points[0]?.date}</span>
-        <span className="text-muted">peak {trendMax} job{trendMax === 1 ? '' : 's'}/day</span>
+        <span className="text-text-muted">peak {trendMax} job{trendMax === 1 ? '' : 's'}/day</span>
         <span>{points[points.length - 1]?.date}</span>
       </div>
     </div>
@@ -3615,7 +3615,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       <div className="flex gap-1 border-b border-border">
         {adminTabs.map(t => (
           <button key={t.key} onClick={() => setAdminTab(t.key)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${adminTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-heading'}`}>
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${adminTab === t.key ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-heading'}`}>
             <t.icon className="h-3 w-3" />{t.label}
           </button>
         ))}
@@ -3631,7 +3631,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       {adminTab === 'territories' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted">Define service territories for dispatching</p>
+            <p className="text-sm text-text-muted">Define service territories for dispatching</p>
             {!isReadOnly && <button onClick={() => openForm('territory')} className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1"><Plus className="h-3 w-3" /> Add</button>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -3640,18 +3640,18 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-heading">{t.name}</h3>
-                    <p className="text-xs text-muted">{t.region || 'No region'}</p>
+                    <p className="text-xs text-text-muted">{t.region || 'No region'}</p>
                   </div>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.status === 'active' ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{t.status}</span>
                 </div>
-                {t.description && <p className="text-xs text-muted mt-2">{t.description}</p>}
-                <div className="flex gap-4 mt-3 text-xs text-muted">
+                {t.description && <p className="text-xs text-text-muted mt-2">{t.description}</p>}
+                <div className="flex gap-4 mt-3 text-xs text-text-muted">
                   <span>{t.resource_count} resources</span>
                   <span>{t.active_jobs} active jobs</span>
                 </div>
                 {!isReadOnly && (
                   <div className="flex gap-1.5 mt-3">
-                    <button onClick={() => openForm('territory', t)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
+                    <button onClick={() => openForm('territory', t)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
                     <button onClick={() => deleteItem('territory', t.id)} className="text-[10px] px-2 py-1 rounded bg-danger-light text-danger hover:bg-danger/20">Delete</button>
                   </div>
                 )}
@@ -3675,31 +3675,31 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       {adminTab === 'skills' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted">Manage skill types for resource matching</p>
+            <p className="text-sm text-text-muted">Manage skill types for resource matching</p>
             {!isReadOnly && <button onClick={() => openForm('skill')} className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1"><Plus className="h-3 w-3" /> Add</button>}
           </div>
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="p-2 text-left text-muted font-medium">Name</th>
-                  <th className="p-2 text-left text-muted font-medium">Category</th>
-                  <th className="p-2 text-left text-muted font-medium">Resources</th>
-                  <th className="p-2 text-left text-muted font-medium">Status</th>
-                  {!isReadOnly && <th className="p-2 text-left text-muted font-medium">Actions</th>}
+                  <th className="p-2 text-left text-text-muted font-medium">Name</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Category</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Resources</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Status</th>
+                  {!isReadOnly && <th className="p-2 text-left text-text-muted font-medium">Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {skillTypes.map(s => (
                   <tr key={s.id} className="border-b border-border">
                     <td className="p-2 text-heading font-medium">{s.name}</td>
-                    <td className="p-2 text-muted">{s.category}</td>
-                    <td className="p-2 text-muted">{s.resource_count}</td>
+                    <td className="p-2 text-text-muted">{s.category}</td>
+                    <td className="p-2 text-text-muted">{s.resource_count}</td>
                     <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${s.status === 'active' ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{s.status}</span></td>
                     {!isReadOnly && (
                       <td className="p-2">
                         <div className="flex gap-1">
-                          <button onClick={() => openForm('skill', s)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
+                          <button onClick={() => openForm('skill', s)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
                           <button onClick={() => deleteItem('skill', s.id)} className="text-[10px] px-2 py-1 rounded text-danger hover:bg-danger-light">Delete</button>
                         </div>
                       </td>
@@ -3726,7 +3726,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       {adminTab === 'notifications' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted">Configure notification templates for dispatch events</p>
+            <p className="text-sm text-text-muted">Configure notification templates for dispatch events</p>
             {!isReadOnly && <button onClick={() => openForm('notification')} className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1"><Plus className="h-3 w-3" /> Add</button>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3742,11 +3742,11 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                   </div>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.is_active ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{t.is_active ? 'Active' : 'Inactive'}</span>
                 </div>
-                {t.subject && <p className="text-xs text-muted mt-2">Subject: {t.subject}</p>}
-                <p className="text-xs text-muted mt-1 line-clamp-2">{t.body_template}</p>
+                {t.subject && <p className="text-xs text-text-muted mt-2">Subject: {t.subject}</p>}
+                <p className="text-xs text-text-muted mt-1 line-clamp-2">{t.body_template}</p>
                 {!isReadOnly && (
                   <div className="flex gap-1.5 mt-3">
-                    <button onClick={() => openForm('notification', t)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
+                    <button onClick={() => openForm('notification', t)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
                     <button onClick={() => deleteItem('notification', t.id)} className="text-[10px] px-2 py-1 rounded text-danger hover:bg-danger-light">Delete</button>
                   </div>
                 )}
@@ -3770,31 +3770,31 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       {adminTab === 'rules' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted">Configure automatic assignment rules</p>
+            <p className="text-sm text-text-muted">Configure automatic assignment rules</p>
             {!isReadOnly && <button onClick={() => openForm('rule')} className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1"><Plus className="h-3 w-3" /> Add</button>}
           </div>
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-surface-secondary">
-                  <th className="p-2 text-left text-muted font-medium">Name</th>
-                  <th className="p-2 text-left text-muted font-medium">Type</th>
-                  <th className="p-2 text-left text-muted font-medium">Priority</th>
-                  <th className="p-2 text-left text-muted font-medium">Status</th>
-                  {!isReadOnly && <th className="p-2 text-left text-muted font-medium">Actions</th>}
+                  <th className="p-2 text-left text-text-muted font-medium">Name</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Type</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Priority</th>
+                  <th className="p-2 text-left text-text-muted font-medium">Status</th>
+                  {!isReadOnly && <th className="p-2 text-left text-text-muted font-medium">Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {assignmentRules.map(r => (
                   <tr key={r.id} className="border-b border-border">
-                    <td className="p-2"><div className="text-heading font-medium">{r.name}</div><div className="text-muted">{r.description}</div></td>
+                    <td className="p-2"><div className="text-heading font-medium">{r.name}</div><div className="text-text-muted">{r.description}</div></td>
                     <td className="p-2"><span className="px-1.5 py-0.5 bg-info/15 text-info rounded text-[10px]">{r.rule_type.replace(/_/g, ' ')}</span></td>
-                    <td className="p-2 text-muted">{r.priority}</td>
+                    <td className="p-2 text-text-muted">{r.priority}</td>
                     <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] ${r.is_active ? 'bg-success/15 text-success' : 'bg-surface-hover text-text-primary'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
                     {!isReadOnly && (
                       <td className="p-2">
                         <div className="flex gap-1">
-                          <button onClick={() => openForm('rule', r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-muted hover:text-heading">Edit</button>
+                          <button onClick={() => openForm('rule', r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
                           <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
                         </div>
                       </td>
@@ -3844,7 +3844,7 @@ function DispatchSettingsPanel({ isReadOnly, dispatchSettings, setDispatchSettin
 }) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Tune dispatch thresholds and automation for your tenant.</p>
+      <p className="text-sm text-text-muted">Tune dispatch thresholds and automation for your tenant.</p>
       <DispatchThresholdField
         title="Far-from-address arrival flag"
         description="When a tech's closest GPS point to the job address is farther than this many meters, the job is automatically flagged for review and shown with a red badge on the dispatch board."
@@ -3938,10 +3938,10 @@ function DispatchThresholdField({
     <div className="bg-surface border border-border rounded-xl p-4 max-w-xl space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-heading">{title}</h3>
-        <p className="text-xs text-muted mt-1">{description}</p>
+        <p className="text-xs text-text-muted mt-1">{description}</p>
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-xs text-muted w-40 shrink-0">{unitLabel}</label>
+        <label className="text-xs text-text-muted w-40 shrink-0">{unitLabel}</label>
         <input
           type="number"
           min={min}
@@ -3952,7 +3952,7 @@ function DispatchThresholdField({
           onChange={e => setDraft(e.target.value)}
           className="w-32 px-2 py-1.5 text-xs border border-border rounded bg-surface-secondary text-heading"
         />
-        <span className="text-[10px] text-muted">Allowed: {min}–{max} {unitShort}</span>
+        <span className="text-[10px] text-text-muted">Allowed: {min}–{max} {unitShort}</span>
       </div>
       {!valid && draft !== '' && (
         <p className="text-[11px] text-red-600 dark:text-red-400">Enter a whole number between {min} and {max}.</p>
@@ -4041,7 +4041,7 @@ function DispatchSmsSegmentLimitCard({
     >
       <div>
         <h3 className="text-sm font-semibold text-heading">Dispatch SMS segment cap</h3>
-        <p className="text-xs text-muted mt-1">
+        <p className="text-xs text-text-muted mt-1">
           Carriers bill per SMS segment (160 GSM-7 chars / 70 Unicode chars in the
           first segment, then 153 / 67 each after). Capping the rendered template
           keeps a stray paste from doubling your dispatch SMS bill. Off by default
@@ -4060,7 +4060,7 @@ function DispatchSmsSegmentLimitCard({
         Block saves above the segment cap
       </label>
       <div className="flex items-center gap-2">
-        <label className="text-xs text-muted w-40 shrink-0">Max segments</label>
+        <label className="text-xs text-text-muted w-40 shrink-0">Max segments</label>
         <input
           type="number"
           min={smsMin}
@@ -4072,7 +4072,7 @@ function DispatchSmsSegmentLimitCard({
           data-testid="dispatch-sms-segment-limit-input"
           className="w-24 px-2 py-1.5 text-xs border border-border rounded bg-surface-secondary text-heading disabled:opacity-50"
         />
-        <span className="text-[10px] text-muted">
+        <span className="text-[10px] text-text-muted">
           Allowed: {smsMin}–{smsMax} segment{smsMax === 1 ? '' : 's'}
         </span>
       </div>
@@ -4177,31 +4177,31 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
     <Modal open onClose={onClose} ariaLabel={`${formData.id ? 'Edit' : 'New'} ${titles[formType]}`} panelClassName="bg-surface border border-border rounded-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-heading">{formData.id ? 'Edit' : 'New'} {titles[formType]}</h3>
-          <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-4 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-muted mb-1">Name *</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">Name *</label>
             <input type="text" value={(formData.name as string) || ''} onChange={e => setFormData({ ...formData, name: e.target.value })}
               className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
           {(formType === 'territory' || formType === 'skill' || formType === 'rule') && (
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Description</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Description</label>
               <textarea value={(formData.description as string) || ''} onChange={e => setFormData({ ...formData, description: e.target.value })}
                 rows={2} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           )}
           {formType === 'territory' && (
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Region</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Region</label>
               <input type="text" value={(formData.region as string) || ''} onChange={e => setFormData({ ...formData, region: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           )}
           {formType === 'skill' && (
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Category</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Category</label>
               <input type="text" value={(formData.category as string) || 'general'} onChange={e => setFormData({ ...formData, category: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
@@ -4210,7 +4210,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Trigger Event *</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Trigger Event *</label>
                   <select value={(formData.trigger_event as string) || ''} onChange={e => setFormData({ ...formData, trigger_event: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm">
                     <option value="">Select...</option>
@@ -4218,7 +4218,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Channel</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Channel</label>
                   <select value={(formData.channel as string) || 'sms'} onChange={e => setFormData({ ...formData, channel: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm">
                     <option value="sms">SMS</option>
@@ -4228,7 +4228,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Subject</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Subject</label>
                 <input type="text" value={(formData.subject as string) || ''} onChange={e => setFormData({ ...formData, subject: e.target.value })}
                   aria-invalid={unknownSubjectTokens.length > 0 || undefined}
                   className={`w-full px-3 py-2 rounded-lg border bg-surface text-heading text-sm focus:outline-none focus:ring-2 ${
@@ -4254,7 +4254,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Body Template *</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Body Template *</label>
                 <textarea value={(formData.body_template as string) || ''} onChange={e => setFormData({ ...formData, body_template: e.target.value })}
                   rows={4}
                   placeholder={`Use ${DISPATCH_MERGE_TOKENS.map(t => `{{${t}}}`).join(', ')}.`}
@@ -4280,7 +4280,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                     {' '}— customers will see the raw text. Saving is blocked until you fix or remove these.
                   </p>
                 )}
-                <p className="mt-1 text-[11px] text-muted">
+                <p className="mt-1 text-[11px] text-text-muted">
                   Supported tokens:{' '}
                   {DISPATCH_MERGE_TOKENS.map((t, i) => (
                     <span key={t}>
@@ -4290,22 +4290,22 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                   ))}
                   .
                 </p>
-                <p className="mt-1 text-[11px] text-muted">
+                <p className="mt-1 text-[11px] text-text-muted">
                   <code>{'{{eta_drive_minutes}}'}</code> and <code>{'{{eta_arrival_time}}'}</code> are filled with the live driving ETA from the technician&apos;s last GPS fix when the job is en route.
                   {' '}<code>{'{{tracking_url}}'}</code> renders an absolute link to the customer&apos;s booking-tracker page (e.g. <code>https://&lt;host&gt;/track/&lt;token&gt;</code>).
                 </p>
               </div>
               <div data-testid="notification-template-preview">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-muted">Preview</label>
-                  <span className="text-[10px] uppercase tracking-wide text-muted">
+                  <label className="block text-xs font-medium text-text-muted">Preview</label>
+                  <span className="text-[10px] uppercase tracking-wide text-text-muted">
                     Sample data — not real
                   </span>
                 </div>
                 <div className="rounded-lg border border-dashed border-border bg-surface-secondary p-3 space-y-2">
                   {previewChannel !== 'sms' && previewSubject.length > 0 && (
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">Subject</div>
+                      <div className="text-[10px] uppercase tracking-wide text-text-muted mb-0.5">Subject</div>
                       <div
                         data-testid="notification-template-preview-subject"
                         className="text-xs text-heading whitespace-pre-wrap break-words"
@@ -4315,7 +4315,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                     </div>
                   )}
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">
+                    <div className="text-[10px] uppercase tracking-wide text-text-muted mb-0.5">
                       {previewChannel === 'email' ? 'Body' : 'Message'}
                     </div>
                     {previewBody.length > 0 ? (
@@ -4326,7 +4326,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                         {previewBody}
                       </div>
                     ) : (
-                      <div className="text-xs italic text-muted">
+                      <div className="text-xs italic text-text-muted">
                         Start typing the body template to see a preview.
                       </div>
                     )}
@@ -4339,7 +4339,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                           className={
                             showSegmentWarning
                               ? 'text-amber-700 dark:text-amber-400 font-medium'
-                              : 'text-muted'
+                              : 'text-text-muted'
                           }
                         >
                           {previewSegmentInfo.characters}{' '}
@@ -4376,7 +4376,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                     )}
                   </div>
                 </div>
-                <p className="mt-1 text-[11px] text-muted">
+                <p className="mt-1 text-[11px] text-text-muted">
                   Rendered against a sample job: <code>{DISPATCH_MERGE_TOKEN_SAMPLES.contact_name}</code> at{' '}
                   <code>{DISPATCH_MERGE_TOKEN_SAMPLES.address}</code>, ETA{' '}
                   <code>{DISPATCH_MERGE_TOKEN_SAMPLES.eta_arrival_time}</code>.
@@ -4387,7 +4387,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
           {formType === 'rule' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Rule Type</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Rule Type</label>
                 <select value={(formData.rule_type as string) || 'auto_assign'} onChange={e => setFormData({ ...formData, rule_type: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm">
                   <option value="auto_assign">Auto Assign</option>
@@ -4398,7 +4398,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Priority</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Priority</label>
                 <input type="number" min={0} value={(formData.priority as number) || 0} onChange={e => setFormData({ ...formData, priority: parseInt(e.target.value) || 0 })}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
@@ -4406,7 +4406,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
           )}
         </div>
         <div className="flex justify-end gap-2 p-4 border-t border-border">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-heading bg-surface-secondary">Cancel</button>
           <button
             onClick={onSave}
             disabled={hasUnknownTokens || exceedsSegmentLimit}
@@ -4482,7 +4482,7 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
     <Modal open onClose={onClose} ariaLabel={job ? 'Edit Job' : 'New Job'} panelClassName="bg-surface border border-border rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-heading">{job ? 'Edit Job' : 'New Job'}</h3>
-          <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-4 space-y-4">
           {formError && (
@@ -4492,35 +4492,35 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
             </div>
           )}
           <div>
-            <label className="block text-xs font-medium text-muted mb-1">Title *</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">Title *</label>
             <input type="text" value={formData.title} onChange={e => setFormData(p => ({...p, title: e.target.value}))} className={inputCls} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted mb-1">Description</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">Description</label>
             <textarea value={formData.description} onChange={e => setFormData(p => ({...p, description: e.target.value}))} rows={2} className={inputCls} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Status</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Status</label>
               <select value={formData.status} onChange={e => setFormData(p => ({...p, status: e.target.value}))} className={inputCls}>
                 {STATUS_FLOW.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Priority</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Priority</label>
               <select value={formData.priority} onChange={e => setFormData(p => ({...p, priority: e.target.value as 'low' | 'medium' | 'high' | 'urgent'}))} className={inputCls}>
                 <option value="low">Low</option><option value="medium">Medium</option>
                 <option value="high">High</option><option value="urgent">Urgent</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Job Type</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Job Type</label>
               <input type="text" value={formData.job_type} onChange={e => setFormData(p => ({...p, job_type: e.target.value}))} className={inputCls} />
             </div>
           </div>
           {skillTypes.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Required Skills</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Required Skills</label>
               <div className="flex flex-wrap gap-2">
                 {skillTypes.map(st => {
                   const selected = formData.required_skills.includes(st.name);
@@ -4531,7 +4531,7 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
                           ? p.required_skills.filter((s: string) => s !== st.name)
                           : [...p.required_skills, st.name],
                       }))}
-                      className={`px-2 py-1 rounded text-xs border ${selected ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-border text-muted'}`}
+                      className={`px-2 py-1 rounded text-xs border ${selected ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-border text-text-muted'}`}
                     >
                       {st.name}
                     </button>
@@ -4542,39 +4542,39 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
           )}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Contact Name</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Contact Name</label>
               <input type="text" value={formData.contact_name} onChange={e => setFormData(p => ({...p, contact_name: e.target.value}))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Contact Phone</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Contact Phone</label>
               <input type="tel" value={formData.contact_phone} onChange={e => setFormData(p => ({...p, contact_phone: e.target.value}))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Contact Email</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Contact Email</label>
               <input type="email" value={formData.contact_email} onChange={e => setFormData(p => ({...p, contact_email: e.target.value}))} className={inputCls} />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted mb-1">Address</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">Address</label>
             <input type="text" value={formData.address} onChange={e => setFormData(p => ({...p, address: e.target.value}))} className={inputCls} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Territory</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Territory</label>
               <select value={formData.territory_id} onChange={e => setFormData(p => ({...p, territory_id: e.target.value}))} className={inputCls}>
                 <option value="">None</option>
                 {territories.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Resource</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Resource</label>
               <select value={formData.resource_id} onChange={e => setFormData(p => ({...p, resource_id: e.target.value}))} className={inputCls}>
                 <option value="">Unassigned</option>
                 {resources.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Assignee</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Assignee</label>
               <select value={formData.assignee_user_id} onChange={e => setFormData(p => ({...p, assignee_user_id: e.target.value}))} className={inputCls}>
                 <option value="">Unassigned</option>
                 {teamMembers.map(m => <option key={m.id} value={m.id}>{m.email}</option>)}
@@ -4583,29 +4583,29 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Scheduled At</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">Scheduled At</label>
               <input type="datetime-local" value={formData.scheduled_at} onChange={e => setFormData(p => ({...p, scheduled_at: e.target.value}))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">ETA Start</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">ETA Start</label>
               <input type="datetime-local" value={formData.eta_start} onChange={e => setFormData(p => ({...p, eta_start: e.target.value}))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">ETA End</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">ETA End</label>
               <input type="datetime-local" value={formData.eta_end} onChange={e => setFormData(p => ({...p, eta_end: e.target.value}))} className={inputCls} />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted mb-1">Est. Duration (minutes)</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">Est. Duration (minutes)</label>
             <input type="number" min={0} value={formData.estimated_duration_minutes} onChange={e => setFormData(p => ({...p, estimated_duration_minutes: e.target.value}))} className={inputCls} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted mb-1">Notes</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">Notes</label>
             <textarea value={formData.notes} onChange={e => setFormData(p => ({...p, notes: e.target.value}))} rows={2} className={inputCls} />
           </div>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t border-border">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-heading bg-surface-secondary">Cancel</button>
           <button onClick={saveJob} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Save</button>
         </div>
     </Modal>
@@ -4733,12 +4733,12 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
         </div>
 
         {!isReadOnly && nextStates.length > 0 && (
           <div className="px-4 py-2 border-b border-border bg-surface-secondary flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted">Move to:</span>
+            <span className="text-xs text-text-muted">Move to:</span>
             {nextStates.map(s => {
               const st = STATUS_FLOW.find(x => x.key === s);
               return (
@@ -4760,7 +4760,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
         <div className="flex gap-1 px-4 pt-3 border-b border-border flex-wrap">
           {(['overview', 'timeline', 'route', 'exceptions', 'attachments'] as const).map(t => (
             <button key={t} onClick={() => setDetailTab(t)}
-              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize ${detailTab === t ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-heading'}`}>
+              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize ${detailTab === t ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-heading'}`}>
               {t === 'route' ? 'Route taken' : t}
               {t === 'exceptions' ? ` (${exceptions.length})` : t === 'attachments' ? ` (${attachments.length})` : t === 'timeline' ? ` (${events.length})` : ''}
             </button>
@@ -4796,31 +4796,31 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                     </p>
                     <p className="text-sm text-heading mt-0.5">
                       <span className="font-semibold">~{liveEta.minutes} min away</span>
-                      <span className="text-muted"> — arriving at </span>
+                      <span className="text-text-muted"> — arriving at </span>
                       <span className="font-semibold">{new Date(liveEta.arrival_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                     </p>
                   </div>
-                  <span className="text-[10px] text-muted whitespace-nowrap">
+                  <span className="text-[10px] text-text-muted whitespace-nowrap">
                     Same view as customer
                   </span>
                 </div>
               )}
-              {job.description && <div><h4 className="text-xs font-medium text-muted mb-1">Description</h4><p className="text-sm text-heading">{job.description}</p></div>}
+              {job.description && <div><h4 className="text-xs font-medium text-text-muted mb-1">Description</h4><p className="text-sm text-heading">{job.description}</p></div>}
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-xs text-muted">Contact</span><p className="text-heading">{job.contact_name || '-'}</p></div>
-                <div><span className="text-xs text-muted">Phone</span><p className="text-heading">{job.contact_phone || '-'}</p></div>
-                <div><span className="text-xs text-muted">Email</span><p className="text-heading">{job.contact_email || '-'}</p></div>
-                <div><span className="text-xs text-muted">Address</span><p className="text-heading">{job.address || '-'}</p></div>
-                <div><span className="text-xs text-muted">Territory</span><p className="text-heading">{job.territory_name || '-'}</p></div>
-                <div><span className="text-xs text-muted">Resource</span><p className="text-heading">{job.resource_name || '-'}</p></div>
-                <div><span className="text-xs text-muted">Scheduled</span><p className="text-heading">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleString() : '-'}</p></div>
-                <div><span className="text-xs text-muted">ETA</span><p className="text-heading">{job.eta_start ? `${new Date(job.eta_start).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} - ${job.eta_end ? new Date(job.eta_end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '?'}` : '-'}</p></div>
-                <div><span className="text-xs text-muted">Est. Duration</span><p className="text-heading">{job.estimated_duration_minutes ? `${job.estimated_duration_minutes}m` : '-'}</p></div>
-                <div><span className="text-xs text-muted">Job Type</span><p className="text-heading">{job.job_type}</p></div>
-                <div><span className="text-xs text-muted">Created</span><p className="text-heading">{new Date(job.created_at).toLocaleString()}</p></div>
-                {job.completed_at && <div><span className="text-xs text-muted">Completed</span><p className="text-heading">{new Date(job.completed_at).toLocaleString()}</p></div>}
+                <div><span className="text-xs text-text-muted">Contact</span><p className="text-heading">{job.contact_name || '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Phone</span><p className="text-heading">{job.contact_phone || '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Email</span><p className="text-heading">{job.contact_email || '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Address</span><p className="text-heading">{job.address || '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Territory</span><p className="text-heading">{job.territory_name || '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Resource</span><p className="text-heading">{job.resource_name || '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Scheduled</span><p className="text-heading">{job.scheduled_at ? new Date(job.scheduled_at).toLocaleString() : '-'}</p></div>
+                <div><span className="text-xs text-text-muted">ETA</span><p className="text-heading">{job.eta_start ? `${new Date(job.eta_start).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} - ${job.eta_end ? new Date(job.eta_end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '?'}` : '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Est. Duration</span><p className="text-heading">{job.estimated_duration_minutes ? `${job.estimated_duration_minutes}m` : '-'}</p></div>
+                <div><span className="text-xs text-text-muted">Job Type</span><p className="text-heading">{job.job_type}</p></div>
+                <div><span className="text-xs text-text-muted">Created</span><p className="text-heading">{new Date(job.created_at).toLocaleString()}</p></div>
+                {job.completed_at && <div><span className="text-xs text-text-muted">Completed</span><p className="text-heading">{new Date(job.completed_at).toLocaleString()}</p></div>}
               </div>
-              {job.notes && <div><h4 className="text-xs font-medium text-muted mb-1">Notes</h4><p className="text-sm text-heading whitespace-pre-wrap">{job.notes}</p></div>}
+              {job.notes && <div><h4 className="text-xs font-medium text-text-muted mb-1">Notes</h4><p className="text-sm text-heading whitespace-pre-wrap">{job.notes}</p></div>}
             </div>
           )}
 
@@ -4842,10 +4842,10 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                         <div className="text-xs">
                           <span className="font-medium text-heading capitalize">{e.event_type.replace(/_/g, ' ')}</span>
                           {e.from_status && e.to_status && (
-                            <span className="text-muted ml-1">{e.from_status} <ArrowRight className="inline h-3 w-3" /> {e.to_status}</span>
+                            <span className="text-text-muted ml-1">{e.from_status} <ArrowRight className="inline h-3 w-3" /> {e.to_status}</span>
                           )}
-                          <p className="text-muted mt-0.5">{e.notes}</p>
-                          <p className="text-[10px] text-muted mt-0.5">{new Date(e.created_at).toLocaleString()}</p>
+                          <p className="text-text-muted mt-0.5">{e.notes}</p>
+                          <p className="text-[10px] text-text-muted mt-0.5">{new Date(e.created_at).toLocaleString()}</p>
                           {showImage && (
                             <a href={`/api/dispatch/attachments/${inlineAttachment.id}/file`} target="_blank" rel="noreferrer" className="block mt-2">
                               <img
@@ -4893,20 +4893,20 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   <div className="flex items-center gap-1 text-[11px]" role="group" aria-label="Filter exceptions by source">
                     <button
                       onClick={() => setExceptionSource('all')}
-                      className={`px-2 py-1 rounded border ${exceptionSource === 'all' ? 'bg-primary text-white border-primary' : 'bg-surface-secondary text-muted border-border hover:text-heading'}`}
+                      className={`px-2 py-1 rounded border ${exceptionSource === 'all' ? 'bg-primary text-white border-primary' : 'bg-surface-secondary text-text-muted border-border hover:text-heading'}`}
                     >
                       All ({exceptions.length})
                     </button>
                     <button
                       onClick={() => setExceptionSource('auto')}
-                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'auto' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface-secondary text-muted border-border hover:text-heading'}`}
+                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'auto' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface-secondary text-text-muted border-border hover:text-heading'}`}
                       title="Inserted automatically by system rules (e.g. bad-arrival detection)"
                     >
                       <Shield className="h-3 w-3" /> Auto-flagged ({autoCount})
                     </button>
                     <button
                       onClick={() => setExceptionSource('human')}
-                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'human' ? 'bg-primary text-white border-primary' : 'bg-surface-secondary text-muted border-border hover:text-heading'}`}
+                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'human' ? 'bg-primary text-white border-primary' : 'bg-surface-secondary text-text-muted border-border hover:text-heading'}`}
                       title="Reported by a dispatcher or technician"
                     >
                       <User className="h-3 w-3" /> Human ({humanCount})
@@ -4921,7 +4921,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   </select>
                   <textarea value={exceptionData.reason} onChange={e => setExceptionData(p => ({...p, reason: e.target.value}))} placeholder="Reason..." rows={2} className={inputCls} />
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => setShowExceptionForm(false)} className="text-xs px-3 py-1.5 text-muted">Cancel</button>
+                    <button onClick={() => setShowExceptionForm(false)} className="text-xs px-3 py-1.5 text-text-muted">Cancel</button>
                     <button onClick={submitException} className="text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg">Submit</button>
                   </div>
                 </div>
@@ -4968,9 +4968,9 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                           {e.resolved_at ? 'Resolved' : 'Open'}
                         </span>
                       </div>
-                      <p className="text-xs text-muted mt-1">{e.reason}</p>
+                      <p className="text-xs text-text-muted mt-1">{e.reason}</p>
                       {e.resolution && <p className="text-xs text-green-700 dark:text-green-400 mt-1">Resolution: {e.resolution}</p>}
-                      <p className="text-[10px] text-muted mt-1">
+                      <p className="text-[10px] text-text-muted mt-1">
                         {new Date(e.created_at).toLocaleString()}
                         {isAuto && <span className="ml-1">· system-flagged</span>}
                       </p>
@@ -5003,7 +5003,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   <input type="text" value={attachmentData.title} onChange={e => setAttachmentData(p => ({...p, title: e.target.value}))} placeholder="Title" className={inputCls} />
                   <textarea value={attachmentData.content} onChange={e => setAttachmentData(p => ({...p, content: e.target.value}))} placeholder="Content..." rows={3} className={inputCls} />
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => setShowAttachmentForm(false)} className="text-xs px-3 py-1.5 text-muted">Cancel</button>
+                    <button onClick={() => setShowAttachmentForm(false)} className="text-xs px-3 py-1.5 text-text-muted">Cancel</button>
                     <button onClick={submitAttachment} className="text-xs px-3 py-1.5 bg-primary text-white rounded-lg">Add</button>
                   </div>
                 </div>
@@ -5017,14 +5017,14 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   return (
                     <div key={a.id} className="bg-surface-secondary border border-border rounded-lg p-3">
                       <div className="flex items-center gap-2">
-                        <FileText className="h-3.5 w-3.5 text-muted" />
+                        <FileText className="h-3.5 w-3.5 text-text-muted" />
                         <span className="text-xs font-medium text-heading">{a.title || a.attachment_type.replace(/_/g, ' ')}</span>
                         <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
                         {a.file_size_bytes ? (
-                          <span className="text-[10px] text-muted">{Math.round(a.file_size_bytes / 1024)} KB</span>
+                          <span className="text-[10px] text-text-muted">{Math.round(a.file_size_bytes / 1024)} KB</span>
                         ) : null}
                       </div>
-                      {a.content && <p className="text-xs text-muted mt-1 whitespace-pre-wrap">{a.content}</p>}
+                      {a.content && <p className="text-xs text-text-muted mt-1 whitespace-pre-wrap">{a.content}</p>}
                       {isImage && fileUrl && (
                         <a href={fileUrl} target="_blank" rel="noreferrer" className="block mt-2">
                           <img
@@ -5039,7 +5039,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                           <FileText className="h-3 w-3" /> Download file
                         </a>
                       )}
-                      <p className="text-[10px] text-muted mt-1">{new Date(a.created_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-text-muted mt-1">{new Date(a.created_at).toLocaleString()}</p>
                     </div>
                   );
                 })
@@ -5054,7 +5054,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             <input type="text" value={followUpData.title} onChange={e => setFollowUpData(p => ({...p, title: e.target.value}))} placeholder={`Follow-up: ${job.title}`} className={inputCls} />
             <textarea value={followUpData.description} onChange={e => setFollowUpData(p => ({...p, description: e.target.value}))} placeholder="Description..." rows={2} className={inputCls} />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowFollowUpForm(false)} className="text-xs px-3 py-1.5 text-muted">Cancel</button>
+              <button onClick={() => setShowFollowUpForm(false)} className="text-xs px-3 py-1.5 text-text-muted">Cancel</button>
               <button onClick={submitFollowUp} className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-lg">Create Follow-up</button>
             </div>
           </div>
@@ -5399,7 +5399,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-3 text-xs text-muted">
+        <div className="flex flex-wrap gap-3 text-xs text-text-muted">
           <div>
             <span className="text-heading font-medium">{points.length}</span> ping{points.length === 1 ? '' : 's'}
           </div>
@@ -5453,12 +5453,12 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
 
       <div className="bg-surface-secondary border border-border rounded-xl p-3 space-y-2">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-muted">Scrub to time</span>
+          <span className="text-text-muted">Scrub to time</span>
           <span className="text-heading font-medium">
             {new Date(scrubPosition.ts).toLocaleString()}
-            {scrubPosition.source === 'between' && <span className="ml-1 text-[10px] text-muted">(interpolated)</span>}
-            {scrubPosition.source === 'before' && <span className="ml-1 text-[10px] text-muted">(before first ping)</span>}
-            {scrubPosition.source === 'after' && <span className="ml-1 text-[10px] text-muted">(after last ping)</span>}
+            {scrubPosition.source === 'between' && <span className="ml-1 text-[10px] text-text-muted">(interpolated)</span>}
+            {scrubPosition.source === 'before' && <span className="ml-1 text-[10px] text-text-muted">(before first ping)</span>}
+            {scrubPosition.source === 'after' && <span className="ml-1 text-[10px] text-text-muted">(after last ping)</span>}
           </span>
         </div>
         <input
@@ -5475,12 +5475,12 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
           aria-valuetext={`${clampedScrub} minutes from start, ${new Date(scrubPosition.ts).toLocaleTimeString()}`}
           className="w-full accent-primary"
         />
-        <div className="flex justify-between text-[10px] text-muted">
+        <div className="flex justify-between text-[10px] text-text-muted">
           <span>{new Date(replay.startMs).toLocaleTimeString()}</span>
           <span className="text-heading">+{clampedScrub} min</span>
           <span>{new Date(replay.endMs).toLocaleTimeString()}</span>
         </div>
-        <div className="flex flex-wrap gap-3 text-[11px] text-muted pt-1">
+        <div className="flex flex-wrap gap-3 text-[11px] text-text-muted pt-1">
           <span>lat <span className="text-heading">{scrubPosition.lat.toFixed(5)}</span></span>
           <span>lng <span className="text-heading">{scrubPosition.lng.toFixed(5)}</span></span>
           {scrubPosition.speed_mps != null && (

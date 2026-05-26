@@ -89,7 +89,7 @@ export default function AuditLog() {
         {(action || since || until) && (
           <button
             onClick={() => { setAction(''); setSince(''); setUntil(''); setPage(1); }}
-            className="px-3 py-2 text-sm text-muted hover:text-foreground"
+            className="px-3 py-2 text-sm text-text-muted hover:text-text-primary"
           >
             Clear
           </button>
@@ -101,29 +101,29 @@ export default function AuditLog() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Timestamp</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Actor</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Action</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Resource</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Details</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">IP</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Timestamp</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Actor</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Action</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Resource</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Details</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">IP</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="text-center py-12 text-muted">Loading...</td></tr>
+                <tr><td colSpan={6} className="text-center py-12 text-text-muted">Loading...</td></tr>
               ) : !data?.events.length ? (
-                <tr><td colSpan={6} className="text-center py-12 text-muted">No audit events found</td></tr>
+                <tr><td colSpan={6} className="text-center py-12 text-text-muted">No audit events found</td></tr>
               ) : (
                 data.events.map((event) => (
                   <tr key={event.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
-                    <td className="px-4 py-3 whitespace-nowrap text-muted">
+                    <td className="px-4 py-3 whitespace-nowrap text-text-muted">
                       {new Date(event.occurred_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-medium">{event.actor_email ?? 'System'}</span>
                       {event.actor_role && (
-                        <span className="ml-1 text-xs text-muted">({event.actor_role})</span>
+                        <span className="ml-1 text-xs text-text-muted">({event.actor_role})</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -131,16 +131,16 @@ export default function AuditLog() {
                         {formatAction(event.action)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted">
+                    <td className="px-4 py-3 text-text-muted">
                       {event.resource_type}
                       {event.resource_id && (
                         <span className="ml-1 text-xs font-mono">{event.resource_id.slice(0, 8)}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs max-w-48 truncate">
+                    <td className="px-4 py-3 text-text-muted text-xs max-w-48 truncate">
                       {Object.keys(event.changes).length > 0 ? JSON.stringify(event.changes) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs font-mono">
+                    <td className="px-4 py-3 text-text-muted text-xs font-mono">
                       {event.ip_address ?? '-'}
                     </td>
                   </tr>
@@ -152,7 +152,7 @@ export default function AuditLog() {
 
         {data && data.total > limit && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-sm text-muted">
+            <span className="text-sm text-text-muted">
               {data.total} events total
             </span>
             <div className="flex items-center gap-2">

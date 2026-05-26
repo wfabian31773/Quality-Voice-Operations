@@ -237,7 +237,7 @@ function OutboxStatCard({
   return (
     <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-wide text-muted">{label}</p>
+        <p className="text-xs uppercase tracking-wide text-text-muted">{label}</p>
         <span title="Hourly activity for this status over the last 24 hours (event volume per hour, not historical queue depth).">
           <Sparkline
             values={buckets}
@@ -249,7 +249,7 @@ function OutboxStatCard({
       <p className={`text-2xl font-semibold tabular-nums ${TONES[tone].value}`}>
         {value.toLocaleString()}
       </p>
-      {hint && <p className="text-xs text-muted">{hint}</p>}
+      {hint && <p className="text-xs text-text-muted">{hint}</p>}
     </div>
   );
 }
@@ -268,26 +268,26 @@ function WebhookRow({ webhook, onRetry, retrying }: {
         className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-surface-secondary/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <button aria-label={expanded ? 'Collapse details' : 'Expand details'} aria-expanded={expanded} className="shrink-0 text-muted">
+        <button aria-label={expanded ? 'Collapse details' : 'Expand details'} aria-expanded={expanded} className="shrink-0 text-text-muted">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-5 gap-2 items-center">
           <div className="truncate">
             <p className="text-sm font-medium text-text-primary truncate">{webhook.event_type}</p>
-            <p className="text-xs text-muted truncate">
+            <p className="text-xs text-text-muted truncate">
               {webhook.integration_name ?? 'Unknown'}
               {webhook.integration_provider && (
-                <span className="ml-1 text-muted">· {formatProviderLabel(webhook.integration_provider)}</span>
+                <span className="ml-1 text-text-muted">· {formatProviderLabel(webhook.integration_provider)}</span>
               )}
             </p>
           </div>
           <div>
             <StatusBadge status={webhook.status} />
           </div>
-          <div className="text-sm text-muted">
+          <div className="text-sm text-text-muted">
             {webhook.attempts}/{webhook.max_attempts} attempts
           </div>
-          <div className="text-xs text-muted">
+          <div className="text-xs text-text-muted">
             {new Date(webhook.created_at).toLocaleString()}
           </div>
           <div className="flex justify-end">
@@ -321,26 +321,26 @@ function WebhookRow({ webhook, onRetry, retrying }: {
             </div>
           )}
           <div>
-            <p className="text-xs font-medium text-muted mb-1">Payload</p>
+            <p className="text-xs font-medium text-text-muted mb-1">Payload</p>
             <pre className="text-xs bg-surface-secondary rounded-lg p-3 overflow-x-auto max-h-48 font-mono">
               {JSON.stringify(webhook.payload, null, 2)}
             </pre>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div>
-              <span className="text-muted">ID</span>
+              <span className="text-text-muted">ID</span>
               <p className="font-mono text-text-primary truncate">{webhook.id}</p>
             </div>
             <div>
-              <span className="text-muted">Created</span>
+              <span className="text-text-muted">Created</span>
               <p className="text-text-primary">{new Date(webhook.created_at).toLocaleString()}</p>
             </div>
             <div>
-              <span className="text-muted">Delivered</span>
+              <span className="text-text-muted">Delivered</span>
               <p className="text-text-primary">{webhook.delivered_at ? new Date(webhook.delivered_at).toLocaleString() : 'Not delivered'}</p>
             </div>
             <div>
-              <span className="text-muted">Next Retry</span>
+              <span className="text-text-muted">Next Retry</span>
               <p className="text-text-primary">{webhook.next_attempt_at ? new Date(webhook.next_attempt_at).toLocaleString() : 'N/A'}</p>
             </div>
           </div>
@@ -452,12 +452,12 @@ export default function IntegrationDiagnostics() {
               <Inbox className="h-4 w-4 text-success" />
               Outbox Health
             </h2>
-            <p className="text-xs text-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               Live counts and 24h trend for the integrations outbox. Filter by provider to focus on a single connector.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-muted">Provider</label>
+            <label className="text-xs text-text-muted">Provider</label>
             <select
               value={outboxProviderFilter}
               onChange={(e) => setOutboxProviderFilter(e.target.value)}
@@ -514,11 +514,11 @@ export default function IntegrationDiagnostics() {
         {outboxProviderBreakdown.length > 0 && (
           <div className="border-t border-border">
             <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted flex items-center gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted flex items-center gap-2">
                 <Activity className="h-3.5 w-3.5" />
                 Stuck rows by provider
               </h3>
-              <span className="text-[11px] text-muted normal-case font-normal">
+              <span className="text-[11px] text-text-muted normal-case font-normal">
                 Always shows every provider so you can compare — not affected by the provider filter above.
               </span>
             </div>
@@ -526,13 +526,13 @@ export default function IntegrationDiagnostics() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
-                    <th className="px-5 py-2 font-medium text-muted">Provider</th>
-                    <th className="px-5 py-2 font-medium text-muted">Integration</th>
-                    <th className="px-5 py-2 font-medium text-muted text-right">Pending</th>
-                    <th className="px-5 py-2 font-medium text-muted text-right">Failed</th>
-                    <th className="px-5 py-2 font-medium text-muted text-right">Dead Letter</th>
-                    <th className="px-5 py-2 font-medium text-muted text-right">Last Failure</th>
-                    <th className="px-5 py-2 font-medium text-muted text-right">Action</th>
+                    <th className="px-5 py-2 font-medium text-text-muted">Provider</th>
+                    <th className="px-5 py-2 font-medium text-text-muted">Integration</th>
+                    <th className="px-5 py-2 font-medium text-text-muted text-right">Pending</th>
+                    <th className="px-5 py-2 font-medium text-text-muted text-right">Failed</th>
+                    <th className="px-5 py-2 font-medium text-text-muted text-right">Dead Letter</th>
+                    <th className="px-5 py-2 font-medium text-text-muted text-right">Last Failure</th>
+                    <th className="px-5 py-2 font-medium text-text-muted text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -546,11 +546,11 @@ export default function IntegrationDiagnostics() {
                     return (
                       <tr key={`${row.provider}-${row.integration_name}`} className="hover:bg-surface-secondary/50 transition-colors">
                         <td className="px-5 py-2 text-text-primary">{formatProviderLabel(row.provider)}</td>
-                        <td className="px-5 py-2 text-muted">{row.integration_name}</td>
+                        <td className="px-5 py-2 text-text-muted">{row.integration_name}</td>
                         <td className="px-5 py-2 text-right font-mono text-warning">{row.pending}</td>
                         <td className="px-5 py-2 text-right font-mono text-danger">{row.failed}</td>
                         <td className="px-5 py-2 text-right font-mono text-danger">{row.dead_letter}</td>
-                        <td className="px-5 py-2 text-right text-xs text-muted">
+                        <td className="px-5 py-2 text-right text-xs text-text-muted">
                           {row.last_failure_at ? formatRelativeAge(row.last_failure_at) + ' ago' : '—'}
                         </td>
                         <td className="px-5 py-2 text-right">
@@ -593,16 +593,16 @@ export default function IntegrationDiagnostics() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="px-5 py-3 font-medium text-muted">Status</th>
-                  <th className="px-5 py-3 font-medium text-muted">Integration</th>
-                  <th className="px-5 py-3 font-medium text-muted">Provider</th>
-                  <th className="px-5 py-3 font-medium text-muted">Type</th>
-                  <th className="px-5 py-3 font-medium text-muted text-right">Total</th>
-                  <th className="px-5 py-3 font-medium text-muted text-right">Success</th>
-                  <th className="px-5 py-3 font-medium text-muted text-right">Failed</th>
-                  <th className="px-5 py-3 font-medium text-muted text-right">Error Rate</th>
-                  <th className="px-5 py-3 font-medium text-muted text-right">Avg Latency</th>
-                  <th className="px-5 py-3 font-medium text-muted">Last Event</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Status</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Integration</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Provider</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Type</th>
+                  <th className="px-5 py-3 font-medium text-text-muted text-right">Total</th>
+                  <th className="px-5 py-3 font-medium text-text-muted text-right">Success</th>
+                  <th className="px-5 py-3 font-medium text-text-muted text-right">Failed</th>
+                  <th className="px-5 py-3 font-medium text-text-muted text-right">Error Rate</th>
+                  <th className="px-5 py-3 font-medium text-text-muted text-right">Avg Latency</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Last Event</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -617,9 +617,9 @@ export default function IntegrationDiagnostics() {
                       </div>
                     </td>
                     <td className="px-5 py-3 font-medium text-text-primary">{h.name}</td>
-                    <td className="px-5 py-3 text-muted">{h.provider}</td>
+                    <td className="px-5 py-3 text-text-muted">{h.provider}</td>
                     <td className="px-5 py-3">
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-surface-secondary text-muted">
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-surface-secondary text-text-muted">
                         {h.integration_type}
                       </span>
                     </td>
@@ -631,8 +631,8 @@ export default function IntegrationDiagnostics() {
                         {h.error_rate.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right font-mono text-muted">{h.avg_latency_ms}ms</td>
-                    <td className="px-5 py-3 text-xs text-muted">
+                    <td className="px-5 py-3 text-right font-mono text-text-muted">{h.avg_latency_ms}ms</td>
+                    <td className="px-5 py-3 text-xs text-text-muted">
                       {h.last_event_at ? new Date(h.last_event_at).toLocaleString() : 'Never'}
                     </td>
                   </tr>
@@ -649,15 +649,15 @@ export default function IntegrationDiagnostics() {
             <h2 className="text-base font-semibold text-text-primary">
               Connector Dispatches
               {connectorDispatches.length > 0 && (
-                <span className="ml-2 text-xs font-normal text-muted">({connectorDispatches.length})</span>
+                <span className="ml-2 text-xs font-normal text-text-muted">({connectorDispatches.length})</span>
               )}
             </h2>
-            <p className="text-xs text-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               Per-event sync attempts to CRM, calendar, and messaging connectors from the last 7 days.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-muted">Provider</label>
+            <label className="text-xs text-text-muted">Provider</label>
             <select
               value={providerFilter}
               onChange={(e) => setProviderFilter(e.target.value)}
@@ -672,7 +672,7 @@ export default function IntegrationDiagnostics() {
         </div>
         <div className="overflow-x-auto">
           {connectorDispatches.length === 0 ? (
-            <div className="text-center py-10 text-sm text-muted">
+            <div className="text-center py-10 text-sm text-text-muted">
               {providerFilter === 'all'
                 ? 'No connector dispatches in the last 7 days.'
                 : `No ${formatProviderLabel(providerFilter)} dispatches in the last 7 days.`}
@@ -681,13 +681,13 @@ export default function IntegrationDiagnostics() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="px-5 py-3 font-medium text-muted">Status</th>
-                  <th className="px-5 py-3 font-medium text-muted">Provider</th>
-                  <th className="px-5 py-3 font-medium text-muted">Event</th>
-                  <th className="px-5 py-3 font-medium text-muted">HTTP</th>
-                  <th className="px-5 py-3 font-medium text-muted">Error</th>
-                  <th className="px-5 py-3 font-medium text-muted text-right">Latency</th>
-                  <th className="px-5 py-3 font-medium text-muted">When</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Status</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Provider</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Event</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">HTTP</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">Error</th>
+                  <th className="px-5 py-3 font-medium text-text-muted text-right">Latency</th>
+                  <th className="px-5 py-3 font-medium text-text-muted">When</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -718,11 +718,11 @@ export default function IntegrationDiagnostics() {
                       <td className="px-5 py-3 text-text-primary">
                         {d.provider ? formatProviderLabel(d.provider) : '—'}
                         {d.connectorType && (
-                          <span className="ml-1 text-xs text-muted">({d.connectorType})</span>
+                          <span className="ml-1 text-xs text-text-muted">({d.connectorType})</span>
                         )}
                       </td>
                       <td className="px-5 py-3 font-medium text-text-primary">{d.eventType}</td>
-                      <td className="px-5 py-3 text-muted font-mono text-xs">
+                      <td className="px-5 py-3 text-text-muted font-mono text-xs">
                         {d.responseStatus ?? '—'}
                       </td>
                       <td
@@ -731,10 +731,10 @@ export default function IntegrationDiagnostics() {
                       >
                         {d.errorMessage ?? '—'}
                       </td>
-                      <td className="px-5 py-3 text-right font-mono text-muted text-xs">
+                      <td className="px-5 py-3 text-right font-mono text-text-muted text-xs">
                         {d.latencyMs !== null ? `${d.latencyMs}ms` : '—'}
                       </td>
-                      <td className="px-5 py-3 text-xs text-muted whitespace-nowrap">
+                      <td className="px-5 py-3 text-xs text-text-muted whitespace-nowrap">
                         {new Date(d.createdAt).toLocaleString()}
                       </td>
                     </tr>
@@ -752,10 +752,10 @@ export default function IntegrationDiagnostics() {
             <h2 className="text-base font-semibold text-text-primary">
               Recent Outbox Events
               {webhooks.length > 0 && (
-                <span className="ml-2 text-xs font-normal text-muted">({webhooks.length})</span>
+                <span className="ml-2 text-xs font-normal text-text-muted">({webhooks.length})</span>
               )}
             </h2>
-            <p className="text-xs text-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               Click any row to inspect the redacted payload, attempt count, last error, and next retry time.
             </p>
           </div>
@@ -843,17 +843,17 @@ export default function IntegrationDiagnostics() {
         <div className="p-4 space-y-2">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted" />
+              <Loader2 className="h-6 w-6 animate-spin text-text-muted" />
             </div>
           ) : isError ? (
             <div className="text-center py-12">
               <AlertCircle className="h-8 w-8 text-danger mx-auto mb-2" />
-              <p className="text-sm text-muted">Failed to load diagnostics data</p>
+              <p className="text-sm text-text-muted">Failed to load diagnostics data</p>
             </div>
           ) : webhooks.length === 0 ? (
             <div className="text-center py-12" data-testid="integration-webhooks-loaded">
               <CheckCircle2 className="h-8 w-8 text-success mx-auto mb-2" />
-              <p className="text-sm text-muted">
+              <p className="text-sm text-text-muted">
                 {statusFilter === 'all' && outboxProviderFilter === 'all'
                   ? 'No outbox events found'
                   : `No matching outbox events found`}

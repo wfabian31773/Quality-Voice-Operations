@@ -158,7 +158,7 @@ function SlaTimer({ sla }: { sla: SlaInstance }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : responseBreached ? 'bg-red-50 dark:bg-red-900/20' : responseAtRisk ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
-          <div className="text-[10px] text-muted mb-0.5">First Response</div>
+          <div className="text-[10px] text-text-muted mb-0.5">First Response</div>
           {sla.response_met === true ? (
             <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
           ) : isPaused ? (
@@ -168,12 +168,12 @@ function SlaTimer({ sla }: { sla: SlaInstance }) {
           ) : responseRemaining !== null ? (
             <div className={`text-xs font-medium ${responseAtRisk ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>{formatDuration(Math.abs(responseRemaining))} left</div>
           ) : (
-            <div className="text-xs text-muted">N/A</div>
+            <div className="text-xs text-text-muted">N/A</div>
           )}
         </div>
 
         <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : resolutionBreached ? 'bg-red-50 dark:bg-red-900/20' : resolutionAtRisk ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
-          <div className="text-[10px] text-muted mb-0.5">Resolution</div>
+          <div className="text-[10px] text-text-muted mb-0.5">Resolution</div>
           {sla.resolution_met === true ? (
             <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
           ) : isPaused ? (
@@ -183,7 +183,7 @@ function SlaTimer({ sla }: { sla: SlaInstance }) {
           ) : resolutionRemaining !== null ? (
             <div className={`text-xs font-medium ${resolutionAtRisk ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>{formatDuration(Math.abs(resolutionRemaining))} left</div>
           ) : (
-            <div className="text-xs text-muted">N/A</div>
+            <div className="text-xs text-text-muted">N/A</div>
           )}
         </div>
       </div>
@@ -223,7 +223,7 @@ function ActivityItem({ activity }: { activity: Activity }) {
     <div className={`flex gap-3 py-3 ${activity.is_internal ? 'bg-yellow-50/50 dark:bg-yellow-900/10 -mx-2 px-2 rounded-lg' : ''}`}>
       <div className="flex-shrink-0 mt-0.5">
         <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-surface-hover'}`}>
-          <Icon className={`h-3.5 w-3.5 ${isNote ? 'text-blue-600 dark:text-blue-400' : 'text-muted'}`} />
+          <Icon className={`h-3.5 w-3.5 ${isNote ? 'text-blue-600 dark:text-blue-400' : 'text-text-muted'}`} />
         </div>
       </div>
       <div className="flex-1 min-w-0">
@@ -232,25 +232,25 @@ function ActivityItem({ activity }: { activity: Activity }) {
           {activity.is_internal && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">Internal</span>
           )}
-          <span className="text-[10px] text-muted">{timeAgo(activity.created_at)}</span>
+          <span className="text-[10px] text-text-muted">{timeAgo(activity.created_at)}</span>
         </div>
 
         {isNote ? (
           <div className="text-sm text-body whitespace-pre-wrap">{activity.content}</div>
         ) : activity.activity_type === 'status_change' ? (
-          <div className="text-xs text-muted">
+          <div className="text-xs text-text-muted">
             Changed status from <span className="font-medium">{activity.old_value}</span> to <span className="font-medium">{activity.new_value}</span>
           </div>
         ) : activity.activity_type === 'priority_change' ? (
-          <div className="text-xs text-muted">
+          <div className="text-xs text-text-muted">
             Changed priority from <span className="font-medium">{activity.old_value}</span> to <span className="font-medium">{activity.new_value}</span>
           </div>
         ) : activity.activity_type === 'assigned' ? (
-          <div className="text-xs text-muted">Assigned ticket</div>
+          <div className="text-xs text-text-muted">Assigned ticket</div>
         ) : activity.activity_type === 'macro_applied' ? (
-          <div className="text-xs text-muted">{activity.content}</div>
+          <div className="text-xs text-text-muted">{activity.content}</div>
         ) : (
-          <div className="text-xs text-muted">{activity.content || `${activity.activity_type.replace(/_/g, ' ')}`}</div>
+          <div className="text-xs text-text-muted">{activity.content || `${activity.activity_type.replace(/_/g, ' ')}`}</div>
         )}
       </div>
     </div>
@@ -429,7 +429,7 @@ export default function TicketDetail() {
   if (!ticket) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted">Ticket not found</p>
+        <p className="text-text-muted">Ticket not found</p>
         <button onClick={() => navigate('/tickets')} className="mt-2 text-primary text-sm hover:underline">Back to Tickets</button>
       </div>
     );
@@ -441,17 +441,17 @@ export default function TicketDetail() {
     <div className="space-y-4" data-testid="ticket-detail-loaded">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/tickets')} className="p-1.5 rounded-lg hover:bg-surface-secondary">
-          <ArrowLeft className="h-5 w-5 text-muted" />
+          <ArrowLeft className="h-5 w-5 text-text-muted" />
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted">#{ticket.ticket_number}</span>
+            <span className="text-xs text-text-muted">#{ticket.ticket_number}</span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${statusCfg.bgColor} ${statusCfg.color}`}>
               {statusCfg.label}
             </span>
             <span className={`text-xs font-medium capitalize ${PRIORITY_COLORS[ticket.priority]}`}>{ticket.priority}</span>
             {ticket.source !== 'manual' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-hover text-muted">{ticket.source}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-hover text-text-muted">{ticket.source}</span>
             )}
           </div>
           {editing ? (
@@ -472,13 +472,13 @@ export default function TicketDetail() {
           <div className="flex items-center gap-2">
             {editing ? (
               <>
-                <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-muted hover:text-heading">Cancel</button>
+                <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-text-muted hover:text-heading">Cancel</button>
                 <button onClick={saveEdit} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90">Save</button>
               </>
             ) : (
               <>
                 <div className="relative">
-                  <button onClick={() => setShowMacroMenu(!showMacroMenu)} className="p-2 rounded-lg hover:bg-surface-secondary text-muted" title="Quick Actions">
+                  <button onClick={() => setShowMacroMenu(!showMacroMenu)} className="p-2 rounded-lg hover:bg-surface-secondary text-text-muted" title="Quick Actions">
                     <Zap className="h-4 w-4" />
                   </button>
                   {showMacroMenu && macros.length > 0 && (
@@ -486,7 +486,7 @@ export default function TicketDetail() {
                       {macros.map(m => (
                         <button key={m.id} onClick={() => applyMacro(m.id)} className="w-full text-left px-3 py-2 text-sm text-heading hover:bg-surface-secondary first:rounded-t-lg last:rounded-b-lg">
                           <div className="font-medium">{m.name}</div>
-                          {m.description && <div className="text-xs text-muted">{m.description}</div>}
+                          {m.description && <div className="text-xs text-text-muted">{m.description}</div>}
                         </button>
                       ))}
                     </div>
@@ -529,7 +529,7 @@ export default function TicketDetail() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2.5 text-sm font-medium capitalize ${activeTab === tab ? 'text-primary border-b-2 border-primary' : 'text-muted hover:text-heading'}`}
+                  className={`px-4 py-2.5 text-sm font-medium capitalize ${activeTab === tab ? 'text-primary border-b-2 border-primary' : 'text-text-muted hover:text-heading'}`}
                 >
                   {tab === 'linked' ? `Linked (${linkedTickets.length})` : tab === 'attachments' ? `Files (${attachments.length})` : tab === 'audit' ? 'Audit History' : tab}
                 </button>
@@ -540,7 +540,7 @@ export default function TicketDetail() {
               {activeTab === 'activity' && (
                 <div className="space-y-1">
                   {activities.length === 0 ? (
-                    <p className="text-sm text-muted py-4 text-center">No activity yet</p>
+                    <p className="text-sm text-text-muted py-4 text-center">No activity yet</p>
                   ) : (
                     activities.map(a => <ActivityItem key={a.id} activity={a} />)
                   )}
@@ -550,20 +550,20 @@ export default function TicketDetail() {
               {activeTab === 'details' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="text-muted text-xs">Created</span><div className="text-heading">{new Date(ticket.created_at).toLocaleString()}</div></div>
-                    <div><span className="text-muted text-xs">Updated</span><div className="text-heading">{new Date(ticket.updated_at).toLocaleString()}</div></div>
-                    <div><span className="text-muted text-xs">First Response</span><div className="text-heading">{ticket.first_response_at ? new Date(ticket.first_response_at).toLocaleString() : 'Pending'}</div></div>
-                    <div><span className="text-muted text-xs">Resolved</span><div className="text-heading">{ticket.resolved_at ? new Date(ticket.resolved_at).toLocaleString() : 'Not yet'}</div></div>
-                    <div><span className="text-muted text-xs">Reopened</span><div className="text-heading">{ticket.reopened_count} times</div></div>
-                    <div><span className="text-muted text-xs">Source</span><div className="text-heading capitalize">{ticket.source}</div></div>
-                    {ticket.contact_name && <div><span className="text-muted text-xs">Contact Name</span><div className="text-heading">{ticket.contact_name}</div></div>}
-                    {ticket.contact_email && <div><span className="text-muted text-xs">Contact Email</span><div className="text-heading">{ticket.contact_email}</div></div>}
-                    {ticket.contact_phone && <div><span className="text-muted text-xs">Contact Phone</span><div className="text-heading">{ticket.contact_phone}</div></div>}
-                    {ticket.created_by_email && <div><span className="text-muted text-xs">Created By</span><div className="text-heading">{ticket.created_by_email}</div></div>}
+                    <div><span className="text-text-muted text-xs">Created</span><div className="text-heading">{new Date(ticket.created_at).toLocaleString()}</div></div>
+                    <div><span className="text-text-muted text-xs">Updated</span><div className="text-heading">{new Date(ticket.updated_at).toLocaleString()}</div></div>
+                    <div><span className="text-text-muted text-xs">First Response</span><div className="text-heading">{ticket.first_response_at ? new Date(ticket.first_response_at).toLocaleString() : 'Pending'}</div></div>
+                    <div><span className="text-text-muted text-xs">Resolved</span><div className="text-heading">{ticket.resolved_at ? new Date(ticket.resolved_at).toLocaleString() : 'Not yet'}</div></div>
+                    <div><span className="text-text-muted text-xs">Reopened</span><div className="text-heading">{ticket.reopened_count} times</div></div>
+                    <div><span className="text-text-muted text-xs">Source</span><div className="text-heading capitalize">{ticket.source}</div></div>
+                    {ticket.contact_name && <div><span className="text-text-muted text-xs">Contact Name</span><div className="text-heading">{ticket.contact_name}</div></div>}
+                    {ticket.contact_email && <div><span className="text-text-muted text-xs">Contact Email</span><div className="text-heading">{ticket.contact_email}</div></div>}
+                    {ticket.contact_phone && <div><span className="text-text-muted text-xs">Contact Phone</span><div className="text-heading">{ticket.contact_phone}</div></div>}
+                    {ticket.created_by_email && <div><span className="text-text-muted text-xs">Created By</span><div className="text-heading">{ticket.created_by_email}</div></div>}
                   </div>
                   {ticket.notes && (
                     <div>
-                      <span className="text-muted text-xs">Notes</span>
+                      <span className="text-text-muted text-xs">Notes</span>
                       <div className="text-sm text-body mt-1 whitespace-pre-wrap">{ticket.notes}</div>
                     </div>
                   )}
@@ -573,7 +573,7 @@ export default function TicketDetail() {
               {activeTab === 'linked' && (
                 <div className="space-y-2">
                   {linkedTickets.length === 0 && (
-                    <p className="text-sm text-muted py-4 text-center">No linked tickets</p>
+                    <p className="text-sm text-text-muted py-4 text-center">No linked tickets</p>
                   )}
                   {linkedTickets.map(lt => {
                     const isSource = lt.source_ticket_id === id;
@@ -581,10 +581,10 @@ export default function TicketDetail() {
                     const linkedId = isSource ? lt.target_ticket_id : lt.source_ticket_id;
                     return (
                       <div key={lt.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-secondary group">
-                        <Link2 className="h-4 w-4 text-muted" />
+                        <Link2 className="h-4 w-4 text-text-muted" />
                         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(`/tickets/${linkedId}`)}>
                           <div className="text-sm text-heading truncate">{linkedSubject}</div>
-                          <div className="text-xs text-muted capitalize">{lt.link_type.replace(/_/g, ' ')}</div>
+                          <div className="text-xs text-text-muted capitalize">{lt.link_type.replace(/_/g, ' ')}</div>
                         </div>
                         {!isReadOnly && (
                           <button
@@ -613,7 +613,7 @@ export default function TicketDetail() {
                         fetchTicket();
                       } catch {}
                     }} className="pt-2 border-t border-border space-y-2">
-                      <div className="text-xs text-muted">Link another ticket:</div>
+                      <div className="text-xs text-text-muted">Link another ticket:</div>
                       <div className="flex gap-2">
                         <input name="targetTicketId" placeholder="Ticket ID" className="flex-1 text-xs px-2 py-1.5 rounded border border-border bg-surface" />
                         <select name="linkType" className="text-xs px-2 py-1.5 rounded border border-border bg-surface">
@@ -634,14 +634,14 @@ export default function TicketDetail() {
               {activeTab === 'attachments' && (
                 <div className="space-y-3">
                   {attachments.length === 0 ? (
-                    <p className="text-sm text-muted py-4 text-center">No attachments</p>
+                    <p className="text-sm text-text-muted py-4 text-center">No attachments</p>
                   ) : (
                     attachments.map(att => (
                       <div key={att.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-secondary group">
-                        <Paperclip className="h-4 w-4 text-muted" />
+                        <Paperclip className="h-4 w-4 text-text-muted" />
                         <div className="flex-1 min-w-0">
                           <a href={att.file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline truncate block">{att.file_name}</a>
-                          <div className="text-xs text-muted">{att.file_type} &middot; {(att.file_size / 1024).toFixed(1)} KB &middot; {new Date(att.created_at).toLocaleDateString()}</div>
+                          <div className="text-xs text-text-muted">{att.file_type} &middot; {(att.file_size / 1024).toFixed(1)} KB &middot; {new Date(att.created_at).toLocaleDateString()}</div>
                         </div>
                         {!isReadOnly && (
                           <button
@@ -659,7 +659,7 @@ export default function TicketDetail() {
                   )}
                   {!isReadOnly && (
                     <div className="pt-2 border-t border-border">
-                      <div className="text-xs text-muted mb-2">Add attachment via URL:</div>
+                      <div className="text-xs text-text-muted mb-2">Add attachment via URL:</div>
                       <form onSubmit={async (e) => {
                         e.preventDefault();
                         const form = e.target as HTMLFormElement;
@@ -684,7 +684,7 @@ export default function TicketDetail() {
               {activeTab === 'audit' && (
                 <div className="space-y-1">
                   {activities.length === 0 ? (
-                    <p className="text-sm text-muted py-4 text-center">No audit history</p>
+                    <p className="text-sm text-text-muted py-4 text-center">No audit history</p>
                   ) : (
                     activities
                       .filter(a => ['status_change', 'priority_change', 'assigned', 'unassigned', 'field_change', 'created',
@@ -693,15 +693,15 @@ export default function TicketDetail() {
                         'auto_closed', 'attachment_added', 'attachment_removed'].includes(a.activity_type))
                       .map(a => (
                         <div key={a.id} className="flex gap-3 py-2 border-b border-border/50 last:border-0">
-                          <div className="flex-shrink-0 w-28 text-[10px] text-muted">{new Date(a.created_at).toLocaleString()}</div>
+                          <div className="flex-shrink-0 w-28 text-[10px] text-text-muted">{new Date(a.created_at).toLocaleString()}</div>
                           <div className="flex-1">
                             <span className="text-xs font-medium text-heading capitalize">{a.activity_type.replace(/_/g, ' ')}</span>
-                            {a.field_name && <span className="text-xs text-muted ml-1">({a.field_name})</span>}
+                            {a.field_name && <span className="text-xs text-text-muted ml-1">({a.field_name})</span>}
                             {a.old_value && <span className="text-xs text-red-500 dark:text-red-400 ml-1 line-through">{a.old_value}</span>}
                             {a.new_value && <span className="text-xs text-green-600 dark:text-green-400 ml-1">{a.new_value}</span>}
-                            {a.content && !a.old_value && !a.new_value && <span className="text-xs text-muted ml-1">{a.content}</span>}
+                            {a.content && !a.old_value && !a.new_value && <span className="text-xs text-text-muted ml-1">{a.content}</span>}
                           </div>
-                          <div className="text-[10px] text-muted">{a.user_email || 'System'}</div>
+                          <div className="text-[10px] text-text-muted">{a.user_email || 'System'}</div>
                         </div>
                       ))
                   )}
@@ -714,18 +714,18 @@ export default function TicketDetail() {
             <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted" />
+                  <MessageSquare className="h-4 w-4 text-text-muted" />
                   <span className="text-sm font-medium text-heading">Add Note</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsInternalNote(!isInternalNote)}
-                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' : 'bg-surface-hover text-muted'}`}
+                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' : 'bg-surface-hover text-text-muted'}`}
                   >
                     {isInternalNote ? 'Internal' : 'Public'}
                   </button>
                   <div className="relative">
-                    <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className="text-xs px-2 py-1 rounded bg-surface-hover text-muted hover:text-heading">
+                    <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className="text-xs px-2 py-1 rounded bg-surface-hover text-text-muted hover:text-heading">
                       Templates
                     </button>
                     {showTemplateMenu && templates.length > 0 && (
@@ -765,7 +765,7 @@ export default function TicketDetail() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] text-muted uppercase tracking-wider">Status</label>
+                <label className="text-[10px] text-text-muted uppercase tracking-wider">Status</label>
                 <select
                   value={ticket.status}
                   onChange={e => updateField('status', e.target.value)}
@@ -779,7 +779,7 @@ export default function TicketDetail() {
               </div>
 
               <div>
-                <label className="text-[10px] text-muted uppercase tracking-wider">Priority</label>
+                <label className="text-[10px] text-text-muted uppercase tracking-wider">Priority</label>
                 <select
                   value={ticket.priority}
                   onChange={e => updateField('priority', e.target.value)}
@@ -793,7 +793,7 @@ export default function TicketDetail() {
               </div>
 
               <div>
-                <label className="text-[10px] text-muted uppercase tracking-wider">Assignee</label>
+                <label className="text-[10px] text-text-muted uppercase tracking-wider">Assignee</label>
                 <select
                   value={ticket.assignee_user_id || ''}
                   onChange={e => updateField('assignee_user_id', e.target.value || null)}
@@ -806,7 +806,7 @@ export default function TicketDetail() {
               </div>
 
               <div>
-                <label className="text-[10px] text-muted uppercase tracking-wider">Category</label>
+                <label className="text-[10px] text-text-muted uppercase tracking-wider">Category</label>
                 <select
                   value={ticket.category_id || ''}
                   onChange={e => updateField('category_id', e.target.value || null)}
@@ -819,7 +819,7 @@ export default function TicketDetail() {
               </div>
 
               <div>
-                <label className="text-[10px] text-muted uppercase tracking-wider">Department</label>
+                <label className="text-[10px] text-text-muted uppercase tracking-wider">Department</label>
                 <input
                   type="text"
                   value={ticket.department}
@@ -841,7 +841,7 @@ export default function TicketDetail() {
                 <div key={w.id} className="flex items-center justify-between text-xs">
                   <span className="text-heading">{w.email}</span>
                   {!isReadOnly && (
-                    <button onClick={() => removeWatcher(w.user_id)} className="text-muted hover:text-red-500 dark:hover:text-red-400">&times;</button>
+                    <button onClick={() => removeWatcher(w.user_id)} className="text-text-muted hover:text-red-500 dark:hover:text-red-400">&times;</button>
                   )}
                 </div>
               ))}

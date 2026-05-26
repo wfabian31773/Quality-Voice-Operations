@@ -168,7 +168,7 @@ export default function PlatformAssistant() {
                   <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                     <Bot className="h-3.5 w-3.5 text-primary" />
                   </div>
-                  <div className="bg-surface-secondary rounded-xl rounded-tl-sm px-4 py-3 text-sm text-foreground">
+                  <div className="bg-surface-secondary rounded-xl rounded-tl-sm px-4 py-3 text-sm text-text-primary">
                     {t('platform_assistant.intro_message')}
                   </div>
                 </div>
@@ -178,7 +178,7 @@ export default function PlatformAssistant() {
                     <button
                       key={action.label}
                       onClick={() => sendMessage(action.prompt)}
-                      className="text-xs text-left px-3 py-2 rounded-lg border border-border hover:bg-surface-secondary hover:border-primary/30 transition-colors text-muted"
+                      className="text-xs text-left px-3 py-2 rounded-lg border border-border hover:bg-surface-secondary hover:border-primary/30 transition-colors text-text-muted"
                     >
                       {action.label}
                     </button>
@@ -202,7 +202,7 @@ export default function PlatformAssistant() {
                 <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm ${
                   msg.role === 'user'
                     ? 'bg-primary text-white rounded-tr-sm'
-                    : 'bg-surface-secondary text-foreground rounded-tl-sm'
+                    : 'bg-surface-secondary text-text-primary rounded-tl-sm'
                 }`}>
                   <div>{renderContent(msg.content)}</div>
                   {msg.actions && msg.actions.length > 0 && (
@@ -228,7 +228,7 @@ export default function PlatformAssistant() {
                   <Bot className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <div className="bg-surface-secondary rounded-xl rounded-tl-sm px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm text-muted">
+                  <div className="flex items-center gap-2 text-sm text-text-muted">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     {t('platform_assistant.thinking')}
                   </div>
@@ -254,7 +254,7 @@ export default function PlatformAssistant() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={t('platform_assistant.input_placeholder')}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-foreground placeholder:text-muted"
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-text-primary placeholder:text-text-muted"
                 disabled={isLoading}
                 maxLength={2000}
               />

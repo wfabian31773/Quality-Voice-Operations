@@ -179,7 +179,7 @@ export default function AdminTenantCampaign() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-border text-left text-muted-foreground">
+                      <tr className="border-b border-border text-left text-text-muted-foreground">
                         <th className="pb-2 font-medium">Phone</th>
                         <th className="pb-2 font-medium">Name</th>
                         <th className="pb-2 font-medium">Status</th>
@@ -233,7 +233,7 @@ export default function AdminTenantCampaign() {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="bg-card border border-border rounded-xl p-4">
-      <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className="text-xs text-text-muted-foreground uppercase tracking-wider">{label}</p>
       <p className="text-2xl font-bold mt-1 text-text-primary">{value}</p>
     </div>
   );
@@ -242,7 +242,7 @@ function Stat({ label, value }: { label: string; value: number }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className="text-xs text-text-muted-foreground uppercase tracking-wider">{label}</p>
       <p className="text-text-primary mt-0.5">{value}</p>
     </div>
   );

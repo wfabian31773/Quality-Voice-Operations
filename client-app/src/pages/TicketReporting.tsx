@@ -81,7 +81,7 @@ function BarChartSimple({ data, maxVal, color, emptyTitle }: { data: { label: st
     <div className="space-y-1.5">
       {data.map((d, i) => (
         <div key={i} className="flex items-center gap-2">
-          <span className="text-[10px] text-muted w-20 truncate text-right">{d.label}</span>
+          <span className="text-[10px] text-text-muted w-20 truncate text-right">{d.label}</span>
           <div className="flex-1 h-5 bg-surface-hover rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
@@ -121,8 +121,8 @@ function MiniLineChart({ data }: { data: { date: string; value: number }[] }) {
         ))}
       </svg>
       <div className="flex justify-between mt-1">
-        <span className="text-[9px] text-muted">{data[0]?.date}</span>
-        <span className="text-[9px] text-muted">{data[data.length - 1]?.date}</span>
+        <span className="text-[9px] text-text-muted">{data[0]?.date}</span>
+        <span className="text-[9px] text-text-muted">{data[data.length - 1]?.date}</span>
       </div>
     </div>
   );
@@ -238,7 +238,7 @@ export default function TicketReporting() {
           <>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1.5 ${hasActiveFilters ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-surface text-muted hover:text-heading'}`}
+              className={`px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1.5 ${hasActiveFilters ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-surface text-text-muted hover:text-heading'}`}
             >
               <Filter className="h-3.5 w-3.5" />
               Filters {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
@@ -248,7 +248,7 @@ export default function TicketReporting() {
               <option value={30}>Last 30 days</option>
               <option value={90}>Last 90 days</option>
             </select>
-            <button onClick={fetchData} aria-label="Refresh" className="p-2 rounded-lg hover:bg-surface-secondary text-muted">
+            <button onClick={fetchData} aria-label="Refresh" className="p-2 rounded-lg hover:bg-surface-secondary text-text-muted">
               <RefreshCw className="h-4 w-4" />
             </button>
           </>
@@ -259,18 +259,18 @@ export default function TicketReporting() {
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex flex-wrap gap-3 items-end">
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1 uppercase">Assignee</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1 uppercase">Assignee</label>
               <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} className="px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm min-w-[140px]">
                 <option value="">All</option>
                 {teamMembers.map(m => <option key={m.id} value={m.id}>{m.email}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1 uppercase">Department</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1 uppercase">Department</label>
               <input value={filterDepartment} onChange={e => setFilterDepartment(e.target.value)} placeholder="Any" className="px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm w-32" />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1 uppercase">Priority</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1 uppercase">Priority</label>
               <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className="px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm">
                 <option value="">All</option>
                 <option value="low">Low</option>
@@ -280,15 +280,15 @@ export default function TicketReporting() {
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1 uppercase">From</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1 uppercase">From</label>
               <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm" />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-muted mb-1 uppercase">To</label>
+              <label className="block text-[10px] font-medium text-text-muted mb-1 uppercase">To</label>
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-border bg-surface text-heading text-sm" />
             </div>
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="px-3 py-1.5 text-xs text-muted hover:text-heading underline">Clear all</button>
+              <button onClick={clearFilters} className="px-3 py-1.5 text-xs text-text-muted hover:text-heading underline">Clear all</button>
             )}
           </div>
         </div>
@@ -298,52 +298,52 @@ export default function TicketReporting() {
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-4 w-4 text-green-500 dark:text-green-400" />
-            <span className="text-xs text-muted">SLA Response</span>
+            <span className="text-xs text-text-muted">SLA Response</span>
           </div>
           <div className="text-2xl font-bold text-heading">{slaResponsePct}%</div>
-          <div className="text-[10px] text-muted">{data.slaAttainment?.response_met_count || 0} of {data.slaAttainment?.total || 0}</div>
+          <div className="text-[10px] text-text-muted">{data.slaAttainment?.response_met_count || 0} of {data.slaAttainment?.total || 0}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-            <span className="text-xs text-muted">SLA Resolution</span>
+            <span className="text-xs text-text-muted">SLA Resolution</span>
           </div>
           <div className="text-2xl font-bold text-heading">{slaResolutionPct}%</div>
-          <div className="text-[10px] text-muted">{data.slaAttainment?.resolution_met_count || 0} of {data.slaAttainment?.total || 0}</div>
+          <div className="text-[10px] text-text-muted">{data.slaAttainment?.resolution_met_count || 0} of {data.slaAttainment?.total || 0}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Timer className="h-4 w-4 text-cyan-500 dark:text-cyan-400" />
-            <span className="text-xs text-muted">Avg Response</span>
+            <span className="text-xs text-text-muted">Avg Response</span>
           </div>
           <div className="text-2xl font-bold text-heading">{formatDuration(avgResponse)}</div>
-          <div className="text-[10px] text-muted">{data.responseTime?.sample_count || 0} tickets</div>
+          <div className="text-[10px] text-text-muted">{data.responseTime?.sample_count || 0} tickets</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Timer className="h-4 w-4 text-teal-500 dark:text-teal-400" />
-            <span className="text-xs text-muted">Avg Resolution</span>
+            <span className="text-xs text-text-muted">Avg Resolution</span>
           </div>
           <div className="text-2xl font-bold text-heading">{formatDuration(avgResolution)}</div>
-          <div className="text-[10px] text-muted">{data.resolutionTime?.sample_count || 0} tickets</div>
+          <div className="text-[10px] text-text-muted">{data.resolutionTime?.sample_count || 0} tickets</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <RotateCcw className="h-4 w-4 text-orange-500 dark:text-orange-400" />
-            <span className="text-xs text-muted">Reopen Rate</span>
+            <span className="text-xs text-text-muted">Reopen Rate</span>
           </div>
           <div className="text-2xl font-bold text-heading">{reopenPct}%</div>
-          <div className="text-[10px] text-muted">{data.reopenRate?.reopened || 0} of {data.reopenRate?.total || 0}</div>
+          <div className="text-[10px] text-text-muted">{data.reopenRate?.reopened || 0} of {data.reopenRate?.total || 0}</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="h-4 w-4 text-purple-500 dark:text-purple-400" />
-            <span className="text-xs text-muted">Backlog</span>
+            <span className="text-xs text-text-muted">Backlog</span>
           </div>
           <div className="text-2xl font-bold text-heading">
             {parseInt(data.backlogAging?.today || '0') + parseInt(data.backlogAging?.this_week || '0') + parseInt(data.backlogAging?.this_month || '0') + parseInt(data.backlogAging?.older || '0')}
           </div>
-          <div className="text-[10px] text-muted">{data.backlogAging?.older || 0} older than 30d</div>
+          <div className="text-[10px] text-text-muted">{data.backlogAging?.older || 0} older than 30d</div>
         </div>
       </div>
 
@@ -370,22 +370,22 @@ export default function TicketReporting() {
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.responseTime?.avg_response_seconds ? parseFloat(data.responseTime.avg_response_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Average</div>
+              <div className="text-[10px] text-text-muted">Average</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.responseTime?.median_response_seconds ? parseFloat(data.responseTime.median_response_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Median</div>
+              <div className="text-[10px] text-text-muted">Median</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.responseTime?.min_response_seconds ? parseFloat(data.responseTime.min_response_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Fastest</div>
+              <div className="text-[10px] text-text-muted">Fastest</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.responseTime?.max_response_seconds ? parseFloat(data.responseTime.max_response_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Slowest</div>
+              <div className="text-[10px] text-text-muted">Slowest</div>
             </div>
           </div>
-          <h4 className="text-xs font-medium text-muted mb-2">By Priority</h4>
+          <h4 className="text-xs font-medium text-text-muted mb-2">By Priority</h4>
           <BarChartSimple
             data={(data.responseTimeByPriority || []).map(d => ({
               label: d.priority,
@@ -395,7 +395,7 @@ export default function TicketReporting() {
             color="#06b6d4"
             emptyTitle="No response time samples by priority"
           />
-          <div className="text-[9px] text-muted mt-1 text-right">minutes</div>
+          <div className="text-[9px] text-text-muted mt-1 text-right">minutes</div>
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-medium text-heading mb-3 flex items-center gap-2">
@@ -404,22 +404,22 @@ export default function TicketReporting() {
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.resolutionTime?.avg_resolution_seconds ? parseFloat(data.resolutionTime.avg_resolution_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Average</div>
+              <div className="text-[10px] text-text-muted">Average</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.resolutionTime?.median_resolution_seconds ? parseFloat(data.resolutionTime.median_resolution_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Median</div>
+              <div className="text-[10px] text-text-muted">Median</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.resolutionTime?.min_resolution_seconds ? parseFloat(data.resolutionTime.min_resolution_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Fastest</div>
+              <div className="text-[10px] text-text-muted">Fastest</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-heading">{formatDuration(data.resolutionTime?.max_resolution_seconds ? parseFloat(data.resolutionTime.max_resolution_seconds) : null)}</div>
-              <div className="text-[10px] text-muted">Slowest</div>
+              <div className="text-[10px] text-text-muted">Slowest</div>
             </div>
           </div>
-          <h4 className="text-xs font-medium text-muted mb-2">By Priority</h4>
+          <h4 className="text-xs font-medium text-text-muted mb-2">By Priority</h4>
           <BarChartSimple
             data={(data.resolutionTimeByPriority || []).map(d => ({
               label: d.priority,
@@ -429,7 +429,7 @@ export default function TicketReporting() {
             color="#14b8a6"
             emptyTitle="No resolution time samples by priority"
           />
-          <div className="text-[9px] text-muted mt-1 text-right">hours</div>
+          <div className="text-[9px] text-text-muted mt-1 text-right">hours</div>
         </div>
       </div>
 
@@ -484,10 +484,10 @@ export default function TicketReporting() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left px-3 py-2 text-xs font-medium text-muted">Agent</th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-muted">Total</th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-muted">Resolved</th>
-                    <th className="text-left px-3 py-2 text-xs font-medium text-muted">Distribution</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-text-muted">Agent</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-muted">Total</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-muted">Resolved</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-text-muted">Distribution</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -527,9 +527,9 @@ export default function TicketReporting() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left px-3 py-2 text-xs font-medium text-muted">Agent</th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-muted">Avg Response</th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-muted">Tickets</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-text-muted">Agent</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-muted">Avg Response</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-muted">Tickets</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -537,7 +537,7 @@ export default function TicketReporting() {
                     <tr key={a.email} className="border-b border-border">
                       <td className="px-3 py-2 text-sm text-heading">{a.email}</td>
                       <td className="px-3 py-2 text-sm text-heading text-right">{formatDuration(parseFloat(a.avg_response_seconds))}</td>
-                      <td className="px-3 py-2 text-sm text-muted text-right">{a.sample_count}</td>
+                      <td className="px-3 py-2 text-sm text-text-muted text-right">{a.sample_count}</td>
                     </tr>
                   ))}
                 </tbody>

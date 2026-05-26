@@ -257,7 +257,7 @@ export function ActivationMetricsTab() {
                           className={`h-2 rounded-full ${
                             m.milestones_completed >= 5 ? 'bg-success' :
                             m.milestones_completed >= 3 ? 'bg-info' :
-                            m.milestones_completed >= 1 ? 'bg-warning' : 'bg-text-muted/40'
+                            m.milestones_completed >= 1 ? 'bg-warning' : 'bg-text-text-muted/40'
                           }`}
                           style={{ width: `${Math.round((m.milestones_completed / TOTAL_MILESTONES) * 100)}%` }}
                         />

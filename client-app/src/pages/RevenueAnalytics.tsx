@@ -211,8 +211,8 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                 className={clsx(
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
                   range === r
-                    ? 'bg-background shadow text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-background shadow text-text-primary'
+                    : 'text-text-muted-foreground hover:text-text-primary',
                 )}
               >
                 {r}
@@ -287,7 +287,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                 return (
                   <div key={stage.stage} className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{STAGE_LABELS[stage.stage] ?? stage.stage}</span>
+                      <span className="text-text-muted-foreground">{STAGE_LABELS[stage.stage] ?? stage.stage}</span>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{stage.count}</span>
                         {idx > 0 && stage.dropOffRate > 0 && (
@@ -307,7 +307,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                 );
               })}
               <div className="pt-2 border-t border-border text-sm">
-                <span className="text-muted-foreground">Overall Conversion: </span>
+                <span className="text-text-muted-foreground">Overall Conversion: </span>
                 <span className="font-semibold">{(funnelData.funnel.overallConversionRate * 100).toFixed(1)}%</span>
               </div>
             </div>
@@ -352,9 +352,9 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                       className="w-3 h-3 rounded-sm flex-shrink-0"
                       style={{ backgroundColor: TOPIC_COLORS[idx % TOPIC_COLORS.length] }}
                     />
-                    <span className="text-muted-foreground truncate flex-1">{formatTopicLabel(t.topic)}</span>
+                    <span className="text-text-muted-foreground truncate flex-1">{formatTopicLabel(t.topic)}</span>
                     <span className="font-medium">{t.count}</span>
-                    <span className="text-xs text-muted-foreground">({(t.percentage * 100).toFixed(0)}%)</span>
+                    <span className="text-xs text-text-muted-foreground">({(t.percentage * 100).toFixed(0)}%)</span>
                   </div>
                 ))}
               </div>
@@ -397,7 +397,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                 return (
                   <div key={a.agentId} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <Users className="w-4 h-4 text-text-muted-foreground" />
                       <span className="font-medium">{a.agentName}</span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -410,7 +410,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                         <span>{band.label}</span>
                         <span className="opacity-75">({a.avgScore > 0 ? '+' : ''}{a.avgScore.toFixed(2)})</span>
                       </span>
-                      <span className="text-muted-foreground">{a.callCount} calls</span>
+                      <span className="text-text-muted-foreground">{a.callCount} calls</span>
                       <span className="text-success text-xs">{(a.positiveRate * 100).toFixed(0)}% positive</span>
                     </div>
                   </div>
@@ -464,7 +464,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                     </div>
                     <div>
                       <p className="font-semibold text-sm">{agent.agentName}</p>
-                      <p className="text-xs text-muted-foreground">{agent.totalCalls} calls handled</p>
+                      <p className="text-xs text-text-muted-foreground">{agent.totalCalls} calls handled</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
@@ -529,10 +529,10 @@ function KpiCard({
     <div className="bg-card border border-border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={clsx('w-4 h-4', iconColor)} />
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-sm text-text-muted-foreground">{label}</p>
       </div>
       <p className="text-2xl font-bold">{value}</p>
-      {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+      {subtitle && <p className="text-xs text-text-muted-foreground mt-1">{subtitle}</p>}
     </div>
   );
 }
@@ -548,7 +548,7 @@ function MetricItem({
 }) {
   return (
     <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xs text-text-muted-foreground">{label}</p>
       <p className={clsx('font-medium text-sm', valueClass)}>{value}</p>
     </div>
   );
@@ -556,7 +556,7 @@ function MetricItem({
 
 function LoadingPlaceholder() {
   return (
-    <div className="h-48 flex items-center justify-center text-muted-foreground">
+    <div className="h-48 flex items-center justify-center text-text-muted-foreground">
       Loading...
     </div>
   );
@@ -564,7 +564,7 @@ function LoadingPlaceholder() {
 
 function EmptyPlaceholder({ message }: { message: string }) {
   return (
-    <div className="h-48 flex items-center justify-center text-muted-foreground">
+    <div className="h-48 flex items-center justify-center text-text-muted-foreground">
       {message}
     </div>
   );

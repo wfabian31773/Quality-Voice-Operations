@@ -286,7 +286,7 @@ export default function Tickets() {
           ].map(s => (
             <div key={s.label} className="bg-surface border border-border rounded-xl p-3 text-center">
               <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-              <div className="text-[10px] text-muted mt-0.5">{s.label}</div>
+              <div className="text-[10px] text-text-muted mt-0.5">{s.label}</div>
             </div>
           ))}
         </div>
@@ -307,12 +307,12 @@ export default function Tickets() {
                 setPage(1);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                isActive ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-heading hover:bg-surface-secondary'
+                isActive ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-heading hover:bg-surface-secondary'
               }`}
             >
               <q.icon className="h-3.5 w-3.5" />
               {q.label}
-              {count !== undefined && <span className={`ml-0.5 ${isActive ? 'text-white/80' : 'text-muted'}`}>({count})</span>}
+              {count !== undefined && <span className={`ml-0.5 ${isActive ? 'text-white/80' : 'text-text-muted'}`}>({count})</span>}
             </button>
           );
         })}
@@ -320,7 +320,7 @@ export default function Tickets() {
 
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
           <input
             type="text"
             placeholder="Search tickets..."
@@ -331,7 +331,7 @@ export default function Tickets() {
           />
         </div>
 
-        <button onClick={() => setShowFilters(!showFilters)} className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-1.5 ${showFilters ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted hover:text-heading'}`}>
+        <button onClick={() => setShowFilters(!showFilters)} className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-1.5 ${showFilters ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-muted hover:text-heading'}`}>
           <Filter className="h-4 w-4" /> Filters
         </button>
 
@@ -405,7 +405,7 @@ export default function Tickets() {
             <option value="">SLA Status</option>
             <option value="at_risk">At Risk</option>
           </select>
-          <button onClick={() => { setFilterPriority(''); setFilterAssignee(''); setFilterCategory(''); setFilterStatus(''); setFilterQueue(''); setFilterDepartment(''); setFilterSlaRisk(''); setSearchTerm(''); setPage(1); }} className="px-2 py-1.5 text-xs text-muted hover:text-heading">
+          <button onClick={() => { setFilterPriority(''); setFilterAssignee(''); setFilterCategory(''); setFilterStatus(''); setFilterQueue(''); setFilterDepartment(''); setFilterSlaRisk(''); setSearchTerm(''); setPage(1); }} className="px-2 py-1.5 text-xs text-text-muted hover:text-heading">
             Clear All
           </button>
         </div>
@@ -420,29 +420,29 @@ export default function Tickets() {
             </button>
             {showBulkMenu && (
               <div className="absolute left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg z-popover w-56 max-h-80 overflow-y-auto">
-                <div className="px-3 py-1 text-[10px] font-semibold text-muted uppercase border-b border-border">Status</div>
+                <div className="px-3 py-1 text-[10px] font-semibold text-text-muted uppercase border-b border-border">Status</div>
                 <button onClick={() => bulkAction({ status: 'open' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set Open</button>
                 <button onClick={() => bulkAction({ status: 'in_progress' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set In Progress</button>
                 <button onClick={() => bulkAction({ status: 'pending' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set Pending</button>
                 <button onClick={() => bulkAction({ status: 'escalated' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Escalate</button>
                 <button onClick={() => bulkAction({ status: 'resolved' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Resolve</button>
                 <button onClick={() => bulkAction({ status: 'closed' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Close</button>
-                <div className="px-3 py-1 text-[10px] font-semibold text-muted uppercase border-b border-t border-border">Priority</div>
+                <div className="px-3 py-1 text-[10px] font-semibold text-text-muted uppercase border-b border-t border-border">Priority</div>
                 <button onClick={() => bulkAction({ priority: 'low' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set Low</button>
                 <button onClick={() => bulkAction({ priority: 'medium' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set Medium</button>
                 <button onClick={() => bulkAction({ priority: 'high' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set High Priority</button>
                 <button onClick={() => bulkAction({ priority: 'urgent' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary">Set Urgent</button>
-                <div className="px-3 py-1 text-[10px] font-semibold text-muted uppercase border-b border-t border-border">Assignment</div>
+                <div className="px-3 py-1 text-[10px] font-semibold text-text-muted uppercase border-b border-t border-border">Assignment</div>
                 {teamMembers.map(m => (
                   <button key={m.id} onClick={() => bulkAction({ assignee_user_id: m.id })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary truncate">
                     Assign: {m.email}
                   </button>
                 ))}
-                <button onClick={() => bulkAction({ assignee_user_id: '' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary text-muted">Unassign</button>
+                <button onClick={() => bulkAction({ assignee_user_id: '' })} className="w-full text-left px-3 py-2 text-sm hover:bg-surface-secondary text-text-muted">Unassign</button>
               </div>
             )}
           </div>
-          <button onClick={() => setSelectedTickets(new Set())} className="text-xs text-muted hover:text-heading">Clear</button>
+          <button onClick={() => setSelectedTickets(new Set())} className="text-xs text-text-muted hover:text-heading">Clear</button>
         </div>
       )}
 
@@ -468,17 +468,17 @@ export default function Tickets() {
                     <input type="checkbox" checked={selectedTickets.size === tickets.length && tickets.length > 0} onChange={toggleSelectAll} className="rounded border-border" />
                   </th>
                 )}
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted cursor-pointer" onClick={() => toggleSort('subject')}>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted cursor-pointer" onClick={() => toggleSort('subject')}>
                   <span className="flex items-center gap-1">Subject {sortBy === 'subject' && <ArrowUpDown className="h-3 w-3" />}</span>
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted cursor-pointer" onClick={() => toggleSort('priority')}>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted cursor-pointer" onClick={() => toggleSort('priority')}>
                   <span className="flex items-center gap-1">Priority {sortBy === 'priority' && <ArrowUpDown className="h-3 w-3" />}</span>
                 </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Assignee</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">Category</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted">SLA</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted cursor-pointer" onClick={() => toggleSort('created_at')}>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Assignee</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">Category</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted">SLA</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-text-muted cursor-pointer" onClick={() => toggleSort('created_at')}>
                   <span className="flex items-center gap-1">Created {sortBy === 'created_at' && <ArrowUpDown className="h-3 w-3" />}</span>
                 </th>
               </tr>
@@ -500,10 +500,10 @@ export default function Tickets() {
                       )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-muted">#{ticket.ticket_number}</span>
+                          <span className="text-[10px] text-text-muted">#{ticket.ticket_number}</span>
                           <div className="text-sm font-medium text-heading truncate max-w-xs">{ticket.subject}</div>
                         </div>
-                        {ticket.description && <div className="text-[11px] text-muted mt-0.5 truncate max-w-xs">{ticket.description}</div>}
+                        {ticket.description && <div className="text-[11px] text-text-muted mt-0.5 truncate max-w-xs">{ticket.description}</div>}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${cfg.color}`}>
@@ -527,16 +527,16 @@ export default function Tickets() {
                         })()}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-muted">{ticket.assignee_email || 'Unassigned'}</span>
+                        <span className="text-xs text-text-muted">{ticket.assignee_email || 'Unassigned'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-muted">{ticket.category_name || '-'}</span>
+                        <span className="text-xs text-text-muted">{ticket.category_name || '-'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        {slaInd || <span className="text-xs text-muted">-</span>}
+                        {slaInd || <span className="text-xs text-text-muted">-</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-muted">{new Date(ticket.created_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-text-muted">{new Date(ticket.created_at).toLocaleDateString()}</span>
                       </td>
                     </tr>
                   );
@@ -547,12 +547,12 @@ export default function Tickets() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-xs text-muted">{total} tickets</span>
+            <span className="text-xs text-text-muted">{total} tickets</span>
             <div className="flex items-center gap-2">
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="p-1 rounded hover:bg-surface-secondary disabled:opacity-30">
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-xs text-muted">Page {page} of {totalPages}</span>
+              <span className="text-xs text-text-muted">Page {page} of {totalPages}</span>
               <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="p-1 rounded hover:bg-surface-secondary disabled:opacity-30">
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -566,20 +566,20 @@ export default function Tickets() {
         <Modal open onClose={() => setShowForm(false)} ariaLabel="New Ticket" panelClassName="bg-surface border border-border rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-heading">New Ticket</h3>
-              <button onClick={() => setShowForm(false)} className="text-muted hover:text-heading"><X className="h-5 w-5" /></button>
+              <button onClick={() => setShowForm(false)} className="text-text-muted hover:text-heading"><X className="h-5 w-5" /></button>
             </div>
             <div className="p-4 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Subject *</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Subject *</label>
                 <input type="text" value={formData.subject} onChange={e => setFormData(p => ({ ...p, subject: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Description</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Description</label>
                 <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Priority</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Priority</label>
                   <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -588,7 +588,7 @@ export default function Tickets() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Category</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Category</label>
                   <select value={formData.category_id} onChange={e => setFormData(p => ({ ...p, category_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                     <option value="">None</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -597,33 +597,33 @@ export default function Tickets() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Assignee</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Assignee</label>
                   <select value={formData.assignee_user_id} onChange={e => setFormData(p => ({ ...p, assignee_user_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                     <option value="">Unassigned</option>
                     {teamMembers.map(m => <option key={m.id} value={m.id}>{m.email}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Department</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Department</label>
                   <input type="text" value={formData.department} onChange={e => setFormData(p => ({ ...p, department: e.target.value }))} placeholder="e.g., Engineering" className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Contact Name</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Contact Name</label>
                   <input type="text" value={formData.contact_name} onChange={e => setFormData(p => ({ ...p, contact_name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Contact Email</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Contact Email</label>
                   <input type="email" value={formData.contact_email} onChange={e => setFormData(p => ({ ...p, contact_email: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Contact Phone</label>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Contact Phone</label>
                   <input type="tel" value={formData.contact_phone} onChange={e => setFormData(p => ({ ...p, contact_phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Source</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Source</label>
                 <select value={formData.source} onChange={e => setFormData(p => ({ ...p, source: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="manual">Manual</option>
                   <option value="api">API</option>
@@ -633,12 +633,12 @@ export default function Tickets() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Notes</label>
+                <label className="block text-xs font-medium text-text-muted mb-1">Notes</label>
                 <textarea value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} rows={2} className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-heading text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted hover:text-heading bg-surface-secondary">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-heading bg-surface-secondary">Cancel</button>
               <button onClick={saveTicket} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90">Create Ticket</button>
             </div>
         </Modal>

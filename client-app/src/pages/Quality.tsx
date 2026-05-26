@@ -176,7 +176,7 @@ export default function Quality() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-surface border border-border rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted text-sm mb-1">
+          <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
             <Star className="h-4 w-4" />
             Avg Quality Score
           </div>
@@ -193,18 +193,18 @@ export default function Quality() {
                 : 'Scores will appear once calls have been graded'
             }
           >
-            {overallAvg > 0 ? overallAvg.toFixed(1) : '—'}<span className="text-sm text-muted">/10</span>
+            {overallAvg > 0 ? overallAvg.toFixed(1) : '—'}<span className="text-sm text-text-muted">/10</span>
           </p>
         </div>
         <div className="bg-surface border border-border rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted text-sm mb-1">
+          <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
             <TrendingUp className="h-4 w-4" />
             Calls Scored (14d)
           </div>
           <p className="text-2xl font-bold text-heading">{totalScoredCalls}</p>
         </div>
         <div className="bg-surface border border-border rounded-lg p-4">
-          <div className="flex items-center gap-2 text-muted text-sm mb-1">
+          <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
             <AlertTriangle className="h-4 w-4" />
             Low Quality Calls
           </div>
@@ -231,7 +231,7 @@ export default function Quality() {
           <div className="flex items-end gap-1 h-40">
             {dailyTrendData.map((d) => (
               <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                <span className="text-xs text-muted">{d.avgScore.toFixed(1)}</span>
+                <span className="text-xs text-text-muted">{d.avgScore.toFixed(1)}</span>
                 <div
                   role="img"
                   className={`w-full rounded-t ${scoreBgColor(d.avgScore)} transition-all`}
@@ -239,7 +239,7 @@ export default function Quality() {
                   title={`${d.date}: ${d.avgScore.toFixed(1)} avg (${d.callCount} calls) — ${scoreBand(d.avgScore)}`}
                   aria-label={`${d.date}: average score ${d.avgScore.toFixed(1)} out of 10 across ${d.callCount} call${d.callCount === 1 ? '' : 's'} — ${scoreBand(d.avgScore)}`}
                 />
-                <span className="text-[10px] text-muted truncate w-full text-center">
+                <span className="text-[10px] text-text-muted truncate w-full text-center">
                   {d.date.slice(5)}
                 </span>
               </div>
@@ -255,12 +255,12 @@ export default function Quality() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Score</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Agent</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden sm:table-cell">Duration</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">Transcript Preview</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden lg:table-cell">Scored</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">Score</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">Agent</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden sm:table-cell">Duration</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden md:table-cell">Transcript Preview</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden lg:table-cell">Scored</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -289,10 +289,10 @@ export default function Quality() {
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3 text-sm text-heading">{call.agentName}</td>
-                  <td className="px-4 py-3 text-sm text-muted hidden sm:table-cell">
+                  <td className="px-4 py-3 text-sm text-text-muted hidden sm:table-cell">
                     {Math.floor(call.durationSeconds / 60)}m {call.durationSeconds % 60}s
                   </td>
-                  <td className="px-4 py-3 text-sm text-muted hidden md:table-cell max-w-xs">
+                  <td className="px-4 py-3 text-sm text-text-muted hidden md:table-cell max-w-xs">
                     {call.transcriptPreview ? (
                       <div className="space-y-0.5 max-h-16 overflow-hidden">
                         {call.transcriptPreview.split('\n').slice(0, 3).map((line, i) => (
@@ -303,7 +303,7 @@ export default function Quality() {
                       <span className="text-xs italic">{call.summary || '—'}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm text-muted hidden lg:table-cell">
+                  <td className="px-4 py-3 text-sm text-text-muted hidden lg:table-cell">
                     {new Date(call.scoredAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
@@ -325,7 +325,7 @@ export default function Quality() {
       <div className="bg-surface border border-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-muted" />
+            <History className="h-5 w-5 text-text-muted" />
             <h2 className="font-semibold text-heading">Prompt Version History</h2>
           </div>
           <select
@@ -358,11 +358,11 @@ export default function Quality() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-mono font-medium text-heading">v{pv.version}</span>
-                    <span className="text-xs text-muted">
+                    <span className="text-xs text-text-muted">
                       {new Date(pv.created_at).toLocaleDateString()}
                     </span>
                     {pv.notes && (
-                      <span className="text-xs text-muted italic">{pv.notes}</span>
+                      <span className="text-xs text-text-muted italic">{pv.notes}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -377,15 +377,15 @@ export default function Quality() {
                       Restore
                     </button>
                     {expandedVersion === pv.version ? (
-                      <ChevronUp className="h-4 w-4 text-muted" />
+                      <ChevronUp className="h-4 w-4 text-text-muted" />
                     ) : (
-                      <ChevronDown className="h-4 w-4 text-muted" />
+                      <ChevronDown className="h-4 w-4 text-text-muted" />
                     )}
                   </div>
                 </div>
                 {expandedVersion === pv.version && (
                   <div className="px-4 pb-3 border-t border-border">
-                    <pre className="text-xs text-muted bg-surface-secondary rounded p-3 mt-2 max-h-48 overflow-auto whitespace-pre-wrap">
+                    <pre className="text-xs text-text-muted bg-surface-secondary rounded p-3 mt-2 max-h-48 overflow-auto whitespace-pre-wrap">
                       {pv.system_prompt}
                     </pre>
                   </div>

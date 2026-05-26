@@ -169,7 +169,7 @@ function AuditLogTab() {
         {(action || userFilter || since || until) && (
           <button
             onClick={() => { setAction(''); setUserFilter(''); setSince(''); setUntil(''); setPage(1); }}
-            className="px-3 py-2 text-sm text-muted hover:text-foreground"
+            className="px-3 py-2 text-sm text-text-muted hover:text-text-primary"
           >
             Clear
           </button>
@@ -188,13 +188,13 @@ function AuditLogTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Timestamp</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Actor</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Action</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Resource</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Severity</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Details</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">IP</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Timestamp</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Actor</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Action</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Resource</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Severity</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Details</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">IP</th>
               </tr>
             </thead>
             <tbody>
@@ -205,7 +205,7 @@ function AuditLogTab() {
               ) : (
                 data.events.map((event) => (
                   <tr key={event.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
-                    <td className="px-4 py-3 whitespace-nowrap text-muted text-xs">
+                    <td className="px-4 py-3 whitespace-nowrap text-text-muted text-xs">
                       {new Date(event.occurred_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
@@ -216,7 +216,7 @@ function AuditLogTab() {
                         {formatAction(event.action)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs">
+                    <td className="px-4 py-3 text-text-muted text-xs">
                       {event.resource_type}
                       {event.resource_id && <span className="ml-1 font-mono">{event.resource_id.slice(0, 8)}</span>}
                     </td>
@@ -229,10 +229,10 @@ function AuditLogTab() {
                         {event.severity ?? 'info'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs max-w-48 truncate">
+                    <td className="px-4 py-3 text-text-muted text-xs max-w-48 truncate">
                       {Object.keys(event.changes).length > 0 ? JSON.stringify(event.changes) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs font-mono">
+                    <td className="px-4 py-3 text-text-muted text-xs font-mono">
                       {event.ip_address ?? '-'}
                     </td>
                   </tr>
@@ -244,7 +244,7 @@ function AuditLogTab() {
 
         {data && data.total > limit && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-sm text-muted">{data.total} events total</span>
+            <span className="text-sm text-text-muted">{data.total} events total</span>
             <div className="flex items-center gap-2">
               <button disabled={page === 1} onClick={() => setPage(page - 1)} className="p-1 rounded hover:bg-surface-secondary disabled:opacity-50">
                 <ChevronLeft className="h-4 w-4" />
@@ -293,7 +293,7 @@ function ApiKeysTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">API keys are hashed with SHA-256 and never stored in plaintext.</p>
+        <p className="text-sm text-text-muted">API keys are hashed with SHA-256 and never stored in plaintext.</p>
         <button
           onClick={() => setShowCreate(!showCreate)}
           className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
@@ -336,7 +336,7 @@ function ApiKeysTab() {
             >
               {createMutation.isPending ? 'Creating...' : 'Create'}
             </button>
-            <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-muted hover:text-foreground">Cancel</button>
+            <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-text-muted hover:text-text-primary">Cancel</button>
           </div>
         </div>
       )}
@@ -345,12 +345,12 @@ function ApiKeysTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 font-medium text-muted">Name</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Prefix</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Scopes</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Last Used</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Created</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Name</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Prefix</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Scopes</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Last Used</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Created</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -362,7 +362,7 @@ function ApiKeysTab() {
               data.keys.map((key) => (
                 <tr key={key.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 font-medium">{key.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted">{key.keyPrefix}...</td>
+                  <td className="px-4 py-3 font-mono text-xs text-text-muted">{key.keyPrefix}...</td>
                   <td className="px-4 py-3">
                     {key.scopes.map((s) => (
                       <span key={s} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 mr-1">
@@ -370,10 +370,10 @@ function ApiKeysTab() {
                       </span>
                     ))}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">
+                  <td className="px-4 py-3 text-xs text-text-muted">
                     {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : 'Never'}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">{new Date(key.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{new Date(key.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => { if (confirm(tenantT('common.confirms.revoke_api_key'))) revokeMutation.mutate(key.id); }}
@@ -439,16 +439,16 @@ function RolesTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Manage role assignments for this tenant. Owners can assign and revoke roles.</p>
+      <p className="text-sm text-text-muted">Manage role assignments for this tenant. Owners can assign and revoke roles.</p>
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 font-medium text-muted">User</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Email</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Role</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Assigned</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">User</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Email</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Role</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Assigned</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -462,7 +462,7 @@ function RolesTab() {
                   <td className="px-4 py-3 font-medium">
                     {[r.first_name, r.last_name].filter(Boolean).join(' ') || r.email}
                   </td>
-                  <td className="px-4 py-3 text-muted text-xs">{r.email}</td>
+                  <td className="px-4 py-3 text-text-muted text-xs">{r.email}</td>
                   <td className="px-4 py-3">
                     {editingUser === r.id ? (
                       <div className="flex items-center gap-2">
@@ -484,7 +484,7 @@ function RolesTab() {
                         </button>
                         <button
                           onClick={() => setEditingUser(null)}
-                          className="text-xs text-muted hover:text-foreground"
+                          className="text-xs text-text-muted hover:text-text-primary"
                         >
                           Cancel
                         </button>
@@ -495,7 +495,7 @@ function RolesTab() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">
+                  <td className="px-4 py-3 text-xs text-text-muted">
                     {new Date(r.role_assigned_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
@@ -563,7 +563,7 @@ function EncryptionTab() {
             )}
             <h3 className="font-semibold">Encryption Status</h3>
           </div>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             {data?.encryptionEnabled ? 'Encryption at rest is active' : 'Encryption not yet initialized'}
           </p>
         </div>
@@ -581,7 +581,7 @@ function EncryptionTab() {
             <RotateCcw className="h-5 w-5 text-primary" />
             <h3 className="font-semibold">Last Rotation</h3>
           </div>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             {data?.lastKeyRotation ? new Date(data.lastKeyRotation).toLocaleDateString() : 'Never'}
           </p>
         </div>
@@ -589,10 +589,10 @@ function EncryptionTab() {
 
       <div className="bg-surface border border-border rounded-xl p-6">
         <h3 className="font-semibold mb-2">Algorithm</h3>
-        <p className="text-sm text-muted mb-4">AES-256-GCM with envelope encryption. Data Encryption Keys (DEK) are wrapped by a Key Encryption Key (KEK) derived from the master secret.</p>
+        <p className="text-sm text-text-muted mb-4">AES-256-GCM with envelope encryption. Data Encryption Keys (DEK) are wrapped by a Key Encryption Key (KEK) derived from the master secret.</p>
 
         <h3 className="font-semibold mb-2">Protected Data</h3>
-        <ul className="text-sm text-muted list-disc list-inside mb-4">
+        <ul className="text-sm text-text-muted list-disc list-inside mb-4">
           <li>Integration credentials (connector configs)</li>
           <li>API key hashes</li>
           <li>User PII fields</li>
@@ -644,7 +644,7 @@ function Soc2Tab() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold">SOC2 Readiness</h3>
-            <p className="text-sm text-muted">{implemented} of {total} controls implemented</p>
+            <p className="text-sm text-text-muted">{implemented} of {total} controls implemented</p>
           </div>
           <div className="text-3xl font-bold text-primary">{pct}%</div>
         </div>
@@ -655,7 +655,7 @@ function Soc2Tab() {
 
       {categories.map((category) => (
         <div key={category} className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted uppercase tracking-wider">{category}</h3>
+          <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">{category}</h3>
           {data?.checklist
             .filter((c) => c.category === category)
             .map((item) => (
@@ -678,8 +678,8 @@ function Soc2Tab() {
                       {item.status === 'implemented' ? 'Implemented' : item.status === 'action_required' ? 'Action Required' : 'Available'}
                     </span>
                   </div>
-                  <p className="text-sm text-muted mt-1">{item.description}</p>
-                  <p className="text-xs text-muted mt-1">{item.details}</p>
+                  <p className="text-sm text-text-muted mt-1">{item.description}</p>
+                  <p className="text-xs text-text-muted mt-1">{item.details}</p>
                 </div>
               </div>
             ))}
@@ -731,7 +731,7 @@ function GdprTab() {
             <Download className="h-5 w-5 text-primary" />
             <h3 className="font-semibold">Data Export (Right of Access)</h3>
           </div>
-          <p className="text-sm text-muted mb-4">Export all data associated with a user email as JSON.</p>
+          <p className="text-sm text-text-muted mb-4">Export all data associated with a user email as JSON.</p>
           <div className="flex gap-2">
             <input
               type="email"
@@ -765,7 +765,7 @@ function GdprTab() {
             <Trash2 className="h-5 w-5 text-red-500 dark:text-red-400" />
             <h3 className="font-semibold">Right to Erasure</h3>
           </div>
-          <p className="text-sm text-muted mb-4">Permanently delete or anonymize all PII for a user. This action cannot be undone.</p>
+          <p className="text-sm text-text-muted mb-4">Permanently delete or anonymize all PII for a user. This action cannot be undone.</p>
           <div className="flex gap-2">
             <input
               type="email"
@@ -808,11 +808,11 @@ function GdprTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 font-medium text-muted">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Subject</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Requested By</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Date</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Type</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Subject</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Requested By</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Date</th>
             </tr>
           </thead>
           <tbody>
@@ -842,8 +842,8 @@ function GdprTab() {
                       {req.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">{req.requested_by_email}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{new Date(req.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{req.requested_by_email}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{new Date(req.created_at).toLocaleString()}</td>
                 </tr>
               ))
             )}
@@ -873,7 +873,7 @@ export default function Compliance() {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               activeTab === tab.id
                 ? 'bg-primary text-white'
-                : 'text-muted hover:text-foreground hover:bg-surface-secondary'
+                : 'text-text-muted hover:text-text-primary hover:bg-surface-secondary'
             }`}
           >
             <tab.icon className="h-4 w-4" />

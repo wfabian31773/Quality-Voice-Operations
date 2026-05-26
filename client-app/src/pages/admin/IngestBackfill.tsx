@@ -524,14 +524,14 @@ export default function IngestBackfill() {
           <ShieldAlert className="h-4 w-4 text-warning" />
           Attestation
         </h2>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-text-muted">
           Required by the backfill endpoint — recorded with every event so finance can
           audit retroactive billing adjustments. The reason should describe the
           incident or backlog being replayed.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
-            <span className="block text-xs font-medium text-muted mb-1">
+            <span className="block text-xs font-medium text-text-muted mb-1">
               Reason (8–500 chars)
             </span>
             <textarea
@@ -541,11 +541,11 @@ export default function IngestBackfill() {
               rows={3}
               className="w-full px-3 py-2 rounded-lg border border-border bg-surface-secondary text-sm"
             />
-            <span className="text-[10px] text-muted">{reason.length}/500</span>
+            <span className="text-[10px] text-text-muted">{reason.length}/500</span>
           </label>
           <div className="space-y-3">
             <label className="block">
-              <span className="block text-xs font-medium text-muted mb-1">Attested by</span>
+              <span className="block text-xs font-medium text-text-muted mb-1">Attested by</span>
               <input
                 type="text"
                 value={attestedBy}
@@ -555,8 +555,8 @@ export default function IngestBackfill() {
               />
             </label>
             <label className="block">
-              <span className="block text-xs font-medium text-muted mb-1">
-                Original system <span className="text-muted/60">(optional)</span>
+              <span className="block text-xs font-medium text-text-muted mb-1">
+                Original system <span className="text-text-muted/60">(optional)</span>
               </span>
               <input
                 type="text"
@@ -571,8 +571,8 @@ export default function IngestBackfill() {
 
         {isPlatformAdmin && (
           <label className="block">
-            <span className="block text-xs font-medium text-muted mb-1">
-              Tenant ID <span className="text-muted/60">(platform admin override — leave blank to target your own tenant)</span>
+            <span className="block text-xs font-medium text-text-muted mb-1">
+              Tenant ID <span className="text-text-muted/60">(platform admin override — leave blank to target your own tenant)</span>
             </span>
             <input
               type="text"
@@ -592,7 +592,7 @@ export default function IngestBackfill() {
             Calls file
           </h2>
           {filename && (
-            <button onClick={reset} className="text-xs text-muted hover:text-foreground flex items-center gap-1">
+            <button onClick={reset} className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1">
               <Trash2 className="h-3 w-3" /> Clear
             </button>
           )}
@@ -602,11 +602,11 @@ export default function IngestBackfill() {
           htmlFor="ingest-backfill-file"
           className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg py-8 cursor-pointer hover:bg-surface-secondary"
         >
-          <Upload className="h-6 w-6 text-muted" />
+          <Upload className="h-6 w-6 text-text-muted" />
           <span className="text-sm font-medium">
             {filename ? filename : 'Click to choose a CSV, NDJSON, or JSON file'}
           </span>
-          <span className="text-xs text-muted">Up to 500 rows per batch.</span>
+          <span className="text-xs text-text-muted">Up to 500 rows per batch.</span>
           <input
             id="ingest-backfill-file"
             ref={fileInputRef}
@@ -631,7 +631,7 @@ export default function IngestBackfill() {
         )}
 
         {rawRows.length > 0 && !parseError && (
-          <div className="text-sm text-muted flex items-center gap-2">
+          <div className="text-sm text-text-muted flex items-center gap-2">
             <Info className="h-4 w-4" />
             {rawRows.length} row{rawRows.length === 1 ? '' : 's'} ready to replay.
           </div>
@@ -674,7 +674,7 @@ export default function IngestBackfill() {
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Per-row results</span>
-                <span className="text-xs text-muted">tenant <code className="font-mono">{response.tenant_id}</code></span>
+                <span className="text-xs text-text-muted">tenant <code className="font-mono">{response.tenant_id}</code></span>
               </div>
               <div className="flex items-center gap-2">
                 <select
@@ -716,18 +716,18 @@ export default function IngestBackfill() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-secondary text-xs">
-                      <th className="text-left px-4 py-2 font-medium text-muted">#</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted">Status</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted">Idempotency key</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted">External ID</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted">Age (days)</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted">Notes</th>
+                      <th className="text-left px-4 py-2 font-medium text-text-muted">#</th>
+                      <th className="text-left px-4 py-2 font-medium text-text-muted">Status</th>
+                      <th className="text-left px-4 py-2 font-medium text-text-muted">Idempotency key</th>
+                      <th className="text-left px-4 py-2 font-medium text-text-muted">External ID</th>
+                      <th className="text-left px-4 py-2 font-medium text-text-muted">Age (days)</th>
+                      <th className="text-left px-4 py-2 font-medium text-text-muted">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredResults.map((r) => (
                       <tr key={r.row_index} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
-                        <td className="px-4 py-2 text-xs text-muted">{r.row_index + 1}</td>
+                        <td className="px-4 py-2 text-xs text-text-muted">{r.row_index + 1}</td>
                         <td className="px-4 py-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_TONE[r.status]}`}>
                             {STATUS_LABEL[r.status]}
@@ -735,8 +735,8 @@ export default function IngestBackfill() {
                         </td>
                         <td className="px-4 py-2 text-xs font-mono break-all">{r.idempotency_key ?? '—'}</td>
                         <td className="px-4 py-2 text-xs font-mono break-all">{r.external_id ?? '—'}</td>
-                        <td className="px-4 py-2 text-xs text-muted">{r.age_days ?? '—'}</td>
-                        <td className="px-4 py-2 text-xs text-muted max-w-md break-words">{r.error ?? ''}</td>
+                        <td className="px-4 py-2 text-xs text-text-muted">{r.age_days ?? '—'}</td>
+                        <td className="px-4 py-2 text-xs text-text-muted max-w-md break-words">{r.error ?? ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -751,7 +751,7 @@ export default function IngestBackfill() {
                 <AlertTriangle className="h-4 w-4 text-warning" />
                 Some rows did not land
               </div>
-              <p className="text-xs text-muted mt-1">
+              <p className="text-xs text-text-muted mt-1">
                 Download the failed-rows CSV, fix the problems, and re-upload. Idempotency keys
                 are preserved, so any rows that did succeed will return as <code>duplicate</code>
                 on the next run instead of being processed twice.
@@ -784,7 +784,7 @@ function SummaryTile({
   }[tone];
   return (
     <div className={`rounded-xl border border-border p-3 ${toneClasses}`}>
-      <div className="flex items-center gap-2 text-muted text-[11px] font-medium uppercase tracking-wide">
+      <div className="flex items-center gap-2 text-text-muted text-[11px] font-medium uppercase tracking-wide">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>

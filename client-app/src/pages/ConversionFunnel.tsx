@@ -139,7 +139,7 @@ export default function ConversionFunnel() {
               </div>
               <div className="h-6 bg-surface-hover rounded-lg overflow-hidden">
                 <div
-                  className={`h-full rounded-lg ${STAGE_COLORS[stage.stage] ?? 'bg-text-muted'} transition-all duration-500`}
+                  className={`h-full rounded-lg ${STAGE_COLORS[stage.stage] ?? 'bg-text-text-muted'} transition-all duration-500`}
                   style={{ width: `${Math.max(2, (stage.count / maxCount) * 100)}%` }}
                 />
               </div>

@@ -139,8 +139,8 @@ function statusColor(s: string): string {
     case 'assigned':
     case 'in_progress': return 'text-info bg-info/10';
     case 'completed': return 'text-success bg-success/10';
-    case 'dismissed': return 'text-muted bg-muted/10';
-    default: return 'text-muted bg-muted/10';
+    case 'dismissed': return 'text-text-muted bg-muted/10';
+    default: return 'text-text-muted bg-muted/10';
   }
 }
 
@@ -313,14 +313,14 @@ export default function ToolHealth() {
       <div className="flex gap-2">
         <button
           onClick={() => setTab('health')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'health' ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-foreground'}`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'health' ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-text-primary'}`}
         >
           <Activity className="w-4 h-4 inline mr-1.5" />
           Tool Health
         </button>
         <button
           onClick={() => setTab('escalations')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'escalations' ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-foreground'}`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'escalations' ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-text-primary'}`}
         >
           <Users className="w-4 h-4 inline mr-1.5" />
           Escalation Queue
@@ -328,7 +328,7 @@ export default function ToolHealth() {
         {isPlatformAdmin && (
           <button
             onClick={() => setTab('webhookSecurity')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'webhookSecurity' ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-foreground'}`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'webhookSecurity' ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-text-primary'}`}
           >
             <ShieldAlert className="w-4 h-4 inline mr-1.5" />
             Webhook Security
@@ -346,7 +346,7 @@ export default function ToolHealth() {
               <button
                 key={w}
                 onClick={() => setWindow(w)}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${window === w ? 'bg-primary text-white' : 'bg-surface border border-border text-muted hover:text-foreground'}`}
+                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${window === w ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-text-primary'}`}
               >
                 {w === '24h' ? 'Last 24h' : w === '7d' ? 'Last 7 days' : 'Last 30 days'}
               </button>
@@ -364,14 +364,14 @@ export default function ToolHealth() {
                 data-testid="reliability-kpis"
               >
                 <div className="bg-surface border border-border rounded-xl p-4">
-                  <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                  <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
                     <Wrench className="w-4 h-4" />
                     Total Executions
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{healthData.totalExecutions.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-text-primary">{healthData.totalExecutions.toLocaleString()}</div>
                 </div>
                 <div className="bg-surface border border-border rounded-xl p-4">
-                  <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                  <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
                     <CheckCircle className="w-4 h-4 text-success" />
                     Tool Success Rate
                   </div>
@@ -380,14 +380,14 @@ export default function ToolHealth() {
                   </div>
                 </div>
                 <div className="bg-surface border border-border rounded-xl p-4">
-                  <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                  <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
                     <XCircle className="w-4 h-4 text-danger" />
                     Total Failures
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{healthData.totalFailures.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-text-primary">{healthData.totalFailures.toLocaleString()}</div>
                 </div>
                 <div className="bg-surface border border-border rounded-xl p-4">
-                  <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                  <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
                     <Phone className="w-4 h-4 text-primary" />
                     Call Completion Rate
                   </div>
@@ -399,10 +399,10 @@ export default function ToolHealth() {
 
               <div className="bg-surface border border-border rounded-xl overflow-hidden">
                 <div className="p-4 border-b border-border">
-                  <h2 className="text-lg font-semibold text-foreground">Per-Tool Health</h2>
+                  <h2 className="text-lg font-semibold text-text-primary">Per-Tool Health</h2>
                 </div>
                 {healthData.tools.length === 0 ? (
-                  <div className="p-8 text-center text-muted">
+                  <div className="p-8 text-center text-text-muted">
                     <Wrench className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     <p>No tool executions in this time window</p>
                   </div>
@@ -416,32 +416,32 @@ export default function ToolHealth() {
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className={`w-2 h-2 rounded-full ${tool.successRate >= 99 ? 'bg-success' : tool.successRate >= 95 ? 'bg-warning' : 'bg-danger'}`} />
-                            <span className="font-mono text-sm text-foreground">{tool.toolName}</span>
+                            <span className="font-mono text-sm text-text-primary">{tool.toolName}</span>
                           </div>
                           <div className="flex items-center gap-6 text-sm">
                             <div className="text-right">
-                              <span className="text-muted mr-1">Executions:</span>
-                              <span className="font-medium text-foreground">{tool.totalExecutions}</span>
+                              <span className="text-text-muted mr-1">Executions:</span>
+                              <span className="font-medium text-text-primary">{tool.totalExecutions}</span>
                             </div>
                             <div className="text-right">
-                              <span className="text-muted mr-1">Success:</span>
+                              <span className="text-text-muted mr-1">Success:</span>
                               <span className={`font-medium ${successRateColor(tool.successRate)}`}>{tool.successRate}%</span>
                             </div>
                             <div className="text-right">
-                              <span className="text-muted mr-1">Retries:</span>
-                              <span className="font-medium text-foreground">{tool.retryCount}</span>
+                              <span className="text-text-muted mr-1">Retries:</span>
+                              <span className="font-medium text-text-primary">{tool.retryCount}</span>
                             </div>
                             <div className="text-right">
-                              <span className="text-muted mr-1">Avg:</span>
-                              <span className="font-medium text-foreground">{formatDuration(tool.avgDurationMs)}</span>
+                              <span className="text-text-muted mr-1">Avg:</span>
+                              <span className="font-medium text-text-primary">{formatDuration(tool.avgDurationMs)}</span>
                             </div>
-                            {expandedTool === tool.toolName ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+                            {expandedTool === tool.toolName ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
                           </div>
                         </button>
 
                         {expandedTool === tool.toolName && tool.recentFailures.length > 0 && (
                           <div className="px-4 pb-3 bg-surface-hover/50">
-                            <h4 className="text-xs font-semibold text-muted uppercase tracking-wider mb-2 pt-2">Recent Failures</h4>
+                            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 pt-2">Recent Failures</h4>
                             <div className="space-y-2">
                               {tool.recentFailures.map((f) => (
                                 <div key={f.id} className="bg-surface border border-border rounded-lg p-3 text-sm">
@@ -449,9 +449,9 @@ export default function ToolHealth() {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-2 mb-1">
                                         <AlertTriangle className="w-3.5 h-3.5 text-danger shrink-0" />
-                                        <span className="text-foreground font-medium truncate">{f.error.substring(0, 100)}</span>
+                                        <span className="text-text-primary font-medium truncate">{f.error.substring(0, 100)}</span>
                                       </div>
-                                      <div className="flex items-center gap-3 text-xs text-muted">
+                                      <div className="flex items-center gap-3 text-xs text-text-muted">
                                         <span>Session: {f.callSessionId.substring(0, 8)}…</span>
                                         <span>Retries: {f.retryCount}</span>
                                         {f.fallbackAttempted && (
@@ -461,7 +461,7 @@ export default function ToolHealth() {
                                         )}
                                       </div>
                                     </div>
-                                    <span className="text-xs text-muted whitespace-nowrap">
+                                    <span className="text-xs text-text-muted whitespace-nowrap">
                                       <Clock className="w-3 h-3 inline mr-0.5" />
                                       {formatDate(f.createdAt)}
                                     </span>
@@ -474,7 +474,7 @@ export default function ToolHealth() {
 
                         {expandedTool === tool.toolName && tool.recentFailures.length === 0 && (
                           <div className="px-4 pb-3 bg-surface-hover/50">
-                            <p className="text-sm text-muted py-2 flex items-center gap-2">
+                            <p className="text-sm text-text-muted py-2 flex items-center gap-2">
                               <CheckCircle className="w-4 h-4 text-success" />
                               No recent failures for this tool
                             </p>
@@ -508,23 +508,23 @@ export default function ToolHealth() {
           ) : escalationStats && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-surface border border-border rounded-xl p-4">
-                <div className="text-muted text-sm mb-1">Total Tasks</div>
-                <div className="text-2xl font-bold text-foreground">{escalationStats.total}</div>
+                <div className="text-text-muted text-sm mb-1">Total Tasks</div>
+                <div className="text-2xl font-bold text-text-primary">{escalationStats.total}</div>
               </div>
               <div className="bg-surface border border-border rounded-xl p-4">
-                <div className="text-muted text-sm mb-1 flex items-center gap-1">
+                <div className="text-text-muted text-sm mb-1 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5 text-warning" /> Pending
                 </div>
                 <div className="text-2xl font-bold text-warning">{escalationStats.pending}</div>
               </div>
               <div className="bg-surface border border-border rounded-xl p-4">
-                <div className="text-muted text-sm mb-1 flex items-center gap-1">
+                <div className="text-text-muted text-sm mb-1 flex items-center gap-1">
                   <ArrowUpRight className="w-3.5 h-3.5 text-info" /> In Progress
                 </div>
                 <div className="text-2xl font-bold text-info">{escalationStats.inProgress}</div>
               </div>
               <div className="bg-surface border border-border rounded-xl p-4">
-                <div className="text-muted text-sm mb-1 flex items-center gap-1">
+                <div className="text-text-muted text-sm mb-1 flex items-center gap-1">
                   <CheckCircle className="w-3.5 h-3.5 text-success" /> Completed
                 </div>
                 <div className="text-2xl font-bold text-success">{escalationStats.completed}</div>
@@ -536,10 +536,10 @@ export default function ToolHealth() {
 
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="p-4 border-b border-border">
-              <h2 className="text-lg font-semibold text-foreground">Escalation Queue</h2>
+              <h2 className="text-lg font-semibold text-text-primary">Escalation Queue</h2>
             </div>
             {escalationTasks.length === 0 ? (
-              <div className="p-8 text-center text-muted">
+              <div className="p-8 text-center text-text-muted">
                 <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 <p>No escalation tasks in the queue</p>
               </div>
@@ -557,13 +557,13 @@ export default function ToolHealth() {
                             {task.status.replace('_', ' ')}
                           </span>
                           {task.toolName && (
-                            <span className="text-xs font-mono text-muted bg-muted/10 px-1.5 py-0.5 rounded">
+                            <span className="text-xs font-mono text-text-muted bg-muted/10 px-1.5 py-0.5 rounded">
                               {task.toolName}
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-foreground">{task.reason}</p>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted">
+                        <p className="text-sm text-text-primary">{task.reason}</p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
                           <span>Session: {task.callSessionId.substring(0, 8)}…</span>
                           {task.callerPhone && <span>Caller: {task.callerPhone}</span>}
                           {task.agentSlug && <span>Agent: {task.agentSlug}</span>}
@@ -581,7 +581,7 @@ export default function ToolHealth() {
                             </button>
                             <button
                               onClick={() => handleUpdateTask(task.id, 'dismissed')}
-                              className="px-2.5 py-1 text-xs bg-muted/10 text-muted rounded-md hover:bg-muted/20 transition-colors"
+                              className="px-2.5 py-1 text-xs bg-muted/10 text-text-muted rounded-md hover:bg-muted/20 transition-colors"
                             >
                               Dismiss
                             </button>
@@ -647,11 +647,11 @@ function OnCallRosterPanel({
   if (error) {
     return (
       <div className="bg-surface border border-border rounded-xl p-4">
-        <div className="flex items-center gap-2 text-sm text-foreground">
-          <Users className="w-4 h-4 text-muted" />
+        <div className="flex items-center gap-2 text-sm text-text-primary">
+          <Users className="w-4 h-4 text-text-muted" />
           <span className="font-semibold">On-call roster</span>
         </div>
-        <p className="text-sm text-muted mt-2">Could not load on-call roster: {error}</p>
+        <p className="text-sm text-text-muted mt-2">Could not load on-call roster: {error}</p>
       </div>
     );
   }
@@ -666,9 +666,9 @@ function OnCallRosterPanel({
         <div>
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">On-call roster</h2>
+            <h2 className="text-lg font-semibold text-text-primary">On-call roster</h2>
           </div>
-          <p className="text-xs text-muted mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Tenant admins and owners who are paged when an escalation fires. Toggles reflect each
             teammate&apos;s current escalation notification preferences.
           </p>
@@ -687,7 +687,7 @@ function OnCallRosterPanel({
       </div>
 
       {list.length === 0 ? (
-        <div className="p-6 text-center text-muted">
+        <div className="p-6 text-center text-text-muted">
           <UserX className="w-8 h-8 mx-auto mb-2 opacity-40" />
           <p className="text-sm">No tenant admin or owner accounts found.</p>
           <p className="text-xs mt-1">Invite at least one admin so escalations have a human to reach.</p>
@@ -709,10 +709,10 @@ function OnCallRosterPanel({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-foreground truncate">
+                    <span className="text-sm font-medium text-text-primary truncate">
                       {r.name ?? r.email}
                     </span>
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted/15 text-muted">
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted/15 text-text-muted">
                       {r.role}
                     </span>
                     {fullySilenced && (
@@ -728,13 +728,13 @@ function OnCallRosterPanel({
                       </span>
                     )}
                   </div>
-                  {r.name && <div className="text-xs text-muted truncate">{r.email}</div>}
+                  {r.name && <div className="text-xs text-text-muted truncate">{r.email}</div>}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 text-xs">
                   <span
                     className={`flex items-center gap-1 px-2 py-1 rounded-md ${
-                      inApp ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted line-through'
+                      inApp ? 'bg-success/10 text-success' : 'bg-muted/10 text-text-muted line-through'
                     }`}
                     title={inApp ? 'In-app escalation alerts on' : 'In-app escalation alerts muted'}
                   >
@@ -743,7 +743,7 @@ function OnCallRosterPanel({
                   </span>
                   <span
                     className={`flex items-center gap-1 px-2 py-1 rounded-md ${
-                      email ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted line-through'
+                      email ? 'bg-success/10 text-success' : 'bg-muted/10 text-text-muted line-through'
                     }`}
                     title={email ? 'Email escalation alerts on' : 'Email escalation alerts muted'}
                   >
@@ -784,9 +784,9 @@ function WebhookSecuritySection({
   if (error || !data) {
     return (
       <div className="bg-surface border border-border rounded-xl p-8 text-center">
-        <ServerCrash className="w-8 h-8 text-muted mx-auto mb-3" />
-        <p className="text-foreground font-medium">Could not load webhook security metrics</p>
-        <p className="text-sm text-muted mt-1">{error ?? 'Unknown error'}</p>
+        <ServerCrash className="w-8 h-8 text-text-muted mx-auto mb-3" />
+        <p className="text-text-primary font-medium">Could not load webhook security metrics</p>
+        <p className="text-sm text-text-muted mt-1">{error ?? 'Unknown error'}</p>
         <button
           onClick={onRefresh}
           className="mt-4 px-3 py-1.5 text-xs bg-primary text-white rounded-md hover:opacity-90"
@@ -807,13 +807,13 @@ function WebhookSecuritySection({
           <AlertTriangle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm font-semibold text-danger">Webhook spoofing alert is firing</p>
-            <p className="text-xs text-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               One or more rejection counters crossed their per-minute threshold within the last {cooldownMinutes} minutes.
               A critical entry has been written to error logs. Investigate the source IPs and check Twilio configuration.
             </p>
             <ul className="mt-2 space-y-0.5 text-xs">
               {REJECTION_REASONS.filter((r) => data.alertActive[r]).map((r) => (
-                <li key={r} className="text-foreground">
+                <li key={r} className="text-text-primary">
                   <span className="font-mono">{r}</span> · last fired {formatRelativeFromNow(data.lastAlertAt[r])}
                 </li>
               ))}
@@ -838,10 +838,10 @@ function WebhookSecuritySection({
             >
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className={`p-1.5 rounded-lg ${breached ? 'bg-danger/15 text-danger' : 'bg-muted/10 text-muted'}`}>
+                  <div className={`p-1.5 rounded-lg ${breached ? 'bg-danger/15 text-danger' : 'bg-muted/10 text-text-muted'}`}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <span className="text-sm font-semibold text-foreground">{REJECTION_LABELS[reason]}</span>
+                  <span className="text-sm font-semibold text-text-primary">{REJECTION_LABELS[reason]}</span>
                 </div>
                 {breached && (
                   <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-danger/15 text-danger">
@@ -852,22 +852,22 @@ function WebhookSecuritySection({
 
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted">Last 1m</div>
-                  <div className={`text-2xl font-bold ${rate >= threshold ? 'text-danger' : 'text-foreground'}`}>
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">Last 1m</div>
+                  <div className={`text-2xl font-bold ${rate >= threshold ? 'text-danger' : 'text-text-primary'}`}>
                     {rate}
-                    <span className="text-xs font-normal text-muted ml-1">/ {threshold}</span>
+                    <span className="text-xs font-normal text-text-muted ml-1">/ {threshold}</span>
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted">Total since boot</div>
-                  <div className="text-2xl font-bold text-foreground">{total.toLocaleString()}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">Total since boot</div>
+                  <div className="text-2xl font-bold text-text-primary">{total.toLocaleString()}</div>
                 </div>
               </div>
 
               <Sparkline values={reasonBuckets.map((b) => b.count)} highlight={breached} />
 
-              <p className="text-[11px] text-muted mt-2 leading-snug">{REJECTION_DESCRIPTIONS[reason]}</p>
-              <p className="text-[10px] text-muted mt-1">
+              <p className="text-[11px] text-text-muted mt-2 leading-snug">{REJECTION_DESCRIPTIONS[reason]}</p>
+              <p className="text-[10px] text-text-muted mt-1">
                 Last rejection: {formatRelativeFromNow(data.lastRejectionAt[reason])}
               </p>
             </div>
@@ -875,7 +875,7 @@ function WebhookSecuritySection({
         })}
       </div>
 
-      <div className="bg-surface border border-border rounded-xl p-4 text-xs text-muted">
+      <div className="bg-surface border border-border rounded-xl p-4 text-xs text-text-muted">
         <div className="flex items-center justify-between">
           <span>
             Rejection counters are in-process and reset on restart. Process started{' '}
@@ -883,7 +883,7 @@ function WebhookSecuritySection({
           </span>
           <button
             onClick={onRefresh}
-            className="px-2.5 py-1 bg-surface-hover border border-border rounded-md hover:bg-surface text-foreground"
+            className="px-2.5 py-1 bg-surface-hover border border-border rounded-md hover:bg-surface text-text-primary"
           >
             <RefreshCw className="w-3 h-3 inline mr-1" /> Refresh
           </button>

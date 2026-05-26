@@ -27,7 +27,7 @@ const TONE_BG: Record<BadgeTone, string> = {
   danger: 'bg-danger',
   info: 'bg-info',
   accent: 'bg-accent',
-  neutral: 'bg-text-muted',
+  neutral: 'bg-text-text-muted',
 };
 
 const SIZE: Record<DotSize, string> = {

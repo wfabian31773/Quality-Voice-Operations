@@ -84,7 +84,7 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
               <h3 className="font-semibold">{update.templateName}</h3>
               <UpgradeTypeBadge type={update.upgradeType} />
             </div>
-            <p className="text-sm text-muted mt-0.5">
+            <p className="text-sm text-text-muted mt-0.5">
               {update.installedVersion} → {update.availableVersion}
             </p>
           </div>
@@ -92,7 +92,7 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="px-3 py-1.5 text-sm text-muted hover:text-foreground rounded-lg hover:bg-surface-secondary transition-colors"
+            className="px-3 py-1.5 text-sm text-text-muted hover:text-text-primary rounded-lg hover:bg-surface-secondary transition-colors"
           >
             {expanded ? (
               <span className="flex items-center gap-1"><ChevronDown className="h-4 w-4" /> Hide Changes</span>
@@ -134,7 +134,7 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
             </button>
             <button
               onClick={() => setShowConfirm(false)}
-              className="px-3 py-1.5 text-sm text-muted hover:text-foreground rounded-lg hover:bg-surface-secondary"
+              className="px-3 py-1.5 text-sm text-text-muted hover:text-text-primary rounded-lg hover:bg-surface-secondary"
             >
               Cancel
             </button>
@@ -144,17 +144,17 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
 
       {expanded && update.changelog.length > 0 && (
         <div className="border-t border-border px-5 py-3">
-          <h4 className="text-sm font-medium text-muted mb-2">Changelog</h4>
+          <h4 className="text-sm font-medium text-text-muted mb-2">Changelog</h4>
           <div className="space-y-2">
             {update.changelog.map((entry, i) => (
               <div key={i} className="flex items-start gap-3 text-sm">
                 <ChangeTypeBadge type={entry.changeType} />
                 <div>
-                  <span className="text-foreground">{entry.summary}</span>
+                  <span className="text-text-primary">{entry.summary}</span>
                   {entry.details && (
-                    <p className="text-muted text-xs mt-0.5">{entry.details}</p>
+                    <p className="text-text-muted text-xs mt-0.5">{entry.details}</p>
                   )}
-                  <span className="text-xs text-muted ml-2">v{entry.version}</span>
+                  <span className="text-xs text-text-muted ml-2">v{entry.version}</span>
                 </div>
               </div>
             ))}
@@ -163,7 +163,7 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
       )}
 
       {expanded && update.changelog.length === 0 && (
-        <div className="border-t border-border px-5 py-3 text-sm text-muted">
+        <div className="border-t border-border px-5 py-3 text-sm text-text-muted">
           No detailed changelog available for this update.
         </div>
       )}
@@ -238,16 +238,16 @@ export default function UpdateCenter() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-16 text-muted">Checking for available updates...</div>
+        <div className="text-center py-16 text-text-muted">Checking for available updates...</div>
       ) : updates.length === 0 ? (
         <div className="bg-surface border border-border rounded-xl p-12 text-center">
           <CheckCircle className="h-12 w-12 text-green-500 dark:text-green-400 mx-auto mb-3" />
           <h3 className="text-lg font-semibold mb-1">All up to date</h3>
-          <p className="text-muted text-sm">All your installed templates are on the latest version.</p>
+          <p className="text-text-muted text-sm">All your installed templates are on the latest version.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             {updates.length} update{updates.length !== 1 ? 's' : ''} available
           </p>
           {updates.map((update) => (

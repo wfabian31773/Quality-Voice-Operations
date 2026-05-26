@@ -159,9 +159,9 @@ export default function AdminTenantAnalytics() {
           Call Volume <span className="text-xs font-normal text-text-secondary ml-2">tenant-scoped · last {range}</span>
         </h2>
         {isLoading ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>
+          <div className="h-64 flex items-center justify-center text-text-muted-foreground">Loading...</div>
         ) : !calls?.dailyBreakdown?.length ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">No data for this period</div>
+          <div className="h-64 flex items-center justify-center text-text-muted-foreground">No data for this period</div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={calls.dailyBreakdown}>
@@ -187,7 +187,7 @@ export default function AdminTenantAnalytics() {
         <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
           <h2 className="text-lg font-semibold mb-4 text-text-primary">Cost Breakdown</h2>
           {isLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="text-text-muted-foreground">Loading...</div>
           ) : (
             <div className="space-y-3 text-sm">
               <Row label="OpenAI Inference" value={formatCents(costs?.totalOpenaiCostCents ?? 0)} />
@@ -203,7 +203,7 @@ export default function AdminTenantAnalytics() {
         <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
           <h2 className="text-lg font-semibold mb-4 text-text-primary">Call Outcomes</h2>
           {isLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="text-text-muted-foreground">Loading...</div>
           ) : (
             <div className="space-y-3">
               <OutcomeRow label="Completed" count={calls?.completedCalls ?? 0} total={calls?.totalCalls ?? 0} color="bg-success" />
@@ -217,14 +217,14 @@ export default function AdminTenantAnalytics() {
       <div className="bg-surface border border-border rounded-xl p-6 shadow-[var(--elevation-1)]">
         <h2 className="text-lg font-semibold mb-4 text-text-primary">Campaign Performance</h2>
         {isLoading ? (
-          <div className="text-muted-foreground">Loading...</div>
+          <div className="text-text-muted-foreground">Loading...</div>
         ) : !campaigns.length ? (
-          <div className="text-muted-foreground">No campaigns in this period</div>
+          <div className="text-text-muted-foreground">No campaigns in this period</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
+                <tr className="border-b border-border text-left text-text-muted-foreground">
                   <th className="pb-2 font-medium">Campaign</th>
                   <th className="pb-2 font-medium text-right">Contacts</th>
                   <th className="pb-2 font-medium text-right">Answered</th>
@@ -304,8 +304,8 @@ function KpiCard({
 
 function Row({ label, value, bold, muted }: { label: string; value: string; bold?: boolean; muted?: boolean }) {
   return (
-    <div className={clsx('flex justify-between text-sm', bold && 'font-semibold text-text-primary', muted && 'text-muted-foreground')}>
-      <span className={muted ? '' : 'text-muted-foreground'}>{label}</span>
+    <div className={clsx('flex justify-between text-sm', bold && 'font-semibold text-text-primary', muted && 'text-text-muted-foreground')}>
+      <span className={muted ? '' : 'text-text-muted-foreground'}>{label}</span>
       <span className="text-text-primary">{value}</span>
     </div>
   );
@@ -326,7 +326,7 @@ function OutcomeRow({
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
+        <span className="text-text-muted-foreground">{label}</span>
         <span className="font-medium text-text-primary">{count} ({pct.toFixed(1)}%)</span>
       </div>
       <div className="h-1.5 bg-muted rounded-full overflow-hidden">

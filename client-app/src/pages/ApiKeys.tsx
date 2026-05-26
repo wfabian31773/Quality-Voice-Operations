@@ -136,7 +136,7 @@ export default function ApiKeys() {
           <h3 className="font-semibold text-heading">Create New API Key</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-muted mb-1">Name</label>
+              <label className="block text-sm font-medium text-text-muted mb-1">Name</label>
               <input
                 type="text"
                 value={newKeyName}
@@ -146,7 +146,7 @@ export default function ApiKeys() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted mb-1">Expiry (optional)</label>
+              <label className="block text-sm font-medium text-text-muted mb-1">Expiry (optional)</label>
               <input
                 type="date"
                 value={newKeyExpiry}
@@ -158,7 +158,7 @@ export default function ApiKeys() {
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => { setShowCreate(false); setNewKeyName(''); setNewKeyExpiry(''); }}
-              className="px-4 py-2 text-sm font-medium text-muted hover:text-heading transition-colors"
+              className="px-4 py-2 text-sm font-medium text-text-muted hover:text-heading transition-colors"
             >
               Cancel
             </button>
@@ -177,40 +177,40 @@ export default function ApiKeys() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Name</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Key Prefix</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden sm:table-cell">Created</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">Last Used</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">Expires</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">Key Prefix</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden sm:table-cell">Created</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden md:table-cell">Last Used</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden md:table-cell">Expires</th>
+              <th className="text-right px-4 py-3 text-xs font-medium text-text-muted uppercase">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted">
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-text-muted">
                   Loading...
                 </td>
               </tr>
             ) : keys.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center">
-                  <Key className="h-8 w-8 text-muted mx-auto mb-2" />
-                  <p className="text-sm text-muted">No API keys yet</p>
+                  <Key className="h-8 w-8 text-text-muted mx-auto mb-2" />
+                  <p className="text-sm text-text-muted">No API keys yet</p>
                 </td>
               </tr>
             ) : (
               keys.map((key) => (
                 <tr key={key.id} className="border-b border-border last:border-0 hover:bg-surface-secondary/50">
                   <td className="px-4 py-3 text-sm font-medium text-heading">{key.name}</td>
-                  <td className="px-4 py-3 text-sm font-mono text-muted">{key.keyPrefix}...</td>
-                  <td className="px-4 py-3 text-sm text-muted hidden sm:table-cell">
+                  <td className="px-4 py-3 text-sm font-mono text-text-muted">{key.keyPrefix}...</td>
+                  <td className="px-4 py-3 text-sm text-text-muted hidden sm:table-cell">
                     {new Date(key.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-3 text-sm text-muted hidden md:table-cell">
+                  <td className="px-4 py-3 text-sm text-text-muted hidden md:table-cell">
                     {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : 'Never'}
                   </td>
-                  <td className="px-4 py-3 text-sm text-muted hidden md:table-cell">
+                  <td className="px-4 py-3 text-sm text-text-muted hidden md:table-cell">
                     {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : 'Never'}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -231,13 +231,13 @@ export default function ApiKeys() {
 
       <div className="bg-surface-secondary border border-border rounded-lg p-4">
         <h3 className="font-semibold text-heading text-sm mb-2">API Usage</h3>
-        <p className="text-xs text-muted mb-3">
+        <p className="text-xs text-text-muted mb-3">
           Use your API key in the Authorization header to access the public API:
         </p>
         <code className="block bg-surface px-3 py-2 rounded border border-border text-xs font-mono text-heading break-all">
           curl -H "Authorization: Bearer vai_your_key_here" {window.location.origin}/api/v1/calls
         </code>
-        <p className="text-xs text-muted mt-3">
+        <p className="text-xs text-text-muted mt-3">
           Available endpoints: GET /api/v1/calls, GET /api/v1/calls/:id, GET /api/v1/campaigns,
           GET /api/v1/campaigns/:id/analytics, POST /api/v1/campaigns/:id/contacts
         </p>

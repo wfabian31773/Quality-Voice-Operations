@@ -572,45 +572,45 @@ export default function BackfillCalls() {
         className="bg-surface border border-border rounded-xl p-5 space-y-4"
         data-testid="backfill-attestation-form"
       >
-        <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-primary" />
           Attestation
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label className="flex flex-col gap-1 text-sm md:col-span-2">
-            <span className="text-muted text-xs">Reason (≥ 8 characters)</span>
+            <span className="text-text-muted text-xs">Reason (≥ 8 characters)</span>
             <input
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Remix outage 2026-04-10 — replaying 12 calls dropped during failover"
-              className="bg-background border border-border rounded-md px-3 py-2 text-foreground placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary"
+              className="bg-background border border-border rounded-md px-3 py-2 text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary"
             />
             {!reasonValid && reason.length > 0 && (
               <span className="text-danger text-xs">Must be at least 8 characters.</span>
             )}
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-muted text-xs">Attested by</span>
+            <span className="text-text-muted text-xs">Attested by</span>
             <input
               type="text"
               value={attestedBy}
               onChange={(e) => setAttestedBy(e.target.value)}
               placeholder="ops-engineer@company.com"
-              className="bg-background border border-border rounded-md px-3 py-2 text-foreground placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary"
+              className="bg-background border border-border rounded-md px-3 py-2 text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary"
             />
             {!attestedByValid && attestedBy.length > 0 && (
               <span className="text-danger text-xs">Required.</span>
             )}
           </label>
           <label className="flex flex-col gap-1 text-sm md:col-span-3">
-            <span className="text-muted text-xs">Original system (optional)</span>
+            <span className="text-text-muted text-xs">Original system (optional)</span>
             <input
               type="text"
               value={originalSystem}
               onChange={(e) => setOriginalSystem(e.target.value)}
               placeholder="e.g. remix-prod-us-east"
-              className="bg-background border border-border rounded-md px-3 py-2 text-foreground placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary"
+              className="bg-background border border-border rounded-md px-3 py-2 text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </label>
         </div>
@@ -621,19 +621,19 @@ export default function BackfillCalls() {
           <div className="flex gap-2">
             <button
               onClick={() => { setMode('json'); }}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors flex items-center gap-2 ${mode === 'json' ? 'bg-primary text-white border-primary' : 'bg-background border-border text-muted hover:text-foreground'}`}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors flex items-center gap-2 ${mode === 'json' ? 'bg-primary text-white border-primary' : 'bg-background border-border text-text-muted hover:text-text-primary'}`}
             >
               <FileJson className="w-4 h-4" /> JSON / NDJSON
             </button>
             <button
               onClick={() => { setMode('csv'); }}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors flex items-center gap-2 ${mode === 'csv' ? 'bg-primary text-white border-primary' : 'bg-background border-border text-muted hover:text-foreground'}`}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors flex items-center gap-2 ${mode === 'csv' ? 'bg-primary text-white border-primary' : 'bg-background border-border text-text-muted hover:text-text-primary'}`}
             >
               <FileText className="w-4 h-4" /> CSV
             </button>
           </div>
           <div className="flex gap-2 text-xs">
-            <label className="px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-surface-hover cursor-pointer flex items-center gap-2">
+            <label className="px-3 py-1.5 rounded-md border border-border text-text-muted hover:text-text-primary hover:bg-surface-hover cursor-pointer flex items-center gap-2">
               <Upload className="w-3.5 h-3.5" />
               Upload file
               <input
@@ -649,13 +649,13 @@ export default function BackfillCalls() {
             </label>
             <button
               onClick={mode === 'json' ? loadJsonTemplate : loadCsvTemplate}
-              className="px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-surface-hover"
+              className="px-3 py-1.5 rounded-md border border-border text-text-muted hover:text-text-primary hover:bg-surface-hover"
             >
               Load template
             </button>
             <button
               onClick={() => { setText(''); setPreviewRows(null); setSubmitRows(null); setPageError(null); }}
-              className="px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground hover:bg-surface-hover"
+              className="px-3 py-1.5 rounded-md border border-border text-text-muted hover:text-text-primary hover:bg-surface-hover"
             >
               Clear
             </button>
@@ -672,10 +672,10 @@ export default function BackfillCalls() {
                 ? 'Paste a JSON object, a JSON array of events, or one event per line (NDJSON). The form will inject tenant_id, version, event_type, timestamp, and the attestation block.'
                 : 'Paste CSV with the columns shown in the template (use Load template).'
             }
-            className="w-full h-64 bg-background border border-border rounded-md p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y"
+            className="w-full h-64 bg-background border border-border rounded-md p-3 font-mono text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-primary resize-y"
           />
-          <div className="text-xs text-muted mt-1">
-            Parsed rows: <span className="font-semibold text-foreground">{parsedRows.length}</span>
+          <div className="text-xs text-text-muted mt-1">
+            Parsed rows: <span className="font-semibold text-text-primary">{parsedRows.length}</span>
             {parsedRows.some((r) => r.parseError) && (
               <span className="ml-3 text-danger">
                 {parsedRows.filter((r) => r.parseError).length} unparseable
@@ -711,7 +711,7 @@ export default function BackfillCalls() {
 
       {summary && (
         <section className="bg-surface border border-border rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
             <Eye className="w-4 h-4 text-primary" />
             Preview ({summary.total} row{summary.total === 1 ? '' : 's'})
           </h2>
@@ -728,7 +728,7 @@ export default function BackfillCalls() {
 
       {submitSummary && (
         <section className="bg-surface border border-border rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
             <ArrowRight className="w-4 h-4 text-primary" />
             Submission results
           </h2>
@@ -742,11 +742,11 @@ export default function BackfillCalls() {
         </section>
       )}
 
-      <section className="bg-surface border border-border rounded-xl p-5 text-xs text-muted space-y-2">
-        <h3 className="text-sm font-semibold text-foreground">How this works</h3>
+      <section className="bg-surface border border-border rounded-xl p-5 text-xs text-text-muted space-y-2">
+        <h3 className="text-sm font-semibold text-text-primary">How this works</h3>
         <ul className="list-disc list-inside space-y-1">
           <li>
-            Each event is sent to <code className="text-foreground">POST /v1/ingest/calls/backfill</code> one at a time so per-row status is visible.
+            Each event is sent to <code className="text-text-primary">POST /v1/ingest/calls/backfill</code> one at a time so per-row status is visible.
           </li>
           <li>
             We accept <code>start_time</code> values from <code>{INGEST_FRESH_WINDOW_DAYS}</code> to <code>{INGEST_BACKFILL_WINDOW_DAYS}</code> days ago. Newer events should go through the live <code>/v1/ingest/calls</code> endpoint instead.
@@ -772,7 +772,7 @@ function RowTable({ rows, mode }: RowTableProps) {
     <div className="overflow-x-auto -mx-1">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-muted text-left">
+          <tr className="text-text-muted text-left">
             <th className="px-2 py-2 font-medium">#</th>
             <th className="px-2 py-2 font-medium">external_id</th>
             <th className="px-2 py-2 font-medium">idempotency_key</th>
@@ -784,10 +784,10 @@ function RowTable({ rows, mode }: RowTableProps) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.index} className="border-t border-border align-top">
-              <td className="px-2 py-2 text-muted font-mono">{row.index + 1}</td>
-              <td className="px-2 py-2 font-mono text-foreground break-all">{row.externalId ?? '—'}</td>
-              <td className="px-2 py-2 font-mono text-foreground break-all">{row.idempotencyKey ?? '—'}</td>
-              <td className="px-2 py-2 font-mono text-muted whitespace-nowrap">{row.startTime ?? '—'}</td>
+              <td className="px-2 py-2 text-text-muted font-mono">{row.index + 1}</td>
+              <td className="px-2 py-2 font-mono text-text-primary break-all">{row.externalId ?? '—'}</td>
+              <td className="px-2 py-2 font-mono text-text-primary break-all">{row.idempotencyKey ?? '—'}</td>
+              <td className="px-2 py-2 font-mono text-text-muted whitespace-nowrap">{row.startTime ?? '—'}</td>
               <td className="px-2 py-2">
                 {mode === 'preview' ? (
                   row.validation === 'invalid' ? (
@@ -807,7 +807,7 @@ function RowTable({ rows, mode }: RowTableProps) {
                   <SubmitBadge status={(row as SubmitRow).status} />
                 )}
               </td>
-              <td className="px-2 py-2 text-muted">
+              <td className="px-2 py-2 text-text-muted">
                 {mode === 'preview'
                   ? (row.validationErrors?.join('; ') ?? '')
                   : ((row as SubmitRow).errorMessage ?? '')}
@@ -816,7 +816,7 @@ function RowTable({ rows, mode }: RowTableProps) {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-2 py-6 text-center text-muted">No rows.</td>
+              <td colSpan={6} className="px-2 py-6 text-center text-text-muted">No rows.</td>
             </tr>
           )}
         </tbody>
@@ -847,7 +847,7 @@ function SubmitBadge({ status }: { status: SubmitRow['status'] }) {
       );
     default:
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-muted/10 text-muted">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-muted/10 text-text-muted">
           <Loader2 className="w-3 h-3 animate-spin" /> Pending
         </span>
       );
