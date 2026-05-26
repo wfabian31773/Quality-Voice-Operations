@@ -1,4 +1,4 @@
-import { IntegrationsStatusPanel } from '../../../PlatformAdmin';
+import { IntegrationsStatusPanel } from '../panels/IntegrationsStatusPanel';
 
 export default function IntegrationsRoute() {
   return <IntegrationsStatusPanel />;
