@@ -2052,7 +2052,7 @@ function ChannelStatusLine({
       ? 'bg-success'
       : status === 'failed'
         ? 'bg-danger'
-        : 'bg-text-muted';
+        : 'bg-text-text-muted';
   return (
     <div className="text-xs flex items-start gap-2">
       <span className={clsx('mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0', dot)} />

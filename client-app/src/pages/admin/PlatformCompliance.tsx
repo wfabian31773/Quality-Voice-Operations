@@ -36,7 +36,7 @@ function TenantLink({
         <span className="group-hover:underline">{displayName}</span>
         <ArrowUpRight className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} opacity-0 group-hover:opacity-100 transition-opacity`} />
       </span>
-      <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-muted font-mono`}>{displaySlug}</span>
+      <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-text-muted font-mono`}>{displaySlug}</span>
     </Link>
   );
 }
@@ -311,7 +311,7 @@ function OverviewTab() {
           <Shield className="h-4 w-4 text-primary" />
           Platform compliance posture
         </h3>
-        <ul className="text-sm text-muted space-y-2">
+        <ul className="text-sm text-text-muted space-y-2">
           <li className="flex items-start gap-2">
             <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
             Audit log is append-only at the database level (UPDATE/DELETE blocked by trigger).
@@ -377,8 +377,22 @@ function PlatformAuditTab() {
   if (tenantId.trim()) params.set('tenantId', tenantId.trim());
   if (action.trim()) params.set('action', action.trim());
   if (severity) params.set('severity', severity);
-  if (since) params.set('since', new Date(since).toISOString());
-  if (until) params.set('until', new Date(until + 'T23:59:59').toISOString());
+  // Guard against malformed date strings from the URL / <input type="date">.
+  // `new Date("abc").toISOString()` throws RangeError during render, which
+  // crashes the audit tab and surfaces as a blank error overlay on the
+  // whole page (this tab mounts at /admin/security).
+  if (since) {
+    const sinceDate = new Date(since);
+    if (!Number.isNaN(sinceDate.getTime())) {
+      params.set('since', sinceDate.toISOString());
+    }
+  }
+  if (until) {
+    const untilDate = new Date(until + 'T23:59:59');
+    if (!Number.isNaN(untilDate.getTime())) {
+      params.set('until', untilDate.toISOString());
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['platform-audit-log', page, tenantId, action, severity, since, until],
@@ -453,7 +467,7 @@ function PlatformAuditTab() {
             onClick={() => {
               setTenantId(''); setAction(''); setSeverity(''); setSince(''); setUntil(''); setPage(1);
             }}
-            className="px-3 py-2 text-sm text-muted hover:text-foreground"
+            className="px-3 py-2 text-sm text-text-muted hover:text-text-primary"
           >
             Clear
           </button>
@@ -472,13 +486,13 @@ function PlatformAuditTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Timestamp</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Tenant</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Actor</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Action</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Resource</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Severity</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">IP</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Timestamp</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Actor</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Action</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Resource</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Severity</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">IP</th>
               </tr>
             </thead>
             <tbody>
@@ -501,20 +515,20 @@ function PlatformAuditTab() {
                       isHighlighted ? 'bg-primary/10 ring-2 ring-primary/40' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 whitespace-nowrap text-muted text-xs">{formatDate(e.occurred_at)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-text-muted text-xs">{formatDate(e.occurred_at)}</td>
                     <td className="px-4 py-3">
                       <TenantLink tenantId={e.tenant_id} name={e.tenant_name} slug={e.tenant_slug} compact />
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-xs">{e.actor_email ?? 'System'}</div>
-                      {e.actor_role && <div className="text-[10px] text-muted">{e.actor_role}</div>}
+                      {e.actor_role && <div className="text-[10px] text-text-muted">{e.actor_role}</div>}
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-primary/10 text-primary">
                         {e.action}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs">
+                    <td className="px-4 py-3 text-text-muted text-xs">
                       {e.resource_type}
                       {e.resource_id && <span className="ml-1 font-mono">{e.resource_id.slice(0, 8)}</span>}
                     </td>
@@ -523,7 +537,7 @@ function PlatformAuditTab() {
                         {e.severity ?? 'info'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted text-xs font-mono">{e.ip_address ?? '—'}</td>
+                    <td className="px-4 py-3 text-text-muted text-xs font-mono">{e.ip_address ?? '—'}</td>
                   </tr>
                   );
                 })
@@ -533,7 +547,7 @@ function PlatformAuditTab() {
         </div>
         {data && data.total > limit && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-sm text-muted">{data.total.toLocaleString()} events total</span>
+            <span className="text-sm text-text-muted">{data.total.toLocaleString()} events total</span>
             <div className="flex items-center gap-2">
               <button disabled={page === 1} onClick={() => setPage(page - 1)} className="p-1 rounded hover:bg-surface-secondary disabled:opacity-50">
                 <ChevronLeft className="h-4 w-4" />
@@ -659,7 +673,7 @@ function EncryptionTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
+      <p className="text-sm text-text-muted">
         Per-tenant data encryption keys (DEKs) wrapped by the platform key. Keys are AES-256-GCM and rotated on demand from the tenant Compliance view.
       </p>
 
@@ -706,7 +720,7 @@ function EncryptionTab() {
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer">
+        <label className="inline-flex items-center gap-2 text-sm text-text-muted cursor-pointer">
           <input
             type="checkbox"
             checked={onlyGaps}
@@ -716,7 +730,7 @@ function EncryptionTab() {
           Only show tenants needing initialization
         </label>
         {!isLoading && (
-          <span className="text-xs text-muted">
+          <span className="text-xs text-text-muted">
             Showing {filteredTenants.length} of {allTenants.length}
           </span>
         )}
@@ -750,15 +764,15 @@ function EncryptionTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Tenant</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Plan</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Active keys</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Owner</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Encrypted fields</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Last rotation</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Last reminder</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Plan</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Active keys</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Owner</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Encrypted fields</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Last rotation</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Last reminder</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -801,7 +815,7 @@ function EncryptionTab() {
                       <td className="px-4 py-3">
                         <TenantLink tenantId={t.tenant_id} name={t.tenant_name} slug={t.tenant_slug} />
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted capitalize">{t.plan}</td>
+                      <td className="px-4 py-3 text-xs text-text-muted capitalize">{t.plan}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
                           t.tenant_status === 'active'
@@ -826,39 +840,39 @@ function EncryptionTab() {
                         {t.owner_email ? (
                           <div>
                             {ownerName && <div className="font-medium">{ownerName}</div>}
-                            <div className="text-[11px] text-muted break-all">{t.owner_email}</div>
+                            <div className="text-[11px] text-text-muted break-all">{t.owner_email}</div>
                           </div>
                         ) : (
-                          <span className="text-[11px] text-muted italic">No active owner</span>
+                          <span className="text-[11px] text-text-muted italic">No active owner</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         {t.encrypted_field_count > 0 ? (
                           <div>
                             <div className="font-medium">{t.encrypted_field_count.toLocaleString()}</div>
-                            <div className="text-[11px] text-muted">{t.encrypted_tables.join(', ')}</div>
+                            <div className="text-[11px] text-text-muted">{t.encrypted_tables.join(', ')}</div>
                           </div>
                         ) : (
-                          <span className="text-muted">—</span>
+                          <span className="text-text-muted">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted">{formatDateOnly(t.last_rotation_at)}</td>
+                      <td className="px-4 py-3 text-xs text-text-muted">{formatDateOnly(t.last_rotation_at)}</td>
                       <td className="px-4 py-3 text-xs">
                         {t.last_reminded_at ? (
                           <div>
-                            <div className="text-muted">{formatDate(t.last_reminded_at)}</div>
-                            <div className="text-[10px] text-muted">
+                            <div className="text-text-muted">{formatDate(t.last_reminded_at)}</div>
+                            <div className="text-[10px] text-text-muted">
                               {t.last_reminded_by_email
                                 ? `by ${t.last_reminded_by_email}`
                                 : 'by automated scheduler'}
                             </div>
                           </div>
                         ) : (
-                          <span className="text-muted">—</span>
+                          <span className="text-text-muted">—</span>
                         )}
                         {reminderPaused && (
                           <div
-                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-hover text-[10px] text-muted"
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-hover text-[10px] text-text-muted"
                             title={
                               t.encryption_reminder_paused_reason
                                 ? `Paused: ${t.encryption_reminder_paused_reason}`
@@ -933,7 +947,7 @@ function EncryptionTab() {
                                   ? 'Resume the automated reminder cadence for this tenant'
                                   : 'Pause the automated reminder cadence (manual sends still work)'
                               }
-                              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {reminderPaused ? (
                                 <Bell className="h-3.5 w-3.5" />
@@ -999,7 +1013,7 @@ function SubprocessorsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">
+        <p className="text-sm text-text-muted">
           Active sub-processors are published at <code>/subprocessors</code> and surface in the security posture document.
         </p>
         <button
@@ -1051,7 +1065,7 @@ function SubprocessorsTab() {
             >
               {createMutation.isPending ? 'Saving…' : 'Save'}
             </button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-muted hover:text-foreground">
+            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-text-muted hover:text-text-primary">
               Cancel
             </button>
           </div>
@@ -1063,12 +1077,12 @@ function SubprocessorsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Name</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Purpose</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Data types</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Location</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Actions</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Name</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Purpose</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Data types</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Location</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1088,8 +1102,8 @@ function SubprocessorsTab() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs">{s.purpose}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{s.data_types}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{s.location}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{s.data_types}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{s.location}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         s.is_active
@@ -1154,7 +1168,7 @@ function DeletionRequestsTab() {
           <option value="cancelled">Cancelled</option>
           <option value="completed">Completed</option>
         </select>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-text-muted">
           Tenants self-serve account deletion. Requests sit in a 30-day cool-off window before purge.
         </p>
       </div>
@@ -1164,12 +1178,12 @@ function DeletionRequestsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-secondary">
-                <th className="text-left px-4 py-3 font-medium text-muted">Tenant</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Requested by</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Requested</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Scheduled purge</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-muted">Reason</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Requested by</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Requested</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Scheduled purge</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-text-muted">Reason</th>
               </tr>
             </thead>
             <tbody>
@@ -1184,12 +1198,12 @@ function DeletionRequestsTab() {
                       <TenantLink tenantId={r.tenant_id} name={r.tenant_name} slug={r.tenant_slug} />
                     </td>
                     <td className="px-4 py-3 text-xs">{r.requested_by_email ?? r.requested_by.slice(0, 8)}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{formatDate(r.requested_at)}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{formatDate(r.requested_at)}</td>
                     <td className="px-4 py-3 text-xs">
                       {r.status === 'pending' ? (
                         <span className="font-medium">{formatDate(r.scheduled_for)}</span>
                       ) : (
-                        <span className="text-muted">{formatDate(r.scheduled_for)}</span>
+                        <span className="text-text-muted">{formatDate(r.scheduled_for)}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -1203,10 +1217,10 @@ function DeletionRequestsTab() {
                         {r.status}
                       </span>
                       {r.cancelled_by_email && (
-                        <div className="text-[10px] text-muted mt-1">cancelled by {r.cancelled_by_email}</div>
+                        <div className="text-[10px] text-text-muted mt-1">cancelled by {r.cancelled_by_email}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted max-w-sm truncate">{r.reason ?? '—'}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted max-w-sm truncate">{r.reason ?? '—'}</td>
                   </tr>
                 ))
               )}
@@ -1253,13 +1267,13 @@ function IsolationTab() {
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             Verifies that Row-Level Security is enabled on tenant-scoped tables and that one tenant cannot read another tenant's data.
             A background job runs the full suite {scheduler ? formatInterval(scheduler.intervalMs) : 'every day'} and pages
             platform admins on any failure. You can also re-run it on demand.
           </p>
           {summary?.last_run_at && (
-            <p className="text-xs text-muted mt-1">Most recent run {formatDate(summary.last_run_at)}</p>
+            <p className="text-xs text-text-muted mt-1">Most recent run {formatDate(summary.last_run_at)}</p>
           )}
         </div>
         <button
@@ -1274,39 +1288,39 @@ function IsolationTab() {
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-border bg-surface p-4 space-y-1">
-          <div className="text-xs uppercase tracking-wide text-muted font-medium flex items-center gap-1.5">
+          <div className="text-xs uppercase tracking-wide text-text-muted font-medium flex items-center gap-1.5">
             <RefreshCw className="h-3.5 w-3.5" /> Last automated run
           </div>
           <div className="text-sm font-semibold">
             {lastScheduled?.run_at ? formatDate(lastScheduled.run_at) : 'Not yet'}
           </div>
           {lastScheduled && lastScheduled.run_at && (
-            <div className="text-[11px] text-muted">
+            <div className="text-[11px] text-text-muted">
               {lastScheduled.passed} passed · {lastScheduled.failed} failed
             </div>
           )}
         </div>
         <div className="rounded-xl border border-border bg-surface p-4 space-y-1">
-          <div className="text-xs uppercase tracking-wide text-muted font-medium flex items-center gap-1.5">
+          <div className="text-xs uppercase tracking-wide text-text-muted font-medium flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5" /> Last manual run
           </div>
           <div className="text-sm font-semibold">
             {lastManual?.run_at ? formatDate(lastManual.run_at) : 'Not yet'}
           </div>
           {lastManual && lastManual.run_at && (
-            <div className="text-[11px] text-muted">
+            <div className="text-[11px] text-text-muted">
               {lastManual.passed} passed · {lastManual.failed} failed
             </div>
           )}
         </div>
         <div className="rounded-xl border border-border bg-surface p-4 space-y-1">
-          <div className="text-xs uppercase tracking-wide text-muted font-medium flex items-center gap-1.5">
+          <div className="text-xs uppercase tracking-wide text-text-muted font-medium flex items-center gap-1.5">
             <Activity className="h-3.5 w-3.5" /> Next scheduled run
           </div>
           <div className="text-sm font-semibold">
             {scheduler?.nextRunAt ? formatDate(scheduler.nextRunAt) : 'Scheduler not running'}
           </div>
-          <div className="text-[11px] text-muted">
+          <div className="text-[11px] text-text-muted">
             {scheduler?.isRunning
               ? `Background job runs ${formatInterval(scheduler.intervalMs)}`
               : 'Background job is not active in this environment'}
@@ -1362,7 +1376,7 @@ function IsolationTab() {
                 <div>
                   <div className="font-medium text-xs">{r.test_name}</div>
                   {r.details && typeof r.details === 'object' && 'details' in r.details && (
-                    <div className="text-[11px] text-muted">{(r.details as { details?: string }).details}</div>
+                    <div className="text-[11px] text-text-muted">{(r.details as { details?: string }).details}</div>
                   )}
                 </div>
               </li>
@@ -1375,11 +1389,11 @@ function IsolationTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 font-medium text-muted">Run at</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Source</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Test</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Result</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Details</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Run at</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Source</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Test</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Result</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Details</th>
             </tr>
           </thead>
           <tbody>
@@ -1390,7 +1404,7 @@ function IsolationTab() {
             ) : (
               data.recent.map((r) => (
                 <tr key={r.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 text-xs text-muted whitespace-nowrap">{formatDate(r.run_at)}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted whitespace-nowrap">{formatDate(r.run_at)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ${
                       r.source === 'scheduled'
@@ -1410,7 +1424,7 @@ function IsolationTab() {
                       {r.test_result}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted max-w-md truncate">
+                  <td className="px-4 py-3 text-xs text-text-muted max-w-md truncate">
                     {r.details && typeof r.details === 'object' && 'details' in r.details
                       ? (r.details as { details?: string }).details
                       : '—'}
@@ -1524,7 +1538,7 @@ function FederalDncTab() {
               <PhoneOff className="h-4 w-4 text-primary" />
               Federal Do-Not-Call registry sync
             </h3>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-text-muted">
               The platform pulls the FTC National DNC Registry once a week. Use this only when a
               support case can't wait for the next scheduled run — e.g. a customer reports we
               dialed a number that's already on the public federal list. The federal snapshot
@@ -1565,32 +1579,32 @@ function FederalDncTab() {
         ) : state ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted">Status</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-muted">Status</div>
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tone.classes}`}
               >
                 {tone.label}
               </span>
               {running && (
-                <div className="text-[11px] text-muted">A sync cycle is currently running.</div>
+                <div className="text-[11px] text-text-muted">A sync cycle is currently running.</div>
               )}
             </div>
             <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted">Last sync started</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-muted">Last sync started</div>
               <div className="text-sm font-medium">{formatDate(state.lastSyncStartedAt)}</div>
             </div>
             <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted">Last sync completed</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-muted">Last sync completed</div>
               <div className="text-sm font-medium">{formatDate(state.lastSyncCompletedAt)}</div>
             </div>
             <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted">Registry version</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-muted">Registry version</div>
               <div className="text-sm font-medium font-mono break-all">
                 {state.lastRegistryVersion ?? '—'}
               </div>
             </div>
             <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted">Numbers loaded</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-muted">Numbers loaded</div>
               <div className="text-sm font-medium">
                 {state.lastRecordCount === null
                   ? '—'
@@ -1598,7 +1612,7 @@ function FederalDncTab() {
               </div>
             </div>
             <div className="rounded-lg border border-border bg-surface-secondary/40 p-3 space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted">State updated</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-muted">State updated</div>
               <div className="text-sm font-medium">{formatDate(state.updatedAt)}</div>
             </div>
           </div>
@@ -1627,18 +1641,18 @@ function PlatformAdminsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
+      <p className="text-sm text-text-muted">
         Users with the platform admin flag bypass tenant scoping and can access every tenant's data. Treat the list below as a privileged-access roster.
       </p>
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-secondary">
-              <th className="text-left px-4 py-3 font-medium text-muted">User</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Email</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Tenant memberships</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Last login</th>
-              <th className="text-left px-4 py-3 font-medium text-muted">Account created</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">User</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Email</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant memberships</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Last login</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">Account created</th>
             </tr>
           </thead>
           <tbody>
@@ -1652,10 +1666,10 @@ function PlatformAdminsTab() {
                   <td className="px-4 py-3 font-medium">
                     {[a.first_name, a.last_name].filter(Boolean).join(' ') || a.email}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">{a.email}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{a.tenant_role_count}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{formatDate(a.last_login_at)}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{formatDateOnly(a.created_at)}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{a.email}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{a.tenant_role_count}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{formatDate(a.last_login_at)}</td>
+                  <td className="px-4 py-3 text-xs text-text-muted">{formatDateOnly(a.created_at)}</td>
                 </tr>
               ))
             )}
@@ -1709,7 +1723,7 @@ export default function PlatformCompliance() {
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                 tab === t.id
                   ? 'border-primary text-primary'
-                  : 'border-transparent text-muted hover:text-foreground hover:border-border'
+                  : 'border-transparent text-text-muted hover:text-text-primary hover:border-border'
               }`}
             >
               <t.icon className="h-4 w-4" />
