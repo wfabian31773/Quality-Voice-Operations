@@ -81,6 +81,27 @@ export default defineConfig({
           });
         },
       },
+      // Mirror the production `/vg/*` proxy admin-api mounts so dev mode
+      // can also serve Twilio webhooks whose TwiML now references
+      // `wss://<host>/vg/twilio/stream`. Strips `/vg` and forwards to
+      // voice-gateway on 3001, signaling the original prefix so the
+      // signature middleware reconstructs the right URL.
+      '/vg': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (urlPath) => urlPath.replace(/^\/vg/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const originalHost = req.headers.host || req.headers['x-forwarded-host'];
+            if (originalHost) {
+              proxyReq.setHeader('x-forwarded-host', originalHost);
+            }
+            proxyReq.setHeader('x-forwarded-proto', 'https');
+            proxyReq.setHeader('x-forwarded-prefix', '/vg');
+          });
+        },
+      },
     },
   },
 });

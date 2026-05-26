@@ -55,7 +55,16 @@ async function runTwilioSignatureCheck(req: Request, res: Response, next: NextFu
 
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const fullUrl = `${protocol}://${host}${req.originalUrl}`;
+  // When admin-api proxies us at `/vg/*` (production), it strips the
+  // `/vg` prefix before forwarding, so `req.originalUrl` here is the
+  // already-rewritten internal path (e.g. `/twilio/voice`). Twilio
+  // signed the public URL (`https://host/vg/twilio/voice`), so we must
+  // re-prepend the original prefix before verifying the signature.
+  const forwardedPrefixRaw = req.headers['x-forwarded-prefix'];
+  const forwardedPrefix = Array.isArray(forwardedPrefixRaw)
+    ? forwardedPrefixRaw[0]
+    : forwardedPrefixRaw ?? '';
+  const fullUrl = `${protocol}://${host}${forwardedPrefix}${req.originalUrl}`;
 
   const params = req.body && typeof req.body === 'object' ? req.body : {};
   const isValid = validateRequestFn(authToken, signature, fullUrl, params);

@@ -1,0 +1,2 @@
+- [Proxied Twilio signature URL](proxied-twilio-signature.md) — when proxying Twilio webhooks under a path prefix, the signature middleware must reconstruct the externally-signed URL, not the internally-rewritten one.
+- [QVO prod topology](qvo-prod-topology.md) — only admin-api is publicly exposed in prod; voice-gateway sits on a private port and must be reached via an admin-api `/vg/*` HTTP+WS proxy.

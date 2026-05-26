@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { errorHandler } from './middleware/errorHandler';
 import { auditMutation } from '../../platform/audit/auditMutation';
 import { createLogger } from '../../platform/core/logger';
@@ -76,6 +77,31 @@ const reqLogger = createLogger('REQ');
 
 app.use(cors(corsOptions()));
 app.use(cookieParser());
+
+// Voice gateway proxy. The voice-gateway process listens on
+// VOICE_GATEWAY_PORT (default 3001) but is not exposed to the public
+// internet — only the admin-api hostname is. Twilio webhooks POST to
+// `<public-host>/vg/twilio/voice` and the <Stream> URL embedded in the
+// TwiML response points at `wss://<public-host>/vg/twilio/stream`, both
+// of which we forward to the voice-gateway here. The path rewrite strips
+// the `/vg` prefix so the voice-gateway routes (mounted at `/`) match.
+// `ws: true` is wired through `server.on('upgrade', ...)` in start.ts.
+const voiceGatewayPort = parseInt(process.env.VOICE_GATEWAY_PORT ?? '3001', 10);
+export const voiceGatewayProxy = createProxyMiddleware({
+  target: `http://127.0.0.1:${voiceGatewayPort}`,
+  changeOrigin: false,
+  ws: true,
+  pathRewrite: { '^/vg': '' },
+  xfwd: true,
+  // Tell voice-gateway middleware that the path was originally prefixed
+  // with `/vg` on the public hostname. The Twilio signature middleware
+  // uses this to reconstruct the URL Twilio signed (e.g. it signs
+  // `https://host/vg/twilio/voice`, but after pathRewrite the request
+  // arrives as `/twilio/voice` — without the prefix, signature
+  // validation fails-closed with 403).
+  headers: { 'x-forwarded-prefix': '/vg' },
+});
+app.use('/vg', voiceGatewayProxy);
 
 app.use(
   '/billing/stripe-webhook',

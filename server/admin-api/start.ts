@@ -1,5 +1,5 @@
 import * as http from 'http';
-import app from './app';
+import app, { voiceGatewayProxy } from './app';
 import { closePlatformPool } from '../../platform/db';
 import { createLogger } from '../../platform/core/logger';
 import { startUsageMeteringWorker, stopUsageMeteringWorker } from '../../platform/billing/stripe/usage';
@@ -74,6 +74,18 @@ if (!envResult.passed && !isProd) {
 assertProductionSecrets();
 
 const server = http.createServer(app);
+
+// Forward WebSocket upgrade requests on /vg/* to the voice-gateway.
+// The HTTP arm of the proxy is registered as Express middleware in
+// app.ts; this hook is required for the wss:// <Stream> URL embedded
+// in TwiML responses to actually reach the voice-gateway process.
+server.on('upgrade', (req, socket, head) => {
+  if (req.url && req.url.startsWith('/vg/')) {
+    (voiceGatewayProxy as unknown as {
+      upgrade: (req: http.IncomingMessage, socket: import('net').Socket, head: Buffer) => void;
+    }).upgrade(req, socket as import('net').Socket, head);
+  }
+});
 
 server.listen(PORT, '0.0.0.0', async () => {
   logger.info(`Admin API listening on port ${PORT}`, {

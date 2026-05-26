@@ -274,7 +274,7 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
     const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3001';
     const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
     const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
-    const wsUrl = `${wsProtocol}://${host}/twilio/stream${tokenParam}`;
+    const wsUrl = `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
 
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?>
