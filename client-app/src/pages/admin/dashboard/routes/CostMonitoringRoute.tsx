@@ -1,4 +1,4 @@
-import { CostMonitoringTab } from '../../../PlatformAdmin';
+import { CostMonitoringTab } from '../panels/CostMonitoringTab';
 
 export default function CostMonitoringRoute() {
   return <CostMonitoringTab />;
