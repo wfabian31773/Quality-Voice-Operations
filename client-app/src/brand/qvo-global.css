@@ -1,0 +1,187 @@
+/* ─────────────────────────────────────────────────────────────
+   QVO Global Design Tokens — v1.0.0
+   Quality Voice Operations · Last updated 2026.05.25
+   
+   This stylesheet defines the canonical CSS variables for every
+   QVO surface: marketing, product, client portals, sales decks,
+   and any project bearing the QVO mark. Import or extend — do
+   not redefine.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── PRIMARY PALETTE ─────────────────────────────────────── */
+  --qvo-harbor:       #123047;   /* Deep Harbor — primary brand */
+  --qvo-teal:         #2E8C83;   /* Signal Teal — accent       */
+  --qvo-mist:         #F3F7F7;   /* Clinic Mist — light canvas */
+  --qvo-slate:        #1B232B;   /* Midnight Slate — body ink  */
+  --qvo-steel:        #CDD7DB;   /* Soft Steel — dividers      */
+
+  /* ── SECONDARY PALETTE ───────────────────────────────────── */
+  --qvo-success:      #4C9B6B;   /* Calm Green                 */
+  --qvo-warn:         #C98A2E;   /* Warm Amber                 */
+  --qvo-critical:     #B34D4D;   /* Controlled Red             */
+  --qvo-frost:        #DCEAF0;   /* Frost Blue                 */
+  --qvo-sand:         #E8E1D8;   /* Mineral Sand               */
+
+  /* ── HARBOR TONAL SCALE (derived) ────────────────────────── */
+  --qvo-harbor-50:    #EAF0F4;
+  --qvo-harbor-100:   #C9D6DF;
+  --qvo-harbor-200:   #97AAB9;
+  --qvo-harbor-300:   #677F92;
+  --qvo-harbor-400:   #3F586D;
+  --qvo-harbor-500:   #123047;
+  --qvo-harbor-600:   #0E263A;
+  --qvo-harbor-700:   #0A1D2C;
+  --qvo-harbor-800:   #07151F;
+  --qvo-harbor-900:   #050E16;
+
+  /* ── TEAL TONAL SCALE (derived) ──────────────────────────── */
+  --qvo-teal-50:      #E7F2F0;
+  --qvo-teal-100:     #B8DAD5;
+  --qvo-teal-200:     #84BFB7;
+  --qvo-teal-300:     #58A89F;
+  --qvo-teal-400:     #3E9890;
+  --qvo-teal-500:     #2E8C83;
+  --qvo-teal-600:     #246E67;
+  --qvo-teal-700:     #1B544F;
+  --qvo-teal-800:     #133B37;
+
+  /* ── SEMANTIC ALIASES (consume these in product code) ────── */
+  --qvo-bg:           var(--qvo-mist);
+  --qvo-bg-elevated:  #FFFFFF;
+  --qvo-bg-sunken:    #EAEFEF;
+  --qvo-fg:           var(--qvo-slate);
+  --qvo-fg-strong:    var(--qvo-harbor);
+  --qvo-fg-muted:     #5B6770;
+  --qvo-fg-subtle:    #8A949D;
+  --qvo-fg-inverse:   #FFFFFF;
+  --qvo-border:       var(--qvo-steel);
+  --qvo-border-strong:#A7B3B8;
+  --qvo-brand:        var(--qvo-harbor);
+  --qvo-accent:       var(--qvo-teal);
+  --qvo-focus-ring:   color-mix(in oklch, var(--qvo-teal) 50%, transparent);
+
+  /* ── TYPOGRAPHY ──────────────────────────────────────────── */
+  --qvo-font-display: 'Sora', system-ui, -apple-system, sans-serif;
+  --qvo-font-body:    'Manrope', system-ui, -apple-system, sans-serif;
+  --qvo-font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --qvo-fs-display:   clamp(48px, 5.6vw, 80px);
+  --qvo-fs-h1:        clamp(40px, 4.2vw, 56px);
+  --qvo-fs-h2:        clamp(28px, 2.6vw, 36px);
+  --qvo-fs-h3:        22px;
+  --qvo-fs-lead:      19px;
+  --qvo-fs-body:      16px;
+  --qvo-fs-small:     14px;
+  --qvo-fs-micro:     12px;
+  --qvo-fs-mono:      12px;
+
+  --qvo-lh-display:   1.02;
+  --qvo-lh-heading:   1.1;
+  --qvo-lh-body:      1.55;
+  --qvo-lh-tight:     1.25;
+
+  --qvo-tracking-display: -0.02em;
+  --qvo-tracking-mono:     0.04em;
+
+  /* ── SPACING (8px scale) ─────────────────────────────────── */
+  --qvo-s-0:          0;
+  --qvo-s-1:          4px;
+  --qvo-s-2:          8px;
+  --qvo-s-3:          12px;
+  --qvo-s-4:          16px;
+  --qvo-s-5:          24px;
+  --qvo-s-6:          32px;
+  --qvo-s-7:          48px;
+  --qvo-s-8:          64px;
+  --qvo-s-9:          96px;
+  --qvo-s-10:         128px;
+
+  /* ── RADIUS ──────────────────────────────────────────────── */
+  --qvo-r-xs:         4px;
+  --qvo-r-sm:         8px;
+  --qvo-r-md:         14px;
+  --qvo-r-lg:         18px;
+  --qvo-r-xl:         24px;
+  --qvo-r-full:       9999px;
+
+  /* ── ELEVATION (soft, used sparingly) ────────────────────── */
+  --qvo-shadow-1:     0 1px 2px rgba(18, 48, 71, 0.06), 0 0 0 1px rgba(18, 48, 71, 0.04);
+  --qvo-shadow-2:     0 4px 14px rgba(18, 48, 71, 0.08), 0 0 0 1px rgba(18, 48, 71, 0.04);
+  --qvo-shadow-3:     0 16px 48px rgba(18, 48, 71, 0.12);
+
+  /* ── MOTION ──────────────────────────────────────────────── */
+  --qvo-ease-out:     cubic-bezier(0.22, 1, 0.36, 1);
+  --qvo-ease-inout:   cubic-bezier(0.65, 0, 0.35, 1);
+  --qvo-dur-fast:     120ms;
+  --qvo-dur-med:      220ms;
+  --qvo-dur-slow:     420ms;
+
+  /* ── LAYOUT ──────────────────────────────────────────────── */
+  --qvo-grid-cols:    12;
+  --qvo-grid-gap:     24px;
+  --qvo-container:    1240px;
+  --qvo-content:      720px;
+}
+
+[data-theme="dark"] {
+  --qvo-bg:           var(--qvo-harbor-800);
+  --qvo-bg-elevated:  var(--qvo-harbor-700);
+  --qvo-bg-sunken:    var(--qvo-harbor-900);
+  --qvo-fg:           #E6ECEF;
+  --qvo-fg-strong:    #FFFFFF;
+  --qvo-fg-muted:     #94A3AC;
+  --qvo-fg-subtle:    #6B7880;
+  --qvo-fg-inverse:   var(--qvo-harbor);
+  --qvo-border:       #1F3A4F;
+  --qvo-border-strong:#385A72;
+}
+
+[data-accent="teal-forward"] {
+  --qvo-brand:        var(--qvo-teal);
+  --qvo-accent:       var(--qvo-harbor);
+}
+
+/* ── BASE RESET ─────────────────────────────────────────────── */
+/* Wrapped in `@layer base` (per Tailwind v4 ordering: theme, base,
+   components, utilities) so utility classes — e.g. `.text-white` on
+   a hero <h1> sitting over a dark image — can override these brand
+   defaults on a per-element basis. Without the layer, unlayered
+   rules would beat every layered utility regardless of selector
+   specificity, making the brand defaults effectively un-overridable. */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--qvo-font-body);
+    font-size: var(--qvo-fs-body);
+    line-height: var(--qvo-lh-body);
+    color: var(--qvo-fg);
+    background: var(--qvo-bg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4, h5 {
+    font-family: var(--qvo-font-display);
+    font-weight: 600;
+    letter-spacing: var(--qvo-tracking-display);
+    line-height: var(--qvo-lh-heading);
+    margin: 0;
+    color: var(--qvo-fg-strong);
+  }
+  a { color: inherit; }
+  button { font-family: inherit; }
+  ::selection { background: var(--qvo-teal); color: white; }
+}
+
+/* Utility helpers — kept outside `@layer base` so they behave like
+   ordinary utility classes (consumable everywhere, no special
+   layer-ordering tricks needed). */
+.qvo-mono { font-family: var(--qvo-font-mono); letter-spacing: var(--qvo-tracking-mono); }
+.qvo-eyebrow {
+  font-family: var(--qvo-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--qvo-fg-muted);
+}

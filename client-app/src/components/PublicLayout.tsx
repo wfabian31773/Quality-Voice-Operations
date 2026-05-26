@@ -140,18 +140,27 @@ export default function PublicLayout() {
   };
 
   return (
-    <div className="public-surface min-h-screen flex flex-col bg-surface-secondary font-body text-text-primary">
+    // `data-accent="teal-forward"` per brand kit: marketing surface leads
+    // with TEAL (primary), with harbor as the supporting accent. Authed
+    // consoles inherit the default harbor-forward palette from <html>.
+    <div
+      data-accent="teal-forward"
+      className="public-surface min-h-screen flex flex-col bg-surface-secondary font-body text-text-primary"
+    >
       <header
         className="bg-sidebar-bg text-on-sidebar sticky top-0 z-dropdown border-b border-on-sidebar/5"
         style={{ boxShadow: 'var(--elevation-1)' }}
       >
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <Link to="/" className="flex items-center gap-2.5 shrink-0">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Phone className="h-4 w-4 text-on-primary" />
-              </div>
-              <span className="font-display text-xl font-bold tracking-tight">{t('brand.name')}</span>
+            <Link to="/" className="shrink-0 inline-flex items-center" aria-label={t('brand.name')}>
+              <img
+                src="/brand/logo-lockup-white.png"
+                alt={t('brand.name')}
+                className="h-7 w-auto block"
+                width="240"
+                height="80"
+              />
             </Link>
 
             <nav className="hidden lg:flex items-center gap-1" ref={dropdownRef}>
@@ -269,21 +278,25 @@ export default function PublicLayout() {
                 {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
                 <span className="text-xs font-medium">{dark ? t('theme.light') : t('theme.dark')}</span>
               </button>
+              {/* Brand-spec buttons per qvo-components.css `.qvo-btn`:
+                  40px tall, 14px text, 16px horizontal padding, 8px radius.
+                  Sign In = link, Book a Demo = ghost outline, Start Trial = primary.
+                  Color treatment is on-dark because the navbar is sidebar-bg (harbor). */}
               <Link
                 to="/login"
-                className="text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar transition-colors duration-[var(--motion-fast)] px-3 py-2 rounded-lg"
+                className="inline-flex items-center justify-center h-10 px-3 text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar transition-colors rounded-md"
               >
                 {t('actions.sign_in')}
               </Link>
               <Link
                 to="/book-demo"
-                className="text-sm font-medium text-on-sidebar/90 hover:text-on-sidebar border border-on-sidebar/20 hover:border-on-sidebar/40 px-3.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
+                className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium text-on-sidebar border border-on-sidebar/25 hover:border-on-sidebar/50 hover:bg-on-sidebar/5 transition-colors rounded-md"
               >
                 {t('actions.book_demo')}
               </Link>
               <Link
                 to="/signup"
-                className="btn-primary-glow text-sm font-medium bg-primary hover:bg-primary-hover text-on-primary px-4 py-2 rounded-lg transition-colors duration-[var(--motion-fast)]"
+                className="inline-flex items-center justify-center h-10 px-4 text-sm font-semibold bg-primary hover:bg-primary-hover text-on-primary transition-colors rounded-md"
               >
                 {t('actions.start_trial')}
               </Link>

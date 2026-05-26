@@ -1,0 +1,245 @@
+/* ─────────────────────────────────────────────────────────────
+   QVO Components — v1.0.0
+   Quality Voice Operations · Last updated 2026.05.25
+
+   Companion to global.css. Provides the primitive components
+   every QVO surface needs: buttons, inputs, badges, status
+   pills, links, cards, layout helpers, and code blocks.
+
+   Load AFTER global.css. Both stylesheets together are the
+   complete distributable for any non-marketing QVO project
+   (product, portal, sales deck, prototype).
+
+   All class names are `qvo-` prefixed to avoid collision.
+   ───────────────────────────────────────────────────────────── */
+
+/* ── Typography helpers ────────────────────────────────────── */
+.qvo-eyebrow {
+  font-family: var(--qvo-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--qvo-fg-muted);
+}
+.qvo-label {
+  font-family: var(--qvo-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--qvo-fg-muted);
+}
+.qvo-h3   { font-family: var(--qvo-font-display); font-size: var(--qvo-fs-h3); font-weight: 600; letter-spacing: -0.01em; color: var(--qvo-fg-strong); margin: 0; }
+.qvo-h4   { font-family: var(--qvo-font-display); font-size: 18px; font-weight: 600; color: var(--qvo-fg-strong); margin: 0; }
+.qvo-lead { font-size: var(--qvo-fs-lead); color: var(--qvo-fg-muted); line-height: 1.5; }
+
+/* ── Layout helpers ────────────────────────────────────────── */
+.qvo-row   { display: grid; gap: var(--qvo-grid-gap); }
+.qvo-row-2 { grid-template-columns: repeat(2, 1fr); }
+.qvo-row-3 { grid-template-columns: repeat(3, 1fr); }
+.qvo-row-4 { grid-template-columns: repeat(4, 1fr); }
+.qvo-stack { display: flex; flex-direction: column; gap: var(--g, 16px); }
+.qvo-cluster { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.qvo-container { max-width: var(--qvo-container); margin: 0 auto; padding: 0 var(--qvo-s-6); }
+.qvo-content   { max-width: var(--qvo-content); }
+.qvo-divider   { height: 1px; background: var(--qvo-border); border: 0; margin: var(--qvo-s-6) 0; }
+
+/* ── Card ──────────────────────────────────────────────────── */
+.qvo-card {
+  background: var(--qvo-bg-elevated);
+  border: 1px solid var(--qvo-border);
+  border-radius: var(--qvo-r-md);
+  padding: var(--qvo-s-5);
+}
+.qvo-card--inset    { background: transparent; border-style: dashed; }
+.qvo-card--sunken   { background: var(--qvo-bg-sunken); border-color: transparent; }
+.qvo-card--invert   { background: var(--qvo-harbor); color: var(--qvo-fg-inverse); border-color: transparent; }
+.qvo-card--invert .qvo-label,
+.qvo-card--invert .qvo-eyebrow { color: rgba(255,255,255,0.55); }
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.qvo-btn {
+  --bg: var(--qvo-bg-elevated);
+  --fg: var(--qvo-fg-strong);
+  --bd: var(--qvo-border-strong);
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--qvo-font-body);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--bd);
+  border-radius: var(--qvo-r-sm);
+  padding: 10px 16px;
+  min-height: 40px;
+  cursor: pointer;
+  transition: background var(--qvo-dur-fast), border-color var(--qvo-dur-fast), color var(--qvo-dur-fast);
+  text-decoration: none;
+}
+.qvo-btn:hover    { border-color: var(--qvo-harbor); }
+.qvo-btn:focus-visible { outline: 2px solid var(--qvo-focus-ring); outline-offset: 2px; }
+.qvo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.qvo-btn--primary   { --bg: var(--qvo-harbor); --fg: #fff; --bd: var(--qvo-harbor); }
+.qvo-btn--primary:hover   { --bg: var(--qvo-harbor-600); --bd: var(--qvo-harbor-600); }
+.qvo-btn--accent    { --bg: var(--qvo-teal);   --fg: #fff; --bd: var(--qvo-teal); }
+.qvo-btn--accent:hover    { --bg: var(--qvo-teal-600); --bd: var(--qvo-teal-600); }
+.qvo-btn--ghost     { --bg: transparent; --fg: var(--qvo-fg-strong); --bd: transparent; }
+.qvo-btn--ghost:hover     { --bg: var(--qvo-bg-sunken); }
+.qvo-btn--danger    { --bg: var(--qvo-critical); --fg: #fff; --bd: var(--qvo-critical); }
+
+.qvo-btn--sm        { font-size: 12px; padding: 6px 12px; min-height: 30px; border-radius: var(--qvo-r-xs); }
+.qvo-btn--lg        { font-size: 16px; padding: 14px 22px; min-height: 52px; }
+.qvo-btn--block     { width: 100%; }
+
+/* ── Inputs / fields ───────────────────────────────────────── */
+.qvo-field { display: flex; flex-direction: column; gap: 6px; }
+.qvo-field__label {
+  font-family: var(--qvo-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--qvo-fg-muted);
+}
+.qvo-field__hint  { font-size: 12px; color: var(--qvo-fg-subtle); }
+.qvo-field__error { font-size: 12px; color: var(--qvo-critical); }
+
+.qvo-input,
+.qvo-textarea,
+.qvo-select {
+  font-family: var(--qvo-font-body);
+  font-size: 14px;
+  color: var(--qvo-fg-strong);
+  background: var(--qvo-bg-elevated);
+  border: 1px solid var(--qvo-border-strong);
+  border-radius: var(--qvo-r-sm);
+  padding: 10px 12px;
+  min-height: 40px;
+  outline: none;
+  transition: border-color var(--qvo-dur-fast), box-shadow var(--qvo-dur-fast);
+  width: 100%;
+}
+.qvo-textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
+.qvo-input::placeholder,
+.qvo-textarea::placeholder { color: var(--qvo-fg-subtle); }
+.qvo-input:focus,
+.qvo-textarea:focus,
+.qvo-select:focus { border-color: var(--qvo-teal); box-shadow: 0 0 0 3px var(--qvo-focus-ring); }
+.qvo-input[aria-invalid="true"] { border-color: var(--qvo-critical); }
+
+/* ── Badges, chips, pills ──────────────────────────────────── */
+.qvo-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--qvo-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--qvo-r-xs);
+  background: var(--qvo-bg-sunken);
+  color: var(--qvo-fg-muted);
+}
+.qvo-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--qvo-r-full);
+  background: var(--qvo-bg-sunken);
+  color: var(--qvo-fg);
+  border: 1px solid var(--qvo-border);
+}
+
+.qvo-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--qvo-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: var(--qvo-r-full);
+  background: var(--qvo-bg-sunken);
+  color: var(--qvo-fg-muted);
+}
+.qvo-pill--success  { background: color-mix(in oklch, var(--qvo-success) 14%, transparent); color: #2F6B47; }
+.qvo-pill--warn     { background: color-mix(in oklch, var(--qvo-warn) 16%, transparent);    color: #8A5C18; }
+.qvo-pill--critical { background: color-mix(in oklch, var(--qvo-critical) 14%, transparent); color: #8A3838; }
+.qvo-pill--teal     { background: var(--qvo-teal-50);   color: var(--qvo-teal-700); }
+.qvo-pill--harbor   { background: var(--qvo-harbor-50); color: var(--qvo-harbor); }
+
+.qvo-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--qvo-fg-subtle); flex-shrink: 0;
+}
+.qvo-dot--success  { background: var(--qvo-success); }
+.qvo-dot--warn     { background: var(--qvo-warn); }
+.qvo-dot--critical { background: var(--qvo-critical); }
+.qvo-dot--teal     { background: var(--qvo-teal); }
+
+/* ── Links ─────────────────────────────────────────────────── */
+.qvo-link {
+  color: var(--qvo-teal-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.qvo-link:hover { color: var(--qvo-teal-600); }
+
+/* ── Key/value list ────────────────────────────────────────── */
+.qvo-kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 16px; font-family: var(--qvo-font-mono); font-size: 12px; margin: 0; }
+.qvo-kv dt { color: var(--qvo-fg-subtle); }
+.qvo-kv dd { margin: 0; color: var(--qvo-fg); }
+
+/* ── Code ──────────────────────────────────────────────────── */
+.qvo-code {
+  font-family: var(--qvo-font-mono);
+  font-size: 12px;
+  background: var(--qvo-bg-sunken);
+  color: var(--qvo-fg-strong);
+  padding: 2px 8px;
+  border-radius: var(--qvo-r-xs);
+  border: 1px solid var(--qvo-border);
+}
+pre.qvo-code-block {
+  font-family: var(--qvo-font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  background: var(--qvo-harbor-800);
+  color: #C9D6DF;
+  padding: 20px 24px;
+  border-radius: var(--qvo-r-sm);
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* ── Data table ────────────────────────────────────────────── */
+.qvo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.qvo-table th {
+  text-align: left;
+  font-family: var(--qvo-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--qvo-fg-subtle);
+  font-weight: 500;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--qvo-border);
+}
+.qvo-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--qvo-border);
+  color: var(--qvo-fg);
+}
+.qvo-table tr:last-child td { border-bottom: 0; }
+
+/* ── Focus accessibility ───────────────────────────────────── */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--qvo-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--qvo-r-xs);
+}

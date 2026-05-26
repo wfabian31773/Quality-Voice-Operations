@@ -131,18 +131,24 @@ export default function PageHero({
         >
           <div className={`${textMaxWidthClass} text-white`}>
             {eyebrow ? (
-              <p className="font-display text-[11px] tracking-[0.18em] uppercase mb-6 text-primary-light">
+              // Eyebrow uses --color-primary so it picks up teal under
+              // [data-accent="teal-forward"] (PublicLayout) and harbor
+              // elsewhere — automatically brand-correct per surface.
+              <p className="font-display text-[11px] tracking-[0.18em] uppercase mb-6 text-primary">
                 {eyebrow}
               </p>
             ) : null}
-            <h1 className="font-display text-[40px] sm:text-5xl lg:text-[64px] font-bold leading-[1.05] mb-6 [text-wrap:balance]">
+            {/* Explicit `text-white` because qvo-global.css resets every
+                <h1> to `color: var(--qvo-fg-strong)` (= harbor) by default —
+                that direct style beats the parent wrapper's inherited
+                `text-white`. The teal accent span has its own color so it's
+                unaffected. */}
+            <h1 className="font-display text-white text-[40px] sm:text-5xl lg:text-[64px] font-bold leading-[1.05] mb-6 [text-wrap:balance]">
               {title}
               {titleAccent ? (
                 <>
                   <br />
-                  <span className="text-primary-light dark:text-primary">
-                    {titleAccent}
-                  </span>
+                  <span className="text-primary">{titleAccent}</span>
                 </>
               ) : null}
             </h1>

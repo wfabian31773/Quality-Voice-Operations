@@ -45,6 +45,7 @@
 @source "../components/ui/**/*.{tsx,ts}";
 @source "../components/illustrations/**/*.{tsx,ts}";
 @source "../components/demo/**/*.{tsx,ts}";
+@source "../components/marketing/**/*.{tsx,ts}";
 
 /* All public marketing pages + public-styled top-level entry pages */
 @source "../pages/public/**/*.{tsx,ts}";

@@ -1,103 +1,115 @@
 /* =================================================================
- * QVO DESIGN SYSTEM — Refined Harbor (locked 2026-04-27)
+ * QVO DESIGN-TOKEN BRIDGE — locked to the brand bible 2026-05-25
  *
- * Shared @theme block. Imported by both the eager `tokens.css` (so the
- * design tokens are defined for the initial paint of the loading screen,
- * the error/maintenance fallbacks, etc.) and by every per-surface
- * Tailwind sheet (so utility classes resolve theme variables correctly
- * when each sheet is generated at build time).
+ * Imported by `tokens.css` AFTER `brand/qvo-global.css` and
+ * `brand/qvo-components.css`. The qvo-* files are the source of
+ * truth (see /Users/waynefabian/Downloads/qvo-brand-kit). This
+ * file does nothing but bridge — every token we ship to Tailwind
+ * is a thin alias over a `--qvo-*` token defined upstream.
  *
- * Source of truth. Do not edit per-component; add semantic tokens here.
- * See docs/design-system.md for the rules.
+ * WHY THIS PATTERN
+ * Tailwind v4 generates utility classes (`.bg-primary`,
+ * `.text-text-secondary`, `.border-border-strong`, etc.) from
+ * tokens declared inside `@theme {}`. By aliasing them to
+ * `--qvo-*` tokens, every utility we already use across the
+ * codebase automatically adopts the brand palette without per-
+ * page rewrites. Dark mode flips by piggybacking on QVO's own
+ * `[data-theme="dark"]` selector (see `lib/theme.ts` — the
+ * toggle sets both `.dark` for Tailwind variants AND
+ * `data-theme="dark"` for the QVO redefinitions to fire).
+ *
+ * WHEN TO EDIT
+ * - Adding a new product token? Add an alias here, value pointing
+ *   to the closest `--qvo-*` token. Do not invent a new hex.
+ * - Changing the brand palette? Edit `brand/qvo-global.css`
+ *   directly (it is the bible). Every page on every surface
+ *   inherits via this bridge.
  * ================================================================= */
 @theme {
   /* ---------- Type ---------- */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--qvo-font-body);       /* Manrope */
+  --font-display: var(--qvo-font-display); /* Sora */
+  --font-body: var(--qvo-font-body);       /* Manrope */
+  --font-mono: var(--qvo-font-mono);       /* JetBrains Mono */
 
-  /* ---------- Brand (Refined Harbor) ---------- */
-  --color-primary: #1F8E83;
-  --color-primary-hover: #177268;
-  --color-primary-light: #D8EDEB;
+  /* ---------- Brand (primary = Deep Harbor) ---------- */
+  --color-primary: var(--qvo-brand);
+  --color-primary-hover: var(--qvo-harbor-600);
+  --color-primary-light: var(--qvo-harbor-50);
   --color-on-primary: #FFFFFF;
 
-  --color-accent: #94A88B;
-  --color-accent-hover: #7E9476;
-  --color-accent-light: #E4ECDF;
-  --color-on-accent: #0E2738;
+  /* ---------- Accent (Signal Teal) ---------- */
+  --color-accent: var(--qvo-accent);
+  --color-accent-hover: var(--qvo-teal-600);
+  --color-accent-light: var(--qvo-teal-50);
+  --color-on-accent: #FFFFFF;
 
-  /* ---------- Semantic feedback ---------- */
-  --color-success: #2F8F58;
-  --color-success-light: #DDF0E5;
-  --color-warning: #C98A2E;
-  --color-warning-light: #F6E7CB;
-  --color-danger: #B34D4D;
+  /* ---------- Semantic feedback (reserved for system state) ---------- */
+  --color-success: var(--qvo-success);
+  --color-success-light: color-mix(in oklch, var(--qvo-success) 14%, transparent);
+  --color-warning: var(--qvo-warn);
+  --color-warning-light: color-mix(in oklch, var(--qvo-warn) 16%, transparent);
+  --color-danger: var(--qvo-critical);
   --color-danger-hover: #962F2F;
-  --color-danger-light: #F4D8D8;
-  --color-info: #3A7BBF;
-  --color-info-light: #D7E5F2;
+  --color-danger-light: color-mix(in oklch, var(--qvo-critical) 14%, transparent);
+  --color-info: var(--qvo-teal-700);
+  --color-info-light: var(--qvo-frost);
 
-  /* ---------- Surfaces & text ---------- */
-  --color-surface: #FFFFFF;
-  --color-surface-secondary: #F1F4F6;
-  --color-surface-hover: #EAF0F2;
-  --color-surface-muted: #EAF0F2;
-  --color-surface-inverse: #0E2738;
-  --color-on-inverse: #E8EFF2;
-  --color-border: #D9E2E6;
-  --color-border-strong: #B8C5CC;
-  --color-text-primary: #0E2738;
-  --color-text-secondary: #506575;
-  --color-text-muted: #8FA5B4;
+  /* ---------- Surfaces & text (semantic aliases) ---------- */
+  --color-surface: var(--qvo-bg-elevated);
+  --color-surface-secondary: var(--qvo-bg);
+  --color-surface-hover: var(--qvo-bg-sunken);
+  --color-surface-muted: var(--qvo-bg-sunken);
+  --color-surface-inverse: var(--qvo-harbor);
+  --color-on-inverse: var(--qvo-fg-inverse);
+  --color-border: var(--qvo-border);
+  --color-border-strong: var(--qvo-border-strong);
+  --color-text-primary: var(--qvo-fg-strong);
+  --color-text-secondary: var(--qvo-fg-muted);
+  --color-text-muted: var(--qvo-fg-subtle);
 
-  /* ---------- Chrome (sidebars / consoles) ---------- */
-  --color-sidebar-bg: #0E2738;
-  --color-sidebar-text: #C5D2DA;
-  --color-sidebar-active: #1F8E83;
-  --color-sidebar-hover: #143A52;
-  /* High-emphasis text/icon color sitting on `bg-sidebar-bg`. The sidebar
-   * background is dark in both light AND dark mode, so this token is
-   * white in both — replaces raw `text-white` / `bg-white/15` usage. */
+  /* ---------- Chrome (sidebars / consoles always wear harbor) ---------- */
+  --color-sidebar-bg: var(--qvo-harbor);
+  --color-sidebar-text: var(--qvo-harbor-200);
+  --color-sidebar-active: var(--qvo-teal);
+  --color-sidebar-hover: var(--qvo-harbor-600);
   --color-on-sidebar: #FFFFFF;
 
-  /* Modal / dialog / drawer scrim. Tinted with the brand navy in light
-   * mode and pure black in dark mode for visual depth. */
-  --color-overlay: rgba(14, 39, 56, 0.55);
+  /* Modal / dialog / drawer scrim — tinted with harbor for visual depth */
+  --color-overlay: rgba(18, 48, 71, 0.55);
 
-  /* ---------- Radius (generous, premium) ---------- */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
-  --radius-pill: 9999px;
+  /* ---------- Radius (brand-aligned) ---------- */
+  --radius-sm: var(--qvo-r-xs);    /* 4px  — chips, tiny pills */
+  --radius-md: var(--qvo-r-sm);    /* 8px  — inputs, buttons */
+  --radius-lg: var(--qvo-r-md);    /* 14px — cards */
+  --radius-xl: var(--qvo-r-lg);    /* 18px — large cards / sheets */
+  --radius-pill: var(--qvo-r-full);
 
-  /* ---------- Spacing (4px grid) ---------- */
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 12px;
-  --spacing-4: 16px;
-  --spacing-5: 24px;
-  --spacing-6: 32px;
-  --spacing-7: 48px;
-  --spacing-8: 64px;
+  /* ---------- Spacing (8px scale per brand) ---------- */
+  --spacing-1: var(--qvo-s-1);   /* 4px  */
+  --spacing-2: var(--qvo-s-2);   /* 8px  */
+  --spacing-3: var(--qvo-s-3);   /* 12px */
+  --spacing-4: var(--qvo-s-4);   /* 16px */
+  --spacing-5: var(--qvo-s-5);   /* 24px */
+  --spacing-6: var(--qvo-s-6);   /* 32px */
+  --spacing-7: var(--qvo-s-7);   /* 48px */
+  --spacing-8: var(--qvo-s-8);   /* 64px */
 
-  /* ---------- Elevation (soft, harbor-tinted) ---------- */
-  --elevation-1: 0 1px 2px rgba(14, 39, 56, 0.05);
-  --elevation-2: 0 8px 24px rgba(14, 39, 56, 0.06), 0 2px 6px rgba(14, 39, 56, 0.04);
-  --elevation-3: 0 24px 48px rgba(14, 39, 56, 0.10), 0 6px 14px rgba(14, 39, 56, 0.06);
-  --elevation-glow: 0 0 0 4px rgba(31, 142, 131, 0.18);
+  /* ---------- Elevation (brand-aligned, soft, harbor-tinted) ---------- */
+  --elevation-1: var(--qvo-shadow-1);
+  --elevation-2: var(--qvo-shadow-2);
+  --elevation-3: var(--qvo-shadow-3);
+  --elevation-glow: 0 0 0 3px var(--qvo-focus-ring);
 
   /* ---------- Motion ---------- */
-  --motion-fast: 120ms;
-  --motion-base: 200ms;
-  --motion-slow: 320ms;
-  --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --easing-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: var(--qvo-dur-fast);
+  --motion-base: var(--qvo-dur-med);
+  --motion-slow: var(--qvo-dur-slow);
+  --easing-standard: var(--qvo-ease-out);
+  --easing-emphasized: var(--qvo-ease-inout);
 
   /* ---------- A11y / focus ---------- */
-  --focus-ring-color: #1F8E83;
+  --focus-ring-color: var(--qvo-teal);
   --focus-ring-offset: 2px;
   --focus-ring-width: 2px;
   --touch-target-min: 44px;
@@ -127,55 +139,70 @@
 }
 
 /* =================================================================
- * REFINED HARBOR — DARK MODE TOKEN OVERRIDES
- * Paired with light tokens above. AA contrast verified.
- * Lives next to @theme so the dark variant of a token is always
- * available wherever the light variant is.
+ * DARK MODE — bridges + chrome-specific overrides
+ *
+ * QVO's `[data-theme="dark"]` redefines `--qvo-bg/fg/border` family,
+ * so every alias above (`--color-surface` -> `--qvo-bg-elevated`,
+ * `--color-text-primary` -> `--qvo-fg-strong`, etc.) auto-flips.
+ *
+ * What we override below is anything that needs a dark-specific
+ * value the brand doesn't already define — primarily the chrome
+ * (sidebar gets even darker, elevation shadows get stronger,
+ * focus glow gets brighter teal). We also re-apply via `.dark`
+ * because `lib/theme.ts` toggles BOTH `.dark` AND the
+ * `data-theme="dark"` attribute on `<html>` for parity with
+ * Tailwind variants.
  * ================================================================= */
 .dark {
-  --color-primary: #2DD4BF;
-  --color-primary-hover: #5EEAD4;
-  --color-primary-light: #134E48;
-  --color-on-primary: #0A0D10;
-
-  --color-accent: #98B690;
-  --color-accent-hover: #B0CCA8;
-  --color-accent-light: #1F2A1C;
-  --color-on-accent: #0A0D10;
-
-  --color-success: #4FB97A;
-  --color-success-light: #1A2E22;
-  --color-warning: #E0A654;
-  --color-warning-light: #2A2114;
-  --color-danger: #D17070;
-  --color-danger-hover: #E08585;
-  --color-danger-light: #2A1818;
-  --color-info: #6FA5DD;
-  --color-info-light: #14202C;
-
-  --color-surface: #14181B;
-  --color-surface-secondary: #0E1114;
-  --color-surface-hover: #1F2428;
-  --color-surface-muted: #1F2428;
-  --color-surface-inverse: #E8EFF2;
-  --color-on-inverse: #0E2738;
-  --color-border: #262B30;
-  --color-border-strong: #3A4047;
-  --color-text-primary: #E8EFF2;
-  --color-text-secondary: #8FA5B4;
-  --color-text-muted: #607585;
-
-  --color-sidebar-bg: #0A0D10;
-  --color-sidebar-text: #8B9098;
-  --color-sidebar-active: #2DD4BF;
-  --color-sidebar-hover: #14181B;
+  /* Chrome — deeper harbor for sidebar contrast */
+  --color-sidebar-bg: var(--qvo-harbor-900);
+  --color-sidebar-text: var(--qvo-harbor-200);
+  --color-sidebar-active: var(--qvo-teal-400);
+  --color-sidebar-hover: var(--qvo-harbor-700);
   --color-on-sidebar: #FFFFFF;
-  --color-overlay: rgba(0, 0, 0, 0.75);
 
+  /* Scrim is opaque black in dark mode for stronger separation */
+  --color-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Elevation needs stronger shadows on dark backgrounds to read */
   --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.40);
   --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.30);
   --elevation-3: 0 24px 48px rgba(0, 0, 0, 0.55), 0 6px 14px rgba(0, 0, 0, 0.35);
-  --elevation-glow: 0 0 0 4px rgba(45, 212, 191, 0.28);
+  --elevation-glow: 0 0 0 3px color-mix(in oklch, var(--qvo-teal-400) 50%, transparent);
 
-  --focus-ring-color: #2DD4BF;
+  /* Brighter teal focus ring against deep harbor */
+  --focus-ring-color: var(--qvo-teal-400);
+}
+
+/* =================================================================
+ * TEAL-FORWARD SURFACE OVERRIDE
+ *
+ * The brand kit ships a `[data-accent="teal-forward"]` swap that
+ * makes teal the brand and harbor the supporting accent. We apply
+ * it on the marketing surface (`PublicLayout`) so public pages lead
+ * with teal — the bold, distinctive color users associate with QVO.
+ *
+ * Why we re-define here (instead of relying on `--color-primary:
+ * var(--qvo-brand)` to follow the swap): Tailwind v4 RESOLVES
+ * `var()` inside `@theme` at compile time, baking the static value
+ * into the generated utility (`--color-primary` literally becomes
+ * harbor `#123047`). The cascade-time swap of `--qvo-brand` no
+ * longer reaches our `--color-*` tokens. Explicitly re-aliasing
+ * here makes the swap propagate through every utility class
+ * (`bg-primary`, `text-primary`, `border-primary`, …) that lives on
+ * a teal-forward subtree.
+ * ================================================================= */
+[data-accent="teal-forward"] {
+  --color-primary:        var(--qvo-teal);
+  --color-primary-hover:  var(--qvo-teal-600);
+  --color-primary-light:  var(--qvo-teal-50);
+  --color-on-primary:     #FFFFFF;
+
+  --color-accent:         var(--qvo-harbor);
+  --color-accent-hover:   var(--qvo-harbor-600);
+  --color-accent-light:   var(--qvo-harbor-50);
+  --color-on-accent:      #FFFFFF;
+
+  /* Focus ring stays teal — it IS the brand here. */
+  --focus-ring-color:     var(--qvo-teal);
 }
