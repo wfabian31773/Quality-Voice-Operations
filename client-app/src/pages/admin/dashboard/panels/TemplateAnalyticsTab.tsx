@@ -1,8 +1,45 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  BarChart3, TrendingUp, TrendingDown,
+  Download as DownloadIcon, Activity, PhoneCall,
+} from 'lucide-react';
+import clsx from 'clsx';
 import { api } from '../../../../lib/api';
+import { StatCard } from '../../../../components/ui';
+// Phase 2.4 split missed StatusBadge — re-export added in PlatformAdmin.
+import { StatusBadge } from '../../../PlatformAdmin';
+
+// Lightweight stat helper used in the per-template detail card.
+// Mirrors the same shape as the MetricItem in ActivationMetricsTab so
+// both tabs render consistent micro-stats; kept inline because the only
+// other consumer (ActivationMetricsTab) also has its own copy and the
+// two trend-prop variants differ slightly.
+function MetricItem({
+  label,
+  value,
+  trend,
+}: {
+  label: string;
+  value: string | ReactNode;
+  trend?: 'up' | 'down' | 'neutral';
+}) {
+  return (
+    <div>
+      <p className="text-xs text-text-secondary">{label}</p>
+      <p
+        className={clsx(
+          'font-medium text-sm',
+          trend === 'up' && 'text-success',
+          trend === 'down' && 'text-danger',
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
 
 /**
  * Template Analytics admin tab — extracted from PlatformAdmin.tsx in

@@ -3,6 +3,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { api } from '../../../../lib/api';
+// Phase 2.4 split missed these — they live in the parent PlatformAdmin
+// file but weren't carried over with the tab extraction. The parent now
+// re-exports them so this import resolves.
+import { formatHours, PlanBadge, type OnboardingFunnel } from '../../../PlatformAdmin';
 
 /**
  * Activation Metrics admin tab — extracted from PlatformAdmin.tsx in

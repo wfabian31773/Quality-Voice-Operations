@@ -149,7 +149,7 @@ export function formatCents(cents: string | number): string {
  * remaining seconds without each consumer wiring up its own setInterval.
  * Returns Date.now() at the latest tick.
  */
-function useCountdownTick(targetsMs: number[]): number {
+export function useCountdownTick(targetsMs: number[]): number {
   const [now, setNow] = useState(() => Date.now());
   const active = targetsMs.some((t) => t > now);
   useEffect(() => {
@@ -165,14 +165,14 @@ function useCountdownTick(targetsMs: number[]): number {
  * read `retry_after_seconds` (from a 429) or `retry_cooldown_seconds` (from
  * a successful retry) without leaking `any` everywhere.
  */
-function readPositiveSeconds(body: unknown, key: string): number | null {
+export function readPositiveSeconds(body: unknown, key: string): number | null {
   if (!body || typeof body !== 'object') return null;
   const raw = (body as Record<string, unknown>)[key];
   if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
   return Math.ceil(raw);
 }
 
-function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: { status: string }) {
   const { t: adminT } = useTranslation('admin');
   const colors: Record<string, string> = {
     active: 'bg-success-light text-success',
@@ -209,7 +209,7 @@ const RETRY_SKIPPED_TONE_CLASSES: Record<RetrySkippedTone, string> = {
  * distinct badge automatically (and an unrecognised reason falls through to
  * a generic "Auto-retry skipped" label instead of breaking the layout).
  */
-function RetrySkippedBadge({
+export function RetrySkippedBadge({
   reason,
   size = 'sm',
   variant = 'short',
@@ -234,7 +234,7 @@ function RetrySkippedBadge({
   );
 }
 
-function PlanBadge({ plan }: { plan: string }) {
+export function PlanBadge({ plan }: { plan: string }) {
   const { t: adminT } = useTranslation('admin');
   const colors: Record<string, string> = {
     starter: 'bg-info-light text-info',
@@ -7426,7 +7426,7 @@ function TicketThread({ ticket }: { ticket: SupportTicket }) {
 
 
 
-function formatHours(hours: number | null, t: (k: string) => string): string {
+export function formatHours(hours: number | null, t: (k: string) => string): string {
   if (hours === null) return t('platform_admin.common.em_dash');
   if (hours < 1) return `${Math.round(hours * 60)}m`;
   if (hours < 24) return `${hours.toFixed(1)}h`;
@@ -7436,7 +7436,7 @@ function formatHours(hours: number | null, t: (k: string) => string): string {
 // Shape returned by `/platform/onboarding-funnel` (Task #612). All counts
 // are bucketised server-side with FILTER (...) over the canonicalised
 // step + completed flags so the UI just renders the numbers.
-interface OnboardingFunnel {
+export interface OnboardingFunnel {
   total: number;
   completed: number;
   step_1: number;

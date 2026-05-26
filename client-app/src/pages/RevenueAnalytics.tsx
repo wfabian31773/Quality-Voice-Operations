@@ -263,7 +263,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
               <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
               <YAxis tickFormatter={(v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
               <Tooltip
-                formatter={(value: number | undefined) => [formatCents(value ?? 0), 'Revenue']}
+                formatter={(value) => [formatCents(Number(value) || 0), 'Revenue']}
                 contentStyle={tooltipStyle}
               />
               <Area type="monotone" dataKey="revenueCents" stroke="#10b981" fill="#10b98133" strokeWidth={2} name="Revenue" />
@@ -339,7 +339,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, formatTopicLabel(name ?? '')]}
+                      formatter={(value, name) => [Number(value) || 0, formatTopicLabel(String(name ?? ''))]}
                       contentStyle={tooltipStyle}
                     />
                   </PieChart>
@@ -433,7 +433,7 @@ export default function RevenueAnalytics({ embedded = false }: RevenueAnalyticsP
                 <XAxis type="number" tickFormatter={(v: number) => formatCentsHelper(v, { currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
                 <YAxis type="category" dataKey="agentName" width={120} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground, #888)" />
                 <Tooltip
-                  formatter={(value: number | undefined) => [formatCents(value ?? 0), 'Revenue']}
+                  formatter={(value) => [formatCents(Number(value) || 0), 'Revenue']}
                   contentStyle={tooltipStyle}
                 />
                 <Bar dataKey="revenueCents" fill="#10b981" radius={[0, 4, 4, 0]} name="Revenue" />

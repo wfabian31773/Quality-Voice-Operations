@@ -10,7 +10,16 @@ import {
   isPermanentSmtpError,
   describeRetrySkippedReason,
 } from '../../../../lib/smtpErrorClass';
-import { MarketingSearchEmptyQueriesPanel } from '../../../PlatformAdmin';
+// Phase 2.3 split missed readPositiveSeconds / useCountdownTick /
+// RetrySkippedBadge — they live in the parent PlatformAdmin file but
+// weren't carried over with the tab extraction. The parent now
+// re-exports them so this import resolves.
+import {
+  MarketingSearchEmptyQueriesPanel,
+  readPositiveSeconds,
+  useCountdownTick,
+  RetrySkippedBadge,
+} from '../../../PlatformAdmin';
 
 /**
  * Docs Feedback admin tab — extracted from PlatformAdmin.tsx in Phase 2.3.
