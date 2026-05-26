@@ -196,7 +196,16 @@ export default function TenantLayout() {
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-on-sidebar/15">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-on-sidebar tracking-tight font-display">{t('brand.name')}</h1>
+          {/* Real QVO logo per qvo-brand-kit. White lockup because the
+              sidebar background is harbor-dark. Height matched to the
+              previous wordmark text-lg so the layout doesn't shift. */}
+          <img
+            src="/brand/logo-lockup-white.png"
+            alt={t('brand.name')}
+            className="h-6 w-auto block"
+            width="240"
+            height="80"
+          />
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/30 text-on-sidebar uppercase tracking-wider">{t('tenant_nav.tenant_badge')}</span>
         </div>
         <p className="text-xs text-on-sidebar/70 mt-1 truncate" title={user?.email ?? undefined}>{user?.email}</p>
@@ -321,7 +330,14 @@ export default function TenantLayout() {
             <button className="lg:hidden p-1.5 -ml-1.5" onClick={() => setMobileOpen(true)} aria-label={t('actions.open_menu')}>
               <Menu className="h-5 w-5" />
             </button>
-            <span className="font-semibold text-sm font-display lg:hidden">{t('brand.name')}</span>
+            {/* Mobile-only QVO mark in the top bar (harbor on light header). */}
+            <img
+              src="/brand/logo-symbol-harbor.png"
+              alt={t('brand.name')}
+              className="h-6 w-auto block lg:hidden"
+              width="80"
+              height="80"
+            />
           </div>
           <button
             type="button"

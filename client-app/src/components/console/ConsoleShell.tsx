@@ -124,9 +124,16 @@ export default function ConsoleShell({
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b border-on-sidebar/10">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-on-sidebar tracking-tight font-display">
-            {t('brand.name')}
-          </h1>
+          {/* Real QVO logo per qvo-brand-kit. White lockup because the
+              sidebar background is harbor-dark. Height matched to the
+              previous wordmark text-lg so the layout doesn't shift. */}
+          <img
+            src="/brand/logo-lockup-white.png"
+            alt={t('brand.name')}
+            className="h-6 w-auto block"
+            width="240"
+            height="80"
+          />
           <span
             className={clsx(
               'text-[10px] font-semibold px-1.5 py-0.5 rounded text-on-sidebar uppercase tracking-wider',
