@@ -102,19 +102,26 @@ export default function Landing() {
         structuredData={organizationSchema}
       />
 
-      {/* 1 · HERO */}
+      {/* 1 · HERO
+          Positioning: lead UNIVERSAL ("voice for every front desk") with
+          healthcare prominent as the proof point ("healthcare-grade by
+          default" + 40,000+ real healthcare calls). Hero imagery stays
+          healthcare (V1 consultation suite) so the visual anchors the
+          specialty while the copy opens the aperture to every vertical.
+          Per Wayne 2026-05-25: "highlight healthcare but also make it
+          obvious that voice can be applied in any setting." */}
       <PageHero
         lightSrc="/assets/moodboards-web/V1-hero.jpg"
         darkSrc="/assets/sections-web/D1-dark-office.jpg"
         eyebrow={t(
           'landing.hero.eyebrow',
-          'Voice operations for ophthalmology — and every business that lives by the phone',
+          'Voice for every front desk · Healthcare-grade by default',
         )}
         title={t('landing.hero.title', 'Calls that don’t get missed.')}
-        titleAccent={t('landing.hero.title_2', 'Patients that don’t get lost.')}
+        titleAccent={t('landing.hero.title_2', 'Customers that don’t get lost.')}
         description={t(
           'landing.hero.description',
-          'QVO answers, qualifies, schedules, and follows up — 24/7, in a voice your patients trust. Built and battle-tested on 40,000+ real calls.',
+          'Built and battle-tested on 40,000+ real healthcare calls — and ready for every business that lives by the phone. QVO answers, qualifies, schedules, and follows up 24/7, in a voice your customers trust.',
         )}
         ctas={[
           {

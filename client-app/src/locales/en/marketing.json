@@ -20,9 +20,12 @@
     "seo_description": "AI voice agents for call answering, appointment scheduling, and business automation. AI receptionist and call automation for HVAC, medical offices, dental, legal, and more.",
     "hero": {
       "badge": "AI-Powered Voice Platform",
+      "eyebrow": "Voice for every front desk · Healthcare-grade by default",
       "title_highlight": "AI Voice Agents",
       "title_rest": " That Run Your Business",
-      "description": "Deploy intelligent voice agents that answer calls, book appointments, dispatch technicians, and answer customer questions — 24/7, on autopilot.",
+      "title": "Calls that don’t get missed.",
+      "title_2": "Customers that don’t get lost.",
+      "description": "Built and battle-tested on 40,000+ real healthcare calls — and ready for every business that lives by the phone. QVO answers, qualifies, schedules, and follows up 24/7, in a voice your customers trust.",
       "benefits": {
         "never_miss_call": "Never Miss a Call",
         "book_appointments": "Book Appointments Automatically",
