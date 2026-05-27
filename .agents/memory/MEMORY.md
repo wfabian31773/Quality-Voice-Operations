@@ -1,3 +1,4 @@
 - [Proxied Twilio signature URL](proxied-twilio-signature.md) — when proxying Twilio webhooks under a path prefix, the signature middleware must reconstruct the externally-signed URL, not the internally-rewritten one.
 - [QVO prod topology](qvo-prod-topology.md) — only admin-api is publicly exposed in prod; voice-gateway sits on a private port and must be reached via an admin-api `/vg/*` HTTP+WS proxy.
 - [OpenAI Realtime model whitelist](openai-realtime-models.md) — only *-realtime-preview SKUs work; passing a regular `gpt-4o` / `gpt-4o-mini` opens the WS then errors `invalid_model` and the call goes silent.
+- [Realtime VAD config for telephony](openai-realtime-telephony-vad.md) — use server_vad + noiseReduction:far_field on Twilio 8kHz μ-law; semantic_vad's prosody model degrades on narrowband and feels "deaf".

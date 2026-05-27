@@ -774,9 +774,48 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
       input: {
         format: 'g711_ulaw' as const,
         transcription,
+        // Telephony-tuned input pipeline. The OpenAI Realtime SDK exposes
+        // both VAD modes and a noise-reduction filter as first-class
+        // session knobs — we wire them through here rather than letting
+        // the SDK fall back to its browser-microphone defaults.
+        //
+        // `noiseReduction: 'far_field'` is the SDK preset for distant /
+        // speakerphone audio, which matches what Twilio actually delivers
+        // (callers on speakerphone, in cars, with background noise). It
+        // runs server-side before the VAD ever sees the frame.
+        noiseReduction: { type: 'far_field' as const },
         turnDetection: {
-          type: 'semantic_vad' as const,
-          eagerness: 'medium' as const,
+          // `server_vad` is the per-frame energy-based detector. It's
+          // deterministic, doesn't require a model pass, and works
+          // reliably on the 8kHz g711_ulaw narrowband audio that
+          // Twilio's Media Streams emit. `semantic_vad` looks great in
+          // the docs but its prosody model is trained on full-band 24kHz
+          // audio — on narrowband it stalls until the 4s `eagerness:
+          // medium` ceiling fires, which makes the agent feel deaf.
+          type: 'server_vad' as const,
+          // 0.5 is OpenAI's documented default. Lower (0.3) picks up
+          // softer voices but starts triggering on hiss / road noise;
+          // higher (0.7) misses quiet callers. 0.5 is the right starting
+          // point with `far_field` noise reduction in front of it.
+          threshold: 0.5,
+          // 300ms of audio captured *before* the VAD trips. Anything
+          // shorter and the first phoneme of "Hello?" gets clipped off
+          // the transcription; longer wastes input tokens.
+          prefixPaddingMs: 300,
+          // 500ms of silence to declare end-of-turn. Default in the
+          // SDK; matches natural phone-call cadence. Shorter (200ms)
+          // makes the agent interrupt mid-thought; longer (1000ms)
+          // makes it feel sluggish.
+          silenceDurationMs: 500,
+          // After 10s of caller silence following our last response,
+          // re-prompt automatically (e.g. "Are you still there?"). This
+          // prevents the conversation from dying when the caller
+          // wanders off; the silence-watchdog higher up in this file
+          // is a fallback for total dead-air.
+          idleTimeoutMs: 10_000,
+          // Auto-generate a response when end-of-turn is detected and
+          // cancel the in-flight response if the caller starts talking
+          // — these together implement true barge-in.
           createResponse: true,
           interruptResponse: true,
         },
