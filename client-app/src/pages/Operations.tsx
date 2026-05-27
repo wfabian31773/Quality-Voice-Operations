@@ -348,7 +348,7 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
 
       {calls.length === 0 ? (
         <div className="p-8 text-center">
-          <Phone className="h-8 w-8 text-text-secondary/30 mx-auto mb-2" />
+          <Phone className="h-8 w-8 text-primary/40 mx-auto mb-2" />
           <p className="text-sm text-text-secondary">No active calls right now</p>
         </div>
       ) : (
@@ -505,7 +505,7 @@ function LiveTranscriptPanel({
           <div ref={scrollRef} className="max-h-72 overflow-y-auto space-y-2 scroll-smooth">
             {transcript.length === 0 ? (
               <div className="text-center py-6">
-                <Bot className="h-6 w-6 text-text-secondary/30 mx-auto mb-2" />
+                <Bot className="h-6 w-6 text-primary/40 mx-auto mb-2" />
                 <p className="text-xs text-text-secondary">
                   {isActive ? 'Waiting for conversation...' : 'No transcript available'}
                 </p>
@@ -546,7 +546,7 @@ function LiveTranscriptPanel({
           <div className="max-h-72 overflow-y-auto space-y-2">
             {tools.length === 0 ? (
               <div className="text-center py-6">
-                <Wrench className="h-6 w-6 text-text-secondary/30 mx-auto mb-2" />
+                <Wrench className="h-6 w-6 text-primary/40 mx-auto mb-2" />
                 <p className="text-xs text-text-secondary">
                   {isActive ? 'Waiting for tool invocations...' : 'No tools executed'}
                 </p>
@@ -615,7 +615,7 @@ function ToolExecutionFeed({ tools, agentFilter, onAgentFilterChange }: {
 
       {filtered.length === 0 ? (
         <div className="p-6 text-center">
-          <Wrench className="h-7 w-7 text-text-secondary/30 mx-auto mb-2" />
+          <Wrench className="h-7 w-7 text-primary/40 mx-auto mb-2" />
           <p className="text-sm text-text-secondary">No recent tool executions</p>
         </div>
       ) : (
@@ -712,7 +712,7 @@ export function AlertsPanel({ alerts, unacknowledgedCount, onAcknowledge, onAckn
 
       {alerts.length === 0 ? (
         <div className="p-6 text-center">
-          <BellOff className="h-7 w-7 text-text-secondary/30 mx-auto mb-2" />
+          <BellOff className="h-7 w-7 text-primary/40 mx-auto mb-2" />
           <p className="text-sm text-text-secondary">
             {showHistory ? 'No alert history' : 'No active alerts — all clear!'}
           </p>

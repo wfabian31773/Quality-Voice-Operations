@@ -358,7 +358,7 @@ export default function Autopilot() {
                   </div>
                 ) : recommendations.length === 0 ? (
                   <div className="p-8 text-center">
-                    <Sparkles className="h-8 w-8 text-text-secondary/30 mx-auto mb-2" />
+                    <Sparkles className="h-8 w-8 text-primary/40 mx-auto mb-2" />
                     <p className="text-sm text-text-secondary">No pending recommendations</p>
                     <p className="text-xs text-text-secondary mt-1">Run a scan to generate recommendations</p>
                   </div>
@@ -431,7 +431,7 @@ export default function Autopilot() {
               <div className="max-h-[400px] overflow-y-auto">
                 {runs.length === 0 ? (
                   <div className="p-8 text-center">
-                    <RefreshCw className="h-8 w-8 text-text-secondary/30 mx-auto mb-2" />
+                    <RefreshCw className="h-8 w-8 text-primary/40 mx-auto mb-2" />
                     <p className="text-sm text-text-secondary">No scans run yet</p>
                   </div>
                 ) : (
@@ -515,7 +515,7 @@ export default function Autopilot() {
             </div>
           ) : recommendations.length === 0 ? (
             <div className="bg-surface border border-border rounded-xl p-12 text-center">
-              <Target className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <Target className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">No recommendations found</p>
               <p className="text-sm text-text-secondary mt-1">Run a scan to generate autopilot recommendations</p>
             </div>
@@ -648,7 +648,7 @@ export default function Autopilot() {
             </div>
           ) : insights.length === 0 ? (
             <div className="bg-surface border border-border rounded-xl p-12 text-center">
-              <Eye className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <Eye className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">No insights detected yet</p>
               <p className="text-sm text-text-secondary mt-1">Run a scan to detect operational patterns and issues</p>
             </div>
@@ -716,7 +716,7 @@ export default function Autopilot() {
             </div>
           ) : actions.length === 0 ? (
             <div className="bg-surface border border-border rounded-xl p-12 text-center">
-              <Activity className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <Activity className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">No actions executed yet</p>
               <p className="text-sm text-text-secondary mt-1">Approve and execute recommendations to see action history</p>
             </div>
@@ -819,7 +819,7 @@ function PoliciesPanel() {
           </div>
         ) : policies.length === 0 ? (
           <div className="p-8 text-center">
-            <Settings2 className="h-8 w-8 text-text-secondary/30 mx-auto mb-2" />
+            <Settings2 className="h-8 w-8 text-primary/40 mx-auto mb-2" />
             <p className="text-sm text-text-secondary">No policies configured yet</p>
             <p className="text-xs text-text-secondary mt-1 mb-3">Set up default policies to get started</p>
             <button
@@ -930,7 +930,7 @@ function NotificationsPanel() {
         </div>
       ) : notifications.length === 0 ? (
         <div className="bg-surface border border-border rounded-xl p-12 text-center">
-          <Bell className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+          <Bell className="h-10 w-10 text-primary/40 mx-auto mb-3" />
           <p className="text-text-secondary font-medium">No notifications yet</p>
           <p className="text-sm text-text-secondary mt-1">Notifications will appear here when the autopilot detects important events</p>
         </div>

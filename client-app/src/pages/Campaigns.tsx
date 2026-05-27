@@ -266,7 +266,7 @@ interface TrustedCallerSummary {
 }
 
 const STATUS_COLORS: Record<CampaignStatus, string> = {
-  draft: 'bg-text-text-muted/10 text-text-muted',
+  draft: 'bg-text-secondary/10 text-text-muted',
   scheduled: 'bg-warning/10 text-warning',
   running: 'bg-success/10 text-success',
   paused: 'bg-warning/10 text-warning',
@@ -275,12 +275,12 @@ const STATUS_COLORS: Record<CampaignStatus, string> = {
 };
 
 const CONTACT_STATUS_COLORS: Record<ContactStatus, string> = {
-  pending: 'bg-text-text-muted/10 text-text-muted',
+  pending: 'bg-text-secondary/10 text-text-muted',
   dialing: 'bg-primary/10 text-primary',
   connected: 'bg-success/10 text-success',
   completed: 'bg-success/10 text-success',
   failed: 'bg-danger/10 text-danger',
-  skipped: 'bg-text-text-muted/10 text-text-muted',
+  skipped: 'bg-text-secondary/10 text-text-muted',
   no_answer: 'bg-warning/10 text-warning',
   voicemail: 'bg-primary/10 text-primary',
   opted_out: 'bg-danger/10 text-danger',
@@ -323,7 +323,7 @@ const CAMPAIGN_TYPE_ICONS: Record<string, React.ReactNode> = {
 
 function StatusBadge({ status, label, colors }: { status: string; label?: string; colors: Record<string, string> }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${colors[status] ?? 'bg-text-text-muted/10 text-text-muted'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${colors[status] ?? 'bg-text-secondary/10 text-text-muted'}`}>
       {label ?? status.replace(/_/g, ' ')}
     </span>
   );

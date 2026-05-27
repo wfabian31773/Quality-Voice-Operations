@@ -508,7 +508,7 @@ export default function Dashboard() {
             </div>
           ) : calls.length === 0 ? (
             <div className="p-12 text-center">
-              <Phone className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <Phone className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">{tenantT('dashboard.recent_conversations.no_calls_title')}</p>
               <p className="text-sm text-text-secondary mt-1">{tenantT('dashboard.recent_conversations.no_calls_description')}</p>
             </div>
@@ -578,7 +578,7 @@ export default function Dashboard() {
           </div>
           {agents.length === 0 ? (
             <div className="p-8 text-center">
-              <Bot className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <Bot className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">{tenantT('dashboard.your_agents.no_agents_title')}</p>
               <p className="text-sm text-text-secondary mt-1 mb-4">{tenantT('dashboard.your_agents.no_agents_description')}</p>
               <button

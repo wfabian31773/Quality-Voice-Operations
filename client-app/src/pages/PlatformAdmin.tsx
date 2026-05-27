@@ -1697,7 +1697,7 @@ function LiveBillingHealthScreenshotCard() {
     ? 'bg-danger'
     : conclusion === 'success'
       ? 'bg-success'
-      : 'bg-text-text-muted';
+      : 'bg-text-secondary';
   const lastRunLabel = latest
     ? `${conclusion ?? latest.status} · ${new Date(latest.runStartedAt).toLocaleString()}`
     : 'No runs yet';

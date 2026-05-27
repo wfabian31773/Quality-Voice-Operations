@@ -23,7 +23,7 @@ export interface OperationStatusPanelProps {
 const STATUS_TONE: Record<OperationStatus, { label: string; bar: string; pill: string; icon: ReactNode }> = {
   idle: {
     label: 'Idle',
-    bar: 'bg-text-text-muted/40',
+    bar: 'bg-text-secondary/40',
     pill: 'bg-surface-hover text-text-secondary border-border',
     icon: <Clock className="h-3.5 w-3.5" />,
   },
@@ -53,7 +53,7 @@ const STATUS_TONE: Record<OperationStatus, { label: string; bar: string; pill: s
   },
   cancelled: {
     label: 'Cancelled',
-    bar: 'bg-text-text-muted/60',
+    bar: 'bg-text-secondary/60',
     pill: 'bg-surface-hover text-text-secondary border-border',
     icon: <XCircle className="h-3.5 w-3.5" />,
   },

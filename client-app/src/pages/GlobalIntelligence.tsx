@@ -240,7 +240,7 @@ export default function GlobalIntelligence() {
             </div>
           ) : comparisons.length === 0 ? (
             <div className="bg-surface border border-border rounded-xl p-12 text-center">
-              <BarChart3 className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <BarChart3 className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">No benchmark data available yet</p>
               <p className="text-sm text-text-secondary mt-1">
                 Benchmarks are generated from anonymized data across all participating tenants
@@ -297,7 +297,7 @@ export default function GlobalIntelligence() {
               </div>
             ) : patterns.length === 0 ? (
               <div className="bg-surface border border-border rounded-xl p-12 text-center">
-                <BookOpen className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+                <BookOpen className="h-10 w-10 text-primary/40 mx-auto mb-3" />
                 <p className="text-text-secondary font-medium">No patterns discovered yet</p>
                 <p className="text-sm text-text-secondary mt-1">
                   The platform analyzes anonymized data to discover high-performing patterns
@@ -406,7 +406,7 @@ export default function GlobalIntelligence() {
             </div>
           ) : recommendations.length === 0 ? (
             <div className="bg-surface border border-border rounded-xl p-12 text-center">
-              <Lightbulb className="h-10 w-10 text-text-secondary/30 mx-auto mb-3" />
+              <Lightbulb className="h-10 w-10 text-primary/40 mx-auto mb-3" />
               <p className="text-text-secondary font-medium">No recommendations yet</p>
               <p className="text-sm text-text-secondary mt-1">
                 {participation?.ginParticipation

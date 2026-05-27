@@ -159,7 +159,7 @@ function ScoreBar({ score, max = 10, label }: { score: number; max?: number; lab
       <span className="w-28 text-text-secondary truncate">{label}</span>
       <div className="flex-1 h-1.5 bg-surface-hover rounded-full overflow-hidden">
         <div
-          className={clsx('h-full rounded-full', pct >= 70 ? 'bg-primary' : pct >= 40 ? 'bg-warning' : 'bg-text-text-muted')}
+          className={clsx('h-full rounded-full', pct >= 70 ? 'bg-primary' : pct >= 40 ? 'bg-warning' : 'bg-text-secondary')}
           style={{ width: `${pct}%` }}
         />
       </div>
