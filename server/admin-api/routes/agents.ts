@@ -117,7 +117,7 @@ router.get('/agents', requireAuth, async (req, res) => {
 router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
-  const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-4o-realtime-preview',
+  const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-realtime',
           temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null,
           language = DEFAULT_AGENT_LANGUAGE, workflow_definition = null } = body;
 
@@ -956,7 +956,7 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     const draftSettings = (wd.settings || {}) as Record<string, unknown>;
 
     const publishVoice = (draftSettings.voice as string) || agent.voice || 'alloy';
-    const publishModel = (draftSettings.model as string) || agent.model || 'gpt-4o-realtime-preview';
+    const publishModel = (draftSettings.model as string) || agent.model || 'gpt-realtime';
     const publishTemp = (draftSettings.temperature as number) ?? agent.temperature ?? 0.8;
     const publishGreeting = (draftSettings.welcome_greeting as string) ?? agent.welcome_greeting ?? '';
     const publishName = (draftSettings.name as string) || agent.name;

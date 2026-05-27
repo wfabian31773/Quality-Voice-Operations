@@ -106,7 +106,7 @@ export async function installTemplate(request: InstallRequest): Promise<InstallR
 
     const agentName = name ?? template.display_name;
     const voice = template.default_voice ?? 'sage';
-    const model = 'gpt-4o-realtime-preview';
+    const model = 'gpt-realtime';
     const temperature = 0.8;
     const tools: unknown[] = [];
     const greeting = welcomeGreeting ?? null;
