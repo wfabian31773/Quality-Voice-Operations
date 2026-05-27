@@ -29,7 +29,14 @@ import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRo
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
 import { routeQuery, checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, logRoutingDecision, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
-import { TIER_MODEL_MAP, type ModelTier, getModelRate, TTS_COST_PER_1K_CHARS_CENTS } from '../../../platform/billing/cost/providerRates';
+import {
+  TIER_MODEL_MAP,
+  TIER_REASONING_EFFORT,
+  modelSupportsReasoningEffort,
+  type ModelTier,
+  getModelRate,
+  TTS_COST_PER_1K_CHARS_CENTS,
+} from '../../../platform/billing/cost/providerRates';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
@@ -741,13 +748,27 @@ function buildRealtimeTools(
 export interface OpenAISessionConfigInput {
   voice: string;
   language?: string;
+  /**
+   * The Realtime model the session will open with. Used to gate
+   * model-specific knobs like `reasoning.effort` — passing a knob to
+   * a model that doesn't support it is rejected with
+   * `invalid_request_error`, so we only include them when the model
+   * is on the GPT-Realtime-2 GA line.
+   */
+  model?: string;
+  /**
+   * GPT-Realtime-2 reasoning depth. "low" is OpenAI's recommended
+   * default for production voice agents; raise it for multi-step
+   * tasks. Ignored when `model` does not support reasoning effort.
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high';
 }
 
 export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
   const transcription = input.language && input.language !== 'en'
     ? { model: 'gpt-4o-mini-transcribe' as const, language: input.language }
     : { model: 'gpt-4o-mini-transcribe' as const };
-  return {
+  const baseConfig = {
     voice: input.voice,
     audio: {
       input: {
@@ -766,6 +787,17 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
       },
     },
   };
+  // The `reasoning.effort` knob is exclusive to gpt-realtime-2 (May
+  // 2026 GA). Cast through `unknown` because the @openai/agents SDK
+  // typings have not yet caught up with the new session field — the
+  // value is forwarded to the Realtime WS as part of session.update.
+  if (input.model && input.reasoningEffort && modelSupportsReasoningEffort(input.model)) {
+    return {
+      ...baseConfig,
+      reasoning: { effort: input.reasoningEffort },
+    } as unknown as typeof baseConfig;
+  }
+  return baseConfig;
 }
 
 function classifyAgentComplexity(
@@ -999,6 +1031,8 @@ export async function createRealtimeSession(
   const sessionConfig = buildOpenAISessionConfig({
     voice: agentConfig.voice,
     language: agentConfig.language,
+    model: activeModel,
+    reasoningEffort: TIER_REASONING_EFFORT[activeModelTier],
   });
 
   const session = new RealtimeSession(agent, {
@@ -1506,6 +1540,11 @@ export async function createRealtimeSession(
     const newSessionConfig = buildOpenAISessionConfig({
       voice: newAgentConfig.voice,
       language: newAgentConfig.language,
+      model: newAgentConfig.model,
+      // Handoff keeps the current tier's reasoning effort. If the
+      // tier was downgraded by the budget guard between session start
+      // and handoff, this naturally reflects that.
+      reasoningEffort: TIER_REASONING_EFFORT[activeModelTier],
     });
 
     const newSession = new RealtimeSession(newAgent, {

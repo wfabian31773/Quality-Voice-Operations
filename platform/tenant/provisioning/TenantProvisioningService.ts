@@ -169,7 +169,7 @@ export async function provisionTenant(
     } else {
       const { rows: agentRows } = await client.query(
         `INSERT INTO agents (tenant_id, name, type, status, voice, model, temperature, tools, escalation_config, metadata)
-         VALUES ($1, 'Default Answering Service', 'answering-service', 'active', 'sage', 'gpt-realtime', 0.8, '[]', '{}', '{}')
+         VALUES ($1, 'Default Answering Service', 'answering-service', 'active', 'sage', 'gpt-realtime-2', 0.8, '[]', '{}', '{}')
          RETURNING id`,
         [tenantId],
       );

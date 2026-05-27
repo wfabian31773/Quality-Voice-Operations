@@ -405,7 +405,7 @@ export async function executeToolCall(
 
         const { rows } = await pool.query(
           `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, language, voice, model, temperature, tools, escalation_config, metadata)
-           VALUES ($1, $2, $3, $4, $5, $6, 'alloy', 'gpt-realtime', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
+           VALUES ($1, $2, $3, $4, $5, $6, 'alloy', 'gpt-realtime-2', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
            RETURNING id, name, type, status, language`,
           [tenantId, name, type, systemPrompt, welcomeGreeting, language],
         );
