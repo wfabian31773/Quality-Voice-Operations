@@ -53,17 +53,27 @@ async function runTwilioSignatureCheck(req: Request, res: Response, next: NextFu
     return;
   }
 
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  // Forwarded headers can arrive comma-joined when multiple proxies
+  // each append their own value (e.g. Replit's edge sets
+  // `x-forwarded-proto: https`, then http-proxy-middleware's `xfwd:true`
+  // appends `http` for the internal admin-api → voice-gateway hop, so
+  // Express exposes `x-forwarded-proto: 'https,http'`). The Twilio
+  // signature URL must be the externally-visible one, which is always
+  // the FIRST value. Same for host. Same defensive split applied to
+  // `x-forwarded-prefix` even though we only inject it ourselves.
+  const firstForwarded = (h: string | string[] | undefined): string => {
+    if (!h) return '';
+    const raw = Array.isArray(h) ? h[0] : h;
+    return (raw.split(',')[0] ?? '').trim();
+  };
+  const protocol = firstForwarded(req.headers['x-forwarded-proto']) || req.protocol;
+  const host = firstForwarded(req.headers['x-forwarded-host']) || (req.headers.host ?? '');
   // When admin-api proxies us at `/vg/*` (production), it strips the
   // `/vg` prefix before forwarding, so `req.originalUrl` here is the
   // already-rewritten internal path (e.g. `/twilio/voice`). Twilio
   // signed the public URL (`https://host/vg/twilio/voice`), so we must
   // re-prepend the original prefix before verifying the signature.
-  const forwardedPrefixRaw = req.headers['x-forwarded-prefix'];
-  const forwardedPrefix = Array.isArray(forwardedPrefixRaw)
-    ? forwardedPrefixRaw[0]
-    : forwardedPrefixRaw ?? '';
+  const forwardedPrefix = firstForwarded(req.headers['x-forwarded-prefix']);
   const fullUrl = `${protocol}://${host}${forwardedPrefix}${req.originalUrl}`;
 
   const params = req.body && typeof req.body === 'object' ? req.body : {};
