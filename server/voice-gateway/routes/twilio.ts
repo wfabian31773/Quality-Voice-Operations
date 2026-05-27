@@ -133,6 +133,30 @@ async function checkTenantSuspended(tenantId: string): Promise<boolean> {
 
 const router = Router();
 
+// Pull the first value out of a forwarded header. Express joins repeated
+// headers with `, ` and proxy chains append values (Replit edge sets
+// `x-forwarded-proto: https`, then admin-api's `xfwd:true` proxy appends
+// `http` for the internal hop) so we may see e.g. `'https,http'`. The
+// externally-visible value is always the first.
+function firstForwarded(h: string | string[] | undefined): string {
+  if (!h) return '';
+  const raw = Array.isArray(h) ? h[0] : h;
+  return (raw.split(',')[0] ?? '').trim();
+}
+
+// Compute the externally-visible WebSocket target Twilio should connect
+// back to for <Stream>. Must use `wss://` in production — if we emit
+// `ws://` to Twilio (e.g. because forwarded headers were misparsed),
+// Twilio silently refuses the stream and the call ends in ~1.4s with
+// status `no-answer`, which is what made the production calls fail
+// even after the /vg proxy was routing webhooks correctly.
+function resolveForwardedWsTarget(req: Request): { wsProtocol: 'wss' | 'ws'; host: string } {
+  const proto = firstForwarded(req.headers['x-forwarded-proto']) || req.protocol;
+  const host = firstForwarded(req.headers['x-forwarded-host'])
+    || (req.headers.host ?? 'localhost:3001');
+  return { wsProtocol: proto === 'https' ? 'wss' : 'ws', host };
+}
+
 router.use('/twilio/voice', twilioSignatureMiddleware);
 router.use('/twilio/status', twilioSignatureMiddleware);
 router.use('/twilio/outbound', twilioSignatureMiddleware);
@@ -270,8 +294,7 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       logger.warn('Callback reconciliation lookup failed — continuing without', { callSid, error: String(err) });
     }
 
-    const wsProtocol = req.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3001';
+    const { wsProtocol, host } = resolveForwardedWsTarget(req);
     const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
     const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
     const wsUrl = `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
@@ -666,11 +689,10 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     return;
   }
 
-  const wsProtocol = req.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3001';
+  const { wsProtocol, host } = resolveForwardedWsTarget(req);
   const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
   const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
-  const wsUrl = `${wsProtocol}://${host}/twilio/stream${tokenParam}`;
+  const wsUrl = `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
 
   logger.info('Outbound call connected — starting stream', {
     tenantId,
