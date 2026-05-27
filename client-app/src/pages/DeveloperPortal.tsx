@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { formatCents as formatCentsHelper, dollarsToCents } from '../lib/formatCurrency';
 import { useTenantCurrency } from '../hooks/useTenantCurrency';
 import { StatCard, PageHeader } from '../components/ui';
+import { EmptyState } from '../components/state';
 import {
   Code2, Package, Upload, CheckCircle, XCircle, Clock,
   BarChart3, Star, Download, DollarSign, ChevronRight,
@@ -340,10 +341,12 @@ function SubmissionsList() {
 
   if (submissions.length === 0) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center">
-        <Package className="h-10 w-10 text-text-muted mx-auto mb-2" />
-        <p className="text-text-secondary">No submissions yet.</p>
-        <p className="text-xs text-text-muted mt-1">Submit your first package using the form above.</p>
+      <div className="bg-surface border border-border rounded-xl">
+        <EmptyState
+          icon={Package}
+          title="No submissions yet"
+          description="Submit your first package using the form above."
+        />
       </div>
     );
   }

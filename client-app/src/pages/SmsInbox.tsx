@@ -1701,9 +1701,12 @@ function AdminView({ isManager }: { isManager: boolean }) {
 
   if (!isManager) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center">
-        <Settings className="h-10 w-10 mx-auto mb-3 text-text-muted opacity-40" />
-        <p className="text-text-muted">Admin access required</p>
+      <div className="bg-surface border border-border rounded-xl">
+        <EmptyState
+          icon={Settings}
+          title="Admin access required"
+          description="Your role doesn't include access to the SMS inbox. Ask an admin to upgrade your permissions."
+        />
       </div>
     );
   }

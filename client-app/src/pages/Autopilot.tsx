@@ -13,6 +13,7 @@ import {
 import TourLauncher from '../components/TourLauncher';
 import { autopilotTour } from '../components/tours';
 import { PageHeader } from '../components/ui';
+import { EmptyState } from '../components/state';
 
 interface DashboardSummary {
   totalInsights: number;
@@ -357,11 +358,12 @@ export default function Autopilot() {
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
                 ) : recommendations.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <Sparkles className="h-8 w-8 text-primary/40 mx-auto mb-2" />
-                    <p className="text-sm text-text-secondary">No pending recommendations</p>
-                    <p className="text-xs text-text-secondary mt-1">Run a scan to generate recommendations</p>
-                  </div>
+                  <EmptyState
+                    icon={Sparkles}
+                    title="No pending recommendations"
+                    description="Run a scan to generate recommendations"
+                    variant="compact"
+                  />
                 ) : (
                   <div className="divide-y divide-border">
                     {recommendations.slice(0, 5).map((rec) => {
@@ -430,10 +432,11 @@ export default function Autopilot() {
               </div>
               <div className="max-h-[400px] overflow-y-auto">
                 {runs.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <RefreshCw className="h-8 w-8 text-primary/40 mx-auto mb-2" />
-                    <p className="text-sm text-text-secondary">No scans run yet</p>
-                  </div>
+                  <EmptyState
+                    icon={RefreshCw}
+                    title="No scans run yet"
+                    variant="compact"
+                  />
                 ) : (
                   <div className="divide-y divide-border">
                     {runs.map((run) => (
@@ -818,18 +821,15 @@ function PoliciesPanel() {
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : policies.length === 0 ? (
-          <div className="p-8 text-center">
-            <Settings2 className="h-8 w-8 text-primary/40 mx-auto mb-2" />
-            <p className="text-sm text-text-secondary">No policies configured yet</p>
-            <p className="text-xs text-text-secondary mt-1 mb-3">Set up default policies to get started</p>
-            <button
-              onClick={() => defaultPolicies.forEach(p => saveMutation.mutate(p))}
-              disabled={saveMutation.isPending}
-              className="text-xs text-primary hover:text-primary-hover font-medium"
-            >
-              {saveMutation.isPending ? 'Creating...' : 'Create Default Policies'}
-            </button>
-          </div>
+          <EmptyState
+            icon={Settings2}
+            title="No policies configured yet"
+            description="Set up default policies to get started"
+            primaryAction={{
+              label: saveMutation.isPending ? 'Creating...' : 'Create Default Policies',
+              onClick: () => defaultPolicies.forEach(p => saveMutation.mutate(p)),
+            }}
+          />
         ) : (
           <div className="divide-y divide-border">
             {policies.map((policy) => (

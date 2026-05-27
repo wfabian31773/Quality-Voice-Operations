@@ -13,6 +13,7 @@ import {
   PhoneIncoming, PhoneOutgoing, PhoneOff,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { EmptyState } from '../components/state';
 
 interface ActiveCall {
   id: string;
@@ -347,10 +348,11 @@ function ActiveCallsPanel({ calls, selectedCallId, onSelectCall }: {
       </div>
 
       {calls.length === 0 ? (
-        <div className="p-8 text-center">
-          <Phone className="h-8 w-8 text-primary/40 mx-auto mb-2" />
-          <p className="text-sm text-text-secondary">No active calls right now</p>
-        </div>
+        <EmptyState
+          icon={Phone}
+          title="No active calls right now"
+          variant="compact"
+        />
       ) : (
         <div className="divide-y divide-border max-h-96 overflow-y-auto">
           {calls.map((call) => (

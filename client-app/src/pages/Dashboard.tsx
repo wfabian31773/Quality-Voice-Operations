@@ -19,6 +19,7 @@ import TrialConversionNudge from '../components/TrialConversionNudge';
 import Celebration from '../components/Celebration';
 import ConnectorAuthBanner from '../components/ConnectorAuthBanner';
 import { PageHeader, StatCard, StatusBadge, StatusDot, type BadgeTone } from '../components/ui';
+import { EmptyState } from '../components/state';
 
 const CELEBRATION_KEY = 'qvo_first_call_celebrated';
 
@@ -577,17 +578,16 @@ export default function Dashboard() {
             </button>
           </div>
           {agents.length === 0 ? (
-            <div className="p-8 text-center">
-              <Bot className="h-10 w-10 text-primary/40 mx-auto mb-3" />
-              <p className="text-text-secondary font-medium">{tenantT('dashboard.your_agents.no_agents_title')}</p>
-              <p className="text-sm text-text-secondary mt-1 mb-4">{tenantT('dashboard.your_agents.no_agents_description')}</p>
-              <button
-                onClick={() => navigate('/agents')}
-                className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                <Plus className="h-4 w-4" /> {tenantT('dashboard.actions.create_agent')}
-              </button>
-            </div>
+            <EmptyState
+              icon={Bot}
+              title={tenantT('dashboard.your_agents.no_agents_title')}
+              description={tenantT('dashboard.your_agents.no_agents_description')}
+              primaryAction={{
+                label: tenantT('dashboard.actions.create_agent'),
+                onClick: () => navigate('/agents'),
+                icon: Plus,
+              }}
+            />
           ) : (
             <div className="divide-y divide-border">
               {agents.slice(0, 5).map((agent) => (

@@ -7,6 +7,7 @@ import {
   BellOff, BellRing, Mail, MailX, UserX,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { EmptyState, ErrorState } from '../components/state';
 
 interface ToolMetric {
   toolName: string;
@@ -402,10 +403,11 @@ export default function ToolHealth() {
                   <h2 className="text-lg font-semibold text-text-primary">Per-Tool Health</h2>
                 </div>
                 {healthData.tools.length === 0 ? (
-                  <div className="p-8 text-center text-text-muted">
-                    <Wrench className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No tool executions in this time window</p>
-                  </div>
+                  <EmptyState
+                    icon={Wrench}
+                    title="No tool executions in this time window"
+                    variant="compact"
+                  />
                 ) : (
                   <div className="divide-y divide-border">
                     {healthData.tools.map((tool) => (
@@ -539,10 +541,11 @@ export default function ToolHealth() {
               <h2 className="text-lg font-semibold text-text-primary">Escalation Queue</h2>
             </div>
             {escalationTasks.length === 0 ? (
-              <div className="p-8 text-center text-text-muted">
-                <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p>No escalation tasks in the queue</p>
-              </div>
+              <EmptyState
+                icon={CheckCircle}
+                title="No escalation tasks in the queue"
+                variant="compact"
+              />
             ) : (
               <div className="divide-y divide-border">
                 {escalationTasks.map((task) => (
@@ -783,17 +786,13 @@ function WebhookSecuritySection({
 
   if (error || !data) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-8 text-center">
-        <ServerCrash className="w-8 h-8 text-text-muted mx-auto mb-3" />
-        <p className="text-text-primary font-medium">Could not load webhook security metrics</p>
-        <p className="text-sm text-text-muted mt-1">{error ?? 'Unknown error'}</p>
-        <button
-          onClick={onRefresh}
-          className="mt-4 px-3 py-1.5 text-xs bg-primary text-white rounded-md hover:opacity-90"
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        icon={ServerCrash}
+        title="Could not load webhook security metrics"
+        error={error ?? 'Unknown error'}
+        onRetry={onRefresh}
+        retryLabel="Retry"
+      />
     );
   }
 
