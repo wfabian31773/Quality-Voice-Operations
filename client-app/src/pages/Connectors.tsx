@@ -1086,15 +1086,15 @@ function ConnectModal({
               {oauthConfigError && (
                 <div
                   role="alert"
-                  className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-3 text-xs"
+                  className="mb-3 rounded-lg border border-warning dark:border-warning bg-warning-light dark:bg-warning p-3 text-xs"
                 >
-                  <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+                  <div className="flex items-start gap-1.5 text-warning dark:text-warning">
                     <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                     <div className="min-w-0 space-y-1">
                       {oauthConfigError.kind === 'state_secret' ? (
                         <>
                           <p className="font-semibold">OAuth signing secret missing</p>
-                          <p className="text-amber-700 dark:text-amber-200/90">
+                          <p className="text-warning dark:text-warning">
                             Your platform admin needs to set{' '}
                             <code className="font-mono">{oauthConfigError.missingEnv}</code>{' '}
                             (or <code className="font-mono">CONNECTOR_ENCRYPTION_KEY</code>){' '}
@@ -1118,7 +1118,7 @@ function ConnectModal({
                       ) : (
                         <>
                           <p className="font-semibold">QVO is missing the {oauthConfigError.providerLabel} server credentials.</p>
-                          <p className="text-amber-700 dark:text-amber-200/90">
+                          <p className="text-warning dark:text-warning">
                             Your platform admin needs to set{' '}
                             {oauthConfigError.missingEnv ? (
                               <code className="font-mono">{oauthConfigError.missingEnv}</code>
@@ -1150,7 +1150,7 @@ function ConnectModal({
               {oauthError && !oauthConfigError && (
                 <div
                   role="alert"
-                  className="mb-3 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 p-2.5 text-xs text-red-700 dark:text-red-400"
+                  className="mb-3 rounded-lg border border-danger dark:border-danger bg-danger-light dark:bg-danger p-2.5 text-xs text-danger dark:text-danger"
                 >
                   <div className="flex items-start gap-1.5">
                     <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
@@ -1256,7 +1256,7 @@ function ConnectModal({
                   ) : pipelinesLoading ? (
                     <p className="text-[11px] text-text-secondary mt-2">Loading pipelines from {definition.name}…</p>
                   ) : pipelinesError ? (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                    <p className="text-[11px] text-warning dark:text-warning mt-2">
                       Could not load pipelines ({pipelinesError}). You can still paste raw IDs below.
                     </p>
                   ) : null}
@@ -1437,7 +1437,7 @@ function ConnectModal({
                   ) : calendarsLoading ? (
                     <p className="text-[11px] text-text-secondary mt-2">Loading calendars from {definition.name}…</p>
                   ) : calendarsError ? (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                    <p className="text-[11px] text-warning dark:text-warning mt-2">
                       Could not load calendars ({calendarsError}). You can still paste a raw calendar ID below.
                     </p>
                   ) : null}
@@ -1498,7 +1498,7 @@ function ConnectModal({
                       picklistsLoading ? (
                         <p className="text-[11px] text-text-secondary mt-2">Loading picklists from Salesforce…</p>
                       ) : picklistsError ? (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                        <p className="text-[11px] text-warning dark:text-warning mt-2">
                           Could not load Salesforce picklists ({picklistsError}). Falling back to free-text entry; values are not validated.
                         </p>
                       ) : picklists ? (
@@ -1784,12 +1784,12 @@ function PipelineSummary({
           <div className="min-w-0">
             <span>
               {row.label}:{' '}
-              <span className={`font-medium ${row.raw ? 'text-amber-700 dark:text-amber-400 font-mono' : 'text-text-primary'}`}>
+              <span className={`font-medium ${row.raw ? 'text-warning dark:text-warning font-mono' : 'text-text-primary'}`}>
                 {row.value}
               </span>
             </span>
             {row.hint && (
-              <span className="block text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+              <span className="block text-[11px] text-warning dark:text-warning mt-0.5">
                 {row.hint}
               </span>
             )}
@@ -1861,12 +1861,12 @@ function CalendarSummary({
           <div className="min-w-0">
             <span>
               {row.label}:{' '}
-              <span className={`font-medium ${row.raw ? 'text-amber-700 dark:text-amber-400 font-mono' : 'text-text-primary'}`}>
+              <span className={`font-medium ${row.raw ? 'text-warning dark:text-warning font-mono' : 'text-text-primary'}`}>
                 {row.value}
               </span>
             </span>
             {row.hint && (
-              <span className="block text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+              <span className="block text-[11px] text-warning dark:text-warning mt-0.5">
                 {row.hint}
               </span>
             )}
@@ -1970,21 +1970,21 @@ function ConnectedCard({
         </div>
         {autoDisabled ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 ring-1 ring-red-400/60 dark:ring-red-500/40 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-danger-light text-danger dark:bg-danger dark:text-danger ring-1 ring-danger dark:ring-danger whitespace-nowrap"
             title="This integration was failing for too long, so we automatically disabled it to stop wasting tool budget."
           >
             <AlertCircle className="h-3 w-3" /> Auto-disabled
           </span>
         ) : needsReconnect ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 ring-1 ring-amber-400/60 dark:ring-amber-500/40 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-warning-light text-warning dark:bg-warning dark:text-warning ring-1 ring-warning dark:ring-warning whitespace-nowrap"
             title="The stored access token can no longer be refreshed. Sign in again to restore syncing."
           >
             <AlertTriangle className="h-3 w-3" /> Reconnect needed
           </span>
         ) : enabled && !syncError ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success whitespace-nowrap"
             aria-label={`${definition.name} sync status: connected`}
             title="Connected and syncing"
           >
@@ -1992,7 +1992,7 @@ function ConnectedCard({
           </span>
         ) : syncError ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-danger-light text-danger dark:bg-danger dark:text-danger whitespace-nowrap"
             aria-label={`${definition.name} sync status: sync error`}
             title="Last sync failed"
           >
@@ -2000,7 +2000,7 @@ function ConnectedCard({
           </span>
         ) : (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-warning-light text-warning dark:bg-warning dark:text-warning whitespace-nowrap"
             aria-label={`${definition.name} sync status: disabled`}
             title="Connector is disabled"
           >
@@ -2038,18 +2038,18 @@ function ConnectedCard({
 
       {autoDisabled && (
         <div
-          className="mb-3 rounded-lg border border-red-300 dark:border-red-800/60 bg-red-50 dark:bg-red-900/15 p-3 text-xs"
+          className="mb-3 rounded-lg border border-danger dark:border-danger bg-danger-light dark:bg-danger p-3 text-xs"
           title="This integration was failing for too long, so it was automatically disabled to stop wasting tool budget."
         >
-          <div className="flex items-start gap-1.5 text-red-800 dark:text-red-300">
+          <div className="flex items-start gap-1.5 text-danger dark:text-danger">
             <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="font-semibold mb-0.5">We disabled this integration</p>
-              <p className="text-red-700 dark:text-red-200/90">
+              <p className="text-danger dark:text-danger">
                 {definition.name} was failing for too long, so we paused event dispatch to stop wasting tool budget. Reconnect below to re-enable it.
               </p>
               {connector.autoDisabledAt && (
-                <p className="text-[10px] text-red-500/80 dark:text-red-400/70 mt-1">
+                <p className="text-[10px] text-danger dark:text-danger mt-1">
                   Disabled {formatSyncTime(connector.autoDisabledAt)}
                 </p>
               )}
@@ -2059,7 +2059,7 @@ function ConnectedCard({
             <button
               onClick={definition.oauthProvider ? startReauth : onReconnect}
               disabled={reauthPending}
-              className="mt-2 w-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+              className="mt-2 w-full text-xs font-semibold bg-danger hover:bg-danger text-white transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
             >
               <ExternalLink className="h-3 w-3" />
               {reauthPending
@@ -2074,14 +2074,14 @@ function ConnectedCard({
 
       {needsReconnect && !autoDisabled && (
         <div
-          className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-3 text-xs"
+          className="mb-3 rounded-lg border border-warning dark:border-warning bg-warning-light dark:bg-warning p-3 text-xs"
           title="The stored OAuth refresh token expired or was revoked. Reconnect to restore syncing."
         >
-          <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+          <div className="flex items-start gap-1.5 text-warning dark:text-warning">
             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="font-semibold mb-0.5">Reconnect needed</p>
-              <p className="text-amber-700 dark:text-amber-200/90">
+              <p className="text-warning dark:text-warning">
                 {definition.name}'s access expired or was revoked. Events to this integration are paused until you sign in again.
               </p>
             </div>
@@ -2090,7 +2090,7 @@ function ConnectedCard({
             <button
               onClick={definition.oauthProvider ? startReauth : onReconnect}
               disabled={reauthPending}
-              className="mt-2 w-full text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+              className="mt-2 w-full text-xs font-semibold bg-warning hover:bg-warning text-white transition px-3 py-1.5 rounded-md disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
             >
               <ExternalLink className="h-3 w-3" />
               {reauthPending
@@ -2101,7 +2101,7 @@ function ConnectedCard({
             </button>
           )}
           {reauthConfigError && (
-            <div role="alert" className="mt-2 rounded-md border border-amber-400/70 bg-amber-100/70 dark:bg-amber-900/30 p-2 text-amber-900 dark:text-amber-200">
+            <div role="alert" className="mt-2 rounded-md border border-warning bg-warning-light dark:bg-warning p-2 text-warning dark:text-warning">
               {reauthConfigError.kind === 'state_secret' ? (
                 <>
                   <p className="font-semibold">OAuth signing secret missing</p>
@@ -2161,20 +2161,20 @@ function ConnectedCard({
 
       {syncError && errorMessage && (
         <div
-          className="mb-3 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 p-2.5 text-xs"
+          className="mb-3 rounded-lg border border-danger dark:border-danger bg-danger-light dark:bg-danger p-2.5 text-xs"
           title={errorMessage}
         >
-          <div className="flex items-start gap-1.5 text-red-700 dark:text-red-400">
+          <div className="flex items-start gap-1.5 text-danger dark:text-danger">
             <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="font-medium mb-0.5">
                 {authError ? 'Authorization expired' : 'Last sync failed'}
               </p>
-              <p className="font-mono text-red-600 dark:text-red-300 break-all line-clamp-2">
+              <p className="font-mono text-danger dark:text-danger break-all line-clamp-2">
                 {truncatedError}
               </p>
               {connector.lastSyncErrorAt && (
-                <p className="text-[10px] text-red-500/80 dark:text-red-400/70 mt-1">
+                <p className="text-[10px] text-danger dark:text-danger mt-1">
                   {formatSyncTime(connector.lastSyncErrorAt)}
                 </p>
               )}
@@ -2259,18 +2259,18 @@ function AvailableCard({
       {oauthUnavailable && (
         <div
           role="status"
-          className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-2.5 text-xs"
+          className="mb-3 rounded-lg border border-warning dark:border-warning bg-warning-light dark:bg-warning p-2.5 text-xs"
           title={
             oauthAvailability?.missingEnv
               ? `Platform admin needs to set ${oauthAvailability.missingEnv} on the server.`
               : `${providerLabel} OAuth client credentials are missing on the server.`
           }
         >
-          <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+          <div className="flex items-start gap-1.5 text-warning dark:text-warning">
             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="font-semibold mb-0.5">Server credentials needed</p>
-              <p className="text-amber-700 dark:text-amber-200/90">
+              <p className="text-warning dark:text-warning">
                 QVO is missing the {providerLabel} OAuth client credentials. Ask your platform admin to set{' '}
                 {oauthAvailability?.missingEnv ? (
                   <code className="font-mono">{oauthAvailability.missingEnv}</code>
@@ -2484,7 +2484,7 @@ export function OutageAlertHistory({
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-            <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <ShieldAlert className="h-5 w-5 text-warning dark:text-warning" />
             Outage alert history
           </h2>
           <p className="text-xs text-text-secondary mt-1 max-w-xl">
@@ -2530,7 +2530,7 @@ export function OutageAlertHistory({
       {isLoading ? (
         <SkeletonRows count={5} rowClassName="h-10" />
       ) : isError ? (
-        <div className="text-sm text-red-600 dark:text-red-400 py-6 text-center">
+        <div className="text-sm text-danger dark:text-danger py-6 text-center">
           Couldn't load alert history. Try refreshing.
         </div>
       ) : alerts.length === 0 ? (
@@ -2574,7 +2574,7 @@ export function OutageAlertHistory({
                     if (alert.twilioConfigured === false) {
                       deliveryNode = (
                         <span
-                          className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"
+                          className="inline-flex items-center gap-1 text-warning dark:text-warning"
                           title="Twilio credentials are not configured on this environment, so the SMS was logged only — no message was actually sent. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_FROM to enable real delivery."
                         >
                           <AlertTriangle className="h-3 w-3" /> Twilio not configured
@@ -2589,10 +2589,10 @@ export function OutageAlertHistory({
                         <span
                           className={`inline-flex items-center gap-1 ${
                             allOk
-                              ? 'text-green-700 dark:text-green-400'
+                              ? 'text-success dark:text-success'
                               : partial
-                                ? 'text-amber-700 dark:text-amber-400'
-                                : 'text-red-700 dark:text-red-400'
+                                ? 'text-warning dark:text-warning'
+                                : 'text-danger dark:text-danger'
                           }`}
                           title={
                             allOk
@@ -2662,8 +2662,8 @@ export function OutageAlertHistory({
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
                             isSms
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+                              : 'bg-info-light text-info dark:bg-info dark:text-info'
                           }`}
                         >
                           {isSms ? (
@@ -2763,7 +2763,7 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
     case 'delivered':
       return {
         label: 'Delivered',
-        className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+        className: 'bg-success-light text-success dark:bg-success dark:text-success',
         Icon: CheckCircle2,
       };
     case 'sent':
@@ -2771,43 +2771,43 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
       // delivery. Greener than queued, dimmer than delivered.
       return {
         label: 'Sent',
-        className: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
+        className: 'bg-success-light text-success dark:bg-success dark:text-success',
         Icon: CheckCircle2,
       };
     case 'undelivered':
       return {
         label: 'Undelivered',
-        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'bounced':
       return {
         label: 'Bounced',
-        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'dropped':
       return {
         label: 'Dropped',
-        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'spam':
       return {
         label: 'Spam',
-        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        className: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
         Icon: AlertTriangle,
       };
     case 'deferred':
       return {
         label: 'Deferred',
-        className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+        className: 'bg-info-light text-info dark:bg-info dark:text-info',
         Icon: Clock,
       };
     case 'failed':
       return {
         label: 'Failed',
-        className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'queued':
@@ -2815,13 +2815,13 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
     case 'accepted':
       return {
         label: status === 'queued' ? 'Queued' : status === 'accepted' ? 'Accepted' : 'Sending',
-        className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+        className: 'bg-info-light text-info dark:bg-info dark:text-info',
         Icon: Clock,
       };
     case 'skipped':
       return {
         label: 'Skipped',
-        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        className: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
         Icon: AlertTriangle,
       };
     default:
@@ -2943,7 +2943,7 @@ function OutageAlertDetailPanel({
       <div className="sticky top-0 z-sticky-header flex items-start justify-between gap-3 p-5 bg-surface border-b border-border">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
-            <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <ShieldAlert className="h-5 w-5 text-warning dark:text-warning" />
             Outage alert timeline
           </h3>
           <p className="text-xs text-text-secondary mt-1">
@@ -2968,7 +2968,7 @@ function OutageAlertDetailPanel({
           <Skeleton className="h-24 w-full" rounded="lg" />
         </div>
       ) : isError || !data ? (
-        <div className="p-6 text-sm text-red-600 dark:text-red-400">
+        <div className="p-6 text-sm text-danger dark:text-danger">
           Couldn't load alert details.{' '}
           {error instanceof Error ? error.message : null}
         </div>
@@ -2988,7 +2988,7 @@ function OutageAlertDetailPanel({
                       : `Re-runs the same ${isSms ? 'SMS' : 'email'} for ${failedRecipientCount} recipient${failedRecipientCount === 1 ? '' : 's'} whose latest delivery is failed or skipped. New audit rows are appended to the timeline below.`}
                   </p>
                   {twilioBlocked && (
-                    <p className="mt-1 text-amber-700 dark:text-amber-400">
+                    <p className="mt-1 text-warning dark:text-warning">
                       Twilio is not configured on this server, so SMS sends will be skipped again.
                     </p>
                   )}
@@ -3013,8 +3013,8 @@ function OutageAlertDetailPanel({
                 <div
                   className={`mt-2 text-xs rounded-md border px-3 py-2 ${
                     resendBanner.kind === 'success'
-                      ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300'
-                      : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
+                      ? 'border-success bg-success-light text-success dark:border-success dark:bg-success dark:text-success'
+                      : 'border-danger bg-danger-light text-danger dark:border-danger dark:bg-danger dark:text-danger'
                   }`}
                   role="status"
                 >
@@ -3084,8 +3084,8 @@ function OutageAlertDetailBody({
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                   isSms
-                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+                    : 'bg-info-light text-info dark:bg-info dark:text-info'
                 }`}
               >
                 {isSms ? <MessageSquare className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
@@ -3209,7 +3209,7 @@ function OutageAlertDetailBody({
           <div className="flex items-center gap-2">
             {detail.liveTrackingAvailable && (
               <span
-                className="inline-flex items-center gap-1 text-[11px] text-blue-700 dark:text-blue-400"
+                className="inline-flex items-center gap-1 text-[11px] text-info dark:text-info"
                 title={
                   isSms
                     ? 'Auto-refreshing as Twilio reports delivery updates'
@@ -3224,7 +3224,7 @@ function OutageAlertDetailBody({
               </span>
             )}
             {isSms && detail.twilioConfigured === false && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+              <span className="inline-flex items-center gap-1 text-[11px] text-warning dark:text-warning">
                 <AlertTriangle className="h-3 w-3" /> Twilio not configured
               </span>
             )}
@@ -3323,7 +3323,7 @@ function OutageAlertDetailBody({
                         if (isAdverseEmailBounce) {
                           return (
                             <div
-                              className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words"
+                              className="mt-2 text-[11px] text-danger dark:text-danger break-words"
                               data-testid="recipient-bounce-reason"
                             >
                               <span className="font-medium">Reason:</span>{' '}
@@ -3332,7 +3332,7 @@ function OutageAlertDetailBody({
                           );
                         }
                         return (
-                          <div className="mt-2 text-[11px] text-red-700 dark:text-red-400 break-words">
+                          <div className="mt-2 text-[11px] text-danger dark:text-danger break-words">
                             {recipient.deliveryError}
                           </div>
                         );
@@ -3464,7 +3464,7 @@ export default function Connectors() {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add(
         'ring-2',
-        'ring-amber-400',
+        'ring-warning',
         'ring-offset-2',
         'ring-offset-surface',
         'transition-shadow',
@@ -3472,7 +3472,7 @@ export default function Connectors() {
       window.setTimeout(() => {
         el?.classList.remove(
           'ring-2',
-          'ring-amber-400',
+          'ring-warning',
           'ring-offset-2',
           'ring-offset-surface',
           'transition-shadow',
@@ -3578,29 +3578,29 @@ export default function Connectors() {
       {(schedulingDriftAgents.length > 0 || schedulingDriftPhones.length > 0) && (
         <div
           role="alert"
-          className="rounded-xl border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-4"
+          className="rounded-xl border border-warning dark:border-warning bg-warning-light dark:bg-warning p-4"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-light dark:bg-warning text-warning dark:text-warning">
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              <p className="text-sm font-semibold text-warning dark:text-warning">
                 Some agents and phone numbers point to a calendar that isn't connected
               </p>
-              <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-1">
+              <p className="text-xs text-warning dark:text-warning mt-1">
                 Appointments routed through them won't sync until you reconnect the calendar or pick a different one in the agent / phone-number settings.
               </p>
               {schedulingDriftAgents.length > 0 && (
                 <div className="mt-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-warning dark:text-warning">
                     Agents ({schedulingDriftAgents.length})
                   </p>
-                  <ul className="mt-1 text-xs text-amber-900 dark:text-amber-100 space-y-0.5">
+                  <ul className="mt-1 text-xs text-warning dark:text-warning space-y-0.5">
                     {schedulingDriftAgents.map((a) => (
                       <li key={a.id}>
                         <span className="font-medium">{a.name}</span>{' '}
-                        <span className="text-amber-800/80 dark:text-amber-200/80">
+                        <span className="text-warning dark:text-warning">
                           → {formatSchedulingProvider(a.scheduling_provider!)} (not connected)
                         </span>
                       </li>
@@ -3610,14 +3610,14 @@ export default function Connectors() {
               )}
               {schedulingDriftPhones.length > 0 && (
                 <div className="mt-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-warning dark:text-warning">
                     Phone numbers ({schedulingDriftPhones.length})
                   </p>
-                  <ul className="mt-1 text-xs text-amber-900 dark:text-amber-100 space-y-0.5">
+                  <ul className="mt-1 text-xs text-warning dark:text-warning space-y-0.5">
                     {schedulingDriftPhones.map((p) => (
                       <li key={p.id}>
                         <span className="font-medium">{p.friendly_name || p.phone_number}</span>{' '}
-                        <span className="text-amber-800/80 dark:text-amber-200/80">
+                        <span className="text-warning dark:text-warning">
                           → {formatSchedulingProvider(p.scheduling_provider!)} (not connected)
                         </span>
                       </li>
@@ -3633,19 +3633,19 @@ export default function Connectors() {
       {reconnectNeededDefs.length > 0 && (
         <div
           role="alert"
-          className="rounded-xl border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 p-4"
+          className="rounded-xl border border-warning dark:border-warning bg-warning-light dark:bg-warning p-4"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-light dark:bg-warning text-warning dark:text-warning">
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              <p className="text-sm font-semibold text-warning dark:text-warning">
                 {reconnectNeededDefs.length === 1
                   ? `${reconnectNeededDefs[0].name} needs to be reconnected`
                   : `${reconnectNeededDefs.length} integrations need to be reconnected`}
               </p>
-              <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-1">
+              <p className="text-xs text-warning dark:text-warning mt-1">
                 Their stored access expired or was revoked, so events are paused until you sign in again.
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
@@ -3656,7 +3656,7 @@ export default function Connectors() {
                     <button
                       key={def.id}
                       onClick={() => scrollToConnector(c.integrationId)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-warning text-warning dark:text-warning border border-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning transition"
                     >
                       <BrandLogo provider={def.logoId} size={14} />
                       {def.name}

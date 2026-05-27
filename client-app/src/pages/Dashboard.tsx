@@ -193,7 +193,7 @@ function QuickStartCard({ navigate, agentCount, hasPhoneNumbers, t }: {
         {steps.map((step, i) => (
           <div key={i} className="flex items-center gap-3">
             {step.done ? (
-              <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" />
+              <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
             ) : (
               <div className="h-5 w-5 rounded-full border-2 border-white/30 shrink-0" />
             )}
@@ -221,21 +221,21 @@ const exampleWorkflowDefs = [
     titleKey: 'dashboard.example_workflows.medical_title',
     descriptionKey: 'dashboard.example_workflows.medical_description',
     template: 'medical-after-hours',
-    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    color: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
   },
   {
     icon: Building2,
     titleKey: 'dashboard.example_workflows.property_title',
     descriptionKey: 'dashboard.example_workflows.property_description',
     template: 'property-management',
-    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    color: 'bg-info-light text-info dark:bg-info dark:text-info',
   },
   {
     icon: Wrench,
     titleKey: 'dashboard.example_workflows.home_title',
     descriptionKey: 'dashboard.example_workflows.home_description',
     template: 'home-services',
-    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    color: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
   },
   {
     icon: Scale,
@@ -249,7 +249,7 @@ const exampleWorkflowDefs = [
     titleKey: 'dashboard.example_workflows.support_title',
     descriptionKey: 'dashboard.example_workflows.support_description',
     template: 'customer-support',
-    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    color: 'bg-success-light text-success dark:bg-success dark:text-success',
   },
 ];
 

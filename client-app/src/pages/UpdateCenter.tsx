@@ -28,9 +28,9 @@ interface AvailableUpdate {
 
 function UpgradeTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    major: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    minor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    patch: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    major: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+    minor: 'bg-info-light text-info dark:bg-info dark:text-info',
+    patch: 'bg-success-light text-success dark:bg-success dark:text-success',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type] ?? 'bg-surface-hover text-text-secondary'}`}>
@@ -41,11 +41,11 @@ function UpgradeTypeBadge({ type }: { type: string }) {
 
 function ChangeTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    added: 'text-green-600 dark:text-green-400',
-    changed: 'text-blue-600 dark:text-blue-400',
-    fixed: 'text-yellow-600 dark:text-yellow-400',
-    removed: 'text-red-600 dark:text-red-400',
-    deprecated: 'text-orange-600 dark:text-orange-400',
+    added: 'text-success dark:text-success',
+    changed: 'text-info dark:text-info',
+    fixed: 'text-warning dark:text-warning',
+    removed: 'text-danger dark:text-danger',
+    deprecated: 'text-warning dark:text-warning',
     security: 'text-purple-600 dark:text-purple-400',
   };
   return (
@@ -111,24 +111,24 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
       </div>
 
       {update.isMajor && (
-        <div className="px-5 py-2 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-800 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
-          <span className="text-sm text-amber-700 dark:text-amber-400">
+        <div className="px-5 py-2 bg-warning-light dark:bg-warning border-t border-warning dark:border-warning flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-warning dark:text-warning" />
+          <span className="text-sm text-warning dark:text-warning">
             Major version upgrade — may include breaking changes. Review changelog before updating.
           </span>
         </div>
       )}
 
       {showConfirm && (
-        <div className="px-5 py-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
-          <p className="text-sm text-red-700 dark:text-red-400 mb-2">
+        <div className="px-5 py-3 bg-danger-light dark:bg-danger border-t border-danger dark:border-danger">
+          <p className="text-sm text-danger dark:text-danger mb-2">
             This is a major version upgrade that may include breaking changes. Are you sure you want to proceed?
           </p>
           <div className="flex gap-2">
             <button
               onClick={handleUpgrade}
               disabled={isUpgrading}
-              className="px-3 py-1.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm font-medium bg-danger text-white rounded-lg hover:bg-danger disabled:opacity-50"
             >
               {isUpgrading ? 'Upgrading...' : 'Confirm Upgrade'}
             </button>
@@ -225,13 +225,13 @@ export default function UpdateCenter() {
       />
 
       {upgradeMutation.isError && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-400">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg px-4 py-3 text-sm text-danger dark:text-danger">
           {(upgradeMutation.error as Error).message}
         </div>
       )}
 
       {upgradeMutation.isSuccess && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
+        <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-lg px-4 py-3 text-sm text-success dark:text-success flex items-center gap-2">
           <CheckCircle className="h-4 w-4" />
           Template upgraded successfully!
         </div>
@@ -241,7 +241,7 @@ export default function UpdateCenter() {
         <div className="text-center py-16 text-text-muted">Checking for available updates...</div>
       ) : updates.length === 0 ? (
         <div className="bg-surface border border-border rounded-xl p-12 text-center">
-          <CheckCircle className="h-12 w-12 text-green-500 dark:text-green-400 mx-auto mb-3" />
+          <CheckCircle className="h-12 w-12 text-success dark:text-success mx-auto mb-3" />
           <h3 className="text-lg font-semibold mb-1">All up to date</h3>
           <p className="text-text-muted text-sm">All your installed templates are on the latest version.</p>
         </div>

@@ -64,10 +64,10 @@ const PRICE_MODEL_OPTIONS = [
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-hover text-text-primary',
-  submitted: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  submitted: 'bg-info-light text-info dark:bg-info dark:text-info',
+  in_review: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+  approved: 'bg-success-light text-success dark:bg-success dark:text-success',
+  rejected: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
   published: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
@@ -280,17 +280,17 @@ function SubmissionForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       {validation && (
-        <div className={`p-4 rounded-lg border ${validation.valid ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'}`}>
-          <p className={`text-sm font-medium ${validation.valid ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+        <div className={`p-4 rounded-lg border ${validation.valid ? 'bg-success-light dark:bg-success border-success dark:border-success' : 'bg-danger-light dark:bg-danger border-danger dark:border-danger'}`}>
+          <p className={`text-sm font-medium ${validation.valid ? 'text-success dark:text-success' : 'text-danger dark:text-danger'}`}>
             {validation.valid ? 'Validation passed' : 'Validation failed'}
           </p>
           {validation.errors.map((err, i) => (
-            <p key={i} className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-start gap-1">
+            <p key={i} className="text-xs text-danger dark:text-danger mt-1 flex items-start gap-1">
               <XCircle className="h-3 w-3 mt-0.5 shrink-0" /> {err}
             </p>
           ))}
           {validation.warnings.map((warn, i) => (
-            <p key={i} className="text-xs text-yellow-600 dark:text-yellow-400 mt-1 flex items-start gap-1">
+            <p key={i} className="text-xs text-warning dark:text-warning mt-1 flex items-start gap-1">
               <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" /> {warn}
             </p>
           ))}
@@ -375,7 +375,7 @@ function SubmissionsList() {
             </div>
           )}
           {sub.status === 'published' && sub.templateId && (
-            <div className="mt-2 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <div className="mt-2 flex items-center gap-1 text-xs text-success dark:text-success">
               <CheckCircle className="h-3 w-3" />
               Published to marketplace
             </div>
@@ -451,28 +451,28 @@ function DocumentationSection() {
         <div className="space-y-3 text-sm">
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">POST</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success-light text-success dark:bg-success dark:text-success">POST</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/submissions</code>
             </div>
             <p className="text-xs text-text-muted">Submit a new package for review</p>
           </div>
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">POST</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success-light text-success dark:bg-success dark:text-success">POST</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/submissions/validate</code>
             </div>
             <p className="text-xs text-text-muted">Validate a package manifest before submission</p>
           </div>
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">GET</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info-light text-info dark:bg-info dark:text-info">GET</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/submissions</code>
             </div>
             <p className="text-xs text-text-muted">List your submissions and their review status</p>
           </div>
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">GET</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info-light text-info dark:bg-info dark:text-info">GET</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/stats</code>
             </div>
             <p className="text-xs text-text-muted">Get your developer dashboard statistics</p>
@@ -487,27 +487,27 @@ function DocumentationSection() {
         </div>
         <div className="space-y-2 text-sm text-text-secondary">
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-success dark:text-success shrink-0 mt-0.5" />
             <p>Package name must be at least 3 characters and descriptive</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-success dark:text-success shrink-0 mt-0.5" />
             <p>Description must be at least 20 characters explaining functionality</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-success dark:text-success shrink-0 mt-0.5" />
             <p>Slug must use only lowercase letters, numbers, and hyphens</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-success dark:text-success shrink-0 mt-0.5" />
             <p>Version must follow semantic versioning (e.g., 1.0.0)</p>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle className="h-4 w-4 text-success dark:text-success shrink-0 mt-0.5" />
             <p>Manifest must include valid JSON with required fields</p>
           </div>
           <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-yellow-500 dark:text-yellow-400 shrink-0 mt-0.5" />
+            <AlertCircle className="h-4 w-4 text-warning dark:text-warning shrink-0 mt-0.5" />
             <p>All submissions undergo platform admin review before publication</p>
           </div>
         </div>
@@ -573,7 +573,7 @@ export default function DeveloperPortal() {
 
           {stats && stats.avgRating > 0 && (
             <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-3">
-              <Star className="h-5 w-5 text-amber-400" />
+              <Star className="h-5 w-5 text-warning" />
               <span className="text-sm text-text-primary font-medium">Average Rating: {stats.avgRating.toFixed(1)}/5</span>
             </div>
           )}

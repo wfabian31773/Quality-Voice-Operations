@@ -52,7 +52,7 @@ function MaintenanceStatusBanner({ state }: { state: MaintenanceState }) {
     <div
       role="status"
       data-testid="maintenance-status-banner"
-      className="bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-sm flex items-center gap-2 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-100"
+      className="bg-warning-light border-b border-warning text-warning px-4 py-2 text-sm flex items-center gap-2 dark:bg-warning dark:border-warning dark:text-warning"
     >
       <Wrench className="h-4 w-4 shrink-0" />
       <span className="font-medium">{t('maintenance_banner.label')}</span>

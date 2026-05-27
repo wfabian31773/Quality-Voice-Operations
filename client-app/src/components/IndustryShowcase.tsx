@@ -21,7 +21,7 @@ const industries: Industry[] = [
     image: '/industry-hero/healthcare.jpg',
     icon: Stethoscope,
     accent: 'from-blue-500/70 to-primary/50',
-    ringColor: 'ring-blue-400/30',
+    ringColor: 'ring-info',
     stat: { value: '95%', label: 'Calls answered' },
   },
   {
@@ -41,7 +41,7 @@ const industries: Industry[] = [
     image: '/industry-hero/legal.jpg',
     icon: Scale,
     accent: 'from-amber-600/70 to-orange-500/40',
-    ringColor: 'ring-amber-400/30',
+    ringColor: 'ring-warning',
     stat: { value: '$180K', label: 'Revenue recovered/yr' },
   },
   {
@@ -51,7 +51,7 @@ const industries: Industry[] = [
     image: '/industry-hero/real-estate.jpg',
     icon: Home,
     accent: 'from-emerald-500/70 to-primary/50',
-    ringColor: 'ring-emerald-400/30',
+    ringColor: 'ring-success',
     stat: { value: '< 30s', label: 'Lead response' },
   },
   {
@@ -61,7 +61,7 @@ const industries: Industry[] = [
     image: '/industry-hero/home-services.jpg',
     icon: Wrench,
     accent: 'from-orange-500/70 to-amber-500/50',
-    ringColor: 'ring-orange-400/30',
+    ringColor: 'ring-warning',
     stat: { value: '100%', label: 'Emergencies captured' },
   },
   {
@@ -71,7 +71,7 @@ const industries: Industry[] = [
     image: '/industry-hero/veterinary.jpg',
     icon: PawPrint,
     accent: 'from-green-500/70 to-primary/50',
-    ringColor: 'ring-green-400/30',
+    ringColor: 'ring-success',
     stat: { value: '40%', label: 'Tech hours freed' },
   },
   {
@@ -101,7 +101,7 @@ const industries: Industry[] = [
     image: '/industry-hero/hospitality.jpg',
     icon: Hotel,
     accent: 'from-amber-500/70 to-rose-500/40',
-    ringColor: 'ring-amber-400/30',
+    ringColor: 'ring-warning',
     stat: { value: '38%', label: 'Direct bookings lift' },
   },
 ];

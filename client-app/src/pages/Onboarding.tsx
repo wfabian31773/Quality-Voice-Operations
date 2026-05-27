@@ -321,7 +321,7 @@ export default function Onboarding() {
             const dotColorClass = isActive
               ? 'bg-primary'
               : isCompleted
-                ? 'bg-green-500'
+                ? 'bg-success'
                 : 'bg-border';
             const labelColorClass = isActive
               ? 'text-text-primary font-medium'
@@ -365,7 +365,7 @@ export default function Onboarding() {
               <h2 className="text-lg font-semibold text-text-primary">{t('onboarding.setup.title')}</h2>
               {provisioningStatus?.status === 'ready' ? (
                 <>
-                  <div className="flex items-center justify-center gap-2 text-green-600">
+                  <div className="flex items-center justify-center gap-2 text-success">
                     <CheckCircle2 className="h-8 w-8" />
                     <span className="font-medium">{t('onboarding.setup.ready')}</span>
                   </div>
@@ -433,7 +433,7 @@ export default function Onboarding() {
                 <div
                   role="alert"
                   aria-live="polite"
-                  className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                  className="flex items-start gap-2 rounded-lg border border-danger bg-danger-light p-3 text-sm text-danger"
                 >
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
                   <div>

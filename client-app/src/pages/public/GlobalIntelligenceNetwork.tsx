@@ -18,9 +18,9 @@ import {
 } from '../../data/ginBenchmarks';
 
 const STATUS_TONE: Record<GinBenchmarkStatus, string> = {
-  illustrative: 'bg-amber-100 dark:bg-amber-500/20 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-500/40',
+  illustrative: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
   preview: 'bg-sky-100 dark:bg-sky-500/20 text-sky-900 dark:text-sky-200 border-sky-300 dark:border-sky-500/40',
-  live: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-500/40',
+  live: 'bg-success-light dark:bg-success text-success dark:text-success border-success dark:border-success',
 };
 
 const STATUS_LABEL_KEY: Record<GinBenchmarkStatus, string> = {

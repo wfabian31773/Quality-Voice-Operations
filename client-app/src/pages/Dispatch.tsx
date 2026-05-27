@@ -245,15 +245,15 @@ interface JobAttachment {
 }
 
 const STATUS_FLOW = [
-  { key: 'pending', label: 'Pending', color: 'border-t-yellow-400', bg: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' },
-  { key: 'assigned', label: 'Assigned', color: 'border-t-blue-400', bg: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
+  { key: 'pending', label: 'Pending', color: 'border-t-yellow-400', bg: 'bg-warning-light text-warning dark:bg-warning dark:text-warning' },
+  { key: 'assigned', label: 'Assigned', color: 'border-t-blue-400', bg: 'bg-info-light text-info dark:bg-info dark:text-info' },
   { key: 'scheduled', label: 'Scheduled', color: 'border-t-indigo-400', bg: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300' },
   { key: 'en_route', label: 'En Route', color: 'border-t-cyan-400', bg: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300' },
   { key: 'on_site', label: 'On Site', color: 'border-t-teal-400', bg: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300' },
-  { key: 'in_progress', label: 'In Progress', color: 'border-t-orange-400', bg: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' },
-  { key: 'completed', label: 'Completed', color: 'border-t-green-400', bg: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
-  { key: 'incomplete', label: 'Incomplete', color: 'border-t-red-400', bg: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
-  { key: 'done', label: 'Done', color: 'border-t-emerald-400', bg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  { key: 'in_progress', label: 'In Progress', color: 'border-t-orange-400', bg: 'bg-warning-light text-warning dark:bg-warning dark:text-warning' },
+  { key: 'completed', label: 'Completed', color: 'border-t-green-400', bg: 'bg-success-light text-success dark:bg-success dark:text-success' },
+  { key: 'incomplete', label: 'Incomplete', color: 'border-t-red-400', bg: 'bg-danger-light text-danger dark:bg-danger dark:text-danger' },
+  { key: 'done', label: 'Done', color: 'border-t-emerald-400', bg: 'bg-success-light text-success dark:bg-success dark:text-success' },
   { key: 'cancelled', label: 'Cancelled', color: 'border-t-gray-400', bg: 'bg-surface-hover text-text-primary' },
 ];
 
@@ -325,9 +325,9 @@ function ClosestApproachBadge({
   const warnM = getClosestApproachWarnM(badThresholdM);
   const tone =
     meters > badThresholdM
-      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+      ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
       : meters > warnM
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+      ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
       : 'bg-surface-hover text-text-muted';
   const title =
     meters > badThresholdM
@@ -712,7 +712,7 @@ export default function Dispatch() {
       />
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -726,7 +726,7 @@ export default function Dispatch() {
         be stale or empty — surface so operators know.
       */}
       {supportDataWarnings.size > 0 && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2.5 text-xs text-yellow-800 dark:text-yellow-200 flex items-center justify-between gap-2">
+        <div className="bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg p-2.5 text-xs text-warning dark:text-warning flex items-center justify-between gap-2">
           <span>
             Background data didn't load: <strong>{Array.from(supportDataWarnings).sort().join(', ')}</strong>. Some board options may be missing or stale.
           </span>
@@ -1186,7 +1186,7 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
         </button>
       </div>
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-[11px] text-red-700 dark:text-red-300 mb-2">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-[11px] text-danger dark:text-danger mb-2">
           {error}
         </div>
       )}
@@ -1219,19 +1219,19 @@ function RecentExportRow({ row, retrying, onRetry }: {
         );
       case 'running':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-info-light text-info dark:bg-info dark:text-info">
             <Loader2 className="h-2.5 w-2.5 animate-spin" /> Building
           </span>
         );
       case 'ready':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success dark:bg-success dark:text-success">
             <CheckCircle2 className="h-2.5 w-2.5" /> Ready
           </span>
         );
       case 'failed':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-light text-danger dark:bg-danger dark:text-danger">
             <XCircle className="h-2.5 w-2.5" /> Failed
           </span>
         );
@@ -1302,7 +1302,7 @@ function RecentExportRow({ row, retrying, onRetry }: {
         )}
       </div>
       {row.status === 'failed' && row.error_message && (
-        <div className="mt-1 text-[11px] text-red-600 dark:text-red-400 break-words">
+        <div className="mt-1 text-[11px] text-danger dark:text-danger break-words">
           {row.error_message}
         </div>
       )}
@@ -1495,7 +1495,7 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
             </button>
           </div>
           {mode === 'selected' && !hasSelection && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+            <p className="text-[11px] text-warning dark:text-warning mt-1">
               No jobs selected. Use the checkboxes on the board or queue first.
             </p>
           )}
@@ -1579,12 +1579,12 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
         </div>
 
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300">
+          <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-xs text-danger dark:text-danger">
             {error}
           </div>
         )}
         {summary && (
-          <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-2 text-xs text-emerald-700 dark:text-emerald-300">
+          <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-lg p-2 text-xs text-success dark:text-success">
             {summary}
           </div>
         )}
@@ -2006,10 +2006,10 @@ function JobCard({ job, isReadOnly, selected, liveEta, enRouteSince, now, longEn
   const drivingTone = (() => {
     if (drivingMinutes == null) return 'text-text-muted';
     if (drivingMinutes >= longThreshold * 2) {
-      return 'text-red-700 dark:text-red-300 font-semibold';
+      return 'text-danger dark:text-danger font-semibold';
     }
     if (drivingMinutes >= longThreshold) {
-      return 'text-amber-700 dark:text-amber-300 font-semibold';
+      return 'text-warning dark:text-warning font-semibold';
     }
     return 'text-text-muted';
   })();
@@ -2593,13 +2593,13 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           title={`Show techs whose closest GPS ping was more than ${CLOSEST_APPROACH_WARN_M} m from the address (amber + off-target)`}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-colors ${
             offTargetFilter === 'amber'
-              ? 'bg-amber-500 text-white'
+              ? 'bg-warning text-white'
               : offTargetCounts.amberPlus > 0
-                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50'
+                ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning hover:bg-warning-light dark:hover:bg-warning'
                 : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
-          <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'amber' ? 'bg-white' : 'bg-amber-500'}`} />
+          <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'amber' ? 'bg-white' : 'bg-warning'}`} />
           Amber+ ({offTargetCounts.amberPlus})
         </button>
         <button
@@ -2609,13 +2609,13 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
           title={`Show only techs whose closest GPS ping was more than ${CLOSEST_APPROACH_BAD_M} m from the address`}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-colors ${
             offTargetFilter === 'bad'
-              ? 'bg-red-600 text-white'
+              ? 'bg-danger text-white'
               : offTargetCounts.bad > 0
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900/50'
+                ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger hover:bg-danger-light dark:hover:bg-danger'
                 : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
-          <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'bad' ? 'bg-white' : 'bg-red-600'}`} />
+          <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full ${offTargetFilter === 'bad' ? 'bg-white' : 'bg-danger'}`} />
           Off-target ({offTargetCounts.bad})
         </button>
         {filterActive && (
@@ -2640,7 +2640,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
       </div>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
         </div>
       )}
@@ -2966,11 +2966,11 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
   };
 
   const statusColors: Record<string, string> = {
-    available: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-    busy: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-    on_break: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+    available: 'bg-success-light text-success dark:bg-success dark:text-success',
+    busy: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+    on_break: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
     off_shift: 'bg-surface-hover text-text-primary',
-    unavailable: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    unavailable: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
   };
 
   return (
@@ -2985,7 +2985,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
       </div>
 
       {resError && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
           <span>{resError}</span>
           <button onClick={() => setResError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -3155,7 +3155,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
               <p className="text-sm text-text-muted">Generating pairing code…</p>
             )}
             {pairingModal.status === 'error' && (
-              <p className="text-sm text-red-600 dark:text-red-400">{pairingModal.error}</p>
+              <p className="text-sm text-danger dark:text-danger">{pairingModal.error}</p>
             )}
             {pairingModal.status === 'success' && (
               <>
@@ -3238,7 +3238,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
                   <span className="text-xs text-heading capitalize">{e.exception_type.replace(/_/g, ' ')}</span>
                   <div className="flex items-center gap-2">
                     <div className="w-24 h-2 bg-surface-secondary rounded-full overflow-hidden">
-                      <div className="h-full bg-red-400 rounded-full" style={{ width: `${Math.min(100, (e.count / Math.max(1, m.exceptionCount as number)) * 100)}%` }} />
+                      <div className="h-full bg-danger rounded-full" style={{ width: `${Math.min(100, (e.count / Math.max(1, m.exceptionCount as number)) * 100)}%` }} />
                     </div>
                     <span className="text-xs text-text-muted w-6 text-right">{e.count}</span>
                   </div>
@@ -3260,7 +3260,7 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-text-muted">{t.completed}/{t.total_jobs}</span>
                     <div className="w-20 h-2 bg-surface-secondary rounded-full overflow-hidden">
-                      <div className="h-full bg-green-400 rounded-full" style={{ width: `${t.total_jobs > 0 ? (t.completed / t.total_jobs) * 100 : 0}%` }} />
+                      <div className="h-full bg-success rounded-full" style={{ width: `${t.total_jobs > 0 ? (t.completed / t.total_jobs) * 100 : 0}%` }} />
                     </div>
                   </div>
                 </div>
@@ -3319,8 +3319,8 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
               return (
                 <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5" title={`${d.date}: ${d.created} created, ${d.completed} completed`}>
                   <div className="w-full flex gap-px">
-                    <div className="flex-1 bg-blue-400 rounded-t" style={{ height: `${(d.created / maxVal) * 100}px` }} />
-                    <div className="flex-1 bg-green-400 rounded-t" style={{ height: `${(d.completed / maxVal) * 100}px` }} />
+                    <div className="flex-1 bg-info rounded-t" style={{ height: `${(d.created / maxVal) * 100}px` }} />
+                    <div className="flex-1 bg-success rounded-t" style={{ height: `${(d.completed / maxVal) * 100}px` }} />
                   </div>
                 </div>
               );
@@ -3328,8 +3328,8 @@ function ReportingView({ data, fetchReporting, onDrilldownToBadArrivals }: {
           </div>
         )}
         <div className="flex gap-4 mt-2 text-[10px] text-text-muted">
-          <span className="flex items-center gap-1"><div className="w-2 h-2 bg-blue-400 rounded" /> Created</span>
-          <span className="flex items-center gap-1"><div className="w-2 h-2 bg-green-400 rounded" /> Completed</span>
+          <span className="flex items-center gap-1"><div className="w-2 h-2 bg-info rounded" /> Created</span>
+          <span className="flex items-center gap-1"><div className="w-2 h-2 bg-success rounded" /> Completed</span>
         </div>
       </div>
     </div>
@@ -3375,10 +3375,10 @@ function ApproachQualityCard({
   }
 
   const buckets = [
-    { key: 'under_50', label: '< 50 m', count: approach.under_50, tone: 'bg-green-500', tooltip: 'Tech reached the address — within 50 m' },
-    { key: 'm_50_100', label: '50–100 m', count: approach.m_50_100, tone: 'bg-emerald-400', tooltip: 'Within a typical front yard — 50 to 100 m' },
-    { key: 'm_100_250', label: '100–250 m', count: approach.m_100_250, tone: 'bg-amber-400', tooltip: 'GPS-noisy or wrong building — 100 to 250 m' },
-    { key: 'over_250', label: '> 250 m', count: approach.over_250, tone: 'bg-red-500', tooltip: 'Probably wrong house — over 250 m' },
+    { key: 'under_50', label: '< 50 m', count: approach.under_50, tone: 'bg-success', tooltip: 'Tech reached the address — within 50 m' },
+    { key: 'm_50_100', label: '50–100 m', count: approach.m_50_100, tone: 'bg-success', tooltip: 'Within a typical front yard — 50 to 100 m' },
+    { key: 'm_100_250', label: '100–250 m', count: approach.m_100_250, tone: 'bg-warning', tooltip: 'GPS-noisy or wrong building — 100 to 250 m' },
+    { key: 'over_250', label: '> 250 m', count: approach.over_250, tone: 'bg-danger', tooltip: 'Probably wrong house — over 250 m' },
   ];
   const total = approach.with_data;
   const trendMax = Math.max(1, ...approachTrend.map(d => d.with_data));
@@ -3398,7 +3398,7 @@ function ApproachQualityCard({
             <div className="text-[10px] text-text-muted mt-1">within 50 m</div>
           </div>
           <div>
-            <div className="text-2xl font-semibold text-red-500 dark:text-red-400 leading-none">{approach.bad_rate}%</div>
+            <div className="text-2xl font-semibold text-danger dark:text-danger leading-none">{approach.bad_rate}%</div>
             <div className="text-[10px] text-text-muted mt-1">over 250 m</div>
           </div>
         </div>
@@ -3443,10 +3443,10 @@ function ApproachQualityCard({
                 type="button"
                 onClick={onDrilldownToBadArrivals}
                 title="Open the queue sorted by farthest-from-address first"
-                className="text-left bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/60 rounded-lg p-2 hover:border-red-400 dark:hover:border-red-600 transition-colors"
+                className="text-left bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 hover:border-danger dark:hover:border-danger transition-colors"
               >
                 {inner}
-                <div className="text-[10px] text-red-600 dark:text-red-400 mt-1 inline-flex items-center gap-1">
+                <div className="text-[10px] text-danger dark:text-danger mt-1 inline-flex items-center gap-1">
                   Drill into queue <ArrowRight className="h-2.5 w-2.5" />
                 </div>
               </button>
@@ -3622,7 +3622,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       </div>
 
       {adminError && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
           <span>{adminError}</span>
           <button onClick={() => setAdminError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -3795,7 +3795,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                       <td className="p-2">
                         <div className="flex gap-1">
                           <button onClick={() => openForm('rule', r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
-                          <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
+                          <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-danger dark:text-danger hover:bg-danger-light dark:hover:bg-danger">Delete</button>
                         </div>
                       </td>
                     )}
@@ -3955,7 +3955,7 @@ function DispatchThresholdField({
         <span className="text-[10px] text-text-muted">Allowed: {min}–{max} {unitShort}</span>
       </div>
       {!valid && draft !== '' && (
-        <p className="text-[11px] text-red-600 dark:text-red-400">Enter a whole number between {min} and {max}.</p>
+        <p className="text-[11px] text-danger dark:text-danger">Enter a whole number between {min} and {max}.</p>
       )}
       {!isReadOnly && (
         <div className="flex items-center gap-2 pt-1">
@@ -3968,7 +3968,7 @@ function DispatchThresholdField({
             {saving ? 'Saving…' : 'Save'}
           </button>
           {savedAt && !dirty && (
-            <span className="text-[11px] text-green-600 dark:text-green-400">Saved.</span>
+            <span className="text-[11px] text-success dark:text-success">Saved.</span>
           )}
         </div>
       )}
@@ -4077,7 +4077,7 @@ function DispatchSmsSegmentLimitCard({
         </span>
       </div>
       {smsLimitEnabled && !smsValid && smsLimitDraft !== '' && (
-        <p className="text-[11px] text-red-600 dark:text-red-400">
+        <p className="text-[11px] text-danger dark:text-danger">
           Enter a whole number between {smsMin} and {smsMax}.
         </p>
       )}
@@ -4093,7 +4093,7 @@ function DispatchSmsSegmentLimitCard({
             {smsSaving ? 'Saving…' : 'Save'}
           </button>
           {smsSavedAt && !smsDirty && (
-            <span className="text-[11px] text-green-600 dark:text-green-400">Saved.</span>
+            <span className="text-[11px] text-success dark:text-success">Saved.</span>
           )}
         </div>
       )}
@@ -4233,14 +4233,14 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                   aria-invalid={unknownSubjectTokens.length > 0 || undefined}
                   className={`w-full px-3 py-2 rounded-lg border bg-surface text-heading text-sm focus:outline-none focus:ring-2 ${
                     unknownSubjectTokens.length > 0
-                      ? 'border-amber-500 focus:ring-amber-500/30'
+                      ? 'border-warning focus:ring-warning'
                       : 'border-border focus:ring-primary/30'
                   }`} />
                 {unknownSubjectTokens.length > 0 && (
                   <p
                     role="alert"
                     data-testid="subject-unknown-token-warning"
-                    className="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
+                    className="mt-1 text-[11px] text-warning dark:text-warning"
                   >
                     Unknown merge token{unknownSubjectTokens.length === 1 ? '' : 's'}{' '}
                     {unknownSubjectTokens.map((t, i) => (
@@ -4261,14 +4261,14 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                   aria-invalid={unknownBodyTokens.length > 0 || undefined}
                   className={`w-full px-3 py-2 rounded-lg border bg-surface text-heading text-sm focus:outline-none focus:ring-2 ${
                     unknownBodyTokens.length > 0
-                      ? 'border-amber-500 focus:ring-amber-500/30'
+                      ? 'border-warning focus:ring-warning'
                       : 'border-border focus:ring-primary/30'
                   }`} />
                 {unknownBodyTokens.length > 0 && (
                   <p
                     role="alert"
                     data-testid="body-unknown-token-warning"
-                    className="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
+                    className="mt-1 text-[11px] text-warning dark:text-warning"
                   >
                     Unknown merge token{unknownBodyTokens.length === 1 ? '' : 's'}{' '}
                     {unknownBodyTokens.map((t, i) => (
@@ -4338,7 +4338,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                           data-segments={previewSegmentInfo.segments}
                           className={
                             showSegmentWarning
-                              ? 'text-amber-700 dark:text-amber-400 font-medium'
+                              ? 'text-warning dark:text-warning font-medium'
                               : 'text-text-muted'
                           }
                         >
@@ -4353,7 +4353,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                           <span
                             role="alert"
                             data-testid="notification-template-preview-segments-warning"
-                            className="text-[11px] text-amber-700 dark:text-amber-400"
+                            className="text-[11px] text-warning dark:text-warning"
                           >
                             — billed as {previewSegmentInfo.segments} SMS
                             {previewSegmentInfo.encoding === 'UCS-2'
@@ -4365,7 +4365,7 @@ export function AdminFormModal({ formType, formData, setFormData, smsSegmentLimi
                           <span
                             role="alert"
                             data-testid="notification-template-preview-segments-blocked"
-                            className="text-[11px] font-medium text-red-700 dark:text-red-400"
+                            className="text-[11px] font-medium text-danger dark:text-danger"
                           >
                             — exceeds the tenant cap of {smsSegmentLimit}{' '}
                             segment{smsSegmentLimit === 1 ? '' : 's'}. Saving is
@@ -4486,7 +4486,7 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
         </div>
         <div className="p-4 space-y-4">
           {formError && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
+            <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-xs text-danger dark:text-danger flex items-center justify-between">
               <span>{formError}</span>
               <button onClick={() => setFormError(null)} className="ml-2 underline text-[10px]">Dismiss</button>
             </div>
@@ -4769,7 +4769,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
 
         <div className="p-4">
           {detailError && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-2 text-xs text-red-700 dark:text-red-300 mb-3 flex items-center justify-between">
+            <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-xs text-danger dark:text-danger mb-3 flex items-center justify-between">
               <span>{detailError}</span>
               <button onClick={() => setDetailError(null)} className="ml-2 underline text-[10px]">Dismiss</button>
             </div>
@@ -4885,7 +4885,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               <div className="flex items-center justify-between flex-wrap gap-2">
                 {!isReadOnly && (
                   <button onClick={() => setShowExceptionForm(true)}
-                    className="px-3 py-1.5 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-lg text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center gap-1">
+                    className="px-3 py-1.5 bg-danger-light text-danger dark:bg-danger dark:text-danger rounded-lg text-xs font-medium hover:bg-danger-light dark:hover:bg-danger flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" /> Report Exception
                   </button>
                 )}
@@ -4899,7 +4899,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                     </button>
                     <button
                       onClick={() => setExceptionSource('auto')}
-                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'auto' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface-secondary text-text-muted border-border hover:text-heading'}`}
+                      className={`px-2 py-1 rounded border flex items-center gap-1 ${exceptionSource === 'auto' ? 'bg-warning text-white border-warning' : 'bg-surface-secondary text-text-muted border-border hover:text-heading'}`}
                       title="Inserted automatically by system rules (e.g. bad-arrival detection)"
                     >
                       <Shield className="h-3 w-3" /> Auto-flagged ({autoCount})
@@ -4922,7 +4922,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                   <textarea value={exceptionData.reason} onChange={e => setExceptionData(p => ({...p, reason: e.target.value}))} placeholder="Reason..." rows={2} className={inputCls} />
                   <div className="flex gap-2 justify-end">
                     <button onClick={() => setShowExceptionForm(false)} className="text-xs px-3 py-1.5 text-text-muted">Cancel</button>
-                    <button onClick={submitException} className="text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg">Submit</button>
+                    <button onClick={submitException} className="text-xs px-3 py-1.5 bg-danger text-white rounded-lg">Submit</button>
                   </div>
                 </div>
               )}
@@ -4957,19 +4957,19 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                           <span className="text-xs font-medium text-heading capitalize">{e.exception_type.replace(/_/g, ' ')}</span>
                           {isAuto && (
                             <span
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-medium flex items-center gap-1"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:bg-warning dark:text-warning font-medium flex items-center gap-1"
                               title={`Auto-flagged by system rule: ${ruleLabel}`}
                             >
                               <Shield className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                         </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-success-light text-success dark:bg-success dark:text-success' : 'bg-danger-light text-danger dark:bg-danger dark:text-danger'}`}>
                           {e.resolved_at ? 'Resolved' : 'Open'}
                         </span>
                       </div>
                       <p className="text-xs text-text-muted mt-1">{e.reason}</p>
-                      {e.resolution && <p className="text-xs text-green-700 dark:text-green-400 mt-1">Resolution: {e.resolution}</p>}
+                      {e.resolution && <p className="text-xs text-success dark:text-success mt-1">Resolution: {e.resolution}</p>}
                       <p className="text-[10px] text-text-muted mt-1">
                         {new Date(e.created_at).toLocaleString()}
                         {isAuto && <span className="ml-1">· system-flagged</span>}
@@ -4986,7 +4986,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             <div className="space-y-3">
               {!isReadOnly && (
                 <button onClick={() => setShowAttachmentForm(true)}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/30 flex items-center gap-1">
+                  className="px-3 py-1.5 bg-info-light text-info dark:bg-info dark:text-info rounded-lg text-xs font-medium hover:bg-info-light dark:hover:bg-info flex items-center gap-1">
                   <FileText className="h-3 w-3" /> Add Note / Attachment
                 </button>
               )}
@@ -5019,7 +5019,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                       <div className="flex items-center gap-2">
                         <FileText className="h-3.5 w-3.5 text-text-muted" />
                         <span className="text-xs font-medium text-heading">{a.title || a.attachment_type.replace(/_/g, ' ')}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-info-light text-info dark:bg-info dark:text-info rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
                         {a.file_size_bytes ? (
                           <span className="text-[10px] text-text-muted">{Math.round(a.file_size_bytes / 1024)} KB</span>
                         ) : null}
@@ -5035,7 +5035,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                         </a>
                       )}
                       {!isImage && a.object_path && fileUrl && (
-                        <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 dark:text-blue-400 mt-2 inline-flex items-center gap-1">
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-info dark:text-info mt-2 inline-flex items-center gap-1">
                           <FileText className="h-3 w-3" /> Download file
                         </a>
                       )}
@@ -5375,7 +5375,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   }
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+      <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
         {error}
       </div>
     );
@@ -5436,7 +5436,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
         </div>
       </div>
       {downloadError && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 text-xs text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-md px-3 py-2 text-xs text-danger dark:text-danger">
           {downloadError}
         </div>
       )}

@@ -120,13 +120,13 @@ function CaseStudyDetail({ slug }: { slug: string }) {
               <div className="space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-text-secondary">Avg response time</span><span className="font-medium text-text-primary">{m.avgResponseTime}s</span></div>
                 <div className="flex justify-between text-sm"><span className="text-text-secondary">Days active</span><span className="font-medium text-text-primary">{m.daysActive}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-text-secondary">Cost reduction</span><span className="font-medium text-emerald-600 dark:text-emerald-400">{m.costSavingsPercent}%</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Cost reduction</span><span className="font-medium text-success dark:text-success">{m.costSavingsPercent}%</span></div>
               </div>
             </div>
             <div className="bg-surface-secondary rounded-xl p-6">
               <h3 className="font-display font-semibold text-text-primary mb-3">Business Impact</h3>
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-text-secondary">Annual savings</span><span className="font-medium text-emerald-600 dark:text-emerald-400">{formatDollars(m.monthlySavings * 12, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-text-secondary">Annual savings</span><span className="font-medium text-success dark:text-success">{formatDollars(m.monthlySavings * 12, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-text-secondary">Total calls automated</span><span className="font-medium text-text-primary">{Math.round(m.totalCalls * m.automationRate).toLocaleString()}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-text-secondary">Company size</span><span className="font-medium text-text-primary capitalize">{study.companySize}</span></div>
               </div>

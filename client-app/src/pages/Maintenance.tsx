@@ -16,7 +16,7 @@ export default function Maintenance({ message, scheduledFor }: MaintenanceProps)
       </div>
       <div className="flex-1 flex items-center justify-center">
         <div className="max-w-md w-full text-center">
-          <div className="inline-flex items-center justify-center h-20 w-20 rounded-2xl bg-amber-50 text-warning mb-6">
+          <div className="inline-flex items-center justify-center h-20 w-20 rounded-2xl bg-warning-light text-warning mb-6">
             <Wrench className="h-10 w-10" />
           </div>
           <p className="text-sm font-semibold text-warning uppercase tracking-wider mb-2">{t('maintenance.label')}</p>

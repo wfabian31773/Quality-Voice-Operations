@@ -52,20 +52,20 @@ interface TicketStats {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-  open: { label: 'Open', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', icon: AlertCircle },
-  in_progress: { label: 'In Progress', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300', icon: Clock },
+  open: { label: 'Open', color: 'bg-info-light text-info dark:bg-info dark:text-info', icon: AlertCircle },
+  in_progress: { label: 'In Progress', color: 'bg-warning-light text-warning dark:bg-warning dark:text-warning', icon: Clock },
   pending: { label: 'Pending', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300', icon: Clock },
-  escalated: { label: 'Escalated', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: AlertTriangle },
-  resolved: { label: 'Resolved', color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', icon: CheckCircle2 },
+  escalated: { label: 'Escalated', color: 'bg-danger-light text-danger dark:bg-danger dark:text-danger', icon: AlertTriangle },
+  resolved: { label: 'Resolved', color: 'bg-success-light text-success dark:bg-success dark:text-success', icon: CheckCircle2 },
   closed: { label: 'Closed', color: 'bg-surface-hover text-text-primary', icon: CheckCircle2 },
-  reopened: { label: 'Reopened', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: RotateCcw },
+  reopened: { label: 'Reopened', color: 'bg-warning-light text-warning dark:bg-warning dark:text-warning', icon: RotateCcw },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; icon: typeof ArrowUp; description: string }> = {
   low: { label: 'Low', color: 'text-text-secondary', icon: ArrowDown, description: 'Low priority' },
-  medium: { label: 'Medium', color: 'text-blue-500 dark:text-blue-400', icon: Minus, description: 'Medium priority' },
-  high: { label: 'High', color: 'text-orange-500 dark:text-orange-400', icon: ArrowUp, description: 'High priority' },
-  urgent: { label: 'Urgent', color: 'text-red-500 dark:text-red-400', icon: ChevronsUp, description: 'Urgent priority' },
+  medium: { label: 'Medium', color: 'text-info dark:text-info', icon: Minus, description: 'Medium priority' },
+  high: { label: 'High', color: 'text-warning dark:text-warning', icon: ArrowUp, description: 'High priority' },
+  urgent: { label: 'Urgent', color: 'text-danger dark:text-danger', icon: ChevronsUp, description: 'Urgent priority' },
 };
 
 const QUEUE_TABS = [
@@ -229,10 +229,10 @@ export default function Tickets() {
     if (!ticket.sla_instance) return null;
     const sla = ticket.sla_instance;
     if (sla.resolution_met === false || (sla.resolution_due_at && new Date(sla.resolution_due_at) < new Date() && sla.resolution_met === null)) {
-      return <span title="SLA Breached" className="inline-flex"><AlertTriangle className="h-3.5 w-3.5 text-red-500 dark:text-red-400" /></span>;
+      return <span title="SLA Breached" className="inline-flex"><AlertTriangle className="h-3.5 w-3.5 text-danger dark:text-danger" /></span>;
     }
     if (sla.resolution_due_at && new Date(sla.resolution_due_at).getTime() - Date.now() < 7200000 && sla.resolution_met === null) {
-      return <span title="SLA At Risk" className="inline-flex"><Shield className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400" /></span>;
+      return <span title="SLA At Risk" className="inline-flex"><Shield className="h-3.5 w-3.5 text-warning dark:text-warning" /></span>;
     }
     return null;
   };
@@ -267,7 +267,7 @@ export default function Tickets() {
       />
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
@@ -276,13 +276,13 @@ export default function Tickets() {
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
           {[
-            { label: 'Open', value: stats.statusCounts.open || 0, color: 'text-blue-600 dark:text-blue-400' },
-            { label: 'In Progress', value: stats.statusCounts.in_progress || 0, color: 'text-yellow-600 dark:text-yellow-400' },
+            { label: 'Open', value: stats.statusCounts.open || 0, color: 'text-info dark:text-info' },
+            { label: 'In Progress', value: stats.statusCounts.in_progress || 0, color: 'text-warning dark:text-warning' },
             { label: 'Pending', value: stats.statusCounts.pending || 0, color: 'text-purple-600 dark:text-purple-400' },
             { label: 'Unassigned', value: stats.unassignedCount, color: 'text-text-secondary' },
-            { label: 'SLA At Risk', value: stats.slaAtRisk, color: 'text-yellow-600 dark:text-yellow-400' },
-            { label: 'SLA Breached', value: stats.slaBreached, color: 'text-red-600 dark:text-red-400' },
-            { label: 'Avg Resolution', value: `${stats.avgResolutionHours}h`, color: 'text-green-600 dark:text-green-400' },
+            { label: 'SLA At Risk', value: stats.slaAtRisk, color: 'text-warning dark:text-warning' },
+            { label: 'SLA Breached', value: stats.slaBreached, color: 'text-danger dark:text-danger' },
+            { label: 'Avg Resolution', value: `${stats.avgResolutionHours}h`, color: 'text-success dark:text-success' },
           ].map(s => (
             <div key={s.label} className="bg-surface border border-border rounded-xl p-3 text-center">
               <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>

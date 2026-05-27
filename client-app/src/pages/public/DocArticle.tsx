@@ -199,7 +199,7 @@ export default function DocArticle() {
                             className="w-full px-3 py-2 rounded-lg border border-border/60 text-sm font-body focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40"
                           />
                           {emailError && (
-                            <p className="text-xs text-red-600 mt-1 font-body">{emailError}</p>
+                            <p className="text-xs text-danger mt-1 font-body">{emailError}</p>
                           )}
                         </div>
                         <div className="flex gap-2">
@@ -220,7 +220,7 @@ export default function DocArticle() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-emerald-600">
+                  <div className="flex items-center gap-2 text-sm text-success">
                     <Check className="h-4 w-4" />
                     Thanks for the feedback — it helps us improve.
                   </div>

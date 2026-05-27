@@ -44,39 +44,39 @@ const TONE_STYLES: Record<
 > = {
   critical: {
     wrapper:
-      'border-red-400/50 bg-red-50 dark:bg-red-500/10 dark:border-red-500/40 hover:bg-red-100 dark:hover:bg-red-500/20',
-    iconWrap: 'bg-red-200/70 dark:bg-red-500/20 text-red-700 dark:text-red-300',
-    title: 'text-red-900 dark:text-red-100',
-    subtle: 'text-red-800/90 dark:text-red-200/80',
-    cta: 'text-red-900 dark:text-red-100',
-    ringFocus: 'focus-visible:ring-red-400',
+      'border-danger bg-danger-light dark:bg-danger dark:border-danger hover:bg-danger-light dark:hover:bg-danger',
+    iconWrap: 'bg-danger-light dark:bg-danger text-danger dark:text-danger',
+    title: 'text-danger dark:text-danger',
+    subtle: 'text-danger dark:text-danger',
+    cta: 'text-danger dark:text-danger',
+    ringFocus: 'focus-visible:ring-danger',
   },
   high: {
     wrapper:
-      'border-red-300/50 bg-red-50/70 dark:bg-red-500/10 dark:border-red-500/30 hover:bg-red-100/70 dark:hover:bg-red-500/20',
-    iconWrap: 'bg-red-200/60 dark:bg-red-500/20 text-red-700 dark:text-red-300',
-    title: 'text-red-900 dark:text-red-100',
-    subtle: 'text-red-800/90 dark:text-red-200/80',
-    cta: 'text-red-900 dark:text-red-100',
-    ringFocus: 'focus-visible:ring-red-400',
+      'border-danger bg-danger-light dark:bg-danger dark:border-danger hover:bg-danger-light dark:hover:bg-danger',
+    iconWrap: 'bg-danger-light dark:bg-danger text-danger dark:text-danger',
+    title: 'text-danger dark:text-danger',
+    subtle: 'text-danger dark:text-danger',
+    cta: 'text-danger dark:text-danger',
+    ringFocus: 'focus-visible:ring-danger',
   },
   warning: {
     wrapper:
-      'border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/40 hover:bg-amber-100 dark:hover:bg-amber-500/20',
-    iconWrap: 'bg-amber-200/70 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300',
-    title: 'text-amber-900 dark:text-amber-100',
-    subtle: 'text-amber-800/90 dark:text-amber-200/80',
-    cta: 'text-amber-900 dark:text-amber-100',
-    ringFocus: 'focus-visible:ring-amber-400',
+      'border-warning bg-warning-light dark:bg-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning',
+    iconWrap: 'bg-warning-light dark:bg-warning text-warning dark:text-warning',
+    title: 'text-warning dark:text-warning',
+    subtle: 'text-warning dark:text-warning',
+    cta: 'text-warning dark:text-warning',
+    ringFocus: 'focus-visible:ring-warning',
   },
   info: {
     wrapper:
-      'border-blue-400/40 bg-blue-50 dark:bg-blue-500/10 dark:border-blue-500/40 hover:bg-blue-100 dark:hover:bg-blue-500/20',
-    iconWrap: 'bg-blue-200/70 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300',
-    title: 'text-blue-900 dark:text-blue-100',
-    subtle: 'text-blue-800/90 dark:text-blue-200/80',
-    cta: 'text-blue-900 dark:text-blue-100',
-    ringFocus: 'focus-visible:ring-blue-400',
+      'border-info bg-info-light dark:bg-info dark:border-info hover:bg-info-light dark:hover:bg-info',
+    iconWrap: 'bg-info-light dark:bg-info text-info dark:text-info',
+    title: 'text-info dark:text-info',
+    subtle: 'text-info dark:text-info',
+    cta: 'text-info dark:text-info',
+    ringFocus: 'focus-visible:ring-info',
   },
 };
 

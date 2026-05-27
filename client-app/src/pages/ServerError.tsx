@@ -12,7 +12,7 @@ export default function ServerError({ error, onRetry }: ServerErrorProps) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface-secondary px-6">
       <div className="max-w-md w-full text-center">
-        <div className="inline-flex items-center justify-center h-20 w-20 rounded-2xl bg-red-50 text-danger mb-6">
+        <div className="inline-flex items-center justify-center h-20 w-20 rounded-2xl bg-danger-light text-danger mb-6">
           <AlertTriangle className="h-10 w-10" />
         </div>
         <p className="text-sm font-semibold text-danger uppercase tracking-wider mb-2">{t('server_error.label')}</p>

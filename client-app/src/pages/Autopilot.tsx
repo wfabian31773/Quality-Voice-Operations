@@ -94,15 +94,15 @@ interface AutopilotRun {
 type TabType = 'overview' | 'recommendations' | 'actions' | 'insights' | 'policies' | 'notifications';
 
 function severityColor(severity: string): string {
-  if (severity === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-  if (severity === 'warning') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  if (severity === 'critical') return 'bg-danger-light text-danger dark:bg-danger dark:text-danger';
+  if (severity === 'warning') return 'bg-warning-light text-warning dark:bg-warning dark:text-warning';
+  return 'bg-info-light text-info dark:bg-info dark:text-info';
 }
 
 function riskTierColor(tier: string): string {
-  if (tier === 'high') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-  if (tier === 'medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  if (tier === 'high') return 'bg-danger-light text-danger dark:bg-danger dark:text-danger';
+  if (tier === 'medium') return 'bg-warning-light text-warning dark:bg-warning dark:text-warning';
+  return 'bg-success-light text-success dark:bg-success dark:text-success';
 }
 
 function riskTierIcon(tier: string) {
@@ -112,17 +112,17 @@ function riskTierIcon(tier: string) {
 }
 
 function statusColor(status: string): string {
-  if (status === 'approved' || status === 'completed' || status === 'executed') return 'text-green-600 dark:text-green-400';
-  if (status === 'rejected' || status === 'failed') return 'text-red-600 dark:text-red-400';
-  if (status === 'pending' || status === 'executing') return 'text-amber-600 dark:text-amber-400';
+  if (status === 'approved' || status === 'completed' || status === 'executed') return 'text-success dark:text-success';
+  if (status === 'rejected' || status === 'failed') return 'text-danger dark:text-danger';
+  if (status === 'pending' || status === 'executing') return 'text-warning dark:text-warning';
   if (status === 'dismissed' || status === 'rolled_back') return 'text-text-secondary';
   return 'text-text-secondary';
 }
 
 function confidenceBadge(score: number): string {
-  if (score >= 0.8) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (score >= 0.5) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+  if (score >= 0.8) return 'bg-success-light text-success dark:bg-success dark:text-success';
+  if (score >= 0.5) return 'bg-warning-light text-warning dark:bg-warning dark:text-warning';
+  return 'bg-danger-light text-danger dark:bg-danger dark:text-danger';
 }
 
 function SummaryCard({ icon: Icon, label, value, subtext, color }: { icon: typeof Zap; label: string; value: string; subtext?: string; color: string }) {
@@ -292,26 +292,26 @@ export default function Autopilot() {
           icon={Eye}
           label="Active Insights"
           value={summaryLoading ? '—' : String(summary?.activeInsights ?? 0)}
-          color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+          color="bg-info-light text-info dark:bg-info dark:text-info"
         />
         <SummaryCard
           icon={Target}
           label="Pending Recommendations"
           value={summaryLoading ? '—' : String(summary?.pendingRecommendations ?? 0)}
-          color="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+          color="bg-warning-light text-warning dark:bg-warning dark:text-warning"
         />
         <SummaryCard
           icon={CheckCircle2}
           label="Approved"
           value={summaryLoading ? '—' : String(summary?.approvedRecommendations ?? 0)}
-          color="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+          color="bg-success-light text-success dark:bg-success dark:text-success"
         />
         <SummaryCard
           icon={DollarSign}
           label="Est. Revenue Impact"
           value={summaryLoading ? '—' : formatCents(summary?.totalRevenueImpactCents ?? 0)}
           subtext="from approved recommendations"
-          color="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+          color="bg-success-light text-success dark:bg-success dark:text-success"
         />
         <SummaryCard
           icon={Activity}
@@ -380,7 +380,7 @@ export default function Autopilot() {
                                   {Math.round(rec.confidenceScore * 100)}% conf.
                                 </span>
                                 {rec.estimatedRevenueImpactCents != null && rec.estimatedRevenueImpactCents > 0 && (
-                                  <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">
+                                  <span className="text-[10px] text-success dark:text-success font-medium">
                                     +{formatCents(rec.estimatedRevenueImpactCents)}/mo
                                   </span>
                                 )}
@@ -389,14 +389,14 @@ export default function Autopilot() {
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => approveMutation.mutate(rec.id)}
-                                className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-md transition-colors"
+                                className="p-1.5 text-success dark:text-success hover:bg-success-light dark:hover:bg-success rounded-md transition-colors"
                                 title="Approve"
                               >
                                 <ThumbsUp className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => rejectMutation.mutate({ id: rec.id })}
-                                className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                                className="p-1.5 text-danger dark:text-danger hover:bg-danger-light dark:hover:bg-danger rounded-md transition-colors"
                                 title="Reject"
                               >
                                 <ThumbsDown className="h-3.5 w-3.5" />
@@ -440,7 +440,7 @@ export default function Autopilot() {
                       <div key={run.id} className="px-5 py-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${run.status === 'completed' ? 'bg-green-500' : run.status === 'running' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
+                            <div className={`w-2 h-2 rounded-full ${run.status === 'completed' ? 'bg-success' : run.status === 'running' ? 'bg-warning animate-pulse' : 'bg-danger'}`} />
                             <span className="text-sm text-text-primary capitalize">{run.runType} scan</span>
                           </div>
                           <span className="text-xs text-text-secondary">
@@ -450,7 +450,7 @@ export default function Autopilot() {
                         <div className="flex items-center gap-3 mt-1.5 text-xs text-text-secondary">
                           <span>{run.insightsDetected} insights</span>
                           <span>{run.recommendationsGenerated} recommendations</span>
-                          {run.errors > 0 && <span className="text-red-500 dark:text-red-400">{run.errors} errors</span>}
+                          {run.errors > 0 && <span className="text-danger dark:text-danger">{run.errors} errors</span>}
                         </div>
                       </div>
                     ))}
@@ -464,7 +464,7 @@ export default function Autopilot() {
             <div className="bg-surface border border-border rounded-xl">
               <div className="px-5 py-4 border-b border-border">
                 <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+                  <AlertTriangle className="h-4 w-4 text-warning dark:text-warning" />
                   Recent Insights
                 </h3>
               </div>
@@ -550,13 +550,13 @@ export default function Autopilot() {
                           <p className="text-xs text-text-secondary mt-1">{rec.situationSummary}</p>
                           <div className="flex items-center gap-3 mt-1.5">
                             {rec.estimatedRevenueImpactCents != null && rec.estimatedRevenueImpactCents > 0 && (
-                              <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                              <span className="text-xs text-success dark:text-success font-medium flex items-center gap-1">
                                 <TrendingUp className="h-3 w-3" />
                                 +{formatCents(rec.estimatedRevenueImpactCents)}/mo revenue
                               </span>
                             )}
                             {rec.estimatedCostSavingsCents != null && rec.estimatedCostSavingsCents > 0 && (
-                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                              <span className="text-xs text-info dark:text-info font-medium flex items-center gap-1">
                                 <DollarSign className="h-3 w-3" />
                                 {formatCents(rec.estimatedCostSavingsCents)}/mo savings
                               </span>
@@ -568,13 +568,13 @@ export default function Autopilot() {
                             <>
                               <button
                                 onClick={(e) => { e.stopPropagation(); approveMutation.mutate(rec.id); }}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 dark:text-green-400 dark:bg-green-900/30 dark:hover:bg-green-900/50 rounded-lg transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-success bg-success-light hover:bg-success-light dark:text-success dark:bg-success dark:hover:bg-success rounded-lg transition-colors"
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Approve
                               </button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); rejectMutation.mutate({ id: rec.id }); }}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-400 dark:bg-red-900/30 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-danger bg-danger-light hover:bg-danger-light dark:text-danger dark:bg-danger dark:hover:bg-danger rounded-lg transition-colors"
                               >
                                 <XCircle className="h-3.5 w-3.5" /> Reject
                               </button>
@@ -612,11 +612,11 @@ export default function Autopilot() {
                             <p className="text-xs font-medium text-text-secondary uppercase mb-1">Recommended Action</p>
                             <p className="text-sm text-text-primary">{rec.recommendedAction}</p>
                           </div>
-                          <div className="bg-green-50 dark:bg-green-900/10 rounded-lg p-3">
+                          <div className="bg-success-light dark:bg-success rounded-lg p-3">
                             <p className="text-xs font-medium text-text-secondary uppercase mb-1">Expected Outcome</p>
                             <p className="text-sm text-text-primary">{rec.expectedOutcome}</p>
                           </div>
-                          <div className="bg-blue-50 dark:bg-blue-900/10 rounded-lg p-3">
+                          <div className="bg-info-light dark:bg-info rounded-lg p-3">
                             <p className="text-xs font-medium text-text-secondary uppercase mb-1">Reasoning</p>
                             <p className="text-sm text-text-primary">{rec.reasoning}</p>
                           </div>
@@ -726,10 +726,10 @@ export default function Autopilot() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-2.5 h-2.5 rounded-full ${
-                      action.status === 'completed' ? 'bg-green-500' :
-                      action.status === 'failed' ? 'bg-red-500' :
+                      action.status === 'completed' ? 'bg-success' :
+                      action.status === 'failed' ? 'bg-danger' :
                       action.status === 'rolled_back' ? 'bg-border-strong' :
-                      action.status === 'executing' ? 'bg-amber-500 animate-pulse' :
+                      action.status === 'executing' ? 'bg-warning animate-pulse' :
                       'bg-border'
                     }`} />
                     <div>
@@ -757,7 +757,7 @@ export default function Autopilot() {
                   </div>
                 </div>
                 {action.errorMessage && (
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-2 bg-red-50 dark:bg-red-900/10 p-2 rounded">
+                  <p className="text-xs text-danger dark:text-danger mt-2 bg-danger-light dark:bg-danger p-2 rounded">
                     {action.errorMessage}
                   </p>
                 )}
@@ -842,7 +842,7 @@ function PoliciesPanel() {
                 <span className="text-xs text-text-secondary">
                   {policy.requiresApproval ? `${policy.approvalRole}+` : 'None'}
                 </span>
-                <span className={`text-xs font-medium ${policy.autoExecute ? 'text-green-600 dark:text-green-400' : 'text-text-secondary'}`}>
+                <span className={`text-xs font-medium ${policy.autoExecute ? 'text-success dark:text-success' : 'text-text-secondary'}`}>
                   {policy.autoExecute ? 'Yes' : 'No'}
                 </span>
               </div>
@@ -857,24 +857,24 @@ function PoliciesPanel() {
           How Approval Tiers Work
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-green-50 dark:bg-green-900/10 rounded-lg p-3">
+          <div className="bg-success-light dark:bg-success rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
-              <span className="text-sm font-medium text-green-700 dark:text-green-400">Low Risk</span>
+              <ShieldCheck className="h-4 w-4 text-success dark:text-success" />
+              <span className="text-sm font-medium text-success dark:text-success">Low Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Auto-executed without approval. Alerts, notifications, task creation.</p>
           </div>
-          <div className="bg-amber-50 dark:bg-amber-900/10 rounded-lg p-3">
+          <div className="bg-warning-light dark:bg-warning rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              <span className="text-sm font-medium text-amber-700 dark:text-amber-400">Medium Risk</span>
+              <Shield className="h-4 w-4 text-warning dark:text-warning" />
+              <span className="text-sm font-medium text-warning dark:text-warning">Medium Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Requires manager approval. Workflow changes, schedule adjustments.</p>
           </div>
-          <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-3">
+          <div className="bg-danger-light dark:bg-danger rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
-              <span className="text-sm font-medium text-red-700 dark:text-red-400">High Risk</span>
+              <ShieldAlert className="h-4 w-4 text-danger dark:text-danger" />
+              <span className="text-sm font-medium text-danger dark:text-danger">High Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Requires admin approval. Campaign launches, routing changes, agent activation.</p>
           </div>

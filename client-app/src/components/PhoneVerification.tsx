@@ -65,7 +65,7 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
 
   if (success) {
     return (
-      <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-700 dark:text-green-300 text-sm">
+      <div className="p-4 bg-success-light dark:bg-success rounded-lg text-success dark:text-success text-sm">
         {t('phone_verification.success')}
       </div>
     );
@@ -122,7 +122,7 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
         </>
       )}
       {error && (
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="text-sm text-danger dark:text-danger">{error}</p>
       )}
     </div>
   );

@@ -67,7 +67,7 @@ export default function OnboardingChecklist() {
         title={t('onboarding_checklist.progress_tooltip', { pct: Math.round(progress) })}
       >
         <div
-          className="bg-green-400 h-2 rounded-full transition-all duration-500"
+          className="bg-success h-2 rounded-full transition-all duration-500"
           style={{ width: `${progress}%` }}
           aria-hidden="true"
         />
@@ -80,7 +80,7 @@ export default function OnboardingChecklist() {
           return (
             <div key={step.key} className="flex items-center gap-3">
               {done ? (
-                <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" />
+                <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
               ) : (
                 <Circle className="h-5 w-5 text-white/30 shrink-0" />
               )}

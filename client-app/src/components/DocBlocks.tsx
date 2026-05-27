@@ -339,8 +339,8 @@ function LightboxHint({
 
 const calloutStyles = {
   info: { wrap: 'bg-primary/5 border-primary/20', icon: Info, iconClass: 'text-primary' },
-  tip: { wrap: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30', icon: Lightbulb, iconClass: 'text-emerald-600 dark:text-emerald-400' },
-  warn: { wrap: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30', icon: AlertTriangle, iconClass: 'text-amber-600 dark:text-amber-400' },
+  tip: { wrap: 'bg-success-light dark:bg-success border-success dark:border-success', icon: Lightbulb, iconClass: 'text-success dark:text-success' },
+  warn: { wrap: 'bg-warning-light dark:bg-warning border-warning dark:border-warning', icon: AlertTriangle, iconClass: 'text-warning dark:text-warning' },
 };
 
 export function DocBlocks({

@@ -210,8 +210,8 @@ export default function PlatformAssistant() {
                       {msg.actions.map((action, aIdx) => (
                         <div key={aIdx} className={`text-xs px-2 py-1 rounded ${
                           action.status === 'success'
-                            ? 'bg-green-500/20 text-green-200'
-                            : 'bg-red-500/20 text-red-200'
+                            ? 'bg-success text-success'
+                            : 'bg-danger text-danger'
                         }`}>
                           {action.status === 'success' ? '✓' : '✗'} {action.message || action.action}
                         </div>
@@ -237,7 +237,7 @@ export default function PlatformAssistant() {
             )}
 
             {error && (
-              <div className="flex items-center gap-2 text-xs text-red-500 px-3 py-2 bg-red-500/10 rounded-lg">
+              <div className="flex items-center gap-2 text-xs text-danger px-3 py-2 bg-danger rounded-lg">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 {error}
               </div>

@@ -53,18 +53,18 @@ interface ArticleFormData {
 const CATEGORIES = ['FAQ', 'Services', 'Policies', 'Pricing', 'Procedures', 'Troubleshooting'];
 
 const SOURCE_TYPE_LABELS: Record<string, { label: string; icon: typeof FileText; color: string }> = {
-  pdf: { label: 'PDF', icon: File, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  pdf: { label: 'PDF', icon: File, color: 'bg-danger-light text-danger dark:bg-danger dark:text-danger' },
   url: { label: 'URL', icon: Globe, color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-  text: { label: 'Text', icon: FileText, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  faq: { label: 'FAQ', icon: HelpCircle, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  text: { label: 'Text', icon: FileText, color: 'bg-info-light text-info dark:bg-info dark:text-info' },
+  faq: { label: 'FAQ', icon: HelpCircle, color: 'bg-success-light text-success dark:bg-success dark:text-success' },
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  processing: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  ready: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  draft: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  processing: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+  ready: 'bg-success-light text-success dark:bg-success dark:text-success',
+  failed: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+  active: 'bg-success-light text-success dark:bg-success dark:text-success',
+  draft: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
   archived: 'bg-surface-hover text-text-secondary',
 };
 
@@ -262,7 +262,7 @@ function ArticleModal({ articleId, onClose, onSaved }: { articleId?: number; onC
     if (autosaveStatus === 'saved' && lastSavedAt) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-          <Check className="h-3 w-3 text-green-600 dark:text-green-400" /> Saved at {formatSavedAt(lastSavedAt)}
+          <Check className="h-3 w-3 text-success dark:text-success" /> Saved at {formatSavedAt(lastSavedAt)}
         </span>
       );
     }
@@ -624,7 +624,7 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
             </div>
 
             {data.document.error_message && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-400">
+              <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
                 {data.document.error_message}
               </div>
             )}
@@ -846,7 +846,7 @@ export default function KnowledgeBase() {
                       </td>
                       <td className="px-5 py-3 hidden sm:table-cell">
                         {doc.category ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info">
                             {doc.category}
                           </span>
                         ) : (
@@ -858,7 +858,7 @@ export default function KnowledgeBase() {
                           {doc.status}
                         </span>
                         {doc.status === 'processing' && (
-                          <RefreshCw className="inline h-3 w-3 ml-1 text-yellow-500 dark:text-yellow-400 animate-spin" />
+                          <RefreshCw className="inline h-3 w-3 ml-1 text-warning dark:text-warning animate-spin" />
                         )}
                       </td>
                       <td className="px-5 py-3 text-text-secondary text-xs hidden lg:table-cell">
@@ -940,7 +940,7 @@ export default function KnowledgeBase() {
                     </td>
                     <td className="px-5 py-3 hidden sm:table-cell">
                       {article.category ? (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info">
                           {article.category}
                         </span>
                       ) : (

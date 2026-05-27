@@ -52,12 +52,12 @@ export default function LiveTranscriptMock() {
         {/* Title bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 dark:border-white/10 bg-black/20">
           <div className="flex items-center gap-1.5" aria-hidden="true">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
-            <span className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
+            <span className="w-2.5 h-2.5 rounded-full bg-danger" />
+            <span className="w-2.5 h-2.5 rounded-full bg-warning" />
+            <span className="w-2.5 h-2.5 rounded-full bg-success" />
           </div>
           <div className="flex items-center gap-2 text-[11px] text-white/50 font-body">
-            <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-green-400 motion-safe:animate-pulse" />
+            <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-success motion-safe:animate-pulse" />
             Live Call · Dental Scheduler
           </div>
           <div className="text-[11px] text-white/40 font-mono tabular-nums">

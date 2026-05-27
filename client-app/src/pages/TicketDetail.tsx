@@ -98,20 +98,20 @@ interface Template {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  open: { label: 'Open', color: 'text-blue-700 dark:text-blue-300', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
-  in_progress: { label: 'In Progress', color: 'text-yellow-700 dark:text-yellow-300', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30' },
+  open: { label: 'Open', color: 'text-info dark:text-info', bgColor: 'bg-info-light dark:bg-info' },
+  in_progress: { label: 'In Progress', color: 'text-warning dark:text-warning', bgColor: 'bg-warning-light dark:bg-warning' },
   pending: { label: 'Pending', color: 'text-purple-700 dark:text-purple-300', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
-  escalated: { label: 'Escalated', color: 'text-red-700 dark:text-red-300', bgColor: 'bg-red-100 dark:bg-red-900/30' },
-  resolved: { label: 'Resolved', color: 'text-green-700 dark:text-green-300', bgColor: 'bg-green-100 dark:bg-green-900/30' },
+  escalated: { label: 'Escalated', color: 'text-danger dark:text-danger', bgColor: 'bg-danger-light dark:bg-danger' },
+  resolved: { label: 'Resolved', color: 'text-success dark:text-success', bgColor: 'bg-success-light dark:bg-success' },
   closed: { label: 'Closed', color: 'text-text-primary', bgColor: 'bg-surface-hover/30' },
-  reopened: { label: 'Reopened', color: 'text-orange-700 dark:text-orange-300', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
+  reopened: { label: 'Reopened', color: 'text-warning dark:text-warning', bgColor: 'bg-warning-light dark:bg-warning' },
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'text-text-secondary',
-  medium: 'text-blue-500 dark:text-blue-400',
-  high: 'text-orange-500 dark:text-orange-400',
-  urgent: 'text-red-500 dark:text-red-400',
+  medium: 'text-info dark:text-info',
+  high: 'text-warning dark:text-warning',
+  urgent: 'text-danger dark:text-danger',
 };
 
 function timeAgo(date: string) {
@@ -157,31 +157,31 @@ function SlaTimer({ sla }: { sla: SlaInstance }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : responseBreached ? 'bg-red-50 dark:bg-red-900/20' : responseAtRisk ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
+        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : responseBreached ? 'bg-danger-light dark:bg-danger' : responseAtRisk ? 'bg-warning-light dark:bg-warning' : 'bg-success-light dark:bg-success'}`}>
           <div className="text-[10px] text-text-muted mb-0.5">First Response</div>
           {sla.response_met === true ? (
-            <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
+            <div className="flex items-center gap-1 text-success dark:text-success text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
           ) : isPaused ? (
             <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 text-xs font-medium">Paused</div>
           ) : responseBreached ? (
-            <div className="flex items-center gap-1 text-red-600 dark:text-red-400 text-xs font-medium"><AlertTriangle className="h-3 w-3" /> Breached</div>
+            <div className="flex items-center gap-1 text-danger dark:text-danger text-xs font-medium"><AlertTriangle className="h-3 w-3" /> Breached</div>
           ) : responseRemaining !== null ? (
-            <div className={`text-xs font-medium ${responseAtRisk ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>{formatDuration(Math.abs(responseRemaining))} left</div>
+            <div className={`text-xs font-medium ${responseAtRisk ? 'text-warning dark:text-warning' : 'text-success dark:text-success'}`}>{formatDuration(Math.abs(responseRemaining))} left</div>
           ) : (
             <div className="text-xs text-text-muted">N/A</div>
           )}
         </div>
 
-        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : resolutionBreached ? 'bg-red-50 dark:bg-red-900/20' : resolutionAtRisk ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
+        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : resolutionBreached ? 'bg-danger-light dark:bg-danger' : resolutionAtRisk ? 'bg-warning-light dark:bg-warning' : 'bg-success-light dark:bg-success'}`}>
           <div className="text-[10px] text-text-muted mb-0.5">Resolution</div>
           {sla.resolution_met === true ? (
-            <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
+            <div className="flex items-center gap-1 text-success dark:text-success text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
           ) : isPaused ? (
             <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 text-xs font-medium">Paused</div>
           ) : resolutionBreached ? (
-            <div className="flex items-center gap-1 text-red-600 dark:text-red-400 text-xs font-medium"><AlertTriangle className="h-3 w-3" /> Breached</div>
+            <div className="flex items-center gap-1 text-danger dark:text-danger text-xs font-medium"><AlertTriangle className="h-3 w-3" /> Breached</div>
           ) : resolutionRemaining !== null ? (
-            <div className={`text-xs font-medium ${resolutionAtRisk ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>{formatDuration(Math.abs(resolutionRemaining))} left</div>
+            <div className={`text-xs font-medium ${resolutionAtRisk ? 'text-warning dark:text-warning' : 'text-success dark:text-success'}`}>{formatDuration(Math.abs(resolutionRemaining))} left</div>
           ) : (
             <div className="text-xs text-text-muted">N/A</div>
           )}
@@ -220,17 +220,17 @@ function ActivityItem({ activity }: { activity: Activity }) {
   const isNote = activity.activity_type === 'note' || activity.activity_type === 'internal_note';
 
   return (
-    <div className={`flex gap-3 py-3 ${activity.is_internal ? 'bg-yellow-50/50 dark:bg-yellow-900/10 -mx-2 px-2 rounded-lg' : ''}`}>
+    <div className={`flex gap-3 py-3 ${activity.is_internal ? 'bg-warning-light dark:bg-warning -mx-2 px-2 rounded-lg' : ''}`}>
       <div className="flex-shrink-0 mt-0.5">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-surface-hover'}`}>
-          <Icon className={`h-3.5 w-3.5 ${isNote ? 'text-blue-600 dark:text-blue-400' : 'text-text-muted'}`} />
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-info-light dark:bg-info' : 'bg-surface-hover'}`}>
+          <Icon className={`h-3.5 w-3.5 ${isNote ? 'text-info dark:text-info' : 'text-text-muted'}`} />
         </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           <span className="text-xs font-medium text-heading">{activity.user_email || 'System'}</span>
           {activity.is_internal && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">Internal</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light dark:bg-warning text-warning dark:text-warning">Internal</span>
           )}
           <span className="text-[10px] text-text-muted">{timeAgo(activity.created_at)}</span>
         </div>
@@ -502,7 +502,7 @@ export default function TicketDetail() {
       </div>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
@@ -594,7 +594,7 @@ export default function TicketDetail() {
                                 setLinkedTickets(prev => prev.filter(l => l.id !== lt.id));
                               } catch {}
                             }}
-                            className="text-xs text-red-500 dark:text-red-400 opacity-0 group-hover:opacity-100"
+                            className="text-xs text-danger dark:text-danger opacity-0 group-hover:opacity-100"
                           >Unlink</button>
                         )}
                       </div>
@@ -651,7 +651,7 @@ export default function TicketDetail() {
                                 setAttachments(prev => prev.filter(a => a.id !== att.id));
                               } catch {}
                             }}
-                            className="text-xs text-red-500 dark:text-red-400 opacity-0 group-hover:opacity-100"
+                            className="text-xs text-danger dark:text-danger opacity-0 group-hover:opacity-100"
                           >Remove</button>
                         )}
                       </div>
@@ -697,8 +697,8 @@ export default function TicketDetail() {
                           <div className="flex-1">
                             <span className="text-xs font-medium text-heading capitalize">{a.activity_type.replace(/_/g, ' ')}</span>
                             {a.field_name && <span className="text-xs text-text-muted ml-1">({a.field_name})</span>}
-                            {a.old_value && <span className="text-xs text-red-500 dark:text-red-400 ml-1 line-through">{a.old_value}</span>}
-                            {a.new_value && <span className="text-xs text-green-600 dark:text-green-400 ml-1">{a.new_value}</span>}
+                            {a.old_value && <span className="text-xs text-danger dark:text-danger ml-1 line-through">{a.old_value}</span>}
+                            {a.new_value && <span className="text-xs text-success dark:text-success ml-1">{a.new_value}</span>}
                             {a.content && !a.old_value && !a.new_value && <span className="text-xs text-text-muted ml-1">{a.content}</span>}
                           </div>
                           <div className="text-[10px] text-text-muted">{a.user_email || 'System'}</div>
@@ -720,7 +720,7 @@ export default function TicketDetail() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsInternalNote(!isInternalNote)}
-                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' : 'bg-surface-hover text-text-muted'}`}
+                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-warning-light dark:bg-warning text-warning dark:text-warning' : 'bg-surface-hover text-text-muted'}`}
                   >
                     {isInternalNote ? 'Internal' : 'Public'}
                   </button>
@@ -841,7 +841,7 @@ export default function TicketDetail() {
                 <div key={w.id} className="flex items-center justify-between text-xs">
                   <span className="text-heading">{w.email}</span>
                   {!isReadOnly && (
-                    <button onClick={() => removeWatcher(w.user_id)} className="text-text-muted hover:text-red-500 dark:hover:text-red-400">&times;</button>
+                    <button onClick={() => removeWatcher(w.user_id)} className="text-text-muted hover:text-danger dark:hover:text-danger">&times;</button>
                   )}
                 </div>
               ))}

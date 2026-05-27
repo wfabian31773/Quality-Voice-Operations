@@ -138,7 +138,7 @@ export default function AcceptInvite() {
 
           {!loading && errorText && !invitation && (
             <div className="bg-surface border border-border rounded-xl p-6 text-center">
-              <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+              <XCircle className="h-10 w-10 text-danger mx-auto mb-3" />
               <p className="text-text-secondary">{errorText}</p>
               <button
                 onClick={() => navigate('/login')}
@@ -151,7 +151,7 @@ export default function AcceptInvite() {
 
           {success && (
             <div className="bg-surface border border-border rounded-xl p-6 text-center">
-              <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-3" />
+              <CheckCircle className="h-10 w-10 text-success mx-auto mb-3" />
               <p className="text-text-primary font-medium">{t('accept_invite.activated')}</p>
               <p className="text-text-secondary text-sm mt-1">{t('accept_invite.redirecting')}</p>
             </div>
@@ -205,7 +205,7 @@ export default function AcceptInvite() {
                 </div>
 
                 {errorText && (
-                  <p className="text-sm text-red-500">{errorText}</p>
+                  <p className="text-sm text-danger">{errorText}</p>
                 )}
 
                 <button

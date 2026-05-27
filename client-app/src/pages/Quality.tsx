@@ -119,15 +119,15 @@ export default function Quality() {
   const barMax = Math.max(maxScore, 1);
 
   function scoreColor(score: number): string {
-    if (score >= 8) return 'text-green-600 dark:text-green-400';
-    if (score >= 6) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
+    if (score >= 8) return 'text-success dark:text-success';
+    if (score >= 6) return 'text-warning dark:text-warning';
+    return 'text-danger dark:text-danger';
   }
 
   function scoreBgColor(score: number): string {
-    if (score >= 8) return 'bg-green-500';
-    if (score >= 6) return 'bg-yellow-500';
-    return 'bg-red-500';
+    if (score >= 8) return 'bg-success';
+    if (score >= 6) return 'bg-warning';
+    return 'bg-danger';
   }
 
   function scoreBand(score: number): string {
@@ -169,7 +169,7 @@ export default function Quality() {
       />
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
         </div>
       )}
@@ -209,7 +209,7 @@ export default function Quality() {
             Low Quality Calls
           </div>
           <p
-            className="text-2xl font-bold text-red-600 dark:text-red-400"
+            className="text-2xl font-bold text-danger dark:text-danger"
             aria-label={`${lowestScoring.filter((c) => c.score < 5).length} low-quality calls (score below 5) — flagged for review`}
             title="Red highlights calls scoring below 5 out of 10 — these need review"
           >

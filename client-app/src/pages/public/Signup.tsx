@@ -225,7 +225,7 @@ export default function Signup() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (
-                  <div className="bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 text-sm px-3 py-2 rounded-lg border border-red-200 dark:border-red-500/30">
+                  <div className="bg-danger-light dark:bg-danger text-danger dark:text-danger text-sm px-3 py-2 rounded-lg border border-danger dark:border-danger">
                     {error}
                   </div>
                 )}

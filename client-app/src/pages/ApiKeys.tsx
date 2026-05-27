@@ -95,34 +95,34 @@ export default function ApiKeys() {
       />
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
         </div>
       )}
 
       {plaintextKey && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+        <div className="bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+              <p className="text-sm font-medium text-warning dark:text-warning mb-2">
                 Copy your API key now. It won't be shown again.
               </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-surface px-3 py-2 rounded border border-yellow-300 dark:border-yellow-700 text-sm font-mono break-all">
+                <code className="flex-1 bg-surface px-3 py-2 rounded border border-warning dark:border-warning text-sm font-mono break-all">
                   {plaintextKey}
                 </code>
                 <button
                   onClick={handleCopy}
                   aria-label={copied ? 'Copied' : 'Copy API key'}
-                  className="shrink-0 p-2 rounded-lg bg-yellow-100 dark:bg-yellow-800 hover:bg-yellow-200 dark:hover:bg-yellow-700 transition-colors"
+                  className="shrink-0 p-2 rounded-lg bg-warning-light dark:bg-warning hover:bg-warning-light dark:hover:bg-warning transition-colors"
                 >
-                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4 text-yellow-700 dark:text-yellow-300" />}
+                  {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4 text-warning dark:text-warning" />}
                 </button>
               </div>
               <button
                 onClick={() => setPlaintextKey(null)}
-                className="mt-2 text-xs text-yellow-700 dark:text-yellow-400 hover:underline"
+                className="mt-2 text-xs text-warning dark:text-warning hover:underline"
               >
                 Dismiss
               </button>
@@ -216,7 +216,7 @@ export default function ApiKeys() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleDelete(key.id)}
-                      className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      className="p-1.5 rounded-lg text-danger hover:bg-danger-light dark:hover:bg-danger transition-colors"
                       title="Revoke key"
                     >
                       <Trash2 className="h-4 w-4" />

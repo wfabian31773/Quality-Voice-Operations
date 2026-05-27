@@ -32,23 +32,23 @@ const STEP_TYPES = {
   trigger: {
     label: 'Trigger',
     icon: Zap,
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-900/30',
-    border: 'border-amber-300 dark:border-amber-700',
+    color: 'text-warning dark:text-warning',
+    bg: 'bg-warning-light dark:bg-warning',
+    border: 'border-warning dark:border-warning',
   },
   condition: {
     label: 'Condition',
     icon: GitBranch,
-    color: 'text-blue-600 dark:text-blue-400',
-    bg: 'bg-blue-50 dark:bg-blue-900/30',
-    border: 'border-blue-300 dark:border-blue-700',
+    color: 'text-info dark:text-info',
+    bg: 'bg-info-light dark:bg-info',
+    border: 'border-info dark:border-info',
   },
   action: {
     label: 'Action',
     icon: Zap,
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bg: 'bg-emerald-50 dark:bg-emerald-900/30',
-    border: 'border-emerald-300 dark:border-emerald-700',
+    color: 'text-success dark:text-success',
+    bg: 'bg-success-light dark:bg-success',
+    border: 'border-success dark:border-success',
   },
 };
 
@@ -407,19 +407,19 @@ function WorkflowBuilder({
         <div className="flex items-center gap-2 pt-2">
           <button
             onClick={() => addStep('trigger')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-warning dark:border-warning text-warning dark:text-warning bg-warning-light dark:bg-warning hover:bg-warning-light dark:hover:bg-warning transition"
           >
             <Zap className="h-3.5 w-3.5" /> Add Trigger
           </button>
           <button
             onClick={() => addStep('condition')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-info dark:border-info text-info dark:text-info bg-info-light dark:bg-info hover:bg-info-light dark:hover:bg-info transition"
           >
             <GitBranch className="h-3.5 w-3.5" /> Add Condition
           </button>
           <button
             onClick={() => addStep('action')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-success dark:border-success text-success dark:text-success bg-success-light dark:bg-success hover:bg-success-light dark:hover:bg-success transition"
           >
             <Zap className="h-3.5 w-3.5" /> Add Action
           </button>

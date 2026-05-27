@@ -222,8 +222,8 @@ function AuditLogTab() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        event.severity === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                        event.severity === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                        event.severity === 'critical' ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger' :
+                        event.severity === 'warning' ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning' :
                         'bg-surface-hover text-text-secondary'
                       }`}>
                         {event.severity ?? 'info'}
@@ -303,10 +303,10 @@ function ApiKeysTab() {
       </div>
 
       {createdKey && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-          <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">API Key Created - Copy it now! It won't be shown again.</p>
-          <code className="text-xs bg-green-100 dark:bg-green-900/40 px-3 py-2 rounded block break-all">{createdKey}</code>
-          <button onClick={() => setCreatedKey(null)} className="mt-2 text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300">Dismiss</button>
+        <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-lg p-4">
+          <p className="text-sm font-medium text-success dark:text-success mb-2">API Key Created - Copy it now! It won't be shown again.</p>
+          <code className="text-xs bg-success-light dark:bg-success px-3 py-2 rounded block break-all">{createdKey}</code>
+          <button onClick={() => setCreatedKey(null)} className="mt-2 text-xs text-success dark:text-success hover:text-success dark:hover:text-success">Dismiss</button>
         </div>
       )}
 
@@ -365,7 +365,7 @@ function ApiKeysTab() {
                   <td className="px-4 py-3 font-mono text-xs text-text-muted">{key.keyPrefix}...</td>
                   <td className="px-4 py-3">
                     {key.scopes.map((s) => (
-                      <span key={s} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 mr-1">
+                      <span key={s} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info mr-1">
                         {s}
                       </span>
                     ))}
@@ -377,7 +377,7 @@ function ApiKeysTab() {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => { if (confirm(tenantT('common.confirms.revoke_api_key'))) revokeMutation.mutate(key.id); }}
-                      className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs font-medium"
+                      className="text-danger dark:text-danger hover:text-danger dark:hover:text-danger text-xs font-medium"
                     >
                       Revoke
                     </button>
@@ -431,9 +431,9 @@ function RolesTab() {
   const roleColor = (role: string) => {
     if (role === 'tenant_owner') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
     if (['operations_manager', 'billing_admin'].includes(role))
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      return 'bg-info-light text-info dark:bg-info dark:text-info';
     if (role === 'agent_developer')
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      return 'bg-success-light text-success dark:bg-success dark:text-success';
     return 'bg-surface-hover text-text-secondary';
   };
 
@@ -514,7 +514,7 @@ function RolesTab() {
                             revokeRoleMutation.mutate(r.id);
                         }}
                         disabled={revokeRoleMutation.isPending}
-                        className="text-xs text-red-500 dark:text-red-400 font-medium hover:text-red-700 dark:hover:text-red-300"
+                        className="text-xs text-danger dark:text-danger font-medium hover:text-danger dark:hover:text-danger"
                       >
                         Revoke
                       </button>
@@ -557,9 +557,9 @@ function EncryptionTab() {
         <div className="bg-surface border border-border rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             {data?.encryptionEnabled ? (
-              <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400" />
+              <CheckCircle2 className="h-5 w-5 text-success dark:text-success" />
             ) : (
-              <AlertCircle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
+              <AlertCircle className="h-5 w-5 text-warning dark:text-warning" />
             )}
             <h3 className="font-semibold">Encryption Status</h3>
           </div>
@@ -661,19 +661,19 @@ function Soc2Tab() {
             .map((item) => (
               <div key={item.id} className="bg-surface border border-border rounded-lg p-4 flex items-start gap-4">
                 {item.status === 'implemented' ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="h-5 w-5 text-success dark:text-success shrink-0 mt-0.5" />
                 ) : (
-                  <AlertCircle className="h-5 w-5 text-yellow-500 dark:text-yellow-400 shrink-0 mt-0.5" />
+                  <AlertCircle className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h4 className="font-medium">{item.control}</h4>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       item.status === 'implemented'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        ? 'bg-success-light text-success dark:bg-success dark:text-success'
                         : item.status === 'action_required'
-                        ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                        : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                        ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
+                        : 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
                     }`}>
                       {item.status === 'implemented' ? 'Implemented' : item.status === 'action_required' ? 'Action Required' : 'Available'}
                     </span>
@@ -762,7 +762,7 @@ function GdprTab() {
 
         <div className="bg-surface border border-border rounded-xl p-6">
           <div className="flex items-center gap-2 mb-3">
-            <Trash2 className="h-5 w-5 text-red-500 dark:text-red-400" />
+            <Trash2 className="h-5 w-5 text-danger dark:text-danger" />
             <h3 className="font-semibold">Right to Erasure</h3>
           </div>
           <p className="text-sm text-text-muted mb-4">Permanently delete or anonymize all PII for a user. This action cannot be undone.</p>
@@ -781,7 +781,7 @@ function GdprTab() {
                 }
               }}
               disabled={!eraseEmail.trim() || eraseMutation.isPending}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger disabled:opacity-50"
             >
               {eraseMutation.isPending ? 'Erasing...' : 'Erase'}
             </button>
@@ -796,7 +796,7 @@ function GdprTab() {
             </div>
           )}
           {eraseMutation.isSuccess && (
-            <p className="text-sm text-green-600 dark:text-green-400 mt-2">User data has been erased</p>
+            <p className="text-sm text-success dark:text-success mt-2">User data has been erased</p>
           )}
         </div>
       </div>
@@ -826,8 +826,8 @@ function GdprTab() {
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       req.request_type === 'export'
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        ? 'bg-info-light text-info dark:bg-info dark:text-info'
+                        : 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
                     }`}>
                       {req.request_type === 'export' ? 'Export' : 'Erasure'}
                     </span>
@@ -835,9 +835,9 @@ function GdprTab() {
                   <td className="px-4 py-3 text-xs">{req.subject_email}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      req.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      req.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                      req.status === 'completed' ? 'bg-success-light text-success dark:bg-success dark:text-success' :
+                      req.status === 'failed' ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger' :
+                      'bg-warning-light text-warning dark:bg-warning dark:text-warning'
                     }`}>
                       {req.status}
                     </span>

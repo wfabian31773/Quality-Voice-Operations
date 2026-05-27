@@ -81,7 +81,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Legal',
     channels: ['phone', 'web', 'sms'],
     icon: Scale,
-    color: 'bg-amber-100/80 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30',
+    color: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
     avatar: '/assets/avatars/legal.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -90,7 +90,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: Wrench,
-    color: 'bg-orange-100/80 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-500/30',
+    color: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
     avatar: '/assets/avatars/hvac.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -108,7 +108,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Support',
     channels: ['phone', 'web', 'sms'],
     icon: Users,
-    color: 'bg-blue-100/80 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30',
+    color: 'bg-info-light dark:bg-info text-info dark:text-info border-info dark:border-info',
     avatar: '/assets/avatars/customer-support.png',
     conversationRoles: [C, A, C, A, C, A],
   },
@@ -126,7 +126,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: Calendar,
-    color: 'bg-emerald-100/80 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30',
+    color: 'bg-success-light dark:bg-success text-success dark:text-success border-success dark:border-success',
     avatar: '/assets/avatars/answering-service.png',
     conversationRoles: [A, C, A, C, A],
   },
@@ -143,7 +143,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Operations',
     channels: ['phone', 'sms'],
     icon: UtensilsCrossed,
-    color: 'bg-rose-100/80 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-500/30',
+    color: 'bg-danger-light dark:bg-danger text-danger dark:text-danger border-danger dark:border-danger',
     conversationRoles: [C, A, C, A, C, A],
   },
   {
@@ -151,7 +151,7 @@ const agentTemplates: AgentTemplate[] = [
     category: 'Sales & Marketing',
     channels: ['phone', 'web', 'sms'],
     icon: Home,
-    color: 'bg-amber-100/80 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30',
+    color: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
     conversationRoles: [C, A, C, A, C, A],
   },
 ];
@@ -320,7 +320,7 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
             </div>
             <div>
               <h4 className="font-display text-sm font-semibold text-text-primary mb-2 flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <AlertTriangle className="h-4 w-4 text-warning" />
                 {t('agents_page.card.escalation_behavior')}
               </h4>
               <p className="text-sm text-text-primary/70 leading-relaxed">{escalationBehavior}</p>

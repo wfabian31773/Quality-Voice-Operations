@@ -79,23 +79,23 @@ export default function ConnectorAuthBanner() {
   return (
     <div
       role="alert"
-      className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-900/20 shadow-sm"
+      className="rounded-xl border border-warning bg-warning-light dark:border-warning dark:bg-warning shadow-sm"
     >
       <div className="flex items-start gap-3 px-4 py-3 sm:px-5">
-        <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 shrink-0">
-          <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+        <div className="p-1.5 rounded-lg bg-warning-light dark:bg-warning shrink-0">
+          <AlertTriangle className="h-4 w-4 text-warning dark:text-warning" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+          <p className="text-sm font-medium text-warning dark:text-warning">
             {t('connector_auth_banner.needs_reconnect', { count: failing.length })}
           </p>
-          <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-0.5">
+          <p className="text-xs text-warning dark:text-warning mt-0.5">
             {t('connector_auth_banner.description', { names: nameSummary })}
           </p>
         </div>
         <Link
           to="/connectors"
-          className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 px-3 py-1.5 rounded-lg transition-colors"
+          className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light dark:bg-warning dark:hover:bg-warning px-3 py-1.5 rounded-lg transition-colors"
         >
           {t('connector_auth_banner.fix_now')} <ArrowRight className="h-3 w-3" />
         </Link>
@@ -103,7 +103,7 @@ export default function ConnectorAuthBanner() {
           type="button"
           onClick={handleDismiss}
           aria-label={t('connector_auth_banner.dismiss')}
-          className="p-1 text-amber-700/70 hover:text-amber-900 dark:text-amber-200/70 dark:hover:text-amber-100 transition-colors"
+          className="p-1 text-warning hover:text-warning dark:text-warning dark:hover:text-warning transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
@@ -111,7 +111,7 @@ export default function ConnectorAuthBanner() {
       <div className="px-4 pb-3 sm:hidden">
         <Link
           to="/connectors"
-          className="inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 px-3 py-1.5 rounded-lg transition-colors"
+          className="inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light dark:bg-warning dark:hover:bg-warning px-3 py-1.5 rounded-lg transition-colors"
         >
           {t('connector_auth_banner.fix_now')} <ArrowRight className="h-3 w-3" />
         </Link>

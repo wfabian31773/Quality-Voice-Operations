@@ -202,8 +202,8 @@ function ProvisionFlow({
                   <div className="w-20 h-20 rounded-full bg-[#2E8C83]/20 flex items-center justify-center">
                     <Phone className="h-10 w-10 text-[#2E8C83]" />
                   </div>
-                  <Sparkles className="absolute -top-1 -right-1 h-5 w-5 text-yellow-400" />
-                  <Sparkles className="absolute -top-2 left-0 h-3 w-3 text-yellow-300" />
+                  <Sparkles className="absolute -top-1 -right-1 h-5 w-5 text-warning" />
+                  <Sparkles className="absolute -top-2 left-0 h-3 w-3 text-warning" />
                 </div>
               </div>
               <h2 className="text-2xl font-bold font-display mb-2">
@@ -215,7 +215,7 @@ function ProvisionFlow({
                   : `Additional numbers are ${formatCents(200)}/month`}
               </p>
               {isFree && (
-                <div className="mt-3 inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-full">
+                <div className="mt-3 inline-flex items-center gap-1.5 bg-success text-success text-xs font-semibold px-3 py-1.5 rounded-full">
                   <Gift className="h-3.5 w-3.5" />
                   First number FREE
                 </div>
@@ -375,7 +375,7 @@ function ProvisionFlow({
                 )}
                 <div className="mt-3">
                   {isFree ? (
-                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-semibold">
+                    <span className="inline-flex items-center gap-1 text-success dark:text-success text-sm font-semibold">
                       <Gift className="h-4 w-4" /> FREE
                     </span>
                   ) : (
@@ -470,12 +470,12 @@ function ProvisionFlow({
               </button>
               <div className="flex justify-center mb-4">
                 <div className="relative">
-                  <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                    <CheckCircle2 className="h-12 w-12 text-emerald-400" />
+                  <div className="w-20 h-20 rounded-full bg-success flex items-center justify-center">
+                    <CheckCircle2 className="h-12 w-12 text-success" />
                   </div>
-                  <Sparkles className="absolute -top-1 -right-1 h-5 w-5 text-yellow-400" />
-                  <Sparkles className="absolute top-0 -left-2 h-3 w-3 text-yellow-300" />
-                  <Sparkles className="absolute -bottom-1 right-0 h-4 w-4 text-yellow-400/70" />
+                  <Sparkles className="absolute -top-1 -right-1 h-5 w-5 text-warning" />
+                  <Sparkles className="absolute top-0 -left-2 h-3 w-3 text-warning" />
+                  <Sparkles className="absolute -bottom-1 right-0 h-4 w-4 text-warning" />
                 </div>
               </div>
               <h2 className="text-2xl font-bold font-display mb-2">
@@ -766,16 +766,16 @@ export default function PhoneNumbers() {
       ) : (
         <div className="space-y-4">
           {!hasUsedFreeNumber && isManager && (
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Gift className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                <Gift className="h-5 w-5 text-success dark:text-success" />
+                <p className="text-sm font-medium text-success dark:text-success">
                   Your first phone number is free!
                 </p>
               </div>
               <button
                 onClick={() => setShowProvision(true)}
-                className="text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
+                className="text-sm font-medium text-success dark:text-success hover:underline"
               >
                 Claim it &rarr;
               </button>
@@ -831,7 +831,7 @@ export default function PhoneNumbers() {
                                 `/connectors?provider=${encodeURIComponent(pn.scheduling_provider!)}`,
                               )
                             }
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-warning dark:text-warning hover:underline"
                             title={`${formatSchedulingProvider(pn.scheduling_provider!)} isn't connected — click to reconnect it in Integrations.`}
                           >
                             <AlertTriangle className="h-3 w-3" />
@@ -852,7 +852,7 @@ export default function PhoneNumbers() {
                               onClick={() =>
                                 navigate(`/connectors?provider=${encodeURIComponent(provider)}`)
                               }
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:bg-warning dark:text-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning transition cursor-pointer"
                               title={`${formatSchedulingProvider(provider)} is no longer connected. Click to reconnect this calendar in Integrations.`}
                             >
                               <AlertTriangle className="h-3 w-3" />
@@ -877,7 +877,7 @@ export default function PhoneNumbers() {
                     </td>
                     <td className="px-5 py-3">
                       {pn.is_free_number ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                        <span className="inline-flex items-center gap-1 text-success dark:text-success text-xs font-semibold">
                           <Gift className="h-3 w-3" /> Free
                         </span>
                       ) : (

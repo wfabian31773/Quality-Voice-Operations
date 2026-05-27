@@ -114,12 +114,12 @@ function StepCard({
     <div
       className={`bg-surface border rounded-xl p-5 transition-all ${
         step.completed
-          ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+          ? 'border-success dark:border-success bg-success-light dark:bg-success'
           : 'border-border hover:border-primary/40 hover:shadow-sm'
       }`}
     >
       <div className="flex items-start gap-4">
-        <div className={`mt-0.5 shrink-0 ${step.completed ? 'text-green-600 dark:text-green-400' : 'text-text-muted'}`}>
+        <div className={`mt-0.5 shrink-0 ${step.completed ? 'text-success dark:text-success' : 'text-text-muted'}`}>
           {step.completed ? (
             <CheckCircle2 className="h-6 w-6" />
           ) : (
@@ -129,12 +129,12 @@ function StepCard({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className={`text-sm font-semibold ${step.completed ? 'text-green-700 dark:text-green-400' : 'text-text-primary'}`}>
+          <h3 className={`text-sm font-semibold ${step.completed ? 'text-success dark:text-success' : 'text-text-primary'}`}>
             {step.label}
           </h3>
           <p className="text-xs text-text-muted mt-0.5">{step.description}</p>
           {step.completed && step.completedAt && (
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+            <p className="text-xs text-success dark:text-success mt-1">
               {t('post_install.step_card.completed_at', { date: new Date(step.completedAt).toLocaleDateString() })}
             </p>
           )}
@@ -319,7 +319,7 @@ function CustomizationForm({
         <div key={field.key} className="space-y-1.5">
           <div className="flex items-center gap-2">
             <label className="block text-sm font-medium text-text-primary">{field.label}</label>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning dark:bg-warning dark:text-warning">
               <Lock className="h-3 w-3" /> {t('post_install.customization.template_locked')}
             </span>
           </div>
@@ -338,7 +338,7 @@ function CustomizationForm({
             />
           )}
           {field.lockReason && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">{field.lockReason}</p>
+            <p className="text-xs text-warning dark:text-warning">{field.lockReason}</p>
           )}
         </div>
       );
@@ -447,7 +447,7 @@ function CustomizationForm({
         </div>
       )}
       {saved && (
-        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+        <div className="flex items-center gap-2 text-sm text-success dark:text-success">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           {t('post_install.customization.saved')}
         </div>
@@ -552,7 +552,7 @@ export default function PostInstallSetup() {
             />
           </div>
           {checklist.allComplete && (
-            <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-medium">
+            <p className="text-xs text-success dark:text-success mt-2 font-medium">
               {t('post_install.all_complete')}
             </p>
           )}

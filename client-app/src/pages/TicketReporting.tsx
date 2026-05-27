@@ -199,7 +199,7 @@ export default function TicketReporting() {
             </button>
           )}
         />
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm text-red-700 dark:text-red-300">
+        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-4 text-sm text-danger dark:text-danger">
           {error || 'No reporting data available'}
           <button onClick={fetchData} className="ml-3 underline">Retry</button>
         </div>
@@ -297,7 +297,7 @@ export default function TicketReporting() {
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Target className="h-4 w-4 text-green-500 dark:text-green-400" />
+            <Target className="h-4 w-4 text-success dark:text-success" />
             <span className="text-xs text-text-muted">SLA Response</span>
           </div>
           <div className="text-2xl font-bold text-heading">{slaResponsePct}%</div>
@@ -305,7 +305,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Target className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+            <Target className="h-4 w-4 text-info dark:text-info" />
             <span className="text-xs text-text-muted">SLA Resolution</span>
           </div>
           <div className="text-2xl font-bold text-heading">{slaResolutionPct}%</div>
@@ -329,7 +329,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <RotateCcw className="h-4 w-4 text-orange-500 dark:text-orange-400" />
+            <RotateCcw className="h-4 w-4 text-warning dark:text-warning" />
             <span className="text-xs text-text-muted">Reopen Rate</span>
           </div>
           <div className="text-2xl font-bold text-heading">{reopenPct}%</div>
@@ -356,7 +356,7 @@ export default function TicketReporting() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-4">
           <h3 className="text-sm font-medium text-heading mb-3 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-green-500 dark:text-green-400" /> Tickets Resolved
+            <TrendingUp className="h-4 w-4 text-success dark:text-success" /> Tickets Resolved
           </h3>
           <MiniLineChart data={resolvedChartData} />
         </div>
@@ -498,7 +498,7 @@ export default function TicketReporting() {
                       <tr key={a.email} className="border-b border-border">
                         <td className="px-3 py-2 text-sm text-heading">{a.email}</td>
                         <td className="px-3 py-2 text-sm text-heading text-right">{total}</td>
-                        <td className="px-3 py-2 text-sm text-green-600 dark:text-green-400 text-right">{resolved}</td>
+                        <td className="px-3 py-2 text-sm text-success dark:text-success text-right">{resolved}</td>
                         <td className="px-3 py-2">
                           <div className="h-3 bg-surface-hover rounded-full overflow-hidden w-32">
                             <div className="h-full rounded-full bg-primary" style={{ width: `${(total / workloadMax) * 100}%` }} />

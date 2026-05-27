@@ -179,16 +179,16 @@ function buildNodeLibrary(t: BuilderT): NodeCategory[] {
 }
 
 const NODE_COLORS: Record<string, { bg: string; border: string; text: string; handle: string }> = {
-  greeting: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', border: 'border-emerald-300 dark:border-emerald-700', text: 'text-emerald-700 dark:text-emerald-300', handle: '#10b981' },
-  askQuestion: { bg: 'bg-blue-50 dark:bg-blue-900/30', border: 'border-blue-300 dark:border-blue-700', text: 'text-blue-700 dark:text-blue-300', handle: '#3b82f6' },
+  greeting: { bg: 'bg-success-light dark:bg-success', border: 'border-success dark:border-success', text: 'text-success dark:text-success', handle: '#10b981' },
+  askQuestion: { bg: 'bg-info-light dark:bg-info', border: 'border-info dark:border-info', text: 'text-info dark:text-info', handle: '#3b82f6' },
   confirmInfo: { bg: 'bg-indigo-50 dark:bg-indigo-900/30', border: 'border-indigo-300 dark:border-indigo-700', text: 'text-indigo-700 dark:text-indigo-300', handle: '#6366f1' },
-  condition: { bg: 'bg-amber-50 dark:bg-amber-900/30', border: 'border-amber-300 dark:border-amber-700', text: 'text-amber-700 dark:text-amber-300', handle: '#f59e0b' },
-  routeDecision: { bg: 'bg-orange-50 dark:bg-orange-900/30', border: 'border-orange-300 dark:border-orange-700', text: 'text-orange-700 dark:text-orange-300', handle: '#f97316' },
+  condition: { bg: 'bg-warning-light dark:bg-warning', border: 'border-warning dark:border-warning', text: 'text-warning dark:text-warning', handle: '#f59e0b' },
+  routeDecision: { bg: 'bg-warning-light dark:bg-warning', border: 'border-warning dark:border-warning', text: 'text-warning dark:text-warning', handle: '#f97316' },
   createTicket: { bg: 'bg-purple-50 dark:bg-purple-900/30', border: 'border-purple-300 dark:border-purple-700', text: 'text-purple-700 dark:text-purple-300', handle: '#a855f7' },
   createContact: { bg: 'bg-pink-50 dark:bg-pink-900/30', border: 'border-pink-300 dark:border-pink-700', text: 'text-pink-700 dark:text-pink-300', handle: '#ec4899' },
   scheduleAppt: { bg: 'bg-cyan-50 dark:bg-cyan-900/30', border: 'border-cyan-300 dark:border-cyan-700', text: 'text-cyan-700 dark:text-cyan-300', handle: '#06b6d4' },
   sendSms: { bg: 'bg-teal-50 dark:bg-teal-900/30', border: 'border-teal-300 dark:border-teal-700', text: 'text-teal-700 dark:text-teal-300', handle: '#14b8a6' },
-  dispatchJob: { bg: 'bg-rose-50 dark:bg-rose-900/30', border: 'border-rose-300 dark:border-rose-700', text: 'text-rose-700 dark:text-rose-300', handle: '#f43f5e' },
+  dispatchJob: { bg: 'bg-danger-light dark:bg-danger', border: 'border-danger dark:border-danger', text: 'text-danger dark:text-danger', handle: '#f43f5e' },
 };
 
 const DEFAULT_COLORS = { bg: 'bg-surface-hover', border: 'border-border', text: 'text-text-primary', handle: '#6b7280' };
@@ -509,7 +509,7 @@ function NodeConfigPanel({
         <div className="pt-2 border-t border-border">
           <button
             onClick={() => onDelete(node.id)}
-            className="flex items-center gap-1.5 text-xs font-medium text-danger hover:text-red-700 transition"
+            className="flex items-center gap-1.5 text-xs font-medium text-danger hover:text-danger transition"
           >
             <Trash2 className="h-3.5 w-3.5" /> {t('deleteNode')}
           </button>
@@ -549,13 +549,13 @@ function categoryLabel(cat: string, t: BuilderT): string {
 
 function categoryColor(cat: string): string {
   const colors: Record<string, string> = {
-    prompt_structure: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    prompt_structure: 'bg-info-light text-info dark:bg-info dark:text-info',
     question_ordering: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    objection_handling: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+    objection_handling: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
     workflow_efficiency: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
     tone: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
-    accuracy: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    resolution: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    accuracy: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+    resolution: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
   };
   return colors[cat] || 'bg-surface-hover text-text-primary';
 }
@@ -606,7 +606,7 @@ function ImprovementSuggestionsPanel({
     <div className="w-96 border-l border-border bg-surface overflow-y-auto flex-shrink-0">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-          <Lightbulb className="h-4 w-4 text-amber-500" /> {t('improvementSuggestions')}
+          <Lightbulb className="h-4 w-4 text-warning" /> {t('improvementSuggestions')}
         </h3>
         <button onClick={onClose} aria-label={t('close')} className="text-text-secondary hover:text-text-primary">
           <X className="h-4 w-4" />
@@ -648,9 +648,9 @@ function ImprovementSuggestionsPanel({
                     </div>
                     {s.simulationScoreBefore != null && s.simulationScoreAfter != null && (
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <span className="text-[10px] text-red-500">{s.simulationScoreBefore.toFixed(1)}</span>
-                        <TrendingUp className="h-3 w-3 text-green-500" />
-                        <span className="text-[10px] text-green-500">{s.simulationScoreAfter.toFixed(1)}</span>
+                        <span className="text-[10px] text-danger">{s.simulationScoreBefore.toFixed(1)}</span>
+                        <TrendingUp className="h-3 w-3 text-success" />
+                        <span className="text-[10px] text-success">{s.simulationScoreAfter.toFixed(1)}</span>
                       </div>
                     )}
                   </div>
@@ -661,13 +661,13 @@ function ImprovementSuggestionsPanel({
                     <div className="mt-2 space-y-2">
                       <div>
                         <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('current')}</p>
-                        <pre className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
+                        <pre className="text-[11px] text-danger dark:text-danger bg-danger-light dark:bg-danger rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
                           {s.currentPromptSection}
                         </pre>
                       </div>
                       <div>
                         <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('suggested')}</p>
-                        <pre className="text-[11px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/10 rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
+                        <pre className="text-[11px] text-success dark:text-success bg-success-light dark:bg-success rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
                           {s.suggestedPromptSection}
                         </pre>
                       </div>
@@ -680,16 +680,16 @@ function ImprovementSuggestionsPanel({
                         <div className="flex items-center gap-3 bg-surface-secondary rounded-lg p-2">
                           <div className="text-center">
                             <p className="text-[10px] text-text-muted">{t('before')}</p>
-                            <p className="text-sm font-bold text-red-500">{s.simulationScoreBefore.toFixed(1)}</p>
+                            <p className="text-sm font-bold text-danger">{s.simulationScoreBefore.toFixed(1)}</p>
                           </div>
-                          <TrendingUp className="h-4 w-4 text-green-500" />
+                          <TrendingUp className="h-4 w-4 text-success" />
                           <div className="text-center">
                             <p className="text-[10px] text-text-muted">{t('after')}</p>
-                            <p className="text-sm font-bold text-green-500">{s.simulationScoreAfter.toFixed(1)}</p>
+                            <p className="text-sm font-bold text-success">{s.simulationScoreAfter.toFixed(1)}</p>
                           </div>
                           <div className="ml-auto text-center">
                             <p className="text-[10px] text-text-muted">{t('delta')}</p>
-                            <p className="text-sm font-bold text-green-500">
+                            <p className="text-sm font-bold text-success">
                               +{(s.simulationScoreAfter - s.simulationScoreBefore).toFixed(1)}
                             </p>
                           </div>
@@ -700,7 +700,7 @@ function ImprovementSuggestionsPanel({
                         <button
                           onClick={() => handleAccept(s.id)}
                           disabled={actionLoading === s.id}
-                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:opacity-50"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success text-white rounded-lg hover:bg-success transition disabled:opacity-50"
                         >
                           <Check className="h-3 w-3" />
                           {actionLoading === s.id ? t('applying') : t('apply')}
@@ -774,7 +774,7 @@ function TranslationSuggestionBanner({
             {t(promptKey, { sourceLanguage: sourceLabel, targetLanguage: targetLabel })}
           </p>
           {error && (
-            <p className="mt-1 text-red-600 dark:text-red-400">
+            <p className="mt-1 text-danger dark:text-danger">
               {t('translateError', { message: error })}
             </p>
           )}
@@ -1179,14 +1179,14 @@ function TestConsolePanel({
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {simStatus === 'running' && (
               <div className="text-center">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-light text-success dark:bg-success dark:text-success font-medium">
                   {t('simulating')}
                 </span>
               </div>
             )}
             {simStatus === 'complete' && (
               <div className="text-center">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-info-light text-info dark:bg-info dark:text-info font-medium">
                   {t('simComplete')}
                 </span>
               </div>
@@ -1197,7 +1197,7 @@ function TestConsolePanel({
                   msg.role === 'user'
                     ? 'bg-primary text-white'
                     : msg.role === 'system'
-                    ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 italic'
+                    ? 'bg-warning-light dark:bg-warning text-warning dark:text-warning italic'
                     : 'bg-surface-hover text-text-primary'
                 }`}>
                   {msg.text}
@@ -1320,7 +1320,7 @@ function DeploymentPanel({
           {assignedNumbers.length > 0 ? (
             <div className="space-y-1.5 mb-2">
               {assignedNumbers.map((p) => (
-                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-success dark:border-success bg-success-light dark:bg-success">
                   <div>
                     <p className="text-xs font-medium text-text-primary">{p.friendly_name || p.phone_number}</p>
                     <p className="text-[10px] text-text-muted">{p.phone_number}</p>
@@ -1328,7 +1328,7 @@ function DeploymentPanel({
                   <button
                     onClick={() => unassignPhone(p.id)}
                     disabled={assigningPhone}
-                    className="text-[10px] text-red-500 hover:text-red-700 font-medium disabled:opacity-50"
+                    className="text-[10px] text-danger hover:text-danger font-medium disabled:opacity-50"
                   >
                     {t('remove')}
                   </button>
@@ -1339,7 +1339,7 @@ function DeploymentPanel({
             <p className="text-xs text-text-muted py-1 mb-2">{t('noNumbersAssigned')}</p>
           )}
           {phoneError && (
-            <p className="text-xs text-red-500 py-1 mb-2">{phoneError}</p>
+            <p className="text-xs text-danger py-1 mb-2">{phoneError}</p>
           )}
           {availableNumbers.length > 0 && (
             <select
@@ -1374,13 +1374,13 @@ function DeploymentPanel({
                   </div>
                   <div className="flex items-center gap-1.5">
                     {publishedVersion === v.version && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success dark:bg-success dark:text-success">
                         {t('liveBadge')}
                       </span>
                     )}
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                       v.status === 'published'
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        ? 'bg-info-light text-info dark:bg-info dark:text-info'
                         : 'bg-surface-hover text-text-secondary'
                     }`}>
                       v{v.version}
@@ -2860,7 +2860,7 @@ function AgentBuilderInner() {
           status={
             <>
               {hasChanges && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:bg-warning dark:text-warning font-medium">
                   {t('unsaved')}
                 </span>
               )}
@@ -2868,8 +2868,8 @@ function AgentBuilderInner() {
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                     saveMessage.tone === 'error'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      ? 'bg-danger-light text-danger'
+                      : 'bg-success-light text-success dark:bg-success dark:text-success'
                   }`}
                 >
                   {saveMessage.text}
@@ -3035,7 +3035,7 @@ function AgentBuilderInner() {
                               e.stopPropagation();
                               handleDeleteCustomTemplate(tpl);
                             }}
-                            className="flex-shrink-0 p-1 rounded text-text-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                            className="flex-shrink-0 p-1 rounded text-text-muted hover:text-danger hover:bg-danger-light dark:hover:bg-danger transition"
                             aria-label={t('deleteCustomTemplate')}
                             title={t('deleteCustomTemplate')}
                           >
@@ -3253,7 +3253,7 @@ function AgentBuilderInner() {
           <button
             onClick={() => setRightPanel(rightPanel === 'improve' ? 'none' : 'improve')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition ${
-              rightPanel === 'improve' ? 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+              rightPanel === 'improve' ? 'border-warning text-warning bg-warning-light dark:bg-warning' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
             }`}
           >
             <Lightbulb className="h-3.5 w-3.5" /> {t('improve')}
@@ -3292,9 +3292,9 @@ function AgentBuilderInner() {
       {voiceMismatch && (
         <div
           role="status"
-          className="flex flex-col gap-2 border-b border-amber-300 bg-amber-50 px-4 py-2 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800/50 dark:bg-amber-900/20"
+          className="flex flex-col gap-2 border-b border-warning bg-warning-light px-4 py-2 sm:flex-row sm:items-center sm:justify-between dark:border-warning dark:bg-warning"
         >
-          <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+          <div className="flex items-start gap-2 text-xs text-warning dark:text-warning">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             <p className="leading-snug">
               {t('voiceMismatchWarning', {
@@ -3308,7 +3308,7 @@ function AgentBuilderInner() {
             type="button"
             onClick={() => useRecommendedVoiceMutation.mutate()}
             disabled={useRecommendedVoiceMutation.isPending}
-            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-warning text-white hover:bg-warning dark:bg-warning dark:hover:bg-warning transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {useRecommendedVoiceMutation.isPending
               ? t('saving')

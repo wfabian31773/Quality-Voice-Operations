@@ -247,8 +247,8 @@ interface CompatibilityResult {
 }
 
 const PLAN_COLORS: Record<string, string> = {
-  starter: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  pro: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  starter: 'bg-success-light text-success dark:bg-success dark:text-success',
+  pro: 'bg-info-light text-info dark:bg-info dark:text-info',
   enterprise: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
@@ -352,8 +352,8 @@ function PriceBadge({
       <span
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
           isFree
-            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+            ? 'bg-success-light text-success dark:bg-success dark:text-success'
+            : 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
         }`}
       >
         {!isFree && <Tag className="h-3 w-3" />}
@@ -368,7 +368,7 @@ function PriceBadge({
             {formatPrice(priceCents, priceModel, currency)}
           </span>
           <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
             data-testid="marketplace-card-discount-chip"
             title={buildDiscountChipTooltip(discount!, currency)}
             aria-label={buildDiscountChipTooltip(discount!, currency)}
@@ -390,13 +390,13 @@ function StarRating({ rating, count, size = 'sm' }: { rating: number; count?: nu
 
   for (let i = 0; i < 5; i++) {
     if (i < fullStars) {
-      stars.push(<Star key={i} className={`${starSize} fill-amber-400 text-amber-400`} />);
+      stars.push(<Star key={i} className={`${starSize} fill-amber-400 text-warning`} />);
     } else if (i === fullStars && hasHalf) {
       stars.push(
         <span key={i} className="relative">
           <Star className={`${starSize} text-text-muted`} />
           <span className="absolute inset-0 overflow-hidden" style={{ width: '50%' }}>
-            <Star className={`${starSize} fill-amber-400 text-amber-400`} />
+            <Star className={`${starSize} fill-amber-400 text-warning`} />
           </span>
         </span>,
       );
@@ -440,7 +440,7 @@ function InteractiveStarRating({
           <Star
             className={`h-6 w-6 ${
               star <= (hover || rating)
-                ? 'fill-amber-400 text-amber-400'
+                ? 'fill-amber-400 text-warning'
                 : 'text-text-muted'
             }`}
           />
@@ -562,13 +562,13 @@ function InstallModal({
           )}
 
           {isBlocked && (
-            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <div className="p-4 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg">
               <div className="flex items-start gap-2">
-                <Shield className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+                <Shield className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Upgrade Required</p>
+                  <p className="text-sm font-medium text-warning dark:text-warning">Upgrade Required</p>
                   {compatibility.errors.map((err, i) => (
-                    <p key={i} className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">{err}</p>
+                    <p key={i} className="text-xs text-warning dark:text-warning mt-1">{err}</p>
                   ))}
                   <a
                     href="/billing"
@@ -582,9 +582,9 @@ function InstallModal({
           )}
 
           {compatibility?.warnings && compatibility.warnings.length > 0 && (
-            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/50 rounded-lg">
+            <div className="p-3 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg">
               {compatibility.warnings.map((w, i) => (
-                <p key={i} className="text-xs text-yellow-700 dark:text-yellow-400">{w}</p>
+                <p key={i} className="text-xs text-warning dark:text-warning">{w}</p>
               ))}
             </div>
           )}
@@ -740,7 +740,7 @@ function TemplateCard({
       className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left w-full group relative"
     >
       {template.featured && (
-        <div className="absolute -top-2 -right-2 bg-amber-400 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
+        <div className="absolute -top-2 -right-2 bg-warning text-warning text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
           <Sparkles className="h-3 w-3" /> Featured
         </div>
       )}
@@ -757,7 +757,7 @@ function TemplateCard({
             discount={customerDiscount}
           />
           {installed && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success">
               <CheckCircle className="h-3 w-3" /> Installed
             </span>
           )}
@@ -1055,7 +1055,7 @@ function TemplateDetailView({
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-text-primary">v{v.version}</span>
                         {v.isLatest && (
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success">
                             Latest
                           </span>
                         )}
@@ -1080,10 +1080,10 @@ function TemplateDetailView({
                 {template.changelogs.map((cl) => (
                   <div key={cl.id} className="flex items-start gap-2">
                     <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium capitalize ${
-                      cl.changeType === 'added' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      cl.changeType === 'fixed' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                      cl.changeType === 'removed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      cl.changeType === 'security' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                      cl.changeType === 'added' ? 'bg-success-light text-success dark:bg-success dark:text-success' :
+                      cl.changeType === 'fixed' ? 'bg-info-light text-info dark:bg-info dark:text-info' :
+                      cl.changeType === 'removed' ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger' :
+                      cl.changeType === 'security' ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning' :
                       'bg-surface-hover text-text-secondary'
                     }`}>
                       {cl.changeType}
@@ -1229,7 +1229,7 @@ function TemplateDetailView({
                       <div key={star} className="flex items-center gap-2 text-xs">
                         <span className="w-3 text-text-muted">{star}</span>
                         <div className="flex-1 h-2 bg-surface-hover rounded-full overflow-hidden">
-                          <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                          <div className="h-full bg-warning rounded-full" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="w-6 text-right text-text-muted">{count}</span>
                       </div>
@@ -1295,24 +1295,24 @@ function TemplateDetailView({
           <div className="bg-surface border border-border rounded-xl p-5">
             {isInstalled ? (
               <div className="text-center">
-                <CheckCircle className="h-8 w-8 text-green-500 dark:text-green-400 mx-auto mb-2" />
+                <CheckCircle className="h-8 w-8 text-success dark:text-success mx-auto mb-2" />
                 <p className="text-sm font-medium text-text-primary">Already Installed</p>
                 <p className="text-xs text-text-secondary mt-1">This template is active in your workspace.</p>
               </div>
             ) : isPlanGated ? (
               <div>
-                <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg mb-3">
-                  <Shield className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 p-3 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg mb-3">
+                  <Shield className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Upgrade Required</p>
+                    <p className="text-sm font-medium text-warning dark:text-warning">Upgrade Required</p>
                     {compatibility?.errors.map((err, i) => (
-                      <p key={i} className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">{err}</p>
+                      <p key={i} className="text-xs text-warning dark:text-warning mt-1">{err}</p>
                     ))}
                   </div>
                 </div>
                 <a
                   href="/billing"
-                  className="w-full px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium rounded-lg transition inline-flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2.5 bg-warning hover:bg-warning text-white text-sm font-medium rounded-lg transition inline-flex items-center justify-center gap-2"
                 >
                   <ArrowUpCircle className="h-4 w-4" /> Upgrade Plan
                 </a>
@@ -1352,7 +1352,7 @@ function TemplateDetailView({
                             {formatPrice(template.priceCents, template.priceModel, currency)}
                           </span>
                           <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
                             data-testid="marketplace-purchase-cta-discount-chip"
                             title={buildDiscountChipTooltip(customerDiscount!, currency)}
                             aria-label={buildDiscountChipTooltip(customerDiscount!, currency)}
@@ -1455,7 +1455,7 @@ function TemplateDetailView({
                   <div key={e.planTier} className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary capitalize">{e.planTier}</span>
                     {e.enabled ? (
-                      <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" />
+                      <CheckCircle className="h-4 w-4 text-success dark:text-success" />
                     ) : (
                       <X className="h-4 w-4 text-text-muted" />
                     )}
@@ -1584,11 +1584,11 @@ function PurchaseRow({
     : '—';
   const isPending = p.status === 'pending';
   const statusTone = p.status === 'completed'
-    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    ? 'bg-success-light text-success dark:bg-success dark:text-success'
     : p.status === 'refunded'
-    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+    ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
     : p.status === 'failed'
-    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
     : 'bg-surface-hover text-text-secondary';
 
   const discount = p.discount;
@@ -1692,7 +1692,7 @@ function PurchaseRow({
               // invoice's discount — expanding the row reveals the
               // full per-renewal history (Task #1389).
               <span
-                className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
                 title={discountTooltip}
                 aria-label={discountTooltip}
                 data-testid="marketplace-purchase-discount-badge"
@@ -1787,11 +1787,11 @@ function PurchaseInvoiceItem({
       })
     : '—';
   const statusTone = invoice.status === 'paid'
-    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    ? 'bg-success-light text-success dark:bg-success dark:text-success'
     : invoice.status === 'open'
-    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    ? 'bg-info-light text-info dark:bg-info dark:text-info'
     : invoice.status === 'uncollectible' || invoice.status === 'void'
-    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
     : 'bg-surface-hover text-text-secondary';
 
   return (
@@ -1825,7 +1825,7 @@ function PurchaseInvoiceItem({
               return (
                 <span
                   key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-success-light text-success dark:bg-success dark:text-success"
                   title={tip}
                   aria-label={tip}
                   data-testid="marketplace-purchase-invoice-discount-badge"
@@ -1961,15 +1961,15 @@ function InstalledView({
                 <h3 className="font-semibold text-text-primary">{inst.agent_name || inst.template_name}</h3>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${
                   inst.status === 'active'
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    ? 'bg-success-light text-success dark:bg-success dark:text-success'
                     : inst.status === 'error'
-                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
                     : 'bg-surface-hover text-text-secondary'
                 }`}>
                   {inst.status}
                 </span>
                 {hasUpdate && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-warning-light text-warning dark:bg-warning dark:text-warning">
                     <ArrowUpCircle className="h-3 w-3" /> Update v{inst.latest_version}
                   </span>
                 )}
@@ -1997,7 +1997,7 @@ function InstalledView({
                       {formatPrice(priceCents, priceModel ?? 'one_time', currency)}
                     </span>
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
                       data-testid="installed-row-discount-chip"
                       title={buildDiscountChipTooltip(customerDiscount!, currency)}
                       aria-label={buildDiscountChipTooltip(customerDiscount!, currency)}
@@ -2260,7 +2260,7 @@ export default function Marketplace() {
           {featuredData && featuredData.templates.length > 0 && !search && !selectedCategory && !selectedMktCategory && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+                <Sparkles className="h-5 w-5 text-warning dark:text-warning" />
                 <h2 className="text-lg font-semibold text-text-primary">Featured</h2>
               </div>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

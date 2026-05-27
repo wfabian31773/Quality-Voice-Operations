@@ -300,15 +300,15 @@ export default function ROICalculator({
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-5 text-center">
-                <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
-                <div className="text-2xl font-display font-bold text-emerald-700 dark:text-emerald-300">{formatCurrency(results.monthlySavings)}</div>
-                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">Monthly savings</div>
+              <div className="bg-success-light dark:bg-success rounded-xl p-5 text-center">
+                <DollarSign className="h-5 w-5 text-success dark:text-success mx-auto mb-2" />
+                <div className="text-2xl font-display font-bold text-success dark:text-success">{formatCurrency(results.monthlySavings)}</div>
+                <div className="text-xs text-success dark:text-success mt-1">Monthly savings</div>
               </div>
-              <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-5 text-center">
-                <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400 mx-auto mb-2" />
-                <div className="text-2xl font-display font-bold text-blue-700 dark:text-blue-300">{Math.round(results.annualROI)}%</div>
-                <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">Annual ROI</div>
+              <div className="bg-info-light dark:bg-info rounded-xl p-5 text-center">
+                <TrendingUp className="h-5 w-5 text-info dark:text-info mx-auto mb-2" />
+                <div className="text-2xl font-display font-bold text-info dark:text-info">{Math.round(results.annualROI)}%</div>
+                <div className="text-xs text-info dark:text-info mt-1">Annual ROI</div>
               </div>
               <div className="bg-purple-50 dark:bg-purple-500/10 rounded-xl p-5 text-center">
                 <Clock className="h-5 w-5 text-purple-600 dark:text-purple-400 mx-auto mb-2" />
@@ -334,7 +334,7 @@ export default function ROICalculator({
                 <div className="border-t border-border pt-3 flex justify-between text-sm font-semibold">
                   <span className="text-text-primary">Annual savings</span>
                   <span
-                    className="text-emerald-600 dark:text-emerald-400"
+                    className="text-success dark:text-success"
                     data-testid="roi-annual-savings"
                     data-display-currency={displayCurrency}
                   >
