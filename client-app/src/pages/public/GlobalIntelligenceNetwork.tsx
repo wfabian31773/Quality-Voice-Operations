@@ -366,7 +366,12 @@ export default function GlobalIntelligenceNetwork() {
                     {t('gin_page.control_plane.privacy_eyebrow')}
                   </p>
                 </div>
-                <h3 className="font-display text-xl font-bold mb-5">{t('gin_page.control_plane.privacy_heading')}</h3>
+                {/* Defensive text-white on h3 — this card has a
+                    `bg-sidebar-bg` dark background, so the QVO base
+                    reset h3 color rule renders the headline invisible
+                    without an explicit color. Same fix as the Product
+                    page security cards. */}
+                <h3 className="font-display text-white text-xl font-bold mb-5">{t('gin_page.control_plane.privacy_heading')}</h3>
                 <ul className="space-y-3">
                   {privacyControls.map((line) => (
                     <li key={line} className="flex items-start gap-2.5 text-sm text-white/80 font-body leading-relaxed">

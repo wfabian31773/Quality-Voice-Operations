@@ -310,8 +310,15 @@ function SecuritySection() {
               <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mb-4 group-hover:bg-primary/30 transition-colors">
                 <b.icon className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="font-display text-base font-semibold mb-2">{b.title}</h3>
-              <p className="text-sm text-white/50 font-body leading-relaxed">{b.desc}</p>
+              {/* Defensive text-white on h3 — the QVO base reset rule
+                  targets h1-h5, so card titles inside dark-band sections
+                  go invisible without an explicit color. This was the
+                  exact bug Wayne caught in the screenshot ("HIPAA Ready"
+                  etc. rendering dark-navy-on-dark-navy). The same pattern
+                  exists anywhere card titles are nested in a dark band
+                  across the marketing surface. */}
+              <h3 className="font-display text-white text-base font-semibold mb-2">{b.title}</h3>
+              <p className="text-sm text-white/60 font-body leading-relaxed">{b.desc}</p>
             </div>
           ))}
         </div>
