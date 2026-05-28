@@ -1443,6 +1443,14 @@ export async function createRealtimeSession(
     },
   });
 
+  // Set once the Realtime WS has closed (caller hangup, error, etc).
+  // Used by `sendRealtimeEvent` / `sendModelInstruction` to silently
+  // no-op any send that races the close — e.g. the local silence
+  // watchdog callback that was already in the event-loop queue when
+  // the WS closed will otherwise hit "WebSocket is not connected"
+  // and log a scary (but benign) warn.
+  let sessionClosed = false;
+
   const attachCloseHandler = (targetSession: RealtimeSession): void => {
     const emitter = targetSession as unknown as { on(event: string, listener: (...args: unknown[]) => void): void };
     emitter.on('close', () => {
@@ -1451,6 +1459,7 @@ export async function createRealtimeSession(
         return;
       }
 
+      sessionClosed = true;
       slog.info('Realtime session closed');
 
       if (silenceTimer) clearTimeout(silenceTimer);
@@ -1502,7 +1511,26 @@ export async function createRealtimeSession(
   };
 
   const sendRealtimeEvent = (event: Record<string, unknown>): void => {
-    (activeTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
+    // Silently drop sends that race the WS close. The SDK throws
+    // "WebSocket is not connected" if the underlying socket has
+    // already gone away — that's expected when, e.g., the silence
+    // watchdog fires its setTimeout callback the same tick the
+    // caller hangs up. Nothing useful to do with the event at that
+    // point; logging it as an error just adds noise.
+    if (sessionClosed) return;
+    try {
+      (activeTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes('WebSocket is not connected')) {
+        // Race: the transport closed between our `sessionClosed`
+        // check and the .send() call. Mark closed so subsequent
+        // sends short-circuit, and swallow.
+        sessionClosed = true;
+        return;
+      }
+      throw err;
+    }
   };
 
   // Track whether the Realtime server is currently generating a
