@@ -22,6 +22,7 @@ import {
   Shield,
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import { DemoOrchestrationHub, PLACEHOLDER_DEMO_TIMELINE } from '../components/marketing/DemoHub';
 import ConversationTranscript from '../components/demo/ConversationTranscript';
 import ToolExecutionPanel from '../components/demo/ToolExecutionPanel';
 import CalendarToolVisual from '../components/demo/CalendarToolVisual';
@@ -435,9 +436,8 @@ export default function Demo() {
 
       <DemoCompletionCelebration show={showCelebration} />
 
-      <section className="bg-sidebar-bg text-white py-16 lg:py-24 relative overflow-hidden">
+      <section className="bg-sidebar-bg text-white py-12 lg:py-20 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-sidebar-hover opacity-80" />
-        <div className="absolute inset-0 demo-grid-pattern opacity-5" />
         <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center relative z-10">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
             {t('demo.hero.eyebrow')}
@@ -445,11 +445,22 @@ export default function Demo() {
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
             {t('demo.hero.title')}
           </h1>
-          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-8">
+          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-10">
             {t('demo.hero.description')}
           </p>
-          <div className="flex items-center justify-center">
+          {/* Orchestration hub centerpiece — see DemoOrchestrationHub.tsx.
+              The hub is the visual story of the page: agent voice at the
+              center, four product surfaces at the corners, spokes that
+              light up to show which tool is firing in real time. */}
+          <DemoOrchestrationHub
+            mode="scripted"
+            timeline={PLACEHOLDER_DEMO_TIMELINE}
+          />
+          <div className="mt-8 flex items-center justify-center gap-3">
             <VoiceWaveform active={isActive} />
+            <span className="text-xs uppercase tracking-wider text-white/40 font-display">
+              {isActive ? 'Agent live' : 'Standby'}
+            </span>
           </div>
         </div>
       </section>

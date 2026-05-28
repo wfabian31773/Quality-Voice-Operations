@@ -1,5 +1,5 @@
 /**
- * Scripted timeline driver for the Tool Wheel.
+ * Scripted timeline driver for the Demo Orchestration Hub.
  *
  * Subscribes to an `HTMLAudioElement`'s `timeupdate` event and emits
  * `setActive(toolId, label)` whenever the current playback position
@@ -8,35 +8,46 @@
  * (`currentTime = 0`) correctly re-arms all events for the next play.
  *
  * Active state auto-clears after `durationMs` (default 1500ms) so the
- * wheel idles between tool calls instead of staying stuck on the last
+ * hub idles between tool calls instead of staying stuck on the last
  * one until the audio ends.
  */
 import { useEffect, useRef, useState } from 'react';
 import { type ScriptedTimeline, type WheelState, type ToolId } from './types';
-import { TOOL_REGISTRY } from './tool-wheel-icons';
 
-interface UseToolWheelTimelineOptions {
+/**
+ * Default in-flight label per tool — shown beneath the hub when a timeline
+ * event omits a custom label. Keep these short and verb-led so they read
+ * naturally as "what's happening right now."
+ */
+const DEFAULT_ACTION_LABEL: Record<ToolId, string> = {
+  calendar: 'Checking the calendar',
+  sms: 'Sending a text',
+  ticket: 'Opening a ticket',
+  dispatch: 'Dispatching to your team',
+};
+
+interface UseDemoTimelineOptions {
   timeline: ScriptedTimeline;
   audioElement: HTMLAudioElement | null;
   enabled?: boolean;
 }
 
-interface UseToolWheelTimelineResult extends WheelState {
+interface UseDemoTimelineResult extends WheelState {
   /**
-   * Manually set the active tool. Useful when the parent wants to
-   * preview the active state from a hover affordance ("hover this card
-   * to see what dispatch looks like"). Pass `null` to clear.
+   * Manually set the active tool. Useful when the parent wants to preview
+   * the active state from a hover affordance ("hover this panel to see
+   * what dispatch looks like"). Pass `null` to clear.
    */
   setActiveManual: (tool: ToolId | null, label?: string) => void;
 }
 
 const DEFAULT_DURATION_MS = 1500;
 
-export function useToolWheelTimeline({
+export function useDemoTimeline({
   timeline,
   audioElement,
   enabled = true,
-}: UseToolWheelTimelineOptions): UseToolWheelTimelineResult {
+}: UseDemoTimelineOptions): UseDemoTimelineResult {
   const [state, setState] = useState<WheelState>({ activeTool: null, activeLabel: null });
   // Track the highest event index already fired during this playback. Reset
   // to -1 whenever currentTime jumps backwards (seek/restart).
@@ -65,7 +76,7 @@ export function useToolWheelTimeline({
         if (ev.at > t) break;
         // Crossed this event since the last tick — fire it.
         lastFiredIndexRef.current = i;
-        const label = ev.label || TOOL_REGISTRY[ev.tool].defaultActionLabel;
+        const label = ev.label || DEFAULT_ACTION_LABEL[ev.tool];
         setState({ activeTool: ev.tool, activeLabel: label });
         // Schedule auto-clear back to idle.
         if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
@@ -110,7 +121,7 @@ export function useToolWheelTimeline({
     } else {
       setState({
         activeTool: tool,
-        activeLabel: label ?? TOOL_REGISTRY[tool].defaultActionLabel,
+        activeLabel: label ?? DEFAULT_ACTION_LABEL[tool],
       });
     }
   }
