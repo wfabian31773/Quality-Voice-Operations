@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import MaintenanceGate from './components/MaintenanceGate';
 import PageSkeleton from './components/PageSkeleton';
+import ScrollToTop from './components/ScrollToTop';
 
 // Marketing-only Routes tree. Mirrors the public routes in `App.tsx` so that
 // every URL the server forwards to `index.public.html` resolves correctly. The
@@ -44,6 +45,9 @@ export default function PublicApp() {
   return (
     <ErrorBoundary>
       <MaintenanceGate>
+        {/* Reset scroll on every forward navigation. See ScrollToTop.tsx
+            for the back/forward + hash-link edge case handling. */}
+        <ScrollToTop />
         <Suspense fallback={<PageSkeleton />}>
           <Routes>
             <Route element={<PublicLayout />}>

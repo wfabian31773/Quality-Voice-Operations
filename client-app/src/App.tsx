@@ -7,6 +7,7 @@ import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
 import MaintenanceGate from './components/MaintenanceGate';
 import PageSkeleton from './components/PageSkeleton';
+import ScrollToTop from './components/ScrollToTop';
 
 // Layouts are lazy so each surface ships its own JS+CSS only when its
 // routes are visited. Visiting /pricing should not preload TenantLayout
@@ -148,6 +149,9 @@ export default function App() {
   return (
     <ErrorBoundary>
     <MaintenanceGate>
+    {/* Reset scroll on every forward navigation. See ScrollToTop.tsx
+        for the back/forward + hash-link edge case handling. */}
+    <ScrollToTop />
     <Suspense fallback={<PageSkeleton />}>
     <Routes>
       <Route path="/login" element={<Login />} />
