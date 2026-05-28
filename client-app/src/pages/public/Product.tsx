@@ -290,7 +290,11 @@ function SecuritySection() {
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
             {t('product.security_section.eyebrow')}
           </p>
-          <h2 className="font-display text-3xl lg:text-4xl font-bold mb-4">
+          {/* Explicit text-white + tracking-tight defensive against the
+              QVO base reset rule (h2 → light-theme dark token on dark
+              surfaces would render invisible). Same fix applied across
+              hero h1s on /demo, /pricing, /features. */}
+          <h2 className="font-display text-white text-3xl lg:text-4xl font-bold mb-4 tracking-tight">
             {t('product.security_section.title')}
           </h2>
           <p className="text-white/60 font-body leading-relaxed">
@@ -372,13 +376,36 @@ export default function Product() {
         canonicalPath="/product"
         structuredData={productSchema}
       />
-      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      {/*
+        Product hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/product-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop, off-center at 70% 50% so it doesn't
+            feel identical to Pricing (50% 30%), Features (30% 50%), or
+            UseCases (60% 40%) when navigating between them
+          - oversize tracking-tight headline (text-6xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        py-16 lg:py-24 (was py-20 lg:py-28) — tighter density now that
+        there's no image to support the larger padding.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-24">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 70% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               {t('product.hero.eyebrow')}
             </p>
-            <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
+            <h1 className="font-display text-white text-4xl lg:text-6xl font-bold leading-tight tracking-tight mb-6">
               {t('product.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl">
