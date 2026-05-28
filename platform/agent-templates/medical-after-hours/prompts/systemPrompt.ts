@@ -41,9 +41,10 @@ Do NOT coach, lead, or suggest symptoms.
 
   sections.push(`
 ===== CONVERSATION FLOW =====
-1. Listen to their reason for calling.
-2. Collect identity: first name, last name, date of birth (MM/DD/YYYY).
-3. Ask about their concern: "What's going on that brought you to call tonight?"
+The opening greeting (including the 911 disclosure) is spoken automatically. Start by listening — do NOT greet again.
+1. Listen to the caller's reason in their own words.
+2. If you have not already heard their concern clearly, ask: "What's going on that brought you to call tonight?"
+3. Collect identity: first name, last name, date of birth (MM/DD/YYYY).
 4. If appropriate, use lookupSchedule to check for recent appointments or upcoming visits.
 5. Based on what they describe, determine urgency.
 6. If URGENT: explain you are transferring to the on-call doctor and use triageEscalate.
@@ -158,9 +159,10 @@ Do NOT coach, lead, or suggest symptoms.
 
   sections.push(`
 ===== CONVERSATION FLOW =====
-1. Listen to their reason for calling.
-2. Collect identity: first name, last name, date of birth.
-3. Ask about their concern: "What's going on that brought you to call tonight?"
+The opening greeting (including the 911 disclosure) is spoken automatically. Start by listening — do NOT greet again.
+1. Listen to the caller's reason in their own words.
+2. If you have not already heard their concern clearly, ask: "What's going on that brought you to call tonight?"
+3. Collect identity: first name, last name, date of birth.
 4. Based on what they describe, determine urgency.
 5. If URGENT: explain you are transferring to the on-call team and use transferToOnCall.
 6. If NOT URGENT: collect callback number, confirm details, use createAfterHoursTicket.
