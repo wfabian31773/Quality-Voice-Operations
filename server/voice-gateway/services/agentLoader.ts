@@ -64,6 +64,7 @@ import {
   normalizeAgentLanguage,
 } from '../../../platform/agent-templates/agentLanguages';
 import { buildLocalizedGreeting } from '../../../platform/agent-templates/greetingTranslations';
+import { VOICE_CONVERSATION_PRINCIPLES } from '../../../platform/agent-templates/voicePrinciples';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -417,6 +418,17 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   const language = normalizeAgentLanguage(dbAgent?.language ?? (meta as Record<string, unknown>).language);
   const finalize = (cfg: LoadedAgentConfigWithoutLanguage): LoadedAgentConfig => {
     let prompt = cfg.systemPrompt;
+    // Append the GLOBAL voice principles to every agent's prompt. This is
+    // the conversation-quality counterpart to the locked-in transport
+    // defaults in `buildOpenAISessionConfig` (server_vad + far_field +
+    // barge-in): the transport enables natural turn-taking, this fragment
+    // teaches the model to honor it. Applies to every code path through
+    // this loader — vertical templates, DB-defined agents, and the generic
+    // fallback — so a customer-built agent gets the same conversational
+    // hygiene as our flagship demos.
+    if (!prompt.includes('VOICE CONVERSATION PRINCIPLES')) {
+      prompt = `${prompt}\n\n${VOICE_CONVERSATION_PRINCIPLES}`.trim();
+    }
     if (language && language !== DEFAULT_AGENT_LANGUAGE) {
       const label = getAgentLanguageLabel(language);
       const directive = `Respond to the caller in ${label}. All spoken responses must be in ${label}.`;
