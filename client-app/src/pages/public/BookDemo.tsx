@@ -155,10 +155,32 @@ export default function BookDemo() {
         description="See QVO in action with a 30-minute live walkthrough tailored to your business. Schedule a personalized demo with our team."
         canonicalPath="/book-demo"
       />
-      <section className="bg-sidebar-bg text-white py-16 lg:py-20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
+      {/*
+        BookDemo hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/book-demo-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop at 40% 60% (yet another off-center
+            position so no two adjacent marketing pages feel identical)
+          - oversize tracking-tight headline (text-6xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        Padding stayed py-16 lg:py-20 — this hero already had less air
+        than the marketing pages (it's a form-first page).
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-20">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 40% 60%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">Book a Demo</p>
-          <h1 className="font-display text-3xl lg:text-5xl font-bold mb-4">See QVO in your business in 30 minutes.</h1>
+          <h1 className="font-display text-white text-3xl lg:text-6xl font-bold tracking-tight mb-4">See QVO in your business in 30 minutes.</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
             Get a personalized walkthrough from someone who has deployed AI voice agents in your industry.
           </p>

@@ -20,9 +20,31 @@ export default function Blog() {
         canonicalPath="/blog"
       />
 
-      <section className="bg-sidebar-bg text-white py-20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
-          <h1 className="font-display text-4xl md:text-5xl font-bold mb-4">
+      {/*
+        Blog hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/blog-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop at 55% 45% (off-center, distinct
+            from sibling pages so adjacent navigations feel varied)
+          - oversize tracking-tight headline (text-6xl @ md)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        py-16 lg:py-24 (was py-20) — tighter density now that there's
+        no image to support the larger padding.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-24">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 55% 45%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 text-center">
+          <h1 className="font-display text-white text-4xl md:text-6xl font-bold tracking-tight mb-4">
             The QVO Blog
           </h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
