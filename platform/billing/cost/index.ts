@@ -1,9 +1,11 @@
 export {
   recordConversationCost,
+  recordTwilioCallCost,
   getConversationCost,
   getConversationCostRunningTotal,
   type ConversationCostRecord,
   type RecordCostParams,
+  type RecordTwilioCallCostParams,
 } from './CostTrackingService';
 
 export {

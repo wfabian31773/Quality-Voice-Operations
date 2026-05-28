@@ -24,6 +24,7 @@ import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { createRateLimitChecker } from '../../../platform/infra/rate-limit/createRateLimiter';
 import { getPlatformPool, withPrivilegedClient } from '../../../platform/db';
 import { extractStirTelemetry } from '../../../platform/telephony/stirAttestation';
+import { recordTwilioCallCost } from '../../../platform/billing/cost';
 import crypto from 'crypto';
 import { recordDemoAnalyticsEvent, scheduleDemoDataCleanup } from '../../admin-api/routes/demo';
 import {
@@ -378,6 +379,61 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
           error: String(err),
         });
       }
+    }
+  }
+
+  // Capture the actual Twilio carrier cost when Twilio sends it. The
+  // `Price` field arrives on the `completed` callback once Twilio's
+  // billing system has scored the call (usually immediately, sometimes
+  // a few seconds late for international destinations). Late-billed
+  // calls miss this path; a sweeper cron against the Twilio REST API
+  // can backfill those — out of scope for this commit (see
+  // docs/audit/10-cost-tracking-audit.md §2.2).
+  //
+  // We resolve (tenant_id, call_session_id) from `call_sessions.call_sid`
+  // because the status callback only carries the carrier-side CallSid;
+  // conversation_costs is keyed by our internal call_session_id. Demo
+  // calls and unrecognised SIDs return no rows and we silently skip —
+  // they don't have a conversation_costs row to update either.
+  if (callSid && typeof req.body.Price === 'string' && req.body.Price.length > 0) {
+    try {
+      let tenantAndSession: { tenantId: string; callSessionId: string } | null = null;
+      await withPrivilegedClient(async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, tenant_id FROM call_sessions WHERE call_sid = $1 LIMIT 1`,
+          [callSid],
+        );
+        if (rows.length > 0) {
+          tenantAndSession = {
+            tenantId: rows[0].tenant_id as string,
+            callSessionId: rows[0].id as string,
+          };
+        }
+      });
+
+      if (tenantAndSession) {
+        // Fire-and-forget: a failure here must not break the status
+        // callback response (Twilio will retry on non-2xx and we don't
+        // want amplification). recordTwilioCallCost logs its own errors.
+        const { tenantId: lookupTenantId, callSessionId } = tenantAndSession;
+        recordTwilioCallCost({
+          tenantId: lookupTenantId,
+          callSessionId,
+          twilioPriceRaw: req.body.Price as string,
+          twilioPriceCurrency: (req.body.PriceUnit as string) ?? 'USD',
+          twilioBilledSeconds: parseInt(req.body.CallDuration as string, 10) || 0,
+        }).catch((err) => {
+          logger.warn('Failed to persist Twilio call cost (fire-and-forget)', {
+            callSid,
+            error: String(err),
+          });
+        });
+      }
+    } catch (err) {
+      logger.warn('Failed to resolve call_session for Twilio cost capture', {
+        callSid,
+        error: String(err),
+      });
     }
   }
 

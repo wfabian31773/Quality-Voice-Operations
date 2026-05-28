@@ -79,6 +79,15 @@ export async function recordConversationCost(params: RecordCostParams): Promise<
         cache_hits = conversation_costs.cache_hits + EXCLUDED.cache_hits,
         cache_misses = conversation_costs.cache_misses + EXCLUDED.cache_misses,
         prompt_tokens_saved = conversation_costs.prompt_tokens_saved + EXCLUDED.prompt_tokens_saved,
+        -- Overwrite tier + model from the real cost write. This matters
+        -- when recordTwilioCallCost INSERTed the row first (it can't know
+        -- the tier so it falls back to the table DEFAULT 'standard');
+        -- without this clause the placeholder would stick and skew tier
+        -- distribution analytics. COALESCE on model_used so an UPSERT
+        -- from a different code path that doesn't know the model doesn't
+        -- accidentally NULL out a real value.
+        model_tier = EXCLUDED.model_tier,
+        model_used = COALESCE(EXCLUDED.model_used, conversation_costs.model_used),
         updated_at = NOW()
       RETURNING *`,
       [
@@ -187,6 +196,100 @@ export async function getConversationCost(tenantId: string, callSessionId: strin
       promptTokensSaved: row.prompt_tokens_saved,
       createdAt: row.created_at,
     };
+  } finally {
+    client.release();
+  }
+}
+
+export interface RecordTwilioCallCostParams {
+  tenantId: string;
+  callSessionId: string;
+  /**
+   * Raw Twilio `Price` field, signed dollar amount as a string
+   * (e.g. "-0.00850"). Twilio convention: negative = "Twilio charged
+   * you". We take abs() and convert to cents internally.
+   */
+  twilioPriceRaw: string;
+  /** ISO-4217 currency code from Twilio `PriceUnit`. */
+  twilioPriceCurrency: string;
+  /** Twilio's carrier-billed seconds from `CallDuration`. */
+  twilioBilledSeconds: number;
+}
+
+/**
+ * Persist the actual Twilio carrier cost for a call. Called from the
+ * `/twilio/status` webhook when the `completed` callback arrives with
+ * a populated `Price` field.
+ *
+ * Race: this may arrive BEFORE or AFTER `recordConversationCost`. The
+ * UPSERT handles both — when this runs first it INSERTs a placeholder
+ * row whose model_tier defaults to 'standard' (the table DEFAULT) and
+ * whose other cost-component fields are 0; `recordConversationCost`'s
+ * ON CONFLICT then accumulates the real OpenAI cost on top AND
+ * overwrites model_tier with the real tier. When this runs second,
+ * the existing row's Twilio columns are updated in place and nothing
+ * else is touched.
+ */
+export async function recordTwilioCallCost(
+  params: RecordTwilioCallCostParams,
+): Promise<{ priceCents: number } | null> {
+  const dollars = parseFloat(params.twilioPriceRaw);
+  if (!Number.isFinite(dollars)) {
+    logger.warn('recordTwilioCallCost: unparseable Twilio Price', {
+      tenantId: params.tenantId,
+      callSessionId: params.callSessionId,
+      rawPrice: params.twilioPriceRaw,
+    });
+    return null;
+  }
+  // Twilio convention: Price is negative when Twilio charged us. Take
+  // the absolute value before converting to cents.
+  // eslint-disable-next-line local/no-dollars-times-100 -- Twilio Price is fractional dollars (e.g. 0.00850); sub-cent precision is preserved by the NUMERIC(10,4) column. Same pattern as platform/billing/usage/UsageRecorder.ts.
+  const priceCents = Math.abs(dollars) * 100;
+  const currency = (params.twilioPriceCurrency || 'USD').toUpperCase().slice(0, 3);
+  const billedSeconds = Math.max(0, Math.floor(params.twilioBilledSeconds || 0));
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, params.tenantId, async () => {});
+
+    await client.query(
+      `INSERT INTO conversation_costs (
+        id, tenant_id, call_session_id,
+        twilio_price_cents, twilio_price_currency, twilio_billed_seconds
+      ) VALUES (
+        gen_random_uuid(), $1, $2,
+        $3, $4, $5
+      )
+      ON CONFLICT (tenant_id, call_session_id) DO UPDATE SET
+        twilio_price_cents = EXCLUDED.twilio_price_cents,
+        twilio_price_currency = COALESCE(EXCLUDED.twilio_price_currency, conversation_costs.twilio_price_currency),
+        twilio_billed_seconds = EXCLUDED.twilio_billed_seconds,
+        updated_at = NOW()`,
+      [params.tenantId, params.callSessionId, priceCents, currency, billedSeconds],
+    );
+
+    await client.query('COMMIT');
+
+    logger.info('Twilio call cost recorded', {
+      tenantId: params.tenantId,
+      callSessionId: params.callSessionId,
+      priceCents,
+      currency,
+      billedSeconds,
+    });
+
+    return { priceCents };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Failed to record Twilio call cost', {
+      tenantId: params.tenantId,
+      callSessionId: params.callSessionId,
+      error: String(err),
+    });
+    return null;
   } finally {
     client.release();
   }
