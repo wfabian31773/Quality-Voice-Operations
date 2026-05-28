@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Pre-push guard: rejects the push if TypeScript has any errors that aren't
+# already on the upstream tip.
+#
+# Why a pre-PUSH (not pre-commit):
+#   - CI is the source of truth and CI runs on push, not commit. We want
+#     to fail in the same place CI does, just earlier.
+#   - Pre-commit is too noisy for the iterate-locally workflow (WIP commits
+#     don't need to type-check; only what we ship does).
+#
+# Why a BASELINE-DIFF check rather than "fail if any errors":
+#   - PlatformAdmin.tsx has had pre-existing type errors at various points
+#     this month. Blocking pushes that don't TOUCH those files when an
+#     unrelated file is dirty is unhelpful — and worse, it trains people
+#     to bypass the hook with --no-verify, which defeats the whole point.
+#   - We compare error count vs. the upstream commit being pushed FROM.
+#     If we're introducing 0 new errors (the only number that matters),
+#     the push goes through even if pre-existing ones are present.
+#
+# Install: scripts/git-hooks/install.sh
+
+set -uo pipefail
+
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Skip when --no-verify is requested (git itself bypasses, but be explicit
+# about it for visibility) or when run via Replit's auto-publish path where
+# the user can't interact with a failed hook.
+if [[ "${SKIP_TSC_HOOK:-}" == "1" ]]; then
+  echo -e "${YELLOW}[pre-push]${NC} SKIP_TSC_HOOK=1 set, bypassing guard."
+  exit 0
+fi
+
+# Find repo root so the hook works regardless of where git invokes it.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT" || exit 1
+
+TSCONFIG="client-app/tsconfig.json"
+if [[ ! -f "$TSCONFIG" ]]; then
+  echo -e "${YELLOW}[pre-push]${NC} $TSCONFIG not found, skipping TS guard."
+  exit 0
+fi
+
+# Read the refs being pushed from stdin (git pre-push protocol):
+#   <local ref> <local sha> <remote ref> <remote sha>
+# We use the local sha (what we're about to push) and the remote sha
+# (current upstream tip) to compute the baseline.
+LOCAL_SHA=""
+REMOTE_SHA=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip branch deletions (local_sha is all zeros).
+  [[ "$local_sha" =~ ^0+$ ]] && continue
+  LOCAL_SHA="$local_sha"
+  REMOTE_SHA="$remote_sha"
+done
+
+# If we're pushing a brand-new branch (REMOTE_SHA is all zeros), use main
+# as the baseline. Better than skipping — catches "I cut a feature branch
+# from a clean main and immediately broke types" before the first push.
+if [[ -z "$REMOTE_SHA" || "$REMOTE_SHA" =~ ^0+$ ]]; then
+  REMOTE_SHA="$(git rev-parse origin/main 2>/dev/null || echo '')"
+fi
+
+if [[ -z "$LOCAL_SHA" ]]; then
+  echo -e "${YELLOW}[pre-push]${NC} Couldn't determine push refs, skipping."
+  exit 0
+fi
+
+# Count current (about-to-push) TypeScript errors.
+echo -e "${CYAN}[pre-push]${NC} Running tsc --noEmit on client-app..."
+CURRENT_OUTPUT="$(npx tsc --noEmit -p "$TSCONFIG" 2>&1 || true)"
+CURRENT_COUNT="$(echo "$CURRENT_OUTPUT" | grep -cE '\.tsx?\([0-9]+,[0-9]+\): error' || true)"
+
+if [[ "$CURRENT_COUNT" -eq 0 ]]; then
+  echo -e "${GREEN}[pre-push]${NC} 0 type errors — pushing."
+  exit 0
+fi
+
+# We have errors. Compute baseline only if needed — it's slow.
+echo -e "${CYAN}[pre-push]${NC} $CURRENT_COUNT type errors present, computing baseline..."
+
+if [[ -z "$REMOTE_SHA" ]]; then
+  echo -e "${RED}[pre-push]${NC} $CURRENT_COUNT type errors, no baseline to compare against."
+  echo "$CURRENT_OUTPUT" | grep -E '\.tsx?\([0-9]+,[0-9]+\): error' | head -20
+  echo -e "${YELLOW}Bypass with:${NC} SKIP_TSC_HOOK=1 git push  (or --no-verify)"
+  exit 1
+fi
+
+# Stash any uncommitted work so we can check out the baseline cleanly.
+# `git stash --include-untracked` so a new file doesn't get nuked.
+STASHED=0
+if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+  if git stash push --include-untracked --message "pre-push baseline stash $(date +%s)" >/dev/null 2>&1; then
+    STASHED=1
+  else
+    echo -e "${YELLOW}[pre-push]${NC} Couldn't stash dirty tree, comparing against tree-as-is."
+  fi
+fi
+
+CURRENT_HEAD="$(git rev-parse HEAD)"
+restore() {
+  if [[ "$CURRENT_HEAD" != "$(git rev-parse HEAD)" ]]; then
+    git checkout --quiet "$CURRENT_HEAD" 2>/dev/null || true
+  fi
+  if [[ "$STASHED" -eq 1 ]]; then
+    git stash pop --quiet 2>/dev/null || true
+  fi
+}
+trap restore EXIT
+
+# Check out the baseline, run tsc, capture error count.
+if ! git checkout --quiet "$REMOTE_SHA" 2>/dev/null; then
+  echo -e "${YELLOW}[pre-push]${NC} Couldn't check out baseline $REMOTE_SHA, skipping diff check."
+  echo "$CURRENT_OUTPUT" | grep -E '\.tsx?\([0-9]+,[0-9]+\): error' | head -20
+  exit 1
+fi
+
+BASELINE_OUTPUT="$(npx tsc --noEmit -p "$TSCONFIG" 2>&1 || true)"
+BASELINE_COUNT="$(echo "$BASELINE_OUTPUT" | grep -cE '\.tsx?\([0-9]+,[0-9]+\): error' || true)"
+
+# Compare. NEW errors are the only ones we block on.
+NEW_COUNT=$((CURRENT_COUNT - BASELINE_COUNT))
+
+if [[ "$NEW_COUNT" -le 0 ]]; then
+  echo -e "${GREEN}[pre-push]${NC} $CURRENT_COUNT errors, but baseline already had $BASELINE_COUNT — not introducing new ones. Pushing."
+  exit 0
+fi
+
+# Compute which errors are NEW by set-diff on the file:line:col signature.
+# (Imperfect — if a baseline error's line number shifts, it counts as new
+# and removed — but for refactor pushes that move 100s of lines this can
+# overcount. Document the SKIP_TSC_HOOK escape hatch loudly so people know
+# how to bypass when they need to.)
+CURRENT_SIGS="$(echo "$CURRENT_OUTPUT" | grep -oE '^[^(]+\([0-9]+,[0-9]+\): error TS[0-9]+' | sort -u)"
+BASELINE_SIGS="$(echo "$BASELINE_OUTPUT" | grep -oE '^[^(]+\([0-9]+,[0-9]+\): error TS[0-9]+' | sort -u)"
+NEW_SIGS="$(comm -23 <(echo "$CURRENT_SIGS") <(echo "$BASELINE_SIGS"))"
+
+echo
+echo -e "${RED}[pre-push] BLOCKED:${NC} $NEW_COUNT new type error(s) introduced by this push."
+echo -e "${RED}New errors:${NC}"
+echo "$NEW_SIGS" | head -20
+if [[ "$(echo "$NEW_SIGS" | wc -l)" -gt 20 ]]; then
+  echo "  ... ($(echo "$NEW_SIGS" | wc -l | tr -d ' ') total — showing first 20)"
+fi
+echo
+echo -e "${YELLOW}Bypass (use sparingly):${NC} SKIP_TSC_HOOK=1 git push   ${YELLOW}or${NC}  git push --no-verify"
+exit 1

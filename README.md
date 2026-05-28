@@ -22,6 +22,18 @@ This starts all three services:
 - Admin API (port 3002)
 - Voice Gateway (port 3001)
 
+### Git hooks (one-time per checkout)
+
+```bash
+bash scripts/git-hooks/install.sh
+```
+
+Installs a pre-push hook that runs `tsc --noEmit -p client-app/tsconfig.json`
+and rejects pushes that introduce **new** type errors relative to the upstream
+tip. Pre-existing errors don't block (the hook does a baseline diff). Bypass
+with `SKIP_TSC_HOOK=1 git push` or `git push --no-verify` when you really need
+to. See `scripts/git-hooks/pre-push` for the rationale.
+
 ## Database
 
 ```bash
