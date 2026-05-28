@@ -58,17 +58,6 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   wrench: Wrench,
 };
 
-const AVATAR_MAP: Record<string, string> = {
-  stethoscope: '/assets/avatars/medical.png',
-  headphones: '/assets/avatars/answering-service.png',
-  calendar: '/assets/avatars/dental.png',
-  building: '/assets/avatars/hvac.png',
-  scale: '/assets/avatars/legal.png',
-  'help-circle': '/assets/avatars/customer-support.png',
-  'dollar-sign': '/assets/avatars/collections.png',
-  wrench: '/assets/avatars/hvac.png',
-};
-
 const AGENT_COLORS: string[] = [
   'teal',
   'harbor',
@@ -168,37 +157,40 @@ function AgentCard({
       : 'border-sidebar-bg ring-2 ring-sidebar-bg/20'
     : 'border-white/20 hover:border-primary/30';
 
-  const iconBg = variant === 'teal' ? 'bg-primary/10' : 'bg-surface-muted';
-  const iconColor = variant === 'teal' ? 'text-primary' : 'text-text-primary';
   const categoryColor = variant === 'teal' ? 'text-primary' : 'text-text-primary';
+
+  // Pure-icon avatar: a unified Deep Harbor circle holding the Lucide icon
+  // in Signal Teal (or white on a teal circle for the alt color). We dropped
+  // the prior PNG-thumbnail branch entirely — those were the "funny
+  // characters" Wayne flagged. Pure SVG icons stay sharp at any size, are
+  // perfectly symmetrical across all 8 agents by construction, and have no
+  // AI-face uncanny-valley problem.
+  const avatarTile =
+    variant === 'teal'
+      ? 'bg-primary text-on-primary'
+      : 'bg-sidebar-bg text-on-sidebar';
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`demo-glass-card rounded-2xl border ${borderClass} p-6 text-left transition-all duration-300 cursor-pointer w-full hover:scale-[1.02] hover:shadow-lg`}
+      className={`demo-glass-card rounded-2xl border ${borderClass} p-5 text-left transition-all duration-300 cursor-pointer w-full hover:scale-[1.02] hover:shadow-lg`}
     >
       <div className="flex items-center gap-3 mb-3">
-        {AVATAR_MAP[agent.icon] ? (
-          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-border-strong/20">
-            <img src={AVATAR_MAP[agent.icon]} alt={`${agent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
-          </div>
-        ) : (
-          <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
-            <IconComponent className={`h-5 w-5 ${iconColor}`} />
-          </div>
-        )}
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${avatarTile}`}>
+          <IconComponent className="h-6 w-6" />
+        </div>
         <div className="min-w-0">
-          <h3 className="font-display text-lg font-semibold text-text-primary truncate">{agent.name}</h3>
+          <h3 className="font-display text-base font-semibold text-text-primary truncate leading-tight">{agent.name}</h3>
           <span className={`text-xs font-medium ${categoryColor}`}>{agent.category}</span>
         </div>
       </div>
-      <p className="text-sm text-text-primary/60 font-body mb-4 leading-relaxed line-clamp-2">
+      <p className="text-sm text-text-primary/60 font-body mb-3 leading-relaxed line-clamp-2">
         {agent.description}
       </p>
       <div className="space-y-1">
-        {agent.useCases.map((uc) => (
-          <div key={uc} className="flex items-center gap-2 text-xs text-text-primary/50 font-body">
+        {agent.useCases.slice(0, 3).map((uc) => (
+          <div key={uc} className="flex items-center gap-2 text-xs text-text-primary/55 font-body">
             <span className={`w-1 h-1 rounded-full ${variant === 'teal' ? 'bg-primary' : 'bg-sidebar-bg'} shrink-0`} />
             {uc}
           </div>
@@ -235,13 +227,26 @@ function AgentPhoneDisplay({ agent }: { agent: DemoAgent }) {
   }
 
   return (
-    <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-5 py-4">
-      <Phone className="h-5 w-5 text-primary shrink-0" />
-      <div>
-        <p className="text-xs text-primary mb-0.5">{t('demo.phone_card.call_to_try')}</p>
-        <p className="text-lg font-mono font-bold text-text-primary">{formatPhoneNumber(agent.phoneNumber)}</p>
+    <a
+      href={`tel:${agent.phoneNumber}`}
+      className="block bg-primary/10 hover:bg-primary/15 border-2 border-primary/30 hover:border-primary/50 rounded-2xl px-6 py-5 transition-colors focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      data-testid="agent-phone-display"
+    >
+      <div className="flex items-center gap-3 mb-1">
+        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
+          <Phone className="h-4 w-4 text-on-primary" />
+        </div>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+          {t('demo.phone_card.call_to_try')}
+        </p>
       </div>
-    </div>
+      <p className="text-2xl lg:text-3xl font-mono font-bold text-text-primary tracking-tight">
+        {formatPhoneNumber(agent.phoneNumber)}
+      </p>
+      <p className="mt-1 text-xs text-text-primary/55 font-body">
+        Tap to call from your phone, or dial from any line.
+      </p>
+    </a>
   );
 }
 
@@ -466,7 +471,7 @@ export default function Demo() {
       </section>
 
       <section className="pt-6 pb-12 lg:pt-8 lg:pb-16">
-        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
           {demoConfigured === false && (
             <div className="mb-8 p-4 bg-accent/10 border border-accent/30 rounded-xl text-center text-accent text-sm font-body">
               {t('demo.config_warning')}
@@ -480,94 +485,132 @@ export default function Demo() {
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-10">
-            {agents.map((agent, idx) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                colorIndex={idx}
-                selected={selectedAgent === agent.id}
-                onSelect={() => { setSelectedAgent(agent.id); trackDemoInteraction('agent_selected', agent.name); }}
-              />
-            ))}
-            {agents.length === 0 && !loading && (
-              <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-12 text-text-primary/40 font-body">
-                <p>{t('demo.agent_picker.empty')}</p>
-              </div>
-            )}
-          </div>
+          {/*
+            Side-by-side layout:
+              - Left (lg:col-span-7): the agent picker grid, now a 2-col grid
+                so 8 cards stack 2 wide × 4 tall and the eye can scan the
+                full list without scrolling.
+              - Right (lg:col-span-5): the selected-agent detail panel,
+                STICKY at top:24 so the phone number stays visible as the
+                user reads the cards. This was Wayne's biggest gripe — old
+                layout buried the number 600px below the grid.
 
-          {activeAgent && (
-            <div className={`demo-glass-card rounded-2xl border p-8 mb-10 transition-all duration-500 ${
-              isActive
-                ? 'border-primary/40 shadow-lg shadow-primary/10'
-                : 'border-white/20'
-            }`}>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div className="flex items-center gap-3">
-                  {AVATAR_MAP[activeAgent.icon] ? (
-                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-border-strong/20">
-                      <img src={AVATAR_MAP[activeAgent.icon]} alt={`${activeAgent.name} avatar`} className="w-full h-full object-cover" loading="lazy" />
-                    </div>
-                  ) : (() => {
-                    const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
-                    return (
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-300 ${
-                        isActive ? 'bg-primary/20' : 'bg-primary/10'
-                      }`}>
-                        <IconComponent className="h-6 w-6 text-primary" />
-                      </div>
-                    );
-                  })()}
-                  <div>
-                    <h3 className="font-display text-xl font-semibold text-text-primary">{activeAgent.name}</h3>
-                    <span className="text-xs font-medium text-primary">{activeAgent.category}</span>
+            Mobile (<lg): collapses to single column. The detail panel
+            renders below the grid because there's no sticky-rail real
+            estate on small screens; the in-card selection highlight is
+            the visual feedback there.
+          */}
+          <div className="grid lg:grid-cols-12 gap-6 lg:gap-8 mb-10">
+            <div className="lg:col-span-7">
+              <div className="grid sm:grid-cols-2 gap-4">
+                {agents.map((agent, idx) => (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    colorIndex={idx}
+                    selected={selectedAgent === agent.id}
+                    onSelect={() => { setSelectedAgent(agent.id); trackDemoInteraction('agent_selected', agent.name); }}
+                  />
+                ))}
+                {agents.length === 0 && !loading && (
+                  <div className="sm:col-span-2 text-center py-12 text-text-primary/40 font-body">
+                    <p>{t('demo.agent_picker.empty')}</p>
                   </div>
-                </div>
-
-                <div className={`demo-call-status-bar ${
-                  isActive ? 'demo-call-status-active' : 'demo-call-status-idle'
-                }`}>
-                  {isActive ? (
-                    sseReconnecting || !sseConnected ? (
-                      <>
-                        <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                        <Phone className="h-4 w-4 text-accent" />
-                        <span className="text-sm font-medium text-accent">{t('demo.status.reconnecting')}</span>
-                        {callStartTime && <CallTimer startTime={callStartTime} />}
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                        <Phone className="h-4 w-4 text-success" />
-                        <span className="text-sm font-medium text-success">{t('demo.status.active')}</span>
-                        {callStartTime && <CallTimer startTime={callStartTime} />}
-                      </>
-                    )
-                  ) : (
-                    <>
-                      <div className="w-2 h-2 rounded-full bg-border-strong/40" />
-                      <PhoneOff className="h-4 w-4 text-text-primary/40" />
-                      <span className="text-sm text-text-primary/40">{t('demo.status.idle')}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <p className="text-sm text-text-primary/60 font-body mb-6 leading-relaxed">
-                {activeAgent.description}
-              </p>
-
-              <div className="flex items-center gap-4 mb-4">
-                <VoiceWaveform active={isActive} />
-                {isActive && (
-                  <span className="text-xs text-primary font-body animate-pulse">{t('demo.status.listening')}</span>
                 )}
               </div>
-
-              <AgentPhoneDisplay agent={activeAgent} />
             </div>
-          )}
+
+            <div className="lg:col-span-5">
+              <div className="lg:sticky lg:top-24">
+                {activeAgent ? (
+                  <div className={`demo-glass-card rounded-2xl border p-6 transition-all duration-500 ${
+                    isActive
+                      ? 'border-primary/40 shadow-lg shadow-primary/10'
+                      : 'border-white/20'
+                  }`}>
+                    {/* Phone number FIRST — this is the moment-of-action element.
+                        Wayne's screenshot showed it buried at the bottom of this
+                        panel, requiring a scroll. Top-of-panel placement means
+                        the call number is the first thing the eye lands on the
+                        second a user clicks any card. */}
+                    <AgentPhoneDisplay agent={activeAgent} />
+
+                    {/* Live-call status pill — below the number so the call
+                        action remains the visual hero. */}
+                    <div className="mt-4">
+                      <div className={`demo-call-status-bar ${
+                        isActive ? 'demo-call-status-active' : 'demo-call-status-idle'
+                      }`}>
+                        {isActive ? (
+                          sseReconnecting || !sseConnected ? (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                              <Phone className="h-4 w-4 text-accent" />
+                              <span className="text-sm font-medium text-accent">{t('demo.status.reconnecting')}</span>
+                              {callStartTime && <CallTimer startTime={callStartTime} />}
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                              <Phone className="h-4 w-4 text-success" />
+                              <span className="text-sm font-medium text-success">{t('demo.status.active')}</span>
+                              {callStartTime && <CallTimer startTime={callStartTime} />}
+                            </>
+                          )
+                        ) : (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-border-strong/40" />
+                            <PhoneOff className="h-4 w-4 text-text-primary/40" />
+                            <span className="text-sm text-text-primary/40">{t('demo.status.idle')}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Agent identity — name + category — below the action so
+                        the user always knows what they're about to call. */}
+                    <div className="mt-5 pt-5 border-t border-border-strong/20 flex items-center gap-3">
+                      {(() => {
+                        const IconComponent = ICON_MAP[activeAgent.icon] ?? Headphones;
+                        return (
+                          <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center shrink-0">
+                            <IconComponent className="h-6 w-6 text-on-primary" />
+                          </div>
+                        );
+                      })()}
+                      <div className="min-w-0">
+                        <h3 className="font-display text-lg font-semibold text-text-primary leading-tight">{activeAgent.name}</h3>
+                        <span className="text-xs font-medium text-primary">{activeAgent.category}</span>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm text-text-primary/65 font-body leading-relaxed">
+                      {activeAgent.description}
+                    </p>
+
+                    {isActive && (
+                      <div className="mt-5 flex items-center gap-3">
+                        <VoiceWaveform active={isActive} />
+                        <span className="text-xs text-primary font-body animate-pulse">{t('demo.status.listening')}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border-strong/40 bg-surface/50 p-8 text-center">
+                    <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                      <Headphones className="h-7 w-7 text-primary/60" />
+                    </div>
+                    <h3 className="font-display text-base font-semibold text-text-primary mb-1">
+                      Pick an agent to call
+                    </h3>
+                    <p className="text-sm text-text-primary/55 font-body">
+                      Choose any agent on the left and the phone number to try them appears here.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="grid lg:grid-cols-2 gap-6 mb-8">
             <ConversationTranscript messages={transcript} isActive={isActive} />

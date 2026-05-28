@@ -281,22 +281,27 @@ export default function PublicLayout() {
               {/* Brand-spec buttons per qvo-components.css `.qvo-btn`:
                   40px tall, 14px text, 16px horizontal padding, 8px radius.
                   Sign In = link, Book a Demo = ghost outline, Start Trial = primary.
-                  Color treatment is on-dark because the navbar is sidebar-bg (harbor). */}
+                  Color treatment is on-dark because the navbar is sidebar-bg (harbor).
+                  whitespace-nowrap prevents "Sign In" and "Book a Demo" from wrapping
+                  word-by-word when the nav competes for horizontal space at narrow
+                  desktop widths — the previous bug Wayne flagged where they rendered
+                  as "Sign / In" and "Book / a / Demo" stacked vertically. shrink-0
+                  ensures the flex parent never crushes them. */}
               <Link
                 to="/login"
-                className="inline-flex items-center justify-center h-10 px-3 text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar transition-colors rounded-md"
+                className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar transition-colors rounded-md whitespace-nowrap shrink-0"
               >
                 {t('actions.sign_in')}
               </Link>
               <Link
                 to="/book-demo"
-                className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium text-on-sidebar border border-on-sidebar/25 hover:border-on-sidebar/50 hover:bg-on-sidebar/5 transition-colors rounded-md"
+                className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium text-on-sidebar border border-on-sidebar/25 hover:border-on-sidebar/50 hover:bg-on-sidebar/5 transition-colors rounded-md whitespace-nowrap shrink-0"
               >
                 {t('actions.book_demo')}
               </Link>
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center h-10 px-4 text-sm font-semibold bg-primary hover:bg-primary-hover text-on-primary transition-colors rounded-md"
+                className="inline-flex items-center justify-center h-10 px-4 text-sm font-semibold bg-primary hover:bg-primary-hover text-on-primary transition-colors rounded-md whitespace-nowrap shrink-0"
               >
                 {t('actions.start_trial')}
               </Link>
