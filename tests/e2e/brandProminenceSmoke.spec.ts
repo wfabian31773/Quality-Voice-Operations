@@ -74,8 +74,37 @@ interface PageCheck {
 }
 
 const PAGES: PageCheck[] = [
+  // Marketing surface — all public pages we've brand-restored. Every one
+  // got the radial-gradient hero treatment + defensive text-white +
+  // brand-token color audit pass. Walking the full set in CI means any
+  // future regression (e.g. someone reintroduces a raw Tailwind color or
+  // forgets the explicit text-white on a new dark-band heading) breaks
+  // the build instead of shipping silently.
   { path: '/', slug: 'public-landing', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/pricing', slug: 'public-pricing', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/features', slug: 'public-features', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/use-cases', slug: 'public-use-cases', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/product', slug: 'public-product', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/ai-agents', slug: 'public-agents-showcase', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/demo', slug: 'public-demo', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/contact', slug: 'public-contact', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/book-demo', slug: 'public-book-demo', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/integrations', slug: 'public-integrations', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/resources', slug: 'public-resources', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/blog', slug: 'public-blog', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/security', slug: 'public-security', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/security/posture', slug: 'public-security-posture', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/subprocessors', slug: 'public-subprocessors', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/signup', slug: 'public-signup', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/terms', slug: 'public-terms', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/privacy', slug: 'public-privacy', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/docs', slug: 'public-docs', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/industries/dental', slug: 'public-vertical-dental', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/industries/vertical-agents', slug: 'public-vertical-agents', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/product/federated-ingest', slug: 'public-federated-ingest', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/product/global-intelligence-network', slug: 'public-gin', requiresAuth: false, expectedAccent: 'teal-forward' },
+  // Console surface — sticky brand-prominence checks on the three
+  // logged-in shells. requiresAuth=true triggers the login flow.
   { path: '/dashboard', slug: 'tenant-dashboard', requiresAuth: true },
   { path: '/admin/dashboard', slug: 'admin-dashboard', requiresAuth: true },
   { path: '/ops/calls', slug: 'ops-calls', requiresAuth: true },
