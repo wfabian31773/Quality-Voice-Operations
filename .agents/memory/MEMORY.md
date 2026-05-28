@@ -3,4 +3,5 @@
 - [OpenAI Realtime model whitelist](openai-realtime-models.md) — only *-realtime-preview SKUs work; passing a regular `gpt-4o` / `gpt-4o-mini` opens the WS then errors `invalid_model` and the call goes silent.
 - [Realtime system-prompt injection](openai-realtime-system-prompt-injection.md) — never wrap `[System: ...]` in role:'user'; use response.create + response.instructions or the model loops asking the same question.
 - [Realtime VAD config for telephony](openai-realtime-telephony-vad.md) — use server_vad + noiseReduction:far_field on Twilio 8kHz μ-law; semantic_vad's prosody model degrades on narrowband and feels "deaf".
+- [QVO demo seed orphan routings](qvo-demo-seed-orphans.md) — re-seeding with a new agent-name schema leaves orphan agents wired to the same demo numbers; seed must purge orphan agent routings, not just orphan phone rows.
 - [QVO voice-agent globals](qvo-voice-globals.md) — every agent inherits two locked layers: transport defaults (buildOpenAISessionConfig) + conversation principles (agentLoader.finalize); never duplicate or override per-agent.
