@@ -22,6 +22,8 @@ import {
   Shield,
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import { ToolWheel } from '../components/marketing/ToolWheel';
+import { PLACEHOLDER_DEMO_TIMELINE } from '../components/marketing/ToolWheel/placeholderTimeline';
 import ConversationTranscript from '../components/demo/ConversationTranscript';
 import ToolExecutionPanel from '../components/demo/ToolExecutionPanel';
 import CalendarToolVisual from '../components/demo/CalendarToolVisual';
@@ -438,18 +440,40 @@ export default function Demo() {
       <section className="bg-sidebar-bg text-white py-16 lg:py-24 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-sidebar-hover opacity-80" />
         <div className="absolute inset-0 demo-grid-pattern opacity-5" />
-        <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center relative z-10">
-          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
-            {t('demo.hero.eyebrow')}
-          </p>
-          <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
-            {t('demo.hero.title')}
-          </h1>
-          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-8">
-            {t('demo.hero.description')}
-          </p>
-          <div className="flex items-center justify-center">
-            <VoiceWaveform active={isActive} />
+        <div className="max-w-6xl mx-auto px-6 lg:px-8 relative z-10">
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-16 items-center">
+            <div className="lg:col-span-5 text-center lg:text-left">
+              <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
+                {t('demo.hero.eyebrow')}
+              </p>
+              <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
+                {t('demo.hero.title')}
+              </h1>
+              <p className="text-lg text-white/70 font-body max-w-xl mx-auto lg:mx-0 mb-6">
+                {t('demo.hero.description')}
+              </p>
+              {/* As the agent runs the call, the wheel rotates so you can
+                  see — in real time — exactly which tool is firing right now.
+                  Scheduling, texting, ticketing, dispatching: every silent
+                  action becomes visible. */}
+              <p className="text-sm text-white/50 font-body max-w-xl mx-auto lg:mx-0">
+                Watch the wheel — every time the agent uses a tool, it rotates
+                to show what's happening under the hood right now.
+              </p>
+              <div className="mt-6 flex items-center gap-3 justify-center lg:justify-start">
+                <VoiceWaveform active={isActive} />
+                <span className="text-xs uppercase tracking-wider text-white/40 font-display">
+                  {isActive ? 'Agent live' : 'Standby'}
+                </span>
+              </div>
+            </div>
+            <div className="lg:col-span-7 flex justify-center">
+              <ToolWheel
+                mode="scripted"
+                timeline={PLACEHOLDER_DEMO_TIMELINE}
+                diameterPx={360}
+              />
+            </div>
           </div>
         </div>
       </section>
