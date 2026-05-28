@@ -1,0 +1,49 @@
+-- Add the `details` JSONB column to `usage_metrics`.
+--
+-- BACKGROUND
+-- ----------
+-- `platform/billing/cost/CostTrackingService.recordConversationCost` has
+-- been INSERTing into `usage_metrics(..., details)` since the cost-
+-- optimization service shipped, but the column was never added by a
+-- migration. Migration 008 (`008_billing.sql`) creates the table with
+-- 11 columns and `details` is not among them; migration 078 only adds
+-- an index. Grep across all 108 migrations confirms no `ALTER TABLE
+-- usage_metrics ADD COLUMN details` exists.
+--
+-- The CostTrackingService write is wrapped in a `.catch(...) => warn`
+-- block, so the SQL error 42703 ("column `details` does not exist")
+-- has been silently swallowed on every single voice call since the
+-- column-less INSERT shipped. The per-hour `usage_metrics` row for
+-- `ai_minutes` is NEVER written — only the `conversation_costs` row
+-- is preserved by the surviving transaction commit. That breaks the
+-- per-call drill-down from billing hour-buckets (see
+-- `docs/audit/10-cost-tracking-audit.md` §2.3).
+--
+-- DESIGN
+-- ------
+--   * `IF NOT EXISTS` makes this idempotent. Supabase prod may already
+--     have the column hand-patched (per memory note about an unmerged
+--     migration 111) — the ADD COLUMN becomes a no-op in that case.
+--   * `DEFAULT '{}'::jsonb` so:
+--       - existing rows get a non-NULL empty object on ALTER, matching
+--         what the CostTrackingService write will produce going forward;
+--       - sibling writers in `UsageRecorder` (recordCallUsage,
+--         recordSmsUsage, recordToolExecution, recordApiRequest) that
+--         don't pass `details` still produce a valid row.
+--   * Nullable, in case a future caller wants to explicitly clear the
+--     column.
+--
+-- FOLLOW-UP (NOT IN THIS MIGRATION)
+-- ---------------------------------
+-- The `ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE`
+-- branch in `recordConversationCost` does NOT merge `details` on
+-- conflict — only `quantity`, `total_cost_cents`, `updated_at` are
+-- accumulated. That means when multiple calls hit the same hour
+-- bucket, only the FIRST call's `details` survives. We should change
+-- the conflict clause to append into a `details->'calls' JSONB[]`
+-- array (or move per-call detail entirely into a sibling table
+-- keyed by call_session_id). Tracking as a follow-up — out of scope
+-- for "make the INSERT stop failing".
+
+ALTER TABLE usage_metrics
+  ADD COLUMN IF NOT EXISTS details JSONB DEFAULT '{}'::jsonb;
