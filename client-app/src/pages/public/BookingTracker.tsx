@@ -183,10 +183,10 @@ export default function BookingTracker() {
     return (
       <TrackerShell>
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-2xl font-semibold text-text-primary mb-2">
             This visit has wrapped up
           </h1>
-          <p className="text-gray-600 dark:text-gray-300">
+          <p className="text-text-secondary">
             Thanks for choosing us! If you're looking for an upcoming appointment, please check
             your most recent text message from your service provider for the latest link.
           </p>
@@ -200,7 +200,7 @@ export default function BookingTracker() {
       <TrackerShell>
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-300">
+          <p className="text-text-secondary">
             {initialError ?? 'Loading your visit details…'}
           </p>
         </div>
@@ -220,10 +220,10 @@ export default function BookingTracker() {
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">
             Live status
           </p>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-text-primary">
             {labels.headline}
           </h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-2">{labels.subline}</p>
+          <p className="text-text-secondary mt-2">{labels.subline}</p>
         </div>
 
         {isEnRoute && (
@@ -233,22 +233,22 @@ export default function BookingTracker() {
           >
             {live_eta ? (
               <div className="space-y-1">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                <p className="text-sm font-medium text-text-primary/85">
                   Your tech is{' '}
-                  <span className="font-semibold text-gray-900 dark:text-white">
+                  <span className="font-semibold text-text-primary">
                     ~{live_eta.minutes} min
                   </span>{' '}
                   away
                 </p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-text-secondary">
                   Arriving around{' '}
-                  <span className="font-semibold text-gray-900 dark:text-white">
+                  <span className="font-semibold text-text-primary">
                     {formatTimeOfDay(live_eta.arrival_at)}
                   </span>
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-gray-700 dark:text-gray-200" data-testid="live-eta-pending">
+              <p className="text-sm text-text-primary/85" data-testid="live-eta-pending">
                 Your tech is on the way. We'll show a live ETA here as soon as their truck
                 checks in.
               </p>
@@ -259,34 +259,34 @@ export default function BookingTracker() {
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
           {job.title && (
             <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Visit
               </dt>
-              <dd className="mt-1 text-gray-900 dark:text-white">{job.title}</dd>
+              <dd className="mt-1 text-text-primary">{job.title}</dd>
             </div>
           )}
           {scheduledLabel && (
             <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Scheduled
               </dt>
-              <dd className="mt-1 text-gray-900 dark:text-white">{scheduledLabel}</dd>
+              <dd className="mt-1 text-text-primary">{scheduledLabel}</dd>
             </div>
           )}
           {job.address && (
             <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Address
               </dt>
-              <dd className="mt-1 text-gray-900 dark:text-white">{job.address}</dd>
+              <dd className="mt-1 text-text-primary">{job.address}</dd>
             </div>
           )}
           {job.resource_name && (
             <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
                 Tech
               </dt>
-              <dd className="mt-1 text-gray-900 dark:text-white">{job.resource_name}</dd>
+              <dd className="mt-1 text-text-primary">{job.resource_name}</dd>
             </div>
           )}
         </dl>
@@ -297,8 +297,8 @@ export default function BookingTracker() {
 
 function TrackerShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 py-10">
-      <div className="max-w-lg w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 sm:p-8">
+    <div className="min-h-screen flex items-center justify-center bg-surface-secondary px-4 py-10">
+      <div className="max-w-lg w-full bg-surface rounded-2xl shadow-lg p-6 sm:p-8">
         {children}
       </div>
     </div>

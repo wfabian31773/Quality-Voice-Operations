@@ -32,8 +32,6 @@ interface AgentTemplate {
   category: Category;
   channels: Array<'phone' | 'web' | 'sms'>;
   icon: React.ElementType;
-  color: string;
-  avatar?: string;
   conversationRoles: ConversationRole[];
 }
 
@@ -57,103 +55,30 @@ const categoryIcons: Record<Category, React.ElementType> = {
 const C: ConversationRole = 'caller';
 const A: ConversationRole = 'agent';
 
+// All 11 agents share the same brand-teal icon treatment. Earlier we had
+// a different color per agent (purple for outbound-sales, indigo for
+// property-management, danger-red for restaurant, warning-amber for
+// legal/hvac/real-estate, success-green for appointment-reminder, info-
+// blue for customer-support) plus AI-generated PNG avatars on the first
+// eight. The result was a rainbow of decorative colors masquerading as
+// semantic state — exact pattern we killed across /demo (QVO/5a) and
+// /features (QVO/sweep). Unified to brand-teal so the grid reads as
+// "every QVO agent is part of the same product" rather than "11
+// disconnected things in 11 different colors." Avatars dropped entirely;
+// the Lucide icon in the brand circle is the only visual marker per
+// agent and stays sharp at any size (no AI-face uncanny-valley).
 const agentTemplates: AgentTemplate[] = [
-  {
-    id: 'medical-intake',
-    category: 'Healthcare',
-    channels: ['phone', 'web'],
-    icon: Stethoscope,
-    color: 'bg-primary/10 text-primary border-primary/20',
-    avatar: '/assets/avatars/medical.png',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'dental-scheduling',
-    category: 'Healthcare',
-    channels: ['phone', 'sms'],
-    icon: Headphones,
-    color: 'bg-surface-muted text-text-primary border-border-strong/40',
-    avatar: '/assets/avatars/dental.png',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'legal-intake',
-    category: 'Legal',
-    channels: ['phone', 'web', 'sms'],
-    icon: Scale,
-    color: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
-    avatar: '/assets/avatars/legal.png',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'hvac-home-services',
-    category: 'Operations',
-    channels: ['phone', 'sms'],
-    icon: Wrench,
-    color: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
-    avatar: '/assets/avatars/hvac.png',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'outbound-sales',
-    category: 'Sales & Marketing',
-    channels: ['phone', 'sms'],
-    icon: Megaphone,
-    color: 'bg-purple-100/80 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-500/30',
-    avatar: '/assets/avatars/collections.png',
-    conversationRoles: [A, C, A, C, A, C, A],
-  },
-  {
-    id: 'customer-support',
-    category: 'Support',
-    channels: ['phone', 'web', 'sms'],
-    icon: Users,
-    color: 'bg-info-light dark:bg-info text-info dark:text-info border-info dark:border-info',
-    avatar: '/assets/avatars/customer-support.png',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'insurance-verification',
-    category: 'Healthcare',
-    channels: ['phone', 'web'],
-    icon: Shield,
-    color: 'bg-primary/10 text-primary border-primary/20',
-    avatar: '/assets/avatars/insurance.png',
-    conversationRoles: [C, A, C, A],
-  },
-  {
-    id: 'appointment-reminder',
-    category: 'Operations',
-    channels: ['phone', 'sms'],
-    icon: Calendar,
-    color: 'bg-success-light dark:bg-success text-success dark:text-success border-success dark:border-success',
-    avatar: '/assets/avatars/answering-service.png',
-    conversationRoles: [A, C, A, C, A],
-  },
-  {
-    id: 'property-management',
-    category: 'Operations',
-    channels: ['phone', 'sms'],
-    icon: Building2,
-    color: 'bg-indigo-100/80 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'restaurant',
-    category: 'Operations',
-    channels: ['phone', 'sms'],
-    icon: UtensilsCrossed,
-    color: 'bg-danger-light dark:bg-danger text-danger dark:text-danger border-danger dark:border-danger',
-    conversationRoles: [C, A, C, A, C, A],
-  },
-  {
-    id: 'real-estate',
-    category: 'Sales & Marketing',
-    channels: ['phone', 'web', 'sms'],
-    icon: Home,
-    color: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
-    conversationRoles: [C, A, C, A, C, A],
-  },
+  { id: 'medical-intake', category: 'Healthcare', channels: ['phone', 'web'], icon: Stethoscope, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'dental-scheduling', category: 'Healthcare', channels: ['phone', 'sms'], icon: Headphones, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'legal-intake', category: 'Legal', channels: ['phone', 'web', 'sms'], icon: Scale, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'hvac-home-services', category: 'Operations', channels: ['phone', 'sms'], icon: Wrench, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'outbound-sales', category: 'Sales & Marketing', channels: ['phone', 'sms'], icon: Megaphone, conversationRoles: [A, C, A, C, A, C, A] },
+  { id: 'customer-support', category: 'Support', channels: ['phone', 'web', 'sms'], icon: Users, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'insurance-verification', category: 'Healthcare', channels: ['phone', 'web'], icon: Shield, conversationRoles: [C, A, C, A] },
+  { id: 'appointment-reminder', category: 'Operations', channels: ['phone', 'sms'], icon: Calendar, conversationRoles: [A, C, A, C, A] },
+  { id: 'property-management', category: 'Operations', channels: ['phone', 'sms'], icon: Building2, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'restaurant', category: 'Operations', channels: ['phone', 'sms'], icon: UtensilsCrossed, conversationRoles: [C, A, C, A, C, A] },
+  { id: 'real-estate', category: 'Sales & Marketing', channels: ['phone', 'web', 'sms'], icon: Home, conversationRoles: [C, A, C, A, C, A] },
 ];
 
 function asStringArray(value: unknown, debugKey?: string): string[] {
@@ -200,15 +125,15 @@ function AgentCard({ agent }: { agent: AgentTemplate }) {
     <div className="bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
       <div className="p-6">
         <div className="flex items-start gap-4 mb-4">
-          {agent.avatar ? (
-            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-border/20">
-              <img src={agent.avatar} alt={`${name} avatar`} className="w-full h-full object-cover" loading="lazy" />
-            </div>
-          ) : (
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${agent.color}`}>
-              <Icon className="h-6 w-6" />
-            </div>
-          )}
+          {/* Unified brand-teal icon tile per agent. Same treatment as
+              the /demo agent picker — perfectly symmetrical across all
+              11 agents by construction. The prior `agent.avatar` ?
+              `<img>` : `<Icon>` branch is gone; the PNG avatars were
+              the AI-character thumbnails Wayne flagged as off-brand on
+              /demo and the same treatment carries here. */}
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
+            <Icon className="h-6 w-6 text-primary" />
+          </div>
           <div className="min-w-0">
             <h3 className="font-display text-lg font-bold text-text-primary mb-1">{name}</h3>
             <span className="text-xs font-medium text-primary uppercase tracking-wide">
@@ -351,13 +276,31 @@ export default function AgentsShowcase() {
         description={t('agents_page.seo_description')}
         canonicalPath="/ai-agents"
       />
-      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      {/*
+        AgentsShowcase hero — flat dark band placeholder. Wayne's bespoke
+        hero image lands later at /hero/agents-showcase-hero.{webp,mp4}.
+        Same pattern as Pricing/Features: radial teal-glow backdrop,
+        explicit text-white on h1 (defensive against the QVO base reset
+        h1 color rule that renders headlines invisible on dark surfaces),
+        oversize tracking-tight headline, tightened padding.
+        Gradient position 60% 40% so it visually differs from
+        /pricing (50% 30%) and /features (30% 50%).
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-24">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 60% 40%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               {t('agents_page.hero.eyebrow')}
             </p>
-            <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
+            <h1 className="font-display text-white text-4xl lg:text-6xl font-bold leading-tight tracking-tight mb-6">
               {t('agents_page.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed mb-8 font-body">
@@ -425,7 +368,8 @@ export default function AgentsShowcase() {
 
       <section className="bg-sidebar-bg text-white py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
-          <h2 className="font-display text-3xl lg:text-4xl font-bold mb-4">
+          {/* Defensive text-white on h2 (same QVO base reset bug). */}
+          <h2 className="font-display text-white text-3xl lg:text-4xl font-bold mb-4 tracking-tight">
             {t('agents_page.bottom_cta.title')}
           </h2>
           <p className="text-lg text-white/70 mb-8 max-w-2xl mx-auto font-body">
