@@ -34,7 +34,7 @@ import {
   TIER_REASONING_EFFORT,
   modelSupportsReasoningEffort,
   type ModelTier,
-  getModelRate,
+  calculateLlmCostCents,
   TTS_COST_PER_1K_CHARS_CENTS,
 } from '../../../platform/billing/cost/providerRates';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
@@ -883,6 +883,20 @@ export interface RealtimeSessionResult {
   costTracker: {
     inputTokens: number;
     outputTokens: number;
+    /**
+     * Subset of inputTokens that OpenAI reported as cached. Bills at
+     * the cached rate (typically ~80× discount on Realtime SKUs).
+     */
+    cachedInputTokens: number;
+    /**
+     * Provenance of the token counts above. Starts at 'estimate'
+     * (char/4 heuristic from addUtterance). Promotes to 'usage_event'
+     * the first time the SDK emits a response.done with a real `usage`
+     * payload — at that moment the running estimated counters are
+     * reset to 0 and the usage event's exact counts are loaded in,
+     * so estimates and actuals never double-count.
+     */
+    captureSource: 'estimate' | 'usage_event';
     ttsCharacters: number;
     cacheHits: number;
     cacheMisses: number;
@@ -1028,6 +1042,8 @@ export async function createRealtimeSession(
   const costTracker = {
     inputTokens: 0,
     outputTokens: 0,
+    cachedInputTokens: 0,
+    captureSource: 'estimate' as 'estimate' | 'usage_event',
     ttsCharacters: 0,
     cacheHits: 0,
     cacheMisses: 0,
@@ -1036,14 +1052,26 @@ export async function createRealtimeSession(
     get activeModel() { return activeModel; },
     get activeModelTier() { return activeModelTier; },
     addUtterance(role: 'user' | 'assistant', text: string): void {
-      const tokenEstimate = Math.ceil(text.length / 4);
-      if (role === 'user') {
-        this.inputTokens += tokenEstimate;
-      } else {
-        this.outputTokens += tokenEstimate;
+      // ttsCharacters and conversationHistory are always tracked —
+      // they're independent of OpenAI's billing counters and are read
+      // by compression triggering and quality scoring downstream.
+      if (role === 'assistant') {
         this.ttsCharacters += text.length;
       }
       conversationHistory.push({ role, content: text });
+      // Token counts: only do the char/4 estimate while we're still
+      // in 'estimate' mode. The first response.done.usage event flips
+      // captureSource to 'usage_event' and resets the counters; from
+      // that point on, this method must NOT touch inputTokens or
+      // outputTokens or we'd double-count.
+      if (this.captureSource === 'estimate') {
+        const tokenEstimate = Math.ceil(text.length / 4);
+        if (role === 'user') {
+          this.inputTokens += tokenEstimate;
+        } else {
+          this.outputTokens += tokenEstimate;
+        }
+      }
 
       if (conversationHistory.length >= COMPRESSION_TURN_THRESHOLD && conversationHistory.length % 10 === 0) {
         if (shouldCompress(conversationHistory, 4096)) {
@@ -1543,12 +1571,74 @@ export async function createRealtimeSession(
   // in-flight one first so our reasoning-engine-augmented
   // instructions replace it cleanly.
   let responseInFlight = false;
+  // Structural shape of the OpenAI Realtime API's `response.done` event
+  // wire payload — what we read tokens out of below. Documented at
+  // https://platform.openai.com/docs/api-reference/realtime-server-events/response-done.
+  // We only need the subset that carries billing-relevant counts; any
+  // missing field defaults to 0 so a partial usage payload still
+  // produces a reasonable row.
+  interface ResponseDoneUsage {
+    total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    input_token_details?: {
+      cached_tokens?: number;
+      text_tokens?: number;
+      audio_tokens?: number;
+    };
+    output_token_details?: {
+      text_tokens?: number;
+      audio_tokens?: number;
+    };
+  }
+  interface ResponseDoneEvent {
+    response?: {
+      id?: string;
+      status?: string;
+      usage?: ResponseDoneUsage;
+    };
+  }
+  const ingestUsageEvent = (event: unknown): void => {
+    const usage = (event as ResponseDoneEvent | undefined)?.response?.usage;
+    if (!usage) return;
+    const inputTokens = Math.max(0, Math.floor(usage.input_tokens ?? 0));
+    const outputTokens = Math.max(0, Math.floor(usage.output_tokens ?? 0));
+    const cachedTokens = Math.max(0, Math.floor(usage.input_token_details?.cached_tokens ?? 0));
+    if (inputTokens === 0 && outputTokens === 0 && cachedTokens === 0) return;
+    // First real usage event: toss the estimates and switch this
+    // tracker into the authoritative source of truth. addUtterance
+    // no-ops the token math from this point on (see costTracker
+    // definition above), so estimates and actuals never double-count.
+    if (costTracker.captureSource === 'estimate') {
+      slog.info('Switching cost tracker from estimate to OpenAI usage event', {
+        estimatedInputBefore: costTracker.inputTokens,
+        estimatedOutputBefore: costTracker.outputTokens,
+        firstUsageInput: inputTokens,
+        firstUsageOutput: outputTokens,
+        firstUsageCached: cachedTokens,
+      });
+      costTracker.inputTokens = 0;
+      costTracker.outputTokens = 0;
+      costTracker.cachedInputTokens = 0;
+      costTracker.captureSource = 'usage_event';
+    }
+    costTracker.inputTokens += inputTokens;
+    costTracker.outputTokens += outputTokens;
+    costTracker.cachedInputTokens += cachedTokens;
+  };
   const attachResponseStateListeners = (
     transport: { on(event: string, listener: (...args: unknown[]) => void): void },
   ): void => {
     const t = transport as unknown as { on(e: string, l: (...args: unknown[]) => void): void };
     t.on('response.created', () => { responseInFlight = true; });
-    t.on('response.done', () => { responseInFlight = false; });
+    t.on('response.done', (...args: unknown[]) => {
+      responseInFlight = false;
+      // The transport passes the wire payload as the first argument
+      // (and the SDK may wrap it; either way the `response.usage`
+      // path is the same). Capture it here so the cost tracker sees
+      // real OpenAI token counts instead of our char/4 estimate.
+      ingestUsageEvent(args[0]);
+    });
     t.on('response.cancelled', () => { responseInFlight = false; });
   };
   attachResponseStateListeners(wsTransport);
@@ -1714,12 +1804,19 @@ export async function createRealtimeSession(
 
   budgetCheckTimer = setInterval(async () => {
     try {
-      const modelRate = getModelRate(activeModel);
-      const currentCostCents = Math.ceil(
-        (costTracker.inputTokens / 1000) * modelRate.inputPer1kTokens +
-        (costTracker.outputTokens / 1000) * modelRate.outputPer1kTokens +
-        (costTracker.ttsCharacters / 1000) * TTS_COST_PER_1K_CHARS_CENTS,
+      // Route through calculateLlmCostCents so the cached-token
+      // discount applies to the budget guard too. Before this it
+      // was inlined and never read cachedInputTokens — budget was
+      // overestimated for cache-heavy calls and the guard fired
+      // earlier than necessary.
+      const llmCostCents = calculateLlmCostCents(
+        activeModel,
+        costTracker.inputTokens,
+        costTracker.outputTokens,
+        costTracker.cachedInputTokens,
       );
+      const ttsCostCents = Math.ceil((costTracker.ttsCharacters / 1000) * TTS_COST_PER_1K_CHARS_CENTS);
+      const currentCostCents = llmCostCents + ttsCostCents;
       const budgetResult = await checkConversationBudget(tenantId, currentCostCents);
 
       if (budgetResult.shouldEndCall) {

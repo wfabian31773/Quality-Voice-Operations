@@ -41,6 +41,25 @@ export interface RecordCostParams {
   cacheHits?: number;
   cacheMisses?: number;
   promptTokensSaved?: number;
+  /**
+   * Subset of `inputTokens` that OpenAI reported as cached (prompt
+   * caching). Billed at the cached rate from providerRates.ts —
+   * typically ~80× cheaper than the regular input rate on Realtime
+   * SKUs. Optional for backward compat; defaults to 0.
+   */
+  cachedInputTokens?: number;
+  /**
+   * Provenance of `inputTokens` / `outputTokens` / `cachedInputTokens`.
+   * 'usage_event' = real counts from OpenAI's response.done.usage
+   *                  payload — the canonical case.
+   * 'estimate'    = legacy char/4 heuristic from costTracker.addUtterance
+   *                  — used only when no usage event was seen for the
+   *                  duration of the call (e.g. SDK regression, call
+   *                  ended before first response.done).
+   * Stored on the row so analytics can filter or surface estimate-vs-
+   *                  actual drift during rollout.
+   */
+  captureSource?: 'estimate' | 'usage_event';
 }
 
 export async function recordConversationCost(params: RecordCostParams): Promise<ConversationCostRecord | null> {
@@ -50,8 +69,15 @@ export async function recordConversationCost(params: RecordCostParams): Promise<
     await client.query('BEGIN');
     await withTenantContext(client, params.tenantId, async () => {});
 
+    const cachedInputTokens = Math.max(0, params.cachedInputTokens ?? 0);
+    const captureSource = params.captureSource ?? 'estimate';
     const sttCostCents = calculateSttCostCents(params.durationSeconds);
-    const llmCostCents = calculateLlmCostCents(params.modelUsed, params.inputTokens, params.outputTokens);
+    const llmCostCents = calculateLlmCostCents(
+      params.modelUsed,
+      params.inputTokens,
+      params.outputTokens,
+      cachedInputTokens,
+    );
     const ttsCostCents = calculateTtsCostCents(params.ttsCharacters ?? 0);
     const infraCostCents = calculateInfraCostCents(params.durationSeconds);
     const totalCostCents = sttCostCents + llmCostCents + ttsCostCents + infraCostCents;
@@ -61,12 +87,14 @@ export async function recordConversationCost(params: RecordCostParams): Promise<
         id, tenant_id, call_session_id,
         stt_cost_cents, llm_cost_cents, tts_cost_cents, infra_cost_cents, total_cost_cents,
         model_tier, model_used, input_tokens, output_tokens,
-        cache_hits, cache_misses, prompt_tokens_saved
+        cache_hits, cache_misses, prompt_tokens_saved,
+        cached_input_tokens, usage_capture_source
       ) VALUES (
         gen_random_uuid(), $1, $2,
         $3, $4, $5, $6, $7,
         $8::model_tier, $9, $10, $11,
-        $12, $13, $14
+        $12, $13, $14,
+        $15, $16
       )
       ON CONFLICT (tenant_id, call_session_id) DO UPDATE SET
         stt_cost_cents = conversation_costs.stt_cost_cents + EXCLUDED.stt_cost_cents,
@@ -79,6 +107,17 @@ export async function recordConversationCost(params: RecordCostParams): Promise<
         cache_hits = conversation_costs.cache_hits + EXCLUDED.cache_hits,
         cache_misses = conversation_costs.cache_misses + EXCLUDED.cache_misses,
         prompt_tokens_saved = conversation_costs.prompt_tokens_saved + EXCLUDED.prompt_tokens_saved,
+        cached_input_tokens = conversation_costs.cached_input_tokens + EXCLUDED.cached_input_tokens,
+        -- Source-of-truth promotion rule: never DOWNGRADE from
+        -- usage_event back to estimate. The first UPSERT carrying real
+        -- usage_event counts wins and locks in 'usage_event'; any
+        -- subsequent UPSERT that arrives with estimates (e.g. a
+        -- recordTwilioCallCost placeholder INSERT that defaults to
+        -- 'estimate' via the column DEFAULT) leaves the field alone.
+        usage_capture_source = CASE
+          WHEN EXCLUDED.usage_capture_source = 'usage_event' THEN 'usage_event'
+          ELSE conversation_costs.usage_capture_source
+        END,
         -- Overwrite tier + model from the real cost write. This matters
         -- when recordTwilioCallCost INSERTed the row first (it can't know
         -- the tier so it falls back to the table DEFAULT 'standard');
@@ -95,6 +134,7 @@ export async function recordConversationCost(params: RecordCostParams): Promise<
         sttCostCents, llmCostCents, ttsCostCents, infraCostCents, totalCostCents,
         params.modelTier, params.modelUsed, params.inputTokens, params.outputTokens,
         params.cacheHits ?? 0, params.cacheMisses ?? 0, params.promptTokensSaved ?? 0,
+        cachedInputTokens, captureSource,
       ],
     );
 

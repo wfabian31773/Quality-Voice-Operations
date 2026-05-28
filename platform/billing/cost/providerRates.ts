@@ -1,6 +1,18 @@
 export interface ModelRate {
   inputPer1kTokens: number;
   outputPer1kTokens: number;
+  /**
+   * Cents per 1K cached input tokens. OpenAI bills repeat-context
+   * (prompt caching) at a steep discount — typically ~80–90% off the
+   * normal input rate on Realtime SKUs. When not supplied, falls back
+   * to the regular input rate (which over-bills cached tokens; safer
+   * than under-billing).
+   *
+   * Captured separately from the regular input rate so the analytics
+   * dashboards can show actual cache savings instead of inferring
+   * them from hit-rate × average cost.
+   */
+  cachedInputPer1kTokens?: number;
 }
 
 export const MODEL_RATES: Record<string, ModelRate> = {
@@ -21,13 +33,18 @@ export const MODEL_RATES: Record<string, ModelRate> = {
   // $64/1M output) expressed as cents per 1K tokens; text token traffic
   // through the Realtime API is billed at the same rates.
   //
+  // Cached input rate is OpenAI's published "audio input cached" price
+  // for gpt-realtime-2 ($0.40/1M = 0.04¢/1k), an 80× discount vs the
+  // full input rate. This is what `input_token_details.cached_tokens`
+  // from the response.done.usage payload should be billed at.
+  //
   // Older Realtime SKUs are kept in the map only so cost analytics for
   // legacy DB rows that still reference them continue to compute.
-  'gpt-realtime-2': { inputPer1kTokens: 3.2, outputPer1kTokens: 6.4 },
-  'gpt-realtime': { inputPer1kTokens: 0.4, outputPer1kTokens: 1.6 },
-  'gpt-realtime-mini': { inputPer1kTokens: 0.05, outputPer1kTokens: 0.2 },
-  'gpt-4o-realtime-preview': { inputPer1kTokens: 0.5, outputPer1kTokens: 2.0 },
-  'gpt-4o-mini-realtime-preview': { inputPer1kTokens: 0.06, outputPer1kTokens: 0.24 },
+  'gpt-realtime-2': { inputPer1kTokens: 3.2, outputPer1kTokens: 6.4, cachedInputPer1kTokens: 0.04 },
+  'gpt-realtime': { inputPer1kTokens: 0.4, outputPer1kTokens: 1.6, cachedInputPer1kTokens: 0.04 },
+  'gpt-realtime-mini': { inputPer1kTokens: 0.05, outputPer1kTokens: 0.2, cachedInputPer1kTokens: 0.03 },
+  'gpt-4o-realtime-preview': { inputPer1kTokens: 0.5, outputPer1kTokens: 2.0, cachedInputPer1kTokens: 0.25 },
+  'gpt-4o-mini-realtime-preview': { inputPer1kTokens: 0.06, outputPer1kTokens: 0.24, cachedInputPer1kTokens: 0.03 },
 };
 
 export const STT_COST_PER_MINUTE_CENTS = parseFloat(process.env.STT_COST_PER_MINUTE_CENTS ?? '0.6');
@@ -77,9 +94,25 @@ export function getModelRate(model: string): ModelRate {
   return MODEL_RATES[model] ?? MODEL_RATES['gpt-4o'];
 }
 
-export function calculateLlmCostCents(model: string, inputTokens: number, outputTokens: number): number {
+export function calculateLlmCostCents(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  cachedInputTokens: number = 0,
+): number {
   const rate = getModelRate(model);
-  const inputCost = (inputTokens / 1000) * rate.inputPer1kTokens;
+  // OpenAI's response.done.usage shape: `input_tokens` is the TOTAL
+  // including cached, with `input_token_details.cached_tokens` calling
+  // out the cached subset. Bill the non-cached portion at the regular
+  // rate and the cached portion at the cached rate (typically ~80×
+  // cheaper on Realtime SKUs). If the rate table doesn't carry a
+  // cached rate for this model, fall back to the regular rate — over-
+  // billing cached tokens is safer than under-billing.
+  const safeCached = Math.max(0, Math.min(cachedInputTokens, inputTokens));
+  const nonCachedInput = inputTokens - safeCached;
+  const cachedRate = rate.cachedInputPer1kTokens ?? rate.inputPer1kTokens;
+  const inputCost = (nonCachedInput / 1000) * rate.inputPer1kTokens
+                  + (safeCached     / 1000) * cachedRate;
   const outputCost = (outputTokens / 1000) * rate.outputPer1kTokens;
   return Math.ceil(inputCost + outputCost);
 }
