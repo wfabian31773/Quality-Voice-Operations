@@ -436,36 +436,36 @@ export default function Demo() {
 
       <DemoCompletionCelebration show={showCelebration} />
 
-      <section className="bg-sidebar-bg text-white py-12 lg:py-20 relative overflow-hidden">
+      <section className="bg-sidebar-bg text-white pt-10 pb-8 lg:pt-14 lg:pb-10 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-sidebar-hover opacity-80" />
-        <div className="max-w-6xl mx-auto px-6 lg:px-8 text-center relative z-10">
-          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
+        <div className="max-w-screen-2xl mx-auto px-4 lg:px-8 text-center relative z-10">
+          <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-3">
             {t('demo.hero.eyebrow')}
           </p>
-          <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">
+          {/* Explicit text-white so the QVO base h1 color rule (which
+              defaults to a light-theme dark token on this dark surface)
+              doesn't render the headline invisible. */}
+          <h1 className="font-display text-white text-4xl lg:text-6xl font-bold mb-4 tracking-tight">
             {t('demo.hero.title')}
           </h1>
-          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-10">
+          <p className="text-lg text-white/70 font-body max-w-2xl mx-auto mb-8">
             {t('demo.hero.description')}
           </p>
           {/* Orchestration hub centerpiece — see DemoOrchestrationHub.tsx.
-              The hub is the visual story of the page: agent voice at the
-              center, four product surfaces at the corners, spokes that
-              light up to show which tool is firing in real time. */}
+              Filling the wider screen-2xl container so the Seedance video
+              dominates the viewport instead of floating in dead space.
+              The "Agent live / Standby" indicator that used to sit below
+              this is gone — DemoOrchestrationHub already renders the
+              active-tool label in the same vertical slot, which makes the
+              prior badge redundant. */}
           <DemoOrchestrationHub
             mode="scripted"
             timeline={PLACEHOLDER_DEMO_TIMELINE}
           />
-          <div className="mt-8 flex items-center justify-center gap-3">
-            <VoiceWaveform active={isActive} />
-            <span className="text-xs uppercase tracking-wider text-white/40 font-display">
-              {isActive ? 'Agent live' : 'Standby'}
-            </span>
-          </div>
         </div>
       </section>
 
-      <section className="py-12 lg:py-16">
+      <section className="pt-6 pb-12 lg:pt-8 lg:pb-16">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           {demoConfigured === false && (
             <div className="mb-8 p-4 bg-accent/10 border border-accent/30 rounded-xl text-center text-accent text-sm font-body">
