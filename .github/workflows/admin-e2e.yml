@@ -298,12 +298,35 @@ jobs:
       - name: Tear down Platform Dev
         if: always()
         run: |
+          # PID-based teardown. The `Boot Platform Dev stack` step wrote
+          # the bash PID of `start-platform-dev.sh` to platform.pid, and
+          # that script has `trap 'kill 0' EXIT`, so killing it cascades
+          # SIGTERM through its process group (vite + admin-api +
+          # voice-gateway).
+          #
+          # The previous version of this step also ran `pkill -f` with
+          # patterns like "vite --config client-app". Those patterns
+          # matched processes in the GitHub Actions runner's own tree
+          # (the runner records its job script's contents in process
+          # state visible to pkill), so the teardown would SIGTERM the
+          # runner itself — exit code 143, "runner has received a
+          # shutdown signal", job conclusion 'failure' even though every
+          # test step passed. We saw this in run 26557110174.
+          #
+          # Sticking to PID-only here. The VM is ephemeral, so any
+          # zombie process that escapes the trap is moot.
           if [ -f .ci-logs/platform.pid ]; then
-            kill "$(cat .ci-logs/platform.pid)" 2>/dev/null || true
+            PID=$(cat .ci-logs/platform.pid)
+            kill -TERM "$PID" 2>/dev/null || true
+            # Give the trap a moment to cascade.
+            for _ in $(seq 1 10); do
+              kill -0 "$PID" 2>/dev/null || break
+              sleep 1
+            done
+            # If still alive after 10s, escalate. -KILL bypasses any
+            # signal handler so this can't fail to terminate.
+            kill -KILL "$PID" 2>/dev/null || true
           fi
-          pkill -f "tsx server/admin-api" 2>/dev/null || true
-          pkill -f "tsx server/voice-gateway" 2>/dev/null || true
-          pkill -f "vite --config client-app" 2>/dev/null || true
           exit 0
 
       # Aggregate gate: this is the step that actually fails the job when any
