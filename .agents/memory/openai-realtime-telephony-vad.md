@@ -22,7 +22,13 @@ audio: {
       threshold: 0.5,            // 0.0–1.0; OpenAI default. Lower picks up soft voices but false-triggers on hiss.
       prefixPaddingMs: 300,      // audio captured *before* VAD trips, so first phoneme isn't clipped
       silenceDurationMs: 500,    // end-of-turn after this much silence. 200ms = interrupts user, 1000ms = sluggish
-      idleTimeoutMs: 10_000,     // auto re-prompt after this much caller dead-air following our last response
+      // idleTimeoutMs: do NOT set this if you already have a local
+      // silence watchdog (we have a 15s `silenceTimer` in
+      // openaiSession.ts that calls reasoningEngine.handleSilence()).
+      // The server idle timer fires first → generic re-prompt; then
+      // the local watchdog fires → context-aware prompt; the model
+      // ends up re-asking the same question twice while the caller
+      // is still trying to answer. Pick one source of truth.
       createResponse: true,      // auto-create response on end-of-turn
       interruptResponse: true,   // barge-in: cancel in-flight response when caller starts talking
     },

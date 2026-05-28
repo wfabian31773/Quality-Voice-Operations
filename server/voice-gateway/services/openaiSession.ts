@@ -807,12 +807,17 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
           // makes the agent interrupt mid-thought; longer (1000ms)
           // makes it feel sluggish.
           silenceDurationMs: 500,
-          // After 10s of caller silence following our last response,
-          // re-prompt automatically (e.g. "Are you still there?"). This
-          // prevents the conversation from dying when the caller
-          // wanders off; the silence-watchdog higher up in this file
-          // is a fallback for total dead-air.
-          idleTimeoutMs: 10_000,
+          // NOTE: do NOT set `idleTimeoutMs` here. The voice gateway
+          // already runs a local `silenceTimer` (15s) below that calls
+          // `reasoningEngine.handleSilence()` and injects a context-
+          // aware recovery prompt. Enabling the server-side idle
+          // timeout in addition causes the two timers to race —
+          // server fires a generic re-prompt response at the lower
+          // bound, then our local watchdog fires another one a few
+          // seconds later, and the model ends up re-asking the same
+          // question over and over while the caller is still trying
+          // to answer. Pick one source of truth; we pick the local
+          // one because it has reasoning-engine context.
           // Auto-generate a response when end-of-turn is detected and
           // cancel the in-flight response if the caller starts talking
           // — these together implement true barge-in.
@@ -1128,9 +1133,7 @@ export async function createRealtimeSession(
         try {
           const recovery = reasoningEngine.handleSilence();
           if (recovery.recoveryPrompt) {
-            injectConversationItem(
-              `[System: ${recovery.recoveryPrompt}]`,
-            );
+            sendModelInstruction(recovery.recoveryPrompt);
             writeCallEvent(tenantId, callSessionId, 'silence_recovery', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
               prompt: recovery.recoveryPrompt,
             }).catch(() => {});
@@ -1275,8 +1278,8 @@ export async function createRealtimeSession(
                   }).catch(() => {});
 
                   try {
-                    injectConversationItem(
-                      `[System: The following information is still needed from the caller. Guide the conversation to collect it: "${reasoningResult.clarifyingQuestion}"]`,
+                    sendModelInstruction(
+                      `The following information is still needed from the caller. Guide the conversation to collect it: "${reasoningResult.clarifyingQuestion}"`,
                     );
                   } catch (injectErr) {
                     slog.error('Failed to inject clarification', { error: String(injectErr) });
@@ -1285,8 +1288,8 @@ export async function createRealtimeSession(
 
                 if (reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
                   try {
-                    injectConversationItem(
-                      `[System: Continue the conversation. Current step guidance: ${reasoningResult.reasoning}]`,
+                    sendModelInstruction(
+                      `Continue the conversation. Current step guidance: ${reasoningResult.reasoning}`,
                     );
                   } catch (cwErr) {
                     slog.warn('Failed to inject continue_workflow guidance', { error: String(cwErr) });
@@ -1307,8 +1310,8 @@ export async function createRealtimeSession(
                   try {
                     const recovery = reasoningEngine.handlePartialAnswer(text);
                     if (recovery.recoveryPrompt) {
-                      injectConversationItem(
-                        `[System: The caller's response was unclear. ${recovery.recoveryPrompt}]`,
+                      sendModelInstruction(
+                        `The caller's response was unclear. ${recovery.recoveryPrompt}`,
                       );
                     }
                   } catch (recoveryErr) {
@@ -1367,8 +1370,8 @@ export async function createRealtimeSession(
                     slog.warn('Failed to cancel unsafe response', { error: String(cancelErr) });
                   }
                   try {
-                    injectConversationItem(
-                      '[System: CRITICAL SAFETY OVERRIDE. Your previous response contained prohibited advice and has been cancelled. You MUST NOT provide medical diagnoses, legal advice, or financial recommendations. Apologize briefly and redirect the caller to a qualified professional. Offer to help with scheduling or taking a message instead.]',
+                    sendModelInstruction(
+                      'CRITICAL SAFETY OVERRIDE. Your previous response contained prohibited advice and has been cancelled. You MUST NOT provide medical diagnoses, legal advice, or financial recommendations. Apologize briefly and redirect the caller to a qualified professional. Offer to help with scheduling or taking a message instead.',
                     );
                   } catch (corrErr) {
                     slog.error('Failed to inject safety correction', { error: String(corrErr) });
@@ -1502,24 +1505,70 @@ export async function createRealtimeSession(
     (activeTransport as unknown as { sendEvent(e: Record<string, unknown>): void }).sendEvent(event);
   };
 
-  const injectConversationItem = (text: string): void => {
+  // Track whether the Realtime server is currently generating a
+  // response. With `turnDetection.createResponse: true` the server
+  // auto-fires a `response.create` at end-of-turn; if we also fire
+  // a `sendModelInstruction(...)` from the `history_added` reasoning
+  // path during that same turn (clarification / continue_workflow /
+  // partial-answer recovery), the two responses stack and the model
+  // double-speaks or re-asks the same question. We cancel the
+  // in-flight one first so our reasoning-engine-augmented
+  // instructions replace it cleanly.
+  let responseInFlight = false;
+  const attachResponseStateListeners = (
+    transport: { on(event: string, listener: (...args: unknown[]) => void): void },
+  ): void => {
+    const t = transport as unknown as { on(e: string, l: (...args: unknown[]) => void): void };
+    t.on('response.created', () => { responseInFlight = true; });
+    t.on('response.done', () => { responseInFlight = false; });
+    t.on('response.cancelled', () => { responseInFlight = false; });
+  };
+  attachResponseStateListeners(wsTransport);
+
+  /**
+   * Tell the model to say or do something WITHOUT adding a phantom
+   * "user" turn to the conversation history.
+   *
+   * This is the SDK-native pattern for system-driven instructions
+   * (greetings, recovery prompts, safety overrides, handoff cues):
+   * `response.create` with a `response.instructions` override that
+   * applies to that one response only. The Realtime API will use it
+   * in place of the session-level instructions for the next response
+   * it generates, then revert.
+   *
+   * If a response is currently in flight (server-side auto-response
+   * from VAD end-of-turn, or a previous instruction still streaming),
+   * we cancel it first — otherwise the two responses stack and the
+   * model speaks twice or re-asks the same question.
+   *
+   * The previous implementation used `conversation.item.create` with
+   * `role: 'user'` wrapping a "[System: ...]" string. The model
+   * treated each one as the *caller* speaking, generated a response
+   * to it, and the resulting fake user turns piled up in history.
+   */
+  const sendModelInstruction = (instructions: string): void => {
+    if (responseInFlight) {
+      try {
+        sendRealtimeEvent({ type: 'response.cancel' });
+      } catch (cancelErr) {
+        // response.cancel can race with response.done — if the
+        // response just finished, the cancel is rejected. Harmless.
+        slog.debug?.('response.cancel before model instruction failed (likely already done)', { error: String(cancelErr) });
+      }
+      responseInFlight = false;
+    }
     sendRealtimeEvent({
-      type: 'conversation.item.create',
-      item: {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text }],
-      },
+      type: 'response.create',
+      response: { instructions },
     });
-    sendRealtimeEvent({ type: 'response.create' });
   };
 
   const triggerGreeting = (): void => {
     if (!agentConfig.greeting) return;
     activeTransport.on('session.created', () => {
       try {
-        injectConversationItem(
-          `[System: The caller just connected. Greet them now. Say exactly: "${agentConfig.greeting}"]`,
+        sendModelInstruction(
+          `The caller just connected. Greet them now by saying exactly: "${agentConfig.greeting}". Do not say anything else.`,
         );
         slog.info('Greeting triggered', { greeting: agentConfig.greeting.substring(0, 50) });
       } catch (err) {
@@ -1530,7 +1579,7 @@ export async function createRealtimeSession(
 
   const sendSystemMessage = (message: string): void => {
     try {
-      injectConversationItem(`[System: Say exactly: "${message}"]`);
+      sendModelInstruction(`Say exactly: "${message}". Do not say anything else.`);
       slog.info('System message injected', { message: message.substring(0, 80) });
     } catch (err) {
       slog.error('Failed to inject system message', { error: String(err) });
@@ -1607,12 +1656,14 @@ export async function createRealtimeSession(
       newTransport.on('audio', audioOutputHandler);
     }
 
+    attachResponseStateListeners(newTransport);
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (apiKey) {
       newTransport.on('session.created', () => {
         try {
-          injectConversationItem(
-            `[System: You are taking over this call from another agent. Greet the caller now. Say exactly: "${handoffGreeting}"]`,
+          sendModelInstruction(
+            `You are taking over this call from another agent. Greet the caller now by saying exactly: "${handoffGreeting}". Do not say anything else.`,
           );
         } catch (greetErr) {
           slog.error('Failed to inject handoff greeting', { error: String(greetErr) });
