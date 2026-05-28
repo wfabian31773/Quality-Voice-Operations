@@ -94,7 +94,17 @@ jobs:
       - name: Boot Platform Dev stack
         run: |
           mkdir -p .ci-logs/screenshots
-          nohup bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
+          # `setsid` (not `nohup`) so the platform stack lives in its own
+          # session / process group. scripts/start-platform-dev.sh has
+          # `trap 'kill 0' EXIT`, which sends SIGTERM to the entire
+          # process group. With plain `nohup ... &` the script inherits
+          # the runner's process group, so the trap fires SIGTERM at the
+          # runner during teardown — exit 143, "runner shutdown signal",
+          # job conclusion 'failure' even though every test step passed.
+          # Verified twice (runs 26557110174 and 26578190039).
+          # `setsid` makes the new bash the leader of a fresh group, so
+          # `kill 0` is contained to vite + admin-api + voice-gateway.
+          setsid bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
           echo $! > .ci-logs/platform.pid
 
       - name: Wait for vite (5000) and admin API (3002) to be healthy
