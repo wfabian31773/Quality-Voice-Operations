@@ -612,6 +612,23 @@ export default function Demo() {
             </div>
           </div>
 
+          {/* "What happens when you call" preview section —
+              The four panels below (Transcript / Tool Executions / Stats /
+              System Activity) are mostly empty until a real call is in
+              progress. Without this heading they read as broken/dead;
+              with it they read as "preview of what you'll see when you
+              dial," which is what they actually are. */}
+          <div className="mb-6 pt-6 border-t border-border-strong/30">
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-1">
+              What happens when you call
+            </h2>
+            <p className="text-sm text-text-primary/60 font-body">
+              When a demo call connects, these panels stream live — the
+              conversation, the tools the agent invokes, and the system
+              events behind every action.
+            </p>
+          </div>
+
           <div className="grid lg:grid-cols-2 gap-6 mb-8">
             <ConversationTranscript messages={transcript} isActive={isActive} />
 
@@ -621,10 +638,15 @@ export default function Demo() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
+          <div className="grid md:grid-cols-3 gap-6 mb-10">
             <div className="md:col-span-1 demo-glass-card rounded-2xl border border-white/20 p-6">
               <div className="flex items-center gap-2 mb-4">
-                <BarChart3 className="h-5 w-5 text-success" />
+                {/* Brand-teal panel header to match all the other demo
+                    panels. The big number below uses text-primary too —
+                    no need for a competing success-green here. */}
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <BarChart3 className="h-4 w-4 text-primary" />
+                </div>
                 <h3 className="font-display font-semibold text-text-primary">{t('demo.stats_card.title')}</h3>
               </div>
               <div className="text-center py-6">
@@ -643,7 +665,7 @@ export default function Demo() {
             </div>
           </div>
 
-          <div className="text-center text-sm text-text-primary/50 font-body space-y-2">
+          <div className="text-center text-sm text-text-primary/50 font-body">
             <p>
               {t('demo.footer_note')}
             </p>

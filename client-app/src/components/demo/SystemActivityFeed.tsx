@@ -131,8 +131,10 @@ export default function SystemActivityFeed({ events, isActive }: SystemActivityF
   return (
     <div className="bg-surface rounded-2xl border border-border-strong/50 p-6">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-surface-muted flex items-center justify-center">
-          <Activity className="h-4 w-4 text-text-primary" />
+        {/* Brand-teal panel header — matches Transcript / Tool Executions /
+            Stats so all four demo panels share the same visual drumbeat. */}
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Activity className="h-4 w-4 text-primary" />
         </div>
         <h3 className="font-display font-semibold text-text-primary">System Activity</h3>
         {isActive && (

@@ -88,8 +88,13 @@ export default function ToolExecutionPanel({ tools, isActive }: ToolExecutionPan
   return (
     <div className="bg-surface rounded-2xl border border-border-strong/50 p-6">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-          <Wrench className="h-4 w-4 text-accent" />
+        {/* Panel header icon stays in brand teal so all four demo panel
+            headers (Transcript / Tool Executions / Stats / System Activity)
+            share the same brand drumbeat. Internal tool rows below keep
+            their semantic colors (accent/success/danger) per execution
+            state — those carry meaning, the header doesn't. */}
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Wrench className="h-4 w-4 text-primary" />
         </div>
         <h3 className="font-display font-semibold text-text-primary">Tool Executions</h3>
         {isActive && tools.some((t) => t.status === 'running') && (
