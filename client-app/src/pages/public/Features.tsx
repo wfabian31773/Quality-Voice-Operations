@@ -108,13 +108,21 @@ export default function Features() {
     { icon: Users, title: t('features.mini_systems.tracking_title'), desc: t('features.mini_systems.tracking_desc') },
   ];
 
+  // All six architecture blocks share the brand-teal treatment so the
+  // grid reads as a UNIFIED PLATFORM MAP rather than a 6-color status
+  // board. The prior multi-color treatment (primary/accent/success/danger)
+  // was semantic-color-as-decoration — the exact pattern we killed across
+  // /demo in QVO/5a. Security gets a danger-red, Knowledge gets a
+  // success-green, etc. read as "these blocks have meaningful state"
+  // when in reality they just describe what the platform IS. Same brand
+  // color, consistent grid.
   const architectureBlocks = [
     { icon: Cpu, label: t('features.architecture.voice_runtime'), color: 'bg-primary/15 text-primary' },
-    { icon: Bot, label: t('features.architecture.agent_builder'), color: 'bg-surface-muted text-text-primary' },
-    { icon: Zap, label: t('features.architecture.tool_engine'), color: 'bg-accent/15 text-accent' },
-    { icon: Database, label: t('features.architecture.knowledge_rag'), color: 'bg-success/15 text-success' },
+    { icon: Bot, label: t('features.architecture.agent_builder'), color: 'bg-primary/15 text-primary' },
+    { icon: Zap, label: t('features.architecture.tool_engine'), color: 'bg-primary/15 text-primary' },
+    { icon: Database, label: t('features.architecture.knowledge_rag'), color: 'bg-primary/15 text-primary' },
     { icon: Plug, label: t('features.architecture.integrations'), color: 'bg-primary/15 text-primary' },
-    { icon: Shield, label: t('features.architecture.security_layer'), color: 'bg-danger/15 text-danger' },
+    { icon: Shield, label: t('features.architecture.security_layer'), color: 'bg-primary/15 text-primary' },
   ];
 
   return (
@@ -125,13 +133,36 @@ export default function Features() {
         canonicalPath="/features"
       />
 
-      <section className="bg-sidebar-bg text-white py-20 lg:py-28">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      {/*
+        Features hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/features-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop, off-center for visual interest
+            (slightly different position from Pricing so the two hero
+            bands don't feel identical when navigating between them)
+          - oversize tracking-tight headline (text-6xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo and /pricing)
+        py-16 lg:py-24 (was py-20 lg:py-28) — tighter density now that
+        there's no image to support the larger padding.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-24">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 30% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
               {t('features.hero.eyebrow')}
             </p>
-            <h1 className="font-display text-4xl lg:text-5xl font-bold leading-tight mb-6">
+            <h1 className="font-display text-white text-4xl lg:text-6xl font-bold leading-tight tracking-tight mb-6">
               {t('features.hero.title')}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl mb-8">
