@@ -28,13 +28,35 @@ export default function Security() {
   return (
     <div className="bg-surface">
       <SEO title="Security & Compliance — QVO" description="QVO security architecture, certifications, and compliance posture." canonicalPath="/security" />
-      <section className="bg-sidebar-bg text-white py-20">
-        <div className="max-w-5xl mx-auto px-6 lg:px-8">
+      {/*
+        Security hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/security-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop at 25% 50% (off-center, distinct
+            from sibling marketing pages)
+          - oversize tracking-tight headline (text-6xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        py-16 lg:py-24 (was py-20) — tighter density now that there's
+        no image to support the larger padding.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-24">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 25% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-5xl mx-auto px-6 lg:px-8">
           <div className="inline-flex items-center gap-2 bg-primary/15 border border-primary/25 rounded-full px-4 py-1.5 mb-6">
             <Shield className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium text-primary">Trust & Security</span>
           </div>
-          <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4">Built for regulated industries.</h1>
+          <h1 className="font-display text-white text-4xl lg:text-6xl font-bold tracking-tight mb-4">Built for regulated industries.</h1>
           <p className="text-lg text-white/70 font-body max-w-3xl">
             QVO handles voice, SMS, and protected health information. Our security program is designed for healthcare, legal,
             financial services, and other regulated workloads.
@@ -124,7 +146,10 @@ export default function Security() {
 
       <section className="py-12 bg-sidebar-bg text-white text-center">
         <div className="max-w-3xl mx-auto px-6 lg:px-8">
-          <h3 className="font-display text-xl font-semibold mb-2">Report a security issue</h3>
+          {/* Defensive text-white: the QVO base reset rule targets
+              h1-h5, so h3 on dark surfaces also goes invisible without
+              an explicit color. */}
+          <h3 className="font-display text-white text-xl font-semibold mb-2">Report a security issue</h3>
           <p className="text-white/70 font-body mb-4">
             Found a vulnerability? Disclose responsibly to <a href="mailto:security@qvo.example" className="text-primary hover:underline">security@qvo.example</a>.
           </p>

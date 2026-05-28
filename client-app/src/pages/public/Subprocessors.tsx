@@ -31,9 +31,30 @@ export default function Subprocessors() {
   return (
     <div className="bg-surface">
       <SEO title="Sub-processors — QVO" description="Third-party services QVO uses to deliver the platform." canonicalPath="/subprocessors" />
-      <section className="bg-sidebar-bg text-white py-16">
-        <div className="max-w-5xl mx-auto px-6 lg:px-8">
-          <h1 className="font-display text-4xl font-bold mb-3">Sub-processors</h1>
+      {/*
+        Subprocessors hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/subprocessors-hero.{webp,mp4} and add a <picture>/<video>
+        above the gradient layer). Until then:
+          - radial-gradient backdrop at 45% 50% (off-center)
+          - oversize tracking-tight headline (text-5xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        Padding stayed py-16 — this hero is a short legal-section
+        opener, not a tall marketing hero.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 45% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-5xl mx-auto px-6 lg:px-8">
+          <h1 className="font-display text-white text-4xl lg:text-5xl font-bold tracking-tight mb-3">Sub-processors</h1>
           <p className="text-white/70 font-body max-w-2xl">
             QVO engages the following sub-processors to deliver the Service. We update this list when sub-processors are added or removed and notify customers in advance of material changes.
           </p>

@@ -24,8 +24,28 @@ export default function GuideDetail() {
 
   return (
     <div>
-      <section className="bg-sidebar-bg text-white py-16 lg:py-20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      {/*
+        GuideDetail hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/guide-detail-hero.{webp,mp4} and add a <picture>/<video>
+        above the gradient layer). Until then:
+          - radial-gradient backdrop at 40% 50% (off-center)
+          - oversize tracking-tight headline (text-5xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        Padding stayed py-16 lg:py-20 — article-detail hero is compact.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-20">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 40% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <Link
             to="/resources"
             className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors mb-8"
@@ -37,7 +57,7 @@ export default function GuideDetail() {
             <span className="text-xs text-primary bg-primary/15 px-2.5 py-1 rounded-full font-medium">
               {guide.category}
             </span>
-            <h1 className="font-display text-3xl lg:text-4xl font-bold leading-tight mt-4 mb-4">
+            <h1 className="font-display text-white text-3xl lg:text-5xl font-bold leading-tight tracking-tight mt-4 mb-4">
               {guide.title}
             </h1>
             <p className="text-lg text-white/70 leading-relaxed font-body max-w-2xl">

@@ -183,14 +183,36 @@ export default function Signup() {
         description="Create your QVO account and start your 7-day free trial. Set up AI voice agents for your business in minutes. No credit card required."
         canonicalPath="/signup"
       />
-      <section className="bg-sidebar-bg text-white py-16 lg:py-20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      {/*
+        Signup hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/signup-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop at 20% 60% (off-center; signup
+            page has a form on the right so the glow sits behind the
+            copy on the left)
+          - oversize tracking-tight headline (text-5xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        Padding stayed py-16 lg:py-20 — this is a form-first page.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16 lg:py-20">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 20% 60%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">
             <div>
               <p className="text-primary font-display text-sm font-semibold tracking-wide uppercase mb-4">
                 {t('auth.signup_eyebrow')}
               </p>
-              <h1 className="font-display text-3xl lg:text-4xl font-bold leading-tight mb-6">
+              <h1 className="font-display text-white text-3xl lg:text-5xl font-bold leading-tight tracking-tight mb-6">
                 {t('auth.signup_headline')}
               </h1>
               <p className="text-lg text-white/70 leading-relaxed mb-8 font-body">

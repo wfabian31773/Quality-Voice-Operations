@@ -22,9 +22,30 @@ export default function Privacy() {
   return (
     <div className="bg-surface">
       <SEO title="Privacy Policy — QVO" description="How QVO collects, uses, and protects your data." canonicalPath="/privacy" />
-      <section className="bg-sidebar-bg text-white py-16">
-        <div className="max-w-4xl mx-auto px-6 lg:px-8">
-          <h1 className="font-display text-4xl font-bold mb-3">Privacy Policy</h1>
+      {/*
+        Privacy hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/privacy-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop at 70% 50% (mirrored opposite of
+            /terms 30% 50% so the two legal pages feel paired)
+          - oversize tracking-tight headline (text-5xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        Padding stayed py-16 — legal page, short hero.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 70% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-4xl mx-auto px-6 lg:px-8">
+          <h1 className="font-display text-white text-4xl lg:text-5xl font-bold tracking-tight mb-3">Privacy Policy</h1>
           <p className="text-white/70 font-body">Last updated: April 15, 2026</p>
         </div>
       </section>

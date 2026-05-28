@@ -21,9 +21,29 @@ export default function Terms() {
   return (
     <div className="bg-surface">
       <SEO title="Terms of Service — QVO" description="QVO Terms of Service governing use of the platform." canonicalPath="/terms" />
-      <section className="bg-sidebar-bg text-white py-16">
-        <div className="max-w-4xl mx-auto px-6 lg:px-8">
-          <h1 className="font-display text-4xl font-bold mb-3">Terms of Service</h1>
+      {/*
+        Terms hero — flat dark band placeholder. Wayne's bespoke
+        Higgsfield render slots in here later (drop file at
+        /hero/terms-hero.{webp,mp4} and add a <picture>/<video> above
+        the gradient layer). Until then:
+          - radial-gradient backdrop at 30% 50% (off-center)
+          - oversize tracking-tight headline (text-5xl @ lg)
+          - explicit text-white on h1 — defensive against the QVO base
+            reset h1 color rule that renders headlines invisible on dark
+            surfaces (same bug we fixed on /demo, /pricing, /features)
+        Padding stayed py-16 — legal page, short hero.
+      */}
+      <section className="relative overflow-hidden bg-sidebar-bg text-white py-16">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 60% at 30% 50%, rgba(46,140,131,0.20), transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-4xl mx-auto px-6 lg:px-8">
+          <h1 className="font-display text-white text-4xl lg:text-5xl font-bold tracking-tight mb-3">Terms of Service</h1>
           <p className="text-white/70 font-body">Last updated: April 15, 2026</p>
         </div>
       </section>
