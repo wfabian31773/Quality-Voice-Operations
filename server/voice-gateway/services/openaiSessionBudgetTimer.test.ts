@@ -160,4 +160,49 @@ describe('openaiSession budget-check timer', () => {
     await vi.advanceTimersByTimeAsync(120000);
     expect(h.checkConversationBudgetMock).not.toHaveBeenCalled();
   });
+
+  it('keeps the budget-check interval running across a budget-triggered model downgrade', async () => {
+    // Regression: the 30s budget interval reaches the downgrade threshold and
+    // calls rebuildForHandoff to swap to the economy model. That swap closes
+    // the realtime session, but the close handler must short-circuit on the
+    // `isHandoffSwap` flag and NOT clear the budget interval — otherwise cost
+    // metering silently stops the moment a call gets downgraded. The interval
+    // is a single setInterval the rebuild never touches, so it must keep firing
+    // on the fresh session, and a real hangup afterward must still tear it down.
+    const coordinator = makeCoordinator();
+
+    // First budget check trips the downgrade; later checks are benign so the
+    // hasDowngraded guard prevents a second swap.
+    h.checkConversationBudgetMock.mockImplementationOnce(async () => ({
+      shouldEndCall: false,
+      shouldDowngrade: true,
+      shouldAlert: false,
+      budgetCents: 1000,
+      percentUsed: 80,
+    }));
+
+    const result = await createRealtimeSession(makeCtx(coordinator));
+    const originalSession = result.session;
+
+    // First interval fire → budget threshold → handoff swap to economy model.
+    await vi.advanceTimersByTimeAsync(31000);
+    expect(h.checkConversationBudgetMock).toHaveBeenCalledTimes(1);
+
+    // The swap closed the original session and built a fresh one. The
+    // transient handoff close must NOT have torn the call down.
+    expect(originalSession.close).toHaveBeenCalledTimes(1);
+    const swappedSession = result.session;
+    expect(swappedSession).not.toBe(originalSession);
+
+    // The budget interval survived the swap: it keeps firing on the new
+    // session across the next two 30s windows.
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(h.checkConversationBudgetMock).toHaveBeenCalledTimes(3);
+
+    // A genuine hangup on the post-swap session (isHandoffSwap === false) runs
+    // the terminal cleanup and clears the interval for good.
+    await swappedSession.close();
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(h.checkConversationBudgetMock).toHaveBeenCalledTimes(3);
+  });
 });
