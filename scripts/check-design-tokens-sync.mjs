@@ -2,12 +2,24 @@
 /**
  * Design tokens sync check.
  *
- * Asserts that the locked Refined Harbor token values in
+ * Asserts that the token values in
  * `client-app/src/lib/designTokens.ts` match the corresponding
- * CSS custom properties in the `@theme` block of
+ * CSS custom properties shipped to Tailwind by the brand bridge in
  * `client-app/src/styles/_theme.css`. Drift between the two would
  * cause charts/programmatic UI to render in a different palette
  * than the rest of the app.
+ *
+ * The bridge aliases every `--color-*` / `--radius-*` token to a
+ * `--qvo-*` primitive defined in the canonical brand kit
+ * (`client-app/src/brand/qvo-global.css`), and dark mode flips by
+ * redefining those primitives under `[data-theme="dark"]`. So a raw
+ * string compare is meaningless — this check RESOLVES the `var()`
+ * chains through the real CSS cascade before comparing:
+ *   - light: @theme value → resolve via brand kit `:root`
+ *   - dark:  `.dark` chrome override (if any) else @theme value,
+ *            resolved via brand kit `[data-theme="dark"]` (falling
+ *            back to `:root`)
+ * Non-var() values (rgba(), color-mix(), raw hex) pass through as-is.
  *
  * Exits non-zero on any mismatch. Designed to be cheap enough to
  * run in CI on every PR that touches either file.
@@ -25,28 +37,80 @@ const root = resolve(here, "..");
 
 const cssPath = resolve(root, "client-app/src/styles/_theme.css");
 const tsPath = resolve(root, "client-app/src/lib/designTokens.ts");
+const brandPath = resolve(root, "client-app/src/brand/qvo-global.css");
 
-const css = readFileSync(cssPath, "utf8");
+// Strip CSS block comments up front so the brace-aware block scanner can
+// never trip on `{`/`}` that appear inside a comment (e.g. the file header
+// literally mentions `@theme {}`). `ts` is left raw — it is read with
+// targeted regexes, not block scanning.
+const stripCssComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "");
+const css = stripCssComments(readFileSync(cssPath, "utf8"));
 const ts = readFileSync(tsPath, "utf8");
+const brand = stripCssComments(readFileSync(brandPath, "utf8"));
 
-/** Find a CSS custom property value within a given block (default = :root / @theme). */
-function cssVar(name, { block } = {}) {
-  // Restrict the search to a specific block (e.g. ".dark { ... }") if given.
-  let haystack = css;
-  if (block) {
-    const blockRe = new RegExp(`${block}\\s*\\{([\\s\\S]*?)\\n\\}`, "m");
-    const match = blockRe.exec(css);
-    if (!match) {
-      throw new Error(`Could not find CSS block: ${block}`);
-    }
-    haystack = match[1];
+/**
+ * Extract the inner body of the FIRST CSS block matching `selector`.
+ * Uses a brace-aware scan (not a `\n}` regex) so it is robust to CSS
+ * reformatting — closing brace on the same line, nested braces, CRLF, etc.
+ */
+function blockBody(src, selector) {
+  const re = new RegExp(`${selector}\\s*\\{`, "m");
+  const m = re.exec(src);
+  if (!m) return "";
+  const start = m.index + m[0].length;
+  let depth = 1;
+  let i = start;
+  for (; i < src.length && depth > 0; i++) {
+    const ch = src[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
   }
-  const re = new RegExp(`--${name}:\\s*([^;\\n]+);`, "m");
-  const m = re.exec(haystack);
-  if (!m) {
-    throw new Error(`CSS var --${name} not found${block ? ` in ${block}` : ""}`);
+  return src.slice(start, i - 1);
+}
+
+/** Parse `--name: value;` declarations from a block body into a Map. */
+function parseDecls(body) {
+  const map = new Map();
+  for (const m of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+    map.set(m[1].trim(), m[2].trim().replace(/\s*\/\*[\s\S]*?\*\/\s*$/, "").trim());
   }
-  return m[1].trim();
+  return map;
+}
+
+// Brand-kit primitives: light (`:root`) + dark overrides (`[data-theme="dark"]`).
+const brandLight = parseDecls(blockBody(brand, ":root"));
+const brandDark = parseDecls(blockBody(brand, '\\[data-theme="dark"\\]'));
+// Bridge tokens: light (`@theme`) + dark chrome overrides (`.dark`).
+const themeLight = parseDecls(blockBody(css, "@theme"));
+const themeDark = parseDecls(blockBody(css, "\\n\\.dark"));
+
+/** Resolve a single-level `var(--x)` chain to a concrete value for the mode. */
+function resolveVar(value, mode, depth = 0) {
+  if (value == null || depth > 16) return value;
+  const m = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value.trim());
+  if (!m) return value.trim(); // hex / rgba / color-mix — leave literal
+  const name = m[1];
+  let next;
+  if (mode === "dark" && brandDark.has(name)) next = brandDark.get(name);
+  else if (brandLight.has(name)) next = brandLight.get(name);
+  else return value.trim();
+  return resolveVar(next, mode, depth + 1);
+}
+
+/**
+ * Effective value of a bridge token `--name` in `light` or `dark`.
+ * Models the cascade: a `.dark` override wins; otherwise the `@theme`
+ * definition is resolved against the dark primitive overrides.
+ */
+function cssVar(name, { mode = "light" } = {}) {
+  const key = `--${name}`;
+  if (mode === "dark" && themeDark.has(key)) {
+    return resolveVar(themeDark.get(key), "dark");
+  }
+  if (themeLight.has(key)) {
+    return resolveVar(themeLight.get(key), mode);
+  }
+  throw new Error(`CSS var --${name} not found in @theme`);
 }
 
 /** Find an object literal property value in the TS source, e.g. `primary: "#1F8E83"`. */
@@ -155,7 +219,7 @@ for (const [cssName, obj, prop] of darkChecks) {
   try {
     compare(
       `dark  ${cssName} ↔ ${obj}.${prop}`,
-      cssVar(cssName, { block: "\\.dark" }),
+      cssVar(cssName, { mode: "dark" }),
       tsValue(obj, prop),
     );
   } catch (err) {

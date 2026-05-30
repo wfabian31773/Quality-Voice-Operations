@@ -1,161 +1,165 @@
 /**
- * QVO Design System — Refined Harbor (locked 2026-04-27)
+ * QVO Design System — token mirror (locked to the brand bible 2026-05-25)
  *
- * Source of truth for raw token values. The CSS @theme block in
- * `client-app/src/index.css` is the runtime source; this file mirrors
- * the same values in TypeScript for:
+ * Source of truth for raw token values. The CSS bridge in
+ * `client-app/src/styles/_theme.css` is the runtime source; it aliases
+ * every Tailwind token to a `--qvo-*` primitive defined in
+ * `client-app/src/brand/qvo-global.css` (the canonical QVO brand kit).
+ * This file mirrors the SAME resolved values in TypeScript for:
  *   1. Typed access in JS (charts, canvas, programmatic theming)
  *   2. Storybook / documentation generation
  *   3. Static analysis and design-token tests
  *
- * IF YOU CHANGE A VALUE HERE, ALSO UPDATE index.css. The two MUST stay
- * in sync. See `docs/design-system.md` for the rules.
+ * IF YOU CHANGE A VALUE HERE, ALSO UPDATE the brand kit / `_theme.css`.
+ * `scripts/check-design-tokens-sync.mjs` resolves the CSS var() chains
+ * and fails CI if the two drift. See `docs/design-system.md`.
  */
 
-export const designSystemVersion = "1.0.0-refined-harbor";
+export const designSystemVersion = "1.0.0";
 
 /* ----------------------------------------------------------------- */
-/* PALETTE                                                            */
+/* PALETTE — resolved from the QVO brand kit (light)                  */
 /* ----------------------------------------------------------------- */
 
 export const palette = {
-  // Brand
-  primary: "#1F8E83",
-  primaryHover: "#177268",
-  primaryLight: "#D8EDEB",
+  // Brand (primary = Deep Harbor)
+  primary: "#123047",
+  primaryHover: "#0E263A",
+  primaryLight: "#EAF0F4",
   onPrimary: "#FFFFFF",
 
-  accent: "#E2A24A",
-  accentHover: "#C88937",
-  accentLight: "#F7E6CB",
-  onAccent: "#0E2738",
+  // Accent (Signal Teal)
+  accent: "#2E8C83",
+  accentHover: "#246E67",
+  accentLight: "#E7F2F0",
+  onAccent: "#FFFFFF",
 
-  // Semantic feedback
-  success: "#2F8F58",
-  successLight: "#DDF0E5",
+  // Semantic feedback (reserved for system state — never decoration)
+  success: "#4C9B6B",
+  successLight: "rgba(76, 155, 107, 0.14)",
   warning: "#C98A2E",
-  warningLight: "#F6E7CB",
+  warningLight: "rgba(201, 138, 46, 0.16)",
   danger: "#B34D4D",
   dangerHover: "#962F2F",
-  dangerLight: "#F4D8D8",
-  info: "#3A7BBF",
-  infoLight: "#D7E5F2",
+  dangerLight: "rgba(179, 77, 77, 0.14)",
+  info: "#1B544F",
+  infoLight: "#DCEAF0",
 
   // Surfaces
   surface: "#FFFFFF",
-  surfaceSecondary: "#F4F7F8",
-  surfaceHover: "#EEF3F4",
-  surfaceMuted: "#EEF3F4",
-  surfaceInverse: "#0E2738",
-  onInverse: "#E8EFF2",
+  surfaceSecondary: "#F3F7F7",
+  surfaceHover: "#EAEFEF",
+  surfaceMuted: "#EAEFEF",
+  surfaceInverse: "#123047",
+  onInverse: "#FFFFFF",
 
   // Text
-  textPrimary: "#0E2738",
-  textSecondary: "#506575",
-  textMuted: "#8FA5B4",
+  textPrimary: "#123047",
+  textSecondary: "#5B6770",
+  textMuted: "#8A949D",
 
   // Borders
-  border: "#D9E2E6",
-  borderStrong: "#B8C5CC",
+  border: "#CDD7DB",
+  borderStrong: "#A7B3B8",
 
   // Sidebar / chrome
-  sidebarBg: "#0E2738",
-  sidebarText: "#C5D2DA",
-  sidebarActive: "#1F8E83",
-  sidebarHover: "#143A52",
+  sidebarBg: "#123047",
+  sidebarText: "#97AAB9",
+  sidebarActive: "#2E8C83",
+  sidebarHover: "#0E263A",
   onSidebar: "#FFFFFF",
 
   // Modal / dialog scrim
-  overlay: "rgba(14, 39, 56, 0.55)",
+  overlay: "rgba(18, 48, 71, 0.55)",
 } as const;
 
 export const paletteDark = {
-  primary: "#3DB3A6",
-  primaryHover: "#4FC9BB",
-  primaryLight: "#143A52",
-  onPrimary: "#0E2738",
+  primary: "#123047",
+  primaryHover: "#0E263A",
+  primaryLight: "#EAF0F4",
+  onPrimary: "#FFFFFF",
 
-  accent: "#EDB872",
-  accentHover: "#F4C98F",
-  accentLight: "#2A2014",
-  onAccent: "#0E2738",
+  accent: "#2E8C83",
+  accentHover: "#246E67",
+  accentLight: "#E7F2F0",
+  onAccent: "#FFFFFF",
 
-  success: "#4FB97A",
-  successLight: "#1A2E22",
-  warning: "#E0A654",
-  warningLight: "#2A2114",
-  danger: "#D17070",
-  dangerHover: "#E08585",
-  dangerLight: "#2A1818",
-  info: "#6FA5DD",
-  infoLight: "#14202C",
+  success: "#4C9B6B",
+  successLight: "rgba(76, 155, 107, 0.14)",
+  warning: "#C98A2E",
+  warningLight: "rgba(201, 138, 46, 0.16)",
+  danger: "#B34D4D",
+  dangerHover: "#962F2F",
+  dangerLight: "rgba(179, 77, 77, 0.14)",
+  info: "#1B544F",
+  infoLight: "#DCEAF0",
 
-  surface: "#11293A",
-  surfaceSecondary: "#0A1C28",
-  surfaceHover: "#143A52",
-  surfaceMuted: "#143A52",
-  surfaceInverse: "#E8EFF2",
-  onInverse: "#0E2738",
+  surface: "#0A1D2C",
+  surfaceSecondary: "#07151F",
+  surfaceHover: "#050E16",
+  surfaceMuted: "#050E16",
+  surfaceInverse: "#123047",
+  onInverse: "#123047",
 
-  textPrimary: "#E8EFF2",
-  textSecondary: "#8FA5B4",
-  textMuted: "#607585",
+  textPrimary: "#FFFFFF",
+  textSecondary: "#94A3AC",
+  textMuted: "#6B7880",
 
-  border: "#1E3A4D",
-  borderStrong: "#2C5168",
+  border: "#1F3A4F",
+  borderStrong: "#385A72",
 
-  sidebarBg: "#07151E",
-  sidebarText: "#8FA5B4",
-  sidebarActive: "#3DB3A6",
-  sidebarHover: "#11293A",
+  sidebarBg: "#050E16",
+  sidebarText: "#97AAB9",
+  sidebarActive: "#3E9890",
+  sidebarHover: "#0A1D2C",
   onSidebar: "#FFFFFF",
 
   overlay: "rgba(0, 0, 0, 0.7)",
 } as const;
 
 /* ----------------------------------------------------------------- */
-/* TYPOGRAPHY                                                         */
+/* TYPOGRAPHY — Sora (display) · Manrope (body) · JetBrains Mono      */
 /* ----------------------------------------------------------------- */
 
 export const fontFamilies = {
-  display: "'Sora', ui-sans-serif, system-ui, sans-serif",
-  body: "'Inter', ui-sans-serif, system-ui, sans-serif",
-  sans: "'Inter', ui-sans-serif, system-ui, sans-serif",
+  display: "'Sora', system-ui, -apple-system, sans-serif",
+  body: "'Manrope', system-ui, -apple-system, sans-serif",
+  sans: "'Manrope', system-ui, -apple-system, sans-serif",
   mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
 } as const;
 
 /** Type scale — pixel sizes paired with line-height + tracking. */
 export const typeScale = {
   display: {
-    fontSize: 44,
-    lineHeight: 1.05,
+    fontSize: 48,
+    lineHeight: 1.02,
     letterSpacing: "-0.02em",
-    fontWeight: 700,
+    fontWeight: 600,
     fontFamily: fontFamilies.display,
   },
   headline: {
     fontSize: 32,
-    lineHeight: 1.15,
-    letterSpacing: "-0.015em",
+    lineHeight: 1.1,
+    letterSpacing: "-0.02em",
     fontWeight: 600,
     fontFamily: fontFamilies.display,
   },
   title: {
-    fontSize: 20,
-    lineHeight: 1.3,
-    letterSpacing: "-0.01em",
+    fontSize: 22,
+    lineHeight: 1.1,
+    letterSpacing: "-0.02em",
     fontWeight: 600,
     fontFamily: fontFamilies.display,
   },
   body: {
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 1.55,
     letterSpacing: "0",
     fontWeight: 400,
     fontFamily: fontFamilies.body,
   },
   bodySm: {
-    fontSize: 13,
+    fontSize: 14,
     lineHeight: 1.5,
     letterSpacing: "0",
     fontWeight: 400,
@@ -170,9 +174,9 @@ export const typeScale = {
     fontFamily: fontFamilies.body,
   },
   mono: {
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 1.4,
-    letterSpacing: "0",
+    letterSpacing: "0.04em",
     fontWeight: 400,
     fontFamily: fontFamilies.mono,
     fontVariantNumeric: "tabular-nums" as const,
@@ -180,7 +184,7 @@ export const typeScale = {
 } as const;
 
 /* ----------------------------------------------------------------- */
-/* SPACING (4px grid)                                                 */
+/* SPACING (8px scale per brand)                                      */
 /* ----------------------------------------------------------------- */
 
 export const spacing = {
@@ -195,41 +199,41 @@ export const spacing = {
 } as const;
 
 /* ----------------------------------------------------------------- */
-/* RADIUS (premium, generous)                                         */
+/* RADIUS (brand-aligned)                                             */
 /* ----------------------------------------------------------------- */
 
 export const radius = {
-  sm: "6px",
-  md: "10px",
+  sm: "4px",
+  md: "8px",
   lg: "14px",
-  xl: "20px",
+  xl: "18px",
   pill: "9999px",
 } as const;
 
 /* ----------------------------------------------------------------- */
-/* ELEVATION (soft, harbor-tinted)                                    */
+/* ELEVATION (soft, harbor-tinted — per brand kit)                   */
 /* ----------------------------------------------------------------- */
 
 export const elevation = {
-  e1: "0 1px 2px rgba(14, 39, 56, 0.05)",
-  e2: "0 8px 24px rgba(14, 39, 56, 0.06), 0 2px 6px rgba(14, 39, 56, 0.04)",
-  e3: "0 24px 48px rgba(14, 39, 56, 0.10), 0 6px 14px rgba(14, 39, 56, 0.06)",
-  glow: "0 0 0 4px rgba(31, 142, 131, 0.18)",
+  e1: "0 1px 2px rgba(18, 48, 71, 0.06), 0 0 0 1px rgba(18, 48, 71, 0.04)",
+  e2: "0 4px 14px rgba(18, 48, 71, 0.08), 0 0 0 1px rgba(18, 48, 71, 0.04)",
+  e3: "0 16px 48px rgba(18, 48, 71, 0.12)",
+  glow: "0 0 0 3px rgba(46, 140, 131, 0.5)",
 } as const;
 
 /* ----------------------------------------------------------------- */
-/* MOTION                                                             */
+/* MOTION (per brand kit)                                             */
 /* ----------------------------------------------------------------- */
 
 export const motion = {
   durations: {
     fast: 120,
-    base: 200,
-    slow: 320,
+    base: 220,
+    slow: 420,
   },
   easings: {
-    standard: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-    emphasized: "cubic-bezier(0.16, 1, 0.3, 1)",
+    standard: "cubic-bezier(0.22, 1, 0.36, 1)",
+    emphasized: "cubic-bezier(0.65, 0, 0.35, 1)",
   },
 } as const;
 
@@ -238,7 +242,8 @@ export const motion = {
 /* ----------------------------------------------------------------- */
 
 export const a11y = {
-  focusRingColor: palette.primary,
+  // Focus ring is Signal Teal across the brand (see --focus-ring-color).
+  focusRingColor: palette.accent,
   focusRingOffset: "2px",
   focusRingWidth: "2px",
   /** Minimum interactive target size — required for taps/clicks. */
@@ -254,16 +259,19 @@ export const a11y = {
 /* ----------------------------------------------------------------- */
 
 /**
- * Ordered, distinguishable, color-blind-checked sequence for charts.
- * Index 0 = primary series. Loop back if you exceed 6 series.
+ * Ordered, distinguishable categorical sequence for charts, drawn ONLY
+ * from the brand's harbor + teal tonal ramps. Status colors
+ * (success / warning / critical) are intentionally excluded — the brand
+ * reserves them for system state, never decoration. Loop back if you
+ * exceed 6 series.
  */
 export const chartPalette = [
-  palette.primary, // teal — primary series
-  palette.accent, // warm amber
-  palette.info, // calm blue
-  palette.success, // green
-  palette.warning, // ochre
-  palette.sidebarHover, // deep navy tint
+  palette.accent, // teal-500  — primary series
+  palette.primary, // harbor-500 — deep navy
+  "#58A89F", // teal-300
+  "#677F92", // harbor-300
+  "#1B544F", // teal-700
+  "#97AAB9", // harbor-200
 ] as const;
 
 /* ----------------------------------------------------------------- */
