@@ -8,6 +8,9 @@ export interface NumberLookupResult {
   tenantId: string;
   agentId: string;
   agentType: string;
+  agentName: string;
+  tenantName: string;
+  agentMetadata: Record<string, unknown> | null;
   phoneNumberId: string;
   routingId: string;
   conditions: Record<string, unknown> | null;
@@ -30,6 +33,9 @@ export async function lookupByPhoneNumber(
     tenant_id: string;
     agent_id: string;
     agent_type: string;
+    agent_name: string;
+    tenant_name: string;
+    agent_metadata: Record<string, unknown> | null;
     phone_number_id: string;
     routing_id: string;
     conditions: Record<string, unknown> | null;
@@ -38,12 +44,16 @@ export async function lookupByPhoneNumber(
        pn.tenant_id,
        nr.agent_id,
        a.type AS agent_type,
+       a.name AS agent_name,
+       a.metadata AS agent_metadata,
+       t.name AS tenant_name,
        pn.id AS phone_number_id,
        nr.id AS routing_id,
        nr.conditions
      FROM phone_numbers pn
      JOIN number_routing nr ON nr.phone_number_id = pn.id AND nr.tenant_id = pn.tenant_id AND nr.is_active = true
      JOIN agents a ON a.id = nr.agent_id AND a.tenant_id = pn.tenant_id AND a.status = 'active'
+     JOIN tenants t ON t.id = pn.tenant_id
      WHERE pn.phone_number = $1 AND pn.status = 'active'
      ORDER BY nr.priority ASC
      LIMIT 1`,
@@ -66,6 +76,9 @@ export async function lookupByPhoneNumber(
     tenantId: row.tenant_id,
     agentId: row.agent_id,
     agentType: row.agent_type,
+    agentName: row.agent_name,
+    tenantName: row.tenant_name,
+    agentMetadata: row.agent_metadata,
     phoneNumberId: row.phone_number_id,
     routingId: row.routing_id,
     conditions: row.conditions,

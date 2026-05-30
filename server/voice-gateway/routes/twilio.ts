@@ -3,6 +3,7 @@ import { createLogger } from '../../../platform/core/logger';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import { lookupByPhoneNumber, getAgentConfig } from '../services/numberLookup';
 import { loadAgentConfig } from '../services/agentLoader';
+import { buildPreTransferSayTwiml } from '../services/preTransferGreeting';
 import { sessionManager } from '../services/sessionManager';
 import { CallLifecycleCoordinator } from '../../../platform/runtime/lifecycle/CallLifecycleCoordinator';
 import { createPlatformPersistenceAdapter } from '../services/callPersistence';
@@ -300,9 +301,20 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
     const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
     const wsUrl = `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
 
+    // Immediate, premium-voice greeting that plays while the media stream
+    // connects and the OpenAI Realtime session warms up — fills the setup
+    // gap so the caller never hears dead air. Empty string when disabled.
+    const preTransferSay = buildPreTransferSayTwiml({
+      tenantId,
+      tenantName: routing.tenantName,
+      agentName: routing.agentName,
+      agentMetadata: routing.agentMetadata,
+    });
+
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  ${preTransferSay}
   <Connect>
     <Stream url="${wsUrl}">
       <Parameter name="tenantId" value="${tenantId}" />
