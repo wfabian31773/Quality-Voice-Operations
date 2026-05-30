@@ -1523,6 +1523,15 @@ export async function createRealtimeSession(
       slog.info('Realtime session closed');
 
       if (silenceTimer) clearTimeout(silenceTimer);
+      // Clear the per-call budget-check interval here too. Without this, the
+      // hangup teardown path (finalizeStream -> session.close() ->
+      // sessionManager.unregister) never runs the sessionManager `cleanup`
+      // callback, so the 30s budget interval would keep firing on an
+      // already-ended call — a slow resource leak under call churn.
+      if (budgetCheckTimer) {
+        clearInterval(budgetCheckTimer);
+        budgetCheckTimer = null;
+      }
 
       const cacheCounters = getSessionCacheCounters(callSessionId);
       costTracker.cacheHits += cacheCounters.hits;
