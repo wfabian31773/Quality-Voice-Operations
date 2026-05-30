@@ -393,7 +393,25 @@ async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | nu
         locator = page.locator(`[data-testid="${check.expect.testid}"]`).first();
         sentinelDescription = `[data-testid="${check.expect.testid}"]`;
       } else {
-        locator = page.getByDisplayValue(check.expect.value).first();
+        // `page.getByDisplayValue()` does NOT exist on Playwright's
+        // Page or Locator class — the seven valid `getBy*` factories
+        // are getByTestId, getByAltText, getByLabel, getByPlaceholder,
+        // getByText, getByTitle, getByRole. Calling the non-existent
+        // method threw `TypeError: page.getByDisplayValue is not a
+        // function` on every CI run since this branch was added.
+        //
+        // The semantic equivalent in Playwright is a CSS attribute
+        // selector on the `value` HTML attribute. For React inputs
+        // rendered with `value={x}` or `defaultValue={x}`, the HTML
+        // attribute is set on initial mount (and stays in sync on
+        // re-render via React's reconciliation), so this matches the
+        // same hydration-completed condition the original API would
+        // have checked. Escape any embedded double-quotes in the
+        // expected value to keep the selector well-formed.
+        const escapedValue = check.expect.value.replace(/"/g, '\\"');
+        locator = page.locator(
+          `input[value="${escapedValue}"], textarea[value="${escapedValue}"]`,
+        ).first();
         sentinelDescription = `form control with displayed value "${check.expect.value}"`;
       }
       try {
