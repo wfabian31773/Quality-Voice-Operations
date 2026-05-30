@@ -47,8 +47,44 @@ export const MODEL_RATES: Record<string, ModelRate> = {
   'gpt-4o-mini-realtime-preview': { inputPer1kTokens: 0.06, outputPer1kTokens: 0.24, cachedInputPer1kTokens: 0.03 },
 };
 
-export const STT_COST_PER_MINUTE_CENTS = parseFloat(process.env.STT_COST_PER_MINUTE_CENTS ?? '0.6');
-export const TTS_COST_PER_1K_CHARS_CENTS = parseFloat(process.env.TTS_COST_PER_1K_CHARS_CENTS ?? '1.5');
+// Per-component cost-rate environment knobs.
+//
+// IMPORTANT ON STT + TTS FOR THE REALTIME API
+// -------------------------------------------
+// OpenAI's Realtime API does NOT bill speech-to-text and text-to-speech
+// as separate line items — the model audio token rates above
+// (`audioInputPer1kTokens` / `audioOutputPer1kTokens`, plus the cached
+// discount) include both directions of the audio stream. The bundled
+// rate IS the STT + TTS cost.
+//
+// Treating STT/TTS as additive cost components on a Realtime call is
+// double-counting, and the previous env defaults (0.6¢/min STT, 1.5¢/1k
+// chars TTS) were adding ~5–10¢ of phantom cost per call on top of the
+// audio tokens we already pay for. With fix #3 (PR e9a45c9) now
+// recording real audio token counts from `response.done.usage`, the
+// phantom adders skew margin analytics by adding fake cost — usually
+// making margin look worse than it is, but in an unprincipled way
+// that's impossible to reconcile with the actual OpenAI bill.
+//
+// Defaults are zero. The columns + helper functions
+// (`calculateSttCostCents`, `calculateTtsCostCents`) are kept so a
+// future pipeline-architecture caller (Whisper STT → GPT → ElevenLabs
+// TTS) can opt back in by setting these env vars to real per-component
+// rates. For now nothing in the voice gateway opens that path; every
+// active SKU in `TIER_MODEL_MAP` is a Realtime model.
+export const STT_COST_PER_MINUTE_CENTS = parseFloat(process.env.STT_COST_PER_MINUTE_CENTS ?? '0');
+export const TTS_COST_PER_1K_CHARS_CENTS = parseFloat(process.env.TTS_COST_PER_1K_CHARS_CENTS ?? '0');
+
+// INFRA is different from STT/TTS. It's not double-counted — it
+// represents server hosting + bandwidth allocation per call (Replit +
+// Supabase + outbound), which is REAL cost but currently not measured
+// at per-call granularity. The 0.5¢/min default is an allocation
+// placeholder: for a 5-minute call it contributes 2.5¢. Tune the env
+// var to match (actual monthly infra spend) ÷ (total billable minutes)
+// if you want it to track reality more closely. A true per-call infra
+// measurement (bandwidth bytes × egress rate + Replit/Supabase per-
+// call cost) is out of scope for now and tracked as a follow-up in
+// `docs/audit/10-cost-tracking-audit.md` §2.5.
 export const INFRA_COST_PER_MINUTE_CENTS = parseFloat(process.env.INFRA_COST_PER_MINUTE_CENTS ?? '0.5');
 
 export type ModelTier = 'economy' | 'standard' | 'premium';
