@@ -913,30 +913,25 @@ export async function createRealtimeSession(
   const { tenantId, agentConfig, callerNumber, calledNumber, callSid, lifecycleCoordinator } = ctx;
 
   if (ctx.budgetGuard) {
-    const status = await ctx.budgetGuard.getStatus();
-    if (status.isWarning) {
-      logger.warn('Budget warning during call setup', {
-        tenantId,
-        percentUsed: `${(status.percentUsed * 100).toFixed(1)}%`,
-      });
-    }
-  }
-
-  let callerMemorySummary: string | undefined;
-  if (ctx.callerMemory) {
-    try {
-      const memory = await ctx.callerMemory.getCallerMemory(tenantId, callerNumber);
-      if (memory && memory.totalCalls > 0) {
-        callerMemorySummary = `Returning caller (${memory.totalCalls} previous calls). Last call: ${memory.lastCallDate ?? 'unknown'}.`;
-        if (memory.openTickets && memory.openTickets.length > 0) {
-          callerMemorySummary += ` Open tickets: ${memory.openTickets.join(', ')}.`;
+    // Non-blocking: this only emits a warning log, so keep it off the
+    // critical path to first audio.
+    ctx.budgetGuard
+      .getStatus()
+      .then((status) => {
+        if (status.isWarning) {
+          logger.warn('Budget warning during call setup', {
+            tenantId,
+            percentUsed: `${(status.percentUsed * 100).toFixed(1)}%`,
+          });
         }
-      }
-    } catch (err) {
-      logger.error('Caller memory lookup failed', { tenantId, error: String(err) });
-    }
+      })
+      .catch(() => {});
   }
 
+  // Construct the reasoning engine synchronously; its async initialize()
+  // is run concurrently with the caller-memory lookup and the call-session
+  // insert below (all three are independent DB round-trips). Running them
+  // sequentially was a big contributor to time-to-first-audio.
   let reasoningEngine: ReasoningEngine | undefined;
   try {
     const reasoningConfig: ReasoningEngineConfig = {
@@ -950,32 +945,64 @@ export async function createRealtimeSession(
       memoryStorage: ctx.callerMemory ?? null,
     };
     reasoningEngine = new ReasoningEngine(reasoningConfig);
-    const callerContext = await reasoningEngine.initialize();
-    if (callerContext.isReturningCaller) {
-      const reasoningMemoryPrompt = reasoningEngine.getCallerContextPrompt();
-      if (reasoningMemoryPrompt) {
-        callerMemorySummary = callerMemorySummary
-          ? `${callerMemorySummary}\n${reasoningMemoryPrompt}`
-          : reasoningMemoryPrompt;
-      }
-    }
   } catch (err) {
-    logger.error('Reasoning engine initialization failed, continuing without it', {
+    logger.error('Reasoning engine construction failed, continuing without it', {
       tenantId,
       error: String(err),
     });
     reasoningEngine = undefined;
   }
 
-  const callSessionId = await createCallSession({
-    tenantId,
-    agentId: agentConfig.agentId,
-    callSid,
-    direction: ctx.direction ?? 'inbound',
-    callerNumber,
-    calledNumber,
-    language: agentConfig.language,
-  });
+  const [callerMemoryResult, reasoningContextPrompt, callSessionId] = await Promise.all([
+    (async (): Promise<string | undefined> => {
+      if (!ctx.callerMemory) return undefined;
+      try {
+        const memory = await ctx.callerMemory.getCallerMemory(tenantId, callerNumber);
+        if (memory && memory.totalCalls > 0) {
+          let summary = `Returning caller (${memory.totalCalls} previous calls). Last call: ${memory.lastCallDate ?? 'unknown'}.`;
+          if (memory.openTickets && memory.openTickets.length > 0) {
+            summary += ` Open tickets: ${memory.openTickets.join(', ')}.`;
+          }
+          return summary;
+        }
+      } catch (err) {
+        logger.error('Caller memory lookup failed', { tenantId, error: String(err) });
+      }
+      return undefined;
+    })(),
+    (async (): Promise<string | undefined> => {
+      if (!reasoningEngine) return undefined;
+      try {
+        const callerContext = await reasoningEngine.initialize();
+        if (callerContext.isReturningCaller) {
+          return reasoningEngine.getCallerContextPrompt() ?? undefined;
+        }
+      } catch (err) {
+        logger.error('Reasoning engine initialization failed, continuing without it', {
+          tenantId,
+          error: String(err),
+        });
+        reasoningEngine = undefined;
+      }
+      return undefined;
+    })(),
+    createCallSession({
+      tenantId,
+      agentId: agentConfig.agentId,
+      callSid,
+      direction: ctx.direction ?? 'inbound',
+      callerNumber,
+      calledNumber,
+      language: agentConfig.language,
+    }),
+  ]);
+
+  let callerMemorySummary: string | undefined = callerMemoryResult;
+  if (reasoningContextPrompt) {
+    callerMemorySummary = callerMemorySummary
+      ? `${callerMemorySummary}\n${reasoningContextPrompt}`
+      : reasoningContextPrompt;
+  }
 
   if (reasoningEngine) {
     reasoningEngine.setCallSessionId(callSessionId);
@@ -988,11 +1015,13 @@ export async function createRealtimeSession(
     wakeUpTicketing().catch(() => {});
   }
 
-  await writeCallEvent(tenantId, callSessionId, 'call_received', null, 'CALL_RECEIVED', {
+  // Audit event — fire-and-forget so it doesn't block first audio. The
+  // call-session row already exists; this is an append-only event log.
+  writeCallEvent(tenantId, callSessionId, 'call_received', null, 'CALL_RECEIVED', {
     callerNumber: redactPHI(callerNumber),
     calledNumber,
     agentId: agentConfig.agentId,
-  });
+  }).catch((err) => logger.error('Failed to write call_received event', { tenantId, error: String(err) }));
 
   ctx.reasoningEngine = reasoningEngine;
 
@@ -1130,11 +1159,14 @@ export async function createRealtimeSession(
     isTrial: ctx.isTrial,
   });
 
+  // Keep the lifecycle state transition awaited (the demo live-call UI and
+  // teardown logic key off lifecycle_state ordering), but fire-and-forget
+  // the append-only audit event.
   await updateCallState(tenantId, callSessionId, 'AGENT_CONNECTED');
-  await writeCallEvent(tenantId, callSessionId, 'agent_connected', 'CALL_RECEIVED', 'AGENT_CONNECTED', {
+  writeCallEvent(tenantId, callSessionId, 'agent_connected', 'CALL_RECEIVED', 'AGENT_CONNECTED', {
     agentId: agentConfig.agentId,
     model: agentConfig.model,
-  });
+  }).catch((err) => logger.error('Failed to write agent_connected event', { tenantId, error: String(err) }));
 
   let workflowContext: WorkflowContext | undefined;
   if (ctx.workflowEngine) {

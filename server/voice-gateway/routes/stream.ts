@@ -124,10 +124,19 @@ export function attachWebSocket(server: HTTPServer): void {
     let streamCalledNumber: string | undefined;
     let sessionResult: RealtimeSessionResult | undefined;
     let sessionClosed = false;
+    // Set as soon as the Twilio stream stops / WS closes, even if that
+    // happens while createRealtimeSession() is still in-flight (the caller
+    // hung up during the multi-second setup). Used below to tear down a
+    // session that finishes building after the stream has already ended,
+    // which would otherwise leak an orphaned session whose silence timer
+    // fires forever and whose lifecycle_state never reaches a terminal
+    // state (so the demo live-call UI never ends).
+    let streamEnded = false;
     const streamStartedAt = Date.now();
     let slog: SessionLogger = logger;
 
     async function finalizeStream(): Promise<void> {
+      streamEnded = true;
       if (callSessionId && tenantId && !sessionClosed) {
         sessionClosed = true;
 
@@ -338,7 +347,51 @@ export function attachWebSocket(server: HTTPServer): void {
               callerPhone: redactPHI(callerNumber),
             });
 
-            const budgetResult = await checkBudget(tenantId);
+            // Kick off the workforce-team lookup immediately. It only needs
+            // agentId/tenantId (both known now) and its result isn't consumed
+            // until after the agent config is built, so running it concurrently
+            // with the budget/agent reads keeps it off the critical path to
+            // first audio.
+            const workforceTeamPromise: Promise<{ team_id: string } | undefined> = (async () => {
+              try {
+                const pool = getPlatformPool();
+                const hClient = await pool.connect();
+                try {
+                  await hClient.query('BEGIN');
+                  try {
+                    return await withTenantContext(hClient, tenantId!, async () => {
+                      const { rows } = await hClient.query(
+                        `SELECT wt.id as team_id FROM workforce_teams wt
+                         JOIN workforce_members wm ON wm.team_id = wt.id
+                         WHERE wm.agent_id = $1 AND wt.status = 'active'
+                         LIMIT 1`,
+                        [agentId],
+                      );
+                      await hClient.query('COMMIT');
+                      return rows[0] as { team_id: string } | undefined;
+                    });
+                  } catch (queryErr) {
+                    await hClient.query('ROLLBACK').catch(() => {});
+                    throw queryErr;
+                  }
+                } finally {
+                  hClient.release();
+                }
+              } catch (wfErr) {
+                logger.warn('Workforce team lookup failed, continuing without handoff', { error: String(wfErr) });
+                return undefined;
+              }
+            })();
+
+            // Budget check and the two agent-config reads are mutually
+            // independent DB round-trips — run them concurrently to cut
+            // time-to-first-audio (sequential setup was leaving callers in
+            // dead air long enough to hang up before the greeting played).
+            const [budgetResult, dbAgent, toolOverrides] = await Promise.all([
+              checkBudget(tenantId),
+              getAgentConfig(tenantId, agentId),
+              getAgentToolOverrides(tenantId, agentId),
+            ]);
             if (!budgetResult.allowed) {
               logger.warn('Call blocked by subscription budget', {
                 tenantId,
@@ -351,8 +404,6 @@ export function attachWebSocket(server: HTTPServer): void {
             }
 
             const coordinator = getCoordinator(tenantId);
-            const dbAgent = await getAgentConfig(tenantId, agentId);
-            const toolOverrides = await getAgentToolOverrides(tenantId, agentId);
             const trustedAgentType = dbAgent?.type || agentType || 'general';
             const agentCfg = loadAgentConfig({
               tenantId,
@@ -452,28 +503,9 @@ export function attachWebSocket(server: HTTPServer): void {
             let workforceTeamId: string | undefined;
             let currentAgentId = agentId!;
             try {
-              const pool = getPlatformPool();
-              const hClient = await pool.connect();
-              try {
-                await hClient.query('BEGIN');
-                let teamResult: { team_id: string } | undefined;
-                try {
-                  teamResult = await withTenantContext(hClient, tenantId!, async () => {
-                    const { rows } = await hClient.query(
-                      `SELECT wt.id as team_id FROM workforce_teams wt
-                       JOIN workforce_members wm ON wm.team_id = wt.id
-                       WHERE wm.agent_id = $1 AND wt.status = 'active'
-                       LIMIT 1`,
-                      [agentId],
-                    );
-                    await hClient.query('COMMIT');
-                    return rows[0] as { team_id: string } | undefined;
-                  });
-                } catch (queryErr) {
-                  await hClient.query('ROLLBACK').catch(() => {});
-                  throw queryErr;
-                }
-                if (teamResult) {
+              const teamResult = await workforceTeamPromise;
+              if (teamResult) {
+                {
                   workforceTeamId = teamResult.team_id;
                   const handoffEngine = new HandoffEngine();
                   slog.info('Agent is part of workforce team, enabling handoff tool', { teamId: workforceTeamId, agentId });
@@ -525,11 +557,9 @@ export function attachWebSocket(server: HTTPServer): void {
                     },
                   });
                 }
-              } finally {
-                hClient.release();
               }
             } catch (wfErr) {
-              slog.warn('Workforce team lookup failed, continuing without handoff', { error: String(wfErr) });
+              slog.warn('Workforce handoff setup failed, continuing without handoff', { error: String(wfErr) });
             }
 
             try {
@@ -569,6 +599,19 @@ export function attachWebSocket(server: HTTPServer): void {
                 callSid: twilioCallSid!,
               });
 
+              // The caller may have hung up while session setup was still
+              // in-flight. finalizeStream() runs on the Twilio "stop" / WS
+              // "close" event, but at that point callSessionId wasn't set yet,
+              // so it did nothing. Now that the session exists, tear it down
+              // immediately instead of connecting it (which would orphan the
+              // session: silence timer firing forever, lifecycle_state stuck
+              // at ACTIVE_CONVERSATION so the demo live-call UI never ends).
+              if (streamEnded) {
+                slog.info('Stream already ended during setup — tearing down session before connect');
+                await finalizeStream();
+                return;
+              }
+
               sessionResult.onOpenAIAudio((audioEvent) => {
                 if (ws.readyState !== WebSocket.OPEN || !streamSid) return;
                 if (!audioEvent.data) return;
@@ -589,6 +632,19 @@ export function attachWebSocket(server: HTTPServer): void {
                 slog.info('OpenAI Realtime session connected', { agentId });
               } else {
                 slog.error('OPENAI_API_KEY not set — cannot connect realtime session');
+              }
+
+              // The caller may have hung up while session.connect() was
+              // in-flight (Twilio "stop" / WS "close" runs finalizeStream
+              // concurrently). If so, do NOT transition to ACTIVE_CONVERSATION
+              // — that would revert the lifecycle out of its terminal state
+              // and leave the demo live-call UI hanging again. finalizeStream
+              // is idempotent (gated by sessionClosed), so re-running it here
+              // is safe.
+              if (streamEnded) {
+                slog.info('Stream ended during connect — skipping ACTIVE_CONVERSATION and tearing down');
+                await finalizeStream();
+                return;
               }
 
               await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
