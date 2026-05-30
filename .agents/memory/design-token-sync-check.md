@@ -28,6 +28,29 @@ comments first — the file header literally contains `@theme {}` in prose, whic
 naive `@theme\s*\{` match will grab (returning an empty body). A `\n}`-terminated
 regex accidentally dodged this; the brace-aware scanner does not, hence comment strip.
 
+## Probes are <img>-blind — heroes need a dark CSS backstop
+Both browser gates (`publicDarkModeContrast` and `publicHeroVisualRegression`) read
+only CSS `background-color` / `background-image` up the ancestor chain (alpha ≥ 0.999
+to count as opaque). They do NOT see `<img>` content, and they ignore the hero's
+~0.95 black scrim (below the 0.999 opaque cutoff). So a hero built from an `<img>` +
+scrim must put a DARK opaque background on the section itself or the probe falls
+through to the page background (light "mist") and reports white-text-on-light.
+**Marketing trap:** under `[data-accent="teal-forward"]` (PublicLayout) `primary`
+resolves to TEAL and `accent` resolves to HARBOR (dark). So the dark backstop a hero
+needs is `bg-accent`, NOT `bg-primary` — `bg-primary` makes a teal slab and still
+fails contrast. This is why `PageHero` uses `bg-accent`.
+
+## Refreshing a hero-visual baseline safely
+The hero-visual gate fails if a route's sampled dominant color drifts > tolerance (32)
+from `__baselines__/publicHeroColors.json`. A stale baseline (e.g. after a homepage
+redesign that the gate never re-ran against because an earlier gate was failing) is a
+legitimate UPDATE_HERO_BASELINES=1 case — but ONLY refresh the route(s) that actually
+failed, then hand-patch the JSON to keep just those entries. A full regen rewrites
+~200 lines of sub-tolerance sampling jitter (each RGB channel is its own line) and
+buries the real change. Before accepting a refresh, confirm the dark-luma invariant
+did NOT fail (that invariant is what catches a genuine "white slab in dark mode" bug);
+if only light-theme values drifted, it's cosmetic redesign drift, safe to rebaseline.
+
 ## Gate ordering trap
 `scripts/ci-design-checks.sh` runs under `set -euo pipefail` with the token check
 FIRST, then browser gates (`check:public-dark-mode` contrast audit, `check:public-hero-visual`,

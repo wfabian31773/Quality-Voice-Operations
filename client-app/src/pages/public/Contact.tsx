@@ -199,7 +199,7 @@ export default function Contact() {
                 <p className="text-sm text-text-secondary font-body">{t('contact.info.location_value')}</p>
               </div>
 
-              <div className="bg-info-light rounded-2xl p-7">
+              <div className="bg-surface rounded-2xl border border-border/50 p-7">
                 <h3 className="font-display text-sm font-semibold text-text-primary mb-2">{t('contact.info.customer_label')}</h3>
                 <p className="text-sm text-text-secondary font-body">
                   {t('contact.info.customer_value')}

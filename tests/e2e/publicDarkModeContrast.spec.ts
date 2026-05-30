@@ -45,7 +45,7 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5000';
 const MIN_CONTRAST = Number(process.env.DARKMODE_MIN_CONTRAST ?? '1.6');
 const MAX_FAILURES_PER_RUN = Number(process.env.DARKMODE_MAX_FAILURES ?? '0');
 
-const PUBLIC_ROUTES = [
+const DEFAULT_PUBLIC_ROUTES = [
   '/',
   '/product',
   '/features',
@@ -60,6 +60,16 @@ const PUBLIC_ROUTES = [
   '/contact',
   '/signup',
 ] as const;
+
+// Optional triage override: DARKMODE_ROUTES="/,/contact" runs only those
+// routes (comma-separated). Unset in CI, so the full suite always runs.
+const ROUTE_FILTER = (process.env.DARKMODE_ROUTES ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const PUBLIC_ROUTES: readonly string[] = ROUTE_FILTER.length
+  ? ROUTE_FILTER
+  : DEFAULT_PUBLIC_ROUTES;
 
 type Theme = 'light' | 'dark';
 

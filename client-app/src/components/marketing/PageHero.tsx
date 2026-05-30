@@ -81,8 +81,14 @@ export default function PageHero({
   textMaxWidthClass = 'max-w-xl',
 }: PageHeroProps) {
   return (
+    // `bg-accent` (harbor, dark on the teal-forward marketing accent) is the
+    // REQUIRED opaque backstop behind the image + scrim: the dark-mode contrast
+    // and hero-visual probes read CSS backgrounds only — they ignore <img>
+    // content and the sub-opaque scrim, so without it they fall through to the
+    // light page background and mis-score the white hero text. Do not use
+    // `bg-primary` here (it resolves to teal on marketing and still fails).
     <section
-      className={`relative isolate ${minHeightClass} flex items-end overflow-hidden`}
+      className={`relative isolate ${minHeightClass} flex items-end overflow-hidden bg-accent`}
     >
       {/* Image backdrop: dark mode swaps via prefers-color-scheme */}
       <picture className="absolute inset-0 -z-10">
