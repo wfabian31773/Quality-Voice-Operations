@@ -1,5 +1,6 @@
 import { createLogger } from '../core/logger';
 import { postToOpsSlackWebhook } from '../messaging/SlackWebhookNotifier';
+import { sendOpsAlert } from './reconciliation';
 import {
   verifyStripePrices,
   type VerifyStripePricesReport,
@@ -171,6 +172,43 @@ async function postSlackSafely(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Wrap the same alert content into an HTML email body and send via
+ * the unified ops-alert path (cost audit fix #5, commit 4/4). This is
+ * the channel that always lands — `postSlackSafely` above is a no-op
+ * when `OPS_SLACK_WEBHOOK_URL` is unset (which it is in QVO, since
+ * there's no Slack workspace), and before this commit the regression
+ * + recovery alerts had been silently dropping.
+ */
+async function sendOpsEmailSafely(
+  subjectShort: string,
+  bodyText: string,
+  severity: 'warning' | 'urgent',
+): Promise<boolean> {
+  try {
+    const result = await sendOpsAlert({
+      severity,
+      subject: subjectShort,
+      // Render the Slack-style plain text as preformatted HTML so
+      // newlines + indentation survive the email-client text→HTML
+      // squash. Strip Slack's `:emoji:` syntax → empty so it doesn't
+      // appear literally in the inbox.
+      bodyHtml: `<pre style="font-family:system-ui,Segoe UI,sans-serif;white-space:pre-wrap;">${bodyText
+        .replace(/</g, '&lt;')
+        .replace(/:[\w_+\-]+:/g, '')
+        .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')}</pre>`,
+      bodyText,
+      source: 'stripe_price_drift',
+    });
+    return result.success === true;
+  } catch (err) {
+    logger.warn('Ops email failed while alerting Stripe price drift', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
 export interface RunStripePriceVerificationOptions {
   source?: 'scheduled' | 'manual';
 }
@@ -216,11 +254,24 @@ export async function runStripePriceVerificationCycle(
     // returns null for unconfigured / empty / errored lookups so the
     // underlying Slack alert always fires regardless.
     failureScreenshotLinks = await loadFailureScreenshotLinksSafely();
-    slackNotified = await postSlackSafely(
-      buildRegressionSlackText(report, failureScreenshotLinks),
+    const regressionText = buildRegressionSlackText(report, failureScreenshotLinks);
+    slackNotified = await postSlackSafely(regressionText);
+    // Fan-out to email regardless of Slack outcome so the alert lands
+    // somewhere even when Slack is unconfigured (which is the QVO
+    // default state — see audit doc commit 4/4 for context).
+    await sendOpsEmailSafely(
+      `Stripe price drift — ${report.summary.failed}/${report.summary.total} failed`,
+      regressionText,
+      'urgent',
     );
   } else if (!failed && previousStatus !== null && isFailure(previousStatus)) {
-    slackNotified = await postSlackSafely(buildRecoverySlackText(report));
+    const recoveryText = buildRecoverySlackText(report);
+    slackNotified = await postSlackSafely(recoveryText);
+    await sendOpsEmailSafely(
+      'Stripe price drift recovered',
+      recoveryText,
+      'warning',
+    );
   }
 
   if (failed) {

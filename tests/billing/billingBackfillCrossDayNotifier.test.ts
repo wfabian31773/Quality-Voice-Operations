@@ -395,12 +395,26 @@ describe('notifyFinanceOfBackfillCrossDayAlert — degraded paths', () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
-  it('returns no_recipients_or_channels when neither email nor slack are configured', async () => {
+  it('falls back to the ops-alert email when neither finance recipients nor slack are configured', async () => {
+    // Before commit 4 of the cost audit this returned
+    // `skipReason: 'no_recipients_or_channels'` and the alert
+    // vanished. Now we fall back to `sendOpsAlert` (which always has
+    // a recipient via MARGIN_ALERT_EMAIL or the hardcoded default),
+    // so the alert lands in someone's inbox instead of silently
+    // dropping.
     seedAlert();
     const result = await notifyFinanceOfBackfillCrossDayAlert('alert-1');
-    expect(result.skipReason).toBe('no_recipients_or_channels');
-    expect(sendEmail).not.toHaveBeenCalled();
-    expect(updateCalls).toEqual([]);
+    expect(result.delivered).toBe(true);
+    expect(result.emailDelivered).toBe(true);
+    expect(result.slackDelivered).toBe(false);
+    expect(result.skipReason).toBeUndefined();
+    // The fallback path goes through `sendOpsAlert` which internally
+    // calls our mocked sendEmail.
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(updateCalls).toEqual([
+      { kind: 'claim', id: 'alert-1' },
+      { kind: 'finalize', id: 'alert-1', channels: 'ops_alert_fallback' },
+    ]);
   });
 
   it('still delivers via Slack alone when no email recipients are configured', async () => {

@@ -39,6 +39,7 @@ import { createLogger } from '../core/logger';
 import { getPlatformPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { postToOpsSlackWebhook } from '../messaging/SlackWebhookNotifier';
+import { sendOpsAlert } from './reconciliation';
 
 const logger = createLogger('BILLING_BACKFILL_ALERT');
 
@@ -75,7 +76,14 @@ export interface FinanceBackfillNotifyResult {
     | 'already_acknowledged'
     | 'claim_lost'
     | 'no_recipients_or_channels'
-    | 'channels_failed';
+    | 'channels_failed'
+    /**
+     * The unified-ops-alert email fallback (added in cost audit fix #5
+     * commit 4) was attempted because no other channel was configured
+     * but the send itself failed (SMTP misconfig, recipient bounce,
+     * etc). The slot was released so a future retry will re-attempt.
+     */
+    | 'ops_alert_fallback_failed';
   /** True when the email send succeeded (or was logged in console mode). */
   emailDelivered: boolean;
   /** True when the Slack post succeeded. False when not configured or failed. */
@@ -462,11 +470,68 @@ export async function notifyFinanceOfBackfillCrossDayAlert(
   );
 
   if (recipientsResolved.emails.length === 0 && !slackConfigured) {
+    // Last-resort: fall back to the unified ops-alert email path so
+    // we don't silently drop the alert. Before commit 4 of the cost
+    // audit this branch returned `skipReason: 'no_recipients_or_channels'`
+    // and the alert vanished. Now we render + send via sendOpsAlert
+    // which always has a recipient (MARGIN_ALERT_EMAIL env, default
+    // fabianwayne1@gmail.com).
     logger.warn(
-      'Finance backfill alert has no email recipients AND no Slack webhook configured — skipping notification',
+      'Finance backfill alert has no recipient list AND no Slack — falling back to ops-alert email',
       { alertId, tenantId: alert.tenant_id, externalId },
     );
-    return { ...baseResult, skipReason: 'no_recipients_or_channels' };
+    const fallbackTenantName = await loadTenantName(alert.tenant_id);
+    const fallbackRendered = renderAlert(
+      alert,
+      fallbackTenantName,
+      externalId,
+      oldDate,
+      newDate,
+      typeof metadata.runbook_url === 'string'
+        ? buildRunbookLink(metadata.runbook_url)
+        : 'docs/runbooks/billing-backfill-cross-day-rebalance.md',
+      buildOpsAlertLink(alert.type),
+    );
+    try {
+      // Claim the slot so a future retry doesn't fire a duplicate
+      // fallback once recipients eventually do get configured.
+      const fallbackClaimed = await claimNotificationSlot(alertId);
+      if (!fallbackClaimed) {
+        return { ...baseResult, skipReason: 'claim_lost' };
+      }
+      const fallbackResult = await sendOpsAlert({
+        severity: 'urgent',
+        subject: fallbackRendered.subject,
+        bodyHtml: fallbackRendered.html,
+        bodyText: fallbackRendered.text,
+        source: 'billing_backfill_cross_day',
+      });
+      if (fallbackResult.success) {
+        await finalizeNotificationKind(alertId, 'ops_alert_fallback');
+        return {
+          ...baseResult,
+          delivered: true,
+          claimed: true,
+          emailDelivered: true,
+          slackDelivered: false,
+          recipients: 0,
+        };
+      }
+      // Fallback failed — release the slot for a future retry.
+      await releaseNotificationSlot(alertId);
+      return {
+        ...baseResult,
+        skipReason: 'ops_alert_fallback_failed',
+        claimed: false,
+      };
+    } catch (err) {
+      logger.warn('Ops-alert fallback threw for finance backfill alert', {
+        alertId,
+        tenantId: alert.tenant_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { ...baseResult, skipReason: 'ops_alert_fallback_failed' };
+    }
   }
 
   if (recipientsResolved.source === 'platform_admin') {
