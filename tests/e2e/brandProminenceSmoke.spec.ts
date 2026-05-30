@@ -23,7 +23,7 @@
  *     [data-accent="teal-forward"]
  *   - Tenant dashboard (/dashboard)
  *   - Admin dashboard (/admin/dashboard)
- *   - Ops call console (/ops/calls)
+ *   - Ops console live monitor (/ops/monitor)
  *
  * The data-hydration specs already walk every individual page; this spec
  * deliberately stays narrow so it runs in <60s in CI and pinpoints brand
@@ -107,7 +107,13 @@ const PAGES: PageCheck[] = [
   // logged-in shells. requiresAuth=true triggers the login flow.
   { path: '/dashboard', slug: 'tenant-dashboard', requiresAuth: true },
   { path: '/admin/dashboard', slug: 'admin-dashboard', requiresAuth: true },
-  { path: '/ops/calls', slug: 'ops-calls', requiresAuth: true },
+  // `/ops/calls` was the prior probe path, but no such route exists in
+  // App.tsx — the SPA fallback rendered a chrome-less view without the
+  // QVO logo and the brand check rightly failed. The Ops console's
+  // canonical landing route is `/ops/monitor` (live monitoring), which
+  // is what OpsLayout's first nav group points at. Probing the shell
+  // through a real route gives a true brand-prominence check.
+  { path: '/ops/monitor', slug: 'ops-monitor', requiresAuth: true },
 ];
 
 interface CapturedIssue {
