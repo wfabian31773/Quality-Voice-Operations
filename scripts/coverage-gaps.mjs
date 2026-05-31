@@ -64,14 +64,17 @@ try {
   process.exit(0);
 }
 
+// A file counts as "covered" only if at least one line executed. v8 lists
+// files pulled in by the `include` glob even at 0% (e.g. a barrel imported but
+// never exercised), so absence-from-report is not the only signal — pct===0 is.
 const covered = new Set();
-const partial = []; // { file, lines } for files with <50% line coverage
+const partial = []; // { file, pct } for files with 0 < line% < 50
 for (const [abs, data] of Object.entries(summary)) {
   if (abs === 'total') continue;
   const rel = path.relative(root, abs);
-  covered.add(rel);
-  const pct = data.lines?.pct ?? 100;
-  if (pct < 50) partial.push({ file: rel, pct });
+  const pct = data.lines?.pct ?? 0;
+  if (pct > 0) covered.add(rel);
+  if (pct > 0 && pct < 50) partial.push({ file: rel, pct });
 }
 
 const untested = [...allSource].filter((f) => !covered.has(f)).sort();
