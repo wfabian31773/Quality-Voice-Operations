@@ -101,10 +101,12 @@ test).
   breaker, retry, timeout, registry, withResiliency, presets) 0% → 85.5%;
   `phi/redact` and `env/` config+validation covered. Remaining gap is the
   IO-heavy `observability/` submodule.
-- **🟡 `platform/tools`: 10.6% → 34.3%** (52 tests). ConversationFallbackService
-  and RetryOrchestrator 100%, ToolRegistry 88%, lookup_customer handler
-  covered. Remaining are DB/connector-backed tools and the execution/health
-  services.
+- **🟢 `platform/tools`: 10.6% → 79.0%** (105 tests). RetryOrchestrator,
+  ConversationFallbackService, createCampaignContact, updateCrmRecord and
+  registerCoreTools at 100%; ToolExecutionService, ToolHealthService,
+  recordCallOutcome and retrieve_knowledge 96-99%; ToolRegistry 88%,
+  OperatorNotificationPipeline 80%, lookup_customer 73%. Only the DDL-only
+  `ensureReliabilityTables` and the template-stub handlers remain uncovered.
 
 ## Priority order for closing gaps
 
