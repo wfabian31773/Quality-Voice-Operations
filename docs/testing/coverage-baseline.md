@@ -101,6 +101,10 @@ test).
   breaker, retry, timeout, registry, withResiliency, presets) 0% → 85.5%;
   `phi/redact` and `env/` config+validation covered. Remaining gap is the
   IO-heavy `observability/` submodule.
+- **🟡 `platform/tools`: 10.6% → 34.3%** (52 tests). ConversationFallbackService
+  and RetryOrchestrator 100%, ToolRegistry 88%, lookup_customer handler
+  covered. Remaining are DB/connector-backed tools and the execution/health
+  services.
 
 ## Priority order for closing gaps
 
@@ -111,7 +115,8 @@ Ranked by risk × size × how low the current number is:
    (`openaiSession.ts`, `routes/stream.ts`, `routes/twilio.ts`) remain.
 3. ~~**`platform/core` resilience + env + phi**~~ ✅ Done — core now 39.6%
    (remaining: `observability/` submodule).
-4. **`platform/tools` (10.6%, 9/16 at 0%).** Tool execution + human escalation.
+4. ~~**`platform/tools` (10.6%).**~~ 🟡 partial — registry/retry/fallback done;
+   DB/connector tools and execution/health services remain.
 5. **`server/admin-api` (40%, but ~10k uncovered lines).** Largest absolute
    gap. Prioritize the untested routes flagged in the analysis (`publicApi`,
    `workflows`, `autopilot`, `marketplace`, `phoneNumbers`).
