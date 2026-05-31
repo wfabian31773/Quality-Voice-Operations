@@ -92,11 +92,14 @@ test).
   FallbackManager, EscalationManager, WorkflowPlanner, ReasoningTrace) at
   92–100%, all nine industry packs, and the orchestration layer (DecisionEngine
   94%, ReasoningEngine 98%, MemoryManager 100%).
-- **🟡 `server/voice-gateway`: clean tier covered** (72 tests). Six services /
-  middleware now at 100% (demoToolHandler, escalation, preTransferGreeting,
-  sessionManager, twilioAdapter) and twilioReplayCache 83.5%. The large
-  socket/realtime files (`openaiSession`, `routes/stream`, `routes/twilio`)
-  remain — a heavier mocking tier.
+- **🟡 `server/voice-gateway`: clean tier + HTTP routes covered** (113 tests).
+  Six services / middleware at 100% (demoToolHandler, escalation,
+  preTransferGreeting, sessionManager, twilioAdapter) and twilioReplayCache
+  83.5%. HTTP routes now at **51%**: `health` and `adminMetrics` 100%,
+  `adminConnectors` 96%, `twilio` webhooks 11% → **67%** (supertest with the
+  signature middleware + ~14 platform deps mocked). The remaining gap is the
+  realtime WebSocket tier — `routes/stream.ts` (30%, has a regression test)
+  and `openaiSession.ts`.
 - **🟡 `platform/core`: 11% → 39.6%** (45 tests). `resilience/` (circuit
   breaker, retry, timeout, registry, withResiliency, presets) 0% → 85.5%;
   `phi/redact` and `env/` config+validation covered. Remaining gap is the
@@ -113,12 +116,13 @@ test).
 Ranked by risk × size × how low the current number is:
 
 1. ~~**`platform/reasoning`**~~ ✅ Done — now 97.0%.
-2. **`server/voice-gateway`** 🟡 partial — clean tier done; the realtime files
-   (`openaiSession.ts`, `routes/stream.ts`, `routes/twilio.ts`) remain.
+2. **`server/voice-gateway`** 🟡 partial — clean tier + HTTP routes done
+   (`twilio` 67%, health/admin routes ~100%); the realtime WebSocket files
+   (`openaiSession.ts`, `routes/stream.ts`) remain.
 3. ~~**`platform/core` resilience + env + phi**~~ ✅ Done — core now 39.6%
    (remaining: `observability/` submodule).
-4. ~~**`platform/tools` (10.6%).**~~ 🟡 partial — registry/retry/fallback done;
-   DB/connector tools and execution/health services remain.
+4. ~~**`platform/tools` (10.6%).**~~ ✅ Done — now 79.0% (only the DDL-only
+   `ensureReliabilityTables` and template-stub handlers remain).
 5. **`server/admin-api` (40%, but ~10k uncovered lines).** Largest absolute
    gap. Prioritize the untested routes flagged in the analysis (`publicApi`,
    `workflows`, `autopilot`, `marketplace`, `phoneNumbers`).
