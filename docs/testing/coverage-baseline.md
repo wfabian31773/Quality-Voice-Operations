@@ -92,18 +92,25 @@ test).
   FallbackManager, EscalationManager, WorkflowPlanner, ReasoningTrace) at
   92–100%, all nine industry packs, and the orchestration layer (DecisionEngine
   94%, ReasoningEngine 98%, MemoryManager 100%).
+- **🟡 `server/voice-gateway`: clean tier covered** (72 tests). Six services /
+  middleware now at 100% (demoToolHandler, escalation, preTransferGreeting,
+  sessionManager, twilioAdapter) and twilioReplayCache 83.5%. The large
+  socket/realtime files (`openaiSession`, `routes/stream`, `routes/twilio`)
+  remain — a heavier mocking tier.
+- **🟡 `platform/core`: 11% → 39.6%** (45 tests). `resilience/` (circuit
+  breaker, retry, timeout, registry, withResiliency, presets) 0% → 85.5%;
+  `phi/redact` and `env/` config+validation covered. Remaining gap is the
+  IO-heavy `observability/` submodule.
 
 ## Priority order for closing gaps
 
 Ranked by risk × size × how low the current number is:
 
-1. ~~**`platform/reasoning` (6.5%, 895 lines).**~~ ✅ Done — now 97.0%.
-2. **`server/voice-gateway` (31%, 8 files at 0%, 2184 lines).** The realtime
-   call path (`openaiSession.ts` and session/tool dispatch). This is the
-   product's namesake.
-3. **`platform/core` (11%, 13/23 files at 0%).** Cross-cutting infra:
-   `resilience/` (circuit breaker, retry, timeout, resilientFetch), `env/`
-   config + validation. A bug here affects everything.
+1. ~~**`platform/reasoning`**~~ ✅ Done — now 97.0%.
+2. **`server/voice-gateway`** 🟡 partial — clean tier done; the realtime files
+   (`openaiSession.ts`, `routes/stream.ts`, `routes/twilio.ts`) remain.
+3. ~~**`platform/core` resilience + env + phi**~~ ✅ Done — core now 39.6%
+   (remaining: `observability/` submodule).
 4. **`platform/tools` (10.6%, 9/16 at 0%).** Tool execution + human escalation.
 5. **`server/admin-api` (40%, but ~10k uncovered lines).** Largest absolute
    gap. Prioritize the untested routes flagged in the analysis (`publicApi`,
