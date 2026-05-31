@@ -247,8 +247,8 @@ interface CompatibilityResult {
 }
 
 const PLAN_COLORS: Record<string, string> = {
-  starter: 'bg-success-light text-success dark:bg-success dark:text-success',
-  pro: 'bg-info-light text-info dark:bg-info dark:text-info',
+  starter: 'bg-success-light text-success dark:text-success',
+  pro: 'bg-info-light text-info dark:text-info',
   enterprise: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
@@ -352,8 +352,8 @@ function PriceBadge({
       <span
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
           isFree
-            ? 'bg-success-light text-success dark:bg-success dark:text-success'
-            : 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
+            ? 'bg-success-light text-success dark:text-success'
+            : 'bg-warning-light text-warning dark:text-warning'
         }`}
       >
         {!isFree && <Tag className="h-3 w-3" />}
@@ -368,7 +368,7 @@ function PriceBadge({
             {formatPrice(priceCents, priceModel, currency)}
           </span>
           <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:text-success"
             data-testid="marketplace-card-discount-chip"
             title={buildDiscountChipTooltip(discount!, currency)}
             aria-label={buildDiscountChipTooltip(discount!, currency)}
@@ -562,7 +562,7 @@ function InstallModal({
           )}
 
           {isBlocked && (
-            <div className="p-4 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg">
+            <div className="p-4 bg-warning-light border border-warning rounded-lg">
               <div className="flex items-start gap-2">
                 <Shield className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
                 <div>
@@ -582,7 +582,7 @@ function InstallModal({
           )}
 
           {compatibility?.warnings && compatibility.warnings.length > 0 && (
-            <div className="p-3 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg">
+            <div className="p-3 bg-warning-light border border-warning rounded-lg">
               {compatibility.warnings.map((w, i) => (
                 <p key={i} className="text-xs text-warning dark:text-warning">{w}</p>
               ))}
@@ -757,7 +757,7 @@ function TemplateCard({
             discount={customerDiscount}
           />
           {installed && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:text-success">
               <CheckCircle className="h-3 w-3" /> Installed
             </span>
           )}
@@ -1055,7 +1055,7 @@ function TemplateDetailView({
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-text-primary">v{v.version}</span>
                         {v.isLatest && (
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success">
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:text-success">
                             Latest
                           </span>
                         )}
@@ -1080,10 +1080,10 @@ function TemplateDetailView({
                 {template.changelogs.map((cl) => (
                   <div key={cl.id} className="flex items-start gap-2">
                     <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium capitalize ${
-                      cl.changeType === 'added' ? 'bg-success-light text-success dark:bg-success dark:text-success' :
-                      cl.changeType === 'fixed' ? 'bg-info-light text-info dark:bg-info dark:text-info' :
-                      cl.changeType === 'removed' ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger' :
-                      cl.changeType === 'security' ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning' :
+                      cl.changeType === 'added' ? 'bg-success-light text-success dark:text-success' :
+                      cl.changeType === 'fixed' ? 'bg-info-light text-info dark:text-info' :
+                      cl.changeType === 'removed' ? 'bg-danger-light text-danger dark:text-danger' :
+                      cl.changeType === 'security' ? 'bg-warning-light text-warning dark:text-warning' :
                       'bg-surface-hover text-text-secondary'
                     }`}>
                       {cl.changeType}
@@ -1301,7 +1301,7 @@ function TemplateDetailView({
               </div>
             ) : isPlanGated ? (
               <div>
-                <div className="flex items-start gap-2 p-3 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg mb-3">
+                <div className="flex items-start gap-2 p-3 bg-warning-light border border-warning rounded-lg mb-3">
                   <Shield className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-medium text-warning dark:text-warning">Upgrade Required</p>
@@ -1352,7 +1352,7 @@ function TemplateDetailView({
                             {formatPrice(template.priceCents, template.priceModel, currency)}
                           </span>
                           <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:text-success"
                             data-testid="marketplace-purchase-cta-discount-chip"
                             title={buildDiscountChipTooltip(customerDiscount!, currency)}
                             aria-label={buildDiscountChipTooltip(customerDiscount!, currency)}
@@ -1584,11 +1584,11 @@ function PurchaseRow({
     : '—';
   const isPending = p.status === 'pending';
   const statusTone = p.status === 'completed'
-    ? 'bg-success-light text-success dark:bg-success dark:text-success'
+    ? 'bg-success-light text-success dark:text-success'
     : p.status === 'refunded'
-    ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
+    ? 'bg-warning-light text-warning dark:text-warning'
     : p.status === 'failed'
-    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+    ? 'bg-danger-light text-danger dark:text-danger'
     : 'bg-surface-hover text-text-secondary';
 
   const discount = p.discount;
@@ -1692,7 +1692,7 @@ function PurchaseRow({
               // invoice's discount — expanding the row reveals the
               // full per-renewal history (Task #1389).
               <span
-                className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
+                className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:text-success"
                 title={discountTooltip}
                 aria-label={discountTooltip}
                 data-testid="marketplace-purchase-discount-badge"
@@ -1787,11 +1787,11 @@ function PurchaseInvoiceItem({
       })
     : '—';
   const statusTone = invoice.status === 'paid'
-    ? 'bg-success-light text-success dark:bg-success dark:text-success'
+    ? 'bg-success-light text-success dark:text-success'
     : invoice.status === 'open'
-    ? 'bg-info-light text-info dark:bg-info dark:text-info'
+    ? 'bg-info-light text-info dark:text-info'
     : invoice.status === 'uncollectible' || invoice.status === 'void'
-    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+    ? 'bg-danger-light text-danger dark:text-danger'
     : 'bg-surface-hover text-text-secondary';
 
   return (
@@ -1825,7 +1825,7 @@ function PurchaseInvoiceItem({
               return (
                 <span
                   key={`${d.couponId ?? 'coupon'}-${d.promotionCode ?? 'code'}-${idx}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-success-light text-success dark:bg-success dark:text-success"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-success-light text-success dark:text-success"
                   title={tip}
                   aria-label={tip}
                   data-testid="marketplace-purchase-invoice-discount-badge"
@@ -1961,15 +1961,15 @@ function InstalledView({
                 <h3 className="font-semibold text-text-primary">{inst.agent_name || inst.template_name}</h3>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${
                   inst.status === 'active'
-                    ? 'bg-success-light text-success dark:bg-success dark:text-success'
+                    ? 'bg-success-light text-success dark:text-success'
                     : inst.status === 'error'
-                    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+                    ? 'bg-danger-light text-danger dark:text-danger'
                     : 'bg-surface-hover text-text-secondary'
                 }`}>
                   {inst.status}
                 </span>
                 {hasUpdate && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-warning-light text-warning dark:bg-warning dark:text-warning">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-warning-light text-warning dark:text-warning">
                     <ArrowUpCircle className="h-3 w-3" /> Update v{inst.latest_version}
                   </span>
                 )}
@@ -1997,7 +1997,7 @@ function InstalledView({
                       {formatPrice(priceCents, priceModel ?? 'one_time', currency)}
                     </span>
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success-light text-success dark:text-success"
                       data-testid="installed-row-discount-chip"
                       title={buildDiscountChipTooltip(customerDiscount!, currency)}
                       aria-label={buildDiscountChipTooltip(customerDiscount!, currency)}

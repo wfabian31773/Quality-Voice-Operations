@@ -460,7 +460,7 @@ export default function SmsInbox() {
       />
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
@@ -729,12 +729,12 @@ function InboxView({
                             data-conversation-id={conv.id}
                             data-deferred-count={queued}
                             title={tooltip}
-                            className="inline-flex items-center gap-1 rounded-full border border-warning dark:border-warning bg-warning-light dark:bg-warning px-1.5 py-0.5 text-[10px] font-medium text-warning dark:text-warning"
+                            className="inline-flex items-center gap-1 rounded-full border border-warning bg-warning-light px-1.5 py-0.5 text-[10px] font-medium text-warning dark:text-warning"
                           >
                             <Clock className="h-3 w-3" aria-hidden="true" />
                             <span>deferred until {display}</span>
                             {queued > 1 && (
-                              <span className="rounded-full bg-warning-light dark:bg-warning px-1 text-[10px]">
+                              <span className="rounded-full bg-warning-light px-1 text-[10px]">
                                 {queued}
                               </span>
                             )}
@@ -1028,7 +1028,7 @@ function InboxView({
                 </h4>
                 <div className="space-y-2">
                   {notes.map(note => (
-                    <div key={note.id} className="bg-warning-light dark:bg-warning rounded-lg p-2 text-xs">
+                    <div key={note.id} className="bg-warning-light rounded-lg p-2 text-xs">
                       <p className="text-heading">{note.body}</p>
                       <p className="text-text-muted mt-1">{note.userName} &middot; {new Date(note.createdAt).toLocaleDateString()}</p>
                     </div>
@@ -1217,7 +1217,7 @@ function TemplatesView({ cannedResponses, loadTemplates, isManager }: { cannedRe
       </div>
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger mb-4">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger mb-4">
           {error} <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
       )}
@@ -1414,7 +1414,7 @@ function AutomationsView({ isManager }: { isManager: boolean }) {
         {showAutoForm && (
           <div className="bg-surface-secondary rounded-lg p-4 mb-4 space-y-3">
             {autoFormError && (
-              <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+              <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
                 {autoFormError} <button onClick={() => setAutoFormError(null)} className="ml-2 underline">Dismiss</button>
               </div>
             )}

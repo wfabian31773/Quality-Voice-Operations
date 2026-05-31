@@ -53,18 +53,18 @@ interface ArticleFormData {
 const CATEGORIES = ['FAQ', 'Services', 'Policies', 'Pricing', 'Procedures', 'Troubleshooting'];
 
 const SOURCE_TYPE_LABELS: Record<string, { label: string; icon: typeof FileText; color: string }> = {
-  pdf: { label: 'PDF', icon: File, color: 'bg-danger-light text-danger dark:bg-danger dark:text-danger' },
+  pdf: { label: 'PDF', icon: File, color: 'bg-danger-light text-danger dark:text-danger' },
   url: { label: 'URL', icon: Globe, color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-  text: { label: 'Text', icon: FileText, color: 'bg-info-light text-info dark:bg-info dark:text-info' },
-  faq: { label: 'FAQ', icon: HelpCircle, color: 'bg-success-light text-success dark:bg-success dark:text-success' },
+  text: { label: 'Text', icon: FileText, color: 'bg-info-light text-info dark:text-info' },
+  faq: { label: 'FAQ', icon: HelpCircle, color: 'bg-success-light text-success dark:text-success' },
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  processing: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
-  ready: 'bg-success-light text-success dark:bg-success dark:text-success',
-  failed: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
-  active: 'bg-success-light text-success dark:bg-success dark:text-success',
-  draft: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+  processing: 'bg-warning-light text-warning dark:text-warning',
+  ready: 'bg-success-light text-success dark:text-success',
+  failed: 'bg-danger-light text-danger dark:text-danger',
+  active: 'bg-success-light text-success dark:text-success',
+  draft: 'bg-warning-light text-warning dark:text-warning',
   archived: 'bg-surface-hover text-text-secondary',
 };
 
@@ -624,7 +624,7 @@ function PreviewModal({ documentId, onClose }: { documentId: number; onClose: ()
             </div>
 
             {data.document.error_message && (
-              <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+              <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
                 {data.document.error_message}
               </div>
             )}
@@ -846,7 +846,7 @@ export default function KnowledgeBase() {
                       </td>
                       <td className="px-5 py-3 hidden sm:table-cell">
                         {doc.category ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:text-info">
                             {doc.category}
                           </span>
                         ) : (
@@ -940,7 +940,7 @@ export default function KnowledgeBase() {
                     </td>
                     <td className="px-5 py-3 hidden sm:table-cell">
                       {article.category ? (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:text-info">
                           {article.category}
                         </span>
                       ) : (

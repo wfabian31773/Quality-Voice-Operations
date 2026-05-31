@@ -222,8 +222,8 @@ function AuditLogTab() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        event.severity === 'critical' ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger' :
-                        event.severity === 'warning' ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning' :
+                        event.severity === 'critical' ? 'bg-danger-light text-danger dark:text-danger' :
+                        event.severity === 'warning' ? 'bg-warning-light text-warning dark:text-warning' :
                         'bg-surface-hover text-text-secondary'
                       }`}>
                         {event.severity ?? 'info'}
@@ -303,9 +303,9 @@ function ApiKeysTab() {
       </div>
 
       {createdKey && (
-        <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-lg p-4">
+        <div className="bg-success-light border border-success rounded-lg p-4">
           <p className="text-sm font-medium text-success dark:text-success mb-2">API Key Created - Copy it now! It won't be shown again.</p>
-          <code className="text-xs bg-success-light dark:bg-success px-3 py-2 rounded block break-all">{createdKey}</code>
+          <code className="text-xs bg-success-light px-3 py-2 rounded block break-all">{createdKey}</code>
           <button onClick={() => setCreatedKey(null)} className="mt-2 text-xs text-success dark:text-success hover:text-success dark:hover:text-success">Dismiss</button>
         </div>
       )}
@@ -365,7 +365,7 @@ function ApiKeysTab() {
                   <td className="px-4 py-3 font-mono text-xs text-text-muted">{key.keyPrefix}...</td>
                   <td className="px-4 py-3">
                     {key.scopes.map((s) => (
-                      <span key={s} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info mr-1">
+                      <span key={s} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:text-info mr-1">
                         {s}
                       </span>
                     ))}
@@ -431,9 +431,9 @@ function RolesTab() {
   const roleColor = (role: string) => {
     if (role === 'tenant_owner') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
     if (['operations_manager', 'billing_admin'].includes(role))
-      return 'bg-info-light text-info dark:bg-info dark:text-info';
+      return 'bg-info-light text-info dark:text-info';
     if (role === 'agent_developer')
-      return 'bg-success-light text-success dark:bg-success dark:text-success';
+      return 'bg-success-light text-success dark:text-success';
     return 'bg-surface-hover text-text-secondary';
   };
 
@@ -670,10 +670,10 @@ function Soc2Tab() {
                     <h4 className="font-medium">{item.control}</h4>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       item.status === 'implemented'
-                        ? 'bg-success-light text-success dark:bg-success dark:text-success'
+                        ? 'bg-success-light text-success dark:text-success'
                         : item.status === 'action_required'
-                        ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
-                        : 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
+                        ? 'bg-warning-light text-warning dark:text-warning'
+                        : 'bg-warning-light text-warning dark:text-warning'
                     }`}>
                       {item.status === 'implemented' ? 'Implemented' : item.status === 'action_required' ? 'Action Required' : 'Available'}
                     </span>
@@ -826,8 +826,8 @@ function GdprTab() {
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       req.request_type === 'export'
-                        ? 'bg-info-light text-info dark:bg-info dark:text-info'
-                        : 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+                        ? 'bg-info-light text-info dark:text-info'
+                        : 'bg-danger-light text-danger dark:text-danger'
                     }`}>
                       {req.request_type === 'export' ? 'Export' : 'Erasure'}
                     </span>
@@ -835,9 +835,9 @@ function GdprTab() {
                   <td className="px-4 py-3 text-xs">{req.subject_email}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      req.status === 'completed' ? 'bg-success-light text-success dark:bg-success dark:text-success' :
-                      req.status === 'failed' ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger' :
-                      'bg-warning-light text-warning dark:bg-warning dark:text-warning'
+                      req.status === 'completed' ? 'bg-success-light text-success dark:text-success' :
+                      req.status === 'failed' ? 'bg-danger-light text-danger dark:text-danger' :
+                      'bg-warning-light text-warning dark:text-warning'
                     }`}>
                       {req.status}
                     </span>

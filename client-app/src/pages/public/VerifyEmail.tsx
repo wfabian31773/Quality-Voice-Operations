@@ -76,7 +76,7 @@ export default function VerifyEmail() {
           )}
           {status === 'success' && (
             <>
-              <div className="w-16 h-16 bg-success-light dark:bg-success rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-success-light rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-success dark:text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -90,7 +90,7 @@ export default function VerifyEmail() {
           )}
           {status === 'error' && (
             <>
-              <div className="w-16 h-16 bg-danger-light dark:bg-danger rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-danger-light rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-danger dark:text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>

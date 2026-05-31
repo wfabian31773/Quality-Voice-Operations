@@ -22,9 +22,9 @@ import {
 // Collapsed preview to brand `info` so all three status badges read
 // from the same token system.
 const STATUS_TONE: Record<GinBenchmarkStatus, string> = {
-  illustrative: 'bg-warning-light dark:bg-warning text-warning dark:text-warning border-warning dark:border-warning',
+  illustrative: 'bg-warning-light text-warning dark:text-warning border-warning',
   preview: 'bg-info/10 dark:bg-info/20 text-info border-info/40',
-  live: 'bg-success-light dark:bg-success text-success dark:text-success border-success dark:border-success',
+  live: 'bg-success-light text-success dark:text-success border-success',
 };
 
 const STATUS_LABEL_KEY: Record<GinBenchmarkStatus, string> = {

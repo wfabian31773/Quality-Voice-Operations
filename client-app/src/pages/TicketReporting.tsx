@@ -199,7 +199,7 @@ export default function TicketReporting() {
             </button>
           )}
         />
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-4 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg p-4 text-sm text-danger dark:text-danger">
           {error || 'No reporting data available'}
           <button onClick={fetchData} className="ml-3 underline">Retry</button>
         </div>

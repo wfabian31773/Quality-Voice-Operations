@@ -22,14 +22,14 @@ interface TypeMeta {
 }
 
 const TYPE_META: Record<string, TypeMeta> = {
-  escalation: { icon: AlertCircle, color: 'text-danger bg-danger-light dark:bg-danger', labelKey: 'label_escalations' },
-  billing: { icon: CreditCard, color: 'text-warning bg-warning-light dark:bg-warning', labelKey: 'label_billing' },
+  escalation: { icon: AlertCircle, color: 'text-danger bg-danger-light', labelKey: 'label_escalations' },
+  billing: { icon: CreditCard, color: 'text-warning bg-warning-light', labelKey: 'label_billing' },
   call: { icon: PhoneCall, color: 'text-primary bg-primary-light', labelKey: 'label_calls' },
-  sms: { icon: MessageSquare, color: 'text-info dark:text-info bg-info-light dark:bg-info', labelKey: 'label_sms' },
+  sms: { icon: MessageSquare, color: 'text-info dark:text-info bg-info-light', labelKey: 'label_sms' },
   campaign: { icon: Megaphone, color: 'text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/15', labelKey: 'label_campaigns' },
-  integration: { icon: Wrench, color: 'text-warning dark:text-warning bg-warning-light dark:bg-warning', labelKey: 'label_integrations' },
-  integration_sms: { icon: Wrench, color: 'text-warning dark:text-warning bg-warning-light dark:bg-warning', labelKey: 'label_integrations' },
-  integration_recovery: { icon: CheckCircle2, color: 'text-success dark:text-success bg-success-light dark:bg-success', labelKey: 'label_integrations' },
+  integration: { icon: Wrench, color: 'text-warning dark:text-warning bg-warning-light', labelKey: 'label_integrations' },
+  integration_sms: { icon: Wrench, color: 'text-warning dark:text-warning bg-warning-light', labelKey: 'label_integrations' },
+  integration_recovery: { icon: CheckCircle2, color: 'text-success dark:text-success bg-success-light', labelKey: 'label_integrations' },
 };
 
 const FILTERS = ['all', 'escalation', 'billing', 'integration'] as const;

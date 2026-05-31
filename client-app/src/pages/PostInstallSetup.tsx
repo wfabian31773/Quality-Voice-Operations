@@ -114,7 +114,7 @@ function StepCard({
     <div
       className={`bg-surface border rounded-xl p-5 transition-all ${
         step.completed
-          ? 'border-success dark:border-success bg-success-light dark:bg-success'
+          ? 'border-success bg-success-light'
           : 'border-border hover:border-primary/40 hover:shadow-sm'
       }`}
     >
@@ -319,7 +319,7 @@ function CustomizationForm({
         <div key={field.key} className="space-y-1.5">
           <div className="flex items-center gap-2">
             <label className="block text-sm font-medium text-text-primary">{field.label}</label>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning dark:bg-warning dark:text-warning">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning dark:text-warning">
               <Lock className="h-3 w-3" /> {t('post_install.customization.template_locked')}
             </span>
           </div>

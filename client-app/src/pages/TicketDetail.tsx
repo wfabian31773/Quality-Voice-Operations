@@ -98,13 +98,13 @@ interface Template {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  open: { label: 'Open', color: 'text-info dark:text-info', bgColor: 'bg-info-light dark:bg-info' },
-  in_progress: { label: 'In Progress', color: 'text-warning dark:text-warning', bgColor: 'bg-warning-light dark:bg-warning' },
+  open: { label: 'Open', color: 'text-info dark:text-info', bgColor: 'bg-info-light' },
+  in_progress: { label: 'In Progress', color: 'text-warning dark:text-warning', bgColor: 'bg-warning-light' },
   pending: { label: 'Pending', color: 'text-purple-700 dark:text-purple-300', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
-  escalated: { label: 'Escalated', color: 'text-danger dark:text-danger', bgColor: 'bg-danger-light dark:bg-danger' },
-  resolved: { label: 'Resolved', color: 'text-success dark:text-success', bgColor: 'bg-success-light dark:bg-success' },
+  escalated: { label: 'Escalated', color: 'text-danger dark:text-danger', bgColor: 'bg-danger-light' },
+  resolved: { label: 'Resolved', color: 'text-success dark:text-success', bgColor: 'bg-success-light' },
   closed: { label: 'Closed', color: 'text-text-primary', bgColor: 'bg-surface-hover/30' },
-  reopened: { label: 'Reopened', color: 'text-warning dark:text-warning', bgColor: 'bg-warning-light dark:bg-warning' },
+  reopened: { label: 'Reopened', color: 'text-warning dark:text-warning', bgColor: 'bg-warning-light' },
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -157,7 +157,7 @@ function SlaTimer({ sla }: { sla: SlaInstance }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : responseBreached ? 'bg-danger-light dark:bg-danger' : responseAtRisk ? 'bg-warning-light dark:bg-warning' : 'bg-success-light dark:bg-success'}`}>
+        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : responseBreached ? 'bg-danger-light' : responseAtRisk ? 'bg-warning-light' : 'bg-success-light'}`}>
           <div className="text-[10px] text-text-muted mb-0.5">First Response</div>
           {sla.response_met === true ? (
             <div className="flex items-center gap-1 text-success dark:text-success text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
@@ -172,7 +172,7 @@ function SlaTimer({ sla }: { sla: SlaInstance }) {
           )}
         </div>
 
-        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : resolutionBreached ? 'bg-danger-light dark:bg-danger' : resolutionAtRisk ? 'bg-warning-light dark:bg-warning' : 'bg-success-light dark:bg-success'}`}>
+        <div className={`p-2 rounded-lg ${isPaused ? 'bg-purple-50 dark:bg-purple-900/20' : resolutionBreached ? 'bg-danger-light' : resolutionAtRisk ? 'bg-warning-light' : 'bg-success-light'}`}>
           <div className="text-[10px] text-text-muted mb-0.5">Resolution</div>
           {sla.resolution_met === true ? (
             <div className="flex items-center gap-1 text-success dark:text-success text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Met</div>
@@ -220,9 +220,9 @@ function ActivityItem({ activity }: { activity: Activity }) {
   const isNote = activity.activity_type === 'note' || activity.activity_type === 'internal_note';
 
   return (
-    <div className={`flex gap-3 py-3 ${activity.is_internal ? 'bg-warning-light dark:bg-warning -mx-2 px-2 rounded-lg' : ''}`}>
+    <div className={`flex gap-3 py-3 ${activity.is_internal ? 'bg-warning-light -mx-2 px-2 rounded-lg' : ''}`}>
       <div className="flex-shrink-0 mt-0.5">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-info-light dark:bg-info' : 'bg-surface-hover'}`}>
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isNote ? 'bg-info-light' : 'bg-surface-hover'}`}>
           <Icon className={`h-3.5 w-3.5 ${isNote ? 'text-info dark:text-info' : 'text-text-muted'}`} />
         </div>
       </div>
@@ -230,7 +230,7 @@ function ActivityItem({ activity }: { activity: Activity }) {
         <div className="flex items-center gap-2 mb-0.5">
           <span className="text-xs font-medium text-heading">{activity.user_email || 'System'}</span>
           {activity.is_internal && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light dark:bg-warning text-warning dark:text-warning">Internal</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:text-warning">Internal</span>
           )}
           <span className="text-[10px] text-text-muted">{timeAgo(activity.created_at)}</span>
         </div>
@@ -502,7 +502,7 @@ export default function TicketDetail() {
       </div>
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
@@ -720,7 +720,7 @@ export default function TicketDetail() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsInternalNote(!isInternalNote)}
-                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-warning-light dark:bg-warning text-warning dark:text-warning' : 'bg-surface-hover text-text-muted'}`}
+                    className={`text-xs px-2 py-1 rounded ${isInternalNote ? 'bg-warning-light text-warning dark:text-warning' : 'bg-surface-hover text-text-muted'}`}
                   >
                     {isInternalNote ? 'Internal' : 'Public'}
                   </button>

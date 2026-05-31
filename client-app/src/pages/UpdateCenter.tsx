@@ -28,9 +28,9 @@ interface AvailableUpdate {
 
 function UpgradeTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    major: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
-    minor: 'bg-info-light text-info dark:bg-info dark:text-info',
-    patch: 'bg-success-light text-success dark:bg-success dark:text-success',
+    major: 'bg-danger-light text-danger dark:text-danger',
+    minor: 'bg-info-light text-info dark:text-info',
+    patch: 'bg-success-light text-success dark:text-success',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type] ?? 'bg-surface-hover text-text-secondary'}`}>
@@ -111,7 +111,7 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
       </div>
 
       {update.isMajor && (
-        <div className="px-5 py-2 bg-warning-light dark:bg-warning border-t border-warning dark:border-warning flex items-center gap-2">
+        <div className="px-5 py-2 bg-warning-light border-t border-warning flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-warning dark:text-warning" />
           <span className="text-sm text-warning dark:text-warning">
             Major version upgrade — may include breaking changes. Review changelog before updating.
@@ -120,7 +120,7 @@ function UpdateCard({ update, onUpgrade, isUpgrading }: {
       )}
 
       {showConfirm && (
-        <div className="px-5 py-3 bg-danger-light dark:bg-danger border-t border-danger dark:border-danger">
+        <div className="px-5 py-3 bg-danger-light border-t border-danger">
           <p className="text-sm text-danger dark:text-danger mb-2">
             This is a major version upgrade that may include breaking changes. Are you sure you want to proceed?
           </p>
@@ -225,13 +225,13 @@ export default function UpdateCenter() {
       />
 
       {upgradeMutation.isError && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg px-4 py-3 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg px-4 py-3 text-sm text-danger dark:text-danger">
           {(upgradeMutation.error as Error).message}
         </div>
       )}
 
       {upgradeMutation.isSuccess && (
-        <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-lg px-4 py-3 text-sm text-success dark:text-success flex items-center gap-2">
+        <div className="bg-success-light border border-success rounded-lg px-4 py-3 text-sm text-success dark:text-success flex items-center gap-2">
           <CheckCircle className="h-4 w-4" />
           Template upgraded successfully!
         </div>

@@ -87,13 +87,27 @@ export default function Signup() {
     if (!TURNSTILE_SITE_KEY || !captchaRef.current) return;
 
     const win = window as unknown as Record<string, unknown>;
+    // Detect current theme from the QVO `data-theme` attribute on <html>
+    // (set by client-app/src/lib/theme.ts on toggle). Pass it explicitly
+    // to Turnstile so the widget renders with the correct surface — the
+    // default 'auto' tries to sniff the page background color and gets
+    // it wrong against our deep-navy dark theme, leaving the captcha
+    // widget invisible (text + bg both render the same dark hex). This
+    // was Wayne's specific report: "captcha doesn't show because it's
+    // the same color as the background."
+    const themeAttr = document.documentElement.getAttribute('data-theme');
+    const turnstileTheme = themeAttr === 'dark' ? 'dark' : 'light';
+
+    const renderOpts = {
+      sitekey: TURNSTILE_SITE_KEY,
+      theme: turnstileTheme,
+      callback: (token: string) => setCaptchaToken(token),
+      'expired-callback': () => setCaptchaToken(''),
+    };
+
     if (typeof win.turnstile !== 'undefined') {
       const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
-      turnstile.render(captchaRef.current, {
-        sitekey: TURNSTILE_SITE_KEY,
-        callback: (token: string) => setCaptchaToken(token),
-        'expired-callback': () => setCaptchaToken(''),
-      });
+      turnstile.render(captchaRef.current, renderOpts);
       return;
     }
 
@@ -104,11 +118,7 @@ export default function Signup() {
     win.onTurnstileLoad = () => {
       if (captchaRef.current && typeof win.turnstile !== 'undefined') {
         const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
-        turnstile.render(captchaRef.current, {
-          sitekey: TURNSTILE_SITE_KEY,
-          callback: (token: string) => setCaptchaToken(token),
-          'expired-callback': () => setCaptchaToken(''),
-        });
+        turnstile.render(captchaRef.current, renderOpts);
       }
     };
 
@@ -247,7 +257,7 @@ export default function Signup() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (
-                  <div className="bg-danger-light dark:bg-danger text-danger dark:text-danger text-sm px-3 py-2 rounded-lg border border-danger dark:border-danger">
+                  <div className="bg-danger-light text-danger dark:text-danger text-sm px-3 py-2 rounded-lg border border-danger">
                     {error}
                   </div>
                 )}
@@ -400,7 +410,17 @@ export default function Signup() {
 
                 {TURNSTILE_SITE_KEY && (
                   <div className="flex justify-center">
-                    <div ref={captchaRef} />
+                    {/* Container has min-height so the captcha slot is
+                        visible even before Turnstile finishes loading,
+                        and a faint border so the user can see "something
+                        is supposed to render here" if the script is
+                        slow / blocked. Defensive against Wayne's report
+                        that the captcha appears invisible. */}
+                    <div
+                      ref={captchaRef}
+                      className="min-h-[70px] rounded-md"
+                      data-testid="signup-captcha-slot"
+                    />
                   </div>
                 )}
 

@@ -79,9 +79,9 @@ function InviteModal({ onClose }: { onClose: () => void }) {
 }
 
 const ROLE_BADGE_STYLES: Record<SimpleRole, string> = {
-  owner: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
-  manager: 'bg-info-light text-info dark:bg-info dark:text-info',
-  operator: 'bg-success-light text-success dark:bg-success dark:text-success',
+  owner: 'bg-warning-light text-warning dark:text-warning',
+  manager: 'bg-info-light text-info dark:text-info',
+  operator: 'bg-success-light text-success dark:text-success',
   viewer: 'bg-surface-hover text-text-primary',
 };
 

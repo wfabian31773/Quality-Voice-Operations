@@ -735,7 +735,7 @@ export default function Agents() {
       {!isLoading && isManager && mismatchedAgents.length > 0 && (
         <div
           role="status"
-          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-warning bg-warning-light px-4 py-3 dark:border-warning dark:bg-warning"
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-warning bg-warning-light px-4 py-3"
         >
           <div className="flex items-start gap-2 text-sm text-warning dark:text-warning">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -809,7 +809,7 @@ export default function Agents() {
                     <button
                       type="button"
                       onClick={openVoiceFix}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:bg-warning dark:text-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning transition cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:text-warning hover:bg-warning-light transition cursor-pointer"
                       title={tenantT('agents.card.voice_mismatch_tooltip_action', { voice: agent.voice, language: languageLabel, recommended: recommendedVoice })}
                       aria-label={tenantT('agents.card.voice_mismatch_aria', { voice: agent.voice, language: languageLabel, recommended: recommendedVoice })}
                     >
@@ -819,7 +819,7 @@ export default function Agents() {
                   )}
                   {voiceMismatch && !isManager && (
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:bg-warning dark:text-warning dark:border-warning"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:text-warning"
                       title={tenantT('agents.card.voice_mismatch_tooltip_static', { voice: agent.voice, language: languageLabel, recommended: recommendedVoice })}
                     >
                       <AlertTriangle className="h-3 w-3" />
@@ -827,17 +827,17 @@ export default function Agents() {
                     </span>
                   )}
                   {isFederated && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:bg-info dark:text-info">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-info-light text-info dark:text-info">
                       <Globe className="h-3 w-3" /> {tenantT('agents.card.external_label')}
                     </span>
                   )}
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-success-light text-success dark:bg-success dark:text-success' : 'bg-surface-hover text-text-secondary'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-success-light text-success dark:text-success' : 'bg-surface-hover text-text-secondary'}`}>
                     {agent.status}
                   </span>
                 </div>
               </div>
               {isFederated && (
-                <div className="flex items-center gap-2 text-xs text-info dark:text-info mb-3 bg-info-light dark:bg-info rounded-lg px-3 py-2 border border-info dark:border-info">
+                <div className="flex items-center gap-2 text-xs text-info dark:text-info mb-3 bg-info-light rounded-lg px-3 py-2 border border-info">
                   <Globe className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     {agent.last_sync_at
@@ -863,7 +863,7 @@ export default function Agents() {
                         onClick={() =>
                           navigate(`/connectors?provider=${encodeURIComponent(provider)}`)
                         }
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:bg-warning dark:text-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning transition cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:text-warning hover:bg-warning-light transition cursor-pointer"
                         title={tenantT('agents.card.scheduling_disconnected_tooltip', { provider: formatSchedulingProvider(provider) })}
                       >
                         <AlertTriangle className="h-3 w-3" />
@@ -894,7 +894,7 @@ export default function Agents() {
                       `/connectors?provider=${encodeURIComponent(agent.scheduling_provider!)}`,
                     )
                   }
-                  className="w-full text-left flex items-start gap-2 text-xs mb-3 bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg px-3 py-2 hover:bg-warning-light dark:hover:bg-warning transition"
+                  className="w-full text-left flex items-start gap-2 text-xs mb-3 bg-warning-light border border-warning rounded-lg px-3 py-2 hover:bg-warning-light transition"
                   title={tenantT('agents.card.scheduling_drift_open_tooltip')}
                 >
                   <AlertTriangle className="h-3.5 w-3.5 text-warning dark:text-warning mt-0.5 shrink-0" />

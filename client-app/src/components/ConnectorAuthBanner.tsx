@@ -79,10 +79,10 @@ export default function ConnectorAuthBanner() {
   return (
     <div
       role="alert"
-      className="rounded-xl border border-warning bg-warning-light dark:border-warning dark:bg-warning shadow-sm"
+      className="rounded-xl border border-warning bg-warning-light shadow-sm"
     >
       <div className="flex items-start gap-3 px-4 py-3 sm:px-5">
-        <div className="p-1.5 rounded-lg bg-warning-light dark:bg-warning shrink-0">
+        <div className="p-1.5 rounded-lg bg-warning-light shrink-0">
           <AlertTriangle className="h-4 w-4 text-warning dark:text-warning" />
         </div>
         <div className="flex-1 min-w-0">
@@ -95,7 +95,7 @@ export default function ConnectorAuthBanner() {
         </div>
         <Link
           to="/connectors"
-          className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light dark:bg-warning dark:hover:bg-warning px-3 py-1.5 rounded-lg transition-colors"
+          className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light px-3 py-1.5 rounded-lg transition-colors"
         >
           {t('connector_auth_banner.fix_now')} <ArrowRight className="h-3 w-3" />
         </Link>
@@ -111,7 +111,7 @@ export default function ConnectorAuthBanner() {
       <div className="px-4 pb-3 sm:hidden">
         <Link
           to="/connectors"
-          className="inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light dark:bg-warning dark:hover:bg-warning px-3 py-1.5 rounded-lg transition-colors"
+          className="inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light px-3 py-1.5 rounded-lg transition-colors"
         >
           {t('connector_auth_banner.fix_now')} <ArrowRight className="h-3 w-3" />
         </Link>

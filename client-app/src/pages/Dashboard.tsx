@@ -222,21 +222,21 @@ const exampleWorkflowDefs = [
     titleKey: 'dashboard.example_workflows.medical_title',
     descriptionKey: 'dashboard.example_workflows.medical_description',
     template: 'medical-after-hours',
-    color: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+    color: 'bg-danger-light text-danger dark:text-danger',
   },
   {
     icon: Building2,
     titleKey: 'dashboard.example_workflows.property_title',
     descriptionKey: 'dashboard.example_workflows.property_description',
     template: 'property-management',
-    color: 'bg-info-light text-info dark:bg-info dark:text-info',
+    color: 'bg-info-light text-info dark:text-info',
   },
   {
     icon: Wrench,
     titleKey: 'dashboard.example_workflows.home_title',
     descriptionKey: 'dashboard.example_workflows.home_description',
     template: 'home-services',
-    color: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+    color: 'bg-warning-light text-warning dark:text-warning',
   },
   {
     icon: Scale,
@@ -250,7 +250,7 @@ const exampleWorkflowDefs = [
     titleKey: 'dashboard.example_workflows.support_title',
     descriptionKey: 'dashboard.example_workflows.support_description',
     template: 'customer-support',
-    color: 'bg-success-light text-success dark:bg-success dark:text-success',
+    color: 'bg-success-light text-success dark:text-success',
   },
 ];
 

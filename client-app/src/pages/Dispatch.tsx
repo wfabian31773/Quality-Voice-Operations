@@ -245,15 +245,15 @@ interface JobAttachment {
 }
 
 const STATUS_FLOW = [
-  { key: 'pending', label: 'Pending', color: 'border-t-yellow-400', bg: 'bg-warning-light text-warning dark:bg-warning dark:text-warning' },
-  { key: 'assigned', label: 'Assigned', color: 'border-t-blue-400', bg: 'bg-info-light text-info dark:bg-info dark:text-info' },
+  { key: 'pending', label: 'Pending', color: 'border-t-yellow-400', bg: 'bg-warning-light text-warning dark:text-warning' },
+  { key: 'assigned', label: 'Assigned', color: 'border-t-blue-400', bg: 'bg-info-light text-info dark:text-info' },
   { key: 'scheduled', label: 'Scheduled', color: 'border-t-indigo-400', bg: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300' },
   { key: 'en_route', label: 'En Route', color: 'border-t-cyan-400', bg: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300' },
   { key: 'on_site', label: 'On Site', color: 'border-t-teal-400', bg: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300' },
-  { key: 'in_progress', label: 'In Progress', color: 'border-t-orange-400', bg: 'bg-warning-light text-warning dark:bg-warning dark:text-warning' },
-  { key: 'completed', label: 'Completed', color: 'border-t-green-400', bg: 'bg-success-light text-success dark:bg-success dark:text-success' },
-  { key: 'incomplete', label: 'Incomplete', color: 'border-t-red-400', bg: 'bg-danger-light text-danger dark:bg-danger dark:text-danger' },
-  { key: 'done', label: 'Done', color: 'border-t-emerald-400', bg: 'bg-success-light text-success dark:bg-success dark:text-success' },
+  { key: 'in_progress', label: 'In Progress', color: 'border-t-orange-400', bg: 'bg-warning-light text-warning dark:text-warning' },
+  { key: 'completed', label: 'Completed', color: 'border-t-green-400', bg: 'bg-success-light text-success dark:text-success' },
+  { key: 'incomplete', label: 'Incomplete', color: 'border-t-red-400', bg: 'bg-danger-light text-danger dark:text-danger' },
+  { key: 'done', label: 'Done', color: 'border-t-emerald-400', bg: 'bg-success-light text-success dark:text-success' },
   { key: 'cancelled', label: 'Cancelled', color: 'border-t-gray-400', bg: 'bg-surface-hover text-text-primary' },
 ];
 
@@ -325,9 +325,9 @@ function ClosestApproachBadge({
   const warnM = getClosestApproachWarnM(badThresholdM);
   const tone =
     meters > badThresholdM
-      ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
+      ? 'bg-danger-light text-danger dark:text-danger'
       : meters > warnM
-      ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning'
+      ? 'bg-warning-light text-warning dark:text-warning'
       : 'bg-surface-hover text-text-muted';
   const title =
     meters > badThresholdM
@@ -712,7 +712,7 @@ export default function Dispatch() {
       />
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -726,7 +726,7 @@ export default function Dispatch() {
         be stale or empty — surface so operators know.
       */}
       {supportDataWarnings.size > 0 && (
-        <div className="bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg p-2.5 text-xs text-warning dark:text-warning flex items-center justify-between gap-2">
+        <div className="bg-warning-light border border-warning rounded-lg p-2.5 text-xs text-warning dark:text-warning flex items-center justify-between gap-2">
           <span>
             Background data didn't load: <strong>{Array.from(supportDataWarnings).sort().join(', ')}</strong>. Some board options may be missing or stale.
           </span>
@@ -1186,7 +1186,7 @@ function RecentExportsPanel({ refreshKey, onRetried }: {
         </button>
       </div>
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-[11px] text-danger dark:text-danger mb-2">
+        <div className="bg-danger-light border border-danger rounded-lg p-2 text-[11px] text-danger dark:text-danger mb-2">
           {error}
         </div>
       )}
@@ -1219,19 +1219,19 @@ function RecentExportRow({ row, retrying, onRetry }: {
         );
       case 'running':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-info-light text-info dark:bg-info dark:text-info">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-info-light text-info dark:text-info">
             <Loader2 className="h-2.5 w-2.5 animate-spin" /> Building
           </span>
         );
       case 'ready':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success dark:bg-success dark:text-success">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success dark:text-success">
             <CheckCircle2 className="h-2.5 w-2.5" /> Ready
           </span>
         );
       case 'failed':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-light text-danger dark:bg-danger dark:text-danger">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-light text-danger dark:text-danger">
             <XCircle className="h-2.5 w-2.5" /> Failed
           </span>
         );
@@ -1579,12 +1579,12 @@ function BulkRouteDownloadModal({ selectedJobs, filters, onClose, onCompleted }:
         </div>
 
         {error && (
-          <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-xs text-danger dark:text-danger">
+          <div className="bg-danger-light border border-danger rounded-lg p-2 text-xs text-danger dark:text-danger">
             {error}
           </div>
         )}
         {summary && (
-          <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-lg p-2 text-xs text-success dark:text-success">
+          <div className="bg-success-light border border-success rounded-lg p-2 text-xs text-success dark:text-success">
             {summary}
           </div>
         )}
@@ -2595,7 +2595,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
             offTargetFilter === 'amber'
               ? 'bg-warning text-white'
               : offTargetCounts.amberPlus > 0
-                ? 'bg-warning-light text-warning dark:bg-warning dark:text-warning hover:bg-warning-light dark:hover:bg-warning'
+                ? 'bg-warning-light text-warning dark:text-warning hover:bg-warning-light'
                 : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
@@ -2611,7 +2611,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
             offTargetFilter === 'bad'
               ? 'bg-danger text-white'
               : offTargetCounts.bad > 0
-                ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger hover:bg-danger-light dark:hover:bg-danger'
+                ? 'bg-danger-light text-danger dark:text-danger hover:bg-danger-light'
                 : 'bg-surface-secondary text-text-muted hover:text-heading'
           }`}
         >
@@ -2640,7 +2640,7 @@ function LiveMapView({ openJobDetail }: { openJobDetail: (id: string) => void })
       </div>
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
         </div>
       )}
@@ -2966,11 +2966,11 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
   };
 
   const statusColors: Record<string, string> = {
-    available: 'bg-success-light text-success dark:bg-success dark:text-success',
-    busy: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
-    on_break: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+    available: 'bg-success-light text-success dark:text-success',
+    busy: 'bg-warning-light text-warning dark:text-warning',
+    on_break: 'bg-warning-light text-warning dark:text-warning',
     off_shift: 'bg-surface-hover text-text-primary',
-    unavailable: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+    unavailable: 'bg-danger-light text-danger dark:text-danger',
   };
 
   return (
@@ -2985,7 +2985,7 @@ function ResourcesView({ resources, territories, skillTypes, isReadOnly, fetchRe
       </div>
 
       {resError && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
           <span>{resError}</span>
           <button onClick={() => setResError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -3443,7 +3443,7 @@ function ApproachQualityCard({
                 type="button"
                 onClick={onDrilldownToBadArrivals}
                 title="Open the queue sorted by farthest-from-address first"
-                className="text-left bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 hover:border-danger dark:hover:border-danger transition-colors"
+                className="text-left bg-danger-light border border-danger rounded-lg p-2 hover:border-danger transition-colors"
               >
                 {inner}
                 <div className="text-[10px] text-danger dark:text-danger mt-1 inline-flex items-center gap-1">
@@ -3622,7 +3622,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
       </div>
 
       {adminError && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger flex items-center justify-between">
           <span>{adminError}</span>
           <button onClick={() => setAdminError(null)} className="ml-2 underline text-xs">Dismiss</button>
         </div>
@@ -3795,7 +3795,7 @@ function AdminView({ territories, skillTypes, notifTemplates, assignmentRules, i
                       <td className="p-2">
                         <div className="flex gap-1">
                           <button onClick={() => openForm('rule', r)} className="text-[10px] px-2 py-1 rounded bg-surface-secondary text-text-muted hover:text-heading">Edit</button>
-                          <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-danger dark:text-danger hover:bg-danger-light dark:hover:bg-danger">Delete</button>
+                          <button onClick={() => deleteItem('rule', r.id)} className="text-[10px] px-2 py-1 rounded text-danger dark:text-danger hover:bg-danger-light">Delete</button>
                         </div>
                       </td>
                     )}
@@ -4486,7 +4486,7 @@ function JobFormModal({ job, territories, resources, teamMembers, skillTypes, on
         </div>
         <div className="p-4 space-y-4">
           {formError && (
-            <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-xs text-danger dark:text-danger flex items-center justify-between">
+            <div className="bg-danger-light border border-danger rounded-lg p-2 text-xs text-danger dark:text-danger flex items-center justify-between">
               <span>{formError}</span>
               <button onClick={() => setFormError(null)} className="ml-2 underline text-[10px]">Dismiss</button>
             </div>
@@ -4769,7 +4769,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
 
         <div className="p-4">
           {detailError && (
-            <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-2 text-xs text-danger dark:text-danger mb-3 flex items-center justify-between">
+            <div className="bg-danger-light border border-danger rounded-lg p-2 text-xs text-danger dark:text-danger mb-3 flex items-center justify-between">
               <span>{detailError}</span>
               <button onClick={() => setDetailError(null)} className="ml-2 underline text-[10px]">Dismiss</button>
             </div>
@@ -4885,7 +4885,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
               <div className="flex items-center justify-between flex-wrap gap-2">
                 {!isReadOnly && (
                   <button onClick={() => setShowExceptionForm(true)}
-                    className="px-3 py-1.5 bg-danger-light text-danger dark:bg-danger dark:text-danger rounded-lg text-xs font-medium hover:bg-danger-light dark:hover:bg-danger flex items-center gap-1">
+                    className="px-3 py-1.5 bg-danger-light text-danger dark:text-danger rounded-lg text-xs font-medium hover:bg-danger-light flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" /> Report Exception
                   </button>
                 )}
@@ -4957,14 +4957,14 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                           <span className="text-xs font-medium text-heading capitalize">{e.exception_type.replace(/_/g, ' ')}</span>
                           {isAuto && (
                             <span
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:bg-warning dark:text-warning font-medium flex items-center gap-1"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:text-warning font-medium flex items-center gap-1"
                               title={`Auto-flagged by system rule: ${ruleLabel}`}
                             >
                               <Shield className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                         </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-success-light text-success dark:bg-success dark:text-success' : 'bg-danger-light text-danger dark:bg-danger dark:text-danger'}`}>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.resolved_at ? 'bg-success-light text-success dark:text-success' : 'bg-danger-light text-danger dark:text-danger'}`}>
                           {e.resolved_at ? 'Resolved' : 'Open'}
                         </span>
                       </div>
@@ -4986,7 +4986,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
             <div className="space-y-3">
               {!isReadOnly && (
                 <button onClick={() => setShowAttachmentForm(true)}
-                  className="px-3 py-1.5 bg-info-light text-info dark:bg-info dark:text-info rounded-lg text-xs font-medium hover:bg-info-light dark:hover:bg-info flex items-center gap-1">
+                  className="px-3 py-1.5 bg-info-light text-info dark:text-info rounded-lg text-xs font-medium hover:bg-info-light flex items-center gap-1">
                   <FileText className="h-3 w-3" /> Add Note / Attachment
                 </button>
               )}
@@ -5019,7 +5019,7 @@ function JobDetailModal({ detail, isReadOnly, transitionJob, onClose, onRefresh,
                       <div className="flex items-center gap-2">
                         <FileText className="h-3.5 w-3.5 text-text-muted" />
                         <span className="text-xs font-medium text-heading">{a.title || a.attachment_type.replace(/_/g, ' ')}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-info-light text-info dark:bg-info dark:text-info rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-info-light text-info dark:text-info rounded">{a.attachment_type.replace(/_/g, ' ')}</span>
                         {a.file_size_bytes ? (
                           <span className="text-[10px] text-text-muted">{Math.round(a.file_size_bytes / 1024)} KB</span>
                         ) : null}
@@ -5375,7 +5375,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
   }
   if (error) {
     return (
-      <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+      <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
         {error}
       </div>
     );
@@ -5436,7 +5436,7 @@ function RouteTakenTab({ jobId }: { jobId: string }) {
         </div>
       </div>
       {downloadError && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-md px-3 py-2 text-xs text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-md px-3 py-2 text-xs text-danger dark:text-danger">
           {downloadError}
         </div>
       )}

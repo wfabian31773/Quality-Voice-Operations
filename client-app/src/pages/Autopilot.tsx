@@ -95,15 +95,15 @@ interface AutopilotRun {
 type TabType = 'overview' | 'recommendations' | 'actions' | 'insights' | 'policies' | 'notifications';
 
 function severityColor(severity: string): string {
-  if (severity === 'critical') return 'bg-danger-light text-danger dark:bg-danger dark:text-danger';
-  if (severity === 'warning') return 'bg-warning-light text-warning dark:bg-warning dark:text-warning';
-  return 'bg-info-light text-info dark:bg-info dark:text-info';
+  if (severity === 'critical') return 'bg-danger-light text-danger dark:text-danger';
+  if (severity === 'warning') return 'bg-warning-light text-warning dark:text-warning';
+  return 'bg-info-light text-info dark:text-info';
 }
 
 function riskTierColor(tier: string): string {
-  if (tier === 'high') return 'bg-danger-light text-danger dark:bg-danger dark:text-danger';
-  if (tier === 'medium') return 'bg-warning-light text-warning dark:bg-warning dark:text-warning';
-  return 'bg-success-light text-success dark:bg-success dark:text-success';
+  if (tier === 'high') return 'bg-danger-light text-danger dark:text-danger';
+  if (tier === 'medium') return 'bg-warning-light text-warning dark:text-warning';
+  return 'bg-success-light text-success dark:text-success';
 }
 
 function riskTierIcon(tier: string) {
@@ -121,9 +121,9 @@ function statusColor(status: string): string {
 }
 
 function confidenceBadge(score: number): string {
-  if (score >= 0.8) return 'bg-success-light text-success dark:bg-success dark:text-success';
-  if (score >= 0.5) return 'bg-warning-light text-warning dark:bg-warning dark:text-warning';
-  return 'bg-danger-light text-danger dark:bg-danger dark:text-danger';
+  if (score >= 0.8) return 'bg-success-light text-success dark:text-success';
+  if (score >= 0.5) return 'bg-warning-light text-warning dark:text-warning';
+  return 'bg-danger-light text-danger dark:text-danger';
 }
 
 function SummaryCard({ icon: Icon, label, value, subtext, color }: { icon: typeof Zap; label: string; value: string; subtext?: string; color: string }) {
@@ -293,26 +293,26 @@ export default function Autopilot() {
           icon={Eye}
           label="Active Insights"
           value={summaryLoading ? '—' : String(summary?.activeInsights ?? 0)}
-          color="bg-info-light text-info dark:bg-info dark:text-info"
+          color="bg-info-light text-info dark:text-info"
         />
         <SummaryCard
           icon={Target}
           label="Pending Recommendations"
           value={summaryLoading ? '—' : String(summary?.pendingRecommendations ?? 0)}
-          color="bg-warning-light text-warning dark:bg-warning dark:text-warning"
+          color="bg-warning-light text-warning dark:text-warning"
         />
         <SummaryCard
           icon={CheckCircle2}
           label="Approved"
           value={summaryLoading ? '—' : String(summary?.approvedRecommendations ?? 0)}
-          color="bg-success-light text-success dark:bg-success dark:text-success"
+          color="bg-success-light text-success dark:text-success"
         />
         <SummaryCard
           icon={DollarSign}
           label="Est. Revenue Impact"
           value={summaryLoading ? '—' : formatCents(summary?.totalRevenueImpactCents ?? 0)}
           subtext="from approved recommendations"
-          color="bg-success-light text-success dark:bg-success dark:text-success"
+          color="bg-success-light text-success dark:text-success"
         />
         <SummaryCard
           icon={Activity}
@@ -391,14 +391,14 @@ export default function Autopilot() {
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => approveMutation.mutate(rec.id)}
-                                className="p-1.5 text-success dark:text-success hover:bg-success-light dark:hover:bg-success rounded-md transition-colors"
+                                className="p-1.5 text-success dark:text-success hover:bg-success-light rounded-md transition-colors"
                                 title="Approve"
                               >
                                 <ThumbsUp className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => rejectMutation.mutate({ id: rec.id })}
-                                className="p-1.5 text-danger dark:text-danger hover:bg-danger-light dark:hover:bg-danger rounded-md transition-colors"
+                                className="p-1.5 text-danger dark:text-danger hover:bg-danger-light rounded-md transition-colors"
                                 title="Reject"
                               >
                                 <ThumbsDown className="h-3.5 w-3.5" />
@@ -571,13 +571,13 @@ export default function Autopilot() {
                             <>
                               <button
                                 onClick={(e) => { e.stopPropagation(); approveMutation.mutate(rec.id); }}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-success bg-success-light hover:bg-success-light dark:text-success dark:bg-success dark:hover:bg-success rounded-lg transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-success bg-success-light hover:bg-success-light dark:text-success rounded-lg transition-colors"
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Approve
                               </button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); rejectMutation.mutate({ id: rec.id }); }}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-danger bg-danger-light hover:bg-danger-light dark:text-danger dark:bg-danger dark:hover:bg-danger rounded-lg transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-danger bg-danger-light hover:bg-danger-light dark:text-danger rounded-lg transition-colors"
                               >
                                 <XCircle className="h-3.5 w-3.5" /> Reject
                               </button>
@@ -615,11 +615,11 @@ export default function Autopilot() {
                             <p className="text-xs font-medium text-text-secondary uppercase mb-1">Recommended Action</p>
                             <p className="text-sm text-text-primary">{rec.recommendedAction}</p>
                           </div>
-                          <div className="bg-success-light dark:bg-success rounded-lg p-3">
+                          <div className="bg-success-light rounded-lg p-3">
                             <p className="text-xs font-medium text-text-secondary uppercase mb-1">Expected Outcome</p>
                             <p className="text-sm text-text-primary">{rec.expectedOutcome}</p>
                           </div>
-                          <div className="bg-info-light dark:bg-info rounded-lg p-3">
+                          <div className="bg-info-light rounded-lg p-3">
                             <p className="text-xs font-medium text-text-secondary uppercase mb-1">Reasoning</p>
                             <p className="text-sm text-text-primary">{rec.reasoning}</p>
                           </div>
@@ -760,7 +760,7 @@ export default function Autopilot() {
                   </div>
                 </div>
                 {action.errorMessage && (
-                  <p className="text-xs text-danger dark:text-danger mt-2 bg-danger-light dark:bg-danger p-2 rounded">
+                  <p className="text-xs text-danger dark:text-danger mt-2 bg-danger-light p-2 rounded">
                     {action.errorMessage}
                   </p>
                 )}
@@ -857,21 +857,21 @@ function PoliciesPanel() {
           How Approval Tiers Work
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-success-light dark:bg-success rounded-lg p-3">
+          <div className="bg-success-light rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
               <ShieldCheck className="h-4 w-4 text-success dark:text-success" />
               <span className="text-sm font-medium text-success dark:text-success">Low Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Auto-executed without approval. Alerts, notifications, task creation.</p>
           </div>
-          <div className="bg-warning-light dark:bg-warning rounded-lg p-3">
+          <div className="bg-warning-light rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
               <Shield className="h-4 w-4 text-warning dark:text-warning" />
               <span className="text-sm font-medium text-warning dark:text-warning">Medium Risk</span>
             </div>
             <p className="text-xs text-text-secondary">Requires manager approval. Workflow changes, schedule adjustments.</p>
           </div>
-          <div className="bg-danger-light dark:bg-danger rounded-lg p-3">
+          <div className="bg-danger-light rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
               <ShieldAlert className="h-4 w-4 text-danger dark:text-danger" />
               <span className="text-sm font-medium text-danger dark:text-danger">High Risk</span>

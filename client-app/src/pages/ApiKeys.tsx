@@ -95,13 +95,13 @@ export default function ApiKeys() {
       />
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
         </div>
       )}
 
       {plaintextKey && (
-        <div className="bg-warning-light dark:bg-warning border border-warning dark:border-warning rounded-lg p-4">
+        <div className="bg-warning-light border border-warning rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
@@ -109,13 +109,13 @@ export default function ApiKeys() {
                 Copy your API key now. It won't be shown again.
               </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-surface px-3 py-2 rounded border border-warning dark:border-warning text-sm font-mono break-all">
+                <code className="flex-1 bg-surface px-3 py-2 rounded border border-warning text-sm font-mono break-all">
                   {plaintextKey}
                 </code>
                 <button
                   onClick={handleCopy}
                   aria-label={copied ? 'Copied' : 'Copy API key'}
-                  className="shrink-0 p-2 rounded-lg bg-warning-light dark:bg-warning hover:bg-warning-light dark:hover:bg-warning transition-colors"
+                  className="shrink-0 p-2 rounded-lg bg-warning-light hover:bg-warning-light transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4 text-warning dark:text-warning" />}
                 </button>
@@ -216,7 +216,7 @@ export default function ApiKeys() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleDelete(key.id)}
-                      className="p-1.5 rounded-lg text-danger hover:bg-danger-light dark:hover:bg-danger transition-colors"
+                      className="p-1.5 rounded-lg text-danger hover:bg-danger-light transition-colors"
                       title="Revoke key"
                     >
                       <Trash2 className="h-4 w-4" />

@@ -1259,7 +1259,7 @@ function ConnectorAlertSettings() {
       </div>
 
       {!isManager && (
-        <div className="bg-warning-light dark:bg-warning text-warning dark:text-warning text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+        <div className="bg-warning-light text-warning dark:text-warning text-xs px-3 py-2 rounded-lg flex items-center gap-2">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           {t('settings.connector_alerts.owner_only')}
         </div>

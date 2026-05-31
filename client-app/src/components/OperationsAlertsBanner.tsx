@@ -44,8 +44,8 @@ const TONE_STYLES: Record<
 > = {
   critical: {
     wrapper:
-      'border-danger bg-danger-light dark:bg-danger dark:border-danger hover:bg-danger-light dark:hover:bg-danger',
-    iconWrap: 'bg-danger-light dark:bg-danger text-danger dark:text-danger',
+      'border-danger bg-danger-light hover:bg-danger-light',
+    iconWrap: 'bg-danger-light text-danger dark:text-danger',
     title: 'text-danger dark:text-danger',
     subtle: 'text-danger dark:text-danger',
     cta: 'text-danger dark:text-danger',
@@ -53,8 +53,8 @@ const TONE_STYLES: Record<
   },
   high: {
     wrapper:
-      'border-danger bg-danger-light dark:bg-danger dark:border-danger hover:bg-danger-light dark:hover:bg-danger',
-    iconWrap: 'bg-danger-light dark:bg-danger text-danger dark:text-danger',
+      'border-danger bg-danger-light hover:bg-danger-light',
+    iconWrap: 'bg-danger-light text-danger dark:text-danger',
     title: 'text-danger dark:text-danger',
     subtle: 'text-danger dark:text-danger',
     cta: 'text-danger dark:text-danger',
@@ -62,8 +62,8 @@ const TONE_STYLES: Record<
   },
   warning: {
     wrapper:
-      'border-warning bg-warning-light dark:bg-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning',
-    iconWrap: 'bg-warning-light dark:bg-warning text-warning dark:text-warning',
+      'border-warning bg-warning-light hover:bg-warning-light',
+    iconWrap: 'bg-warning-light text-warning dark:text-warning',
     title: 'text-warning dark:text-warning',
     subtle: 'text-warning dark:text-warning',
     cta: 'text-warning dark:text-warning',
@@ -71,8 +71,8 @@ const TONE_STYLES: Record<
   },
   info: {
     wrapper:
-      'border-info bg-info-light dark:bg-info dark:border-info hover:bg-info-light dark:hover:bg-info',
-    iconWrap: 'bg-info-light dark:bg-info text-info dark:text-info',
+      'border-info bg-info-light hover:bg-info-light',
+    iconWrap: 'bg-info-light text-info dark:text-info',
     title: 'text-info dark:text-info',
     subtle: 'text-info dark:text-info',
     cta: 'text-info dark:text-info',

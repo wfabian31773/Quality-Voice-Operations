@@ -766,7 +766,7 @@ export default function PhoneNumbers() {
       ) : (
         <div className="space-y-4">
           {!hasUsedFreeNumber && isManager && (
-            <div className="bg-success-light dark:bg-success border border-success dark:border-success rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-success-light border border-success rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Gift className="h-5 w-5 text-success dark:text-success" />
                 <p className="text-sm font-medium text-success dark:text-success">
@@ -852,7 +852,7 @@ export default function PhoneNumbers() {
                               onClick={() =>
                                 navigate(`/connectors?provider=${encodeURIComponent(provider)}`)
                               }
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:bg-warning dark:text-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning transition cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-light text-warning border border-warning dark:text-warning hover:bg-warning-light transition cursor-pointer"
                               title={`${formatSchedulingProvider(provider)} is no longer connected. Click to reconnect this calendar in Integrations.`}
                             >
                               <AlertTriangle className="h-3 w-3" />

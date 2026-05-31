@@ -92,10 +92,10 @@ export default function SchedulingDriftBanner({
   return (
     <div
       role="alert"
-      className="rounded-xl border border-warning bg-warning-light dark:border-warning dark:bg-warning shadow-sm"
+      className="rounded-xl border border-warning bg-warning-light shadow-sm"
     >
       <div className="flex items-start gap-3 px-4 py-3 sm:px-5">
-        <div className="p-1.5 rounded-lg bg-warning-light dark:bg-warning shrink-0">
+        <div className="p-1.5 rounded-lg bg-warning-light shrink-0">
           <AlertTriangle className="h-4 w-4 text-warning dark:text-warning" />
         </div>
         <div className="flex-1 min-w-0">
@@ -111,7 +111,7 @@ export default function SchedulingDriftBanner({
         <button
           type="button"
           onClick={handleReconnect}
-          className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light dark:bg-warning dark:hover:bg-warning px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-warning"
+          className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-warning"
         >
           {t('scheduling_drift_banner.reconnect')} <ArrowRight className="h-3 w-3" />
         </button>
@@ -128,7 +128,7 @@ export default function SchedulingDriftBanner({
         <button
           type="button"
           onClick={handleReconnect}
-          className="inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light dark:bg-warning dark:hover:bg-warning px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-warning"
+          className="inline-flex items-center gap-1 text-xs font-medium text-warning dark:text-warning bg-warning-light hover:bg-warning-light px-3 py-1.5 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-warning"
         >
           {t('scheduling_drift_banner.reconnect')} <ArrowRight className="h-3 w-3" />
         </button>

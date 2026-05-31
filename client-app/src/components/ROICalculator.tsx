@@ -300,12 +300,12 @@ export default function ROICalculator({
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              <div className="bg-success-light dark:bg-success rounded-xl p-5 text-center">
+              <div className="bg-success-light rounded-xl p-5 text-center">
                 <DollarSign className="h-5 w-5 text-success dark:text-success mx-auto mb-2" />
                 <div className="text-2xl font-display font-bold text-success dark:text-success">{formatCurrency(results.monthlySavings)}</div>
                 <div className="text-xs text-success dark:text-success mt-1">Monthly savings</div>
               </div>
-              <div className="bg-info-light dark:bg-info rounded-xl p-5 text-center">
+              <div className="bg-info-light rounded-xl p-5 text-center">
                 <TrendingUp className="h-5 w-5 text-info dark:text-info mx-auto mb-2" />
                 <div className="text-2xl font-display font-bold text-info dark:text-info">{Math.round(results.annualROI)}%</div>
                 <div className="text-xs text-info dark:text-info mt-1">Annual ROI</div>

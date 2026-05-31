@@ -160,7 +160,7 @@ export function HelpDrawer() {
                 <div className="p-5">
                   {result?.success ? (
                     <div className="text-center py-8">
-                      <div className="w-12 h-12 mx-auto rounded-full bg-success-light dark:bg-success flex items-center justify-center mb-4">
+                      <div className="w-12 h-12 mx-auto rounded-full bg-success-light flex items-center justify-center mb-4">
                         <Check className="h-6 w-6 text-success dark:text-success" />
                       </div>
                       <h3 className="font-display text-lg font-bold text-text-primary mb-1">{t('help_drawer.message_sent')}</h3>

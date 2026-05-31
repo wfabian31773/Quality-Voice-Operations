@@ -179,16 +179,16 @@ function buildNodeLibrary(t: BuilderT): NodeCategory[] {
 }
 
 const NODE_COLORS: Record<string, { bg: string; border: string; text: string; handle: string }> = {
-  greeting: { bg: 'bg-success-light dark:bg-success', border: 'border-success dark:border-success', text: 'text-success dark:text-success', handle: '#10b981' },
-  askQuestion: { bg: 'bg-info-light dark:bg-info', border: 'border-info dark:border-info', text: 'text-info dark:text-info', handle: '#3b82f6' },
+  greeting: { bg: 'bg-success-light', border: 'border-success', text: 'text-success dark:text-success', handle: '#10b981' },
+  askQuestion: { bg: 'bg-info-light', border: 'border-info', text: 'text-info dark:text-info', handle: '#3b82f6' },
   confirmInfo: { bg: 'bg-indigo-50 dark:bg-indigo-900/30', border: 'border-indigo-300 dark:border-indigo-700', text: 'text-indigo-700 dark:text-indigo-300', handle: '#6366f1' },
-  condition: { bg: 'bg-warning-light dark:bg-warning', border: 'border-warning dark:border-warning', text: 'text-warning dark:text-warning', handle: '#f59e0b' },
-  routeDecision: { bg: 'bg-warning-light dark:bg-warning', border: 'border-warning dark:border-warning', text: 'text-warning dark:text-warning', handle: '#f97316' },
+  condition: { bg: 'bg-warning-light', border: 'border-warning', text: 'text-warning dark:text-warning', handle: '#f59e0b' },
+  routeDecision: { bg: 'bg-warning-light', border: 'border-warning', text: 'text-warning dark:text-warning', handle: '#f97316' },
   createTicket: { bg: 'bg-purple-50 dark:bg-purple-900/30', border: 'border-purple-300 dark:border-purple-700', text: 'text-purple-700 dark:text-purple-300', handle: '#a855f7' },
   createContact: { bg: 'bg-pink-50 dark:bg-pink-900/30', border: 'border-pink-300 dark:border-pink-700', text: 'text-pink-700 dark:text-pink-300', handle: '#ec4899' },
   scheduleAppt: { bg: 'bg-cyan-50 dark:bg-cyan-900/30', border: 'border-cyan-300 dark:border-cyan-700', text: 'text-cyan-700 dark:text-cyan-300', handle: '#06b6d4' },
   sendSms: { bg: 'bg-teal-50 dark:bg-teal-900/30', border: 'border-teal-300 dark:border-teal-700', text: 'text-teal-700 dark:text-teal-300', handle: '#14b8a6' },
-  dispatchJob: { bg: 'bg-danger-light dark:bg-danger', border: 'border-danger dark:border-danger', text: 'text-danger dark:text-danger', handle: '#f43f5e' },
+  dispatchJob: { bg: 'bg-danger-light', border: 'border-danger', text: 'text-danger dark:text-danger', handle: '#f43f5e' },
 };
 
 const DEFAULT_COLORS = { bg: 'bg-surface-hover', border: 'border-border', text: 'text-text-primary', handle: '#6b7280' };
@@ -549,13 +549,13 @@ function categoryLabel(cat: string, t: BuilderT): string {
 
 function categoryColor(cat: string): string {
   const colors: Record<string, string> = {
-    prompt_structure: 'bg-info-light text-info dark:bg-info dark:text-info',
+    prompt_structure: 'bg-info-light text-info dark:text-info',
     question_ordering: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    objection_handling: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+    objection_handling: 'bg-warning-light text-warning dark:text-warning',
     workflow_efficiency: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
     tone: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
-    accuracy: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
-    resolution: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+    accuracy: 'bg-danger-light text-danger dark:text-danger',
+    resolution: 'bg-warning-light text-warning dark:text-warning',
   };
   return colors[cat] || 'bg-surface-hover text-text-primary';
 }
@@ -661,13 +661,13 @@ function ImprovementSuggestionsPanel({
                     <div className="mt-2 space-y-2">
                       <div>
                         <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('current')}</p>
-                        <pre className="text-[11px] text-danger dark:text-danger bg-danger-light dark:bg-danger rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
+                        <pre className="text-[11px] text-danger dark:text-danger bg-danger-light rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
                           {s.currentPromptSection}
                         </pre>
                       </div>
                       <div>
                         <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('suggested')}</p>
-                        <pre className="text-[11px] text-success dark:text-success bg-success-light dark:bg-success rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
+                        <pre className="text-[11px] text-success dark:text-success bg-success-light rounded p-2 whitespace-pre-wrap max-h-24 overflow-auto">
                           {s.suggestedPromptSection}
                         </pre>
                       </div>
@@ -1179,14 +1179,14 @@ function TestConsolePanel({
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {simStatus === 'running' && (
               <div className="text-center">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-light text-success dark:bg-success dark:text-success font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-light text-success dark:text-success font-medium">
                   {t('simulating')}
                 </span>
               </div>
             )}
             {simStatus === 'complete' && (
               <div className="text-center">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-info-light text-info dark:bg-info dark:text-info font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-info-light text-info dark:text-info font-medium">
                   {t('simComplete')}
                 </span>
               </div>
@@ -1197,7 +1197,7 @@ function TestConsolePanel({
                   msg.role === 'user'
                     ? 'bg-primary text-white'
                     : msg.role === 'system'
-                    ? 'bg-warning-light dark:bg-warning text-warning dark:text-warning italic'
+                    ? 'bg-warning-light text-warning dark:text-warning italic'
                     : 'bg-surface-hover text-text-primary'
                 }`}>
                   {msg.text}
@@ -1320,7 +1320,7 @@ function DeploymentPanel({
           {assignedNumbers.length > 0 ? (
             <div className="space-y-1.5 mb-2">
               {assignedNumbers.map((p) => (
-                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-success dark:border-success bg-success-light dark:bg-success">
+                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-success bg-success-light">
                   <div>
                     <p className="text-xs font-medium text-text-primary">{p.friendly_name || p.phone_number}</p>
                     <p className="text-[10px] text-text-muted">{p.phone_number}</p>
@@ -1374,13 +1374,13 @@ function DeploymentPanel({
                   </div>
                   <div className="flex items-center gap-1.5">
                     {publishedVersion === v.version && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success dark:bg-success dark:text-success">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success-light text-success dark:text-success">
                         {t('liveBadge')}
                       </span>
                     )}
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                       v.status === 'published'
-                        ? 'bg-info-light text-info dark:bg-info dark:text-info'
+                        ? 'bg-info-light text-info dark:text-info'
                         : 'bg-surface-hover text-text-secondary'
                     }`}>
                       v{v.version}
@@ -2860,7 +2860,7 @@ function AgentBuilderInner() {
           status={
             <>
               {hasChanges && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:bg-warning dark:text-warning font-medium">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-light text-warning dark:text-warning font-medium">
                   {t('unsaved')}
                 </span>
               )}
@@ -2869,7 +2869,7 @@ function AgentBuilderInner() {
                   className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                     saveMessage.tone === 'error'
                       ? 'bg-danger-light text-danger'
-                      : 'bg-success-light text-success dark:bg-success dark:text-success'
+                      : 'bg-success-light text-success dark:text-success'
                   }`}
                 >
                   {saveMessage.text}
@@ -3035,7 +3035,7 @@ function AgentBuilderInner() {
                               e.stopPropagation();
                               handleDeleteCustomTemplate(tpl);
                             }}
-                            className="flex-shrink-0 p-1 rounded text-text-muted hover:text-danger hover:bg-danger-light dark:hover:bg-danger transition"
+                            className="flex-shrink-0 p-1 rounded text-text-muted hover:text-danger hover:bg-danger-light transition"
                             aria-label={t('deleteCustomTemplate')}
                             title={t('deleteCustomTemplate')}
                           >
@@ -3253,7 +3253,7 @@ function AgentBuilderInner() {
           <button
             onClick={() => setRightPanel(rightPanel === 'improve' ? 'none' : 'improve')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition ${
-              rightPanel === 'improve' ? 'border-warning text-warning bg-warning-light dark:bg-warning' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+              rightPanel === 'improve' ? 'border-warning text-warning bg-warning-light' : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover'
             }`}
           >
             <Lightbulb className="h-3.5 w-3.5" /> {t('improve')}
@@ -3292,7 +3292,7 @@ function AgentBuilderInner() {
       {voiceMismatch && (
         <div
           role="status"
-          className="flex flex-col gap-2 border-b border-warning bg-warning-light px-4 py-2 sm:flex-row sm:items-center sm:justify-between dark:border-warning dark:bg-warning"
+          className="flex flex-col gap-2 border-b border-warning bg-warning-light px-4 py-2 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-start gap-2 text-xs text-warning dark:text-warning">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -3308,7 +3308,7 @@ function AgentBuilderInner() {
             type="button"
             onClick={() => useRecommendedVoiceMutation.mutate()}
             disabled={useRecommendedVoiceMutation.isPending}
-            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-warning text-white hover:bg-warning dark:bg-warning dark:hover:bg-warning transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-warning text-white hover:bg-warning transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {useRecommendedVoiceMutation.isPending
               ? t('saving')

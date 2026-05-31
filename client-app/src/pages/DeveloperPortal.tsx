@@ -65,10 +65,10 @@ const PRICE_MODEL_OPTIONS = [
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-hover text-text-primary',
-  submitted: 'bg-info-light text-info dark:bg-info dark:text-info',
-  in_review: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
-  approved: 'bg-success-light text-success dark:bg-success dark:text-success',
-  rejected: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+  submitted: 'bg-info-light text-info dark:text-info',
+  in_review: 'bg-warning-light text-warning dark:text-warning',
+  approved: 'bg-success-light text-success dark:text-success',
+  rejected: 'bg-danger-light text-danger dark:text-danger',
   published: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
@@ -281,7 +281,7 @@ function SubmissionForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       {validation && (
-        <div className={`p-4 rounded-lg border ${validation.valid ? 'bg-success-light dark:bg-success border-success dark:border-success' : 'bg-danger-light dark:bg-danger border-danger dark:border-danger'}`}>
+        <div className={`p-4 rounded-lg border ${validation.valid ? 'bg-success-light border-success' : 'bg-danger-light border-danger'}`}>
           <p className={`text-sm font-medium ${validation.valid ? 'text-success dark:text-success' : 'text-danger dark:text-danger'}`}>
             {validation.valid ? 'Validation passed' : 'Validation failed'}
           </p>
@@ -454,28 +454,28 @@ function DocumentationSection() {
         <div className="space-y-3 text-sm">
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success-light text-success dark:bg-success dark:text-success">POST</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success-light text-success dark:text-success">POST</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/submissions</code>
             </div>
             <p className="text-xs text-text-muted">Submit a new package for review</p>
           </div>
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success-light text-success dark:bg-success dark:text-success">POST</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success-light text-success dark:text-success">POST</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/submissions/validate</code>
             </div>
             <p className="text-xs text-text-muted">Validate a package manifest before submission</p>
           </div>
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info-light text-info dark:bg-info dark:text-info">GET</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info-light text-info dark:text-info">GET</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/submissions</code>
             </div>
             <p className="text-xs text-text-muted">List your submissions and their review status</p>
           </div>
           <div className="p-3 border border-border rounded-lg">
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info-light text-info dark:bg-info dark:text-info">GET</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info-light text-info dark:text-info">GET</span>
               <code className="text-xs font-mono text-text-primary">/api/marketplace/developer/stats</code>
             </div>
             <p className="text-xs text-text-muted">Get your developer dashboard statistics</p>

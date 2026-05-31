@@ -54,7 +54,7 @@ export default function TrialBanner() {
           containerClassName="fixed inset-0 z-paywall flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
           panelClassName="relative max-w-md w-full bg-surface rounded-2xl shadow-xl p-6 text-center border border-border"
         >
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-danger-light dark:bg-danger text-danger mb-4">
+          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-danger-light text-danger mb-4">
             <Lock className="h-7 w-7" />
           </div>
           <h2 className="text-xl font-bold font-display mb-2">{t('trial_banner.expired_title')}</h2>

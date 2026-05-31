@@ -1086,7 +1086,7 @@ function ConnectModal({
               {oauthConfigError && (
                 <div
                   role="alert"
-                  className="mb-3 rounded-lg border border-warning dark:border-warning bg-warning-light dark:bg-warning p-3 text-xs"
+                  className="mb-3 rounded-lg border border-warning bg-warning-light p-3 text-xs"
                 >
                   <div className="flex items-start gap-1.5 text-warning dark:text-warning">
                     <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
@@ -1150,7 +1150,7 @@ function ConnectModal({
               {oauthError && !oauthConfigError && (
                 <div
                   role="alert"
-                  className="mb-3 rounded-lg border border-danger dark:border-danger bg-danger-light dark:bg-danger p-2.5 text-xs text-danger dark:text-danger"
+                  className="mb-3 rounded-lg border border-danger bg-danger-light p-2.5 text-xs text-danger dark:text-danger"
                 >
                   <div className="flex items-start gap-1.5">
                     <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
@@ -1970,21 +1970,21 @@ function ConnectedCard({
         </div>
         {autoDisabled ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-danger-light text-danger dark:bg-danger dark:text-danger ring-1 ring-danger dark:ring-danger whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-danger-light text-danger dark:text-danger ring-1 ring-danger dark:ring-danger whitespace-nowrap"
             title="This integration was failing for too long, so we automatically disabled it to stop wasting tool budget."
           >
             <AlertCircle className="h-3 w-3" /> Auto-disabled
           </span>
         ) : needsReconnect ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-warning-light text-warning dark:bg-warning dark:text-warning ring-1 ring-warning dark:ring-warning whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-warning-light text-warning dark:text-warning ring-1 ring-warning dark:ring-warning whitespace-nowrap"
             title="The stored access token can no longer be refreshed. Sign in again to restore syncing."
           >
             <AlertTriangle className="h-3 w-3" /> Reconnect needed
           </span>
         ) : enabled && !syncError ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-success-light text-success dark:bg-success dark:text-success whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-success-light text-success dark:text-success whitespace-nowrap"
             aria-label={`${definition.name} sync status: connected`}
             title="Connected and syncing"
           >
@@ -1992,7 +1992,7 @@ function ConnectedCard({
           </span>
         ) : syncError ? (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-danger-light text-danger dark:bg-danger dark:text-danger whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-danger-light text-danger dark:text-danger whitespace-nowrap"
             aria-label={`${definition.name} sync status: sync error`}
             title="Last sync failed"
           >
@@ -2000,7 +2000,7 @@ function ConnectedCard({
           </span>
         ) : (
           <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-warning-light text-warning dark:bg-warning dark:text-warning whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-warning-light text-warning dark:text-warning whitespace-nowrap"
             aria-label={`${definition.name} sync status: disabled`}
             title="Connector is disabled"
           >
@@ -2038,7 +2038,7 @@ function ConnectedCard({
 
       {autoDisabled && (
         <div
-          className="mb-3 rounded-lg border border-danger dark:border-danger bg-danger-light dark:bg-danger p-3 text-xs"
+          className="mb-3 rounded-lg border border-danger bg-danger-light p-3 text-xs"
           title="This integration was failing for too long, so it was automatically disabled to stop wasting tool budget."
         >
           <div className="flex items-start gap-1.5 text-danger dark:text-danger">
@@ -2074,7 +2074,7 @@ function ConnectedCard({
 
       {needsReconnect && !autoDisabled && (
         <div
-          className="mb-3 rounded-lg border border-warning dark:border-warning bg-warning-light dark:bg-warning p-3 text-xs"
+          className="mb-3 rounded-lg border border-warning bg-warning-light p-3 text-xs"
           title="The stored OAuth refresh token expired or was revoked. Reconnect to restore syncing."
         >
           <div className="flex items-start gap-1.5 text-warning dark:text-warning">
@@ -2101,7 +2101,7 @@ function ConnectedCard({
             </button>
           )}
           {reauthConfigError && (
-            <div role="alert" className="mt-2 rounded-md border border-warning bg-warning-light dark:bg-warning p-2 text-warning dark:text-warning">
+            <div role="alert" className="mt-2 rounded-md border border-warning bg-warning-light p-2 text-warning dark:text-warning">
               {reauthConfigError.kind === 'state_secret' ? (
                 <>
                   <p className="font-semibold">OAuth signing secret missing</p>
@@ -2161,7 +2161,7 @@ function ConnectedCard({
 
       {syncError && errorMessage && (
         <div
-          className="mb-3 rounded-lg border border-danger dark:border-danger bg-danger-light dark:bg-danger p-2.5 text-xs"
+          className="mb-3 rounded-lg border border-danger bg-danger-light p-2.5 text-xs"
           title={errorMessage}
         >
           <div className="flex items-start gap-1.5 text-danger dark:text-danger">
@@ -2259,7 +2259,7 @@ function AvailableCard({
       {oauthUnavailable && (
         <div
           role="status"
-          className="mb-3 rounded-lg border border-warning dark:border-warning bg-warning-light dark:bg-warning p-2.5 text-xs"
+          className="mb-3 rounded-lg border border-warning bg-warning-light p-2.5 text-xs"
           title={
             oauthAvailability?.missingEnv
               ? `Platform admin needs to set ${oauthAvailability.missingEnv} on the server.`
@@ -2662,8 +2662,8 @@ export function OutageAlertHistory({
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
                             isSms
-                              ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
-                              : 'bg-info-light text-info dark:bg-info dark:text-info'
+                              ? 'bg-danger-light text-danger dark:text-danger'
+                              : 'bg-info-light text-info dark:text-info'
                           }`}
                         >
                           {isSms ? (
@@ -2763,7 +2763,7 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
     case 'delivered':
       return {
         label: 'Delivered',
-        className: 'bg-success-light text-success dark:bg-success dark:text-success',
+        className: 'bg-success-light text-success dark:text-success',
         Icon: CheckCircle2,
       };
     case 'sent':
@@ -2771,43 +2771,43 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
       // delivery. Greener than queued, dimmer than delivered.
       return {
         label: 'Sent',
-        className: 'bg-success-light text-success dark:bg-success dark:text-success',
+        className: 'bg-success-light text-success dark:text-success',
         Icon: CheckCircle2,
       };
     case 'undelivered':
       return {
         label: 'Undelivered',
-        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+        className: 'bg-danger-light text-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'bounced':
       return {
         label: 'Bounced',
-        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+        className: 'bg-danger-light text-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'dropped':
       return {
         label: 'Dropped',
-        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+        className: 'bg-danger-light text-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'spam':
       return {
         label: 'Spam',
-        className: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+        className: 'bg-warning-light text-warning dark:text-warning',
         Icon: AlertTriangle,
       };
     case 'deferred':
       return {
         label: 'Deferred',
-        className: 'bg-info-light text-info dark:bg-info dark:text-info',
+        className: 'bg-info-light text-info dark:text-info',
         Icon: Clock,
       };
     case 'failed':
       return {
         label: 'Failed',
-        className: 'bg-danger-light text-danger dark:bg-danger dark:text-danger',
+        className: 'bg-danger-light text-danger dark:text-danger',
         Icon: AlertCircle,
       };
     case 'queued':
@@ -2815,13 +2815,13 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
     case 'accepted':
       return {
         label: status === 'queued' ? 'Queued' : status === 'accepted' ? 'Accepted' : 'Sending',
-        className: 'bg-info-light text-info dark:bg-info dark:text-info',
+        className: 'bg-info-light text-info dark:text-info',
         Icon: Clock,
       };
     case 'skipped':
       return {
         label: 'Skipped',
-        className: 'bg-warning-light text-warning dark:bg-warning dark:text-warning',
+        className: 'bg-warning-light text-warning dark:text-warning',
         Icon: AlertTriangle,
       };
     default:
@@ -3013,8 +3013,8 @@ function OutageAlertDetailPanel({
                 <div
                   className={`mt-2 text-xs rounded-md border px-3 py-2 ${
                     resendBanner.kind === 'success'
-                      ? 'border-success bg-success-light text-success dark:border-success dark:bg-success dark:text-success'
-                      : 'border-danger bg-danger-light text-danger dark:border-danger dark:bg-danger dark:text-danger'
+                      ? 'border-success bg-success-light text-success dark:text-success'
+                      : 'border-danger bg-danger-light text-danger dark:text-danger'
                   }`}
                   role="status"
                 >
@@ -3084,8 +3084,8 @@ function OutageAlertDetailBody({
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                   isSms
-                    ? 'bg-danger-light text-danger dark:bg-danger dark:text-danger'
-                    : 'bg-info-light text-info dark:bg-info dark:text-info'
+                    ? 'bg-danger-light text-danger dark:text-danger'
+                    : 'bg-info-light text-info dark:text-info'
                 }`}
               >
                 {isSms ? <MessageSquare className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
@@ -3578,10 +3578,10 @@ export default function Connectors() {
       {(schedulingDriftAgents.length > 0 || schedulingDriftPhones.length > 0) && (
         <div
           role="alert"
-          className="rounded-xl border border-warning dark:border-warning bg-warning-light dark:bg-warning p-4"
+          className="rounded-xl border border-warning bg-warning-light p-4"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-light dark:bg-warning text-warning dark:text-warning">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-light text-warning dark:text-warning">
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
@@ -3633,10 +3633,10 @@ export default function Connectors() {
       {reconnectNeededDefs.length > 0 && (
         <div
           role="alert"
-          className="rounded-xl border border-warning dark:border-warning bg-warning-light dark:bg-warning p-4"
+          className="rounded-xl border border-warning bg-warning-light p-4"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-light dark:bg-warning text-warning dark:text-warning">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-light text-warning dark:text-warning">
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
@@ -3656,7 +3656,7 @@ export default function Connectors() {
                     <button
                       key={def.id}
                       onClick={() => scrollToConnector(c.integrationId)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-warning text-warning dark:text-warning border border-warning dark:border-warning hover:bg-warning-light dark:hover:bg-warning transition"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-warning dark:text-warning border border-warning hover:bg-warning-light transition"
                     >
                       <BrandLogo provider={def.logoId} size={14} />
                       {def.name}

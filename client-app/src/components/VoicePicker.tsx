@@ -218,7 +218,7 @@ export default function VoicePicker({
             title={previewLabel}
             className={`flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-md border transition ${
               hasError
-                ? 'border-danger text-danger dark:border-danger'
+                ? 'border-danger text-danger'
                 : isPlaying
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border text-text-secondary hover:text-primary hover:border-primary/50'
@@ -260,7 +260,7 @@ export default function VoicePicker({
       <div
         className={`rounded-lg border p-2 ${
           !isRecommended
-            ? 'border-warning dark:border-warning'
+            ? 'border-warning'
             : 'border-border'
         }`}
       >
@@ -298,7 +298,7 @@ export default function VoicePicker({
         </p>
       )}
       {!isRecommended ? (
-        <div className="mt-1.5 rounded-md border border-warning dark:border-warning bg-warning-light dark:bg-warning px-2 py-1.5 space-y-1.5">
+        <div className="mt-1.5 rounded-md border border-warning bg-warning-light px-2 py-1.5 space-y-1.5">
           <div className="flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 text-warning dark:text-warning flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-warning dark:text-warning leading-snug">
@@ -313,7 +313,7 @@ export default function VoicePicker({
             <button
               type="button"
               onClick={() => onChange(recommended[0])}
-              className="w-full text-[11px] font-medium text-white bg-warning hover:bg-warning dark:bg-warning dark:hover:bg-warning rounded px-2 py-1 transition"
+              className="w-full text-[11px] font-medium text-white bg-warning hover:bg-warning rounded px-2 py-1 transition"
             >
               {t('voiceSwitchToRecommended', { voice: recommended[0] })}
             </button>

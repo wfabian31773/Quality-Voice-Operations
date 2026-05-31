@@ -52,13 +52,13 @@ interface TicketStats {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-  open: { label: 'Open', color: 'bg-info-light text-info dark:bg-info dark:text-info', icon: AlertCircle },
-  in_progress: { label: 'In Progress', color: 'bg-warning-light text-warning dark:bg-warning dark:text-warning', icon: Clock },
+  open: { label: 'Open', color: 'bg-info-light text-info dark:text-info', icon: AlertCircle },
+  in_progress: { label: 'In Progress', color: 'bg-warning-light text-warning dark:text-warning', icon: Clock },
   pending: { label: 'Pending', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300', icon: Clock },
-  escalated: { label: 'Escalated', color: 'bg-danger-light text-danger dark:bg-danger dark:text-danger', icon: AlertTriangle },
-  resolved: { label: 'Resolved', color: 'bg-success-light text-success dark:bg-success dark:text-success', icon: CheckCircle2 },
+  escalated: { label: 'Escalated', color: 'bg-danger-light text-danger dark:text-danger', icon: AlertTriangle },
+  resolved: { label: 'Resolved', color: 'bg-success-light text-success dark:text-success', icon: CheckCircle2 },
   closed: { label: 'Closed', color: 'bg-surface-hover text-text-primary', icon: CheckCircle2 },
-  reopened: { label: 'Reopened', color: 'bg-warning-light text-warning dark:bg-warning dark:text-warning', icon: RotateCcw },
+  reopened: { label: 'Reopened', color: 'bg-warning-light text-warning dark:text-warning', icon: RotateCcw },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; icon: typeof ArrowUp; description: string }> = {
@@ -267,7 +267,7 @@ export default function Tickets() {
       />
 
       {error && (
-        <div className="bg-danger-light dark:bg-danger border border-danger dark:border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
+        <div className="bg-danger-light border border-danger rounded-lg p-3 text-sm text-danger dark:text-danger">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>

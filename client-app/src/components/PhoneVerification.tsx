@@ -65,7 +65,7 @@ export default function PhoneVerification({ onVerified }: { onVerified?: () => v
 
   if (success) {
     return (
-      <div className="p-4 bg-success-light dark:bg-success rounded-lg text-success dark:text-success text-sm">
+      <div className="p-4 bg-success-light rounded-lg text-success dark:text-success text-sm">
         {t('phone_verification.success')}
       </div>
     );
