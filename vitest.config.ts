@@ -68,12 +68,17 @@ export default defineConfig({
       // ones a test imported — so untested files surface as 0% instead of
       // silently vanishing from the report. That visibility is the point.
       all: true,
+      // Scope to the backend / business-logic packages exercised by this
+      // (node-environment) suite. The React frontend under `client-app/src`
+      // is intentionally excluded: it has its own vitest project with the
+      // jsdom setup, and instrumenting ~270 .tsx files here makes the v8
+      // report generation hang. Measure the frontend via `npm --prefix
+      // client-app run test -- --coverage` instead.
       include: [
         'platform/**/*.{ts,tsx}',
         'server/**/*.{ts,tsx}',
         'shared/**/*.{ts,tsx}',
         'scripts/**/*.{ts,tsx}',
-        'client-app/src/**/*.{ts,tsx}',
       ],
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
