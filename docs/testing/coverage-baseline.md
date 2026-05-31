@@ -85,13 +85,19 @@ test).
 `platform/rbac`, `platform/messaging`, `platform/widget`, `platform/db`,
 `platform/website-agent`, `platform/activation`, `platform/assistant`.)
 
+## Progress
+
+- **✅ `platform/reasoning`: 6.5% → 97.0% lines** (171 tests). The entire engine
+  is now covered — pure-logic units (SafetyGate, ConfidenceScorer, SlotTracker,
+  FallbackManager, EscalationManager, WorkflowPlanner, ReasoningTrace) at
+  92–100%, all nine industry packs, and the orchestration layer (DecisionEngine
+  94%, ReasoningEngine 98%, MemoryManager 100%).
+
 ## Priority order for closing gaps
 
 Ranked by risk × size × how low the current number is:
 
-1. **`platform/reasoning` (6.5%, 895 lines).** The agent decision core —
-   `DecisionEngine`, `SafetyGate`, `EscalationManager`, `ConfidenceScorer`,
-   `FallbackManager`, `SlotTracker`. Highest consequence, near-zero coverage.
+1. ~~**`platform/reasoning` (6.5%, 895 lines).**~~ ✅ Done — now 97.0%.
 2. **`server/voice-gateway` (31%, 8 files at 0%, 2184 lines).** The realtime
    call path (`openaiSession.ts` and session/tool dispatch). This is the
    product's namesake.
