@@ -64,16 +64,18 @@ export default defineConfig({
       // machine/browsable artifacts written under ./coverage (gitignored).
       reporter: ['text-summary', 'text', 'html', 'json-summary', 'lcov'],
       reportsDirectory: './coverage',
-      // `all: true` instruments every source file in `include`, not just the
-      // ones a test imported — so untested files surface as 0% instead of
-      // silently vanishing from the report. That visibility is the point.
-      all: true,
+      // NOTE: `all: true` is intentionally OFF. On this monorepo the v8
+      // provider's report generation hangs when asked to instrument every
+      // uncovered file (hundreds of modules), so the default run only reports
+      // files an executing test actually imported. The complementary list of
+      // files with ZERO coverage is produced separately by
+      // `scripts/coverage-gaps.mjs`, which diffs the source glob against the
+      // report — same visibility, without the hang.
+      all: false,
       // Scope to the backend / business-logic packages exercised by this
       // (node-environment) suite. The React frontend under `client-app/src`
-      // is intentionally excluded: it has its own vitest project with the
-      // jsdom setup, and instrumenting ~270 .tsx files here makes the v8
-      // report generation hang. Measure the frontend via `npm --prefix
-      // client-app run test -- --coverage` instead.
+      // has its own vitest project with the jsdom setup; measure it via
+      // `npm --prefix client-app run test -- --coverage`.
       include: [
         'platform/**/*.{ts,tsx}',
         'server/**/*.{ts,tsx}',
