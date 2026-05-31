@@ -43,4 +43,46 @@ export default defineConfig({
     // `expo/tsconfig.base` (only present inside the Expo install).
     tsconfigRaw: '{}',
   },
+  test: {
+    // The default `vitest run` is the unit + integration suite. Two families
+    // of files live in the tree but are NOT vitest tests and must be excluded,
+    // or they get swept in and fail spuriously:
+    //   - tests/e2e/**          Playwright/tsx specs that need a live server;
+    //                           run individually via the `test:e2e:*` scripts.
+    //   - tools/eslint-rules/** ESLint `RuleTester` scripts run with plain
+    //                           `node` via the `lint:rules` script.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.{idea,git,cache,output,temp}/**',
+      'tests/e2e/**',
+      'tools/eslint-rules/**',
+    ],
+    coverage: {
+      provider: 'v8',
+      // `text-summary` prints the headline table to the console; the rest are
+      // machine/browsable artifacts written under ./coverage (gitignored).
+      reporter: ['text-summary', 'text', 'html', 'json-summary', 'lcov'],
+      reportsDirectory: './coverage',
+      // `all: true` instruments every source file in `include`, not just the
+      // ones a test imported — so untested files surface as 0% instead of
+      // silently vanishing from the report. That visibility is the point.
+      all: true,
+      include: [
+        'platform/**/*.{ts,tsx}',
+        'server/**/*.{ts,tsx}',
+        'shared/**/*.{ts,tsx}',
+        'scripts/**/*.{ts,tsx}',
+        'client-app/src/**/*.{ts,tsx}',
+      ],
+      exclude: [
+        '**/*.{test,spec}.{ts,tsx}',
+        '**/*.d.ts',
+        '**/types.ts',
+        '**/__mocks__/**',
+        '**/__fixtures__/**',
+        'tests/**',
+      ],
+    },
+  },
 });
