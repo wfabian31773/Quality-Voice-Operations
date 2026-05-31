@@ -64,6 +64,10 @@ export default defineConfig({
       // machine/browsable artifacts written under ./coverage (gitignored).
       reporter: ['text-summary', 'text', 'html', 'json-summary', 'lcov'],
       reportsDirectory: './coverage',
+      // Vitest skips coverage report generation when any test fails (default
+      // false). We still want the numbers for the green portion of the suite,
+      // so always emit the report.
+      reportOnFailure: true,
       // NOTE: `all: true` is intentionally OFF. On this monorepo the v8
       // provider's report generation hangs when asked to instrument every
       // uncovered file (hundreds of modules), so the default run only reports
