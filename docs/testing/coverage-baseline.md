@@ -110,6 +110,12 @@ test).
   recordCallOutcome and retrieve_knowledge 96-99%; ToolRegistry 88%,
   OperatorNotificationPipeline 80%, lookup_customer 73%. Only the DDL-only
   `ensureReliabilityTables` and the template-stub handlers remain uncovered.
+- **🟡 `server/admin-api` routes: first 10 route files covered** (96 tests). A
+  reusable supertest pattern — stub `requireAuth` to inject `req.user`, keep the
+  real (pure) rbac middleware so role gates run for real, mock service/db deps.
+  Now high: `apiKeys`, `assistant`, `auditLog`, `quality` 100%; `toolHealth` 94%,
+  `csat`/`improvements` 93%, `workflows`/`toolExecutions` 88%, `conversion` high.
+  ~50 route files remain (largest absolute gap in the repo).
 
 ## Priority order for closing gaps
 
@@ -123,9 +129,10 @@ Ranked by risk × size × how low the current number is:
    (remaining: `observability/` submodule).
 4. ~~**`platform/tools` (10.6%).**~~ ✅ Done — now 79.0% (only the DDL-only
    `ensureReliabilityTables` and template-stub handlers remain).
-5. **`server/admin-api` (40%, but ~10k uncovered lines).** Largest absolute
-   gap. Prioritize the untested routes flagged in the analysis (`publicApi`,
-   `workflows`, `autopilot`, `marketplace`, `phoneNumbers`).
+5. **`server/admin-api` (40%, but ~10k uncovered lines).** 🟡 in progress —
+   10 route files covered with a reusable supertest harness (96 tests). Next:
+   keep working down the route list (`autopilot`, `marketplace`, `phoneNumbers`,
+   `tenants`, `users`, `campaigns`, `calls`, `analytics`).
 6. **Near-zero engines** — `workforce`, `digital-twin`, `evolution`,
    `simulation`, `autopilot`: decide which are load-bearing vs. experimental
    before investing; test the load-bearing ones.
