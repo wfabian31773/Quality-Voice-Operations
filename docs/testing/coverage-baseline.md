@@ -6,6 +6,33 @@ This is the first real coverage measurement for the repo. Use it as the
 baseline to **ratchet** against — coverage for a touched area should not go
 down, and the priority modules below should go up.
 
+## The coverage ratchet (enforced)
+
+Per-area line-coverage floors are enforced by **`scripts/coverage-ratchet.mjs`**
+against the committed baseline **`coverage-ratchet.json`**. The floors only ever
+move up. CI runs it via the **Coverage Ratchet** workflow
+(`.github/workflows/coverage-ratchet.yml`).
+
+```bash
+npm run coverage:ratchet:ci      # what CI runs: coverage on the ratcheted
+                                 # areas, then check floors (exit 1 on drop)
+npm run coverage:ratchet         # check floors against an existing
+                                 # coverage/coverage-summary.json
+npm run coverage:ratchet:update  # raise floors to current (after adding tests)
+```
+
+**Why a custom script and not vitest `coverage.thresholds`?** Because
+`coverage.all = false` here (only files an executing test imports are measured)
+and ~56 tests are DB/secret-dependent, a *global* threshold drifts with the
+environment. The ratchet instead scopes to areas covered by dependency-mocked
+tests that need no database — their numbers are stable everywhere, making a
+reliable gate. Areas absent from a given run are skipped with a warning (not
+failed), so partial local runs don't produce false regressions.
+
+When you legitimately need to lower a floor (e.g. deleting tested code), edit
+`coverage-ratchet.json` in the same commit and say why. When you add coverage,
+run `coverage:ratchet:update` and commit the raised floors to lock the gain in.
+
 ## How to reproduce
 
 ```bash
