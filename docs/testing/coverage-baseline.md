@@ -137,12 +137,20 @@ test).
   recordCallOutcome and retrieve_knowledge 96-99%; ToolRegistry 88%,
   OperatorNotificationPipeline 80%, lookup_customer 73%. Only the DDL-only
   `ensureReliabilityTables` and the template-stub handlers remain uncovered.
-- **🟡 `server/admin-api` routes: first 10 route files covered** (96 tests). A
+- **🟡 `server/admin-api` routes: 23 route files covered** (~330 tests). A
   reusable supertest pattern — stub `requireAuth` to inject `req.user`, keep the
   real (pure) rbac middleware so role gates run for real, mock service/db deps.
-  Now high: `apiKeys`, `assistant`, `auditLog`, `quality` 100%; `toolHealth` 94%,
-  `csat`/`improvements` 93%, `workflows`/`toolExecutions` 88%, `conversion` high.
-  ~50 route files remain (largest absolute gap in the repo).
+  100%: `apiKeys`, `assistant`, `auditLog`, `quality`, `health`,
+  `platformBillingReconciliation`, `platformPortalConfigCleanup`,
+  `platformBillingHealth`, `platformPushHealth`. High (75–96%): `toolHealth`,
+  `csat`, `improvements`, `workflows`, `toolExecutions`, `conversion`,
+  `observability`, `websiteAgent`, `caseStudies`, `marketingSearchAnalytics`,
+  `costOptimization`, `analytics`, `publicApi`, `platformIntegrationsStatus`.
+  Partial on the 1400-line `platformConnectorHealth` (main snapshot + guards).
+  Remaining are the very large webhook/dispatch/CRUD files (`support` 3.3k,
+  `dispatch` 5.7k, `campaigns`, `knowledgeDocuments`, `compliance`,
+  `trustedCallers`, `tenants`, `users`, `calls`, `billing`, …) — better served
+  by integration tests than unit mocking.
 
 ## Priority order for closing gaps
 
