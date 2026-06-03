@@ -23,6 +23,10 @@
     "server/admin-api/routes/conversion.ts": { "lines": 88 },
     "server/admin-api/routes/observability.ts": { "lines": 96 },
     "server/admin-api/routes/websiteAgent.ts": { "lines": 89 },
-    "server/admin-api/routes/caseStudies.ts": { "lines": 81 }
+    "server/admin-api/routes/caseStudies.ts": { "lines": 81 },
+    "server/admin-api/routes/health.ts": { "lines": 100 },
+    "server/admin-api/routes/platformBillingReconciliation.ts": { "lines": 100 },
+    "server/admin-api/routes/platformPortalConfigCleanup.ts": { "lines": 100 },
+    "server/admin-api/routes/publicApi.ts": { "lines": 72 }
   }
 }
