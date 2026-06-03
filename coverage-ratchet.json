@@ -33,6 +33,7 @@
     "server/admin-api/routes/marketingSearchAnalytics.ts": { "lines": 89 },
     "server/admin-api/routes/costOptimization.ts": { "lines": 77 },
     "server/admin-api/routes/platformIntegrationsStatus.ts": { "lines": 64 },
-    "server/admin-api/routes/platformConnectorHealth.ts": { "lines": 26 }
+    "server/admin-api/routes/platformConnectorHealth.ts": { "lines": 26 },
+    "server/admin-api/routes/analytics.ts": { "lines": 75 }
   }
 }
