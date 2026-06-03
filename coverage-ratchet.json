@@ -29,6 +29,8 @@
     "server/admin-api/routes/platformPortalConfigCleanup.ts": { "lines": 100 },
     "server/admin-api/routes/publicApi.ts": { "lines": 72 },
     "server/admin-api/routes/platformBillingHealth.ts": { "lines": 100 },
-    "server/admin-api/routes/platformPushHealth.ts": { "lines": 100 }
+    "server/admin-api/routes/platformPushHealth.ts": { "lines": 100 },
+    "server/admin-api/routes/marketingSearchAnalytics.ts": { "lines": 89 },
+    "server/admin-api/routes/costOptimization.ts": { "lines": 77 }
   }
 }
