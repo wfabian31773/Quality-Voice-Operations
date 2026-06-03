@@ -20,6 +20,9 @@
     "server/admin-api/routes/improvements.ts": { "lines": 88 },
     "server/admin-api/routes/workflows.ts": { "lines": 88 },
     "server/admin-api/routes/toolExecutions.ts": { "lines": 88 },
-    "server/admin-api/routes/conversion.ts": { "lines": 88 }
+    "server/admin-api/routes/conversion.ts": { "lines": 88 },
+    "server/admin-api/routes/observability.ts": { "lines": 96 },
+    "server/admin-api/routes/websiteAgent.ts": { "lines": 89 },
+    "server/admin-api/routes/caseStudies.ts": { "lines": 81 }
   }
 }
