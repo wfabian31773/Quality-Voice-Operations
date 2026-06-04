@@ -43,4 +43,57 @@ export default defineConfig({
     // `expo/tsconfig.base` (only present inside the Expo install).
     tsconfigRaw: '{}',
   },
+  test: {
+    // The default `vitest run` is the unit + integration suite. Two families
+    // of files live in the tree but are NOT vitest tests and must be excluded,
+    // or they get swept in and fail spuriously:
+    //   - tests/e2e/**          Playwright/tsx specs that need a live server;
+    //                           run individually via the `test:e2e:*` scripts.
+    //   - tools/eslint-rules/** ESLint `RuleTester` scripts run with plain
+    //                           `node` via the `lint:rules` script.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.{idea,git,cache,output,temp}/**',
+      'tests/e2e/**',
+      'tools/eslint-rules/**',
+    ],
+    coverage: {
+      provider: 'v8',
+      // `text-summary` prints the headline table to the console; the rest are
+      // machine/browsable artifacts written under ./coverage (gitignored).
+      reporter: ['text-summary', 'text', 'html', 'json-summary', 'lcov'],
+      reportsDirectory: './coverage',
+      // Vitest skips coverage report generation when any test fails (default
+      // false). We still want the numbers for the green portion of the suite,
+      // so always emit the report.
+      reportOnFailure: true,
+      // NOTE: `all: true` is intentionally OFF. On this monorepo the v8
+      // provider's report generation hangs when asked to instrument every
+      // uncovered file (hundreds of modules), so the default run only reports
+      // files an executing test actually imported. The complementary list of
+      // files with ZERO coverage is produced separately by
+      // `scripts/coverage-gaps.mjs`, which diffs the source glob against the
+      // report — same visibility, without the hang.
+      all: false,
+      // Scope to the backend / business-logic packages exercised by this
+      // (node-environment) suite. The React frontend under `client-app/src`
+      // has its own vitest project with the jsdom setup; measure it via
+      // `npm --prefix client-app run test -- --coverage`.
+      include: [
+        'platform/**/*.{ts,tsx}',
+        'server/**/*.{ts,tsx}',
+        'shared/**/*.{ts,tsx}',
+        'scripts/**/*.{ts,tsx}',
+      ],
+      exclude: [
+        '**/*.{test,spec}.{ts,tsx}',
+        '**/*.d.ts',
+        '**/types.ts',
+        '**/__mocks__/**',
+        '**/__fixtures__/**',
+        'tests/**',
+      ],
+    },
+  },
 });

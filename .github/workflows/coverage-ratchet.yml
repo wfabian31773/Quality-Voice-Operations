@@ -1,0 +1,37 @@
+name: Coverage Ratchet
+
+# Guards line coverage of the hand-tested, dependency-mocked areas against
+# regression. Floors live in coverage-ratchet.json and only move up
+# (raise them with `npm run coverage:ratchet:update`). Scoped to areas whose
+# tests mock their dependencies, so the job needs no database or secrets.
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: coverage-ratchet-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage-ratchet:
+    name: line-coverage floors
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies (root)
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Run coverage on ratcheted areas and check floors
+        run: npm run coverage:ratchet:ci

@@ -6,6 +6,10 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "coverage:ratchet": "node scripts/coverage-ratchet.mjs",
+    "coverage:ratchet:update": "node scripts/coverage-ratchet.mjs --update",
+    "coverage:ratchet:ci": "vitest run --coverage platform/reasoning platform/tools platform/core server/voice-gateway server/admin-api/routes && node scripts/coverage-ratchet.mjs",
     "test:e2e:sales-inbox-filters": "tsx tests/e2e/salesInboxFilters.spec.ts",
     "test:e2e:admin-pages-smoke": "tsx tests/e2e/adminPagesSmoke.spec.ts",
     "test:e2e:platform-admin-billing-health": "tsx tests/e2e/platformAdminBillingHealth.spec.ts",
@@ -168,6 +172,7 @@
     "@types/node": "^24.10.4",
     "@types/supertest": "^7.2.0",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.0.16",
     "happy-dom": "^20.9.0",
     "supertest": "^7.2.2",
     "tsx": "^4.20.3",
