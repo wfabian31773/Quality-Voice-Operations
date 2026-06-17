@@ -34,6 +34,8 @@
     "server/admin-api/routes/costOptimization.ts": { "lines": 77 },
     "server/admin-api/routes/platformIntegrationsStatus.ts": { "lines": 64 },
     "server/admin-api/routes/platformConnectorHealth.ts": { "lines": 26 },
-    "server/admin-api/routes/analytics.ts": { "lines": 75 }
+    "server/admin-api/routes/analytics.ts": { "lines": 75 },
+    "server/admin-api/routes/users.ts": { "lines": 90 },
+    "server/admin-api/routes/tenants.ts": { "lines": 80 }
   }
 }
