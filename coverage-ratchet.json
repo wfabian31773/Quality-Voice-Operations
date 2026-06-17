@@ -37,6 +37,8 @@
     "server/admin-api/routes/analytics.ts": { "lines": 75 },
     "server/admin-api/routes/users.ts": { "lines": 90 },
     "server/admin-api/routes/tenants.ts": { "lines": 80 },
-    "server/admin-api/routes/gin.ts": { "lines": 78 }
+    "server/admin-api/routes/gin.ts": { "lines": 78 },
+    "server/admin-api/routes/widget.ts": { "lines": 85 },
+    "server/admin-api/routes/autopilot.ts": { "lines": 78 }
   }
 }
