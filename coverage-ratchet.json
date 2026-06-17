@@ -36,6 +36,7 @@
     "server/admin-api/routes/platformConnectorHealth.ts": { "lines": 26 },
     "server/admin-api/routes/analytics.ts": { "lines": 75 },
     "server/admin-api/routes/users.ts": { "lines": 90 },
-    "server/admin-api/routes/tenants.ts": { "lines": 80 }
+    "server/admin-api/routes/tenants.ts": { "lines": 80 },
+    "server/admin-api/routes/gin.ts": { "lines": 78 }
   }
 }
