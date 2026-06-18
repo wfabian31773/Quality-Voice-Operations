@@ -187,6 +187,9 @@
     },
     "server/admin-api/routes/legalCompliance.ts": {
       "lines": 34
+    },
+    "server/admin-api/routes/platformCompliance.ts": {
+      "lines": 39
     }
   }
 }
