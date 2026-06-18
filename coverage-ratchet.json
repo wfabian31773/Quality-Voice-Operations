@@ -160,6 +160,9 @@
     },
     "server/admin-api/routes/connectors.ts": {
       "lines": 36
+    },
+    "server/admin-api/routes/contact.ts": {
+      "lines": 44
     }
   }
 }
