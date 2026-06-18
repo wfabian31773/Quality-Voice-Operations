@@ -124,6 +124,15 @@
     },
     "server/admin-api/routes/evolution.ts": {
       "lines": 75
+    },
+    "server/admin-api/routes/platformCallEventsRetention.ts": {
+      "lines": 100
+    },
+    "server/admin-api/routes/publicGin.ts": {
+      "lines": 92
+    },
+    "server/admin-api/routes/demoLive.ts": {
+      "lines": 27
     }
   }
 }
