@@ -250,6 +250,9 @@
     },
     "server/admin-api/services/marketing-leads.ts": {
       "lines": 30
+    },
+    "server/admin-api/spaFallback.ts": {
+      "lines": 100
     }
   }
 }
