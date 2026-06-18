@@ -208,6 +208,9 @@
     },
     "server/admin-api/routes/scheduling.ts": {
       "lines": 20
+    },
+    "server/admin-api/routes/platformAdmin.ts": {
+      "lines": 14
     }
   }
 }
