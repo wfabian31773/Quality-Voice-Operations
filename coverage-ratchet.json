@@ -193,6 +193,9 @@
     },
     "server/admin-api/routes/auth.ts": {
       "lines": 26
+    },
+    "server/admin-api/routes/smsInbox.ts": {
+      "lines": 26
     }
   }
 }
