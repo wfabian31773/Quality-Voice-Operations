@@ -139,6 +139,9 @@
     },
     "server/admin-api/routes/callDebug.ts": {
       "lines": 100
+    },
+    "server/admin-api/routes/demo.ts": {
+      "lines": 77
     }
   }
 }
