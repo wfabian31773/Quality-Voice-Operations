@@ -184,6 +184,9 @@
     },
     "server/admin-api/routes/campaigns.ts": {
       "lines": 54
+    },
+    "server/admin-api/routes/legalCompliance.ts": {
+      "lines": 34
     }
   }
 }
