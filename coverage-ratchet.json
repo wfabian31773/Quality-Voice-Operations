@@ -142,6 +142,9 @@
     },
     "server/admin-api/routes/demo.ts": {
       "lines": 77
+    },
+    "server/admin-api/routes/mobileApi.ts": {
+      "lines": 80
     }
   }
 }
