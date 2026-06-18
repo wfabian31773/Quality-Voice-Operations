@@ -133,6 +133,12 @@
     },
     "server/admin-api/routes/demoLive.ts": {
       "lines": 27
+    },
+    "server/admin-api/routes/knowledgeBase.ts": {
+      "lines": 90
+    },
+    "server/admin-api/routes/callDebug.ts": {
+      "lines": 100
     }
   }
 }
