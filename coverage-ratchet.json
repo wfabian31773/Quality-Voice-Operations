@@ -220,6 +220,21 @@
     },
     "server/admin-api/routes/connectorOAuth.ts": {
       "lines": 19
+    },
+    "server/admin-api/middleware/apiKeyAuth.ts": {
+      "lines": 83
+    },
+    "server/admin-api/middleware/apiKeyScope.ts": {
+      "lines": 100
+    },
+    "server/admin-api/middleware/errorHandler.ts": {
+      "lines": 100
+    },
+    "server/admin-api/middleware/rbac.ts": {
+      "lines": 95
+    },
+    "server/admin-api/middleware/tenantGuard.ts": {
+      "lines": 100
     }
   }
 }
