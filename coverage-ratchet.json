@@ -166,6 +166,9 @@
     },
     "server/admin-api/routes/billing.ts": {
       "lines": 36
+    },
+    "server/admin-api/routes/agents.ts": {
+      "lines": 17
     }
   }
 }
