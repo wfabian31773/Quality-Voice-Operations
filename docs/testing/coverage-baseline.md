@@ -137,20 +137,23 @@ test).
   recordCallOutcome and retrieve_knowledge 96-99%; ToolRegistry 88%,
   OperatorNotificationPipeline 80%, lookup_customer 73%. Only the DDL-only
   `ensureReliabilityTables` and the template-stub handlers remain uncovered.
-- **🟡 `server/admin-api` routes: 23 route files covered** (~330 tests). A
-  reusable supertest pattern — stub `requireAuth` to inject `req.user`, keep the
-  real (pure) rbac middleware so role gates run for real, mock service/db deps.
-  100%: `apiKeys`, `assistant`, `auditLog`, `quality`, `health`,
-  `platformBillingReconciliation`, `platformPortalConfigCleanup`,
-  `platformBillingHealth`, `platformPushHealth`. High (75–96%): `toolHealth`,
-  `csat`, `improvements`, `workflows`, `toolExecutions`, `conversion`,
-  `observability`, `websiteAgent`, `caseStudies`, `marketingSearchAnalytics`,
-  `costOptimization`, `analytics`, `publicApi`, `platformIntegrationsStatus`.
-  Partial on the 1400-line `platformConnectorHealth` (main snapshot + guards).
-  Remaining are the very large webhook/dispatch/CRUD files (`support` 3.3k,
-  `dispatch` 5.7k, `campaigns`, `knowledgeDocuments`, `compliance`,
-  `trustedCallers`, `tenants`, `users`, `calls`, `billing`, …) — better served
-  by integration tests than unit mocking.
+- **🟢 `server/admin-api` routes: every route file now has a test** (~470
+  tests). A reusable supertest pattern — stub `requireAuth` to inject
+  `req.user`, keep the real (pure) rbac middleware so role gates run for real,
+  mock service/db deps. 100% on the small/medium files (`apiKeys`, `assistant`,
+  `auditLog`, `quality`, `health`, `platformBillingReconciliation`,
+  `platformBillingHealth`, `platformPushHealth`, …); high (75–96%) on the next
+  tier (`toolHealth`, `csat`, `improvements`, `workflows`, `toolExecutions`,
+  `conversion`, `analytics`, `publicApi`, …).
+  The very large webhook/CRUD/dispatch files are now covered at their tractable
+  tier via unit mocking — `smsInbox`, `ingest`, `marketplace` (2.0k), `tickets`
+  (2.4k), `scheduling` (2.5k), `platformAdmin` (2.6k), `support` (3.3k),
+  `dispatch` (5.7k), and `connectorOAuth` — each locking in a per-file floor
+  (11–28%) that captures the read/listing/validation/RBAC-gate surface. Their
+  side-effect-heavy paths (SSE streams, ZIP/route exports, object storage,
+  email/SMS dispatch pipelines, Stripe/Twilio/OpenAI/multer handlers, OAuth
+  token exchange) are deferred — better served by integration tests than unit
+  mocking. **73 areas** are now enforced by the ratchet.
 
 ## Priority order for closing gaps
 
@@ -164,10 +167,12 @@ Ranked by risk × size × how low the current number is:
    (remaining: `observability/` submodule).
 4. ~~**`platform/tools` (10.6%).**~~ ✅ Done — now 79.0% (only the DDL-only
    `ensureReliabilityTables` and template-stub handlers remain).
-5. **`server/admin-api` (40%, but ~10k uncovered lines).** 🟡 in progress —
-   10 route files covered with a reusable supertest harness (96 tests). Next:
-   keep working down the route list (`autopilot`, `marketplace`, `phoneNumbers`,
-   `tenants`, `users`, `campaigns`, `calls`, `analytics`).
+5. ~~**`server/admin-api` (40%, but ~10k uncovered lines).**~~ ✅ Every route
+   file now has a test sibling (~470 tests, 73 ratcheted areas). The small/
+   medium files reach 75–100%; the giant webhook/CRUD/dispatch files are
+   covered at their tractable read/validation/RBAC tier with per-file floors.
+   Next investment here is integration tests for the deferred side-effect
+   pipelines rather than more unit mocking.
 6. **Near-zero engines** — `workforce`, `digital-twin`, `evolution`,
    `simulation`, `autopilot`: decide which are load-bearing vs. experimental
    before investing; test the load-bearing ones.
