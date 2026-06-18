@@ -235,6 +235,12 @@
     },
     "server/admin-api/middleware/tenantGuard.ts": {
       "lines": 100
+    },
+    "server/admin-api/middleware/auth.ts": {
+      "lines": 72
+    },
+    "server/admin-api/middleware/security.ts": {
+      "lines": 100
     }
   }
 }
