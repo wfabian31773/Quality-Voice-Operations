@@ -178,6 +178,9 @@
     },
     "server/admin-api/routes/trustedCallers.ts": {
       "lines": 50
+    },
+    "server/admin-api/routes/knowledgeDocuments.ts": {
+      "lines": 41
     }
   }
 }
