@@ -151,6 +151,9 @@
     },
     "server/admin-api/routes/compliance.ts": {
       "lines": 85
+    },
+    "server/admin-api/routes/operations.ts": {
+      "lines": 42
     }
   }
 }
