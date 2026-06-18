@@ -205,6 +205,9 @@
     },
     "server/admin-api/routes/tickets.ts": {
       "lines": 22
+    },
+    "server/admin-api/routes/scheduling.ts": {
+      "lines": 20
     }
   }
 }
