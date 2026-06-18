@@ -157,6 +157,9 @@
     },
     "server/admin-api/routes/productionEssentials.ts": {
       "lines": 82
+    },
+    "server/admin-api/routes/connectors.ts": {
+      "lines": 36
     }
   }
 }
