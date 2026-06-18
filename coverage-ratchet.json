@@ -169,6 +169,12 @@
     },
     "server/admin-api/routes/agents.ts": {
       "lines": 17
+    },
+    "server/admin-api/routes/callsLive.ts": {
+      "lines": 22
+    },
+    "server/admin-api/routes/phoneNumbers.ts": {
+      "lines": 40
     }
   }
 }
