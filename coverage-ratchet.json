@@ -154,6 +154,9 @@
     },
     "server/admin-api/routes/operations.ts": {
       "lines": 42
+    },
+    "server/admin-api/routes/productionEssentials.ts": {
+      "lines": 82
     }
   }
 }
