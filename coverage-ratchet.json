@@ -217,6 +217,9 @@
     },
     "server/admin-api/routes/dispatch.ts": {
       "lines": 11
+    },
+    "server/admin-api/routes/connectorOAuth.ts": {
+      "lines": 19
     }
   }
 }
