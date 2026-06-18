@@ -241,6 +241,12 @@
     },
     "server/admin-api/middleware/security.ts": {
       "lines": 100
+    },
+    "server/admin-api/services/sales-alert-settings.ts": {
+      "lines": 96
+    },
+    "server/admin-api/services/demo-scheduler-settings.ts": {
+      "lines": 84
     }
   }
 }
