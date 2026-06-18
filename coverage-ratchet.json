@@ -190,6 +190,9 @@
     },
     "server/admin-api/routes/platformCompliance.ts": {
       "lines": 39
+    },
+    "server/admin-api/routes/auth.ts": {
+      "lines": 26
     }
   }
 }
