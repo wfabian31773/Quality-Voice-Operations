@@ -163,6 +163,9 @@
     },
     "server/admin-api/routes/contact.ts": {
       "lines": 44
+    },
+    "server/admin-api/routes/billing.ts": {
+      "lines": 36
     }
   }
 }
