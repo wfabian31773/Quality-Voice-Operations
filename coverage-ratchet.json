@@ -175,6 +175,9 @@
     },
     "server/admin-api/routes/phoneNumbers.ts": {
       "lines": 40
+    },
+    "server/admin-api/routes/trustedCallers.ts": {
+      "lines": 50
     }
   }
 }
