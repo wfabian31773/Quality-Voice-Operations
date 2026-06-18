@@ -247,6 +247,9 @@
     },
     "server/admin-api/services/demo-scheduler-settings.ts": {
       "lines": 84
+    },
+    "server/admin-api/services/marketing-leads.ts": {
+      "lines": 30
     }
   }
 }
