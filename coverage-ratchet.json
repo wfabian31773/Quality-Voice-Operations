@@ -211,6 +211,9 @@
     },
     "server/admin-api/routes/platformAdmin.ts": {
       "lines": 14
+    },
+    "server/admin-api/routes/support.ts": {
+      "lines": 14
     }
   }
 }
