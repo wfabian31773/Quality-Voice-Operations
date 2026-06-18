@@ -181,6 +181,9 @@
     },
     "server/admin-api/routes/knowledgeDocuments.ts": {
       "lines": 41
+    },
+    "server/admin-api/routes/campaigns.ts": {
+      "lines": 54
     }
   }
 }
