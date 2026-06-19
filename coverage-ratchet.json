@@ -256,6 +256,9 @@
     },
     "platform/sms/SmsQuietHours.ts": {
       "lines": 95
+    },
+    "platform/sms/SmsConversationService.ts": {
+      "lines": 41
     }
   }
 }
