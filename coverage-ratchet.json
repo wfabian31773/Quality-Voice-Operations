@@ -271,6 +271,9 @@
     },
     "platform/analytics/ConversionFunnelService.ts": {
       "lines": 100
+    },
+    "platform/analytics/SentimentAnalysisService.ts": {
+      "lines": 100
     }
   }
 }
