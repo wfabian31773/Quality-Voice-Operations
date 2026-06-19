@@ -295,6 +295,15 @@
     },
     "server/voice-gateway/services/platformAdapters.ts": {
       "lines": 88
+    },
+    "server/voice-gateway/services/sessionLogger.ts": {
+      "lines": 100
+    },
+    "server/voice-gateway/middleware/twilioSignatureMetrics.ts": {
+      "lines": 82
+    },
+    "server/voice-gateway/middleware/twilioSignature.ts": {
+      "lines": 79
     }
   }
 }
