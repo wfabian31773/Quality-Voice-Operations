@@ -48,6 +48,24 @@ async function main(): Promise<void> {
       [TENANT_ID],
     );
 
+    // An active (non-trial) subscription is required for `full`-mode probes:
+    // checkBudget()/TrialGuard treats a tenant with no subscription row as a
+    // trial and blocks it after the trial call cap (~20 calls), so a scheduled
+    // full canary would start failing after ~20 intervals. An enterprise
+    // subscription makes the diagnostic tenant non-trial so the canary runs
+    // indefinitely. (The tenant row's `plan` column alone is not enough —
+    // TrialGuard keys off the subscriptions table.)
+    await client.query(
+      `INSERT INTO subscriptions (tenant_id, plan, status, billing_interval,
+         monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled)
+       VALUES ($1, 'enterprise', 'active', 'monthly', 100000, 100000, 100000, false)
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         plan = EXCLUDED.plan,
+         status = 'active',
+         updated_at = NOW()`,
+      [TENANT_ID],
+    );
+
     await client.query(
       `INSERT INTO agents (
          id, tenant_id, name, type, status, system_prompt, voice, model,
