@@ -84,6 +84,42 @@ interface WebhookSecuritySnapshot {
   generatedAt: string;
 }
 
+type StreamStage = 'ws_connect' | 'session_setup' | 'first_audio' | 'total';
+
+interface StageLatency {
+  count: number;
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+}
+
+interface RealtimeStreamSnapshot {
+  startedAt: string;
+  generatedAt: string;
+  attempts: number;
+  successes: number;
+  failures: number;
+  successRate: number;
+  failureRatePerMinute: number;
+  bySource: Record<'probe' | 'live', { attempts: number; successes: number; failures: number }>;
+  latency: Record<StreamStage, StageLatency>;
+  latencyThresholdsP95Ms: Record<StreamStage, number>;
+  failureCounts: Record<string, number>;
+  failureByStage: Record<StreamStage, number>;
+  lastFailureAt: string | null;
+  lastObservationAt: string | null;
+  alertCooldownMs: number;
+}
+
+const STREAM_STAGES: StreamStage[] = ['ws_connect', 'session_setup', 'first_audio', 'total'];
+const STREAM_STAGE_LABELS: Record<StreamStage, string> = {
+  ws_connect: 'WS connect',
+  session_setup: 'Session setup',
+  first_audio: 'First audio',
+  total: 'End-to-end',
+};
+
 const API_BASE = '/api';
 
 const REJECTION_REASONS: RejectionReason[] = [
@@ -156,7 +192,7 @@ export default function ToolHealth() {
   const isPlatformAdmin = user?.isPlatformAdmin ?? false;
 
   const [window, setWindow] = useState('7d');
-  const [tab, setTab] = useState<'health' | 'escalations' | 'webhookSecurity'>('health');
+  const [tab, setTab] = useState<'health' | 'escalations' | 'webhookSecurity' | 'realtimeStream'>('health');
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [escalationTasks, setEscalationTasks] = useState<EscalationTask[]>([]);
   const [escalationStats, setEscalationStats] = useState<EscalationStats | null>(null);
@@ -164,6 +200,8 @@ export default function ToolHealth() {
   const [recipientsError, setRecipientsError] = useState<string | null>(null);
   const [webhookSecurity, setWebhookSecurity] = useState<WebhookSecuritySnapshot | null>(null);
   const [webhookSecurityError, setWebhookSecurityError] = useState<string | null>(null);
+  const [realtimeStream, setRealtimeStream] = useState<RealtimeStreamSnapshot | null>(null);
+  const [realtimeStreamError, setRealtimeStreamError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
   // Iron-out from console redesign audit (2026-05-24): the outer fetchData
@@ -207,6 +245,15 @@ export default function ToolHealth() {
           setWebhookSecurity(null);
           setWebhookSecurityError(err instanceof Error ? err.message : 'Failed to load');
         }
+      } else if (tab === 'realtimeStream') {
+        try {
+          const data = await apiFetch('/observability/realtime-stream');
+          setRealtimeStream(data);
+          setRealtimeStreamError(null);
+        } catch (err) {
+          setRealtimeStream(null);
+          setRealtimeStreamError(err instanceof Error ? err.message : 'Failed to load');
+        }
       }
     } catch (err) {
       // P0/6 from console redesign audit (2026-05-24): this used to be
@@ -226,7 +273,7 @@ export default function ToolHealth() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    if (tab !== 'webhookSecurity') return;
+    if (tab !== 'webhookSecurity' && tab !== 'realtimeStream') return;
     const t = setInterval(fetchData, 15000);
     return () => clearInterval(t);
   }, [tab, fetchData]);
@@ -334,6 +381,18 @@ export default function ToolHealth() {
             <ShieldAlert className="w-4 h-4 inline mr-1.5" />
             Webhook Security
             {webhookSecurity && Object.values(webhookSecurity.alertActive).some(Boolean) && (
+              <span className="ml-2 inline-flex items-center justify-center w-2 h-2 rounded-full bg-danger animate-pulse" />
+            )}
+          </button>
+        )}
+        {isPlatformAdmin && (
+          <button
+            onClick={() => setTab('realtimeStream')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'realtimeStream' ? 'bg-primary text-white' : 'bg-surface border border-border text-text-muted hover:text-text-primary'}`}
+          >
+            <Activity className="w-4 h-4 inline mr-1.5" />
+            Realtime Stream
+            {realtimeStream && realtimeStream.failureRatePerMinute > 0 && (
               <span className="ml-2 inline-flex items-center justify-center w-2 h-2 rounded-full bg-danger animate-pulse" />
             )}
           </button>
@@ -497,6 +556,15 @@ export default function ToolHealth() {
           loading={loading}
           data={webhookSecurity}
           error={webhookSecurityError}
+          onRefresh={fetchData}
+        />
+      )}
+
+      {tab === 'realtimeStream' && isPlatformAdmin && (
+        <RealtimeStreamSection
+          loading={loading}
+          data={realtimeStream}
+          error={realtimeStreamError}
           onRefresh={fetchData}
         />
       )}
@@ -890,6 +958,146 @@ function WebhookSecuritySection({
         <p className="mt-2">
           When per-minute rejections cross their threshold, a critical entry is written to error logs (errorCode{' '}
           <span className="font-mono">twilio_signature_*_spike</span>) at most once per {cooldownMinutes}-minute cooldown.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function RealtimeStreamSection({
+  loading,
+  data,
+  error,
+  onRefresh,
+}: {
+  loading: boolean;
+  data: RealtimeStreamSnapshot | null;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  if (loading && !data) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-40 bg-surface border border-border rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <ErrorState
+        icon={ServerCrash}
+        title="Could not load realtime stream metrics"
+        error={error ?? 'Unknown error'}
+        onRetry={onRefresh}
+        retryLabel="Retry"
+      />
+    );
+  }
+
+  const successPct = Math.round(data.successRate * 1000) / 10;
+  const failureReasons = Object.entries(data.failureCounts).filter(([, n]) => n > 0);
+
+  return (
+    <>
+      {data.failureRatePerMinute > 0 && (
+        <div className="bg-danger/10 border border-danger/40 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-danger">Realtime stream failures in the last minute</p>
+            <p className="text-xs text-text-muted mt-1">
+              {data.failureRatePerMinute} failed attempt(s)/min. A spike (≥5/min) writes a critical entry to error
+              logs. Check the gateway WS_STREAM and STREAM_DIAGNOSTIC logs, OPENAI connectivity, and provider latency.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Headline counters */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Success rate</div>
+          <div className={`text-2xl font-bold ${successRateColor(successPct)}`}>{successPct}%</div>
+          <div className="text-xs text-text-muted mt-1">{data.successes}/{data.attempts} attempts</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Failures</div>
+          <div className={`text-2xl font-bold ${data.failures > 0 ? 'text-danger' : 'text-text-primary'}`}>{data.failures}</div>
+          <div className="text-xs text-text-muted mt-1">{data.failureRatePerMinute}/min now</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Probe attempts</div>
+          <div className="text-2xl font-bold text-text-primary">{data.bySource.probe.attempts}</div>
+          <div className="text-xs text-text-muted mt-1">synthetic canary</div>
+        </div>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Live attempts</div>
+          <div className="text-2xl font-bold text-text-primary">{data.bySource.live.attempts}</div>
+          <div className="text-xs text-text-muted mt-1">real calls</div>
+        </div>
+      </div>
+
+      {/* Per-stage latency */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {STREAM_STAGES.map((stage) => {
+          const l = data.latency[stage];
+          const threshold = data.latencyThresholdsP95Ms[stage];
+          const breached = l.count > 0 && l.p95Ms >= threshold;
+          return (
+            <div key={stage} className={`bg-surface border rounded-xl p-4 ${breached ? 'border-danger/60' : 'border-border'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`p-1.5 rounded-lg ${breached ? 'bg-danger/15 text-danger' : 'bg-muted/10 text-text-muted'}`}>
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold text-text-primary">{STREAM_STAGE_LABELS[stage]}</span>
+                </div>
+                {breached && (
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-danger/15 text-danger">Slow</span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">p50</div>
+                  <div className="text-lg font-bold text-text-primary">{l.p50Ms}ms</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">p95</div>
+                  <div className={`text-lg font-bold ${breached ? 'text-danger' : 'text-text-primary'}`}>{l.p95Ms}ms</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">max</div>
+                  <div className="text-lg font-bold text-text-primary">{l.maxMs}ms</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">n</div>
+                  <div className="text-lg font-bold text-text-muted">{l.count}</div>
+                </div>
+              </div>
+              <div className="text-[10px] text-text-muted mt-2">alert &gt; {threshold}ms p95</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Failures by reason */}
+      <div className="bg-surface border border-border rounded-xl p-4">
+        <div className="text-sm font-semibold text-text-primary mb-3">Failures by reason</div>
+        {failureReasons.length === 0 ? (
+          <p className="text-xs text-text-muted">No failures recorded since the gateway started.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {failureReasons.map(([reason, count]) => (
+              <span key={reason} className="text-xs px-2 py-1 rounded bg-danger/10 text-danger font-mono">
+                {reason}: {count}
+              </span>
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-text-muted mt-3">
+          Snapshot generated {formatDate(data.generatedAt)} · since {formatDate(data.startedAt)}.
         </p>
       </div>
     </>
