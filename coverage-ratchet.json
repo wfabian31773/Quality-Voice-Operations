@@ -265,6 +265,9 @@
     },
     "platform/analytics/QualityScorerService.ts": {
       "lines": 96
+    },
+    "platform/analytics/RevenueAttributionService.ts": {
+      "lines": 100
     }
   }
 }
