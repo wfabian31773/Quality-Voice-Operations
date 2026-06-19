@@ -8,6 +8,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "diagnose:realtime-stream": "tsx scripts/diagnose-realtime-stream.ts",
+    "seed:diagnostic-agent": "tsx scripts/seed-diagnostic-agent.ts",
     "coverage:ratchet": "node scripts/coverage-ratchet.mjs",
     "coverage:ratchet:update": "node scripts/coverage-ratchet.mjs --update",
     "coverage:ratchet:ci": "vitest run --coverage platform/reasoning platform/tools platform/core server/voice-gateway server/admin-api/routes server/admin-api/middleware server/admin-api/services server/admin-api/spaFallback.test.ts platform/sms platform/analytics/AnalyticsService.test.ts platform/analytics/QualityScorerService.test.ts platform/analytics/RevenueAttributionService.test.ts platform/analytics/ConversionFunnelService.test.ts platform/analytics/SentimentAnalysisService.test.ts platform/analytics/TopicClusteringService.test.ts server/voice-gateway/services/openaiSession.config.test.ts server/voice-gateway/services/preTransferGreeting.test.ts server/voice-gateway/services/numberLookup.test.ts server/voice-gateway/services/callPersistence.test.ts server/voice-gateway/services/agentLoader.test.ts server/voice-gateway/services/platformAdapters.test.ts server/voice-gateway/services/sessionLogger.test.ts server/voice-gateway/middleware/twilioSignatureMetrics.test.ts server/voice-gateway/middleware/twilioSignature.test.ts && node scripts/coverage-ratchet.mjs",
