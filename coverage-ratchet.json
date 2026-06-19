@@ -286,6 +286,9 @@
     },
     "server/voice-gateway/services/numberLookup.ts": {
       "lines": 100
+    },
+    "server/voice-gateway/services/callPersistence.ts": {
+      "lines": 65
     }
   }
 }
