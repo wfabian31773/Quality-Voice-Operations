@@ -19,7 +19,7 @@ import { OutboxService } from '../../../platform/integrations/outbox/OutboxServi
 import { createCallerMemoryStorage, createOutboxAdapters } from '../services/platformAdapters';
 import { createSessionLogger, type SessionLogger } from '../services/sessionLogger';
 import { updateContactStatus, classifyCallOutcome, addToDnc, getCampaign, getContact, buildCampaignTypePromptAugmentation, classifyTypeDisposition, updateContactTypeDisposition } from '../../../platform/campaigns';
-import { writeCallMetric } from '../../../platform/core/observability';
+import { writeCallMetric, recordStreamObservation } from '../../../platform/core/observability';
 import { scoreCall } from '../../../platform/analytics/QualityScorerService';
 import { analyzeCallSentiment } from '../../../platform/analytics/SentimentAnalysisService';
 import { classifyCallTopic } from '../../../platform/analytics/TopicClusteringService';
@@ -134,6 +134,13 @@ export function attachWebSocket(server: HTTPServer): void {
     let streamEnded = false;
     const streamStartedAt = Date.now();
     let slog: SessionLogger = logger;
+
+    // Realtime-stream telemetry timing for the live (non-probe) path. Mirrors
+    // the synthetic diagnostic probe so probe + live sessions roll up into one
+    // latency/failure snapshot (see realtimeStreamMetrics). Best-effort only.
+    let liveStartFrameAt: number | undefined;
+    let liveSessionSetupMs: number | undefined;
+    let liveFirstAudioRecorded = false;
 
     async function finalizeStream(): Promise<void> {
       streamEnded = true;
@@ -337,6 +344,9 @@ export function attachWebSocket(server: HTTPServer): void {
               ws.close();
               return;
             }
+
+            // Mark the start of session setup for realtime-stream telemetry.
+            liveStartFrameAt = Date.now();
 
             logger.info('Stream started', {
               tenantId,
@@ -623,6 +633,29 @@ export function attachWebSocket(server: HTTPServer): void {
                     payload: base64Audio,
                   },
                 }));
+
+                // First audio out to the caller — the moment that matters most
+                // for perceived latency. Record one live telemetry observation
+                // per session with the stage timings.
+                if (!liveFirstAudioRecorded) {
+                  liveFirstAudioRecorded = true;
+                  const now = Date.now();
+                  const firstAudioMs = liveStartFrameAt ? now - liveStartFrameAt : undefined;
+                  slog.info('First audio delivered to caller', {
+                    firstAudioMs,
+                    sessionSetupMs: liveSessionSetupMs,
+                  });
+                  recordStreamObservation({
+                    source: 'live',
+                    outcome: 'success',
+                    latencies: {
+                      session_setup: liveSessionSetupMs,
+                      first_audio: firstAudioMs,
+                      total: now - streamStartedAt,
+                    },
+                    correlationId: callSessionId,
+                  });
+                }
               });
 
               const apiKey = process.env.OPENAI_API_KEY;
@@ -695,13 +728,27 @@ export function attachWebSocket(server: HTTPServer): void {
                 });
               }
 
+              // Session is set up and connected to OpenAI — record the
+              // setup latency so it can be paired with first-audio above.
+              liveSessionSetupMs = liveStartFrameAt ? Date.now() - liveStartFrameAt : undefined;
+
               slog.info('Bidirectional media bridge established', {
                 agentId,
                 streamSid,
+                sessionSetupMs: liveSessionSetupMs,
               });
             } catch (err) {
               slog.error('Failed to create realtime session', {
                 error: String(err),
+                sessionSetupMs: liveStartFrameAt ? Date.now() - liveStartFrameAt : undefined,
+              });
+              recordStreamObservation({
+                source: 'live',
+                outcome: 'failure',
+                failureStage: 'session_setup',
+                failureReason: 'setup_error',
+                latencies: { session_setup: liveStartFrameAt ? Date.now() - liveStartFrameAt : undefined },
+                correlationId: callSessionId,
               });
               ws.close();
             }

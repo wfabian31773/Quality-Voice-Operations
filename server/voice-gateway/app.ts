@@ -4,6 +4,7 @@ import healthRoutes from './routes/health';
 import twilioRoutes from './routes/twilio';
 import adminConnectorRoutes from './routes/adminConnectors';
 import adminMetricsRoutes from './routes/adminMetrics';
+import diagnosticsRoutes from './routes/diagnostics';
 import { logError } from '../../platform/core/observability';
 import { createLogger } from '../../platform/core/logger';
 
@@ -18,6 +19,7 @@ app.use('/', healthRoutes);
 app.use('/', twilioRoutes);
 app.use('/', adminConnectorRoutes);
 app.use('/', adminMetricsRoutes);
+app.use('/', diagnosticsRoutes);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   logger.error('Unhandled route error', { error: err.message, stack: err.stack });
