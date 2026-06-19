@@ -111,6 +111,44 @@ describe('GET /observability/twilio-webhook-security', () => {
   });
 });
 
+describe('GET /observability/realtime-stream', () => {
+  beforeEach(() => { a.user.isPlatformAdmin = true; });
+
+  it('rejects a non-platform-admin with 403', async () => {
+    a.user.isPlatformAdmin = false;
+    expect((await request(app()).get('/observability/realtime-stream')).status).toBe(403);
+  });
+
+  it('returns 503 when ADMIN_INTERNAL_TOKEN is not configured', async () => {
+    expect((await request(app()).get('/observability/realtime-stream')).status).toBe(503);
+  });
+
+  it('proxies the realtime-stream snapshot when upstream is OK', async () => {
+    process.env.ADMIN_INTERNAL_TOKEN = 'tok';
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ attempts: 7, successes: 6, latency: {} }) });
+    const res = await request(app()).get('/observability/realtime-stream');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ attempts: 7, successes: 6 });
+    // It hits the gateway's realtime-stream metrics path with the admin token.
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/admin/diagnostics/realtime-stream/metrics'),
+      expect.objectContaining({ headers: expect.objectContaining({ 'x-admin-token': 'tok' }) }),
+    );
+  });
+
+  it('returns 502 when the voice gateway responds non-OK', async () => {
+    process.env.ADMIN_INTERNAL_TOKEN = 'tok';
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'err' });
+    expect((await request(app()).get('/observability/realtime-stream')).status).toBe(502);
+  });
+
+  it('returns 504 when the upstream request aborts (timeout)', async () => {
+    process.env.ADMIN_INTERNAL_TOKEN = 'tok';
+    fetchMock.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    expect((await request(app()).get('/observability/realtime-stream')).status).toBe(504);
+  });
+});
+
 describe('GET /observability/system', () => {
   it('returns system metrics for a platform admin', async () => {
     a.user.isPlatformAdmin = true;

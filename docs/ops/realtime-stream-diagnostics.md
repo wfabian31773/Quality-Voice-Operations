@@ -75,6 +75,16 @@ cooldown) on a **failure spike** (≥5/min) or when a stage **p95 latency** brea
 its ceiling (`first_audio` 8s, `total` 12s, …). The module holds no PII — only
 timings, counts, and short reason codes.
 
+## Dashboard
+
+The snapshot is surfaced on the platform-admin **Tool Health → Realtime Stream**
+tab (platform-admins only). The admin API proxies the gateway's in-process
+snapshot via `GET /api/observability/realtime-stream` (which calls the gateway's
+`/admin/diagnostics/realtime-stream/metrics` over the internal admin-token hop),
+so the panel shows success rate, probe vs. live attempts, per-stage p50/p95/max
+latency (with p95-threshold highlighting), and failures by reason — auto-refreshing
+every 15s.
+
 ## Logs
 
 Every probe run is tagged with a short `correlationId` and logs each stage
