@@ -262,6 +262,9 @@
     },
     "platform/analytics/AnalyticsService.ts": {
       "lines": 94
+    },
+    "platform/analytics/QualityScorerService.ts": {
+      "lines": 96
     }
   }
 }
