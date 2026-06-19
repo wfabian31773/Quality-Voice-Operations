@@ -59,6 +59,38 @@ curl https://gateway/admin/diagnostics/realtime-stream/metrics \
   -H "x-admin-token: $ADMIN_INTERNAL_TOKEN"
 ```
 
+## Scheduled canary (continuous self-monitoring)
+
+The gateway can run the probe against itself on an interval, so the realtime
+path is exercised even when no real calls flow. Each run feeds the telemetry
+below, so a regression trips the latency/failure alerts automatically. Off by
+default; enable per environment:
+
+```bash
+STREAM_CANARY_ENABLED=true          # turn it on
+STREAM_CANARY_MODE=handshake|full   # default handshake (safe anywhere)
+STREAM_CANARY_INTERVAL_MS=60000     # default 60s, floor 10s
+```
+
+The canary starts after the gateway binds (`start.ts`) and stops on graceful
+shutdown. Runs never overlap (a slow probe defers the next tick), and a probe
+error never stops the schedule.
+
+## Full mode end-to-end (seeded diagnostic agent)
+
+`full` mode drives the path all the way to first audio, so the gateway must
+resolve a real agent for the probe's `start` frame. Seed a dedicated, isolated
+`diagnostic` tenant + `diagnostic-probe` agent (idempotent) so the canary never
+touches demo/customer data:
+
+```bash
+PLATFORM_DB_POOL_URL=... npm run seed:diagnostic-agent
+```
+
+Then `--mode=full` / `STREAM_CANARY_MODE=full` works against an environment with
+`OPENAI_API_KEY` configured. The probe's default identity already matches the
+seed (`tenantId='diagnostic'`, `agentId='diagnostic-probe'`).
+
 ## Telemetry
 
 `realtimeStreamMetrics` records every attempt — both synthetic probes

@@ -313,6 +313,9 @@
     },
     "server/voice-gateway/routes/diagnostics.ts": {
       "lines": 92
+    },
+    "server/voice-gateway/services/streamCanary.ts": {
+      "lines": 97
     }
   }
 }

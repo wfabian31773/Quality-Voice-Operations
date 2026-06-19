@@ -7,6 +7,7 @@ import { createLogger } from '../../platform/core/logger';
 import { logError } from '../../platform/core/observability';
 import { createTwilioAdapterFromEnv } from './services/twilioAdapter';
 import { setTwilioAdapter } from './routes/twilio';
+import { startStreamCanary, stopStreamCanary } from './services/streamCanary';
 import { validateEnvironment } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
@@ -49,10 +50,16 @@ server.listen(PORT, '0.0.0.0', () => {
     env: process.env.APP_ENV ?? 'development',
     nodeVersion: process.version,
   });
+  // Start the synthetic realtime-stream canary (no-op unless
+  // STREAM_CANARY_ENABLED). Listens locally, so start it after the server is
+  // up so the first tick can reach the gateway.
+  startStreamCanary();
 });
 
 async function gracefulShutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, starting graceful shutdown`);
+
+  stopStreamCanary();
 
   server.close(() => {
     logger.info('HTTP server closed — no new connections');
