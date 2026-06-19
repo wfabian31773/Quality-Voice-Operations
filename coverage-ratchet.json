@@ -289,6 +289,9 @@
     },
     "server/voice-gateway/services/callPersistence.ts": {
       "lines": 65
+    },
+    "server/voice-gateway/services/agentLoader.ts": {
+      "lines": 98
     }
   }
 }
