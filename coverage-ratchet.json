@@ -259,6 +259,9 @@
     },
     "platform/sms/SmsConversationService.ts": {
       "lines": 41
+    },
+    "platform/analytics/AnalyticsService.ts": {
+      "lines": 94
     }
   }
 }
