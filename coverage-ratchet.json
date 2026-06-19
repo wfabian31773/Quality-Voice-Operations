@@ -292,6 +292,9 @@
     },
     "server/voice-gateway/services/agentLoader.ts": {
       "lines": 98
+    },
+    "server/voice-gateway/services/platformAdapters.ts": {
+      "lines": 88
     }
   }
 }
