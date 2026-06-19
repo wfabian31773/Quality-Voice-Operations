@@ -277,6 +277,9 @@
     },
     "platform/analytics/TopicClusteringService.ts": {
       "lines": 96
+    },
+    "server/voice-gateway/services/openaiSession.ts": {
+      "lines": 29
     }
   }
 }
