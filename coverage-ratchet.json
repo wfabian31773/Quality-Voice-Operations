@@ -304,6 +304,15 @@
     },
     "server/voice-gateway/middleware/twilioSignature.ts": {
       "lines": 79
+    },
+    "platform/core/observability/realtimeStreamMetrics.ts": {
+      "lines": 95
+    },
+    "server/voice-gateway/services/streamDiagnostic.ts": {
+      "lines": 91
+    },
+    "server/voice-gateway/routes/diagnostics.ts": {
+      "lines": 92
     }
   }
 }
