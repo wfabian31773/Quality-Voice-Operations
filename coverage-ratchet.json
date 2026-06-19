@@ -274,6 +274,9 @@
     },
     "platform/analytics/SentimentAnalysisService.ts": {
       "lines": 100
+    },
+    "platform/analytics/TopicClusteringService.ts": {
+      "lines": 96
     }
   }
 }
