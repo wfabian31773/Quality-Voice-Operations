@@ -9,7 +9,7 @@
     "test:coverage": "vitest run --coverage",
     "coverage:ratchet": "node scripts/coverage-ratchet.mjs",
     "coverage:ratchet:update": "node scripts/coverage-ratchet.mjs --update",
-    "coverage:ratchet:ci": "vitest run --coverage platform/reasoning platform/tools platform/core server/voice-gateway server/admin-api/routes server/admin-api/middleware server/admin-api/services server/admin-api/spaFallback.test.ts platform/sms platform/analytics/AnalyticsService.test.ts platform/analytics/QualityScorerService.test.ts platform/analytics/RevenueAttributionService.test.ts && node scripts/coverage-ratchet.mjs",
+    "coverage:ratchet:ci": "vitest run --coverage platform/reasoning platform/tools platform/core server/voice-gateway server/admin-api/routes server/admin-api/middleware server/admin-api/services server/admin-api/spaFallback.test.ts platform/sms platform/analytics/AnalyticsService.test.ts platform/analytics/QualityScorerService.test.ts platform/analytics/RevenueAttributionService.test.ts platform/analytics/ConversionFunnelService.test.ts && node scripts/coverage-ratchet.mjs",
     "test:e2e:sales-inbox-filters": "tsx tests/e2e/salesInboxFilters.spec.ts",
     "test:e2e:admin-pages-smoke": "tsx tests/e2e/adminPagesSmoke.spec.ts",
     "test:e2e:platform-admin-billing-health": "tsx tests/e2e/platformAdminBillingHealth.spec.ts",
