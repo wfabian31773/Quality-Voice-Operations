@@ -280,6 +280,12 @@
     },
     "server/voice-gateway/services/openaiSession.ts": {
       "lines": 29
+    },
+    "server/voice-gateway/services/preTransferGreeting.ts": {
+      "lines": 100
+    },
+    "server/voice-gateway/services/numberLookup.ts": {
+      "lines": 100
     }
   }
 }
