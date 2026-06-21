@@ -1,0 +1,62 @@
+name: migration prefix collision
+
+# Pre-merge gate for new migration filename prefix collisions (Iron-out 7).
+#
+# Background: the repo's `migrations/` directory has accumulated many
+# collisions (six different `046_*.sql` files, five `080_*.sql`, etc.)
+# because feature branches landed in parallel. Postgres doesn't care, but
+# our migration runner sorts lexicographically by filename — so two
+# migrations with the same numeric prefix run in an order that depends on
+# the rest of the filename, not on merge order. That ordering ambiguity
+# already bit us once (issue #4, migration 063 backfill on fresh DB).
+#
+# Existing collisions are grandfathered: they ran in production already,
+# renumbering them would mean rewriting history on a live DB. This gate
+# only fails when a PR INTRODUCES a NEW collision on a prefix that wasn't
+# colliding on the base branch.
+#
+# The script lives at `scripts/check-migration-prefix-collisions.mjs` and
+# uses only Node built-ins + `git`, so we skip `npm ci` for speed.
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "migrations/**.sql"
+      - "scripts/check-migration-prefix-collisions.mjs"
+      - ".github/workflows/migration-prefix-collision.yml"
+
+concurrency:
+  group: migration-prefix-collision-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: migration prefix collision
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # Need full history so `git diff $base...HEAD` and `git ls-tree`
+          # against the base ref both work.
+          fetch-depth: 0
+
+      - name: Fetch base ref
+        run: |
+          # PR runs have GITHUB_BASE_REF set (e.g. "main"). Make sure the
+          # base ref is available locally so the script can diff against it.
+          if [ -n "${GITHUB_BASE_REF}" ]; then
+            git fetch --no-tags --depth=0 origin "${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}" || \
+              git fetch --no-tags origin "${GITHUB_BASE_REF}"
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check for new migration prefix collisions
+        run: node scripts/check-migration-prefix-collisions.mjs
