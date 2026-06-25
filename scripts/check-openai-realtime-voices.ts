@@ -23,8 +23,17 @@
  *   OpenAI's standard validation-error shape) returns the full set of
  *   allowed enum values in the error message:
  *
- *     POST https://api.openai.com/v1/realtime/sessions
- *     { "model": "gpt-realtime", "voice": "__qvo_invalid_probe__" }
+ *     POST https://api.openai.com/v1/realtime/client_secrets
+ *     {
+ *       "expires_after": { "anchor": "created_at", "seconds": 60 },
+ *       "session": {
+ *         "type": "realtime",
+ *         "model": "gpt-realtime",
+ *         "audio": { "output": { "voice": "__qvo_invalid_probe__" } }
+ *       }
+ *     }
+ *
+ *   (The /v1/realtime/sessions endpoint used pre-GA returns 404 today.)
  *
  *     400 {
  *       "error": {
@@ -79,7 +88,15 @@
 
 import { VOICES } from '../client-app/src/lib/agentVoices';
 
-const REALTIME_SESSIONS_URL = 'https://api.openai.com/v1/realtime/sessions';
+// `/v1/realtime/sessions` is the deprecated beta endpoint — it now
+// returns `HTTP 404 Invalid URL (POST /v1/realtime/sessions)`. The GA
+// replacement is `POST /v1/realtime/client_secrets`, which still
+// validates the `voice` field and (helpfully for our purposes) still
+// emits the "Supported values are: ..." validation error the parser
+// below knows how to read. The GA endpoint also no longer wants the
+// `OpenAI-Beta: realtime=v1` header — sending it is harmless but the
+// docs explicitly call for its removal on GA calls.
+const REALTIME_CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets';
 const PROBE_MODEL = process.env.QVO_REALTIME_PROBE_MODEL ?? 'gpt-realtime';
 const PROBE_VOICE = '__qvo_invalid_voice_probe__';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -208,14 +225,34 @@ export async function runVoiceCheck(options: {
   let httpStatus = 0;
   let bodyText = '';
   try {
-    const res = await fetchImpl(REALTIME_SESSIONS_URL, {
+    // GA `/v1/realtime/client_secrets` body shape — see OpenAI docs.
+    // `voice` now lives at `session.audio.output.voice`; the model is
+    // at `session.model`; an `expires_after` is required. We send a
+    // 60-second TTL so a leaked client_secret expires fast, in the
+    // unlikely event the API DOES accept our deliberately-invalid
+    // voice and mints one.
+    const requestBody = {
+      expires_after: { anchor: 'created_at', seconds: 60 },
+      session: {
+        type: 'realtime',
+        model: PROBE_MODEL,
+        audio: {
+          output: {
+            voice: PROBE_VOICE,
+          },
+        },
+      },
+    };
+    const res = await fetchImpl(REALTIME_CLIENT_SECRETS_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${options.apiKey}`,
         'Content-Type': 'application/json',
-        'OpenAI-Beta': 'realtime=v1',
+        // No `OpenAI-Beta: realtime=v1` header — that was for the
+        // deprecated /v1/realtime/sessions beta. The GA docs
+        // explicitly call for its removal on /v1/realtime/client_secrets.
       },
-      body: JSON.stringify({ model: PROBE_MODEL, voice: PROBE_VOICE }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
     httpStatus = res.status;
@@ -248,7 +285,7 @@ export async function runVoiceCheck(options: {
     return {
       status: 'request_failed',
       reason:
-        `OpenAI Realtime sessions endpoint returned HTTP ${httpStatus} ` +
+        `OpenAI Realtime client_secrets endpoint returned HTTP ${httpStatus} ` +
         `(transient upstream failure). Body: ${bodyText.slice(0, 500)}`,
     };
   }
