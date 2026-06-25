@@ -9,6 +9,7 @@ vi.mock('../db', () => ({
 vi.mock('../core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
 
 import { recordConversionStage, getConversionFunnel, getConversionTrends, FUNNEL_STAGES } from './ConversionFunnelService';
+import { CALL_FUNNEL_STAGE } from '../../shared/analytics/conversionStages';
 
 const FROM = new Date('2026-01-01T00:00:00Z');
 const TO = new Date('2026-02-01T00:00:00Z');
@@ -20,14 +21,14 @@ beforeEach(() => {
 
 describe('recordConversionStage', () => {
   it('inserts a stage row', async () => {
-    await recordConversionStage('t1', 'cs1', 'call_received', { foo: 'bar' });
+    await recordConversionStage('t1', 'cs1', CALL_FUNNEL_STAGE.CALL_RECEIVED, { foo: 'bar' });
     const call = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('INSERT INTO call_conversion_stages'));
     expect(call).toBeTruthy();
     expect(a.releaseMock).toHaveBeenCalled();
   });
   it('swallows errors (best-effort)', async () => {
     a.clientQueryMock.mockRejectedValue(new Error('boom'));
-    await expect(recordConversionStage('t1', 'cs1', 'call_received')).resolves.toBeUndefined();
+    await expect(recordConversionStage('t1', 'cs1', CALL_FUNNEL_STAGE.CALL_RECEIVED)).resolves.toBeUndefined();
   });
 });
 
