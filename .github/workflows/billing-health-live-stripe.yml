@@ -235,7 +235,21 @@ jobs:
           STRIPE_METER_AI_MINUTES: ${{ secrets.STRIPE_METER_AI_MINUTES }}
         run: |
           mkdir -p .ci-logs/screenshots
-          nohup bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
+          # `setsid` (not `nohup`) so the platform stack lives in its own
+          # process group. `scripts/start-platform-dev.sh` installs a
+          # `trap 'kill 0' EXIT`, which sends SIGTERM to the entire
+          # process group on exit. With plain `nohup ... &` the script
+          # inherits the runner's process group, so the trap's `kill 0`
+          # signals the runner alongside vite + admin-api + voice-gateway
+          # — the workflow then exits 143 (128 + SIGTERM) at the Tear
+          # down step, masking otherwise-passing specs (the
+          # platformAdminBillingHealthLive spec PASSes 6/6 against the
+          # live Stripe API; the only red was teardown). `setsid` makes
+          # the new bash the leader of a fresh process group, so
+          # `kill 0` is contained to its own stack and the runner stays
+          # alive long enough to exit cleanly. Same fix as
+          # admin-e2e.yml's Boot step.
+          setsid bash scripts/start-platform-dev.sh > .ci-logs/platform-dev.log 2>&1 &
           echo $! > .ci-logs/platform.pid
 
       - name: Wait for vite (5000) and admin API (3002) to be healthy
