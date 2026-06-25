@@ -27,7 +27,7 @@ describe('EscalationController.escalateCall', () => {
   });
 
   it('enqueues an escalation notification to the outbox on success', async () => {
-    const outbox = { writeToOutbox: vi.fn(async () => {}) };
+    const outbox = { writeToOutbox: vi.fn(async (_msg: { tenantId: string; callSid: string; callLogId: string; payload: { type: string } }) => {}) };
     const result = await new EscalationController(
       adapter({ success: true }),
       outbox as unknown as ConstructorParameters<typeof EscalationController>[1],
