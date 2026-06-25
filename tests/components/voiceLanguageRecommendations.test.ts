@@ -68,7 +68,9 @@ describe('voice/language recommendations', () => {
     const restricted = ['zh', 'ja', 'ko', 'ar', 'hi'];
     for (const code of restricted) {
       const recs = getRecommendedVoicesForLanguage(code);
-      expect(recs).toEqual(['alloy', 'nova', 'shimmer']);
+      // `marin` replaced `nova` here on 2026-06-25 after OpenAI dropped
+      // nova from the Realtime GA catalog. Same broad-multilingual tier.
+      expect(recs).toEqual(['alloy', 'marin', 'shimmer']);
     }
   });
 });

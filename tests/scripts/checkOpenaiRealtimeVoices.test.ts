@@ -154,7 +154,17 @@ describe('runVoiceCheck (end-to-end with mocked fetch)', () => {
   });
 
   it('returns drift with added voices when OpenAI ships new voices', async () => {
-    const apiVoices = [...VOICES, 'marin', 'cedar'];
+    // Synthetic placeholder voices that match the parser's identifier
+    // regex but won't collide with any real OpenAI voice past or
+    // future. The original fixture used 'cedar' and 'marin' as the
+    // "new" voices, but those were folded into VOICES on 2026-06-25
+    // when the GA Realtime catalog added them — using them here would
+    // make the test pass trivially (in_sync) instead of exercising
+    // the drift-add branch. Same rationale as the removed-voice test
+    // below: lift the test data outside the canonical list so the
+    // assertion stays meaningful as the catalog churns.
+    const newVoices = ['testvoice-a', 'testvoice-b'];
+    const apiVoices = [...VOICES, ...newVoices];
     const fetchImpl = mockFetch({
       status: 400,
       body: {
@@ -170,19 +180,26 @@ describe('runVoiceCheck (end-to-end with mocked fetch)', () => {
     const outcome = await runVoiceCheck({ apiKey: 'sk-test', fetchImpl });
     expect(outcome.status).toBe('drift');
     if (outcome.status === 'drift') {
-      expect(outcome.diff.added).toEqual(['cedar', 'marin']);
+      expect(outcome.diff.added).toEqual([...newVoices].sort());
       expect(outcome.diff.removed).toEqual([]);
     }
   });
 
   it('returns drift with removed voices when OpenAI drops a voice', async () => {
+    // Pick a still-present canonical voice to drop in the mock. The
+    // original fixture used 'fable', but that voice was removed from
+    // VOICES on 2026-06-25 when OpenAI dropped it from the Realtime GA
+    // catalog; the filter was a no-op against the new list. 'sage' is
+    // a stable mid-list voice unlikely to be churned in future
+    // catalog changes.
+    const droppedVoice = 'sage';
     const fetchImpl = mockFetch({
       status: 400,
       body: {
         error: {
           message:
             "Supported values are: " +
-            VOICES.filter((v) => v !== 'fable').map((v) => `'${v}'`).join(', ') +
+            VOICES.filter((v) => v !== droppedVoice).map((v) => `'${v}'`).join(', ') +
             '.',
         },
       },
@@ -191,7 +208,7 @@ describe('runVoiceCheck (end-to-end with mocked fetch)', () => {
     const outcome = await runVoiceCheck({ apiKey: 'sk-test', fetchImpl });
     expect(outcome.status).toBe('drift');
     if (outcome.status === 'drift') {
-      expect(outcome.diff.removed).toEqual(['fable']);
+      expect(outcome.diff.removed).toEqual([droppedVoice]);
       expect(outcome.diff.added).toEqual([]);
     }
   });

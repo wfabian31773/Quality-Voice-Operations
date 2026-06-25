@@ -70,19 +70,32 @@ export function getAgentLanguageLabel(code: string): string {
   return AGENT_LANGUAGES.find((l) => l.code === normalized)?.label ?? 'English';
 }
 
+// Per-language recommended voices, ordered by speech quality grade
+// for that language. The first entry is the default suggestion.
+//
+// Updated 2026-06-25: OpenAI's GA Realtime voice catalog dropped
+// `fable`, `nova`, `onyx` and added `cedar` + `marin` (gpt-realtime-2
+// exclusives). `nova` was the top non-English recommendation across
+// 11 of 12 language buckets; we remap it 1:1 to `marin`, which is a
+// same-tier premium voice with broad multilingual coverage. `fable`
+// and `onyx` only appeared in the English bucket and are dropped
+// without replacement. `cedar` joins the English bucket since we
+// don't have per-language quality grades for the new voices outside
+// English yet — keep the multilingual buckets conservative until the
+// next per-language grading sweep.
 export const RECOMMENDED_VOICES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  en: ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse'],
-  es: ['coral', 'nova', 'shimmer', 'sage', 'alloy', 'verse'],
-  fr: ['nova', 'shimmer', 'sage', 'alloy', 'coral', 'verse'],
-  de: ['alloy', 'nova', 'sage', 'shimmer', 'verse'],
-  pt: ['nova', 'shimmer', 'alloy', 'coral', 'sage'],
-  it: ['nova', 'shimmer', 'sage', 'alloy', 'coral', 'verse'],
-  nl: ['alloy', 'nova', 'shimmer', 'sage'],
-  zh: ['alloy', 'nova', 'shimmer'],
-  ja: ['alloy', 'nova', 'shimmer'],
-  ko: ['alloy', 'nova', 'shimmer'],
-  ar: ['alloy', 'nova', 'shimmer'],
-  hi: ['alloy', 'nova', 'shimmer'],
+  en: ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'marin', 'sage', 'shimmer', 'verse'],
+  es: ['coral', 'marin', 'shimmer', 'sage', 'alloy', 'verse'],
+  fr: ['marin', 'shimmer', 'sage', 'alloy', 'coral', 'verse'],
+  de: ['alloy', 'marin', 'sage', 'shimmer', 'verse'],
+  pt: ['marin', 'shimmer', 'alloy', 'coral', 'sage'],
+  it: ['marin', 'shimmer', 'sage', 'alloy', 'coral', 'verse'],
+  nl: ['alloy', 'marin', 'shimmer', 'sage'],
+  zh: ['alloy', 'marin', 'shimmer'],
+  ja: ['alloy', 'marin', 'shimmer'],
+  ko: ['alloy', 'marin', 'shimmer'],
+  ar: ['alloy', 'marin', 'shimmer'],
+  hi: ['alloy', 'marin', 'shimmer'],
 };
 
 export function getRecommendedVoicesForLanguage(languageCode: string): readonly string[] {

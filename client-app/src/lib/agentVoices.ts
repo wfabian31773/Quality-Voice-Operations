@@ -44,15 +44,19 @@
  *      new grades.
  *   3. Run `npm test -- voiceLanguageRecommendations` and confirm green.
  */
+// Aligned with OpenAI's GA Realtime voice catalog as of 2026-06-25 per
+// the daily `check-openai-realtime-voices` probe. OpenAI dropped
+// `fable`, `nova`, `onyx` and shipped `cedar` + `marin` (the two
+// gpt-realtime-2 exclusive voices). Until the next probe shows
+// drift, this list IS what OpenAI accepts.
 export const VOICES = [
   'alloy',
   'ash',
   'ballad',
+  'cedar',
   'coral',
   'echo',
-  'fable',
-  'onyx',
-  'nova',
+  'marin',
   'sage',
   'shimmer',
   'verse',
