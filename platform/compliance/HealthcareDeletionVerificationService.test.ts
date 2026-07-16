@@ -88,7 +88,7 @@ describe('healthcare deletion verification service', () => {
   });
 
   it('reports remaining rows without selecting or returning PHI values', async () => {
-    const query = vi.fn(async (sql: string) => ({
+    const query = vi.fn(async (sql: string, _values?: unknown[]) => ({
       rows: [{ count: sql.includes('call_sessions') ? '0' : '2' }],
     }));
     const result = await verifyTenantRowsRemoved({ query }, 'tenant-1', ['call_sessions', 'escalation_tasks']);

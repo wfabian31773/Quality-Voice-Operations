@@ -23,3 +23,6 @@ verify:stripe-prices && vite build`. The first `tsc` covers the whole backend in
 - Fix the actual type errors rather than excluding tests from the build — excluding would
   weaken the only deploy-time gate that covers the backend.
 - A durable prevention is adding a root `tsc --noEmit` job to CI so it matches the deploy gate.
+- Common trap under vitest 4 types: a `vi.fn(async (sql: string) => ...)` mock makes
+  `mock.calls` entries a 1-tuple, so destructuring `[sql, values]` fails TS2493 —
+  declare the extra parameter (e.g. `_values?: unknown[]`) on the mock signature.
