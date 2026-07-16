@@ -14,6 +14,11 @@ describe('redactPHI', () => {
     expect(redactPHI('born 1990-15-01')).toContain('[DOB_REDACTED]');
   });
 
+  it('redacts compact E.164 caller numbers used by carrier stream metadata', () => {
+    expect(redactPHI('+15551234567')).toBe('[PHONE_REDACTED]');
+    expect(redactPHI('caller +442079460958 connected')).toBe('caller [PHONE_REDACTED] connected');
+  });
+
   it('redacts names introduced by common patterns and honorifics', () => {
     expect(redactPHI('my name is Ada Lovelace')).toBe('my name is [NAME_REDACTED]');
     expect(redactPHI('Dr. Smith will see you')).toContain('[NAME_REDACTED]');

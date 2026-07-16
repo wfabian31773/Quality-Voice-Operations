@@ -31,6 +31,19 @@ export interface AuthenticatedUser {
   email: string;
   role: string;
   isPlatformAdmin: boolean;
+  /** True only after the current short-lived session completed MFA. */
+  mfaVerified?: boolean;
+  /** Signals a platform-admin identity whose privileges are withheld pending MFA. */
+  platformAdminMfaRequired?: boolean;
+}
+
+export type MfaFlowPurpose = 'mfa_setup' | 'mfa_challenge';
+
+export interface MfaFlowIdentity {
+  userId: string;
+  tenantId: string;
+  email: string;
+  role: string;
 }
 
 declare global {
@@ -45,6 +58,7 @@ declare global {
 interface ResolvedAuth {
   role: string;
   isPlatformAdmin: boolean;
+  mfaEnabled: boolean;
 }
 
 const TENANT_STATUS_CACHE_TTL_MS = 30_000;
@@ -117,13 +131,14 @@ async function resolveCurrentRole(
 
     const { rows: userRows } = await withPrivilegedClient(async (privClient) => {
       return privClient.query(
-        `SELECT is_platform_admin FROM users WHERE id = $1`,
+        `SELECT is_platform_admin, mfa_enabled_at FROM users WHERE id = $1`,
         [userId],
       );
     });
     const isPlatformAdmin = (userRows[0]?.is_platform_admin as boolean) ?? false;
+    const mfaEnabled = Boolean(userRows[0]?.mfa_enabled_at);
 
-    return { role: rows[0].role as string, isPlatformAdmin };
+    return { role: rows[0].role as string, isPlatformAdmin, mfaEnabled };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -155,6 +170,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const userId = payload.sub as string;
     const tenantId = payload.tenantId as string;
     const email = payload.email as string;
+    const tokenMfaVerified = payload.mfaVerified === true;
 
     resolveCurrentRole(userId, tenantId)
       .then(async (auth) => {
@@ -162,7 +178,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
           res.status(403).json({ error: 'No active role in this tenant' });
           return;
         }
-        req.user = { userId, tenantId, email, role: auth.role, isPlatformAdmin: auth.isPlatformAdmin };
+        const platformAdminMfaRequired = auth.isPlatformAdmin && (!auth.mfaEnabled || !tokenMfaVerified);
+        req.user = {
+          userId,
+          tenantId,
+          email,
+          role: auth.role,
+          isPlatformAdmin: auth.isPlatformAdmin && !platformAdminMfaRequired,
+          mfaVerified: auth.isPlatformAdmin ? tokenMfaVerified && auth.mfaEnabled : false,
+          platformAdminMfaRequired,
+        };
 
         const allowedPendingPaths = ['/tenants/me/provisioning-status', '/tenants/me/verify-checkout', '/tenants/me', '/auth/me', '/me/preferences'];
         const path = req.path;
@@ -233,6 +258,7 @@ export function issueToken(user: AuthenticatedUser, expiresIn: string = '8h'): s
       email: user.email,
       role: user.role,
       isPlatformAdmin: user.isPlatformAdmin ?? false,
+      mfaVerified: user.mfaVerified === true,
     },
     getJwtSecret(),
     // Explicit `algorithm: 'HS256'` keeps signing in lock-step with the
@@ -241,4 +267,43 @@ export function issueToken(user: AuthenticatedUser, expiresIn: string = '8h'): s
     // explicit and protects against future default changes.)
     { algorithm: 'HS256', expiresIn } as jwt.SignOptions,
   );
+}
+
+export function issueMfaFlowToken(
+  user: MfaFlowIdentity,
+  purpose: MfaFlowPurpose,
+  expiresIn: string = '10m',
+): string {
+  return jwt.sign(
+    {
+      sub: user.userId,
+      tenantId: user.tenantId,
+      email: user.email,
+      role: user.role,
+      purpose,
+    },
+    getJwtSecret(),
+    { algorithm: 'HS256', audience: 'qvo-platform-admin-mfa', expiresIn } as jwt.SignOptions,
+  );
+}
+
+export function verifyMfaFlowToken(token: string, purpose: MfaFlowPurpose): MfaFlowIdentity {
+  const payload = jwt.verify(token, getJwtSecret(), {
+    algorithms: ['HS256'],
+    audience: 'qvo-platform-admin-mfa',
+  }) as Record<string, unknown>;
+  if (payload.purpose !== purpose) throw new Error('Invalid MFA flow purpose');
+  const userId = payload.sub;
+  const tenantId = payload.tenantId;
+  const email = payload.email;
+  const role = payload.role;
+  if (![userId, tenantId, email, role].every((value) => typeof value === 'string' && value.length > 0)) {
+    throw new Error('Invalid MFA flow identity');
+  }
+  return {
+    userId: userId as string,
+    tenantId: tenantId as string,
+    email: email as string,
+    role: role as string,
+  };
 }

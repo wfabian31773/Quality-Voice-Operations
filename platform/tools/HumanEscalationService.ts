@@ -51,6 +51,7 @@ export interface CreateEscalationTaskParams {
   reason: string;
   priority: EscalationTask['priority'];
   toolName?: string;
+  idempotencyKey?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -95,7 +96,31 @@ function mapRow(row: Record<string, unknown>): EscalationTask {
 }
 
 export async function createEscalationTask(params: CreateEscalationTaskParams): Promise<EscalationTask> {
-  const task = await withTenant(params.tenantId, async (client) => {
+  const idempotencyKey = params.idempotencyKey
+    ?? `${params.callSessionId}:${params.toolName ?? 'human_escalation'}`;
+  const { task, created } = await withTenant(params.tenantId, async (client) => {
+    const lockKey = `${params.tenantId}:${idempotencyKey}`;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [lockKey]);
+    const { rows: existingRows } = await client.query(
+      `SELECT *
+         FROM escalation_tasks
+        WHERE tenant_id = $1
+          AND call_session_id = $2
+          AND metadata->>'idempotencyKey' = $3
+        ORDER BY created_at ASC
+        LIMIT 1`,
+      [params.tenantId, params.callSessionId, idempotencyKey],
+    );
+    if (existingRows.length > 0) {
+      logger.info('Escalation task idempotent hit', {
+        tenantId: params.tenantId,
+        callId: params.callSessionId,
+        taskId: existingRows[0].id,
+      });
+      return { task: mapRow(existingRows[0]), created: false };
+    }
+
+    const metadata = { ...(params.metadata ?? {}), idempotencyKey };
     const { rows } = await client.query(
       `INSERT INTO escalation_tasks (
         tenant_id, call_session_id, agent_slug, caller_phone, reason, priority, status, tool_name, metadata, created_at, updated_at
@@ -109,22 +134,60 @@ export async function createEscalationTask(params: CreateEscalationTaskParams): 
         params.reason,
         params.priority,
         params.toolName ?? null,
-        JSON.stringify(params.metadata ?? {}),
+        JSON.stringify(metadata),
       ],
     );
+    const task = mapRow(rows[0]);
+    const { rows: existingTicketRows } = await client.query(
+      `SELECT id FROM tickets
+       WHERE tenant_id = $1 AND call_id = $2
+       ORDER BY created_at ASC LIMIT 1`,
+      [params.tenantId, params.callSessionId],
+    );
+    if (existingTicketRows.length === 0) {
+      const ticketPriority = params.priority === 'critical' ? 'urgent' : params.priority;
+      const { rows: ticketRows } = await client.query(
+        `INSERT INTO tickets
+           (tenant_id, call_id, subject, description, status, priority, source, department, contact_phone, tags)
+         VALUES ($1, $2, $3, $4, 'escalated', $5, 'phone', 'answering_service', $6, $7)
+         RETURNING id`,
+        [
+          params.tenantId,
+          params.callSessionId,
+          `Human escalation: ${params.reason.substring(0, 100)}`,
+          `Escalation task ${task.id}: ${params.reason}`,
+          ticketPriority,
+          params.callerPhone ?? '',
+          ['answering-service', 'human-escalation'],
+        ],
+      );
+      if (ticketRows.length > 0) {
+        await client.query(
+          `INSERT INTO ticket_activity_log
+             (tenant_id, ticket_id, user_id, activity_type, content, metadata)
+           VALUES ($1, $2, NULL, 'escalated', $3, $4)`,
+          [
+            params.tenantId,
+            ticketRows[0].id,
+            params.reason,
+            JSON.stringify({ escalationTaskId: task.id, callSessionId: params.callSessionId, toolName: params.toolName ?? null }),
+          ],
+        );
+      }
+    }
     logger.info('Escalation task created', {
       tenantId: params.tenantId,
       callId: params.callSessionId,
       priority: params.priority,
       taskId: rows[0].id,
     });
-    return mapRow(rows[0]);
+    return { task, created: true };
   });
 
   // Best-effort notification fan-out. Never fail task creation because a
   // notification couldn't be delivered — the escalation row is the source of
   // truth and surfaces in the queue regardless of preferences.
-  notifyHumanEscalation(task).catch((err) => {
+  if (created) notifyHumanEscalation(task).catch((err) => {
     logger.warn('Failed to dispatch escalation notifications', {
       tenantId: task.tenantId,
       taskId: task.id,
@@ -145,7 +208,7 @@ export async function createEscalationTask(params: CreateEscalationTaskParams): 
  * triggering this automatically.
  */
 export async function notifyHumanEscalation(task: EscalationTask): Promise<void> {
-  const escalationsPath = '/ops/reliability?tab=escalations';
+  const escalationsPath = `/calls?highlight=${encodeURIComponent(task.callSessionId)}`;
   const escalationsUrl = `${appBaseUrl().replace(/\/$/, '')}${escalationsPath}`;
 
   const reasonSnippet = task.reason.slice(0, 200);

@@ -18,6 +18,8 @@ import {
   toolExecStatusLabel,
 } from '../lib/statusLabels';
 import { EMPTY_FILTERS, type FiltersState, type SavedView } from './calls/types';
+import HealthcareOutcomeCard from '../components/HealthcareOutcomeCard';
+import type { HealthcareOutcomeDashboardProjection } from '../../../shared/receptionist/healthcareOutcomeDashboard';
 
 // The pinned-saved-views bar uses @dnd-kit for drag-to-reorder. dnd-kit pulls
 // React in via the workspace's nested node_modules and that triggers
@@ -43,6 +45,9 @@ interface Call {
   stir_verstat?: string | null;
   stir_attestation?: 'A' | 'B' | 'C' | null;
   language?: string | null;
+  outcome_type?: string | null;
+  next_action?: string | null;
+  ticket_id?: string | null;
 }
 
 interface TranscriptEntry {
@@ -366,11 +371,17 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
     queryFn: () => api.get<{ executions: Array<{ id: string; toolName: string; status: string; durationMs: number | null; invokedAt: string; errorMessage: string | null; recoveryAction: string | null; result: unknown }> }>(`/tool-executions?callSessionId=${callId}`),
   });
 
+  const { data: outcomeData } = useQuery({
+    queryKey: ['healthcare-outcome', callId],
+    queryFn: () => api.get<{ projection: HealthcareOutcomeDashboardProjection }>(`/calls/${callId}/outcome`),
+  });
+
   const call = callData?.call;
   const costBreakdown = callData?.costBreakdown ?? null;
   const transcript = transcriptData?.transcript ?? [];
   const events = eventsData?.events ?? [];
   const toolExecutions = toolExecData?.executions ?? [];
+  const healthcareOutcome = outcomeData?.projection ?? null;
   const [tab, setTab] = useState<'transcript' | 'events' | 'tools'>('transcript');
 
   return (
@@ -406,6 +417,12 @@ export function CallDetailDrawer({ callId, onClose }: { callId: string; onClose:
               <div><span className="text-text-secondary">{t('calls.detail.started')}</span> {call.start_time ? format(new Date(call.start_time), 'PPp') : '--'}</div>
               <div><span className="text-text-secondary">{t('calls.detail.ended')}</span> {call.end_time ? format(new Date(call.end_time), 'PPp') : '--'}</div>
             </div>
+          </div>
+        )}
+
+        {healthcareOutcome && (healthcareOutcome.outcome || healthcareOutcome.escalation || healthcareOutcome.tool) && (
+          <div className="px-5 py-4 border-b border-border">
+            <HealthcareOutcomeCard projection={healthcareOutcome} compact />
           </div>
         )}
 
@@ -1209,6 +1226,7 @@ export default function Calls() {
                   <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.language')}</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.direction')}</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.status')}</th>
+                  <th className="px-5 py-3 text-text-secondary font-medium">Outcome</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.duration')}</th>
                   <th className="px-5 py-3 text-text-secondary font-medium">{tenantT('calls.table.date')}</th>
                 </tr>
@@ -1241,6 +1259,14 @@ export default function Calls() {
                           </span>
                         ) : null}
                       </div>
+                    </td>
+                    <td className="px-5 py-3 text-text-secondary">
+                      {call.outcome_type ? (
+                        <div className="max-w-[15rem]">
+                          <span className="text-xs font-medium text-text-primary capitalize">{call.outcome_type.replace(/_/g, ' ')}</span>
+                          {call.next_action && <p className="truncate text-[11px] text-text-muted">{call.next_action}</p>}
+                        </div>
+                      ) : '--'}
                     </td>
                     <td className="px-5 py-3 text-text-secondary">{call.duration_seconds ? tenantT('calls.table.duration_seconds', { seconds: call.duration_seconds }) : '--'}</td>
                     <td className="px-5 py-3 text-text-secondary">{call.start_time ? format(new Date(call.start_time), 'MMM d, h:mm a') : '--'}</td>

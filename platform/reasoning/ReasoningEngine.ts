@@ -172,7 +172,7 @@ export class ReasoningEngine {
       'CRITICAL: You must NEVER provide the following types of advice:',
     ];
     const vertical = this.config.vertical;
-    if (['medical-after-hours', 'dental'].includes(vertical)) {
+    if (['medical-after-hours', 'healthcare-receptionist', 'dental'].includes(vertical)) {
       lines.push('- Do NOT diagnose conditions, prescribe medications, or suggest changing dosages.');
       lines.push('- Do NOT tell the caller what condition they have or suggest they stop taking medication.');
       lines.push('- Instead, advise the caller to consult with a medical professional.');
@@ -318,6 +318,29 @@ export class ReasoningEngine {
       timestamp: new Date(),
     };
     return gate.checkPreExecution(context, toolName, toolArgs, confidence, this.toolArgSlots);
+  }
+
+  authorizeToolRequest(toolName: string, toolArgs: Record<string, unknown>): SafetyCheckResult {
+    const safety = this.checkToolSafety(toolName, toolArgs);
+    if (!safety.allowed) return safety;
+
+    const latest = this.lastDecisionResult;
+    const workflowTool = this.getCurrentWorkflowStepTool();
+    const conflictsWithDecision = latest?.action === 'complete_interaction'
+      || (latest?.action === 'escalate_to_human' && toolName !== 'escalate_to_human')
+      || (latest?.action === 'execute_tool' && Boolean(latest.toolToExecute) && latest.toolToExecute !== toolName)
+      || (workflowTool !== null && workflowTool !== toolName);
+    if (!conflictsWithDecision) return safety;
+
+    return {
+      allowed: false,
+      violations: [{
+        type: 'policy_violation',
+        description: `Requested tool "${toolName}" conflicts with the active reasoning decision`,
+        blockedAction: toolName,
+        severity: 'critical',
+      }],
+    };
   }
 
   getToolArgSlots(): Set<string> {

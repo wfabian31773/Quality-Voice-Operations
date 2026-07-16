@@ -15,6 +15,8 @@ import clsx from 'clsx';
 import Modal from '../components/Modal';
 import SchedulingDriftBanner from '../components/SchedulingDriftBanner';
 import { PageHeader } from '../components/ui';
+import { useAuth } from '../lib/auth';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 interface PhoneNumber {
   id: string;
@@ -652,6 +654,8 @@ function ReassignModal({
 
 export default function PhoneNumbers() {
   const { t: tenantT } = useTranslation('tenant');
+  const { user } = useAuth();
+  const isStaff = isQvoStaff(user);
   const [showProvision, setShowProvision] = useState(false);
   const [reassigning, setReassigning] = useState<PhoneNumber | null>(null);
   const queryClient = useQueryClient();
@@ -733,7 +737,7 @@ export default function PhoneNumbers() {
         )}
       />
 
-      {!isLoading && (
+      {!isLoading && isStaff && (
         <SchedulingDriftBanner
           count={numbersWithDisconnectedCalendar.length}
           disconnectedProviders={disconnectedNumberProviders}
@@ -823,7 +827,7 @@ export default function PhoneNumbers() {
                         ) : (
                           <span className="text-text-muted text-xs">Not assigned</span>
                         )}
-                        {schedulingDrift && (
+                        {schedulingDrift && isStaff && (
                           <button
                             type="button"
                             onClick={() =>
@@ -845,7 +849,7 @@ export default function PhoneNumbers() {
                         const provider = pn.scheduling_provider;
                         const isDisconnected =
                           !!provider && connectorsLoaded && !connectedProviders.has(provider);
-                        if (isDisconnected) {
+                        if (isDisconnected && isStaff) {
                           return (
                             <button
                               type="button"
@@ -862,15 +866,18 @@ export default function PhoneNumbers() {
                         }
                         return (
                           <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text-secondary border border-border"
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${isDisconnected ? 'bg-warning-light text-warning border-warning' : 'bg-surface-hover text-text-secondary border-border'}`}
                             title={
-                              provider
+                              isDisconnected
+                                ? `${formatSchedulingProvider(provider!)} is not connected. Contact QVO support to restore calendar routing.`
+                                : provider
                                 ? `Books appointments into ${formatSchedulingProvider(provider)}`
                                 : 'Uses the agent or tenant default scheduling calendar'
                             }
                           >
                             <Calendar className="h-3 w-3" />
                             {provider ? formatSchedulingProvider(provider) : 'Default'}
+                            {isDisconnected ? ' (not connected)' : ''}
                           </span>
                         );
                       })()}

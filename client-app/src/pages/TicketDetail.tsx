@@ -8,9 +8,12 @@ import {
   Link2, Paperclip, Tag, Calendar, ChevronDown, Zap, MessageSquare,
   AlertTriangle, Shield, MoreHorizontal, Users, History,
 } from 'lucide-react';
+import HealthcareOutcomeCard from '../components/HealthcareOutcomeCard';
+import type { HealthcareOutcomeDashboardProjection } from '../../../shared/receptionist/healthcareOutcomeDashboard';
 
 interface TicketData {
   id: string;
+  call_id: string | null;
   ticket_number: number;
   subject: string;
   description: string;
@@ -264,6 +267,7 @@ export default function TicketDetail() {
   const isReadOnly = !['tenant_owner', 'operations_manager'].includes(user?.role ?? '');
 
   const [ticket, setTicket] = useState<TicketData | null>(null);
+  const [receptionistOutcome, setReceptionistOutcome] = useState<HealthcareOutcomeDashboardProjection | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [watchers, setWatchers] = useState<Watcher[]>([]);
   const [sla, setSla] = useState<SlaInstance | null>(null);
@@ -287,8 +291,9 @@ export default function TicketDetail() {
   const fetchTicket = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await api.get<{ ticket: TicketData; watchers: Watcher[]; sla: SlaInstance | null; linkedTickets: LinkedTicket[]; attachments: Array<{ id: string; file_name: string; file_url: string; file_size: number; file_type: string; created_at: string }> }>(`/tickets/${id}`);
+      const data = await api.get<{ ticket: TicketData; watchers: Watcher[]; sla: SlaInstance | null; linkedTickets: LinkedTicket[]; attachments: Array<{ id: string; file_name: string; file_url: string; file_size: number; file_type: string; created_at: string }>; receptionistOutcome: HealthcareOutcomeDashboardProjection | null }>(`/tickets/${id}`);
       setTicket(data.ticket);
+      setReceptionistOutcome(data.receptionistOutcome ?? null);
       setWatchers(data.watchers);
       setSla(data.sla);
       setLinkedTickets(data.linkedTickets);
@@ -506,6 +511,10 @@ export default function TicketDetail() {
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
+      )}
+
+      {receptionistOutcome && (
+        <HealthcareOutcomeCard projection={receptionistOutcome} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

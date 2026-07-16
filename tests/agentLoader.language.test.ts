@@ -30,11 +30,11 @@ function makeCtx(language?: string) {
 
 describe('loadAgentConfig - language plumbing', () => {
   it.each(NON_ENGLISH_CODES)(
-    'appends a single language directive for %s',
+    'sets a preferred greeting language while retaining natural switching for %s',
     (code) => {
       const cfg = loadAgentConfig(makeCtx(code));
       const label = getAgentLanguageLabel(code);
-      const directive = `Respond to the caller in ${label}. All spoken responses must be in ${label}.`;
+      const directive = `Begin in ${label}, then follow the caller's language naturally.`;
 
       expect(cfg.language).toBe(code);
       expect(cfg.systemPrompt).toContain(directive);
@@ -44,23 +44,23 @@ describe('loadAgentConfig - language plumbing', () => {
     },
   );
 
-  it('does not append a directive for the default English language', () => {
+  it('uses English as a preferred greeting without pinning the call', () => {
     const cfg = loadAgentConfig(makeCtx('en'));
     expect(cfg.language).toBe(DEFAULT_AGENT_LANGUAGE);
-    expect(cfg.systemPrompt).not.toMatch(/Respond to the caller in [A-Z][a-z]+\./);
-    expect(cfg.systemPrompt).not.toMatch(/All spoken responses must be in [A-Z][a-z]+\./);
+    expect(cfg.systemPrompt).toContain("Begin in English, then follow the caller's language naturally.");
+    expect(cfg.systemPrompt).not.toContain('All spoken responses must be in English');
   });
 
   it('falls back to English when no language is supplied', () => {
     const cfg = loadAgentConfig(makeCtx());
     expect(cfg.language).toBe(DEFAULT_AGENT_LANGUAGE);
-    expect(cfg.systemPrompt).not.toMatch(/Respond to the caller in [A-Z][a-z]+\./);
+    expect(cfg.systemPrompt).toContain('Preferred greeting language: English');
   });
 
   it('falls back to English when the language code is unknown', () => {
     const cfg = loadAgentConfig(makeCtx('xx-unknown'));
     expect(cfg.language).toBe(DEFAULT_AGENT_LANGUAGE);
-    expect(cfg.systemPrompt).not.toMatch(/Respond to the caller in [A-Z][a-z]+\./);
+    expect(cfg.systemPrompt).toContain('Preferred greeting language: English');
   });
 
   it('only appends the directive once even when system prompt is reused', () => {
@@ -78,7 +78,7 @@ describe('loadAgentConfig - language plumbing', () => {
     };
     const second = loadAgentConfig(ctxWithExistingPrompt);
     expect(second.language).toBe('es');
-    const directive = `Respond to the caller in Spanish. All spoken responses must be in Spanish.`;
+    const directive = `Begin in Spanish, then follow the caller's language naturally.`;
     const occurrences = second.systemPrompt.split(directive).length - 1;
     expect(occurrences).toBe(1);
   });
@@ -88,7 +88,7 @@ describe('loadAgentConfig - language plumbing', () => {
       if (lang.code === DEFAULT_AGENT_LANGUAGE) continue;
       const cfg = loadAgentConfig(makeCtx(lang.code));
       expect(cfg.language).toBe(lang.code);
-      const directive = `Respond to the caller in ${lang.label}. All spoken responses must be in ${lang.label}.`;
+      const directive = `Begin in ${lang.label}, then follow the caller's language naturally.`;
       expect(cfg.systemPrompt).toContain(directive);
     }
   });
@@ -96,13 +96,13 @@ describe('loadAgentConfig - language plumbing', () => {
 
 describe('buildOpenAISessionConfig - transcription language plumbing', () => {
   it.each(NON_ENGLISH_CODES)(
-    'sets audio.input.transcription.language for %s',
+    'keeps automatic transcription language detection for %s',
     (code) => {
       const sessionConfig = buildOpenAISessionConfig({ voice: 'sage', language: code });
       expect(sessionConfig.audio.input.transcription).toEqual({
         model: 'gpt-4o-mini-transcribe',
-        language: code,
       });
+      expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
     },
   );
 
@@ -141,7 +141,7 @@ describe('buildOpenAISessionConfig - transcription language plumbing', () => {
 
 describe('end-to-end: loadAgentConfig flows into buildOpenAISessionConfig', () => {
   it.each(NON_ENGLISH_CODES)(
-    'language %s flows from the agent config into the OpenAI transcription config',
+    'language %s controls the greeting but does not pin transcription',
     (code) => {
       const agentConfig = loadAgentConfig(makeCtx(code));
       const sessionConfig = buildOpenAISessionConfig({
@@ -150,8 +150,8 @@ describe('end-to-end: loadAgentConfig flows into buildOpenAISessionConfig', () =
       });
       expect(sessionConfig.audio.input.transcription).toEqual({
         model: 'gpt-4o-mini-transcribe',
-        language: code,
       });
+      expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
     },
   );
 

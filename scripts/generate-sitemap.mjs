@@ -2,10 +2,8 @@
 /**
  * Build-time sitemap generator.
  *
- * Walks the public-facing route table (mirrored below from
- * `client-app/src/App.tsx`) and the slug data files
- * (`client-app/src/data/{docs,blogArticles,guides}.ts` plus the `verticals`
- * map in `client-app/src/pages/public/VerticalLanding.tsx`), then writes a
+ * Walks the focused public-facing route table (mirrored below from
+ * `client-app/src/App.tsx`), then writes a
  * sitemap to `client-app/public/sitemap.xml` that lists every public route
  * once per supported locale.
  *
@@ -59,21 +57,11 @@ export function withLocalePrefix(locale, p) {
  */
 export const STATIC_ROUTES = [
   { path: '/',                                           changefreq: 'weekly',  priority: '1.0' },
-  { path: '/product',                                    changefreq: 'weekly',  priority: '0.8' },
-  { path: '/product/federated-ingest',                   changefreq: 'monthly', priority: '0.7' },
-  { path: '/product/global-intelligence-network',        changefreq: 'monthly', priority: '0.7' },
-  { path: '/features',                                   changefreq: 'weekly',  priority: '0.8' },
-  { path: '/ai-agents',                                  changefreq: 'weekly',  priority: '0.8' },
   { path: '/pricing',                                    changefreq: 'weekly',  priority: '0.8' },
-  { path: '/use-cases',                                  changefreq: 'weekly',  priority: '0.8' },
-  { path: '/integrations',                               changefreq: 'weekly',  priority: '0.8' },
   { path: '/demo',                                       changefreq: 'weekly',  priority: '0.8' },
   { path: '/contact',                                    changefreq: 'weekly',  priority: '0.7' },
-  { path: '/docs',                                       changefreq: 'weekly',  priority: '0.8' },
-  { path: '/resources',                                  changefreq: 'weekly',  priority: '0.7' },
-  { path: '/signup',                                     changefreq: 'monthly', priority: '0.6' },
-  { path: '/blog',                                       changefreq: 'weekly',  priority: '0.7' },
-  { path: '/industries/vertical-agents',                 changefreq: 'monthly', priority: '0.7' },
+  { path: '/industries/healthcare',                      changefreq: 'weekly',  priority: '0.9' },
+  { path: '/industries/dental',                          changefreq: 'weekly',  priority: '0.8' },
   { path: '/case-studies',                               changefreq: 'monthly', priority: '0.7' },
   { path: '/book-demo',                                  changefreq: 'weekly',  priority: '0.8' },
   { path: '/terms',                                      changefreq: 'yearly',  priority: '0.4' },
@@ -175,42 +163,9 @@ function readClientFile(rel) {
  * prefixes — the prefix is applied later, once per supported locale.
  */
 export function collectDynamicPaths() {
-  const paths = [];
-
-  const docsSrc = readClientFile('data/docs.ts');
-  for (const slug of extractSlugs(docsSrc, { startMarker: 'docArticles' })) {
-    paths.push({ path: `/docs/${slug}`, changefreq: 'monthly', priority: '0.6' });
-  }
-
-  const blogSrc = readClientFile('data/blogArticles.ts');
-  for (const slug of extractSlugs(blogSrc, { startMarker: 'blogArticles' })) {
-    paths.push({ path: `/blog/${slug}`, changefreq: 'monthly', priority: '0.6' });
-  }
-
-  const guidesSrc = readClientFile('data/guides.ts');
-  for (const slug of extractSlugs(guidesSrc, { startMarker: 'guides:' })) {
-    // `startMarker` above will not match — guides.ts uses `export const guides`.
-    paths.push({ path: `/resources/${slug}`, changefreq: 'monthly', priority: '0.6' });
-  }
-  // Re-run without marker if the marker-based pass found nothing (the file
-  // shape is simple — `slug: 'foo'` literals only appear inside the guides
-  // array — so a global sweep is safe and matches the docs.ts/blogArticles.ts
-  // intent of "every slug literal is a URL slug").
-  if (!paths.some((p) => p.path.startsWith('/resources/'))) {
-    for (const slug of extractSlugs(guidesSrc)) {
-      paths.push({ path: `/resources/${slug}`, changefreq: 'monthly', priority: '0.6' });
-    }
-  }
-
-  const verticalSrc = readClientFile('pages/public/VerticalLanding.tsx');
-  for (const slug of extractVerticalSlugs(verticalSrc)) {
-    // /industries/vertical-agents is already in STATIC_ROUTES; skip if a
-    // future PR ever adds a same-named entry to the verticals map.
-    if (slug === 'vertical-agents') continue;
-    paths.push({ path: `/industries/${slug}`, changefreq: 'monthly', priority: '0.7' });
-  }
-
-  return paths;
+  // Blog and self-service resource guides remain in source but are deferred
+  // from routing and indexing for the focused receptionist launch.
+  return [];
 }
 
 /**

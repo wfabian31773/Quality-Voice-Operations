@@ -13,6 +13,17 @@ import {
   deletionCancelledEmail,
   deletionExecutedEmail,
 } from '../../../platform/email/templates';
+import { buildPublicCompliancePosture } from '../../../shared/compliance/publicCompliancePosture';
+import {
+  discoverTenantScopedTables,
+  executeExplicitTenantDeletes,
+  verifyTenantRowsRemoved,
+} from '../../../platform/compliance/HealthcareDeletionVerificationService';
+import {
+  buildTenantDeletionPlan,
+  HEALTHCARE_DATA_CONTROL_MANIFEST_VERSION,
+} from '../../../platform/compliance/healthcareDataControlManifest';
+import { createScopedIdentifierHash } from '../../../platform/security/PiiLookupHash';
 
 function appBaseUrl(): string {
   return process.env.APP_URL ?? `https://${process.env.REPLIT_DEV_DOMAIN ?? 'localhost:5173'}`;
@@ -68,6 +79,19 @@ function toCsv(rows: Record<string, unknown>[]): string {
 const router = Router();
 const logger = createLogger('LEGAL_COMPLIANCE');
 
+const deletionEvidenceRef = z.string().trim().min(3).max(500).regex(
+  /^[A-Za-z0-9][A-Za-z0-9._:/#-]*$/,
+);
+const executeDeletionSchema = z.object({
+  externalDeletionEvidence: z.object({
+    twilio: deletionEvidenceRef,
+    openai: deletionEvidenceRef,
+    hosting: deletionEvidenceRef,
+    messaging_connectors: deletionEvidenceRef,
+    logs_backups: deletionEvidenceRef,
+  }).strict(),
+}).strict();
+
 // ---------- Public: sub-processors list ----------
 router.get('/public/subprocessors', async (_req, res) => {
   const pool = getPlatformPool();
@@ -93,7 +117,7 @@ router.get('/public/subprocessors', async (_req, res) => {
 const postureFrameworkSchema = z.object({
   key: z.string(),
   name: z.string(),
-  status: z.enum(['compliant', 'in_progress', 'available', 'roadmap', 'not_applicable']),
+  status: z.literal('not_verified'),
   status_label: z.string(),
   scope: z.string(),
   description: z.string(),
@@ -126,6 +150,7 @@ const postureSchema = z.object({
     notes: z.string(),
   }),
   data_residency: z.object({
+    verified: z.literal(false),
     primary_region: z.string(),
     description: z.string(),
   }),
@@ -147,85 +172,8 @@ router.get('/public/posture', async (_req, res) => {
        ORDER BY display_order ASC, name ASC`,
     );
 
-    const today = new Date().toISOString().slice(0, 10);
-    const payload = {
-      version: 1 as const,
-      generated_at: new Date().toISOString(),
-      organization: {
-        name: 'QVO — Quality Voice Operations',
-        contact_security: 'security@qvo.example',
-        contact_privacy: 'privacy@qvo.example',
-      },
-      frameworks: [
-        {
-          key: 'soc2',
-          name: 'SOC 2 Type II',
-          status: 'in_progress' as const,
-          status_label: 'In progress',
-          scope: 'Security & Availability — target Q4 2026',
-          description:
-            'Trust services criteria audit covering security and availability. Pre-audit readiness assessment complete; observation window in progress.',
-          evidence_url: null,
-          last_reviewed: today,
-        },
-        {
-          key: 'hipaa',
-          name: 'HIPAA',
-          status: 'available' as const,
-          status_label: 'Available with BAA',
-          scope: 'Pro & Enterprise plans',
-          description:
-            'Business Associate Agreement available for healthcare customers. PHI safeguards (encryption at rest/in transit, access controls, audit logging, optional PHI-redacted logging) in place.',
-          evidence_url: '/legal/dpa',
-          last_reviewed: today,
-        },
-        {
-          key: 'gdpr',
-          name: 'GDPR',
-          status: 'compliant' as const,
-          status_label: 'Compliant',
-          scope: 'EU/UK customers',
-          description:
-            'Standard Contractual Clauses (2021/914) incorporated by reference in our DPA. Data Subject Rights workflows (export, deletion) self-service from Settings → Privacy.',
-          evidence_url: '/legal/dpa',
-          last_reviewed: today,
-        },
-        {
-          key: 'ccpa',
-          name: 'CCPA / CPRA',
-          status: 'compliant' as const,
-          status_label: 'Compliant',
-          scope: 'California residents',
-          description:
-            'Disclosure, deletion, and opt-out rights honored via Settings → Privacy. We do not sell personal information.',
-          evidence_url: '/privacy',
-          last_reviewed: today,
-        },
-        {
-          key: 'iso27001',
-          name: 'ISO 27001',
-          status: 'roadmap' as const,
-          status_label: 'Roadmap',
-          scope: 'Targeted 2027',
-          description:
-            'Information Security Management System certification on roadmap following SOC 2 attestation.',
-          evidence_url: null,
-          last_reviewed: today,
-        },
-      ],
-      baa: {
-        available: true,
-        plans: ['Pro', 'Enterprise'],
-        contact: 'privacy@qvo.example',
-        notes:
-          'BAA is countersigned on request for Pro and Enterprise customers. Starter plans cannot store or process PHI.',
-      },
-      data_residency: {
-        primary_region: 'United States',
-        description:
-          'Primary processing region is the United States (us-east). Voice recordings, transcripts, and tenant data remain in-region. EU residency available on Enterprise on request.',
-      },
-      subprocessors: subprocessorRows.map((r) => ({
+    const payload = buildPublicCompliancePosture(
+      subprocessorRows.map((r) => ({
         id: String(r.id),
         name: String(r.name),
         purpose: String(r.purpose),
@@ -233,13 +181,7 @@ router.get('/public/posture', async (_req, res) => {
         location: String(r.location),
         website: r.website ? String(r.website) : null,
       })),
-      documents: [
-        { name: 'Data Processing Addendum (template)', url: '/legal/dpa', kind: 'dpa' as const },
-        { name: 'Sub-processor list', url: '/subprocessors', kind: 'list' as const },
-        { name: 'Privacy policy', url: '/privacy', kind: 'page' as const },
-        { name: 'Security overview', url: '/security', kind: 'page' as const },
-      ],
-    };
+    );
 
     // Validate the response against the schema before sending so any drift in
     // the payload shape (e.g. a future code change that drops a field) fails
@@ -397,8 +339,8 @@ Files:
   csv/call_sessions.csv  Call sessions (last 5,000)
   csv/audit_logs.csv     Audit log entries (last 5,000)
 
-This export was requested by an account owner under your data-portability rights.
-Questions: privacy@qvo.example
+This product export is not a representation that every legally relevant data store is included.
+Questions: use the QVO contact form at ${appBaseUrl()}/contact
 `;
 
     const zip = new JSZip();
@@ -618,6 +560,10 @@ router.post(
   requireAuth,
   requirePlatformAdmin,
   async (req, res) => {
+    const parsedExecution = executeDeletionSchema.safeParse(req.body);
+    if (!parsedExecution.success) {
+      return res.status(400).json({ error: 'Complete external deletion evidence is required' });
+    }
     const { id } = req.params;
     const pool = getPlatformPool();
     const client = await pool.connect();
@@ -639,6 +585,38 @@ router.post(
       }
 
       const tenantId = request.tenant_id as string;
+      const tenantFingerprint = createScopedIdentifierHash(
+        tenantId,
+        tenantId,
+        'tenant_deletion',
+      );
+      if (!tenantFingerprint) {
+        return res.status(503).json({ error: 'Tenant deletion verification is not configured' });
+      }
+      const executorFingerprint = createScopedIdentifierHash(
+        tenantId,
+        req.user!.userId,
+        'deletion_executor',
+      );
+      if (!executorFingerprint) {
+        return res.status(503).json({ error: 'Tenant deletion verification is not configured' });
+      }
+
+      const discoveredTables = await discoverTenantScopedTables(client);
+      const deletionPlan = buildTenantDeletionPlan(discoveredTables);
+      if (!deletionPlan.ready) {
+        logger.error('Tenant deletion blocked by incomplete data-control manifest', {
+          requestId: id,
+          tenantId,
+          invalidIdentifiers: deletionPlan.invalidIdentifiers,
+          unclassifiedTables: deletionPlan.unclassifiedTables,
+        });
+        return res.status(409).json({
+          error: 'Tenant deletion data-control review is incomplete',
+          manifestVersion: deletionPlan.manifestVersion,
+          unclassifiedTables: deletionPlan.unclassifiedTables,
+        });
+      }
 
       let ownerEmail: string | null = null;
       let tenantName: string | null = null;
@@ -650,17 +628,17 @@ router.post(
         logger.warn('Failed to load owner context before deletion', { tenantId, error: String(ctxErr) });
       }
 
-      // Write the audit log BEFORE deleting the tenant — audit_logs.tenant_id has
-      // a NOT NULL FK to tenants(id) so a write attempted after the tenant row is
-      // gone would fail the FK and bubble a 500 back to the admin even though the
-      // deletion already committed. Wrapping in try/catch ensures any write
-      // failure here cannot block the executed-notification email below.
+      // Record an execution attempt before deleting the tenant. This event is
+      // intentionally named "started": if verification rolls back, the audit
+      // row must not falsely claim completion. On success the tenant cascade
+      // removes this tenant-scoped audit row and the redacted deletion-request
+      // proof below becomes the durable completion evidence.
       try {
         await writeAuditLog({
           tenantId,
           actorUserId: req.user!.userId,
           actorRole: req.user!.role,
-          action: 'privacy.deletion_executed',
+          action: 'privacy.deletion_execution_started',
           resourceType: 'tenant',
           resourceId: tenantId,
           severity: 'critical',
@@ -673,11 +651,44 @@ router.post(
       }
 
       await client.query('BEGIN');
+      await executeExplicitTenantDeletes(client, tenantId, deletionPlan);
       await client.query(
-        `UPDATE tenant_deletion_requests SET status = 'completed' WHERE id = $1`,
-        [id],
+        `SELECT set_config('app.verified_tenant_deletion_id', $1, true)`,
+        [tenantId],
       );
       await client.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+
+      const verification = await verifyTenantRowsRemoved(
+        client,
+        tenantId,
+        discoveredTables.map(({ table }) => table),
+      );
+      if (!verification.verified) {
+        throw new Error(`First-party tenant deletion verification failed for ${verification.remaining.length} stores`);
+      }
+
+      await client.query(
+        `UPDATE tenant_deletion_requests
+            SET status = 'completed', completed_at = NOW(), tenant_fingerprint = $2,
+                tenant_id = NULL, requested_by = NULL, cancelled_by = NULL,
+                reason = NULL, confirmation_text = $3,
+                first_party_verification = $4::jsonb,
+                external_deletion_evidence = $5::jsonb
+          WHERE id = $1`,
+        [
+          id,
+          tenantFingerprint,
+          '[REDACTED AFTER VERIFIED DELETION]',
+          JSON.stringify({
+            verified: true,
+            manifestVersion: HEALTHCARE_DATA_CONTROL_MANIFEST_VERSION,
+            discoveredTableCount: discoveredTables.length,
+            executorFingerprint,
+            verifiedAt: new Date().toISOString(),
+          }),
+          JSON.stringify(parsedExecution.data.externalDeletionEvidence),
+        ],
+      );
       await client.query('COMMIT');
 
       if (ownerEmail) {
@@ -685,6 +696,7 @@ router.post(
           const email = deletionExecutedEmail({
             tenantName: tenantName ?? undefined,
             executedAt: new Date().toISOString().slice(0, 10),
+            contactUrl: `${appBaseUrl()}/contact`,
           });
           const result = await sendEmail({ to: ownerEmail, subject: email.subject, html: email.html, text: email.text });
           if (!result.success) {
@@ -697,7 +709,13 @@ router.post(
         logger.warn('Skipped deletion executed email — no owner email found', { tenantId });
       }
 
-      return res.json({ executed: true, tenantId });
+      return res.json({
+        executed: true,
+        tenantId,
+        firstPartyVerified: true,
+        externalEvidenceRecorded: true,
+        manifestVersion: HEALTHCARE_DATA_CONTROL_MANIFEST_VERSION,
+      });
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
       logger.error('Failed to execute deletion request', { id, error: String(err) });
@@ -708,71 +726,31 @@ router.post(
   },
 );
 
-// ---------- DPA download (placeholder boilerplate) ----------
+// ---------- DPA download (non-executable legal-review placeholder) ----------
 router.get('/legal/dpa', (_req, res) => {
   const dpa = `DATA PROCESSING ADDENDUM (DPA)
 QVO — Quality Voice Operations
 Last updated: ${new Date().toISOString().slice(0, 10)}
 
-[DRAFT — pending legal review]
+[DRAFT PLACEHOLDER — NOT AN AGREEMENT — NOT FOR SIGNATURE]
 
-This Data Processing Addendum ("DPA") forms part of the QVO Master Services Agreement
-between Customer ("Controller") and QVO ("Processor") and reflects the parties' agreement
-with respect to the processing of Personal Data.
+No QVO data-processing terms, security commitments, transfer mechanisms, retention
+periods, subprocessor authorizations, audit rights, breach-notification terms, or
+healthcare obligations are represented as approved by this placeholder.
 
-1. DEFINITIONS
-   "Personal Data", "Processing", "Controller", "Processor", "Data Subject", and
-   "Supervisory Authority" have the meanings given in the GDPR (Regulation 2016/679).
+Before any production healthcare deployment, an authorized QVO legal/compliance owner
+and the customer must approve a complete agreement covering at least:
 
-2. SUBJECT MATTER & DURATION
-   QVO will process Personal Data only on documented instructions from Customer for the
-   duration of the Services and as necessary to provide the Services.
+1. parties, roles, scope, purpose, duration, and documented instructions;
+2. data subjects, data categories, special-category data, and minimum-necessary use;
+3. approved subprocessors, processing locations, transfer mechanisms, and change notice;
+4. technical and organizational measures backed by deployment evidence;
+5. incident, audit, assistance, deletion, return, backup, and legal-hold obligations;
+6. healthcare-specific Business Associate Agreement requirements where applicable; and
+7. signatures by authorized representatives.
 
-3. NATURE & PURPOSE OF PROCESSING
-   Hosting voice and SMS communications, maintaining call records, providing AI-driven
-   conversational agents, billing, analytics, and platform administration.
-
-4. CATEGORIES OF DATA SUBJECTS
-   Customer's end users, callers, employees, contractors, and other individuals whose
-   data Customer routes through the Services.
-
-5. CATEGORIES OF PERSONAL DATA
-   Identifiers (name, email, phone), authentication credentials, voice recordings,
-   transcripts, billing details, and audit metadata.
-
-6. SUB-PROCESSORS
-   Customer authorizes QVO to engage the sub-processors listed at /subprocessors.
-   QVO will provide notice of changes and an opportunity to object.
-
-7. SECURITY
-   QVO maintains administrative, technical, and physical safeguards including
-   encryption in transit (TLS 1.2+) and at rest (AES-256), tenant isolation via
-   Row Level Security, role-based access, and audit logging.
-
-8. DATA SUBJECT RIGHTS
-   QVO will assist Customer in responding to requests from Data Subjects to exercise
-   their rights under applicable law, including access, rectification, erasure,
-   restriction, portability, and objection.
-
-9. PERSONAL DATA BREACH
-   QVO will notify Customer without undue delay after becoming aware of a Personal
-   Data Breach and provide reasonably available information.
-
-10. DELETION & RETURN OF DATA
-    Upon termination, QVO will delete or return Personal Data within 30 days unless
-    retention is required by law.
-
-11. INTERNATIONAL TRANSFERS
-    Where Personal Data is transferred outside the EEA/UK, the parties rely on the
-    Standard Contractual Clauses (2021/914) incorporated by reference.
-
-12. AUDITS
-    QVO will make available information necessary to demonstrate compliance with
-    this DPA, including third-party attestation reports where available.
-
-By signing the Master Services Agreement, Customer is deemed to have signed this DPA.
-
-For execution copies countersigned by QVO, contact: privacy@qvo.example
+Use ${appBaseUrl()}/contact to request legal review. This placeholder does not authorize
+Personal Data or PHI processing.
 `;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="QVO-DPA-DRAFT.txt"');

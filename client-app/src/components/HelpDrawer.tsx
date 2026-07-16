@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { HelpCircle, X, ExternalLink, Mail, Send, Check, Loader2 } from 'lucide-react';
+import { HelpCircle, X, Mail, Send, Check, Loader2 } from 'lucide-react';
 import { DocBlocks } from './DocBlocks';
 import { findHelpForPath, getDocBySlug } from '../data/docs';
 import { useArticleMetaTranslator } from '../lib/translateDoc';
@@ -134,25 +134,6 @@ export function HelpDrawer() {
                   <p className="text-sm text-text-primary/60 font-body mb-4">{meta.description}</p>
                   <div className="text-sm">
                     <DocBlocks blocks={article.body} dense articleSlug={article.slug} />
-                  </div>
-                  <div className="mt-6 pt-4 border-t border-border-strong/40 flex flex-col gap-2">
-                    <Link
-                      to={`/docs/${article.slug}`}
-                      target="_blank"
-                      onClick={() => setOpen(false)}
-                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary-hover font-medium"
-                    >
-                      {t('help_drawer.open_in_docs')}
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                    <Link
-                      to="/docs"
-                      target="_blank"
-                      onClick={() => setOpen(false)}
-                      className="inline-flex items-center gap-1.5 text-sm text-text-primary/60 hover:text-primary"
-                    >
-                      {t('help_drawer.browse_all_docs')}
-                    </Link>
                   </div>
                 </div>
               )}

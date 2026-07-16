@@ -2,13 +2,14 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getPlatformPool } from '../../../platform/db';
-import { issueToken, requireAuth } from '../middleware/auth';
+import { issueMfaFlowToken, issueToken, requireAuth } from '../middleware/auth';
 import { authCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { getStripeClient } from '../../../platform/billing/stripe/client';
 import { getPlanPriceId, TRIAL_LIMITS, type PlanTier } from '../../../platform/billing/stripe/plans';
 import { isSupportedBillingCurrency } from '../../../platform/billing/supportedCurrencies';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
+import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 
 const router = Router();
 const logger = createLogger('ADMIN_AUTH_ROUTES');
@@ -16,6 +17,17 @@ const logger = createLogger('ADMIN_AUTH_ROUTES');
 const VALID_PLANS = new Set<string>(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set<string>(['monthly', 'annual']);
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY;
+const loginRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 10,
+  message: 'Too many sign-in attempts. Please wait before trying again.',
+  keyGenerator: (req) => {
+    const email = req.body && typeof req.body.email === 'string'
+      ? req.body.email.trim().toLowerCase().slice(0, 254)
+      : 'missing-email';
+    return `${req.ip ?? req.socket?.remoteAddress ?? 'unknown'}:${email}`;
+  },
+});
 
 async function verifyTurnstileToken(token: string, ip: string): Promise<boolean> {
   if (!TURNSTILE_SECRET) {
@@ -41,7 +53,7 @@ async function verifyTurnstileToken(token: string, ip: string): Promise<boolean>
   }
 }
 
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', loginRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -54,7 +66,7 @@ router.post('/auth/login', async (req, res) => {
   try {
     const { rows } = await client.query(
       `SELECT u.id, u.email, u.password_hash, u.is_active, u.is_platform_admin,
-              u.email_verified,
+              u.email_verified, u.mfa_enabled_at,
               ur.tenant_id, ur.role
        FROM users u
        JOIN user_roles ur ON ur.user_id = u.id
@@ -82,6 +94,25 @@ router.post('/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password, passwordHash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if ((user.is_platform_admin as boolean) === true) {
+      const identity = {
+        userId: user.id as string,
+        tenantId: user.tenant_id as string,
+        email: user.email as string,
+        role: user.role as string,
+      };
+      if (user.mfa_enabled_at) {
+        return res.status(202).json({
+          mfaRequired: true,
+          mfaChallengeToken: issueMfaFlowToken(identity, 'mfa_challenge'),
+        });
+      }
+      return res.status(202).json({
+        mfaSetupRequired: true,
+        mfaSetupToken: issueMfaFlowToken(identity, 'mfa_setup'),
+      });
     }
 
     await client.query(
@@ -657,7 +688,7 @@ router.post('/auth/accept-invite', async (req, res) => {
     await client.query('COMMIT');
 
     const { rows: userRows } = await pool.query(
-      `SELECT u.id, u.email, u.is_platform_admin, ur.role, ur.tenant_id
+      `SELECT u.id, u.email, u.is_platform_admin, u.mfa_enabled_at, ur.role, ur.tenant_id
        FROM users u
        JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = $1
        WHERE u.email = $2
@@ -670,6 +701,35 @@ router.post('/auth/accept-invite', async (req, res) => {
     }
 
     const user = userRows[0];
+
+    if ((user.is_platform_admin as boolean) === true) {
+      const identity = {
+        userId: user.id as string,
+        tenantId: user.tenant_id as string,
+        email: user.email as string,
+        role: user.role as string,
+      };
+      await writeAuditLog({
+        tenantId: user.tenant_id as string,
+        actorUserId: user.id as string,
+        actorRole: user.role as string,
+        action: 'user.invitation_accepted',
+        resourceType: 'user',
+        resourceId: user.id as string,
+        ipAddress: extractIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+      if (user.mfa_enabled_at) {
+        return res.status(202).json({
+          mfaRequired: true,
+          mfaChallengeToken: issueMfaFlowToken(identity, 'mfa_challenge'),
+        });
+      }
+      return res.status(202).json({
+        mfaSetupRequired: true,
+        mfaSetupToken: issueMfaFlowToken(identity, 'mfa_setup'),
+      });
+    }
 
     await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
 

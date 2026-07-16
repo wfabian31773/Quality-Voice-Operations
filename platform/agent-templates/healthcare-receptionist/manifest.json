@@ -1,0 +1,95 @@
+{
+  "slug": "healthcare-receptionist",
+  "displayName": "Healthcare AI Receptionist",
+  "description": "Managed healthcare receptionist role package for the QVO Master Voice Agent. Handles operational questions, appointment and callback requests, staff-ready tasks, missed-call recovery, and safe human escalation without providing clinical advice or claiming unconfirmed actions.",
+  "shortDescription": "Healthcare call handling with staff-ready outcomes and safe escalation.",
+  "version": "1.0.0",
+  "agentType": "inbound",
+  "category": [
+    "healthcare"
+  ],
+  "supportedChannels": [
+    "voice"
+  ],
+  "requiredTools": [
+    "createServiceTicket",
+    "escalate_to_human"
+  ],
+  "optionalTools": [
+    "lookupSchedule"
+  ],
+  "defaultVoice": "sage",
+  "defaultLanguage": "en",
+  "minPlan": "starter",
+  "tags": [
+    "healthcare",
+    "receptionist",
+    "appointment-request",
+    "missed-call-recovery",
+    "staff-ready-outcome"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "practiceName": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Healthcare practice name used in disclosure and greeting"
+      },
+      "approvedOperationalFacts": {
+        "type": "object",
+        "description": "Categorized, QVO-approved operational facts; arbitrary prompt instructions are not accepted",
+        "additionalProperties": false,
+        "properties": {
+          "hours": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 },
+          "locations": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 },
+          "services": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 },
+          "insurance": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 },
+          "contact": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 },
+          "preparation": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 },
+          "routing": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 }
+        }
+      },
+      "rolePackageVersion": {
+        "type": "string",
+        "enum": ["1.0.0"],
+        "description": "Approved semantic role-package version"
+      }
+    },
+    "required": [
+      "practiceName"
+    ],
+    "customizable": [
+      "name",
+      "business_details",
+      "voice",
+      "escalation_config",
+      "knowledge_base",
+      "working_hours"
+    ],
+    "locked": [
+      {
+        "key": "type",
+        "lockReason": "The deployment must remain on the healthcare receptionist role package"
+      },
+      {
+        "key": "model",
+        "lockReason": "The Master Voice Agent core owns the production model"
+      },
+      {
+        "key": "system_prompt",
+        "lockReason": "The approved role prompt and safety contract cannot be replaced by tenant content"
+      },
+      {
+        "key": "rolePackageVersion",
+        "lockReason": "Only a QVO-approved healthcare receptionist role-package version may be deployed"
+      }
+    ]
+  },
+  "sortOrder": 1,
+  "metadata": {
+    "managedService": true,
+    "coreVersion": "1.0.0",
+    "rolePackageVersion": "1.0.0"
+  }
+}

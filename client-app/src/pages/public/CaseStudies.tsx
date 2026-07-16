@@ -137,9 +137,9 @@ function CaseStudyDetail({ slug }: { slug: string }) {
       <section className="py-16 bg-gradient-to-br from-primary to-primary-hover">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-4">Get Results Like These</h2>
-          <p className="text-white/80 mb-8">Start your free 14-day trial and see what QVO can do for your business.</p>
-          <Link to="/signup" className="inline-flex items-center gap-2 bg-surface text-primary hover:bg-surface-hover px-8 py-3.5 rounded-xl font-semibold transition-colors">
-            Start Free Trial <ArrowRight className="h-4 w-4" />
+          <p className="text-white/80 mb-8">See how a managed QVO deployment can support your front desk.</p>
+          <Link to="/book-demo" className="inline-flex items-center gap-2 bg-surface text-primary hover:bg-surface-hover px-8 py-3.5 rounded-xl font-semibold transition-colors">
+            Book a Demo <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>
@@ -247,10 +247,10 @@ export default function CaseStudies() {
       <section className="py-16 bg-surface">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-text-primary mb-4">Ready to Be Our Next Success Story?</h2>
-          <p className="text-text-secondary mb-8">Start your free trial and see results within the first week.</p>
+          <p className="text-text-secondary mb-8">Talk with QVO about a focused healthcare receptionist deployment.</p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/signup" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
-              Start Free Trial <ArrowRight className="h-4 w-4" />
+            <Link to="/book-demo" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
+              Book a Demo <ArrowRight className="h-4 w-4" />
             </Link>
             <Link to="/book-demo" className="inline-flex items-center gap-2 bg-surface-secondary hover:bg-surface-muted text-text-primary px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Book a Demo

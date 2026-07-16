@@ -26,7 +26,7 @@ function MiniSidebar() {
     <nav>
       {operationsLinks.map((link) => (
         <NavLink key={link.to} to={link.to}>
-          {link.label}
+          {link.i18nKey === 'tenant_nav.autopilot' ? 'Autopilot' : link.i18nKey}
         </NavLink>
       ))}
     </nav>
@@ -37,7 +37,7 @@ describe('Autopilot is wired into the real tenant nav (runtime)', () => {
   it('exports an Operations entry that points at /autopilot with the Autopilot label', () => {
     const autopilot = operationsLinks.find((link) => link.to === '/autopilot');
     expect(autopilot, 'Autopilot link should be in operationsLinks').toBeTruthy();
-    expect(autopilot!.label).toBe('Autopilot');
+    expect(autopilot!.i18nKey).toBe('tenant_nav.autopilot');
     expect(typeof autopilot!.icon).toBe('object');
   });
 

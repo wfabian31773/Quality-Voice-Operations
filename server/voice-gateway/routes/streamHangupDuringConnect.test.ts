@@ -40,6 +40,7 @@ const h = vi.hoisted(() => {
   const finalizeCallSessionMock = vi.fn(async (..._args: unknown[]) => {});
 
   const handleTwilioStatusCallbackMock = vi.fn();
+  const authorizeHealthcareDeploymentMock = vi.fn(async () => ({ allowed: true, code: 'not_healthcare' }));
 
   return {
     connectStarted,
@@ -50,6 +51,8 @@ const h = vi.hoisted(() => {
     writeCallEventMock,
     finalizeCallSessionMock,
     handleTwilioStatusCallbackMock,
+    authorizeHealthcareDeploymentMock,
+    dbAgentType: 'general',
     callSessionId: 'cs-hangup-during-connect',
   };
 });
@@ -89,8 +92,12 @@ vi.mock('../services/callPersistence', () => ({
 }));
 
 vi.mock('../services/numberLookup', () => ({
-  getAgentConfig: vi.fn(async () => ({ type: 'general' })),
+  getAgentConfig: vi.fn(async () => ({ type: h.dbAgentType })),
   getAgentToolOverrides: vi.fn(async () => []),
+}));
+
+vi.mock('../../../platform/compliance/HealthcareDeploymentApprovalService', () => ({
+  authorizeHealthcareDeployment: h.authorizeHealthcareDeploymentMock,
 }));
 
 vi.mock('../services/agentLoader', () => ({
@@ -265,6 +272,8 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     h.writeCallEventMock.mockClear();
     h.finalizeCallSessionMock.mockClear();
     h.handleTwilioStatusCallbackMock.mockClear();
+    h.authorizeHealthcareDeploymentMock.mockReset().mockResolvedValue({ allowed: true, code: 'not_healthcare' });
+    h.dbAgentType = 'general';
   });
 
   afterEach(() => {
@@ -342,5 +351,33 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.handleTwilioStatusCallbackMock).toHaveBeenCalledWith('CA-test-call', 'completed');
 
     ws.close();
+  });
+
+  it('closes a direct Twilio stream before session creation when the database-backed healthcare deployment is unapproved', async () => {
+    h.dbAgentType = 'healthcare-receptionist';
+    h.authorizeHealthcareDeploymentMock.mockResolvedValue({ allowed: false, code: 'approval_missing' });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/twilio/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+      ws.on('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+    });
+    ws.send(JSON.stringify({
+      event: 'start',
+      start: {
+        streamSid: 'MZ-unapproved-healthcare',
+        customParameters: {
+          tenantId: 't-1', agentId: 'a-1', agentType: 'general', callSid: 'CA-unapproved',
+          callerNumber: '+15551234567', calledNumber: '+15557654321',
+        },
+      },
+    }));
+    await expect(closed).resolves.toEqual({ code: 4003, reason: 'Deployment not approved' });
+    expect(h.authorizeHealthcareDeploymentMock).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 't-1', agentId: 'a-1', agentType: 'healthcare-receptionist', subjectPhone: '+15551234567',
+    }));
+    expect(h.sessionConnectMock).not.toHaveBeenCalled();
   });
 });

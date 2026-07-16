@@ -20,6 +20,8 @@ beforeEach(() => {
   a.clientQueryMock.mockReset().mockResolvedValue({ rows: [] });
   a.releaseMock.mockReset();
   a.recordStageMock.mockReset().mockResolvedValue(undefined);
+  process.env.QVO_PII_LOOKUP_HMAC_KEY = 'a-secure-lookup-key-with-at-least-32-characters';
+  process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION = '2026-07-blue';
 });
 
 describe('createCallSession', () => {
@@ -29,12 +31,30 @@ describe('createCallSession', () => {
     const insert = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('INSERT INTO call_sessions'));
     expect(insert).toBeTruthy();
     expect(insert?.[1]).toContain('enc:+15551230000');
+    expect(insert?.[1]).toContainEqual(expect.stringMatching(/^[a-f0-9]{64}$/));
+    expect(String(insert?.[0])).toContain('caller_lookup_hash');
+    expect(String(insert?.[0])).toContain('caller_lookup_key_version');
+    expect(insert?.[1]).toContain('2026-07-blue');
+    expect(insert?.[1]).toContain(JSON.stringify({ recordingPolicy: { policy: 'disabled', status: 'not_recorded' } }));
     expect(a.recordStageMock).toHaveBeenCalledWith('t1', id, 'call_received', expect.objectContaining({ direction: 'inbound' }));
   });
   it('stores a null caller number when none is given', async () => {
     await createCallSession({ tenantId: 't1', agentId: 'ag1', callSid: 'CA1', direction: 'outbound', callerNumber: '', calledNumber: '+1' });
     const insert = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('INSERT INTO call_sessions'));
     expect(insert?.[1]?.[6]).toBeNull();
+  });
+});
+
+describe('transcript persistence', () => {
+  it('persists normalized transcript lines as tenant-scoped dashboard evidence', async () => {
+    const adapter = (await import('./callPersistence')).createPlatformPersistenceAdapter('t1');
+    await adapter.updateTranscript('t1', 'cs1', 'User: Necesito una cita\nAssistant: Claro, puedo tomar la solicitud.');
+    const deleteCall = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('DELETE FROM call_transcripts'));
+    const insertCalls = a.clientQueryMock.mock.calls.filter(([s]) => String(s).includes('INSERT INTO call_transcripts'));
+    expect(deleteCall?.[1]).toEqual(['t1', 'cs1']);
+    expect(insertCalls).toHaveLength(2);
+    expect(insertCalls[0][1]).toEqual(expect.arrayContaining(['t1', 'cs1', 'user', 'Necesito una cita', 0]));
+    expect(insertCalls[1][1]).toEqual(expect.arrayContaining(['t1', 'cs1', 'assistant', 'Claro, puedo tomar la solicitud.', 1]));
   });
 });
 
@@ -47,7 +67,7 @@ describe('writeCallEvent', () => {
 
 describe('updateCallState', () => {
   it('assembles the SET clause for the provided extras', async () => {
-    await updateCallState('t1', 'cs1', 'IN_PROGRESS', { workflowId: 'wf1', context: { a: 1 }, agentId: 'ag2' });
+    await updateCallState('t1', 'cs1', 'ACTIVE_CONVERSATION', { workflowId: 'wf1', context: { a: 1 }, agentId: 'ag2' });
     const upd = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('UPDATE call_sessions SET'));
     expect(String(upd?.[0])).toContain('workflow_id =');
     expect(String(upd?.[0])).toContain('context =');

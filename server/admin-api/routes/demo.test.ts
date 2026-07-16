@@ -116,6 +116,37 @@ describe('POST /demo/track-cta', () => {
   });
 });
 
+describe('POST /demo/healthcare/run', () => {
+  it('runs the bounded appointment workflow without authentication or database access', async () => {
+    const res = await request(app()).post('/demo/healthcare/run').send({
+      scenario: 'appointment_request',
+      now: '2026-07-12T17:30:00.000Z',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      mode: 'guided_production_workflow',
+      runtime: { coreVersion: '1.0.0', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0' },
+      tool: { name: 'createServiceTicket', status: 'success', productionContract: true },
+      projection: { outcome: { type: 'appointment_request' } },
+    });
+    expect(a.queryMock).not.toHaveBeenCalled();
+  });
+
+  it('runs the safe escalation workflow', async () => {
+    const res = await request(app()).post('/demo/healthcare/run').send({ scenario: 'safe_escalation' });
+    expect(res.status).toBe(200);
+    expect(res.body.projection).toMatchObject({
+      outcome: { type: 'urgent_escalation' },
+      escalation: { status: 'pending' },
+    });
+  });
+
+  it('rejects unknown scenarios and invalid clocks', async () => {
+    expect((await request(app()).post('/demo/healthcare/run').send({ scenario: 'sales' })).status).toBe(400);
+    expect((await request(app()).post('/demo/healthcare/run').send({ scenario: 'appointment_request', now: 'not-a-date' })).status).toBe(400);
+  });
+});
+
 describe('GET /demo/analytics (platform admin)', () => {
   it('computes today rates and CTA breakdown', async () => {
     a.queryMock.mockImplementation(async (sql: string) => {

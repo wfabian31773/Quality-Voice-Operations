@@ -6,6 +6,8 @@ import { api, setToken } from '../lib/api';
 import { dbRoleToSimple, ROLE_LABELS } from '../lib/useRole';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import PlatformAdminMfaFlow from '../components/PlatformAdminMfaFlow';
+import { useAuth, type MfaLoginFlow } from '../lib/auth';
 
 interface InvitationInfo {
   email: string;
@@ -29,6 +31,7 @@ export default function AcceptInvite() {
   const [success, setSuccess] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [mfaFlow, setMfaFlow] = useState<MfaLoginFlow | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -84,12 +87,28 @@ export default function AcceptInvite() {
 
     try {
       const result = await api.post<{
-        token: string;
-        userId: string;
-        email: string;
-        role: string;
-        tenantId: string;
+        token?: string;
+        userId?: string;
+        email?: string;
+        role?: string;
+        tenantId?: string;
+        mfaSetupRequired?: boolean;
+        mfaSetupToken?: string;
+        mfaRequired?: boolean;
+        mfaChallengeToken?: string;
       }>('/auth/accept-invite', { token, password });
+
+      if (result.mfaSetupRequired && result.mfaSetupToken) {
+        setMfaFlow({ mode: 'setup', flowToken: result.mfaSetupToken });
+        setSubmitting(false);
+        return;
+      }
+      if (result.mfaRequired && result.mfaChallengeToken) {
+        setMfaFlow({ mode: 'challenge', flowToken: result.mfaChallengeToken });
+        setSubmitting(false);
+        return;
+      }
+      if (!result.token) throw new Error('The server returned an incomplete invitation response.');
 
       setToken(result.token);
       setSuccess(true);
@@ -105,6 +124,13 @@ export default function AcceptInvite() {
       }
       setSubmitting(false);
     }
+  };
+
+  const completeMfaEnrollment = (sessionToken: string) => {
+    setToken(sessionToken);
+    useAuth.getState().checkAuth();
+    setSuccess(true);
+    setTimeout(() => navigate('/admin/dashboard'), 2000);
   };
 
   const errorText = errorKey ? t(errorKey) : errorMessage;
@@ -149,6 +175,14 @@ export default function AcceptInvite() {
             </div>
           )}
 
+          {mfaFlow && !success && (
+            <PlatformAdminMfaFlow
+              mode={mfaFlow.mode}
+              flowToken={mfaFlow.flowToken}
+              onComplete={completeMfaEnrollment}
+            />
+          )}
+
           {success && (
             <div className="bg-surface border border-border rounded-xl p-6 text-center">
               <CheckCircle className="h-10 w-10 text-success mx-auto mb-3" />
@@ -157,7 +191,7 @@ export default function AcceptInvite() {
             </div>
           )}
 
-          {!loading && invitation && !success && (
+          {!loading && invitation && !success && !mfaFlow && (
             <div className="bg-surface border border-border rounded-xl p-6 shadow-sm">
               <p className="text-sm text-text-secondary mb-4">
                 <Trans

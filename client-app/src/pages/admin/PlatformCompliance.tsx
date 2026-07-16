@@ -189,6 +189,10 @@ interface PlatformAdmin {
   created_at: string;
   last_login_at: string | null;
   tenant_role_count: number;
+  is_active: boolean;
+  email_verified: boolean;
+  mfa_enabled_at: string | null;
+  mfa_last_verified_at: string | null;
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
@@ -1634,9 +1638,32 @@ function FederalDncTab() {
 }
 
 function PlatformAdminsTab() {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [feedback, setFeedback] = useState<string | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['platform-compliance-admins'],
     queryFn: () => api.get<{ admins: PlatformAdmin[] }>('/platform/compliance/platform-admins'),
+  });
+  const invite = useMutation({
+    mutationFn: () => api.post<{ invitationSent: boolean; email: string }>(
+      '/platform/compliance/platform-admins/invite',
+      { email, firstName, lastName },
+    ),
+    onSuccess: async (result) => {
+      setFeedback(result.invitationSent
+        ? `Invitation sent to ${result.email}. MFA enrollment is required before administrator access.`
+        : `The identity was created for ${result.email}, but invitation delivery failed.`);
+      setEmail('');
+      setFirstName('');
+      setLastName('');
+      await queryClient.invalidateQueries({ queryKey: ['platform-compliance-admins'] });
+    },
+    onError: (reason: unknown) => {
+      setFeedback(reason instanceof Error ? reason.message : 'Unable to invite the platform administrator.');
+    },
   });
 
   return (
@@ -1644,6 +1671,35 @@ function PlatformAdminsTab() {
       <p className="text-sm text-text-muted">
         Users with the platform admin flag bypass tenant scoping and can access every tenant's data. Treat the list below as a privileged-access roster.
       </p>
+      <form
+        onSubmit={(event) => { event.preventDefault(); setFeedback(null); invite.mutate(); }}
+        className="bg-surface border border-border rounded-xl p-4 space-y-3"
+      >
+        <div>
+          <h3 className="font-semibold text-text-primary">Invite an evidence administrator</h3>
+          <p className="text-xs text-text-muted mt-1">
+            The account starts with the minimum tenant role and cannot use platform-admin privileges until TOTP MFA is enrolled.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <label className="text-xs font-medium text-text-muted">
+            Email
+            <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary" />
+          </label>
+          <label className="text-xs font-medium text-text-muted">
+            First name
+            <input value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={100} className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary" />
+          </label>
+          <label className="text-xs font-medium text-text-muted">
+            Last name
+            <input value={lastName} onChange={(event) => setLastName(event.target.value)} maxLength={100} className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary" />
+          </label>
+        </div>
+        <button type="submit" disabled={invite.isPending} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          <Mail className="h-4 w-4" /> {invite.isPending ? 'Creating invitation…' : 'Send secure invitation'}
+        </button>
+        {feedback && <div role="status" className="text-sm text-text-secondary">{feedback}</div>}
+      </form>
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -1651,15 +1707,16 @@ function PlatformAdminsTab() {
               <th className="text-left px-4 py-3 font-medium text-text-muted">User</th>
               <th className="text-left px-4 py-3 font-medium text-text-muted">Email</th>
               <th className="text-left px-4 py-3 font-medium text-text-muted">Tenant memberships</th>
+              <th className="text-left px-4 py-3 font-medium text-text-muted">MFA</th>
               <th className="text-left px-4 py-3 font-medium text-text-muted">Last login</th>
               <th className="text-left px-4 py-3 font-medium text-text-muted">Account created</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
+              <tr><td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td></tr>
             ) : !data?.admins.length ? (
-              <tr><td colSpan={5} className="p-0"><EmptyState icon={Users} title="No platform admins on file" variant="compact" /></td></tr>
+              <tr><td colSpan={6} className="p-0"><EmptyState icon={Users} title="No platform admins on file" variant="compact" /></td></tr>
             ) : (
               data.admins.map((a) => (
                 <tr key={a.id} className="border-b border-border last:border-0">
@@ -1668,6 +1725,11 @@ function PlatformAdminsTab() {
                   </td>
                   <td className="px-4 py-3 text-xs text-text-muted">{a.email}</td>
                   <td className="px-4 py-3 text-xs text-text-muted">{a.tenant_role_count}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {a.mfa_enabled_at
+                      ? <span className="text-success">Enrolled</span>
+                      : <span className="text-warning">Setup required</span>}
+                  </td>
                   <td className="px-4 py-3 text-xs text-text-muted">{formatDate(a.last_login_at)}</td>
                   <td className="px-4 py-3 text-xs text-text-muted">{formatDateOnly(a.created_at)}</td>
                 </tr>

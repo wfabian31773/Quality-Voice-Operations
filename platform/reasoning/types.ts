@@ -45,6 +45,7 @@ export type IndustryVertical =
   | 'plumbing'
   | 'dental'
   | 'medical-after-hours'
+  | 'healthcare-receptionist'
   | 'property-management'
   | 'legal'
   | 'restaurant'

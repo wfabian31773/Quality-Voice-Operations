@@ -76,17 +76,17 @@ describe('searchMarketingPagesLocalized — Spanish (translated phrases must mat
     });
   });
 
-  it('returns the features page when searching the Spanish title "características"', () => {
+  it('does not return the hidden features page when searching the Spanish title "características"', () => {
     withLanguage('es', () => {
       const slugs = search('características').map((r) => r.slug);
-      expect(slugs).toContain('features');
+      expect(slugs).not.toContain('features');
     });
   });
 
-  it('returns the integrations page when searching "integraciones"', () => {
+  it('does not return the hidden integrations page when searching "integraciones"', () => {
     withLanguage('es', () => {
       const slugs = search('integraciones').map((r) => r.slug);
-      expect(slugs).toContain('integrations');
+      expect(slugs).not.toContain('integrations');
     });
   });
 
@@ -124,10 +124,10 @@ describe('searchMarketingPagesLocalized — English regression guard', () => {
     });
   });
 
-  it('still matches description text in English mode', () => {
+  it('does not match hidden integration description text in English mode', () => {
     withLanguage('en', () => {
       const slugs = search('hubspot').map((r) => r.slug);
-      expect(slugs).toContain('integrations');
+      expect(slugs).not.toContain('integrations');
     });
   });
 

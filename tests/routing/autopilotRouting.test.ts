@@ -8,8 +8,8 @@ function readSource(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
-describe('Autopilot is wired into the tenant router', () => {
-  it('App.tsx registers /autopilot inside the tenant ProtectedRoute + TenantLayout block', () => {
+describe('Autopilot is retained as an internal-only route', () => {
+  it('App.tsx registers /autopilot inside the platform-admin-only tenant route block', () => {
     // App.tsx is awkward to mount in isolation (it pulls in dozens of pages
     // that each fire their own queries on import). Verifying the route block
     // here is the cheapest way to guarantee the path is gated by
@@ -24,9 +24,8 @@ describe('Autopilot is wired into the tenant router', () => {
     const tenantBlock = tenantBlockMatch![0];
 
     expect(tenantBlock).toContain('<TenantLayout />');
-    expect(tenantBlock).toMatch(
-      /<Route\s+path="\/autopilot"\s+element=\{<RoleGuard\s+minRole="manager"><Autopilot\s*\/><\/RoleGuard>\}\s*\/>/,
-    );
+    expect(tenantBlock).toContain('<PlatformAdminGuard><Outlet /></PlatformAdminGuard>');
+    expect(tenantBlock).toMatch(/<Route\s+path="\/autopilot"\s+element=\{<Autopilot\s*\/>\}\s*\/>/);
   });
 });
 
@@ -65,13 +64,13 @@ describe('Autopilot router is mounted on the admin API (behavior)', () => {
   });
 });
 
-describe('Command palette exposes Autopilot navigation', () => {
-  it('CommandPalette declares a Go to Autopilot navigation command', async () => {
+describe('Command palette keeps Autopilot internal', () => {
+  it('marks the Autopilot command internal-only', async () => {
     // CommandPalette is hard to mount in isolation (depends on parent
     // open/close state, keyboard handlers, and many other commands).
     // Source-text check is sufficient and pinpointed.
     const palette = readSource('client-app/src/components/CommandPalette.tsx');
     expect(palette).toContain("go('/autopilot')");
-    expect(palette).toMatch(/label:\s*['"]Go to Autopilot['"]/);
+    expect(palette).toMatch(/id:\s*'autopilot'[\s\S]*?internalOnly:\s*true/);
   });
 });

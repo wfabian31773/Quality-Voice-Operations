@@ -64,10 +64,10 @@ describe('agentLoader language wiring', () => {
     });
 
     expect(cfg.language).toBe('en');
-    expect(cfg.systemPrompt).not.toMatch(/Respond to the caller in/i);
+    expect(cfg.systemPrompt).toContain('Preferred greeting language: English');
   });
 
-  it('appends a language directive to the system prompt for non-English languages', () => {
+  it('uses the configured language as a greeting preference without pinning the call', () => {
     const cfg = loadAgentConfig({
       tenantId: 'tenant-1' as never,
       agentId: 'agent-1',
@@ -76,8 +76,8 @@ describe('agentLoader language wiring', () => {
     });
 
     expect(cfg.language).toBe('es');
-    expect(cfg.systemPrompt).toContain('Respond to the caller in Spanish');
-    expect(cfg.systemPrompt).toContain('All spoken responses must be in Spanish');
+    expect(cfg.systemPrompt).toContain("Begin in Spanish, then follow the caller's language naturally");
+    expect(cfg.systemPrompt).not.toContain('All spoken responses must be in Spanish');
   });
 
   it('normalizes invalid language codes back to the default', () => {
@@ -89,7 +89,7 @@ describe('agentLoader language wiring', () => {
     });
 
     expect(cfg.language).toBe('en');
-    expect(cfg.systemPrompt).not.toMatch(/Respond to the caller in/i);
+    expect(cfg.systemPrompt).toContain('Preferred greeting language: English');
   });
 
   it('reads language from db metadata fallback when column is missing', () => {
@@ -101,10 +101,10 @@ describe('agentLoader language wiring', () => {
     });
 
     expect(cfg.language).toBe('fr');
-    expect(cfg.systemPrompt).toContain('Respond to the caller in French');
+    expect(cfg.systemPrompt).toContain("Begin in French, then follow the caller's language naturally");
   });
 
-  it('does not duplicate the directive when the prompt already contains it', () => {
+  it('places the immutable multilingual policy after a conflicting legacy directive', () => {
     const promptWithDirective =
       'You are a helpful assistant.\n\nRespond to the caller in German. All spoken responses must be in German.';
 
@@ -115,7 +115,7 @@ describe('agentLoader language wiring', () => {
       dbAgent: { ...baseDbAgent, system_prompt: promptWithDirective, language: 'de' },
     });
 
-    const matches = cfg.systemPrompt.match(/Respond to the caller in German/g) ?? [];
-    expect(matches.length).toBe(1);
+    expect(cfg.systemPrompt.lastIndexOf("Begin in German, then follow the caller's language naturally"))
+      .toBeGreaterThan(cfg.systemPrompt.indexOf('All spoken responses must be in German'));
   });
 });

@@ -36,6 +36,7 @@ const DEFAULT_TOOLS_REQUIRING_COMPLETE_DATA: Record<string, string[]> = {
 };
 
 export class SafetyGate {
+  private readonly vertical?: string;
   private readonly verticalProhibitions: string[];
   private readonly additionalPolicies: TenantPolicy[];
 
@@ -43,6 +44,7 @@ export class SafetyGate {
     vertical?: string,
     additionalPolicies: TenantPolicy[] = [],
   ) {
+    this.vertical = vertical;
     this.verticalProhibitions = this.getProhibitionsForVertical(vertical);
     this.additionalPolicies = additionalPolicies;
   }
@@ -56,7 +58,7 @@ export class SafetyGate {
   ): SafetyCheckResult {
     const violations: SafetyViolation[] = [];
 
-    this.checkMissingRequiredData(toolName, context, violations, toolArgSlots);
+    this.checkMissingRequiredData(toolName, toolArgs, context, violations, toolArgSlots);
     this.checkUnauthorizedTool(toolName, context, violations);
     this.checkHallucinatedConfirmation(toolArgs, confidence, violations);
     this.checkTenantPolicies(toolName, context, violations);
@@ -97,10 +99,65 @@ export class SafetyGate {
 
   private checkMissingRequiredData(
     toolName: string,
+    toolArgs: Record<string, unknown>,
     context: ReasoningContext,
     violations: SafetyViolation[],
     toolArgSlots?: Set<string>,
   ): void {
+    if (this.vertical === 'healthcare-receptionist') {
+      if (toolName === 'createServiceTicket') {
+        const required = [
+          'callerFirstName', 'callerLastName', 'callerPhone', 'callbackNumber', 'callerType',
+          'reasonForCall', 'outcomeType', 'requestedAction', 'urgency', 'callbackPreference',
+          'identityVerificationStatus', 'consentToContact', 'evidenceSource',
+        ];
+        const missing = required.filter((field) => {
+          const value = toolArgs[field];
+          if (field === 'consentToContact') return typeof value !== 'boolean';
+          if (field === 'evidenceSource') return !Array.isArray(value) || value.length === 0;
+          return typeof value !== 'string' || value.trim().length === 0;
+        });
+        const professionalCallerTypes = new Set(['pharmacy', 'lab', 'facility', 'referring_office']);
+        if (professionalCallerTypes.has(String(toolArgs.callerType))
+          && (typeof toolArgs.organizationName !== 'string' || toolArgs.organizationName.trim().length === 0)) {
+          missing.push('organizationName');
+        }
+        if (missing.length > 0) {
+          violations.push({
+            type: 'missing_required_data',
+            description: `Healthcare receptionist outcome is missing required evidence: ${missing.join(', ')}`,
+            blockedAction: toolName,
+            severity: 'critical',
+          });
+        }
+        return;
+      }
+      if (toolName === 'escalate_to_human') {
+        if (typeof toolArgs.reason !== 'string' || toolArgs.reason.trim().length === 0) {
+          violations.push({
+            type: 'missing_required_data',
+            description: 'Human escalation requires a reason',
+            blockedAction: toolName,
+            severity: 'critical',
+          });
+        }
+        return;
+      }
+      if (toolName === 'lookupSchedule') {
+        const verified = toolArgs.identityVerificationStatus === 'verified';
+        const hasLookupIdentity = typeof toolArgs.phone === 'string'
+          || (typeof toolArgs.firstName === 'string' && typeof toolArgs.lastName === 'string');
+        if (!verified || !hasLookupIdentity) {
+          violations.push({
+            type: 'phi_exposure_risk',
+            description: 'Patient-specific schedule lookup requires verified identity and a lookup identifier',
+            blockedAction: toolName,
+            severity: 'critical',
+          });
+        }
+        return;
+      }
+    }
     const manifestRequired = context.slotTracker.manifest.slots
       .filter((s) => s.required)
       .map((s) => s.name);
@@ -165,8 +222,8 @@ export class SafetyGate {
     violations: SafetyViolation[],
   ): void {
     if (confidence.overall === 'low' && confidence.factors.slotCompleteness < 0.5) {
-      const hasConfirmation = Object.values(toolArgs).some(
-        (v) => typeof v === 'boolean' && v === true,
+      const hasConfirmation = Object.entries(toolArgs).some(
+        ([key, value]) => value === true && /confirm|verified|approved|success|completed/i.test(key),
       );
       if (hasConfirmation) {
         violations.push({
@@ -236,7 +293,7 @@ export class SafetyGate {
 
     const prohibitions: string[] = [];
 
-    if (['medical-after-hours', 'dental'].includes(vertical)) {
+    if (['medical-after-hours', 'healthcare-receptionist', 'dental'].includes(vertical)) {
       prohibitions.push(...(PROHIBITED_ADVICE_CATEGORIES.medical ?? []));
     }
 

@@ -7,6 +7,8 @@ import {
   BookOpen, Store, Settings2, Phone, FileText, HelpCircle, Plus, Zap, type LucideIcon,
 } from 'lucide-react';
 import Modal from './Modal';
+import { useAuth } from '../lib/auth';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 type CommandGroup = 'navigate' | 'actions' | 'help';
 
@@ -18,6 +20,7 @@ interface Command {
   group: CommandGroup;
   run: () => void;
   keywords?: string[];
+  internalOnly?: boolean;
 }
 
 interface CommandPaletteProps {
@@ -32,6 +35,8 @@ export default function CommandPalette({
   open, onClose, onOpenHelp, onOpenShortcuts, onStartTour,
 }: CommandPaletteProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isStaff = isQvoStaff(user);
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -47,37 +52,42 @@ export default function CommandPalette({
 
   const commands: Command[] = useMemo(() => [
     { id: 'dashboard', label: t('command_palette.go_dashboard'), icon: LayoutDashboard, group: 'navigate', run: go('/dashboard') },
-    { id: 'agents', label: t('command_palette.go_agents'), icon: Bot, group: 'navigate', run: go('/agents') },
+    { id: 'agents', label: t('command_palette.go_agents'), icon: Bot, group: 'navigate', run: go('/agents'), internalOnly: true },
     { id: 'calls', label: t('command_palette.go_calls'), icon: PhoneCall, group: 'navigate', keywords: ['calls'], run: go('/calls') },
-    { id: 'campaigns', label: t('command_palette.go_campaigns'), icon: Megaphone, group: 'navigate', run: go('/campaigns') },
-    { id: 'analytics', label: t('command_palette.go_analytics'), icon: BarChart3, group: 'navigate', run: go('/analytics') },
-    { id: 'sms', label: t('command_palette.go_sms'), icon: MessageSquare, group: 'navigate', run: go('/sms-inbox') },
-    { id: 'scheduling', label: t('command_palette.go_scheduling'), icon: CalendarClock, group: 'navigate', run: go('/scheduling') },
+    { id: 'campaigns', label: t('command_palette.go_campaigns'), icon: Megaphone, group: 'navigate', run: go('/campaigns'), internalOnly: true },
+    { id: 'analytics', label: t('command_palette.go_analytics'), icon: BarChart3, group: 'navigate', run: go('/analytics'), internalOnly: true },
+    { id: 'sms', label: t('command_palette.go_sms'), icon: MessageSquare, group: 'navigate', run: go('/sms-inbox'), internalOnly: true },
+    { id: 'scheduling', label: t('command_palette.go_scheduling'), icon: CalendarClock, group: 'navigate', run: go('/scheduling'), internalOnly: true },
     { id: 'tickets', label: t('command_palette.go_tickets'), icon: ClipboardList, group: 'navigate', run: go('/tickets') },
-    { id: 'dispatch', label: t('command_palette.go_dispatch'), icon: Truck, group: 'navigate', run: go('/dispatch') },
-    { id: 'autopilot', label: t('command_palette.go_autopilot'), icon: Zap, group: 'navigate', keywords: ['ai', 'business', 'recommendations'], run: go('/autopilot') },
-    { id: 'workflows', label: t('command_palette.go_workflows'), icon: Network, group: 'navigate', run: go('/workflows') },
-    { id: 'integrations', label: t('command_palette.go_integrations'), icon: Plug, group: 'navigate', keywords: ['connectors'], run: go('/connectors') },
+    { id: 'dispatch', label: t('command_palette.go_dispatch'), icon: Truck, group: 'navigate', run: go('/dispatch'), internalOnly: true },
+    { id: 'autopilot', label: t('command_palette.go_autopilot'), icon: Zap, group: 'navigate', keywords: ['ai', 'business', 'recommendations'], run: go('/autopilot'), internalOnly: true },
+    { id: 'workflows', label: t('command_palette.go_workflows'), icon: Network, group: 'navigate', run: go('/workflows'), internalOnly: true },
+    { id: 'integrations', label: t('command_palette.go_integrations'), icon: Plug, group: 'navigate', keywords: ['connectors'], run: go('/connectors'), internalOnly: true },
     { id: 'knowledge', label: t('command_palette.go_knowledge'), icon: BookOpen, group: 'navigate', run: go('/knowledge-base') },
-    { id: 'marketplace', label: t('command_palette.go_marketplace'), icon: Store, group: 'navigate', run: go('/marketplace') },
+    { id: 'marketplace', label: t('command_palette.go_marketplace'), icon: Store, group: 'navigate', run: go('/marketplace'), internalOnly: true },
     { id: 'phones', label: t('command_palette.go_phones'), icon: Phone, group: 'navigate', run: go('/phone-numbers') },
     { id: 'settings', label: t('command_palette.open_settings'), icon: Settings2, group: 'navigate', run: go('/settings') },
-    { id: 'new-agent', label: t('command_palette.new_agent'), icon: Plus, group: 'actions', run: go('/agents') },
-    { id: 'new-campaign', label: t('command_palette.new_campaign'), icon: Plus, group: 'actions', run: go('/campaigns') },
+    { id: 'new-agent', label: t('command_palette.new_agent'), icon: Plus, group: 'actions', run: go('/agents'), internalOnly: true },
+    { id: 'new-campaign', label: t('command_palette.new_campaign'), icon: Plus, group: 'actions', run: go('/campaigns'), internalOnly: true },
     { id: 'new-doc', label: t('command_palette.new_doc'), icon: FileText, group: 'actions', run: go('/knowledge-base') },
     ...(onStartTour ? [{ id: 'tour', label: t('command_palette.start_tour'), icon: HelpCircle, group: 'help' as const, run: () => { onStartTour(); onClose(); } }] : []),
     ...(onOpenShortcuts ? [{ id: 'shortcuts', label: t('command_palette.view_shortcuts'), icon: HelpCircle, group: 'help' as const, run: () => { onOpenShortcuts(); onClose(); } }] : []),
     ...(onOpenHelp ? [{ id: 'help', label: t('command_palette.open_help'), icon: HelpCircle, group: 'help' as const, run: () => { onOpenHelp(); onClose(); } }] : []),
   ], [navigate, onClose, onOpenHelp, onOpenShortcuts, onStartTour, t]);
 
+  const visibleCommands = useMemo(
+    () => commands.filter((command) => isStaff || !command.internalOnly),
+    [commands, isStaff],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return commands;
-    return commands.filter((c) => {
+    if (!q) return visibleCommands;
+    return visibleCommands.filter((c) => {
       const hay = [c.label, c.group, ...(c.keywords ?? [])].join(' ').toLowerCase();
       return hay.includes(q);
     });
-  }, [commands, query]);
+  }, [query, visibleCommands]);
 
   useEffect(() => { setActive(0); }, [query, open]);
   useEffect(() => {

@@ -249,7 +249,7 @@ export default function Resources() {
                   </p>
                 </div>
                 <Link
-                  to="/docs"
+                  to="/book-demo"
                   className="inline-flex items-center gap-2 bg-sidebar-bg hover:bg-sidebar-hover text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors shrink-0"
                 >
                   {tm('resources.api_card.cta')}

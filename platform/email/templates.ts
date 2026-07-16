@@ -643,7 +643,7 @@ export function deletionScheduledEmail(params: {
       <p style="margin:0"><strong>Scheduled deletion date</strong></p>
       <p style="margin:4px 0 0">${params.scheduledFor}</p>
     </div>
-    <p>On this date, all account data — including users, agents, phone numbers, call recordings, transcripts, and audit logs — will be permanently erased. This cannot be undone.</p>
+    <p>On this date, QVO will run the account-deletion workflow. The final scope, backup aging, legal holds, external processors, and healthcare-data coverage must be verified before this workflow is represented as complete erasure.</p>
     <p>You have until then to cancel the request:</p>
     <p><a href="${params.cancellationUrl}" class="btn">Cancel Deletion Request</a></p>
     ${reasonLine}
@@ -815,26 +815,24 @@ export function verifiedCallerTrustHubRejectedEmail(params: {
 export function deletionExecutedEmail(params: {
   tenantName?: string;
   executedAt: string;
-  contactEmail?: string;
+  contactUrl?: string;
 }): { subject: string; html: string; text: string } {
   const org = params.tenantName ?? 'your organization';
-  const contact = params.contactEmail ?? 'privacy@qvo.example';
+  const contact = params.contactUrl ?? '/contact';
 
   const html = baseLayout(`
     <p>Hi,</p>
-    <p>The account for <strong>${org}</strong> has been permanently deleted on ${params.executedAt}, as scheduled.</p>
-    <div class="alert-error">
-      <p style="margin:0"><strong>What was removed</strong></p>
-      <p style="margin:4px 0 0">All users, agents, phone numbers, call sessions, recordings, transcripts, and audit logs associated with this account.</p>
+    <p>The account-deletion workflow for <strong>${org}</strong> ran on ${params.executedAt}, as scheduled.</p>
+    <div class="alert-warn">
+      <p style="margin:0"><strong>Verification required</strong></p>
+      <p style="margin:4px 0 0">QVO must verify deletion coverage across application tables, backups, logs, external processors, and any applicable legal holds before confirming complete erasure.</p>
     </div>
-    <p>Some records may persist briefly in encrypted backups before being aged out under our retention policy, and a minimal record of this deletion is retained for legal and compliance purposes.</p>
-    <p>If you have any questions, reach out to <a href="mailto:${contact}">${contact}</a>. Thank you for being a customer.</p>
+    <p>If you have any questions or need a verified deletion report, use <a href="${contact}">the QVO contact form</a>.</p>
   `);
 
-  const text = `The account for ${org} has been permanently deleted on ${params.executedAt}, as scheduled.\n\n` +
-    `All users, agents, phone numbers, call sessions, recordings, transcripts, and audit logs were removed. ` +
-    `Some data may persist briefly in encrypted backups, and a minimal deletion record is retained for compliance.\n\n` +
-    `Questions: ${contact}`;
+  const text = `The account-deletion workflow for ${org} ran on ${params.executedAt}, as scheduled.\n\n` +
+    `Deletion coverage across application tables, backups, logs, external processors, and legal holds must be verified before QVO confirms complete erasure.\n\n` +
+    `Questions or verified deletion report: ${contact}`;
 
   return { subject: `Account permanently deleted: ${org}`, html, text };
 }

@@ -27,37 +27,13 @@ const verticalCards = [
     slug: 'healthcare',
     name: 'Healthcare',
     avatar: '/assets/avatars-v2-web/medical.jpg',
-    tagline: 'HIPAA-grade intake, scheduling, refills, recall.',
+    tagline: 'Healthcare intake, appointment requests, follow-up, and safe escalation.',
   },
   {
     slug: 'dental',
     name: 'Dental',
     avatar: '/assets/avatars-v2-web/dental.jpg',
     tagline: 'Hygiene recall, new-patient intake, treatment plans.',
-  },
-  {
-    slug: 'legal',
-    name: 'Legal',
-    avatar: '/assets/avatars-v2-web/legal.jpg',
-    tagline: 'Conflict checks, lead qualification, intake.',
-  },
-  {
-    slug: 'real-estate',
-    name: 'Real estate',
-    avatar: '/assets/avatars-v2-web/real-estate.jpg',
-    tagline: 'Lead intake, showing scheduling, follow-up.',
-  },
-  {
-    slug: 'home-services',
-    name: 'Home services',
-    avatar: '/assets/avatars-v2-web/hvac.jpg',
-    tagline: 'Emergency dispatch, ETA updates, scheduling.',
-  },
-  {
-    slug: 'customer-support',
-    name: 'Support & ops',
-    avatar: '/assets/avatars-v2-web/customer-support.jpg',
-    tagline: 'Tier-1 deflection, order status, returns.',
   },
 ];
 
@@ -104,8 +80,7 @@ export default function Landing() {
 
       {/* 1 · HERO
           Positioning: lead UNIVERSAL ("voice for every front desk") with
-          healthcare prominent as the proof point ("healthcare-grade by
-          default" + 40,000+ real healthcare calls). Hero imagery stays
+          healthcare prominent as the initial operational proof. Hero imagery stays
           healthcare (V1 consultation suite) so the visual anchors the
           specialty while the copy opens the aperture to every vertical.
           Per Wayne 2026-05-25: "highlight healthcare but also make it
@@ -115,7 +90,7 @@ export default function Landing() {
         darkSrc="/assets/sections-web/D1-dark-office.jpg"
         eyebrow={t(
           'landing.hero.eyebrow',
-          'Voice for every front desk · Healthcare-grade by default',
+          'One voice core · Purpose-built healthcare workflow',
         )}
         title={t('landing.hero.title', 'Calls that don’t get missed.')}
         titleAccent={t('landing.hero.title_2', 'Customers that don’t get lost.')}
@@ -138,10 +113,10 @@ export default function Landing() {
           },
         ]}
         pills={[
-          { label: t('landing.stats.hipaa_ready', 'HIPAA-ready') },
-          { label: t('landing.stats.soc2_in_progress', 'SOC 2 in progress') },
-          { label: t('landing.stats.aes_encryption', 'AES-256 encryption') },
-          { label: t('landing.stats.gdpr_compliant', 'GDPR-compliant') },
+          { label: t('landing.stats.hipaa_ready', 'Healthcare pilot approval pending') },
+          { label: t('landing.stats.soc2_in_progress', 'Certifications not verified') },
+          { label: t('landing.stats.aes_encryption', 'Recording disabled by default') },
+          { label: t('landing.stats.gdpr_compliant', 'Legal review pending') },
         ]}
       />
 
@@ -169,7 +144,7 @@ export default function Landing() {
             num: '03',
             title: 'Built for healthcare.',
             body:
-              'HIPAA-aware by default. AES-256 in transit and at rest. Audit logs every operator can read.',
+              'Minimum-necessary intake, safe escalation, and an explicit recording-disabled default while healthcare approval remains pending.',
           },
         ]}
       >
@@ -262,17 +237,6 @@ export default function Landing() {
             ))}
           </div>
 
-          <RevealSection>
-            <div className="text-center mt-12">
-              <Link
-                to="/ai-agents"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
-              >
-                {t('common.explore_marketplace', 'Explore the full agent marketplace')}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </RevealSection>
         </div>
       </section>
 
@@ -364,16 +328,16 @@ export default function Landing() {
         )}
         ctas={[
           {
-            label: t('common.start_free_trial', 'Start a free trial'),
-            to: '/signup',
-            variant: 'primary',
-            onClick: () => trackCTAClick(CTA.START_FREE_TRIAL, '/', 'bottom-cta'),
-          },
-          {
             label: t('common.book_a_demo', 'Book a demo'),
             to: '/book-demo',
-            variant: 'ghost',
+            variant: 'primary',
             onClick: () => trackCTAClick(CTA.BOOK_DEMO, '/', 'bottom-cta'),
+          },
+          {
+            label: t('common.try_live_demo', 'Try the live demo'),
+            to: '/demo',
+            variant: 'ghost',
+            onClick: () => trackCTAClick(CTA.TRY_LIVE_DEMO, '/', 'bottom-cta'),
           },
         ]}
       />

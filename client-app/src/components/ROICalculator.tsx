@@ -414,11 +414,11 @@ export default function ROICalculator({
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
-                to="/signup"
-                onClick={() => { trackCTAClick(CTA.START_FREE_TRIAL, 'roi-calculator', 'results'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, '/roi-calculator', { cta: 'signup_roi' }); }}
+                to="/book-demo"
+                onClick={() => { trackCTAClick(CTA.BOOK_DEMO, 'roi-calculator', 'results'); trackConversionEvent(CONVERSION_STAGE.CTA_CLICK, '/roi-calculator', { cta: 'book_demo_roi' }); }}
                 className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
               >
-                Start Free Trial <ArrowRight className="h-4 w-4" />
+                Book a Demo <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 to="/book-demo"

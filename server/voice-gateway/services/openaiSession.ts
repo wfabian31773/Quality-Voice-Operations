@@ -28,15 +28,17 @@ import { handleDemoToolCall } from './demoToolHandler';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
-import { routeQuery, checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, logRoutingDecision, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
+import { checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
 import {
-  TIER_MODEL_MAP,
-  TIER_REASONING_EFFORT,
   modelSupportsReasoningEffort,
-  type ModelTier,
   calculateLlmCostCents,
   TTS_COST_PER_1K_CHARS_CENTS,
 } from '../../../platform/billing/cost/providerRates';
+import {
+  MASTER_VOICE_AGENT_CONTRACT,
+  buildMasterVoiceAgentInstructions,
+  buildTenantTimeContext,
+} from '../../../platform/agent-runtime/masterVoiceAgent';
 import { createServiceTicket } from '../../../platform/agent-templates/answering-service/tools/createServiceTicketTool';
 import { createAfterHoursTicket } from '../../../platform/agent-templates/medical-after-hours/tools/createAfterHoursTicketTool';
 import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
@@ -91,7 +93,7 @@ function buildToolHandler(
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
     const startTime = Date.now();
 
-    const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent'];
+    const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
     if (ctx.templateKey && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName) && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
       const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
@@ -107,7 +109,8 @@ function buildToolHandler(
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
     }
 
-    const validation = unifiedToolRegistry.validateToolInput(toolName, args);
+    const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
+    const validation = unifiedToolRegistry.validateToolInput(toolName, args, activeRoleSchema);
     if (!validation.valid) {
       logger.warn('Tool input validation failed', { tenantId, callId: callSessionId, tool: toolName, errors: validation.errors });
       const valId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
@@ -138,7 +141,7 @@ function buildToolHandler(
       return JSON.stringify({ success: false, message: 'Rate limit exceeded for this tool. Please wait a moment before trying again.' });
     }
 
-    if (ctx.reasoningEngine) {
+    if (ctx.reasoningEngine && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
       try {
         for (const [key, value] of Object.entries(args)) {
           if (typeof value === 'string' && value.length > 0) {
@@ -150,68 +153,10 @@ function buildToolHandler(
       }
 
       try {
-        let latestDecision = ctx.reasoningEngine.getLatestDecision();
-
-        if (latestDecision && latestDecision.action !== 'execute_tool') {
-          latestDecision = ctx.reasoningEngine.reEvaluateDecision();
-          logger.debug('Re-evaluated reasoning decision after slot fill', {
-            tenantId, callId: callSessionId, tool: toolName,
-            newAction: latestDecision.action,
-          });
-        }
-
-        if (latestDecision) {
-          const isExactToolMatch = latestDecision.action === 'execute_tool' && latestDecision.toolToExecute === toolName;
-          const isWorkflowToolMatch = latestDecision.action === 'continue_workflow' && latestDecision.toolToExecute === toolName;
-          const isExecuteAnyTool = latestDecision.action === 'execute_tool' && !latestDecision.toolToExecute;
-          const workflowStepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
-          const isWorkflowStepToolMatch = workflowStepTool === toolName;
-          const isToolAllowed = isExactToolMatch || isWorkflowToolMatch || isExecuteAnyTool || isWorkflowStepToolMatch;
-          if (!isToolAllowed) {
-            logger.warn('Reasoning engine blocks tool execution: decision requires different action', {
-              tenantId, callId: callSessionId, tool: toolName,
-              requiredAction: latestDecision.action,
-              reason: latestDecision.reasoning,
-            });
-            const rdId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-            await completeToolExecution({
-              tenantId,
-              executionId: rdId,
-              callSessionId,
-              result: { success: false, reason: 'reasoning_blocked', requiredAction: latestDecision.action },
-              status: 'failed',
-              errorMessage: `Reasoning engine requires ${latestDecision.action}: ${latestDecision.reasoning}`,
-              durationMs: Date.now() - startTime
-            });
-            await writeCallEvent(tenantId, callSessionId, 'reasoning_tool_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, requiredAction: latestDecision.action, reason: latestDecision.reasoning });
-            const blockMessage = latestDecision.action === 'escalate_to_human'
-              ? 'This action cannot be performed. The call needs to be transferred to a human agent.'
-              : latestDecision.action === 'complete_interaction'
-              ? 'The interaction is being wrapped up. No further tool actions are needed.'
-              : `Before performing this action, I need to collect more information from the caller: ${latestDecision.reasoning}`;
-            return JSON.stringify({ success: false, message: blockMessage });
-          }
-        }
-      } catch (decisionErr) {
-        logger.error('Reasoning decision gate check failed, blocking tool (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(decisionErr) });
-        const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({
-          tenantId,
-          executionId: fgId,
-          callSessionId,
-          result: { success: false, reason: 'reasoning_gate_error' },
-          status: 'failed',
-          errorMessage: `Reasoning gate error: ${String(decisionErr)}`,
-          durationMs: Date.now() - startTime
-        });
-        return JSON.stringify({ success: false, message: 'Unable to verify reasoning state. Please try again.' });
-      }
-
-      try {
-        const safetyResult = ctx.reasoningEngine.checkToolSafety(toolName, args);
-        if (!safetyResult.allowed) {
-          const criticalViolations = safetyResult.violations.filter((v) => v.severity === 'critical');
-          logger.warn('Reasoning safety gate blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
+        const authorization = ctx.reasoningEngine.authorizeToolRequest(toolName, args);
+        if (!authorization.allowed) {
+          const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
+          logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
           const sgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
           await completeToolExecution({
             tenantId,
@@ -223,10 +168,10 @@ function buildToolHandler(
             durationMs: Date.now() - startTime
           });
           await writeCallEvent(tenantId, callSessionId, 'safety_gate_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, violations: criticalViolations.map((v) => ({ type: v.type, description: v.description })) });
-          return JSON.stringify({ success: false, message: `This action was blocked by safety policy: ${criticalViolations.map((v) => v.description).join('. ')}` });
+          return JSON.stringify({ success: false, message: `This action was blocked by policy: ${criticalViolations.map((v) => v.description).join('. ')}` });
         }
       } catch (safetyErr) {
-        logger.error('Safety gate check failed, blocking tool execution (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(safetyErr) });
+        logger.error('Reasoning authorization failed, blocking tool execution (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(safetyErr) });
         const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
         await completeToolExecution({
           tenantId,
@@ -234,10 +179,10 @@ function buildToolHandler(
           callSessionId,
           result: { success: false, reason: 'safety_gate_error' },
           status: 'failed',
-          errorMessage: `Safety gate error: ${String(safetyErr)}`,
+          errorMessage: `Reasoning authorization error: ${String(safetyErr)}`,
           durationMs: Date.now() - startTime
         });
-        return JSON.stringify({ success: false, message: 'Unable to verify safety policy. Please try again.' });
+        return JSON.stringify({ success: false, message: 'Unable to verify this action safely. Please try again.' });
       }
     }
 
@@ -414,6 +359,22 @@ function buildToolHandler(
     const dispatchToolExecution = async (): Promise<string> => {
       let rawResult: string;
       switch (toolName) {
+        case 'get_current_tenant_time': {
+          rawResult = JSON.stringify({
+            success: true,
+            ...buildTenantTimeContext(new Date(), agentConfig.timeZone),
+          });
+          break;
+        }
+        case 'record_language_change': {
+          await writeCallEvent(tenantId, callSessionId, 'language_changed', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+            language: args.language,
+            confidence: args.confidence,
+            source: 'master_voice_agent',
+          });
+          rawResult = JSON.stringify({ success: true, recorded: true });
+          break;
+        }
         case 'createServiceTicket': {
           if (!outboxService) {
             throw new Error('ToolExecutionFailed: Outbox service not configured');
@@ -523,6 +484,8 @@ function buildToolHandler(
             callerPhone: (args.caller_phone as string) ?? undefined,
             reason,
             priority: priority as 'low' | 'medium' | 'high' | 'critical',
+            toolName: 'escalate_to_human',
+            idempotencyKey: `${agentConfig.rolePackageId}:${callSessionId}:human-escalation`,
             metadata: { source: 'agent_tool', args },
           });
 
@@ -573,6 +536,7 @@ function buildToolHandler(
           }
         }
       }
+      return assertToolSuccess(rawResult, toolName);
     };
 
     const retryConfig = getToolRetryConfig(toolName);
@@ -765,9 +729,9 @@ export interface OpenAISessionConfigInput {
 }
 
 export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
-  const transcription = input.language && input.language !== 'en'
-    ? { model: 'gpt-4o-mini-transcribe' as const, language: input.language }
-    : { model: 'gpt-4o-mini-transcribe' as const };
+  // The configured language controls only the greeting. Transcription stays
+  // unpinned so the same session can detect languages and code-switch.
+  const transcription = { model: 'gpt-4o-mini-transcribe' as const };
   const baseConfig = {
     voice: input.voice,
     audio: {
@@ -842,34 +806,6 @@ export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
     } as unknown as typeof baseConfig;
   }
   return baseConfig;
-}
-
-function classifyAgentComplexity(
-  templateKey: string,
-  systemPrompt: string,
-  tools: { name: string }[],
-): { sampleQuery: string } {
-  const COMPLEX_TEMPLATES = ['medical-after-hours', 'medical', 'legal', 'financial', 'insurance'];
-  const SIMPLE_TEMPLATES = ['faq', 'receptionist', 'answering-service'];
-
-  if (COMPLEX_TEMPLATES.some(t => templateKey.includes(t))) {
-    return { sampleQuery: 'I need help understanding my complex medical situation with multiple concerns' };
-  }
-  if (SIMPLE_TEMPLATES.some(t => templateKey.includes(t))) {
-    return { sampleQuery: 'What are your business hours?' };
-  }
-
-  const toolCount = tools.length;
-  const promptLength = systemPrompt.length;
-
-  if (toolCount > 5 || promptLength > 3000) {
-    return { sampleQuery: 'Can you help me figure out which option would be best for my situation?' };
-  }
-  if (toolCount <= 2 && promptLength < 1000) {
-    return { sampleQuery: 'I would like to schedule an appointment' };
-  }
-
-  return { sampleQuery: 'I have a question about your services and pricing' };
 }
 
 export interface RealtimeSessionResult {
@@ -1021,6 +957,10 @@ export async function createRealtimeSession(
     callerNumber: redactPHI(callerNumber),
     calledNumber,
     agentId: agentConfig.agentId,
+    coreVersion: agentConfig.coreVersion,
+    rolePackageId: agentConfig.rolePackageId,
+    rolePackageVersion: agentConfig.rolePackageVersion,
+    model: MASTER_VOICE_AGENT_CONTRACT.model,
   }).catch((err) => logger.error('Failed to write call_received event', { tenantId, error: String(err) }));
 
   ctx.reasoningEngine = reasoningEngine;
@@ -1035,19 +975,15 @@ export async function createRealtimeSession(
     logger.error('Failed to check knowledge availability', { tenantId, error: String(err) });
   }
 
-  let systemPromptWithMemory = agentConfig.systemPrompt;
-  if (reasoningEngine) {
-    const safetyPolicy = reasoningEngine.getSafetyPolicyPrompt();
-    if (safetyPolicy) {
-      systemPromptWithMemory += `\n\n${safetyPolicy}`;
-    }
-  }
-  if (callerMemorySummary) {
-    systemPromptWithMemory += `\n\n===== CALLER MEMORY =====\n${callerMemorySummary}`;
-  }
-  if (knowledgeAvailable) {
-    systemPromptWithMemory += `\n\n===== KNOWLEDGE BASE =====\nYou have access to a company knowledge base. When a caller asks about products, services, policies, procedures, or FAQs, use the retrieve_knowledge tool to search for relevant information before answering.`;
-  }
+  let systemPromptWithMemory = buildMasterVoiceAgentInstructions({
+    rolePrompt: agentConfig.rolePrompt ?? agentConfig.systemPrompt,
+    guardrails: agentConfig.guardrails,
+    callerMemory: callerMemorySummary,
+    safetyPolicy: reasoningEngine?.getSafetyPolicyPrompt(),
+    knowledgeAvailable,
+    preferredLanguage: agentConfig.preferredLanguage ?? agentConfig.language,
+    timeZone: agentConfig.timeZone,
+  });
 
   const systemMessages: ConversationMessage[] = [{ role: 'system', content: systemPromptWithMemory }];
   if (shouldCompress(systemMessages, 8192)) {
@@ -1056,13 +992,22 @@ export async function createRealtimeSession(
     slog.info('System prompt compressed', { tokensSaved: compressed.tokensSaved });
   }
 
-  const agentTypeHint = ctx.templateKey ?? 'general';
-  const systemPromptComplexity = classifyAgentComplexity(agentTypeHint, systemPromptWithMemory, agentConfig.tools);
-  const initialRouting = routeQuery(systemPromptComplexity.sampleQuery);
-  let activeModelTier: ModelTier = initialRouting.tier;
-  let activeModel = TIER_MODEL_MAP[activeModelTier];
+  const activeModelTier = 'standard' as const;
+  const activeModel = MASTER_VOICE_AGENT_CONTRACT.model;
+  const initialRouting: RoutingDecision = {
+    tier: activeModelTier,
+    model: activeModel,
+    reason: `Master Voice Agent core ${agentConfig.coreVersion} model lock`,
+    complexityScore: 0.5,
+  };
 
-  slog.info('Model routing decision', { agentType: agentTypeHint, tier: activeModelTier, model: activeModel, reason: initialRouting.reason });
+  slog.info('Master Voice Agent core selected', {
+    coreVersion: agentConfig.coreVersion,
+    rolePackageId: agentConfig.rolePackageId,
+    rolePackageVersion: agentConfig.rolePackageVersion,
+    tier: activeModelTier,
+    model: activeModel,
+  });
 
   const conversationHistory: ConversationMessage[] = [];
   const COMPRESSION_TURN_THRESHOLD = 20;
@@ -1133,7 +1078,7 @@ export async function createRealtimeSession(
     voice: agentConfig.voice,
     language: agentConfig.language,
     model: activeModel,
-    reasoningEffort: TIER_REASONING_EFFORT[activeModelTier],
+    reasoningEffort: MASTER_VOICE_AGENT_CONTRACT.reasoningEffort,
   });
 
   const session = new RealtimeSession(agent, {
@@ -1221,35 +1166,6 @@ export async function createRealtimeSession(
           if (text) {
             line = `CALLER: ${text}`;
             costTracker.addUtterance('user', text);
-
-            const utteranceRouting = routeQuery(text);
-            costTracker.routingDecisions.push(utteranceRouting);
-
-            if (!hasDowngraded && utteranceRouting.tier === 'premium' && activeModelTier === 'economy') {
-              const prevModel = activeModel;
-              const prevTier = activeModelTier;
-              activeModelTier = utteranceRouting.tier;
-              activeModel = TIER_MODEL_MAP[activeModelTier];
-              slog.info('Complex query detected on economy tier — upgrading model', {
-                query: text.substring(0, 80),
-                fromTier: prevTier,
-                toTier: activeModelTier,
-                reason: utteranceRouting.reason,
-              });
-              const upgradeConfig = { ...agentConfig, model: activeModel };
-              rebuildForHandoff(upgradeConfig, agentConfig.greeting ?? '').catch((err) => {
-                slog.warn('Model upgrade failed', { error: String(err) });
-                activeModelTier = prevTier;
-                activeModel = prevModel;
-              });
-              writeCallEvent(tenantId, callSessionId, 'model_upgraded', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                fromModel: prevModel,
-                toModel: activeModel,
-                fromTier: prevTier,
-                toTier: activeModelTier,
-                reason: utteranceRouting.reason,
-              }).catch(() => {});
-            }
 
             recordTrace({
               tenantId,
@@ -1486,8 +1402,6 @@ export async function createRealtimeSession(
 
   attachSessionListeners(session);
 
-  let isHandoffSwap = false;
-
   sessionManager.register({
     callSessionId,
     tenantId,
@@ -1514,11 +1428,6 @@ export async function createRealtimeSession(
   const attachCloseHandler = (targetSession: RealtimeSession): void => {
     const emitter = targetSession as unknown as { on(event: string, listener: (...args: unknown[]) => void): void };
     emitter.on('close', () => {
-      if (isHandoffSwap) {
-        slog.info('Realtime session closed for handoff swap (skipping terminal cleanup)');
-        return;
-      }
-
       sessionClosed = true;
       slog.info('Realtime session closed');
 
@@ -1573,9 +1482,7 @@ export async function createRealtimeSession(
     }
   };
 
-  let audioOutputHandler: ((audioEvent: TransportLayerAudio) => void) | undefined;
   const onOpenAIAudio = (handler: (audioEvent: TransportLayerAudio) => void): void => {
-    audioOutputHandler = handler;
     activeTransport.on('audio', handler);
   };
 
@@ -1746,102 +1653,49 @@ export async function createRealtimeSession(
   };
 
   const rebuildForHandoff = async (newAgentConfig: LoadedAgentConfig, handoffGreeting: string): Promise<void> => {
-    slog.info('Rebuilding session for workforce handoff', {
+    slog.info('Transitioning role context within the Master Voice Agent session', {
       fromAgent: agentConfig.agentId,
       toAgent: newAgentConfig.agentId,
+      coreVersion: MASTER_VOICE_AGENT_CONTRACT.coreVersion,
+      rolePackageId: newAgentConfig.rolePackageId,
+      rolePackageVersion: newAgentConfig.rolePackageVersion,
     });
-
-    isHandoffSwap = true;
-    try {
-      await activeSession.close();
-    } catch (closeErr) {
-      slog.warn('Error closing previous session during handoff', { error: String(closeErr) });
-    }
-    isHandoffSwap = false;
 
     const newToolHandler = buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId);
     const newAgentTools = buildRealtimeTools(newAgentConfig.tools, newToolHandler);
-
-    let handoffPrompt = newAgentConfig.systemPrompt;
-    if (reasoningEngine) {
-      const safetyPolicy = reasoningEngine.getSafetyPolicyPrompt();
-      if (safetyPolicy) {
-        handoffPrompt += `\n\n${safetyPolicy}`;
-      }
-    }
-    if (callerMemorySummary) {
-      handoffPrompt += `\n\n===== CALLER MEMORY =====\n${callerMemorySummary}`;
-    }
-    if (knowledgeAvailable) {
-      handoffPrompt += `\n\n===== KNOWLEDGE BASE =====\nYou have access to a company knowledge base. When a caller asks about products, services, policies, procedures, or FAQs, use the retrieve_knowledge tool to search for relevant information before answering.`;
-    }
+    const handoffPrompt = buildMasterVoiceAgentInstructions({
+      rolePrompt: newAgentConfig.rolePrompt ?? newAgentConfig.systemPrompt,
+      guardrails: newAgentConfig.guardrails,
+      callerMemory: callerMemorySummary,
+      safetyPolicy: reasoningEngine?.getSafetyPolicyPrompt(),
+      knowledgeAvailable,
+      preferredLanguage: newAgentConfig.preferredLanguage ?? newAgentConfig.language,
+      timeZone: newAgentConfig.timeZone,
+    });
 
     const newAgent = new RealtimeAgent({
       name: `${newAgentConfig.agentId}-${tenantId}`,
       instructions: handoffPrompt,
       tools: newAgentTools,
     });
+    await activeSession.updateAgent(newAgent);
+    sendModelInstruction(
+      `The role context changed while this same call and conversation continue. Say exactly: "${handoffGreeting}". Do not say anything else.`,
+    );
 
-    const newTransport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
-
-    const newSessionConfig = buildOpenAISessionConfig({
-      voice: newAgentConfig.voice,
-      language: newAgentConfig.language,
-      model: newAgentConfig.model,
-      // Handoff keeps the current tier's reasoning effort. If the
-      // tier was downgraded by the budget guard between session start
-      // and handoff, this naturally reflects that.
-      reasoningEffort: TIER_REASONING_EFFORT[activeModelTier],
-    });
-
-    const newSession = new RealtimeSession(newAgent, {
-      transport: newTransport,
-      model: newAgentConfig.model,
-      config: newSessionConfig,
-      tracingDisabled: false,
-      tracing: {
-        workflowName: `VoiceAI_${newAgentConfig.agentId}`,
-        groupId: callSid,
-      },
-    } as ConstructorParameters<typeof RealtimeSession>[1]);
-
-    activeTransport = newTransport;
-    activeSession = newSession;
-
-    attachCloseHandler(newSession);
-    attachSessionListeners(newSession);
-
-    if (audioOutputHandler) {
-      newTransport.on('audio', audioOutputHandler);
-    }
-
-    attachResponseStateListeners(newTransport);
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      newTransport.on('session.created', () => {
-        try {
-          sendModelInstruction(
-            `You are taking over this call from another agent. Greet the caller now by saying exactly: "${handoffGreeting}". Do not say anything else.`,
-          );
-        } catch (greetErr) {
-          slog.error('Failed to inject handoff greeting', { error: String(greetErr) });
-        }
-      });
-
-      await newSession.connect({ apiKey });
-      slog.info('Handoff session connected', { newAgent: newAgentConfig.agentId });
-    }
-
-    await writeCallEvent(tenantId, callSessionId, 'handoff_session_rebuilt', 'HANDOFF', 'ACTIVE_CONVERSATION', {
+    await writeCallEvent(tenantId, callSessionId, 'role_context_transitioned', 'HANDOFF', 'ACTIVE_CONVERSATION', {
       newAgentId: newAgentConfig.agentId,
+      coreVersion: MASTER_VOICE_AGENT_CONTRACT.coreVersion,
+      rolePackageId: newAgentConfig.rolePackageId,
+      rolePackageVersion: newAgentConfig.rolePackageVersion,
+      transcriptPreserved: true,
+      sessionPreserved: true,
     });
     await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
   };
 
   const BUDGET_CHECK_INTERVAL_MS = 30000;
   let budgetCheckTimer: ReturnType<typeof setInterval> | null = null;
-  let hasDowngraded = false;
 
   budgetCheckTimer = setInterval(async () => {
     try {
@@ -1872,32 +1726,21 @@ export async function createRealtimeSession(
         }, 10000);
         if (budgetCheckTimer) clearInterval(budgetCheckTimer);
         budgetCheckTimer = null;
-      } else if (budgetResult.shouldDowngrade && !hasDowngraded) {
-        hasDowngraded = true;
-        const prevModel = activeModel;
-        const prevTier = activeModelTier;
-        activeModelTier = 'economy';
-        activeModel = TIER_MODEL_MAP['economy'];
-        slog.warn('Budget threshold reached — downgrading to economy model', {
+      } else if (budgetResult.shouldDowngrade) {
+        // The Master Voice Agent model is a core invariant. Budget policy may
+        // alert or end a call, but it cannot silently change the runtime.
+        slog.warn('Budget threshold reached — model lock retained', {
           currentCostCents,
           percentUsed: budgetResult.percentUsed,
-          previousModel: prevModel,
-          newModel: activeModel,
+          model: activeModel,
+          coreVersion: MASTER_VOICE_AGENT_CONTRACT.coreVersion,
         });
-        const downgradeConfig = { ...agentConfig, model: activeModel };
-        try {
-          await rebuildForHandoff(downgradeConfig, agentConfig.greeting ?? 'I\'m still here to help.');
-          writeCallEvent(tenantId, callSessionId, 'model_downgraded', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-            fromModel: prevModel,
-            toModel: activeModel,
-            reason: 'budget_threshold',
-            percentUsed: budgetResult.percentUsed,
-          }).catch(() => {});
-        } catch (downgradeErr) {
-          slog.error('Model downgrade failed', { error: String(downgradeErr) });
-          activeModelTier = prevTier;
-          activeModel = prevModel;
-        }
+        writeCallEvent(tenantId, callSessionId, 'model_lock_retained', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+          model: activeModel,
+          coreVersion: MASTER_VOICE_AGENT_CONTRACT.coreVersion,
+          reason: 'budget_threshold',
+          percentUsed: budgetResult.percentUsed,
+        }).catch(() => {});
       }
 
       if (budgetResult.shouldAlert) {

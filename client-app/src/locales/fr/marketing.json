@@ -20,7 +20,7 @@
     "seo_description": "Agents vocaux IA pour la prise d'appels, la prise de rendez-vous et l'automatisation des opérations. Standard IA et automatisation d'appels pour la climatisation, les cabinets médicaux, dentaires, juridiques et plus.",
     "hero": {
       "badge": "Plateforme vocale propulsée par l'IA",
-      "eyebrow": "La voix pour chaque accueil · Qualité médicale par défaut",
+      "eyebrow": "Un noyau vocal · Un flux de santé spécialisé",
       "title": "Aucun appel manqué.",
       "title_2": "Aucun client perdu.",
       "title_highlight": "Des agents vocaux IA",
@@ -38,10 +38,10 @@
       "agents_deployed": "Agents déployés",
       "uptime": "Disponibilité",
       "industries_served": "Secteurs servis",
-      "soc2_in_progress": "SOC 2 en cours",
-      "hipaa_ready": "Compatible HIPAA",
-      "gdpr_compliant": "Conforme RGPD",
-      "aes_encryption": "Chiffrement AES-256"
+      "soc2_in_progress": "Certifications non vérifiées",
+      "hipaa_ready": "Approbation du pilote de santé en attente",
+      "gdpr_compliant": "Examen juridique en attente",
+      "aes_encryption": "Enregistrement désactivé par défaut"
     },
     "industries": {
       "healthcare": "Santé",
@@ -553,13 +553,13 @@
       "up_to_10": "Jusqu'à 10"
     },
     "compliance": {
-      "eyebrow": "Conformité prête pour l'entreprise",
-      "soc2": "SOC 2 Type II (en cours)",
-      "hipaa": "HIPAA disponible avec BAA",
-      "gdpr": "Conforme RGPD",
-      "ccpa": "CCPA / CPRA",
-      "tls": "TLS 1.2+ en transit",
-      "aes": "AES-256 au repos"
+      "eyebrow": "Contrôles selon l'état des preuves",
+      "soc2": "Certifications non vérifiées",
+      "hipaa": "Approbation du pilote de santé en attente",
+      "gdpr": "Examen de confidentialité en attente",
+      "ccpa": "Examen juridictionnel en attente",
+      "tls": "Vérification du déploiement en attente",
+      "aes": "Vérification du stockage en attente"
     },
     "faq": {
       "eyebrow": "FAQ",
@@ -1396,7 +1396,7 @@
     "healthcare": {
       "name": "Santé",
       "headline": "Agents vocaux IA conçus pour la santé",
-      "subheadline": "Gérez les appels patients 24/7 — prises de rendez-vous, accueil, renouvellements d'ordonnances et triage — avec une IA vocale conforme HIPAA qui ne met jamais les patients en attente.",
+      "subheadline": "Gérez les appels patients avec demandes de rendez-vous, collecte minimale, suivi du personnel et escalade sûre. L'approbation santé en production est en attente.",
       "painPoints": [
         {
           "title": "Appels patients manqués",
@@ -2171,7 +2171,7 @@
     },
     "healthcare": {
       "title": "Santé",
-      "description": "IA vocale compatible HIPAA pour la prise de rendez-vous, l’accueil patient, les renouvellements et le triage en dehors des heures.",
+      "description": "Flux vocal de santé pour demandes de rendez-vous, collecte minimale, suivi et escalade sûre ; approbation de production en attente.",
       "keywords": "santé médical hipaa patient clinique"
     },
     "dental": {

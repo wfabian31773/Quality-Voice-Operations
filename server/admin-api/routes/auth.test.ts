@@ -8,6 +8,7 @@ const a = vi.hoisted(() => ({
   poolQueryMock: vi.fn(),
   releaseMock: vi.fn(),
   issueTokenMock: vi.fn(),
+  issueMfaFlowTokenMock: vi.fn(),
   bcryptCompareMock: vi.fn(),
   writeAuditLogMock: vi.fn(),
 }));
@@ -18,6 +19,7 @@ vi.mock('../middleware/auth', () => ({
     next();
   },
   issueToken: a.issueTokenMock,
+  issueMfaFlowToken: a.issueMfaFlowTokenMock,
 }));
 vi.mock('../middleware/security', () => ({ authCookieOptions: () => ({ httpOnly: true }) }));
 vi.mock('../../../platform/db', () => ({
@@ -43,6 +45,7 @@ beforeEach(() => {
   a.poolQueryMock.mockReset().mockResolvedValue({ rows: [] });
   a.releaseMock.mockReset();
   a.issueTokenMock.mockReset().mockReturnValue('jwt-tok');
+  a.issueMfaFlowTokenMock.mockReset().mockReturnValue('mfa-flow-token');
   a.bcryptCompareMock.mockReset().mockResolvedValue(true);
   a.writeAuditLogMock.mockReset().mockResolvedValue(undefined);
 });
@@ -80,6 +83,51 @@ describe('POST /auth/login', () => {
     expect(res.body).toMatchObject({ token: 'jwt-tok', tenantId: 't1', emailVerified: true });
     expect(res.headers['set-cookie'][0]).toContain('auth_token=jwt-tok');
     expect(a.writeAuditLogMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'user.login' }));
+  });
+
+  it('requires TOTP enrollment before issuing a platform-admin session', async () => {
+    a.clientQueryMock.mockImplementation(async (sql: string) => (
+      sql.includes('FROM users u')
+        ? { rows: [{ ...activeUserRow, is_platform_admin: true, mfa_enabled_at: null }] }
+        : { rows: [] }
+    ));
+
+    const res = await request(app()).post('/auth/login').send({ email: 'admin@x.com', password: 'good' });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ mfaSetupRequired: true, mfaSetupToken: 'mfa-flow-token' });
+    expect(a.issueMfaFlowTokenMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1' }), 'mfa_setup');
+    expect(a.issueTokenMock).not.toHaveBeenCalled();
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('requires an MFA challenge for an enrolled platform admin', async () => {
+    a.clientQueryMock.mockImplementation(async (sql: string) => (
+      sql.includes('FROM users u')
+        ? { rows: [{ ...activeUserRow, is_platform_admin: true, mfa_enabled_at: '2026-07-13T00:00:00.000Z' }] }
+        : { rows: [] }
+    ));
+
+    const res = await request(app()).post('/auth/login').send({ email: 'admin@x.com', password: 'good' });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ mfaRequired: true, mfaChallengeToken: 'mfa-flow-token' });
+    expect(a.issueMfaFlowTokenMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1' }), 'mfa_challenge');
+    expect(a.issueTokenMock).not.toHaveBeenCalled();
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('rate-limits repeated password attempts for the same email and client', async () => {
+    a.clientQueryMock.mockResolvedValue({ rows: [] });
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      statuses.push((await request(app()).post('/auth/login').send({
+        email: 'blocked@example.com',
+        password: 'wrong-password',
+      })).status);
+    }
+    expect(statuses.slice(0, 10).every((status) => status === 401)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 });
 
@@ -127,5 +175,36 @@ describe('POST /auth/forgot-password', () => {
     const res = await request(app()).post('/auth/forgot-password').send({ email: 'who@x.com' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+});
+
+describe('POST /auth/accept-invite', () => {
+  it('requires MFA setup instead of issuing privileged access to a new platform admin', async () => {
+    a.clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM user_invitations ui') && sql.includes('FOR UPDATE')) {
+        return { rows: [{
+          id: 'invite-1', email: 'admin2@x.com', role: 'support_reviewer', tenant_id: 'admin-org',
+          expires_at: new Date(Date.now() + 60_000).toISOString(), accepted_at: null,
+        }] };
+      }
+      return { rows: [] };
+    });
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT u.id, u.email, u.is_platform_admin')) {
+        return { rows: [{
+          id: 'admin-2', email: 'admin2@x.com', is_platform_admin: true,
+          role: 'support_reviewer', tenant_id: 'admin-org', mfa_enabled_at: null,
+        }] };
+      }
+      return { rows: [] };
+    });
+
+    const res = await request(app()).post('/auth/accept-invite').send({ token: 'invite-token', password: 'strong-password' });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ mfaSetupRequired: true, mfaSetupToken: 'mfa-flow-token' });
+    expect(a.issueMfaFlowTokenMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'admin-2' }), 'mfa_setup');
+    expect(a.issueTokenMock).not.toHaveBeenCalled();
+    expect(res.headers['set-cookie']).toBeUndefined();
   });
 });

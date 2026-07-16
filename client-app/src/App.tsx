@@ -1,9 +1,8 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useSearchParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import PlatformAdminGuard from './components/PlatformAdminGuard';
 import OpsGuard from './components/OpsGuard';
-import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
 import MaintenanceGate from './components/MaintenanceGate';
 import PageSkeleton from './components/PageSkeleton';
@@ -95,25 +94,10 @@ const Changelog = lazy(() => import('./pages/Changelog'));
 const DesignDirections = lazy(() => import('./pages/DesignDirections'));
 
 const Landing = lazy(() => import('./pages/public/Landing'));
-const Product = lazy(() => import('./pages/public/Product'));
-const Features = lazy(() => import('./pages/public/Features'));
 const Pricing = lazy(() => import('./pages/public/Pricing'));
-const UseCases = lazy(() => import('./pages/public/UseCases'));
-const Integrations = lazy(() => import('./pages/public/Integrations'));
 const Contact = lazy(() => import('./pages/public/Contact'));
-const Docs = lazy(() => import('./pages/public/Docs'));
-const DocArticle = lazy(() => import('./pages/public/DocArticle'));
-const AgentsShowcase = lazy(() => import('./pages/public/AgentsShowcase'));
-const Signup = lazy(() => import('./pages/public/Signup'));
 const VerifyEmail = lazy(() => import('./pages/public/VerifyEmail'));
-const Blog = lazy(() => import('./pages/public/Blog'));
-const BlogArticle = lazy(() => import('./pages/public/BlogArticle'));
-const Resources = lazy(() => import('./pages/public/Resources'));
-const GuideDetail = lazy(() => import('./pages/public/GuideDetail'));
 const VerticalLanding = lazy(() => import('./pages/public/VerticalLanding'));
-const VerticalAgents = lazy(() => import('./pages/public/VerticalAgents'));
-const FederatedIngest = lazy(() => import('./pages/public/FederatedIngest'));
-const GlobalIntelligenceNetwork = lazy(() => import('./pages/public/GlobalIntelligenceNetwork'));
 const CaseStudies = lazy(() => import('./pages/public/CaseStudies'));
 const BookDemo = lazy(() => import('./pages/public/BookDemo'));
 const Terms = lazy(() => import('./pages/public/Terms'));
@@ -162,30 +146,25 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/auth/verify-email" element={<VerifyEmail />} />
-      <Route path="/internal/design-directions" element={<DesignDirections />} />
+      <Route
+        path="/internal/design-directions"
+        element={
+          <ProtectedRoute>
+            <PlatformAdminGuard>
+              <DesignDirections />
+            </PlatformAdminGuard>
+          </ProtectedRoute>
+        }
+      />
       <Route path="/track/:token" element={<BookingTracker />} />
 
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
-        <Route path="/product" element={<Product />} />
-        <Route path="/product/federated-ingest" element={<FederatedIngest />} />
-        <Route path="/product/global-intelligence-network" element={<GlobalIntelligenceNetwork />} />
-        <Route path="/features" element={<Features />} />
-        <Route path="/ai-agents" element={<AgentsShowcase />} />
         <Route path="/pricing" element={<Pricing />} />
-        <Route path="/use-cases" element={<UseCases />} />
-        <Route path="/integrations" element={<Integrations />} />
         <Route path="/demo" element={<Demo />} />
         <Route path="/contact" element={<Contact />} />
-        <Route path="/docs" element={<Docs />} />
-        <Route path="/docs/:slug" element={<DocArticle />} />
-        <Route path="/resources" element={<Resources />} />
-        <Route path="/resources/:slug" element={<GuideDetail />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/blog" element={<Blog />} />
-        <Route path="/blog/:slug" element={<BlogArticle />} />
-        <Route path="/industries/vertical-agents" element={<VerticalAgents />} />
-        <Route path="/industries/:vertical" element={<VerticalLanding />} />
+        <Route path="/industries/healthcare" element={<VerticalLanding />} />
+        <Route path="/industries/dental" element={<VerticalLanding />} />
         <Route path="/case-studies" element={<CaseStudies />} />
         <Route path="/case-studies/:slug" element={<CaseStudies />} />
         <Route path="/book-demo" element={<BookDemo />} />
@@ -200,10 +179,12 @@ export default function App() {
         path="/onboarding"
         element={
           <ProtectedRoute>
-            <>
-              <Onboarding />
-              <PlatformAssistant />
-            </>
+            <PlatformAdminGuard>
+              <>
+                <Onboarding />
+                <PlatformAssistant />
+              </>
+            </PlatformAdminGuard>
           </ProtectedRoute>
         }
       />
@@ -211,10 +192,12 @@ export default function App() {
         path="/agents/:id/builder"
         element={
           <ProtectedRoute>
-            <>
-              <AgentBuilder />
-              <PlatformAssistant />
-            </>
+            <PlatformAdminGuard>
+              <>
+                <AgentBuilder />
+                <PlatformAssistant />
+              </>
+            </PlatformAdminGuard>
           </ProtectedRoute>
         }
       />
@@ -228,39 +211,41 @@ export default function App() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/agents" element={<Agents />} />
-        <Route path="/workflows" element={<RoleGuard minRole="manager"><Workflows /></RoleGuard>} />
         <Route path="/calls" element={<Calls />} />
-        <Route path="/campaigns" element={<Campaigns />} />
-        <Route path="/connectors" element={<Connectors />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/marketplace" element={<Marketplace />} />
-        <Route path="/marketplace/installed" element={<Marketplace />} />
-        <Route path="/marketplace/purchases" element={<Marketplace />} />
-        <Route path="/marketplace/:id" element={<Marketplace />} />
-        <Route path="/marketplace/updates" element={<UpdateCenter />} />
-        <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
         <Route path="/settings" element={<SettingsRedirect />} />
         <Route path="/settings/:tab" element={<Settings />} />
         <Route path="/phone-numbers" element={<PhoneNumbers />} />
-        <Route path="/trusted-callers" element={<RoleGuard minRole="operator"><TrustedCallers /></RoleGuard>} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/billing" element={<Billing />} />
-        <Route path="/quality" element={<Quality />} />
-        <Route path="/audit-log" element={<RoleGuard minRole="manager"><AuditLog /></RoleGuard>} />
-        <Route path="/compliance" element={<RoleGuard minRole="manager"><Compliance /></RoleGuard>} />
-        <Route path="/widget" element={<Widget />} />
-        <Route path="/developer" element={<DeveloperPortal />} />
-        <Route path="/sms-inbox" element={<SmsInbox />} />
-        <Route path="/scheduling" element={<Scheduling />} />
         <Route path="/tickets" element={<Tickets />} />
-        <Route path="/tickets/reporting" element={<TicketReporting />} />
-        <Route path="/tickets/admin" element={<RoleGuard minRole="manager"><TicketAdmin /></RoleGuard>} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
-        <Route path="/dispatch" element={<Dispatch />} />
-        <Route path="/autopilot" element={<RoleGuard minRole="manager"><Autopilot /></RoleGuard>} />
-        <Route path="/changelog" element={<Changelog />} />
+        <Route element={<PlatformAdminGuard><Outlet /></PlatformAdminGuard>}>
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/workflows" element={<Workflows />} />
+          <Route path="/campaigns" element={<Campaigns />} />
+          <Route path="/connectors" element={<Connectors />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/marketplace/installed" element={<Marketplace />} />
+          <Route path="/marketplace/purchases" element={<Marketplace />} />
+          <Route path="/marketplace/:id" element={<Marketplace />} />
+          <Route path="/marketplace/updates" element={<UpdateCenter />} />
+          <Route path="/marketplace/installations/:installationId/setup" element={<PostInstallSetup />} />
+          <Route path="/trusted-callers" element={<TrustedCallers />} />
+          <Route path="/quality" element={<Quality />} />
+          <Route path="/audit-log" element={<AuditLog />} />
+          <Route path="/compliance" element={<Compliance />} />
+          <Route path="/widget" element={<Widget />} />
+          <Route path="/developer" element={<DeveloperPortal />} />
+          <Route path="/sms-inbox" element={<SmsInbox />} />
+          <Route path="/scheduling" element={<Scheduling />} />
+          <Route path="/tickets/reporting" element={<TicketReporting />} />
+          <Route path="/tickets/admin" element={<TicketAdmin />} />
+          <Route path="/dispatch" element={<Dispatch />} />
+          <Route path="/autopilot" element={<Autopilot />} />
+          <Route path="/changelog" element={<Changelog />} />
+        </Route>
       </Route>
 
       {/* Platform Admin Console */}

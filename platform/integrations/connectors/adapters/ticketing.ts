@@ -10,13 +10,13 @@ const SUPPORTED_TYPES = new Set(['create_ticket', 'answering_service_ticket', 'a
 
 type RawTicketPayload = Record<string, unknown>;
 
-function normalizeTicketPayload(raw: RawTicketPayload): CreateTicketPayload {
+export function normalizeTicketPayload(raw: RawTicketPayload): CreateTicketPayload {
   if (raw.type === 'create_ticket') {
     return raw as unknown as CreateTicketPayload;
   }
 
-  const firstName = String(raw.patientFirstName ?? '');
-  const lastName = String(raw.patientLastName ?? '');
+  const firstName = String(raw.patientFirstName ?? raw.callerFirstName ?? '');
+  const lastName = String(raw.patientLastName ?? raw.callerLastName ?? '');
   const patientFullName = [firstName, lastName].filter(Boolean).join(' ') || 'Unknown';
 
   if (raw.type === 'answering_service_ticket') {
@@ -26,7 +26,7 @@ function normalizeTicketPayload(raw: RawTicketPayload): CreateTicketPayload {
       patientDob: String(raw.patientDob ?? raw.patientDOB ?? ''),
       reasonForCalling: String(raw.reasonForCall ?? raw.reasonForCalling ?? ''),
       preferredContactMethod: (raw.preferredContactMethod as 'phone' | 'sms' | 'email') ?? 'phone',
-      patientPhone: String(raw.patientPhone ?? raw.callbackNumber ?? ''),
+      patientPhone: String(raw.patientPhone ?? raw.callerPhone ?? raw.callbackNumber ?? ''),
       lastProviderSeen: raw.lastProviderSeen as string | undefined,
       locationOfLastVisit: raw.locationOfLastVisit as string | undefined,
       additionalDetails: raw.additionalNotes as string | undefined,

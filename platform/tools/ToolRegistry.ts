@@ -187,13 +187,17 @@ export class UnifiedToolRegistry {
     return { tool: undefined, denied: false };
   }
 
-  validateToolInput(toolName: string, args: Record<string, unknown>): ToolValidationResult {
+  validateToolInput(
+    toolName: string,
+    args: Record<string, unknown>,
+    activeRoleSchema?: unknown,
+  ): ToolValidationResult {
     const tool = this.enhancedTools.get(toolName) ?? globalToolRegistry.get(toolName);
-    if (!tool) {
+    if (!tool && !activeRoleSchema) {
       return { valid: true, errors: [] };
     }
 
-    const schemaErrors = validateJsonSchema(args, tool.inputSchema);
+    const schemaErrors = validateJsonSchema(args, activeRoleSchema ?? tool?.inputSchema);
     if (schemaErrors.length > 0) {
       return { valid: false, errors: schemaErrors };
     }

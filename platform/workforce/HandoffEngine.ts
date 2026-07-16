@@ -73,14 +73,10 @@ export class HandoffEngine {
         success: true,
         targetAgentId: member.agent_id,
         targetAgentConfig: {
-          agentId: agentConfig.agentId,
+          ...agentConfig,
           agentType: member.agent_type ?? 'general',
-          systemPrompt: this.augmentPromptWithContext(agentConfig.systemPrompt, conversationContext),
+          rolePrompt: this.augmentPromptWithContext(agentConfig.rolePrompt, conversationContext),
           greeting: handoffGreeting,
-          voice: agentConfig.voice,
-          model: agentConfig.model,
-          tools: agentConfig.tools,
-          guardrails: agentConfig.guardrails,
         },
         handoffGreeting,
         reason: `Successfully routed to ${member.role} agent`,
@@ -136,9 +132,13 @@ export class HandoffEngine {
       await client.query('BEGIN');
       const result = await withTenantContext(client, tenantId, async () => {
         const { rows } = await client.query(
-          `SELECT id, name, type, system_prompt, voice, model, tools, escalation_config, metadata
-           FROM agents WHERE id = $1`,
-          [agentId],
+          `SELECT a.id, a.name, a.type, a.system_prompt, a.voice, a.model, a.tools,
+                  a.escalation_config, a.metadata, a.language,
+                  COALESCE(t.timezone, 'America/New_York') AS tenant_timezone
+           FROM agents a
+           JOIN tenants t ON t.id = a.tenant_id
+           WHERE a.id = $1 AND a.tenant_id = $2`,
+          [agentId, tenantId],
         );
         await client.query('COMMIT');
         return rows[0] as Record<string, unknown> | undefined;
@@ -159,6 +159,8 @@ export class HandoffEngine {
           tools: result.tools as unknown,
           escalation_config: result.escalation_config as Record<string, unknown> | undefined,
           metadata: result.metadata as Record<string, unknown> | undefined,
+          language: result.language as string | undefined,
+          tenant_timezone: result.tenant_timezone as string | undefined,
         },
       };
 

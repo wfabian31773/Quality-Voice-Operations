@@ -28,6 +28,7 @@ import { recordConversationCost, logRoutingDecision } from '../../../platform/bi
 import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../../../platform/widget/WidgetTokenService';
 import { HandoffEngine } from '../../../platform/workforce/HandoffEngine';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
+import { authorizeHealthcareDeployment } from '../../../platform/compliance/HealthcareDeploymentApprovalService';
 
 const logger = createLogger('WS_STREAM');
 const widgetLogger = createLogger('WS_WIDGET');
@@ -415,6 +416,26 @@ export function attachWebSocket(server: HTTPServer): void {
 
             const coordinator = getCoordinator(tenantId);
             const trustedAgentType = dbAgent?.type || agentType || 'general';
+            if (!dbAgent) {
+              logger.warn('Stream rejected — database agent not found', { tenantId, agentId });
+              ws.close(4003, 'Agent not available');
+              return;
+            }
+            const healthcareApproval = await authorizeHealthcareDeployment({
+              tenantId,
+              agentId,
+              agentType: trustedAgentType,
+              subjectPhone: callerNumber,
+            });
+            if (!healthcareApproval.allowed) {
+              logger.warn('Stream rejected by healthcare deployment approval gate', {
+                tenantId,
+                agentId,
+                code: healthcareApproval.code,
+              });
+              ws.close(4003, 'Deployment not approved');
+              return;
+            }
             const agentCfg = loadAgentConfig({
               tenantId,
               agentId,
@@ -534,18 +555,7 @@ export function attachWebSocket(server: HTTPServer): void {
                       return {
                         success: true,
                         message: result.handoffGreeting ?? 'Transferring you now.',
-                        targetAgentConfig: {
-                          agentId: result.targetAgentConfig.agentId,
-                          tenantId: tenantId!,
-                          systemPrompt: result.targetAgentConfig.systemPrompt,
-                          greeting: result.targetAgentConfig.greeting ?? result.handoffGreeting ?? '',
-                          voice: result.targetAgentConfig.voice,
-                          model: result.targetAgentConfig.model,
-                          language: (result.targetAgentConfig as { language?: string }).language ?? 'en',
-                          tools: result.targetAgentConfig.tools as import('../services/agentLoader').AgentToolDef[],
-                          guardrails: result.targetAgentConfig.guardrails,
-                          metadata: {},
-                        },
+                        targetAgentConfig: result.targetAgentConfig,
                         routingInfo: result.routingInfo,
                       };
                     }
@@ -575,10 +585,10 @@ export function attachWebSocket(server: HTTPServer): void {
             try {
               const onSessionSwapRequired = async (targetAgentConfig: import('../services/agentLoader').LoadedAgentConfig, handoffGreeting: string): Promise<void> => {
                 if (!sessionResult) return;
-                slog.info('Session swap triggered for workforce handoff', { toAgent: targetAgentConfig.agentId });
+                slog.info('Role-context transition triggered for workforce handoff', { toAgent: targetAgentConfig.agentId });
                 await sessionResult.rebuildForHandoff(targetAgentConfig, handoffGreeting);
                 currentAgentId = targetAgentConfig.agentId;
-                slog.info('Session swap completed', { toAgent: targetAgentConfig.agentId });
+                slog.info('Role-context transition completed', { toAgent: targetAgentConfig.agentId });
               };
 
               sessionResult = await createRealtimeSession({
@@ -588,7 +598,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 calledNumber,
                 callSid: twilioCallSid,
                 direction: callDirection,
-                templateKey: trustedAgentType,
+                templateKey: agentCfg.rolePackageId,
                 toolOverrides,
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
@@ -655,6 +665,22 @@ export function attachWebSocket(server: HTTPServer): void {
                     },
                     correlationId: callSessionId,
                   });
+                  if (tenantId && callSessionId) {
+                    writeCallEvent(
+                      tenantId,
+                      callSessionId,
+                      'gold_first_audio',
+                      'AGENT_CONNECTED',
+                      'AGENT_CONNECTED',
+                      {
+                        sessionSetupMs: liveSessionSetupMs,
+                        firstAudioMs,
+                        totalMs: now - streamStartedAt,
+                      },
+                    ).catch((err) => {
+                      slog.error('Failed to persist first-audio gold-call evidence', { error: String(err) });
+                    });
+                  }
                 }
               });
 
@@ -941,6 +967,27 @@ export function attachWebSocket(server: HTTPServer): void {
             }
 
             const dbAgent = await getAgentConfig(tenantId, widgetConfig.agent_id);
+            if (!dbAgent) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Service temporarily unavailable' }));
+              ws.close(4004, 'Agent not configured');
+              return;
+            }
+            const healthcareApproval = await authorizeHealthcareDeployment({
+              tenantId,
+              agentId: widgetConfig.agent_id,
+              agentType: dbAgent.type || 'general',
+              subjectPhone: 'widget',
+            });
+            if (!healthcareApproval.allowed) {
+              widgetLogger.warn('Widget healthcare session rejected by deployment approval gate', {
+                tenantId,
+                agentId: widgetConfig.agent_id,
+                code: healthcareApproval.code,
+              });
+              ws.send(JSON.stringify({ type: 'error', message: 'Service temporarily unavailable' }));
+              ws.close(4003, 'Deployment not approved');
+              return;
+            }
             const agentCfg = loadAgentConfig({
               tenantId,
               agentId: widgetConfig.agent_id,
@@ -966,6 +1013,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 calledNumber: 'widget',
                 callSid: widgetCallSid,
                 direction: 'inbound',
+                templateKey: agentCfg.rolePackageId,
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
                 budgetGuard,

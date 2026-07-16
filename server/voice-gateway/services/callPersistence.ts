@@ -5,6 +5,7 @@ import type { CallPersistenceAdapter } from '../../../platform/runtime/lifecycle
 import { recordConversionStage } from '../../../platform/analytics/ConversionFunnelService';
 import { CALL_FUNNEL_STAGE } from '../../../shared/analytics/conversionStages';
 import { encryptTranscript, encryptSensitiveField, decryptSensitiveField } from '../../../platform/security/FieldEncryption';
+import { createPiiLookupHashRecord } from '../../../platform/security/PiiLookupHash';
 
 const logger = createLogger('CALL_PERSISTENCE');
 
@@ -72,6 +73,11 @@ export async function createCallSession(
   const encryptedCallerNumber = params.callerNumber
     ? await encryptSensitiveField(params.tenantId, params.callerNumber)
     : null;
+  const callerLookup = createPiiLookupHashRecord(
+    params.tenantId,
+    params.callerNumber,
+    'caller_memory',
+  );
 
   const language = typeof params.language === 'string' && params.language.trim()
     ? params.language.trim().slice(0, 8)
@@ -80,10 +86,11 @@ export async function createCallSession(
   await withTenant(params.tenantId, async (client) => {
     await client.query(
       `INSERT INTO call_sessions
-         (id, tenant_id, agent_id, call_sid, session_id, direction,
-          caller_number, called_number, lifecycle_state, start_time, environment,
-          language)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11)`,
+       (id, tenant_id, agent_id, call_sid, session_id, direction,
+          caller_number, caller_lookup_hash, caller_lookup_key_version,
+          called_number, lifecycle_state, start_time, environment,
+          language, context)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14)`,
       [
         id,
         params.tenantId,
@@ -92,10 +99,13 @@ export async function createCallSession(
         sessionId,
         params.direction,
         encryptedCallerNumber,
+        callerLookup?.hash ?? null,
+        callerLookup?.keyVersion ?? null,
         params.calledNumber,
         'CALL_RECEIVED' as LifecycleState,
         params.environment ?? process.env.APP_ENV ?? 'development',
         language,
+        JSON.stringify({ recordingPolicy: { policy: 'disabled', status: 'not_recorded' } }),
       ],
     );
   });
@@ -225,12 +235,30 @@ export function createPlatformPersistenceAdapter(tenantId: string): CallPersiste
   return {
     async updateTranscript(_tid: string, callLogId: string, transcript: string): Promise<void> {
       const encryptedTranscript = await encryptTranscript(tenantId, transcript);
+      const lines = transcript.split('\n').map((rawLine, sequenceNumber) => {
+        const match = rawLine.match(/^\s*(user|caller|assistant|agent)\s*:\s*(.*)$/i);
+        const rawRole = match?.[1]?.toLowerCase();
+        const role = rawRole === 'assistant' || rawRole === 'agent' ? 'assistant' : 'user';
+        return { role, content: (match?.[2] ?? rawLine).trim(), sequenceNumber };
+      }).filter((line) => line.content.length > 0);
       await withTenant(tenantId, async (client) => {
         await client.query(
           `UPDATE call_sessions SET context = jsonb_set(COALESCE(context, '{}'), '{transcript}', to_jsonb($3::text)), updated_at = NOW()
            WHERE tenant_id = $1 AND id = $2`,
           [tenantId, callLogId, encryptedTranscript],
         );
+        await client.query(
+          `DELETE FROM call_transcripts WHERE tenant_id = $1 AND call_session_id = $2`,
+          [tenantId, callLogId],
+        );
+        for (const line of lines) {
+          await client.query(
+            `INSERT INTO call_transcripts
+               (id, tenant_id, call_session_id, role, content, sequence_number, occurred_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [randomUUID(), tenantId, callLogId, line.role, line.content, line.sequenceNumber],
+          );
+        }
       });
     },
 

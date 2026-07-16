@@ -29,6 +29,9 @@ interface TicketItem {
   reopened_count: number;
   created_at: string;
   updated_at: string;
+  receptionist_outcome_type?: string | null;
+  receptionist_next_action?: string | null;
+  receptionist_delivery_status?: string | null;
   sla_instance: {
     resolution_due_at: string | null;
     resolution_met: boolean | null;
@@ -504,6 +507,16 @@ export default function Tickets() {
                           <div className="text-sm font-medium text-heading truncate max-w-xs">{ticket.subject}</div>
                         </div>
                         {ticket.description && <div className="text-[11px] text-text-muted mt-0.5 truncate max-w-xs">{ticket.description}</div>}
+                        {ticket.receptionist_outcome_type && (
+                          <div className="mt-1 flex max-w-xs items-center gap-1.5 text-[11px]">
+                            <span className="rounded bg-primary-light px-1.5 py-0.5 font-medium capitalize text-primary">
+                              {ticket.receptionist_outcome_type.replace(/_/g, ' ')}
+                            </span>
+                            {ticket.receptionist_next_action && (
+                              <span className="truncate text-text-muted">Next: {ticket.receptionist_next_action}</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${cfg.color}`}>

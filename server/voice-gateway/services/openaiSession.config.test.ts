@@ -3,9 +3,9 @@ import { buildOpenAISessionConfig } from './openaiSession';
 
 describe('buildOpenAISessionConfig', () => {
   it('builds the telephony-tuned base config for English', () => {
-    const cfg = buildOpenAISessionConfig({ voice: 'alloy' }) as Record<string, never>;
-    const audio = (cfg as { audio: { input: { format: string; transcription: { model: string; language?: string }; noiseReduction: { type: string }; turnDetection: Record<string, unknown> }; output: { format: string; voice: string } } }).audio;
-    expect((cfg as { voice: string }).voice).toBe('alloy');
+    const cfg = buildOpenAISessionConfig({ voice: 'alloy' });
+    const audio = cfg.audio;
+    expect(cfg.voice).toBe('alloy');
     expect(audio.input.format).toBe('g711_ulaw');
     expect(audio.input.transcription).toEqual({ model: 'gpt-4o-mini-transcribe' });
     expect(audio.input.noiseReduction).toEqual({ type: 'far_field' });
@@ -13,10 +13,10 @@ describe('buildOpenAISessionConfig', () => {
     expect(audio.output).toEqual({ format: 'g711_ulaw', voice: 'alloy' });
   });
 
-  it('adds the transcription language for a non-English session', () => {
+  it('keeps automatic language detection for a non-English preferred greeting', () => {
     const cfg = buildOpenAISessionConfig({ voice: 'verse', language: 'es' });
     const t = (cfg as { audio: { input: { transcription: { model: string; language?: string } } } }).audio.input.transcription;
-    expect(t).toEqual({ model: 'gpt-4o-mini-transcribe', language: 'es' });
+    expect(t).toEqual({ model: 'gpt-4o-mini-transcribe' });
   });
 
   it('omits the language for an explicit English session', () => {

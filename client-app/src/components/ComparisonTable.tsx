@@ -16,12 +16,12 @@ const rows: Row[] = [
   { label: 'No-code agent builder', qvo: true, retell: 'partial', vapi: false, bland: 'partial', traditional: false },
   { label: 'Multi-channel (voice + SMS + web)', qvo: true, retell: false, vapi: false, bland: false, traditional: false },
   { label: 'Multi-tenant / multi-location', qvo: true, retell: false, vapi: false, bland: false, traditional: 'partial' },
-  { label: 'HIPAA-ready with BAA', qvo: true, retell: false, vapi: false, bland: false, traditional: 'partial' },
+  { label: 'Healthcare pilot approval and BAA chain', qvo: 'Approval pending', retell: 'Check vendor', vapi: 'Check vendor', bland: 'Check vendor', traditional: 'Check provider' },
   { label: 'Built-in scheduling & dispatch', qvo: true, retell: false, vapi: false, bland: false, traditional: true },
   { label: 'CRM + calendar integrations', qvo: true, retell: 'partial', vapi: 'partial', bland: 'partial', traditional: false },
   { label: 'Pricing model', qvo: 'Plan + per-minute', retell: 'Per-minute', vapi: 'Per-minute', bland: 'Per-minute', traditional: 'Per-call + retainer' },
   { label: 'Voice quality (sub-200ms latency)', qvo: true, retell: true, vapi: true, bland: 'partial', traditional: false },
-  { label: '24/7 human support', qvo: true, retell: 'partial', vapi: 'partial', bland: 'partial', traditional: true },
+  { label: 'Human support coverage', qvo: 'Not verified', retell: 'Check vendor', vapi: 'Check vendor', bland: 'Check vendor', traditional: 'Check provider' },
 ];
 
 function CellRender({ value }: { value: Cell }) {

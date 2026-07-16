@@ -13,6 +13,7 @@
 | `TWILIO_OUTBOUND_NUMBER` | Default outbound caller ID (E.164) | Twilio Console > Phone Numbers | `+1234567890` |
 | `ADMIN_JWT_SECRET` | JWT signing secret for admin API auth | Generate: `openssl rand -base64 48` | Random 64+ char string |
 | `CONNECTOR_ENCRYPTION_KEY` | 32-byte hex key for encrypting tenant secrets | Generate: `openssl rand -hex 32` | 64 hex characters |
+| `ENCRYPTION_MASTER_KEY` | Dedicated master key for platform-admin TOTP seeds and encrypted application settings | Generate: `openssl rand -hex 32` | 64 hex characters; recommended, with `CONNECTOR_ENCRYPTION_KEY` as the compatibility fallback |
 
 ### Required (production/staging only)
 
@@ -33,6 +34,9 @@
 | `STRIPE_PRICE_PRO_AI_MINUTES` | Stripe metered Price ID for the per-minute AI overage on the Pro tier. Same fail-closed behaviour as `STRIPE_PRICE_STARTER_AI_MINUTES`. | Stripe Dashboard > Products > Price ID (metered) | `price_...` |
 | `STRIPE_PRICE_ENTERPRISE_AI_MINUTES` | Stripe metered Price ID for the per-minute AI overage on the Enterprise tier. Same fail-closed behaviour as `STRIPE_PRICE_STARTER_AI_MINUTES`. | Stripe Dashboard > Products > Price ID (metered) | `price_...` |
 | `VOICE_GATEWAY_BASE_URL` | Public URL of the voice gateway | Your deployment domain | `https://your-domain.replit.app:3001` |
+| `VOICE_GATEWAY_STREAM_TOKEN` | Authenticates externally reachable Twilio/widget WebSocket upgrades. Production and staging startup fail if absent or shorter than 32 characters. | Generate with a cryptographically secure secret manager | Random 32+ character secret |
+| `QVO_PII_LOOKUP_HMAC_KEY` | Produces purpose- and tenant-separated caller lookup identifiers without querying by plaintext phone number. Production and staging startup fail if absent or shorter than 32 characters. Rotate only with a controlled lookup-hash migration. | Generate with a cryptographically secure secret manager | Random 32+ character secret |
+| `QVO_PII_LOOKUP_HMAC_KEY_VERSION` | Stable lowercase identifier written beside every caller lookup HMAC. Production and staging fail closed if it is missing or malformed. Never reuse a version for different key material. | Deployment change record | `2026-07-blue` |
 | `ADMIN_API_BASE_URL` | Public URL of the admin API | Your deployment domain | `https://your-domain.replit.app:3002` |
 | `VITE_BOOK_DEMO_SCHEDULER_URL` | Embedded scheduler URL used by the public `/book-demo` page. Must be set at **build time** (Vite inlines `VITE_*` vars). Enforced by `scripts/validate-env.ts` and Admin API startup — missing in production = hard fail. | Cal.com event link or Calendly link | `https://cal.com/qvo/30min` |
 | `CALCOM_WEBHOOK_SECRET` | HMAC-SHA256 secret used by both the Cal.com adapter route (`/book-demo/calcom-native-webhook`, where Cal.com itself posts) and the canonical envelope verifier (`/book-demo/calendar-webhook`, which the adapter forwards to with a synthesized `t=<unix>,v1=<hex>` envelope). **Production rejects all unsigned requests** (no `CALCOM_WEBHOOK_ALLOW_UNSIGNED` escape hatch outside dev). Enforced by `scripts/validate-env.ts` and Admin API startup. | Cal.com Webhook config (see §5) | Random 32+ char secret |
@@ -57,7 +61,6 @@
 | `TWILIO_COST_PER_MINUTE_CENTS` | `2` | Twilio cost per minute (cents) for usage metering |
 | `AI_COST_PER_MINUTE_CENTS` | `6` | AI cost per minute (cents) for usage metering |
 | `SMS_COST_PER_MESSAGE_CENTS` | `1` | SMS cost per message (cents) for usage metering |
-| `VOICE_GATEWAY_STREAM_TOKEN` | none | Optional bearer token for WebSocket stream auth |
 | `CAMPAIGN_TENANT_MAX_CONCURRENT` | `5` | Max concurrent outbound calls per tenant |
 | `DISABLE_PHI_LOGGING` | `false` | Set to `true` to redact phone numbers from logs |
 | `ADMIN_INTERNAL_TOKEN` | none | Internal bearer token for inter-service calls |
@@ -70,6 +73,8 @@
 | `SALES_EMAIL` | none | Legacy fallback for `SALES_NOTIFICATION_EMAIL`. Prefer the latter. |
 | `OPS_SLACK_WEBHOOK_URL` | none | Default Slack incoming-webhook URL used for sales-alert messages when the in-app Slack channel is enabled and no per-instance webhook override has been configured in **Admin → Sales Inbox → Alert settings**. |
 | `PLATFORM_ADMIN_BASE_URL` | falls back to `ADMIN_PUBLIC_URL` → `APP_PUBLIC_URL` → `ADMIN_API_BASE_URL` | Public origin used to build deep links inside sales-alert emails / Slack messages (e.g. `https://app.example.com/admin/sales-inbox#lead-42`). Set this to the URL admins use to reach the SPA, not the raw API origin, when those differ. |
+| `QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY` | unset | Previous caller-lookup HMAC key. Set only during one controlled rotation/backfill window and always pair it with `QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION`. Partial, weak, or duplicate configuration fails closed. |
+| `QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION` | unset | Version belonging to `QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY`. It must differ from the current version. Remove both previous-key variables only after reconciliation reports zero stale or missing hashes. |
 
 ## 2. Pre-deployment Validation
 
@@ -158,7 +163,45 @@ The platform automatically enables SSL with `rejectUnauthorized: false` for non-
 APP_ENV=production PLATFORM_DB_POOL_URL="your-url" npx tsx scripts/run-migrations.ts
 ```
 
-All 28 migrations have been validated to apply cleanly from a fresh database.
+The migration runner applies every ordered migration not already recorded in `schema_migrations`.
+
+### Healthcare data-control gate and caller-HMAC rotation
+
+Migrations `114_healthcare_deployment_approvals.sql` and `115_healthcare_control_evidence.sql` must be applied first in an isolated production-equivalent environment. Migration `115` creates the metadata-only control-evidence registry and adds `call_sessions.caller_lookup_key_version`; it does not validate historical rows automatically.
+
+Run the count/status/digest-only preflight for the exact pilot tenant and agent. The identifiers are read from environment and are never included in output:
+
+```bash
+QVO_PREFLIGHT_TENANT_ID="tenant-id" \
+QVO_PREFLIGHT_AGENT_ID="agent-id" \
+npm run preflight:healthcare-data-controls
+```
+
+The command must remain non-ready until the production-equivalent database proves both migrations, complete tenant-table catalog equality, the privileged service role, RLS coverage, eleven independently verified control records, zero caller-hash gaps, and attached retention/deletion proof. Missing external proof is reported as `external_required`; it must not be converted to a pass manually.
+
+Historical caller lookup is always dry-run first:
+
+```bash
+npm run backfill:caller-lookup-hashes
+```
+
+The command processes at most 100 rows by default and returns counts plus an opaque next cursor. Continue with `--cursor=<nextCursor>` until the dry run is complete. Apply mode requires the exact acknowledgement:
+
+```bash
+npx tsx scripts/backfill-caller-lookup-hashes.ts \
+  --apply \
+  --ack="APPLY CALLER LOOKUP HASH BACKFILL" \
+  --batch-size=100 \
+  --cursor="previous-next-cursor"
+```
+
+The job decrypts one value at a time through the existing envelope service, writes only the current HMAC and version, and emits no number, ciphertext, row detail, database URL, or provider error. Save only its count-only output as deployment evidence.
+
+For rotation, deploy the new current key/version while retaining exactly one old key/version as the previous pair. Reads use both; writes use only current. Complete dry-run, apply, and preflight reconciliation before removing the previous pair. Never rotate both keys at once, reuse a version, or validate the database constraint while missing/stale counts are nonzero. After zero-gap reconciliation, a database owner may validate `call_sessions_lookup_hash_version_pair` in the controlled change window.
+
+Production healthcare approval references must be server-generated `hce_…` registry references. A platform administrator submits artifact metadata and SHA-256 only; a different platform administrator verifies it. Artifact contents, credentials, tokens, signed agreements, and URLs containing query secrets must remain in the approved evidence system. Revocation or expiry immediately invalidates production approval evaluation.
+
+The repository provides a versioned retention contract and read-only planner but intentionally supplies no default durations and no destructive retention executor. The compliance owner must approve every scope and attach a verified `retention_controls` evidence record before a dry-run plan is accepted. Backups and external processors remain external-evidence gates.
 
 ### Supabase-Specific Notes
 
@@ -413,6 +456,7 @@ For local development without a real Cal.com or Calendly webhook, you can either
 
 - [ ] `ADMIN_JWT_SECRET` is a unique, randomly generated string (64+ characters)
 - [ ] `CONNECTOR_ENCRYPTION_KEY` is 32 random bytes (64 hex chars): `openssl rand -hex 32`
+- [ ] `ENCRYPTION_MASTER_KEY` is independently generated with at least 32 random bytes; record its rotation owner. Rotating it without a controlled platform-admin MFA re-enrollment procedure invalidates enrolled TOTP seeds and recovery-code verification.
 - [ ] `STRIPE_SECRET_KEY` is a live key (not `sk_test_...`) for production
 - [ ] `ADMIN_PASSWORD` for the seed admin is strong and stored securely
 - [ ] `DISABLE_PHI_LOGGING` is set to `true` in production

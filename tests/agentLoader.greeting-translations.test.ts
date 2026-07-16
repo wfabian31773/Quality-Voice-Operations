@@ -7,6 +7,7 @@ import {
   type GreetingTemplateKey,
 } from '../platform/agent-templates/greetingTranslations';
 import { AGENT_LANGUAGES } from '../platform/agent-templates/agentLanguages';
+import { buildHealthcareReceptionistGreeting } from '../platform/agent-templates/healthcare-receptionist';
 import type { TenantId } from '../platform/core/types';
 
 const ALL_TEMPLATE_KEYS: GreetingTemplateKey[] = [
@@ -95,7 +96,7 @@ describe('loadAgentConfig - localized default greeting per template', () => {
 
   it('uses the localized greeting for a Japanese answering-service agent', () => {
     const cfg = loadAgentConfig(makeCtx('answering-service', 'ja', { practiceName: '青クリニック' }));
-    expect(cfg.greeting).toBe(buildLocalizedGreeting('answering-service', '青クリニック', 'ja'));
+    expect(cfg.greeting).toBe(buildHealthcareReceptionistGreeting('青クリニック', 'ja'));
   });
 
   it('uses the localized greeting for a Portuguese medical-after-hours agent', () => {

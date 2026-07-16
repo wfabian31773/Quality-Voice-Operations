@@ -1,143 +1,35 @@
 import '../styles/tw-public.css';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Menu, X, Phone, ChevronDown, Moon, Sun } from 'lucide-react';
+import { Menu, X, Phone, Moon, Sun } from 'lucide-react';
 import WebsiteSalesWidget from './WebsiteSalesWidget';
 import CookieConsent from './CookieConsent';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useTheme } from '../lib/theme';
 
 type SimpleLink = { kind: 'link'; to: string; i18nKey: string };
-type DropdownLink = {
-  kind: 'dropdown';
-  id: string;
-  i18nKey: string;
-  /** Path prefixes (or exact paths) that should mark this dropdown as active. */
-  activePaths: string[];
-  groups: Array<{
-    label?: string;
-    items: Array<{ to: string; label: string; description?: string; isNew?: boolean }>;
-  }>;
-};
-type NavItem = SimpleLink | DropdownLink;
 
 export default function PublicLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const location = useLocation();
   const { t } = useTranslation();
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const { dark, toggle: toggleTheme } = useTheme();
 
-  // Close dropdowns when route changes.
+  // Close the mobile menu when route changes.
   useEffect(() => {
-    setOpenDropdown(null);
     setMobileOpen(false);
-    setMobileExpanded(null);
   }, [location.pathname]);
 
-  // Close dropdowns on outside click.
-  useEffect(() => {
-    if (!openDropdown) return;
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpenDropdown(null);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [openDropdown]);
-
-  // Close on Escape.
-  useEffect(() => {
-    if (!openDropdown) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenDropdown(null);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [openDropdown]);
-
-  const navItems: NavItem[] = [
-    {
-      kind: 'dropdown',
-      id: 'product',
-      i18nKey: 'public_nav.product',
-      activePaths: ['/product', '/features', '/ai-agents', '/integrations'],
-      groups: [
-        {
-          label: t('public_nav_groups.platform'),
-          items: [
-            { to: '/product', label: t('public_nav.product_overview'), description: t('public_nav_desc.product_overview') },
-            { to: '/features', label: t('public_nav.features'), description: t('public_nav_desc.features') },
-            { to: '/ai-agents', label: t('public_nav.agents'), description: t('public_nav_desc.agents') },
-            { to: '/integrations', label: t('public_nav.integrations'), description: t('public_nav_desc.integrations') },
-          ],
-        },
-        {
-          label: t('public_nav_groups.developer'),
-          items: [
-            {
-              to: '/product/federated-ingest',
-              label: t('public_nav.federated_ingest'),
-              description: t('public_nav_desc.federated_ingest'),
-              isNew: true,
-            },
-            {
-              to: '/product/global-intelligence-network',
-              label: t('public_nav.gin'),
-              description: t('public_nav_desc.gin'),
-              isNew: true,
-            },
-          ],
-        },
-      ],
-    },
-    {
-      kind: 'dropdown',
-      id: 'solutions',
-      i18nKey: 'public_nav.solutions',
-      activePaths: ['/industries', '/use-cases', '/case-studies'],
-      groups: [
-        {
-          label: t('public_nav_groups.solutions_overview'),
-          items: [
-            {
-              to: '/industries/vertical-agents',
-              label: t('public_nav.vertical_agents'),
-              description: t('public_nav_desc.vertical_agents'),
-              isNew: true,
-            },
-            { to: '/use-cases', label: t('public_nav.use_cases'), description: t('public_nav_desc.use_cases') },
-            { to: '/case-studies', label: t('footer.case_studies'), description: t('public_nav_desc.case_studies') },
-          ],
-        },
-        {
-          label: t('public_nav_groups.industries'),
-          items: [
-            { to: '/industries/healthcare', label: t('footer.healthcare') },
-            { to: '/industries/dental', label: t('footer.dental') },
-            { to: '/industries/legal', label: t('footer.legal') },
-            { to: '/industries/real-estate', label: t('footer.real_estate') },
-            { to: '/industries/home-services', label: t('footer.home_services') },
-          ],
-        },
-      ],
-    },
+  const navItems: SimpleLink[] = [
+    { kind: 'link', to: '/industries/healthcare', i18nKey: 'footer.healthcare' },
+    { kind: 'link', to: '/industries/dental', i18nKey: 'footer.dental' },
     { kind: 'link', to: '/pricing', i18nKey: 'public_nav.pricing' },
     { kind: 'link', to: '/demo', i18nKey: 'public_nav.demo' },
-    { kind: 'link', to: '/resources', i18nKey: 'public_nav.resources' },
     { kind: 'link', to: '/contact', i18nKey: 'public_nav.contact' },
   ];
 
-  const isItemActive = (item: NavItem) => {
-    if (item.kind === 'link') return location.pathname === item.to;
-    return item.activePaths.some(
-      (p) => location.pathname === p || location.pathname.startsWith(`${p}/`),
-    );
-  };
+  const isItemActive = (item: SimpleLink) => location.pathname === item.to;
 
   return (
     // `data-accent="teal-forward"` per brand kit: marketing surface leads
@@ -163,106 +55,20 @@ export default function PublicLayout() {
               />
             </Link>
 
-            <nav className="hidden lg:flex items-center gap-1" ref={dropdownRef}>
-              {navItems.map((item) => {
-                if (item.kind === 'link') {
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
-                        isItemActive(item)
-                          ? 'bg-on-sidebar/15 text-on-sidebar'
-                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
-                      }`}
-                    >
-                      {t(item.i18nKey)}
-                    </Link>
-                  );
-                }
-
-                const isOpen = openDropdown === item.id;
-                return (
-                  <div key={item.id} className="relative">
-                    <button
-                      type="button"
-                      aria-haspopup="true"
-                      aria-expanded={isOpen}
-                      onClick={() => setOpenDropdown(isOpen ? null : item.id)}
-                      onMouseEnter={() => setOpenDropdown(item.id)}
-                      className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1 ${
-                        isItemActive(item) || isOpen
-                          ? 'bg-on-sidebar/15 text-on-sidebar'
-                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
-                      }`}
-                    >
-                      {t(item.i18nKey)}
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-
-                    {isOpen && (
-                      <div
-                        onMouseLeave={() => setOpenDropdown(null)}
-                        className="absolute left-0 top-full pt-2 z-dropdown"
-                      >
-                        <div
-                          className="w-[28rem] bg-surface text-text-primary border border-border overflow-hidden"
-                          style={{
-                            borderRadius: 'var(--radius-xl)',
-                            boxShadow: 'var(--elevation-3)',
-                          }}
-                        >
-                          <div className="p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {item.groups.map((group, gi) => (
-                              <div key={gi}>
-                                {group.label && (
-                                  <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-                                    {group.label}
-                                  </p>
-                                )}
-                                <ul className="space-y-0.5">
-                                  {group.items.map((sub) => (
-                                    <li key={sub.to}>
-                                      <Link
-                                        to={sub.to}
-                                        onClick={() => setOpenDropdown(null)}
-                                        className={`block px-2.5 py-2 rounded-lg transition-colors duration-[var(--motion-fast)] group ${
-                                          location.pathname === sub.to
-                                            ? 'bg-primary-light'
-                                            : 'hover:bg-surface-hover'
-                                        }`}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">
-                                            {sub.label}
-                                          </span>
-                                          {sub.isNew && (
-                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-primary bg-primary-light px-1.5 py-0.5 rounded">
-                                              {t('public_nav.new_badge')}
-                                            </span>
-                                          )}
-                                        </div>
-                                        {sub.description && (
-                                          <p className="text-xs text-text-secondary leading-snug mt-0.5 line-clamp-2">
-                                            {sub.description}
-                                          </p>
-                                        )}
-                                      </Link>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <nav className="hidden lg:flex items-center gap-1">
+              {navItems.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isItemActive(item)
+                      ? 'bg-on-sidebar/15 text-on-sidebar'
+                      : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
+                  }`}
+                >
+                  {t(item.i18nKey)}
+                </Link>
+              ))}
             </nav>
 
             <div className="hidden lg:flex items-center gap-2">
@@ -278,15 +84,6 @@ export default function PublicLayout() {
                 {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
                 <span className="text-xs font-medium">{dark ? t('theme.light') : t('theme.dark')}</span>
               </button>
-              {/* Brand-spec buttons per qvo-components.css `.qvo-btn`:
-                  40px tall, 14px text, 16px horizontal padding, 8px radius.
-                  Sign In = link, Book a Demo = ghost outline, Start Trial = primary.
-                  Color treatment is on-dark because the navbar is sidebar-bg (harbor).
-                  whitespace-nowrap prevents "Sign In" and "Book a Demo" from wrapping
-                  word-by-word when the nav competes for horizontal space at narrow
-                  desktop widths — the previous bug Wayne flagged where they rendered
-                  as "Sign / In" and "Book / a / Demo" stacked vertically. shrink-0
-                  ensures the flex parent never crushes them. */}
               <Link
                 to="/login"
                 className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium text-on-sidebar/80 hover:text-on-sidebar transition-colors rounded-md whitespace-nowrap shrink-0"
@@ -298,12 +95,6 @@ export default function PublicLayout() {
                 className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium text-on-sidebar border border-on-sidebar/25 hover:border-on-sidebar/50 hover:bg-on-sidebar/5 transition-colors rounded-md whitespace-nowrap shrink-0"
               >
                 {t('actions.book_demo')}
-              </Link>
-              <Link
-                to="/signup"
-                className="inline-flex items-center justify-center h-10 px-4 text-sm font-semibold bg-primary hover:bg-primary-hover text-on-primary transition-colors rounded-md whitespace-nowrap shrink-0"
-              >
-                {t('actions.start_trial')}
               </Link>
             </div>
 
@@ -333,80 +124,20 @@ export default function PublicLayout() {
         {mobileOpen && (
           <div className="lg:hidden border-t border-on-sidebar/10 bg-sidebar-bg">
             <div className="px-6 py-4 space-y-1">
-              {navItems.map((item) => {
-                if (item.kind === 'link') {
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMobileOpen(false)}
-                      className={`block px-3 py-2.5 text-sm font-medium rounded-lg ${
-                        isItemActive(item)
-                          ? 'bg-on-sidebar/15 text-on-sidebar'
-                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
-                      }`}
-                    >
-                      {t(item.i18nKey)}
-                    </Link>
-                  );
-                }
-
-                const isExpanded = mobileExpanded === item.id;
-                return (
-                  <div key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => setMobileExpanded(isExpanded ? null : item.id)}
-                      aria-expanded={isExpanded}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg ${
-                        isItemActive(item)
-                          ? 'bg-on-sidebar/15 text-on-sidebar'
-                          : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
-                      }`}
-                    >
-                      <span>{t(item.i18nKey)}</span>
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                    {isExpanded && (
-                      <div className="pl-3 mt-1 mb-2 space-y-2 border-l border-on-sidebar/10 ml-3">
-                        {item.groups.map((group, gi) => (
-                          <div key={gi}>
-                            {group.label && (
-                              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-on-sidebar/70">
-                                {group.label}
-                              </p>
-                            )}
-                            {group.items.map((sub) => (
-                              <Link
-                                key={sub.to}
-                                to={sub.to}
-                                onClick={() => setMobileOpen(false)}
-                                className={`block px-3 py-2 text-sm rounded-lg ${
-                                  location.pathname === sub.to
-                                    ? 'bg-on-sidebar/15 text-on-sidebar'
-                                    : 'text-on-sidebar/70 hover:text-on-sidebar hover:bg-on-sidebar/10'
-                                }`}
-                              >
-                                <span className="inline-flex items-center gap-2">
-                                  {sub.label}
-                                  {sub.isNew && (
-                                    <span className="text-[9px] font-semibold uppercase tracking-wider text-primary bg-primary/15 px-1.5 py-0.5 rounded">
-                                      {t('public_nav.new_badge')}
-                                    </span>
-                                  )}
-                                </span>
-                              </Link>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {navItems.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMobileOpen(false)}
+                  className={`block px-3 py-2.5 text-sm font-medium rounded-lg ${
+                    isItemActive(item)
+                      ? 'bg-on-sidebar/15 text-on-sidebar'
+                      : 'text-on-sidebar/75 hover:text-on-sidebar hover:bg-on-sidebar/10'
+                  }`}
+                >
+                  {t(item.i18nKey)}
+                </Link>
+              ))}
               <div className="pt-3 border-t border-on-sidebar/10 mt-3 space-y-2">
                 <div className="flex items-center justify-center px-3 py-2">
                   <LanguageSwitcher variant="header" />
@@ -424,13 +155,6 @@ export default function PublicLayout() {
                   className="block text-center text-sm font-medium text-on-sidebar border border-on-sidebar/20 hover:border-on-sidebar/40 px-4 py-2.5 rounded-lg"
                 >
                   {t('actions.book_demo')}
-                </Link>
-                <Link
-                  to="/signup"
-                  onClick={() => setMobileOpen(false)}
-                  className="btn-primary-glow block text-center text-sm font-medium bg-primary hover:bg-primary-hover text-on-primary px-4 py-2.5 rounded-lg transition-colors"
-                >
-                  {t('actions.start_trial')}
                 </Link>
               </div>
             </div>
@@ -461,13 +185,7 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_product')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/product" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.platform')}</Link></li>
-                <li><Link to="/features" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.features')}</Link></li>
-                <li><Link to="/ai-agents" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.agents')}</Link></li>
                 <li><Link to="/pricing" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.pricing')}</Link></li>
-                <li><Link to="/integrations" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.integrations')}</Link></li>
-                <li><Link to="/product/federated-ingest" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.federated_ingest')}</Link></li>
-                <li><Link to="/product/global-intelligence-network" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.gin')}</Link></li>
                 <li><Link to="/demo" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.live_demo')}</Link></li>
                 <li><Link to="/book-demo" className="text-sm hover:text-on-sidebar transition-colors">{t('actions.book_demo')}</Link></li>
               </ul>
@@ -476,12 +194,8 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_solutions')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/industries/vertical-agents" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.vertical_agents')}</Link></li>
                 <li><Link to="/industries/healthcare" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.healthcare')}</Link></li>
                 <li><Link to="/industries/dental" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.dental')}</Link></li>
-                <li><Link to="/industries/legal" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.legal')}</Link></li>
-                <li><Link to="/industries/real-estate" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.real_estate')}</Link></li>
-                <li><Link to="/industries/home-services" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.home_services')}</Link></li>
                 <li><Link to="/case-studies" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.case_studies')}</Link></li>
               </ul>
             </div>
@@ -490,10 +204,6 @@ export default function PublicLayout() {
               <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_company')}</h4>
               <ul className="space-y-2.5">
                 <li><Link to="/contact" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.contact')}</Link></li>
-                <li><Link to="/blog" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.blog')}</Link></li>
-                <li><Link to="/resources" className="text-sm hover:text-on-sidebar transition-colors">{t('public_nav.resources')}</Link></li>
-                <li><Link to="/docs" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.documentation')}</Link></li>
-                <li><Link to="/docs/api-overview" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.api_reference')}</Link></li>
                 <li><Link to="/login" className="text-sm hover:text-on-sidebar transition-colors">{t('actions.sign_in')}</Link></li>
               </ul>
             </div>

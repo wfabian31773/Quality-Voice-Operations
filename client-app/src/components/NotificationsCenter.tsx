@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Bell, X, Check, Trash2, AlertCircle, CreditCard, MessageSquare, PhoneCall, Megaphone, Wrench, Settings as SettingsIcon, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
+import { isInternalSurfacePath, isQvoStaff } from '../lib/surfacePolicy';
 
 interface Notification {
   id: string;
@@ -41,6 +43,8 @@ function metaFor(type: string): TypeMeta {
 
 export default function NotificationsCenter() {
   const { t } = useTranslation('tenant');
+  const { user } = useAuth();
+  const isStaff = isQvoStaff(user);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const ref = useRef<HTMLDivElement>(null);
@@ -202,7 +206,10 @@ export default function NotificationsCenter() {
             {filtered.map((n) => {
               const m = metaFor(n.type);
               const Icon = m.icon;
-              const link = (n.metadata?.link as string | undefined) ?? null;
+              const candidateLink = (n.metadata?.link as string | undefined) ?? null;
+              const link = candidateLink && (isStaff || !isInternalSurfacePath(candidateLink))
+                ? candidateLink
+                : null;
               const inner = (
                 <div
                   className={`flex items-start gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-surface-hover transition-colors ${

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { withPrivilegedClient } from '../../../platform/db';
@@ -13,12 +14,189 @@ import {
 } from '../../../platform/campaigns';
 import { sendEmail } from '../../../platform/email/EmailService';
 import { encryptionInitializationReminderEmail } from '../../../platform/email/templates';
+import {
+  HEALTHCARE_APPROVAL_EVIDENCE_KEYS,
+  SYNTHETIC_APPROVAL_EVIDENCE_KEYS,
+  isHealthcareReceptionistIdentity,
+} from '../../../shared/compliance/healthcareDeploymentApproval';
+import { createPiiLookupHash, normalizeLookupPhone } from '../../../platform/security/PiiLookupHash';
+import {
+  MASTER_VOICE_AGENT_CORE_VERSION,
+  MASTER_VOICE_AGENT_MODEL,
+} from '../../../platform/agent-runtime/masterVoiceAgent';
+import { HEALTHCARE_RECEPTIONIST_ROLE_VERSION } from '../../../platform/agent-templates/healthcare-receptionist';
+import { verifyHealthcareControlEvidenceRefs } from '../../../platform/compliance/HealthcareControlEvidenceService';
+import { verifyHealthcareActivationReadinessRef } from '../../../platform/compliance/HealthcareActivationReadinessService';
+import {
+  HEALTHCARE_ACTIVATION_CATALOG_COUNT,
+  HEALTHCARE_ACTIVATION_CATALOG_VERSION,
+  HEALTHCARE_ACTIVATION_EVIDENCE_CONTROL_COUNT,
+} from '../../../shared/compliance/healthcareActivationReadiness';
+import { HEALTHCARE_EVIDENCE_OWNER_ROLES } from '../../../shared/compliance/healthcareControlEvidence';
+import { calculateHealthcareReadinessPreflightSha256 } from '../../../platform/compliance/HealthcareDataControlPreflight';
 
 const router = Router();
 const logger = createLogger('PLATFORM_COMPLIANCE');
 
 const ENCRYPTION_REMINDER_ACTION = 'platform.encryption.reminder_sent';
 const ENCRYPTION_INITIALIZE_ACTION = 'platform.encryption.initialized_by_admin';
+
+const approvalEvidenceRefSchema = z.string().trim().min(3).max(500).regex(
+  /^[A-Za-z0-9][A-Za-z0-9._:/#-]*$/,
+  'Evidence references must be bounded identifiers or non-secret paths',
+);
+const approvalCreateSchema = z.object({
+  tenantId: z.string().trim().min(1).max(255),
+  agentId: z.string().trim().min(1).max(255),
+  approvalKind: z.enum(['synthetic_test', 'production_healthcare']),
+  expiresAt: z.string().datetime({ offset: true }),
+  evidenceRefs: z.record(approvalEvidenceRefSchema),
+  syntheticCallerNumbers: z.array(z.string().min(8).max(30)).min(1).max(10).optional(),
+  readinessRef: z.string().regex(/^har_[a-f0-9]{3,36}$/).optional(),
+}).strict();
+const approvalRevokeSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+}).strict();
+const evidenceArtifactLocatorSchema = z.string().trim().min(8).max(500).refine((value) => {
+  try {
+    const parsed = new URL(value);
+    return ['vault:', 'grc:', 's3:', 'https:'].includes(parsed.protocol)
+      && parsed.username === ''
+      && parsed.password === ''
+      && parsed.search === ''
+      && parsed.hash === '';
+  } catch {
+    return false;
+  }
+}, 'Artifact locator must be an approved secret-free URI without query parameters or fragments');
+const evidenceCreateSchema = z.object({
+  tenantId: z.string().trim().min(1).max(255),
+  agentId: z.string().trim().min(1).max(255),
+  environment: z.enum(['staging', 'production']),
+  controlKey: z.enum(HEALTHCARE_APPROVAL_EVIDENCE_KEYS),
+  artifactLocator: evidenceArtifactLocatorSchema,
+  artifactSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  ownerRole: z.enum(['compliance', 'infrastructure', 'product_safety', 'pilot_customer']),
+  expiresAt: z.string().datetime({ offset: true }),
+}).strict();
+const evidenceRevokeSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+}).strict();
+const readinessPreflightSchema = z.object({
+  overallStatus: z.literal('pass'),
+  catalogVersion: z.literal(HEALTHCARE_ACTIVATION_CATALOG_VERSION),
+  catalogCount: z.literal(HEALTHCARE_ACTIVATION_CATALOG_COUNT),
+  discoveredCount: z.literal(HEALTHCARE_ACTIVATION_CATALOG_COUNT),
+  tenantTableCount: z.literal(HEALTHCARE_ACTIVATION_CATALOG_COUNT),
+  rlsEnabledCount: z.literal(HEALTHCARE_ACTIVATION_CATALOG_COUNT),
+  verifiedControlCount: z.literal(HEALTHCARE_ACTIVATION_EVIDENCE_CONTROL_COUNT),
+  callerMissingCount: z.literal(0),
+  callerStaleCount: z.literal(0),
+  migrationStatus: z.literal('pass'),
+  schemaStatus: z.literal('pass'),
+  databaseStatus: z.literal('pass'),
+  keyringStatus: z.literal('pass'),
+  evidenceStatus: z.literal('pass'),
+  callerHashStatus: z.literal('pass'),
+  retentionStatus: z.literal('pass'),
+  deletionStatus: z.literal('pass'),
+  preflightSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  evidenceSnapshotSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  retentionPlanSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  deletionEvidenceSha256: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+const readinessCreateSchema = z.object({
+  tenantId: z.string().trim().min(1).max(255),
+  agentId: z.string().trim().min(1).max(255),
+  targetEnvironment: z.enum(['production_equivalent', 'production']),
+  expiresAt: z.string().datetime({ offset: true }),
+  preflight: readinessPreflightSchema,
+}).strict();
+const readinessRevokeSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+}).strict();
+
+function hasRequiredEvidence(
+  evidence: Record<string, string>,
+  required: readonly string[],
+): boolean {
+  const allowed = new Set<string>([
+    ...HEALTHCARE_APPROVAL_EVIDENCE_KEYS,
+    ...SYNTHETIC_APPROVAL_EVIDENCE_KEYS,
+  ]);
+  return Object.keys(evidence).every((key) => allowed.has(key))
+    && required.every((key) => typeof evidence[key] === 'string');
+}
+
+function approvalResponse(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    agentId: String(row.agent_id),
+    approvalKind: String(row.approval_kind),
+    coreVersion: String(row.core_version),
+    model: String(row.model),
+    rolePackageId: String(row.role_package_id),
+    rolePackageVersion: String(row.role_package_version),
+    recordingPolicy: String(row.recording_policy),
+    approvedBy: String(row.approved_by),
+    approvedAt: row.approved_at,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at ?? null,
+    syntheticCallerCount: Number(row.synthetic_caller_count ?? 0),
+    readinessRef: row.readiness_ref ? String(row.readiness_ref) : null,
+  };
+}
+
+function evidenceResponse(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    evidenceRef: String(row.evidence_ref),
+    tenantId: String(row.tenant_id),
+    agentId: String(row.agent_id),
+    environment: String(row.environment),
+    controlKey: String(row.control_key),
+    artifactSha256: String(row.artifact_sha256),
+    ownerRole: String(row.owner_role),
+    status: String(row.status),
+    submittedBy: String(row.submitted_by),
+    submittedAt: row.submitted_at,
+    verifiedBy: row.verified_by ? String(row.verified_by) : null,
+    verifiedAt: row.verified_at ?? null,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at ?? null,
+  };
+}
+
+function readinessResponse(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    readinessRef: String(row.readiness_ref),
+    tenantId: String(row.tenant_id),
+    agentId: String(row.agent_id),
+    targetEnvironment: String(row.target_environment),
+    coreVersion: String(row.core_version),
+    model: String(row.model),
+    rolePackageId: String(row.role_package_id),
+    rolePackageVersion: String(row.role_package_version),
+    recordingPolicy: String(row.recording_policy),
+    catalogVersion: String(row.catalog_version),
+    catalogCount: Number(row.catalog_count),
+    discoveredCount: Number(row.discovered_count),
+    tenantTableCount: Number(row.tenant_table_count),
+    rlsEnabledCount: Number(row.rls_enabled_count),
+    verifiedControlCount: Number(row.verified_control_count),
+    callerMissingCount: Number(row.caller_missing_count),
+    callerStaleCount: Number(row.caller_stale_count),
+    status: String(row.status),
+    submittedBy: String(row.submitted_by),
+    submittedAt: row.submitted_at,
+    verifiedBy: row.verified_by ? String(row.verified_by) : null,
+    verifiedAt: row.verified_at ?? null,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at ?? null,
+  };
+}
 
 function getAppBaseUrl(): string {
   return (
@@ -672,12 +850,14 @@ router.get('/platform/compliance/deletion-requests', requireAuth, requirePlatfor
         values.push(status);
       }
       const { rows } = await client.query(
-        `SELECT d.id, d.tenant_id, t.name AS tenant_name, t.slug AS tenant_slug, t.status AS tenant_status,
+        `SELECT d.id, d.tenant_id, d.tenant_fingerprint,
+                t.name AS tenant_name, t.slug AS tenant_slug, t.status AS tenant_status,
                 d.requested_by, ru.email AS requested_by_email,
                 d.requested_at, d.scheduled_for, d.cancelled_at, d.status, d.reason,
-                d.cancelled_by, cu.email AS cancelled_by_email
+                d.cancelled_by, cu.email AS cancelled_by_email,
+                d.first_party_verification, d.external_deletion_evidence, d.completed_at
          FROM tenant_deletion_requests d
-         JOIN tenants t ON t.id = d.tenant_id
+         LEFT JOIN tenants t ON t.id = d.tenant_id
          LEFT JOIN users ru ON ru.id = d.requested_by
          LEFT JOIN users cu ON cu.id = d.cancelled_by
          WHERE ${conditions.join(' AND ')}
@@ -938,6 +1118,7 @@ router.get('/platform/compliance/platform-admins', requireAuth, requirePlatformA
     const admins = await withPrivilegedClient(async (client) => {
       const { rows } = await client.query(`
         SELECT u.id, u.email, u.first_name, u.last_name, u.created_at, u.last_login_at,
+               u.is_active, u.email_verified, u.mfa_enabled_at, u.mfa_last_verified_at,
                COALESCE(role_counts.tenant_count, 0)::int AS tenant_role_count
         FROM users u
         LEFT JOIN (
@@ -971,6 +1152,605 @@ router.get('/platform/compliance/encrypted-fields', requireAuth, requirePlatform
   } catch (err) {
     logger.error('Failed to load encrypted fields summary', { error: String(err) });
     return res.status(500).json({ error: 'Failed to load encrypted fields summary' });
+  }
+});
+
+// ---------- Authenticated healthcare control evidence ----------
+router.get('/platform/compliance/healthcare-evidence', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId.trim() : '';
+  const agentId = typeof req.query.agentId === 'string' ? req.query.agentId.trim() : '';
+  if (tenantId.length > 255 || agentId.length > 255) {
+    return res.status(400).json({ error: 'Invalid evidence filters' });
+  }
+  try {
+    const rows = await withPrivilegedClient(async (client) => {
+      const conditions: string[] = ['1 = 1'];
+      const values: unknown[] = [];
+      if (tenantId) {
+        values.push(tenantId);
+        conditions.push(`tenant_id = $${values.length}`);
+      }
+      if (agentId) {
+        values.push(agentId);
+        conditions.push(`agent_id = $${values.length}`);
+      }
+      const result = await client.query(
+        `SELECT id, evidence_ref, tenant_id, agent_id, environment, control_key,
+                artifact_sha256, owner_role, status, submitted_by, submitted_at,
+                verified_by, verified_at, expires_at, revoked_at
+           FROM healthcare_control_evidence
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY submitted_at DESC
+          LIMIT 500`,
+        values,
+      );
+      return result.rows;
+    });
+    return res.json({ evidence: rows.map(evidenceResponse) });
+  } catch (err) {
+    logger.error('Failed to list healthcare control evidence', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to list healthcare control evidence' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-evidence', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const parsed = evidenceCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid healthcare evidence request' });
+  const input = parsed.data;
+  if (input.ownerRole !== HEALTHCARE_EVIDENCE_OWNER_ROLES[input.controlKey]) {
+    return res.status(400).json({ error: 'Healthcare evidence owner does not match the accountable control owner' });
+  }
+  const expiresAt = new Date(input.expiresAt).getTime();
+  if (expiresAt <= Date.now() + 5 * 60_000 || expiresAt > Date.now() + 365 * 86_400_000) {
+    return res.status(400).json({ error: 'Evidence expiry must be within 365 days' });
+  }
+  try {
+    const row = await withPrivilegedClient<Record<string, unknown> | null>(async (client) => {
+      const agentResult = await client.query(
+        'SELECT id, tenant_id FROM agents WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+        [input.agentId, input.tenantId],
+      );
+      if (!agentResult.rows[0]) return null;
+      const inserted = await client.query(
+        `INSERT INTO healthcare_control_evidence
+           (tenant_id, agent_id, environment, control_key, artifact_locator,
+            artifact_sha256, owner_role, submitted_by, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, evidence_ref, tenant_id, agent_id, environment, control_key,
+                   artifact_sha256, owner_role, status, submitted_by, submitted_at,
+                   verified_by, verified_at, expires_at, revoked_at`,
+        [
+          input.tenantId, input.agentId, input.environment, input.controlKey,
+          input.artifactLocator, input.artifactSha256, input.ownerRole,
+          req.user!.userId, input.expiresAt,
+        ],
+      );
+      return inserted.rows[0] ?? null;
+    });
+    if (!row) return res.status(404).json({ error: 'Agent not found for tenant' });
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.evidence_submitted',
+      resourceType: 'healthcare_control_evidence',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: {
+        evidenceRef: String(row.evidence_ref),
+        environment: input.environment,
+        controlKey: input.controlKey,
+        ownerRole: input.ownerRole,
+        artifactSha256: input.artifactSha256,
+        expiresAt: input.expiresAt,
+      },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.status(201).json({ evidence: evidenceResponse(row) });
+  } catch (err) {
+    logger.error('Failed to submit healthcare control evidence', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to submit healthcare control evidence' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-evidence/:id/verify', requireAuth, requirePlatformAdmin, async (req, res) => {
+  if (!z.object({}).strict().safeParse(req.body).success) {
+    return res.status(400).json({ error: 'Invalid evidence verification request' });
+  }
+  try {
+    const row = await withPrivilegedClient(async (client) => {
+      const result = await client.query(
+        `UPDATE healthcare_control_evidence
+            SET status = 'verified', verified_by = $2, verified_at = NOW(), updated_at = NOW()
+          WHERE id = $1 AND status = 'pending' AND submitted_by <> $2 AND expires_at > NOW()
+          RETURNING id, evidence_ref, tenant_id, agent_id, environment, control_key,
+                    artifact_sha256, owner_role, status, submitted_by, submitted_at,
+                    verified_by, verified_at, expires_at, revoked_at`,
+        [req.params.id, req.user!.userId],
+      );
+      return result.rows[0] ?? null;
+    });
+    if (!row) return res.status(409).json({ error: 'Evidence requires a different verifier and active pending status' });
+    await writeAuditLog({
+      tenantId: String(row.tenant_id),
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.evidence_verified',
+      resourceType: 'healthcare_control_evidence',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: { evidenceRef: String(row.evidence_ref), controlKey: String(row.control_key) },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.json({ evidence: evidenceResponse(row) });
+  } catch (err) {
+    logger.error('Failed to verify healthcare control evidence', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to verify healthcare control evidence' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-evidence/:id/revoke', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const parsed = evidenceRevokeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid evidence revocation request' });
+  try {
+    const row = await withPrivilegedClient(async (client) => {
+      const result = await client.query(
+        `UPDATE healthcare_control_evidence
+            SET status = 'revoked', revoked_by = $2, revoked_at = NOW(),
+                revocation_reason = $3, updated_at = NOW()
+          WHERE id = $1 AND status IN ('pending', 'verified') AND revoked_at IS NULL
+          RETURNING id, evidence_ref, tenant_id, agent_id, environment, control_key,
+                    artifact_sha256, owner_role, status, submitted_by, submitted_at,
+                    verified_by, verified_at, expires_at, revoked_at`,
+        [req.params.id, req.user!.userId, parsed.data.reason],
+      );
+      return result.rows[0] ?? null;
+    });
+    if (!row) return res.status(404).json({ error: 'Active healthcare evidence not found' });
+    await writeAuditLog({
+      tenantId: String(row.tenant_id),
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.evidence_revoked',
+      resourceType: 'healthcare_control_evidence',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: { evidenceRef: String(row.evidence_ref), reason: parsed.data.reason },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.json({ evidence: evidenceResponse(row) });
+  } catch (err) {
+    logger.error('Failed to revoke healthcare control evidence', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to revoke healthcare control evidence' });
+  }
+});
+
+// ---------- Immutable healthcare activation-readiness attestations ----------
+router.get('/platform/compliance/healthcare-readiness', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId.trim() : '';
+  const agentId = typeof req.query.agentId === 'string' ? req.query.agentId.trim() : '';
+  if (tenantId.length > 255 || agentId.length > 255) {
+    return res.status(400).json({ error: 'Invalid readiness filters' });
+  }
+  try {
+    const rows = await withPrivilegedClient(async (client) => {
+      const conditions: string[] = ['1 = 1'];
+      const values: unknown[] = [];
+      if (tenantId) {
+        values.push(tenantId);
+        conditions.push(`tenant_id = $${values.length}`);
+      }
+      if (agentId) {
+        values.push(agentId);
+        conditions.push(`agent_id = $${values.length}`);
+      }
+      const result = await client.query(
+        `SELECT id, readiness_ref, tenant_id, agent_id, target_environment,
+                core_version, model, role_package_id, role_package_version, recording_policy,
+                catalog_version, catalog_count, discovered_count, tenant_table_count,
+                rls_enabled_count, verified_control_count, caller_missing_count, caller_stale_count,
+                status, submitted_by, submitted_at, verified_by, verified_at, expires_at, revoked_at
+           FROM healthcare_activation_readiness
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY submitted_at DESC
+          LIMIT 500`,
+        values,
+      );
+      return result.rows;
+    });
+    return res.json({ readiness: rows.map(readinessResponse) });
+  } catch (err) {
+    logger.error('Failed to list healthcare activation readiness', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to list healthcare activation readiness' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-readiness', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const parsed = readinessCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid healthcare readiness request' });
+  const input = parsed.data;
+  if (calculateHealthcareReadinessPreflightSha256(input.preflight) !== input.preflight.preflightSha256) {
+    return res.status(400).json({ error: 'Healthcare readiness preflight digest does not match payload' });
+  }
+  const expiresAt = new Date(input.expiresAt).getTime();
+  if (expiresAt <= Date.now() + 5 * 60_000 || expiresAt > Date.now() + 90 * 86_400_000) {
+    return res.status(400).json({ error: 'Readiness expiry must be within 90 days' });
+  }
+  try {
+    const row = await withPrivilegedClient<Record<string, unknown> | null>(async (client) => {
+      const agentResult = await client.query(
+        'SELECT id, tenant_id, type FROM agents WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+        [input.agentId, input.tenantId],
+      );
+      const agent = agentResult.rows[0];
+      if (!agent || !isHealthcareReceptionistIdentity(agent.type, agent.id)) return null;
+      const proof = input.preflight;
+      const inserted = await client.query(
+        `INSERT INTO healthcare_activation_readiness
+           (tenant_id, agent_id, target_environment, core_version, model,
+            role_package_id, role_package_version, recording_policy,
+            catalog_version, catalog_count, discovered_count, tenant_table_count,
+            rls_enabled_count, verified_control_count, caller_missing_count, caller_stale_count,
+            migration_status, schema_status, database_status, keyring_status, evidence_status,
+            caller_hash_status, retention_status, deletion_status, preflight_sha256,
+            evidence_snapshot_sha256, retention_plan_sha256, deletion_evidence_sha256,
+            submitted_by, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'disabled',
+                 $8, $9, $10, $11, $12, $13, $14, $15,
+                 'pass', 'pass', 'pass', 'pass', 'pass', 'pass', 'pass', 'pass',
+                 $16, $17, $18, $19, $20, $21)
+         RETURNING id, readiness_ref, tenant_id, agent_id, target_environment,
+                   core_version, model, role_package_id, role_package_version, recording_policy,
+                   catalog_version, catalog_count, discovered_count, tenant_table_count,
+                   rls_enabled_count, verified_control_count, caller_missing_count, caller_stale_count,
+                   status, submitted_by, submitted_at, verified_by, verified_at, expires_at, revoked_at`,
+        [
+          input.tenantId, input.agentId, input.targetEnvironment,
+          MASTER_VOICE_AGENT_CORE_VERSION, MASTER_VOICE_AGENT_MODEL,
+          'healthcare-receptionist', HEALTHCARE_RECEPTIONIST_ROLE_VERSION,
+          proof.catalogVersion, proof.catalogCount, proof.discoveredCount,
+          proof.tenantTableCount, proof.rlsEnabledCount, proof.verifiedControlCount,
+          proof.callerMissingCount, proof.callerStaleCount,
+          proof.preflightSha256, proof.evidenceSnapshotSha256,
+          proof.retentionPlanSha256, proof.deletionEvidenceSha256,
+          req.user!.userId, input.expiresAt,
+        ],
+      );
+      return inserted.rows[0] ?? null;
+    });
+    if (!row) return res.status(404).json({ error: 'Healthcare agent not found' });
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.readiness_submitted',
+      resourceType: 'healthcare_activation_readiness',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: {
+        readinessRef: String(row.readiness_ref),
+        targetEnvironment: input.targetEnvironment,
+        catalogVersion: input.preflight.catalogVersion,
+        catalogCount: input.preflight.catalogCount,
+        expiresAt: input.expiresAt,
+      },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.status(201).json({ readiness: readinessResponse(row) });
+  } catch (err) {
+    logger.error('Failed to submit healthcare activation readiness', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to submit healthcare activation readiness' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-readiness/:id/verify', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const readinessId = typeof req.params.id === 'string' ? req.params.id : '';
+  if (!z.object({}).strict().safeParse(req.body).success || !/^[A-Za-z0-9_-]{1,64}$/.test(readinessId)) {
+    return res.status(400).json({ error: 'Invalid readiness verification request' });
+  }
+  try {
+    const row = await withPrivilegedClient(async (client) => {
+      const result = await client.query(
+        `UPDATE healthcare_activation_readiness
+            SET status = 'verified', verified_by = $2, verified_at = NOW(), updated_at = NOW()
+          WHERE id = $1 AND status = 'pending' AND submitted_by <> $2 AND expires_at > NOW()
+          RETURNING id, readiness_ref, tenant_id, agent_id, target_environment,
+                    core_version, model, role_package_id, role_package_version, recording_policy,
+                    catalog_version, catalog_count, discovered_count, tenant_table_count,
+                    rls_enabled_count, verified_control_count, caller_missing_count, caller_stale_count,
+                    status, submitted_by, submitted_at, verified_by, verified_at, expires_at, revoked_at`,
+        [readinessId, req.user!.userId],
+      );
+      return result.rows[0] ?? null;
+    });
+    if (!row) return res.status(409).json({ error: 'Readiness requires a different verifier and active pending status' });
+    await writeAuditLog({
+      tenantId: String(row.tenant_id),
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.readiness_verified',
+      resourceType: 'healthcare_activation_readiness',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: { readinessRef: String(row.readiness_ref), targetEnvironment: String(row.target_environment) },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.json({ readiness: readinessResponse(row) });
+  } catch (err) {
+    logger.error('Failed to verify healthcare activation readiness', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to verify healthcare activation readiness' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-readiness/:id/revoke', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const parsed = readinessRevokeSchema.safeParse(req.body);
+  const readinessId = typeof req.params.id === 'string' ? req.params.id : '';
+  if (!parsed.success || !/^[A-Za-z0-9_-]{1,64}$/.test(readinessId)) {
+    return res.status(400).json({ error: 'Invalid readiness revocation request' });
+  }
+  try {
+    const row = await withPrivilegedClient(async (client) => {
+      const result = await client.query(
+        `UPDATE healthcare_activation_readiness
+            SET status = 'revoked', revoked_by = $2, revoked_at = NOW(),
+                revocation_reason = $3, updated_at = NOW()
+          WHERE id = $1 AND status IN ('pending', 'verified') AND revoked_at IS NULL
+          RETURNING id, readiness_ref, tenant_id, agent_id, target_environment,
+                    core_version, model, role_package_id, role_package_version, recording_policy,
+                    catalog_version, catalog_count, discovered_count, tenant_table_count,
+                    rls_enabled_count, verified_control_count, caller_missing_count, caller_stale_count,
+                    status, submitted_by, submitted_at, verified_by, verified_at, expires_at, revoked_at`,
+        [readinessId, req.user!.userId, parsed.data.reason],
+      );
+      return result.rows[0] ?? null;
+    });
+    if (!row) return res.status(404).json({ error: 'Active healthcare readiness not found' });
+    await writeAuditLog({
+      tenantId: String(row.tenant_id),
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.readiness_revoked',
+      resourceType: 'healthcare_activation_readiness',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: { readinessRef: String(row.readiness_ref), reason: parsed.data.reason },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.json({ readiness: readinessResponse(row) });
+  } catch (err) {
+    logger.error('Failed to revoke healthcare activation readiness', {
+      errorType: err instanceof Error ? err.name : 'UnknownError',
+    });
+    return res.status(500).json({ error: 'Failed to revoke healthcare activation readiness' });
+  }
+});
+
+// ---------- Fail-closed healthcare deployment approvals ----------
+router.get('/platform/compliance/healthcare-approvals', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId.trim() : '';
+  try {
+    const rows = await withPrivilegedClient(async (client) => {
+      const values: unknown[] = [];
+      const where = tenantId ? 'WHERE hda.tenant_id = $1' : '';
+      if (tenantId) values.push(tenantId);
+      const result = await client.query(
+        `SELECT hda.id, hda.tenant_id, hda.agent_id, hda.approval_kind,
+                hda.core_version, hda.model, hda.role_package_id,
+                hda.role_package_version, hda.recording_policy, hda.approved_by,
+                hda.approved_at, hda.expires_at, hda.revoked_at, hda.readiness_ref,
+                jsonb_array_length(hda.synthetic_caller_hashes)::int AS synthetic_caller_count
+           FROM healthcare_deployment_approvals hda
+           ${where}
+          ORDER BY hda.approved_at DESC
+          LIMIT 500`,
+        values,
+      );
+      return result.rows;
+    });
+    return res.json({ approvals: rows.map(approvalResponse) });
+  } catch (err) {
+    logger.error('Failed to list healthcare deployment approvals', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to list healthcare deployment approvals' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-approvals', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const parsed = approvalCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid healthcare approval request' });
+  const input = parsed.data;
+  if (input.approvalKind === 'production_healthcare' && !input.readinessRef) {
+    return res.status(400).json({ error: 'Production approvals require verified activation readiness' });
+  }
+  if (input.approvalKind === 'synthetic_test' && input.readinessRef) {
+    return res.status(400).json({ error: 'Synthetic approvals cannot use production activation readiness' });
+  }
+  const requiredEvidence = input.approvalKind === 'production_healthcare'
+    ? HEALTHCARE_APPROVAL_EVIDENCE_KEYS
+    : SYNTHETIC_APPROVAL_EVIDENCE_KEYS;
+  if (!hasRequiredEvidence(input.evidenceRefs, requiredEvidence)) {
+    return res.status(400).json({ error: 'Required approval evidence is incomplete' });
+  }
+  if (input.approvalKind === 'production_healthcare' && input.syntheticCallerNumbers) {
+    return res.status(400).json({ error: 'Production approvals cannot include synthetic caller numbers' });
+  }
+  if (input.approvalKind === 'synthetic_test' && !input.syntheticCallerNumbers) {
+    return res.status(400).json({ error: 'Synthetic approvals require authorized test callers' });
+  }
+
+  const expiresAt = new Date(input.expiresAt);
+  const now = Date.now();
+  const maxDays = input.approvalKind === 'synthetic_test' ? 30 : 90;
+  if (expiresAt.getTime() <= now + 5 * 60_000 || expiresAt.getTime() > now + maxDays * 86_400_000) {
+    return res.status(400).json({ error: `Approval expiry must be within ${maxDays} days` });
+  }
+
+  if (input.approvalKind === 'production_healthcare') {
+    try {
+      const evidenceDecision = await verifyHealthcareControlEvidenceRefs({
+        tenantId: input.tenantId,
+        agentId: input.agentId,
+        approvalExpiresAt: input.expiresAt,
+        evidenceRefs: input.evidenceRefs,
+      });
+      if (!evidenceDecision.valid) {
+        return res.status(400).json({ error: 'Production healthcare evidence is not verified' });
+      }
+      const readinessDecision = await verifyHealthcareActivationReadinessRef({
+        tenantId: input.tenantId,
+        agentId: input.agentId,
+        targetEnvironment: 'production',
+        approvalExpiresAt: input.expiresAt,
+        readinessRef: input.readinessRef ?? '',
+      });
+      if (!readinessDecision.valid) {
+        return res.status(400).json({ error: 'Production healthcare readiness is not verified' });
+      }
+    } catch (err) {
+      logger.error('Healthcare evidence verification unavailable', {
+        errorType: err instanceof Error ? err.name : 'UnknownError',
+      });
+      return res.status(503).json({ error: 'Healthcare evidence verification is unavailable' });
+    }
+  }
+
+  const callerHashes: string[] = [];
+  for (const callerNumber of input.syntheticCallerNumbers ?? []) {
+    if (!normalizeLookupPhone(callerNumber)) {
+      return res.status(400).json({ error: 'Invalid synthetic caller number' });
+    }
+    const hash = createPiiLookupHash(input.tenantId, callerNumber, 'synthetic_test');
+    if (!hash) {
+      return res.status(503).json({ error: 'Healthcare approval hashing is not configured' });
+    }
+    if (!callerHashes.includes(hash)) callerHashes.push(hash);
+  }
+
+  try {
+    const row = await withPrivilegedClient<Record<string, unknown> | null>(async (client) => {
+      const agentResult = await client.query(
+        `SELECT id, tenant_id, type FROM agents WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [input.agentId, input.tenantId],
+      );
+      const agent = agentResult.rows[0];
+      if (!agent || !isHealthcareReceptionistIdentity(agent.type, agent.id)) return null;
+
+      await client.query(
+        `UPDATE healthcare_deployment_approvals
+            SET revoked_at = NOW(), revoked_by = $3,
+                revocation_reason = 'Superseded by a newer approval', updated_at = NOW()
+          WHERE tenant_id = $1 AND agent_id = $2 AND revoked_at IS NULL`,
+        [input.tenantId, input.agentId, req.user!.userId],
+      );
+      const inserted = await client.query(
+        `INSERT INTO healthcare_deployment_approvals
+           (tenant_id, agent_id, approval_kind, core_version, model,
+            role_package_id, role_package_version, recording_policy,
+            evidence_refs, readiness_ref, synthetic_caller_hashes, approved_by, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'disabled', $8::jsonb, $9, $10::jsonb, $11, $12)
+         RETURNING id, tenant_id, agent_id, approval_kind, core_version, model,
+                   role_package_id, role_package_version, recording_policy,
+                   approved_by, approved_at, expires_at, revoked_at, readiness_ref`,
+        [
+          input.tenantId,
+          input.agentId,
+          input.approvalKind,
+          MASTER_VOICE_AGENT_CORE_VERSION,
+          MASTER_VOICE_AGENT_MODEL,
+          'healthcare-receptionist',
+          HEALTHCARE_RECEPTIONIST_ROLE_VERSION,
+          JSON.stringify(input.evidenceRefs),
+          input.readinessRef ?? null,
+          JSON.stringify(callerHashes),
+          req.user!.userId,
+          input.expiresAt,
+        ],
+      );
+      const insertedRow = inserted.rows[0] as Record<string, unknown> | undefined;
+      return insertedRow
+        ? { ...insertedRow, synthetic_caller_count: callerHashes.length }
+        : null;
+    });
+    if (!row) return res.status(404).json({ error: 'Healthcare agent not found' });
+
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.approval_created',
+      resourceType: 'healthcare_deployment_approval',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: {
+        approvalKind: input.approvalKind,
+        expiresAt: input.expiresAt,
+        syntheticCallerCount: callerHashes.length,
+        coreVersion: MASTER_VOICE_AGENT_CORE_VERSION,
+        rolePackageVersion: HEALTHCARE_RECEPTIONIST_ROLE_VERSION,
+        readinessRef: input.readinessRef ?? null,
+      },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.status(201).json({ approval: approvalResponse(row) });
+  } catch (err) {
+    logger.error('Failed to create healthcare deployment approval', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to create healthcare deployment approval' });
+  }
+});
+
+router.post('/platform/compliance/healthcare-approvals/:id/revoke', requireAuth, requirePlatformAdmin, async (req, res) => {
+  const parsed = approvalRevokeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid revocation request' });
+  try {
+    const row = await withPrivilegedClient(async (client) => {
+      const result = await client.query(
+        `UPDATE healthcare_deployment_approvals
+            SET revoked_at = NOW(), revoked_by = $2, revocation_reason = $3, updated_at = NOW()
+          WHERE id = $1 AND revoked_at IS NULL
+          RETURNING id, tenant_id, agent_id, approval_kind, core_version, model,
+                    role_package_id, role_package_version, recording_policy,
+                    approved_by, approved_at, expires_at, revoked_at`,
+        [req.params.id, req.user!.userId, parsed.data.reason],
+      );
+      return result.rows[0] ?? null;
+    });
+    if (!row) return res.status(404).json({ error: 'Active healthcare approval not found' });
+    await writeAuditLog({
+      tenantId: String(row.tenant_id),
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'healthcare.approval_revoked',
+      resourceType: 'healthcare_deployment_approval',
+      resourceId: String(row.id),
+      severity: 'critical',
+      changes: { reason: parsed.data.reason },
+      ipAddress: extractIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    return res.json({ approval: approvalResponse(row) });
+  } catch (err) {
+    logger.error('Failed to revoke healthcare deployment approval', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to revoke healthcare deployment approval' });
   }
 });
 

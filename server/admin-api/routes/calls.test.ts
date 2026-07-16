@@ -89,6 +89,57 @@ describe('GET /calls/:id', () => {
   });
 });
 
+describe('GET /calls/:id/outcome', () => {
+  it('returns a tenant-scoped healthcare dashboard projection', async () => {
+    a.queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('FROM call_sessions cs') && sql.includes('transcript_count')) {
+        expect(values).toEqual(['c1', 't1']);
+        return { rows: [{
+          id: 'c1', language: 'es', lifecycle_state: 'CALL_COMPLETED',
+          context: { recordingPolicy: { policy: 'disabled', status: 'not_recorded' } },
+          transcript_count: 2,
+        }] };
+      }
+      if (sql.includes('FROM outbox_messages')) {
+        expect(values).toEqual(['t1', 'c1']);
+        return { rows: [{ id: 'o1', status: 'sent', payload: {
+          type: 'answering_service_ticket', callerFirstName: 'Ana', callerLastName: 'Lopez',
+          callerPhone: '+15555550100', reasonForCall: 'Needs an appointment',
+          outcomeType: 'appointment_request', summary: 'Appointment request; staff confirmation required.',
+          requestedAction: 'Call back to arrange a time', urgency: 'routine',
+        } }] };
+      }
+      if (sql.includes('FROM tickets t')) {
+        expect(values).toEqual(['t1', 'c1']);
+        return { rows: [{ id: 'tk1', ticket_number: 12, status: 'open', priority: 'medium' }] };
+      }
+      if (sql.includes('FROM tool_invocations')) return { rows: [{ id: 'ti1', tool_name: 'createServiceTicket', status: 'success' }] };
+      if (sql.includes('FROM escalation_tasks')) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const res = await request(app()).get('/calls/c1/outcome');
+    expect(res.status).toBe(200);
+    expect(res.body.projection).toMatchObject({
+      callId: 'c1', language: 'es',
+      outcome: { type: 'appointment_request', requestedAction: 'Call back to arrange a time' },
+      followUp: { ticketId: 'tk1', status: 'open' },
+      operationalValue: { state: 'staff_follow_up_created' },
+    });
+  });
+
+  it('does not fall back to another tenant and returns 404 for an unknown call', async () => {
+    a.queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('FROM call_sessions cs') && sql.includes('transcript_count')) {
+        expect(values).toEqual(['missing', 't1']);
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+    expect((await request(app()).get('/calls/missing/outcome')).status).toBe(404);
+  });
+});
+
 describe('GET /calls/:id/transcript & /events', () => {
   it('transcript 404 when call missing', async () => {
     a.queryMock.mockImplementation(async (sql: string) =>

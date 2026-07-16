@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Shield,
-  CheckCircle2,
   Clock,
   Map,
   Download,
@@ -13,12 +12,7 @@ import {
 import SEO from '../../components/SEO';
 import { trackPageView } from '../../lib/analytics';
 
-type FrameworkStatus =
-  | 'compliant'
-  | 'in_progress'
-  | 'available'
-  | 'roadmap'
-  | 'not_applicable';
+type FrameworkStatus = 'not_verified';
 
 interface Framework {
   key: string;
@@ -56,6 +50,7 @@ interface Posture {
     notes: string;
   };
   data_residency: {
+    verified: false;
     primary_region: string;
     description: string;
   };
@@ -64,17 +59,17 @@ interface Posture {
 }
 
 function statusBadgeClasses(status: FrameworkStatus): string {
-  switch (status) {
-    case 'compliant':
-    case 'available':
-      return 'bg-success/15 text-success';
-    case 'in_progress':
-      return 'bg-accent/15 text-accent';
-    case 'roadmap':
-      return 'bg-border-strong/30 text-text-primary/60';
-    default:
-      return 'bg-border-strong/30 text-text-primary/60';
-  }
+  return status === 'not_verified'
+    ? 'bg-border-strong/30 text-text-primary/60'
+    : 'bg-border-strong/30 text-text-primary/60';
+}
+
+function ContactLink({ value }: { value: string }) {
+  return value.startsWith('/') ? (
+    <Link className="text-primary hover:underline" to={value}>Contact QVO</Link>
+  ) : (
+    <a className="text-primary hover:underline" href={`mailto:${value}`}>{value}</a>
+  );
 }
 
 export default function SecurityPosture() {
@@ -98,7 +93,7 @@ export default function SecurityPosture() {
     <div className="bg-surface">
       <SEO
         title="Security Posture — QVO"
-        description="QVO's compliance posture: SOC 2, HIPAA (with BAA), GDPR, CCPA, sub-processors, and data residency."
+        description="QVO's evidence-state register for security frameworks, healthcare pilot approval, vendor review, and data residency."
         canonicalPath="/security/posture"
       />
 
@@ -176,11 +171,7 @@ export default function SecurityPosture() {
               <div>
                 <p className="font-semibold mb-1">Could not load posture data</p>
                 <p className="text-sm">
-                  Please try again later, or email{' '}
-                  <a className="underline" href="mailto:security@qvo.example">
-                    security@qvo.example
-                  </a>{' '}
-                  for the current posture.
+                  Please try again later or use the <Link className="underline" to="/contact">contact form</Link> for the current posture.
                 </p>
               </div>
             </div>
@@ -245,7 +236,7 @@ export default function SecurityPosture() {
             <div className="max-w-6xl mx-auto px-6 lg:px-8 grid md:grid-cols-2 gap-6">
               <div className="bg-surface rounded-xl border border-border/30 p-6">
                 <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle2 className="h-5 w-5 text-success" />
+                  <AlertCircle className="h-5 w-5 text-accent" />
                   <h3 className="font-display text-lg font-semibold text-text-primary">
                     Business Associate Agreement (BAA)
                   </h3>
@@ -260,16 +251,11 @@ export default function SecurityPosture() {
                   </li>
                   <li>
                     <span className="font-medium text-text-primary">Eligible plans:</span>{' '}
-                    {posture.baa.plans.join(', ')}
+                    {posture.baa.plans.length > 0 ? posture.baa.plans.join(', ') : 'None approved'}
                   </li>
                   <li>
                     <span className="font-medium text-text-primary">Contact:</span>{' '}
-                    <a
-                      className="text-primary hover:underline"
-                      href={`mailto:${posture.baa.contact}`}
-                    >
-                      {posture.baa.contact}
-                    </a>
+                    <ContactLink value={posture.baa.contact} />
                   </li>
                 </ul>
               </div>
@@ -402,15 +388,8 @@ export default function SecurityPosture() {
                 Need something more specific?
               </h3>
               <p className="text-white/70 font-body mb-4">
-                Procurement reviews, security questionnaires, and BAA requests
-                go to{' '}
-                <a
-                  href={`mailto:${posture.organization.contact_security}`}
-                  className="text-primary hover:underline"
-                >
-                  {posture.organization.contact_security}
-                </a>
-                .
+                Procurement reviews, security questionnaires, and healthcare agreement requests use the{' '}
+                <ContactLink value={posture.organization.contact_security} />.
               </p>
             </div>
           </section>

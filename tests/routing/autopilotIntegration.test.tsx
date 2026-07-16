@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 void React;
@@ -104,8 +104,8 @@ async function loadDeps() {
   };
 }
 
-describe('Tenant sidebar → Autopilot integration', () => {
-  it('mounts the real TenantLayout, shows the Autopilot sidebar link, and navigates to /autopilot on click', async () => {
+describe('Tenant sidebar → Autopilot visibility', () => {
+  it('hides the Autopilot navigation from a tenant manager', async () => {
     const { QueryClient, QueryClientProvider, TenantLayout } = await loadDeps();
 
     const qc = new QueryClient({
@@ -125,23 +125,12 @@ describe('Tenant sidebar → Autopilot integration', () => {
       </QueryClientProvider>,
     );
 
-    const opsToggle = await waitFor(() =>
-      screen.getByRole('button', { name: /Operations/ }),
-    );
-    fireEvent.click(opsToggle);
-
-    const autopilotLink = await waitFor(() =>
-      screen.getByRole('link', { name: 'Autopilot' }),
-    );
-    expect(autopilotLink.getAttribute('href')).toBe('/autopilot');
-
-    fireEvent.click(autopilotLink);
-
     await waitFor(() => {
-      expect(screen.getByTestId('autopilot-mounted')).toBeTruthy();
+      expect(screen.getByTestId('dashboard')).toBeTruthy();
     });
-
-    expect(screen.queryByTestId('dashboard')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Operations/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Autopilot' })).toBeNull();
+    expect(screen.queryByTestId('autopilot-mounted')).toBeNull();
   });
 
   it('renders the real Autopilot page inside TenantLayout without crashing', async () => {

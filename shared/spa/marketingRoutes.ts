@@ -24,17 +24,11 @@ const LOCALE_PREFIXES = ['en', 'es', 'pt-br', 'fr', 'de'];
  */
 const MARKETING_EXACT_PATHS: ReadonlySet<string> = new Set([
   '/',
-  '/product',
-  '/product/federated-ingest',
-  '/product/global-intelligence-network',
-  '/features',
-  '/ai-agents',
   '/pricing',
-  '/use-cases',
-  '/integrations',
   '/demo',
   '/contact',
-  '/signup',
+  '/industries/healthcare',
+  '/industries/dental',
   '/terms',
   '/privacy',
   '/security',
@@ -49,10 +43,6 @@ const MARKETING_EXACT_PATHS: ReadonlySet<string> = new Set([
  * `client-app/src/App.tsx` (`:slug`, `:vertical`, etc.).
  */
 const MARKETING_PREFIXES: readonly string[] = [
-  '/docs',
-  '/resources',
-  '/blog',
-  '/industries',
   '/case-studies',
 ];
 

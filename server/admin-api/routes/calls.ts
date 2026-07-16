@@ -7,6 +7,7 @@ import { createLogger } from '../../../platform/core/logger';
 import { getConversationCost } from '../../../platform/billing/cost';
 import { getTenantBillingCurrency } from '../../../platform/billing/tenantCurrency';
 import { notifySubscriberChanges, diffSubscribers } from '../../../platform/analytics/CallViewSubscriberNotifier';
+import { loadHealthcareOutcomeDashboardProjection } from '../services/healthcareOutcomeDashboard';
 
 const logger = createLogger('ADMIN_CALLS');
 
@@ -100,6 +101,23 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
                 WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id
                   AND ti.status IN ('failed', 'timeout')
               ) AS failed_tool_count
+              ,(
+                SELECT om.payload->>'outcomeType' FROM outbox_messages om
+                WHERE om.tenant_id = cs.tenant_id AND om.call_log_id = cs.id
+                  AND om.payload->>'type' = 'answering_service_ticket'
+                ORDER BY om.created_at DESC LIMIT 1
+              ) AS outcome_type
+              ,(
+                SELECT om.payload->>'requestedAction' FROM outbox_messages om
+                WHERE om.tenant_id = cs.tenant_id AND om.call_log_id = cs.id
+                  AND om.payload->>'type' = 'answering_service_ticket'
+                ORDER BY om.created_at DESC LIMIT 1
+              ) AS next_action
+              ,(
+                SELECT t.id FROM tickets t
+                WHERE t.tenant_id = cs.tenant_id AND t.call_id = cs.id
+                ORDER BY t.created_at ASC LIMIT 1
+              ) AS ticket_id
        FROM call_sessions cs
        LEFT JOIN agents a ON a.id = cs.agent_id
        WHERE ${where}
@@ -138,7 +156,7 @@ export const listCallsHandler: RequestHandler = async (req, res) => {
 
 export const getCallHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { id } = req.params;
+  const id = String(req.params.id);
   const pool = getPlatformPool();
   const client = await pool.connect();
 
@@ -188,7 +206,7 @@ export const getCallHandler: RequestHandler = async (req, res) => {
 
 const getTranscriptHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { id } = req.params;
+  const id = String(req.params.id);
   const pool = getPlatformPool();
   const client = await pool.connect();
 
@@ -227,7 +245,7 @@ const getTranscriptHandler: RequestHandler = async (req, res) => {
 
 const getCallEventsHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { id } = req.params;
+  const id = String(req.params.id);
   const pool = getPlatformPool();
   const client = await pool.connect();
 
@@ -259,6 +277,27 @@ const getCallEventsHandler: RequestHandler = async (req, res) => {
     await client.query('ROLLBACK');
     logger.error('Failed to get call events', { tenantId, callId: id, error: String(err) });
     return res.status(500).json({ error: 'Failed to retrieve call events' });
+  } finally {
+    client.release();
+  }
+};
+
+const getHealthcareOutcomeHandler: RequestHandler = async (req, res) => {
+  const { tenantId } = req.user!;
+  const id = String(req.params.id);
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const projection = await loadHealthcareOutcomeDashboardProjection(client, tenantId, id);
+    await client.query('COMMIT');
+    if (!projection) return res.status(404).json({ error: 'Call not found' });
+    return res.json({ projection });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to get healthcare outcome projection', { tenantId, callId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to retrieve call outcome' });
   } finally {
     client.release();
   }
@@ -810,6 +849,7 @@ router.post('/call-saved-views/pinned/reorder', requireAuth, reorderPinnedSavedV
 router.patch('/call-saved-views/:id', requireAuth, updateSavedViewHandler);
 router.delete('/call-saved-views/:id', requireAuth, deleteSavedViewHandler);
 router.get('/calls/:id', requireAuth, getCallHandler);
+router.get('/calls/:id/outcome', requireAuth, getHealthcareOutcomeHandler);
 router.get('/calls/:id/transcript', requireAuth, getTranscriptHandler);
 router.get('/calls/:id/events', requireAuth, getCallEventsHandler);
 

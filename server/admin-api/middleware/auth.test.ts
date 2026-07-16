@@ -69,6 +69,50 @@ describe('issueToken + requireAuth round trip', () => {
     const res = await request(app()).get('/auth/me').set('Authorization', `Bearer ${token()}`);
     expect(res.status).toBe(403);
   });
+
+  it('withholds the live platform-admin flag until MFA is enabled and verified', async () => {
+    a.privQueryMock.mockResolvedValue({ rows: [{ is_platform_admin: true, mfa_enabled_at: '2026-07-13T00:00:00.000Z' }] });
+    const res = await request(app()).get('/auth/me').set('Authorization', `Bearer ${token({
+      isPlatformAdmin: true,
+      mfaVerified: false,
+    })}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({
+      isPlatformAdmin: false,
+      platformAdminMfaRequired: true,
+      mfaVerified: false,
+    });
+  });
+
+  it('restores platform-admin access only for an MFA-enabled user with a verified token', async () => {
+    a.privQueryMock.mockResolvedValue({ rows: [{ is_platform_admin: true, mfa_enabled_at: '2026-07-13T00:00:00.000Z' }] });
+    const res = await request(app()).get('/auth/me').set('Authorization', `Bearer ${token({
+      isPlatformAdmin: true,
+      mfaVerified: true,
+    })}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({
+      isPlatformAdmin: true,
+      platformAdminMfaRequired: false,
+      mfaVerified: true,
+    });
+  });
+
+  it('fails closed when a token claims MFA but enrollment is not enabled in the database', async () => {
+    a.privQueryMock.mockResolvedValue({ rows: [{ is_platform_admin: true, mfa_enabled_at: null }] });
+    const res = await request(app()).get('/auth/me').set('Authorization', `Bearer ${token({
+      isPlatformAdmin: true,
+      mfaVerified: true,
+    })}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({
+      isPlatformAdmin: false,
+      platformAdminMfaRequired: true,
+    });
+  });
 });
 
 describe('tenant-status pending gate', () => {

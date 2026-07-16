@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView } from '../../lib/analytics';
@@ -101,7 +102,7 @@ export default function Subprocessors() {
             </div>
           )}
           <p className="text-xs text-text-primary/50 font-body mt-6">
-            To subscribe to sub-processor change notifications, contact privacy@qvo.example.
+            This register must be verified for each pilot. Use the <Link to="/contact" className="text-primary hover:underline">contact form</Link> for sub-processor questions or change-notice requests.
           </p>
         </div>
       </section>

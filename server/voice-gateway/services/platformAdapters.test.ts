@@ -26,17 +26,32 @@ beforeEach(() => {
   a.executeByPayloadMock.mockReset().mockResolvedValue({ success: true, ticketNumber: 'TK-1', externalId: 'ext1' });
   a.isStandardEventMock.mockReset().mockReturnValue(false);
   a.dispatchEventMock.mockReset().mockResolvedValue(undefined);
+  process.env.QVO_PII_LOOKUP_HMAC_KEY = 'a-secure-lookup-key-with-at-least-32-characters';
+  process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION = 'v2';
+  process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY = 'a-previous-lookup-key-with-at-least-32-characters';
+  process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION = 'v1';
 });
 
 describe('createCallerMemoryStorage.getCallHistoryByPhone', () => {
-  it('queries with all phone-number variants and returns the rows', async () => {
+  it('queries by tenant-scoped caller HMAC without sending plaintext phone variants to PostgreSQL', async () => {
     a.clientQueryMock.mockImplementation(async (sql: string) => sql.includes('FROM call_sessions') ? { rows: [{ createdAt: 'd', callReason: 'billing' }] } : { rows: [] });
     const storage = createCallerMemoryStorage();
     const res = await storage.getCallHistoryByPhone('t1' as never, '2125550123', 5);
-    expect(res).toHaveLength(1);
+    expect(res ?? []).toHaveLength(1);
     const call = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('FROM call_sessions'));
-    // [tenantId, phone, e164, digits10, limit]
-    expect(call?.[1]).toEqual(['t1', '2125550123', '+12125550123', '2125550123', 5]);
+    expect(String(call?.[0])).toContain('caller_lookup_hash = ANY($2::text[])');
+    expect(call?.[1]).toEqual(['t1', [
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+    ], 5]);
+    expect(JSON.stringify(call?.[1])).not.toContain('2125550123');
+  });
+
+  it('returns no history and performs no PHI query when the lookup key is unavailable', async () => {
+    delete process.env.QVO_PII_LOOKUP_HMAC_KEY;
+    const storage = createCallerMemoryStorage();
+    await expect(storage.getCallHistoryByPhone('t1' as never, '2125550123', 5)).resolves.toEqual([]);
+    expect(a.clientQueryMock.mock.calls.some(([sql]) => String(sql).includes('FROM call_sessions'))).toBe(false);
   });
 });
 
@@ -44,7 +59,7 @@ describe('createOutboxAdapters.persistence', () => {
   it('insert returns a generated id', async () => {
     const { persistence } = createOutboxAdapters();
     const res = await persistence.insert({ tenantId: 't1' as never, payload: { type: 'create_ticket' }, status: 'pending', maxRetries: 3, nextRetryAt: new Date() } as never);
-    expect(typeof res.id).toBe('string');
+    expect(typeof res?.id).toBe('string');
     expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('INSERT INTO outbox_messages'))).toBe(true);
   });
   it('findByIdempotencyKey returns null when absent, mapped row when present', async () => {

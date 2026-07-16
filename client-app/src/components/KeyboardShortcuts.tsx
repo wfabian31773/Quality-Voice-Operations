@@ -1,19 +1,25 @@
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Modal from './Modal';
+import { useAuth } from '../lib/auth';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 export default function KeyboardShortcuts({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const isStaff = isQvoStaff(user);
   const SHORTCUTS = [
     { keys: ['⌘', 'K'], desc: t('keyboard_shortcuts.command_palette') },
     { keys: ['Ctrl', 'K'], desc: t('keyboard_shortcuts.command_palette_win') },
     { keys: ['?'], desc: t('keyboard_shortcuts.show_panel') },
     { keys: ['G', 'D'], desc: t('keyboard_shortcuts.go_dashboard') },
-    { keys: ['G', 'A'], desc: t('keyboard_shortcuts.go_agents') },
     { keys: ['G', 'C'], desc: t('keyboard_shortcuts.go_conversations') },
-    { keys: ['G', 'N'], desc: t('keyboard_shortcuts.go_analytics') },
     { keys: ['G', 'S'], desc: t('keyboard_shortcuts.go_settings') },
     { keys: ['Esc'], desc: t('keyboard_shortcuts.close_modal') },
+    ...(isStaff ? [
+      { keys: ['G', 'A'], desc: t('keyboard_shortcuts.go_agents') },
+      { keys: ['G', 'N'], desc: t('keyboard_shortcuts.go_analytics') },
+    ] : []),
   ];
 
   return (

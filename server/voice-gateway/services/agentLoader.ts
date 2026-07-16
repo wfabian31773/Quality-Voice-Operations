@@ -59,23 +59,37 @@ import { createLogger } from '../../../platform/core/logger';
 import type { TenantId } from '../../../platform/core/types';
 import { filterToolsByPermissions, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 import {
-  DEFAULT_AGENT_LANGUAGE,
   getAgentLanguageLabel,
   normalizeAgentLanguage,
 } from '../../../platform/agent-templates/agentLanguages';
 import { buildLocalizedGreeting } from '../../../platform/agent-templates/greetingTranslations';
-import { VOICE_CONVERSATION_PRINCIPLES } from '../../../platform/agent-templates/voicePrinciples';
+import {
+  createHealthcareReceptionistRolePackage,
+  normalizeHealthcareOperationalFacts,
+  validateHealthcarePracticeName,
+} from '../../../platform/agent-templates/healthcare-receptionist';
+import {
+  MASTER_VOICE_CONVERSATION_POLICY,
+  compileRolePackage,
+  normalizeTimeZone,
+} from '../../../platform/agent-runtime/masterVoiceAgent';
 
 const logger = createLogger('AGENT_LOADER');
 
 export interface LoadedAgentConfig {
   agentId: string;
   tenantId: TenantId;
+  coreVersion: string;
+  rolePackageId: string;
+  rolePackageVersion: string;
+  rolePrompt: string;
   systemPrompt: string;
   greeting: string;
   voice: string;
   model: string;
   language: string;
+  preferredLanguage: string;
+  timeZone: string;
   tools: AgentToolDef[];
   guardrails: string[];
   metadata: Record<string, unknown>;
@@ -103,6 +117,7 @@ export interface AgentLoadContext {
     escalation_config?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
     language?: string;
+    tenant_timezone?: string;
   };
 }
 
@@ -186,6 +201,23 @@ const AFTER_HOURS_TOOLS: AgentToolDef[] = [
 
 const PLATFORM_TOOLS: AgentToolDef[] = [
   {
+    name: 'get_current_tenant_time',
+    description: 'Return the current date, weekday, local time, IANA timezone, and UTC offset for the tenant. Use when relative dates matter or a long call may have crossed a boundary.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'record_language_change',
+    description: 'Record a model-detected change in the caller\'s primary spoken language for transcript quality review. Call only when the language changes; do not announce this action.',
+    parameters: {
+      type: 'object',
+      properties: {
+        language: { type: 'string', enum: ['en', 'es', 'fr', 'de', 'pt', 'it', 'nl', 'zh', 'ja', 'ko', 'ar', 'hi'] },
+        confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      },
+      required: ['language', 'confidence'],
+    },
+  },
+  {
     name: 'escalate_to_human',
     description:
       'Create an escalation task for a human operator to follow up with the caller. Use this when the caller explicitly requests to speak with a person, when you cannot resolve their issue, or when the situation requires human judgment. Provide a clear reason and priority level.',
@@ -216,8 +248,10 @@ function mergeTools(templateTools: AgentToolDef[], dbTools: AgentToolDef[]): Age
 
 function resolveTemplateKey(agentType: string, agentId: string): string {
   const typeMap: Record<string, string> = {
-    'answering_service': 'answering-service',
-    'answering-service': 'answering-service',
+    'answering_service': 'healthcare-receptionist',
+    'answering-service': 'healthcare-receptionist',
+    'healthcare_receptionist': 'healthcare-receptionist',
+    'healthcare-receptionist': 'healthcare-receptionist',
     'medical_after_hours': 'medical-after-hours',
     'medical-after-hours': 'medical-after-hours',
     'dental': 'dental',
@@ -244,7 +278,10 @@ function resolveTemplateKey(agentType: string, agentId: string): string {
   return agentType || agentId;
 }
 
-type LoadedAgentConfigWithoutLanguage = Omit<LoadedAgentConfig, 'language'>;
+type LoadedAgentConfigWithoutLanguage = Pick<
+  LoadedAgentConfig,
+  'agentId' | 'tenantId' | 'systemPrompt' | 'greeting' | 'voice' | 'model' | 'tools' | 'guardrails' | 'metadata'
+>;
 
 function buildTemplateConfig(
   templateKey: string,
@@ -416,30 +453,92 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   const meta = (dbAgent?.metadata ?? {}) as Record<string, unknown>;
   const dbTools: AgentToolDef[] = Array.isArray(dbAgent?.tools) ? (dbAgent.tools as AgentToolDef[]) : [];
   const language = normalizeAgentLanguage(dbAgent?.language ?? (meta as Record<string, unknown>).language);
-  const finalize = (cfg: LoadedAgentConfigWithoutLanguage): LoadedAgentConfig => {
-    let prompt = cfg.systemPrompt;
-    // Append the GLOBAL voice principles to every agent's prompt. This is
-    // the conversation-quality counterpart to the locked-in transport
-    // defaults in `buildOpenAISessionConfig` (server_vad + far_field +
-    // barge-in): the transport enables natural turn-taking, this fragment
-    // teaches the model to honor it. Applies to every code path through
-    // this loader — vertical templates, DB-defined agents, and the generic
-    // fallback — so a customer-built agent gets the same conversational
-    // hygiene as our flagship demos.
-    if (!prompt.includes('VOICE CONVERSATION PRINCIPLES')) {
-      prompt = `${prompt}\n\n${VOICE_CONVERSATION_PRINCIPLES}`.trim();
-    }
-    if (language && language !== DEFAULT_AGENT_LANGUAGE) {
-      const label = getAgentLanguageLabel(language);
-      const directive = `Respond to the caller in ${label}. All spoken responses must be in ${label}.`;
-      if (!prompt.includes(directive)) {
-        prompt = `${prompt}\n\n${directive}`.trim();
-      }
-    }
-    return { ...cfg, systemPrompt: prompt, language };
+  const timeZone = normalizeTimeZone(dbAgent?.tenant_timezone ?? meta.timeZone);
+  const finalize = (
+    cfg: LoadedAgentConfigWithoutLanguage,
+    lockedRoleIdentity?: { id: string; version: string },
+  ): LoadedAgentConfig => {
+    const rolePromptMatch = cfg.systemPrompt.match(/^===== ROLE PACKAGE =====\n([\s\S]*?)(?:\n\n=====|$)/);
+    const rolePrompt = (rolePromptMatch?.[1]?.trim() || cfg.systemPrompt)
+      .replace(MASTER_VOICE_CONVERSATION_POLICY, '')
+      .trim();
+    const rolePackageVersion = lockedRoleIdentity?.version ?? (typeof meta.rolePackageVersion === 'string'
+      ? meta.rolePackageVersion
+      : '1.0.0');
+    const compiled = compileRolePackage({
+      id: (lockedRoleIdentity?.id ?? templateKey) || 'generic',
+      version: rolePackageVersion,
+      prompt: rolePrompt,
+      greeting: cfg.greeting,
+      voice: cfg.voice,
+      preferredLanguage: getAgentLanguageLabel(language),
+      timeZone,
+      tools: mergeTools(cfg.tools, []),
+      guardrails: cfg.guardrails,
+      metadata: cfg.metadata,
+    });
+    return {
+      ...cfg,
+      coreVersion: compiled.coreVersion,
+      rolePackageId: compiled.rolePackageId,
+      rolePackageVersion: compiled.rolePackageVersion,
+      rolePrompt: compiled.rolePrompt,
+      systemPrompt: compiled.systemPrompt,
+      voice: compiled.voice,
+      model: compiled.model,
+      language,
+      preferredLanguage: compiled.preferredLanguage,
+      timeZone: compiled.timeZone,
+      tools: compiled.tools,
+    };
   };
 
   switch (templateKey) {
+    case 'healthcare-receptionist': {
+      const rawPracticeName = meta.practiceName;
+      let practiceName = 'our healthcare practice';
+      if (rawPracticeName !== undefined) {
+        try {
+          practiceName = validateHealthcarePracticeName(rawPracticeName);
+        } catch (error) {
+          logger.warn('Ignoring invalid healthcare practice identity', {
+            tenantId,
+            agentId,
+            error: error instanceof Error ? error.message : 'invalid practice identity',
+          });
+        }
+      }
+      let approvedOperationalFacts;
+      try {
+        approvedOperationalFacts = normalizeHealthcareOperationalFacts(meta.approvedOperationalFacts);
+      } catch (error) {
+        logger.warn('Ignoring invalid healthcare operational facts', {
+          tenantId,
+          agentId,
+          error: error instanceof Error ? error.message : 'invalid operational facts',
+        });
+      }
+      const role = createHealthcareReceptionistRolePackage({
+        practiceName,
+        callerPhone,
+        preferredLanguage: language,
+        timeZone,
+        voice: dbAgent?.voice,
+        approvedOperationalFacts,
+      });
+      return finalize({
+        agentId,
+        tenantId,
+        systemPrompt: role.rolePrompt,
+        greeting: role.greeting,
+        voice: role.voice,
+        model: role.model,
+        tools: filterToolsByPermissions(role.tools, templateKey, toolOverrides),
+        guardrails: role.guardrails,
+        metadata: { ...meta, practiceName, role: 'healthcare-receptionist' },
+      }, { id: role.rolePackageId, version: role.rolePackageVersion });
+    }
+
     case 'answering-service': {
       const practiceName = (meta.practiceName as string) ?? 'our office';
       const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';

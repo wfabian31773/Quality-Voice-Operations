@@ -165,7 +165,7 @@ export default function VerticalLanding() {
           <p className="text-text-secondary mb-6">
             {t('vertical_page.not_found.subtitle')}
           </p>
-          <Link to="/use-cases" className="text-primary hover:underline">
+          <Link to="/industries/healthcare" className="text-primary hover:underline">
             {t('vertical_page.not_found.view_all')} &rarr;
           </Link>
         </div>
@@ -251,15 +251,15 @@ export default function VerticalLanding() {
         description={subheadline}
         ctas={[
           {
-            label: t('vertical_page.hero.start_trial'),
-            to: '/signup',
+            label: t('common.book_a_demo', 'Book a demo'),
+            to: '/book-demo',
             variant: 'primary',
             onClick: () => {
-              trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'hero');
+              trackCTAClick(CTA.BOOK_DEMO, `industry-${config.slug}`, 'hero');
               trackConversionEvent(
                 CONVERSION_STAGE.CTA_CLICK,
                 `/industries/${config.slug}`,
-                { cta: 'signup' },
+                { cta: 'book_demo' },
               );
             },
           },
@@ -449,15 +449,15 @@ export default function VerticalLanding() {
         body={t('vertical_page.bottom_cta.subtitle', { vertical_lower: verticalLower })}
         ctas={[
           {
-            label: t('vertical_page.bottom_cta.start_trial'),
-            to: '/signup',
+            label: t('common.book_a_demo', 'Book a demo'),
+            to: '/book-demo',
             variant: 'primary',
             onClick: () => {
-              trackCTAClick(CTA.START_FREE_TRIAL, `industry-${config.slug}`, 'bottom-cta');
+              trackCTAClick(CTA.BOOK_DEMO, `industry-${config.slug}`, 'bottom-cta');
               trackConversionEvent(
                 CONVERSION_STAGE.CTA_CLICK,
                 `/industries/${config.slug}`,
-                { cta: 'signup_bottom' },
+                { cta: 'book_demo_bottom' },
               );
             },
           },

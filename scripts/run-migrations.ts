@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import fs from 'fs';
 import path from 'path';
+import { reconcileMigrationAliases } from './migration-aliases';
 
 async function main() {
   const env = process.env.APP_ENV ?? 'development';
@@ -51,6 +52,8 @@ async function main() {
         `DELETE FROM schema_migrations WHERE filename = '029_widget.sql'`,
       );
     }
+
+    await reconcileMigrationAliases(client);
 
     const migrationsDir = path.join(process.cwd(), 'migrations');
     const files = fs

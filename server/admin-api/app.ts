@@ -10,6 +10,7 @@ import { corsOptions, securityHeaders } from './middleware/security';
 import { attachSpaFallback, isProductionBoot } from './spaFallback';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
+import mfaRoutes from './routes/mfa';
 import tenantRoutes from './routes/tenants';
 import agentRoutes from './routes/agents';
 import phoneNumberRoutes from './routes/phoneNumbers';
@@ -59,6 +60,7 @@ import costOptimizationRoutes from './routes/costOptimization';
 import callDebugRoutes from './routes/callDebug';
 import complianceRoutes from './routes/compliance';
 import platformComplianceRoutes from './routes/platformCompliance';
+import platformAdminProvisioningRoutes from './routes/platformAdminProvisioning';
 import caseStudyRoutes from './routes/caseStudies';
 import conversionRoutes from './routes/conversion';
 import workflowRoutes from './routes/workflows';
@@ -158,6 +160,8 @@ app.use(auditMutation());
 
 app.use('/', healthRoutes);
 app.use('/', authRoutes);
+app.use('/', mfaRoutes);
+app.use('/', platformAdminProvisioningRoutes);
 
 
 app.use('/', tenantRoutes);

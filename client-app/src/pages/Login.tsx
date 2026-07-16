@@ -2,11 +2,12 @@ import '../styles/tw-public.css';
 import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../lib/auth';
+import { useAuth, type MfaLoginFlow } from '../lib/auth';
 import { api, setToken } from '../lib/api';
 import { LogIn, UserPlus } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { safeRedirect } from '../lib/safeRedirect';
+import PlatformAdminMfaFlow from '../components/PlatformAdminMfaFlow';
 
 /**
  * `next` is the canonical "where were you headed?" query parameter that
@@ -30,6 +31,7 @@ export default function Login() {
   const [plan, setPlan] = useState(searchParams.get('plan') || 'starter');
   const [error, setError] = useState(searchParams.get('cancelled') ? t('auth.checkout_cancelled') : '');
   const [loading, setLoading] = useState(false);
+  const [mfaFlow, setMfaFlow] = useState<MfaLoginFlow | null>(null);
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
@@ -57,7 +59,11 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      const flow = await login(email, password);
+      if (flow) {
+        setMfaFlow(flow);
+        return;
+      }
       const currentUser = useAuth.getState().user;
       if (currentUser) {
         navigate(destinationFor(currentUser));
@@ -69,6 +75,13 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const completeMfaLogin = (token: string) => {
+    setToken(token);
+    useAuth.getState().checkAuth();
+    const currentUser = useAuth.getState().user;
+    navigate(currentUser ? destinationFor(currentUser) : '/admin/dashboard');
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -109,7 +122,13 @@ export default function Login() {
             </p>
           </div>
 
-          <form
+          {mfaFlow ? (
+            <PlatformAdminMfaFlow
+              mode={mfaFlow.mode}
+              flowToken={mfaFlow.flowToken}
+              onComplete={completeMfaLogin}
+            />
+          ) : <form
             onSubmit={mode === 'login' ? handleLogin : handleSignup}
             className="bg-surface rounded-xl border border-border p-6 space-y-4 shadow-sm"
           >
@@ -223,7 +242,7 @@ export default function Login() {
                 </>
               )}
             </div>
-          </form>
+          </form>}
         </div>
       </div>
     </div>

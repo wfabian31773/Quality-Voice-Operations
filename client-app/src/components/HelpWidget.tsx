@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   HelpCircle, X, Search, BookOpen, MessageCircle,
-  Sparkles, Keyboard, Command, ArrowRight, Map, ExternalLink, Globe,
+  Sparkles, Keyboard, Command, Map, ExternalLink, Globe,
 } from 'lucide-react';
 import { docArticles, type DocArticle, type DocBlock } from '../data/docs';
 import { useSearchDocs, useTranslatedArticles } from '../lib/translateDoc';
@@ -12,6 +12,8 @@ import {
   type TranslatedMarketingPage,
 } from '../lib/translateMarketingPage';
 import { logEmptyMarketingSearch } from '../lib/logEmptyMarketingSearch';
+import { useAuth } from '../lib/auth';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 function extractText(block: DocBlock): string {
   if (block.type === 'p' || block.type === 'h2' || block.type === 'h3') return block.text;
@@ -78,6 +80,8 @@ interface HelpWidgetProps {
 export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour }: HelpWidgetProps) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('tenant');
+  const { user } = useAuth();
+  const isStaff = isQvoStaff(user);
   const [tab, setTab] = useState<'home' | 'docs' | 'changelog'>('home');
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -161,7 +165,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
           </div>
 
           <div className="flex border-b border-border">
-            {(['home', 'docs', 'changelog'] as const).map((tk) => (
+            {(['home', 'docs', ...(isStaff ? ['changelog' as const] : [])] as const).map((tk) => (
               <button
                 key={tk}
                 onClick={() => setTab(tk)}
@@ -181,7 +185,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
               <div className="p-3 space-y-2">
                 <HelpAction icon={Map} label={t('help_widget.action_take_tour')} onClick={() => { onStartTour?.(); setOpen(false); }} />
                 <HelpAction icon={BookOpen} label={t('help_widget.action_browse_docs')} onClick={() => { setTab('docs'); }} />
-                <HelpAction icon={Sparkles} label={t('help_widget.action_whats_new')} onClick={() => setTab('changelog')} />
+                {isStaff && <HelpAction icon={Sparkles} label={t('help_widget.action_whats_new')} onClick={() => setTab('changelog')} />}
                 <HelpAction icon={Keyboard} label={t('help_widget.action_shortcuts')} onClick={() => { onOpenShortcuts?.(); setOpen(false); }} />
                 <HelpAction
                   icon={Command}
@@ -226,13 +230,9 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                         {t('help_widget.docs_heading')}
                       </p>
                       {results.map((d) => (
-                        <button
+                        <div
                           key={d.slug}
-                          onClick={() => {
-                            navigate(`/docs/${d.slug}`);
-                            setOpen(false);
-                          }}
-                          className="w-full text-left flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
+                          className="w-full text-left flex items-start gap-2 px-2.5 py-2 rounded-lg bg-surface-secondary/50"
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-text-primary truncate">
@@ -245,8 +245,7 @@ export default function HelpWidget({ open, setOpen, onOpenShortcuts, onStartTour
                               {d.category.replace('-', ' ')} · {d.readTime}
                             </p>
                           </div>
-                          <ArrowRight className="h-3.5 w-3.5 text-text-muted shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </button>
+                        </div>
                       ))}
                     </>
                   )}

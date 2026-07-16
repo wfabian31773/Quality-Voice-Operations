@@ -207,16 +207,16 @@ export default function BookDemo() {
               </ul>
             </div>
             <div className="bg-surface rounded-2xl border border-border/30 p-6">
-              <p className="text-xs uppercase tracking-wider font-semibold text-text-secondary mb-3">Prefer self-serve?</p>
+              <p className="text-xs uppercase tracking-wider font-semibold text-text-secondary mb-3">Want to explore first?</p>
               <p className="text-sm text-text-primary/70 font-body mb-4">
-                Skip the demo and start your 14-day free trial — no credit card required.
+                Try the healthcare receptionist demo before your consultation.
               </p>
               <Link
-                to="/signup"
+                to="/demo"
                 className="inline-flex items-center gap-2 text-primary hover:text-primary-hover text-sm font-semibold"
-                onClick={() => trackCTAClick(CTA.START_FREE_TRIAL_FROM_BOOK_DEMO, '/book-demo', 'sidebar')}
+                onClick={() => trackCTAClick(CTA.TRY_LIVE_DEMO, '/book-demo', 'sidebar')}
               >
-                Start free trial <ArrowRight className="h-3.5 w-3.5" />
+                Try the live demo <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
           </aside>

@@ -71,6 +71,28 @@ describe('GET /tickets/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.ticket ?? res.body).toBeTruthy();
   });
+  it('includes the tenant-scoped receptionist outcome for a call-linked ticket', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('FROM tickets t') && sql.includes('WHERE t.id')) return { rows: [{ id: 'tk1', subject: 'Appointment request', call_id: 'call-1' }] };
+      if (sql.includes('FROM call_sessions cs') && sql.includes('transcript_count')) {
+        expect(values).toEqual(['call-1', 't1']);
+        return { rows: [{ id: 'call-1', language: 'en', lifecycle_state: 'CALL_COMPLETED', context: {}, transcript_count: 3 }] };
+      }
+      if (sql.includes('FROM outbox_messages')) return { rows: [{ id: 'out-1', status: 'sent', payload: {
+        type: 'answering_service_ticket', outcomeType: 'appointment_request', reasonForCall: 'Needs an exam',
+        requestedAction: 'Call to arrange a time', summary: 'Appointment request; staff confirmation required.',
+      } }] };
+      if (sql.includes('FROM tickets t') && sql.includes('t.call_id')) return { rows: [{ id: 'tk1', status: 'open', priority: 'medium' }] };
+      if (sql.includes('FROM tool_invocations') || sql.includes('FROM escalation_tasks')) return { rows: [] };
+      return { rows: [] };
+    });
+    const res = await request(app()).get('/tickets/tk1');
+    expect(res.status).toBe(200);
+    expect(res.body.receptionistOutcome).toMatchObject({
+      callId: 'call-1', outcome: { type: 'appointment_request' },
+      followUp: { ticketId: 'tk1', nextAction: 'Call to arrange a time' },
+    });
+  });
 });
 
 describe('POST /tickets', () => {
@@ -104,5 +126,9 @@ describe('mini-system-write gate', () => {
   it('blocks a viewer from creating a category', async () => {
     a.user.role = 'support_reviewer';
     expect((await request(app()).post('/ticket-categories').send({ name: 'C' })).status).toBe(403);
+  });
+  it('blocks a read-only tenant role from advancing a follow-up ticket', async () => {
+    a.user.role = 'support_reviewer';
+    expect((await request(app()).put('/tickets/tk1').send({ status: 'in_progress' })).status).toBe(403);
   });
 });

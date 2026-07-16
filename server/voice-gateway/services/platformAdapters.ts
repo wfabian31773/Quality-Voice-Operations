@@ -5,6 +5,7 @@ import { connectorService } from '../../../platform/integrations/connectors';
 import type { TenantId } from '../../../platform/core/types';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../../../platform/core/logger';
+import { createPiiLookupHashCandidates } from '../../../platform/security/PiiLookupHash';
 
 const logger = createLogger('PLATFORM_ADAPTERS');
 
@@ -36,9 +37,10 @@ export function createCallerMemoryStorage(): CallerMemoryStorage {
       phone: string,
       limit: number,
     ): Promise<CallHistoryRecord[]> {
+      const lookupHashes = createPiiLookupHashCandidates(tenantId, phone, 'caller_memory')
+        .map((candidate) => candidate.hash);
+      if (lookupHashes.length === 0) return [];
       return withTenant(tenantId, async (client) => {
-        const e164 = phone.startsWith('+') ? phone : `+1${phone}`;
-        const digits10 = phone.replace(/\D/g, '').replace(/^1(\d{10})$/, '$1');
         const { rows } = await client.query(
           `SELECT
              created_at AS "createdAt",
@@ -54,10 +56,10 @@ export function createCallerMemoryStorage(): CallerMemoryStorage {
              context->>'lastLocationSeen' AS "lastLocationSeen"
            FROM call_sessions
            WHERE tenant_id = $1
-             AND (caller_number = $2 OR caller_number = $3 OR caller_number = $4)
+             AND caller_lookup_hash = ANY($2::text[])
            ORDER BY created_at DESC
-           LIMIT $5`,
-          [tenantId, phone, e164, digits10, limit],
+           LIMIT $3`,
+          [tenantId, lookupHashes, limit],
         );
         return rows as unknown as CallHistoryRecord[];
       });

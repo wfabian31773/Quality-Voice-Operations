@@ -27,6 +27,9 @@ const ALL_PROD_REQUIRED = [
   'STRIPE_PRICE_PRO_AI_MINUTES',
   'STRIPE_PRICE_ENTERPRISE_AI_MINUTES',
   'VOICE_GATEWAY_BASE_URL',
+  'VOICE_GATEWAY_STREAM_TOKEN',
+  'QVO_PII_LOOKUP_HMAC_KEY',
+  'QVO_PII_LOOKUP_HMAC_KEY_VERSION',
   'ADMIN_API_BASE_URL',
   'SMTP_HOST',
   'SMTP_PORT',
@@ -65,6 +68,8 @@ function resetEnv(): void {
   delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
   delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
   delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
+  delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY;
+  delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION;
 }
 
 function applyAllProductionVars(): void {
@@ -78,6 +83,9 @@ function applyAllProductionVars(): void {
   process.env.CONNECTOR_ENCRYPTION_KEY = 'a'.repeat(64);
   process.env.PLATFORM_DB_POOL_URL = 'postgresql://user:pw@db.example.com:6543/postgres';
   process.env.ADMIN_JWT_SECRET = 'rotated-prod-secret';
+  process.env.VOICE_GATEWAY_STREAM_TOKEN = 'voice-stream-token-with-at-least-32-characters';
+  process.env.QVO_PII_LOOKUP_HMAC_KEY = 'pii-lookup-hmac-key-with-at-least-32-characters';
+  process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION = '2026-07-blue';
   process.env.STRIPE_SECRET_KEY = 'sk_live_xxx';
   // Per-tier metered AI-minutes Stripe price ids. As of Task #1321 these are
   // production-required (tracked in `ALL_PROD_REQUIRED` above, so the loop
@@ -242,7 +250,6 @@ describe('validateEnvironment() — optional vars', () => {
       'TWILIO_COST_PER_MINUTE_CENTS',
       'AI_COST_PER_MINUTE_CENTS',
       'SMS_COST_PER_MESSAGE_CENTS',
-      'VOICE_GATEWAY_STREAM_TOKEN',
       'CAMPAIGN_TENANT_MAX_CONCURRENT',
       'DISABLE_PHI_LOGGING',
       'ADMIN_EMAIL',
@@ -433,6 +440,57 @@ describe('validateEnvironment() — warnings', () => {
     const result = validateEnvironment();
 
     expect(result.warnings.some(w => w.includes('CONNECTOR_ENCRYPTION_KEY'))).toBe(true);
+  });
+
+  it('warns when VOICE_GATEWAY_STREAM_TOKEN is shorter than 32 characters', async () => {
+    applyAllProductionVars();
+    process.env.VOICE_GATEWAY_STREAM_TOKEN = 'tooshort';
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('VOICE_GATEWAY_STREAM_TOKEN'))).toBe(true);
+    expect(result.missing).toContain('VOICE_GATEWAY_STREAM_TOKEN');
+    expect(result.passed).toBe(false);
+  });
+
+  it('warns when QVO_PII_LOOKUP_HMAC_KEY is shorter than 32 characters', async () => {
+    applyAllProductionVars();
+    process.env.QVO_PII_LOOKUP_HMAC_KEY = 'tooshort';
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('QVO_PII_LOOKUP_HMAC_KEY'))).toBe(true);
+    expect(result.missing).toContain('QVO_PII_LOOKUP_HMAC_KEY');
+    expect(result.passed).toBe(false);
+  });
+
+  it('requires an explicit valid lookup-key version in production', async () => {
+    applyAllProductionVars();
+    delete process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION;
+    const { validateEnvironment } = await loadValidator();
+    const missing = validateEnvironment();
+    expect(missing.missing).toContain('QVO_PII_LOOKUP_HMAC_KEY_VERSION');
+
+    applyAllProductionVars();
+    process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION = 'invalid version';
+    const invalid = validateEnvironment();
+    expect(invalid.warnings.some(w => w.includes('QVO_PII_LOOKUP_HMAC_KEY_VERSION'))).toBe(true);
+    expect(invalid.passed).toBe(false);
+  });
+
+  it('fails closed for partial or duplicate previous-key rotation configuration', async () => {
+    applyAllProductionVars();
+    process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY = 'previous-lookup-hmac-key-with-at-least-32-characters';
+    const { validateEnvironment } = await loadValidator();
+    const partial = validateEnvironment();
+    expect(partial.missing).toContain('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION');
+
+    applyAllProductionVars();
+    process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY = process.env.QVO_PII_LOOKUP_HMAC_KEY;
+    process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION = process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION;
+    const duplicate = validateEnvironment();
+    expect(duplicate.warnings.some(w => w.includes('must differ'))).toBe(true);
+    expect(duplicate.passed).toBe(false);
   });
 
   it('emits no warnings when all production vars are healthy', async () => {

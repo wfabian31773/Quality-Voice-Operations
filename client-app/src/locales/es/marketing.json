@@ -20,7 +20,7 @@
     "seo_description": "Agentes de voz con IA para atender llamadas, agendar citas y automatizar operaciones. Recepción virtual y automatización de llamadas para climatización, consultorios médicos, dentales, legales y más.",
     "hero": {
       "badge": "Plataforma de voz con IA",
-      "eyebrow": "Voz para cada recepción · Calidad sanitaria por defecto",
+      "eyebrow": "Un núcleo de voz · Flujo sanitario especializado",
       "title": "Llamadas que no se pierden.",
       "title_2": "Clientes que no se pierden.",
       "title_highlight": "Agentes de voz con IA",
@@ -38,10 +38,10 @@
       "agents_deployed": "Agentes desplegados",
       "uptime": "Disponibilidad",
       "industries_served": "Industrias atendidas",
-      "soc2_in_progress": "SOC 2 en proceso",
-      "hipaa_ready": "Listo para HIPAA",
-      "gdpr_compliant": "Cumple con GDPR",
-      "aes_encryption": "Cifrado AES-256"
+      "soc2_in_progress": "Certificaciones no verificadas",
+      "hipaa_ready": "Aprobación del piloto sanitario pendiente",
+      "gdpr_compliant": "Revisión legal pendiente",
+      "aes_encryption": "Grabación desactivada por defecto"
     },
     "industries": {
       "healthcare": "Salud",
@@ -553,13 +553,13 @@
       "up_to_10": "Hasta 10"
     },
     "compliance": {
-      "eyebrow": "Cumplimiento de nivel empresarial",
-      "soc2": "SOC 2 Tipo II (en proceso)",
-      "hipaa": "HIPAA disponible con BAA",
-      "gdpr": "Cumple con GDPR",
-      "ccpa": "CCPA / CPRA",
-      "tls": "TLS 1.2+ en tránsito",
-      "aes": "AES-256 en reposo"
+      "eyebrow": "Controles por estado de evidencia",
+      "soc2": "Certificaciones no verificadas",
+      "hipaa": "Aprobación del piloto sanitario pendiente",
+      "gdpr": "Revisión de privacidad pendiente",
+      "ccpa": "Revisión jurisdiccional pendiente",
+      "tls": "Verificación de despliegue pendiente",
+      "aes": "Verificación de almacenamiento pendiente"
     },
     "faq": {
       "eyebrow": "Preguntas frecuentes",
@@ -1396,7 +1396,7 @@
     "healthcare": {
       "name": "Salud",
       "headline": "Agentes de voz IA creados para el sector salud",
-      "subheadline": "Atienda llamadas de pacientes 24/7 — agendamiento, ingreso, recargas de recetas y triaje — con IA de voz consciente de HIPAA que nunca deja a los pacientes en espera.",
+      "subheadline": "Atienda llamadas de pacientes con solicitudes de cita, recopilación mínima, seguimiento del personal y escalamiento seguro. La aprobación sanitaria de producción está pendiente.",
       "painPoints": [
         {
           "title": "Llamadas de pacientes perdidas",
@@ -2171,7 +2171,7 @@
     },
     "healthcare": {
       "title": "Salud",
-      "description": "IA de voz compatible con HIPAA para agendamiento de pacientes, admisión, recargas y triaje fuera de horario.",
+      "description": "Flujo de voz sanitario para solicitudes de cita, recopilación mínima, seguimiento y escalamiento seguro; aprobación de producción pendiente.",
       "keywords": "salud médico hipaa paciente clínica"
     },
     "dental": {

@@ -195,17 +195,16 @@ export default function Modal({
         if (closeOnBackdrop) onClose();
       }}
     >
-      <div className="absolute inset-0 bg-overlay" />
+      <div className="absolute inset-0 bg-overlay" aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
         {...ariaProps}
-        className={
-          panelClassName ??
-          'relative w-full max-w-md bg-surface border border-border rounded-xl shadow-2xl overflow-hidden'
-        }
+        className={panelClassName
+          ? `relative ${panelClassName}`
+          : 'relative w-full max-w-md bg-surface border border-border rounded-xl shadow-2xl overflow-hidden'}
         style={panelStyle}
         onClick={(e) => e.stopPropagation()}
       >

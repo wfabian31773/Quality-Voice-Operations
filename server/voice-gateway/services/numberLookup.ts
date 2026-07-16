@@ -92,11 +92,14 @@ export async function getAgentConfig(tenantId: string, agentId: string) {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
-      `SELECT id, name, type, system_prompt, voice, model, temperature,
-              max_response_output_tokens, tools, knowledge_base,
-              escalation_config, metadata, language
-       FROM agents WHERE id = $1`,
-      [agentId],
+      `SELECT a.id, a.name, a.type, a.system_prompt, a.voice, a.model, a.temperature,
+              a.max_response_output_tokens, a.tools, a.knowledge_base,
+              a.escalation_config, a.metadata, a.language,
+              COALESCE(t.timezone, 'America/New_York') AS tenant_timezone
+       FROM agents a
+       JOIN tenants t ON t.id = a.tenant_id
+       WHERE a.id = $1 AND a.tenant_id = $2`,
+      [agentId, tenantId],
     );
     await client.query('COMMIT');
     return rows[0] ?? null;

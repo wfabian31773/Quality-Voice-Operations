@@ -1,13 +1,11 @@
 import { useAuth } from '../lib/auth';
 import OpsAccessDenied from './OpsAccessDenied';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 export default function OpsGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
-  const isOpsUser =
-    user?.isPlatformAdmin ||
-    user?.role === 'tenant_owner' ||
-    user?.role === 'operations_manager';
+  const isOpsUser = isQvoStaff(user);
 
   if (!isOpsUser) {
     return <OpsAccessDenied />;

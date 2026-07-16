@@ -13,24 +13,9 @@ import ScrollToTop from './components/ScrollToTop';
 
 const PublicLayout = lazy(() => import('./components/PublicLayout'));
 const Landing = lazy(() => import('./pages/public/Landing'));
-const Product = lazy(() => import('./pages/public/Product'));
-const Features = lazy(() => import('./pages/public/Features'));
 const Pricing = lazy(() => import('./pages/public/Pricing'));
-const UseCases = lazy(() => import('./pages/public/UseCases'));
-const Integrations = lazy(() => import('./pages/public/Integrations'));
 const Contact = lazy(() => import('./pages/public/Contact'));
-const Docs = lazy(() => import('./pages/public/Docs'));
-const DocArticle = lazy(() => import('./pages/public/DocArticle'));
-const AgentsShowcase = lazy(() => import('./pages/public/AgentsShowcase'));
-const Signup = lazy(() => import('./pages/public/Signup'));
-const Blog = lazy(() => import('./pages/public/Blog'));
-const BlogArticle = lazy(() => import('./pages/public/BlogArticle'));
-const Resources = lazy(() => import('./pages/public/Resources'));
-const GuideDetail = lazy(() => import('./pages/public/GuideDetail'));
 const VerticalLanding = lazy(() => import('./pages/public/VerticalLanding'));
-const VerticalAgents = lazy(() => import('./pages/public/VerticalAgents'));
-const FederatedIngest = lazy(() => import('./pages/public/FederatedIngest'));
-const GlobalIntelligenceNetwork = lazy(() => import('./pages/public/GlobalIntelligenceNetwork'));
 const CaseStudies = lazy(() => import('./pages/public/CaseStudies'));
 const BookDemo = lazy(() => import('./pages/public/BookDemo'));
 const Terms = lazy(() => import('./pages/public/Terms'));
@@ -52,25 +37,11 @@ export default function PublicApp() {
           <Routes>
             <Route element={<PublicLayout />}>
               <Route path="/" element={<Landing />} />
-              <Route path="/product" element={<Product />} />
-              <Route path="/product/federated-ingest" element={<FederatedIngest />} />
-              <Route path="/product/global-intelligence-network" element={<GlobalIntelligenceNetwork />} />
-              <Route path="/features" element={<Features />} />
-              <Route path="/ai-agents" element={<AgentsShowcase />} />
               <Route path="/pricing" element={<Pricing />} />
-              <Route path="/use-cases" element={<UseCases />} />
-              <Route path="/integrations" element={<Integrations />} />
               <Route path="/demo" element={<Demo />} />
               <Route path="/contact" element={<Contact />} />
-              <Route path="/docs" element={<Docs />} />
-              <Route path="/docs/:slug" element={<DocArticle />} />
-              <Route path="/resources" element={<Resources />} />
-              <Route path="/resources/:slug" element={<GuideDetail />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/blog" element={<Blog />} />
-              <Route path="/blog/:slug" element={<BlogArticle />} />
-              <Route path="/industries/vertical-agents" element={<VerticalAgents />} />
-              <Route path="/industries/:vertical" element={<VerticalLanding />} />
+              <Route path="/industries/healthcare" element={<VerticalLanding />} />
+              <Route path="/industries/dental" element={<VerticalLanding />} />
               <Route path="/case-studies" element={<CaseStudies />} />
               <Route path="/case-studies/:slug" element={<CaseStudies />} />
               <Route path="/book-demo" element={<BookDemo />} />

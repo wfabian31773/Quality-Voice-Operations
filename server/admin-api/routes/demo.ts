@@ -6,6 +6,8 @@ import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
 import { raiseDemoAnalyticsWriteFailureAlert } from '../../../platform/analytics/demoAnalyticsAlert';
+import { executeHealthcareDemoScenario } from '../../../platform/demo/healthcareDemoScenario';
+import type { HealthcareDemoScenarioKind } from '../../../shared/demo/healthcareDemo';
 
 const logger = createLogger('DEMO_ANALYTICS');
 const router = Router();
@@ -36,6 +38,13 @@ const demoCTALimiter = createRateLimiter({
   maxRequests: 20,
   message: 'Too many requests.',
   keyGenerator: (req) => `demo-cta:${getClientIp(req)}`,
+});
+
+const healthcareDemoLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 12,
+  message: 'Too many guided demo requests. Please try again shortly.',
+  keyGenerator: (req) => `healthcare-demo:${getClientIp(req)}`,
 });
 
 export async function recordDemoAnalyticsEvent(
@@ -381,6 +390,38 @@ router.post('/demo/track-cta', demoCTALimiter, async (req: Request, res: Respons
   } catch (err) {
     logger.warn('Failed to track CTA click', { error: String(err) });
     res.status(500).json({ error: 'Failed to track CTA click' });
+  }
+});
+
+router.post('/demo/healthcare/run', healthcareDemoLimiter, async (req: Request, res: Response) => {
+  const body = req.body as { scenario?: unknown; now?: unknown };
+  if (body.scenario !== 'appointment_request' && body.scenario !== 'safe_escalation') {
+    res.status(400).json({ error: 'Invalid healthcare demo scenario' });
+    return;
+  }
+
+  let now: Date | undefined;
+  if (body.now !== undefined) {
+    if (typeof body.now !== 'string' || body.now.length > 50) {
+      res.status(400).json({ error: 'Invalid healthcare demo clock' });
+      return;
+    }
+    now = new Date(body.now);
+    if (Number.isNaN(now.getTime())) {
+      res.status(400).json({ error: 'Invalid healthcare demo clock' });
+      return;
+    }
+  }
+
+  try {
+    const result = await executeHealthcareDemoScenario(
+      body.scenario as HealthcareDemoScenarioKind,
+      { now },
+    );
+    res.json(result);
+  } catch (error) {
+    logger.error('Healthcare guided demo failed', { error: String(error) });
+    res.status(500).json({ error: 'Unable to run the healthcare guided demo' });
   }
 });
 

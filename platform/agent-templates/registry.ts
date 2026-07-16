@@ -5,6 +5,7 @@ export interface AgentTemplateEntry {
 
 const REGISTERED_TEMPLATES: AgentTemplateEntry[] = [
   { value: 'general', label: 'General' },
+  { value: 'healthcare-receptionist', label: 'Healthcare Receptionist' },
   { value: 'answering-service', label: 'Answering Service' },
   { value: 'medical-after-hours', label: 'Medical After Hours' },
   { value: 'dental', label: 'Dental' },

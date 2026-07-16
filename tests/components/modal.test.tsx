@@ -34,6 +34,16 @@ describe('Modal primitive', () => {
     expect(dialog.getAttribute('aria-label')).toBe('Test dialog');
   });
 
+  it('keeps a custom panel above the absolute backdrop', () => {
+    render(
+      <Modal open onClose={() => {}} ariaLabel="Custom" panelClassName="w-full custom-panel">
+        <a href="/tickets/ticket-1">Open ticket</a>
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog').classList.contains('relative')).toBe(true);
+    expect(document.querySelector('[aria-hidden="true"].bg-overlay')).toBeTruthy();
+  });
+
   it('focuses the first focusable element on open', async () => {
     render(<Harness />);
     await act(async () => {

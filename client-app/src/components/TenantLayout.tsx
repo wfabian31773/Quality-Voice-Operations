@@ -1,14 +1,14 @@
 import '../styles/tw-app.css';
-import { NavLink, Outlet, useNavigate, Navigate, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import {
-  LayoutDashboard, Bot, PhoneCall, Plug, Network,
+  LayoutDashboard, Bot, Phone, PhoneCall, Plug, Network,
   LogOut, Moon, Sun, Menu, BarChart3, Settings2,
   Megaphone, BookOpen, Store, ChevronDown, Boxes, Wrench,
   MessageSquare, CalendarClock, ClipboardList, Truck, Pin, Zap,
-  ShieldCheck, Search,
+  ShieldCheck, Search, CreditCard,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
@@ -28,6 +28,7 @@ import KeyboardShortcuts from './KeyboardShortcuts';
 import ProductTour, { getTourCompleted } from './ProductTour';
 import { dashboardTour } from './tours';
 import Modal from './Modal';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 export interface NavItem {
   to: string;
@@ -37,8 +38,15 @@ export interface NavItem {
 
 export const tenantLinks: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, i18nKey: 'tenant_nav.dashboard' },
-  { to: '/agents', icon: Bot, i18nKey: 'tenant_nav.agents' },
   { to: '/calls', icon: PhoneCall, i18nKey: 'tenant_nav.conversations' },
+  { to: '/tickets', icon: ClipboardList, i18nKey: 'tenant_nav.tickets' },
+  { to: '/knowledge-base', icon: BookOpen, i18nKey: 'tenant_nav.knowledge' },
+  { to: '/phone-numbers', icon: Phone, i18nKey: 'tenant_nav.phone_numbers' },
+  { to: '/billing', icon: CreditCard, i18nKey: 'tenant_nav.billing' },
+];
+
+export const internalPrimaryLinks: NavItem[] = [
+  { to: '/agents', icon: Bot, i18nKey: 'tenant_nav.agents' },
   { to: '/campaigns', icon: Megaphone, i18nKey: 'tenant_nav.campaigns' },
   { to: '/analytics', icon: BarChart3, i18nKey: 'tenant_nav.analytics' },
 ];
@@ -47,14 +55,12 @@ export const operationsLinks: NavItem[] = [
   { to: '/autopilot', icon: Zap, i18nKey: 'tenant_nav.autopilot' },
   { to: '/sms-inbox', icon: MessageSquare, i18nKey: 'tenant_nav.sms_inbox' },
   { to: '/scheduling', icon: CalendarClock, i18nKey: 'tenant_nav.scheduling' },
-  { to: '/tickets', icon: ClipboardList, i18nKey: 'tenant_nav.tickets' },
   { to: '/dispatch', icon: Truck, i18nKey: 'tenant_nav.dispatch' },
 ];
 
 export const configureLinks: NavItem[] = [
   { to: '/workflows', icon: Network, i18nKey: 'tenant_nav.workflows' },
   { to: '/connectors', icon: Plug, i18nKey: 'tenant_nav.integrations' },
-  { to: '/knowledge-base', icon: BookOpen, i18nKey: 'tenant_nav.knowledge' },
   { to: '/trusted-callers', icon: ShieldCheck, i18nKey: 'tenant_nav.trusted_callers' },
   { to: '/marketplace', icon: Store, i18nKey: 'tenant_nav.marketplace' },
 ];
@@ -113,47 +119,10 @@ export default function TenantLayout() {
     };
   }, []);
 
-  const isPlatformAdmin = !!user?.isPlatformAdmin;
-  // Provisioning status is essentially a one-shot signal: it transitions from
-  // pending -> provisioning -> ready exactly once, and once a tenant has a
-  // phone number the value is permanently stable. TenantLayout is the root of
-  // the entire portal, so any refetch fires on every page and on every focus
-  // change, which is what made this query the second-noisiest call in the
-  // tenant portal. Cache it for 30 minutes, disable every implicit refetch,
-  // and rely on explicit invalidation from Onboarding (post-poll) and
-  // PhoneNumbers (post-provision) to keep the data correct.
-  const { data: provisioningData, isLoading: provisioningLoading, isError: provisioningError } = useQuery({
-    queryKey: ['tenant-provisioning-status'],
-    queryFn: () =>
-      api.get<{ status: string; phoneNumberCount: number; tenantCreatedAt: string | null }>(
-        '/tenants/me/provisioning-status',
-      ),
-    enabled: !isPlatformAdmin,
-    staleTime: 30 * 60_000,
-    gcTime: 60 * 60_000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
-    refetchInterval: false,
-    retry: false,
-  });
-
-  let needsOnboarding: boolean | null;
-  if (isPlatformAdmin) {
-    needsOnboarding = false;
-  } else if (provisioningLoading) {
-    needsOnboarding = null;
-  } else if (provisioningError || !provisioningData) {
-    needsOnboarding = false;
-  } else if (provisioningData.status !== 'ready') {
-    needsOnboarding = true;
-  } else if (provisioningData.phoneNumberCount === 0 && provisioningData.tenantCreatedAt) {
-    const createdAt = new Date(provisioningData.tenantCreatedAt).getTime();
-    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-    needsOnboarding = createdAt > oneDayAgo;
-  } else {
-    needsOnboarding = false;
-  }
+  const isPlatformAdmin = isQvoStaff(user);
+  const primaryLinks = isPlatformAdmin
+    ? [...tenantLinks, ...internalPrimaryLinks]
+    : tenantLinks;
 
   useEffect(() => {
     // Only auto-launch the dashboard tour when the user is actually on the
@@ -161,31 +130,13 @@ export default function TenantLayout() {
     // (or any other surface with its own tour) would have the dashboard tour
     // pop open over the page-specific tour and yank them back to /dashboard.
     if (
-      needsOnboarding === false &&
       !getTourCompleted() &&
       location.pathname === '/dashboard'
     ) {
       const t = setTimeout(() => setTourOpen(true), 1500);
       return () => clearTimeout(t);
     }
-  }, [needsOnboarding, location.pathname]);
-
-  if (needsOnboarding === null) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-surface-secondary">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  const onboardingAllowedPaths = ['/onboarding', '/phone-numbers', '/agents', '/marketplace'];
-  const isOnboardingAllowedPath = onboardingAllowedPaths.some(
-    (p) => location.pathname === p || location.pathname.startsWith(p + '/'),
-  );
-
-  if (needsOnboarding && !isOnboardingAllowedPath) {
-    return <Navigate to="/onboarding" replace />;
-  }
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -212,7 +163,7 @@ export default function TenantLayout() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {tenantLinks.map((link) => {
+        {primaryLinks.map((link) => {
           const tourKey = link.to === '/dashboard' ? 'dashboard'
             : link.to === '/agents' ? 'agents'
             : link.to === '/calls' ? 'conversations'
@@ -245,27 +196,31 @@ export default function TenantLayout() {
           );
         })}
 
-        <NavGroup
-          label={t('tenant_nav.operations')}
-          icon={Boxes}
-          links={operationsLinks}
-          location={location}
-          open={opsOpen}
-          setOpen={setOpsOpen}
-          groupRef={opsRef}
-          onLinkClick={() => setMobileOpen(false)}
-        />
+        {isPlatformAdmin && (
+          <>
+            <NavGroup
+              label={t('tenant_nav.operations')}
+              icon={Boxes}
+              links={operationsLinks}
+              location={location}
+              open={opsOpen}
+              setOpen={setOpsOpen}
+              groupRef={opsRef}
+              onLinkClick={() => setMobileOpen(false)}
+            />
 
-        <NavGroup
-          label={t('tenant_nav.configure')}
-          icon={Wrench}
-          links={configureLinks}
-          location={location}
-          open={configureOpen}
-          setOpen={setConfigureOpen}
-          groupRef={configureRef}
-          onLinkClick={() => setMobileOpen(false)}
-        />
+            <NavGroup
+              label={t('tenant_nav.configure')}
+              icon={Wrench}
+              links={configureLinks}
+              location={location}
+              open={configureOpen}
+              setOpen={setConfigureOpen}
+              groupRef={configureRef}
+              onLinkClick={() => setMobileOpen(false)}
+            />
+          </>
+        )}
 
         <NavLink
           key={settingsLink.to}
@@ -360,7 +315,7 @@ export default function TenantLayout() {
             >
               <Search className="h-5 w-5" />
             </button>
-            <ChangelogBadgeLink />
+            {isPlatformAdmin && <ChangelogBadgeLink />}
             <NotificationsCenter />
           </div>
         </header>
@@ -402,7 +357,9 @@ export default function TenantLayout() {
       <ProductTour
         active={tourOpen}
         onClose={() => setTourOpen(false)}
-        steps={dashboardTour}
+        steps={isPlatformAdmin
+          ? dashboardTour
+          : dashboardTour.filter((step) => step.selector === '[data-tour="conversations"]' || step.selector === '[data-tour="help"]')}
         tourId="dashboard"
       />
     </div>

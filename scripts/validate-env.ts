@@ -42,6 +42,9 @@ const ENV_VARS: EnvVar[] = [
   { name: 'STRIPE_PRICE_PRO_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Pro per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
   { name: 'STRIPE_PRICE_ENTERPRISE_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Enterprise per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
   { name: 'VOICE_GATEWAY_BASE_URL', required: 'production', purpose: 'Public URL of the voice gateway (for Twilio webhooks)' },
+  { name: 'VOICE_GATEWAY_STREAM_TOKEN', required: 'production', purpose: 'Strong bearer token authenticating Twilio and widget WebSocket stream upgrades' },
+  { name: 'QVO_PII_LOOKUP_HMAC_KEY', required: 'production', purpose: 'Strong purpose-separated HMAC key for tenant-scoped caller lookup identifiers' },
+  { name: 'QVO_PII_LOOKUP_HMAC_KEY_VERSION', required: 'production', purpose: 'Stable lowercase identifier for the active caller-lookup HMAC key' },
   { name: 'ADMIN_API_BASE_URL', required: 'production', purpose: 'Public URL of the admin API' },
   { name: 'SMTP_HOST', required: 'production', purpose: 'SMTP server hostname for transactional email' },
   { name: 'SMTP_PORT', required: 'production', purpose: 'SMTP server port (e.g. 587 for STARTTLS)' },
@@ -63,6 +66,7 @@ const ENV_VARS: EnvVar[] = [
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
+  { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },
   { name: 'VOICE_GATEWAY_PORT', required: 'development', purpose: 'Voice gateway listen port (default: 3001)' },
   { name: 'PORT', required: 'development', purpose: 'Generic port fallback (default: 5000 in prod)' },
@@ -71,7 +75,6 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'TWILIO_COST_PER_MINUTE_CENTS', required: 'development', purpose: 'Twilio cost per minute in cents (default: 2)' },
   { name: 'AI_COST_PER_MINUTE_CENTS', required: 'development', purpose: 'AI cost per minute in cents (default: 6)' },
   { name: 'SMS_COST_PER_MESSAGE_CENTS', required: 'development', purpose: 'SMS cost per message in cents (default: 1)' },
-  { name: 'VOICE_GATEWAY_STREAM_TOKEN', required: 'development', purpose: 'Optional bearer token for WebSocket stream auth' },
   { name: 'CAMPAIGN_TENANT_MAX_CONCURRENT', required: 'development', purpose: 'Max concurrent outbound calls per tenant (default: 5)' },
   { name: 'DISABLE_PHI_LOGGING', required: 'development', purpose: 'Set to "true" to redact PHI from logs' },
   { name: 'ADMIN_EMAIL', required: 'development', purpose: 'Seed admin email (used by seed-admin script)' },
@@ -83,6 +86,8 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'CALENDLY_WEBHOOK_SECRET', required: 'development', purpose: 'HMAC-SHA256 secret for verifying Calendly webhook requests (handled by both the unified /book-demo/calendar-webhook and the dedicated /book-demo/calendly-webhook routes). Conditionally required in production when VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is "calendly"' },
   { name: 'CALENDLY_WEBHOOK_TOLERANCE_SECONDS', required: 'development', purpose: 'Optional override (default 300) for Calendly signature timestamp replay window' },
   { name: 'CALENDLY_WEBHOOK_ALLOW_UNSIGNED', required: 'development', purpose: 'Dev/staging only. Set to "1" to accept unsigned Calendly webhook requests when CALENDLY_WEBHOOK_SECRET is not configured. Production always fails closed' },
+  { name: 'QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY', required: 'development', purpose: 'Previous caller-lookup HMAC key retained only during a bounded rotation/backfill window' },
+  { name: 'QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION', required: 'development', purpose: 'Version paired with QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY during rotation' },
 ];
 
 /**
@@ -211,6 +216,60 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {
     warnings.push('CONNECTOR_ENCRYPTION_KEY should be 32 bytes (64 hex chars)');
+  }
+
+  if (process.env.VOICE_GATEWAY_STREAM_TOKEN && process.env.VOICE_GATEWAY_STREAM_TOKEN.length < 32) {
+    warnings.push('VOICE_GATEWAY_STREAM_TOKEN should contain at least 32 characters of cryptographically random data');
+    if (isProd && !missing.includes('VOICE_GATEWAY_STREAM_TOKEN')) missing.push('VOICE_GATEWAY_STREAM_TOKEN');
+  }
+
+  if (process.env.QVO_PII_LOOKUP_HMAC_KEY && process.env.QVO_PII_LOOKUP_HMAC_KEY.length < 32) {
+    warnings.push('QVO_PII_LOOKUP_HMAC_KEY should contain at least 32 characters of cryptographically random data');
+    if (isProd && !missing.includes('QVO_PII_LOOKUP_HMAC_KEY')) missing.push('QVO_PII_LOOKUP_HMAC_KEY');
+  }
+
+  const lookupVersionPattern = /^[a-z0-9][a-z0-9._-]{0,31}$/;
+  const lookupVersion = process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION;
+  if (lookupVersion && !lookupVersionPattern.test(lookupVersion)) {
+    warnings.push('QVO_PII_LOOKUP_HMAC_KEY_VERSION must be a lowercase version identifier of at most 32 characters');
+    if (isProd && !missing.includes('QVO_PII_LOOKUP_HMAC_KEY_VERSION')) {
+      missing.push('QVO_PII_LOOKUP_HMAC_KEY_VERSION');
+    }
+  }
+
+  const previousLookupKey = process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY;
+  const previousLookupVersion = process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION;
+  if (!!previousLookupKey !== !!previousLookupVersion) {
+    const absent = previousLookupKey
+      ? 'QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION'
+      : 'QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY';
+    warnings.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY and QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION must be configured together');
+    if (isProd && !missing.includes(absent)) missing.push(absent);
+  } else if (previousLookupKey && previousLookupVersion) {
+    if (previousLookupKey.length < 32) {
+      warnings.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY should contain at least 32 characters of cryptographically random data');
+      if (isProd && !missing.includes('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY')) {
+        missing.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY');
+      }
+    }
+    if (!lookupVersionPattern.test(previousLookupVersion)) {
+      warnings.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION must be a lowercase version identifier of at most 32 characters');
+      if (isProd && !missing.includes('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION')) {
+        missing.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION');
+      }
+    }
+    if (previousLookupKey === process.env.QVO_PII_LOOKUP_HMAC_KEY) {
+      warnings.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY must differ from QVO_PII_LOOKUP_HMAC_KEY');
+      if (isProd && !missing.includes('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY')) {
+        missing.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY');
+      }
+    }
+    if (previousLookupVersion === lookupVersion) {
+      warnings.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION must differ from QVO_PII_LOOKUP_HMAC_KEY_VERSION');
+      if (isProd && !missing.includes('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION')) {
+        missing.push('QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION');
+      }
+    }
   }
 
   // Surface the per-tier metered AI-minutes price *errors* from

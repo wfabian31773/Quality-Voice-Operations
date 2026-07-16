@@ -56,6 +56,15 @@ interface ApiHandlers {
 let handlers: ApiHandlers = {};
 
 beforeEach(() => {
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+    removeItem: (key: string) => values.delete(key),
+    clear: () => values.clear(),
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    get length() { return values.size; },
+  });
   localStorage.clear();
   handlers = {
     '/auth/me': () => ({ user: { userId: 'user-1', email: 'owner@acme.test' } }),
@@ -100,9 +109,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.unstubAllGlobals();
   vi.resetModules();
-  localStorage.clear();
 });
 
 function renderPage(node: React.ReactElement) {
@@ -143,7 +152,7 @@ describe('Calls page renders end-to-end (task #1008)', () => {
     // got past its initial query without crashing.
     await waitFor(() => {
       expect(
-        screen.getByText(/No calls (yet|match your filters)/i),
+        screen.getByText(/No calls (yet|match your filters)|calls\.empty\.no_calls_title/i),
       ).toBeTruthy();
     });
   });
@@ -152,5 +161,32 @@ describe('Calls page renders end-to-end (task #1008)', () => {
     vi.resetModules();
     const mod = await import('../../client-app/src/pages/Calls');
     expect(typeof mod.CallDetailDrawer).toBe('function');
+  });
+
+  it('renders an actionable healthcare outcome in the focused call drawer', async () => {
+    handlers = {
+      '/calls/call-1/outcome': () => ({ projection: {
+        callId: 'call-1', language: 'es', lifecycleState: 'CALL_COMPLETED', startedAt: null, endedAt: null,
+        caller: { firstName: 'Ana', lastName: 'Lopez', phone: '+15555550100', type: 'patient', organizationName: null },
+        patient: null, intent: 'Needs an annual eye exam',
+        outcome: { type: 'appointment_request', summary: 'Appointment request; staff confirmation required.', requestedAction: 'Call back to arrange a time', urgency: 'routine', callbackPreference: 'weekday afternoons', identityVerificationStatus: 'partially_verified', consentToContact: true, evidenceSource: ['caller_statement'] },
+        transcript: { available: true, lineCount: 2 }, recording: { policy: 'disabled', status: 'not_recorded', url: null },
+        delivery: { id: 'out-1', status: 'sent', error: null, externalReference: null },
+        followUp: { ticketId: 'ticket-1', ticketNumber: 17, ownerId: null, ownerLabel: 'Unassigned', priority: 'medium', status: 'open', nextAction: 'Call back to arrange a time' },
+        tool: { id: 'tool-1', name: 'createServiceTicket', status: 'success', error: null, invokedAt: null, result: null },
+        escalation: null, operationalValue: { state: 'staff_follow_up_created', evidence: 'A staff follow-up ticket was created.' },
+      } }),
+      '/calls/call-1/transcript': () => ({ transcript: [] }),
+      '/calls/call-1/events': () => ({ events: [] }),
+      '/calls/call-1': () => ({ call: { id: 'call-1', caller_number: '***', called_number: '***', direction: 'inbound', lifecycle_state: 'CALL_COMPLETED', start_time: '2026-07-12T10:00:00Z', end_time: '2026-07-12T10:03:00Z', agent_id: 'agent-1', agent_name: 'Healthcare Receptionist', duration_seconds: 180, language: 'es' }, costBreakdown: null }),
+      '/tool-executions': () => ({ executions: [] }),
+      '/tenants/me': () => ({ tenant: { billing_currency: 'usd' } }),
+    };
+    vi.resetModules();
+    const { CallDetailDrawer } = await import('../../client-app/src/pages/Calls');
+    renderPage(<CallDetailDrawer callId="call-1" onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('heading', { name: /receptionist outcome/i })).toBeTruthy());
+    expect(screen.getByRole('link', { name: /open follow-up ticket/i }).getAttribute('href')).toBe('/tickets/ticket-1');
+    expect(screen.getByText(/not recorded/i)).toBeTruthy();
   });
 });

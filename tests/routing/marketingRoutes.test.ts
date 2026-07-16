@@ -44,14 +44,12 @@ describe('shared/spa/marketingRoutes', () => {
     it('classifies the canonical marketing paths as marketing', () => {
       const marketing = [
         '/',
-        '/product',
-        '/product/federated-ingest',
-        '/features',
         '/pricing',
-        '/use-cases',
-        '/integrations',
+        '/demo',
         '/contact',
-        '/signup',
+        '/industries/healthcare',
+        '/industries/dental',
+        '/case-studies',
         '/terms',
         '/privacy',
         '/security',
@@ -65,14 +63,35 @@ describe('shared/spa/marketingRoutes', () => {
     });
 
     it('classifies dynamic-prefix marketing paths as marketing', () => {
-      expect(isMarketingPathname('/docs')).toBe(true);
-      expect(isMarketingPathname('/docs/getting-started')).toBe(true);
-      expect(isMarketingPathname('/blog')).toBe(true);
-      expect(isMarketingPathname('/blog/some-post-slug')).toBe(true);
-      expect(isMarketingPathname('/industries')).toBe(true);
       expect(isMarketingPathname('/industries/healthcare')).toBe(true);
+      expect(isMarketingPathname('/industries/dental')).toBe(true);
       expect(isMarketingPathname('/case-studies/acme')).toBe(true);
-      expect(isMarketingPathname('/resources/guide-name')).toBe(true);
+    });
+
+    it('does not classify hidden generic platform pages as marketing', () => {
+      const hidden = [
+        '/product',
+        '/product/federated-ingest',
+        '/product/global-intelligence-network',
+        '/features',
+        '/ai-agents',
+        '/use-cases',
+        '/integrations',
+        '/docs',
+        '/docs/getting-started',
+        '/signup',
+        '/industries/vertical-agents',
+        '/industries/legal',
+        '/industries/real-estate',
+        '/industries/home-services',
+        '/blog',
+        '/blog/some-post-slug',
+        '/resources',
+        '/resources/guide-name',
+      ];
+      for (const path of hidden) {
+        expect(isMarketingPathname(path), path).toBe(false);
+      }
     });
 
     it('classifies in-app, auth, ops, and admin paths as non-marketing', () => {
@@ -96,13 +115,13 @@ describe('shared/spa/marketingRoutes', () => {
       expect(isMarketingPathname('/en')).toBe(true);
       expect(isMarketingPathname('/en/')).toBe(true);
       expect(isMarketingPathname('/en/pricing')).toBe(true);
-      expect(isMarketingPathname('/en/blog/post-name')).toBe(true);
+      expect(isMarketingPathname('/en/blog/post-name')).toBe(false);
     });
 
     it('treats other localized prefixes as marketing for marketing routes', () => {
       expect(isMarketingPathname('/es/pricing')).toBe(true);
-      expect(isMarketingPathname('/pt-BR/docs/intro')).toBe(true);
-      expect(isMarketingPathname('/fr/blog/post')).toBe(true);
+      expect(isMarketingPathname('/pt-BR/industries/dental')).toBe(true);
+      expect(isMarketingPathname('/fr/blog/post')).toBe(false);
       expect(isMarketingPathname('/de/industries/healthcare')).toBe(true);
     });
 
@@ -114,8 +133,8 @@ describe('shared/spa/marketingRoutes', () => {
 
     it('normalizes trailing slashes and repeated leading slashes', () => {
       expect(isMarketingPathname('/pricing/')).toBe(true);
-      expect(isMarketingPathname('/blog/')).toBe(true);
-      expect(isMarketingPathname('/blog/some-post/')).toBe(true);
+      expect(isMarketingPathname('/blog/')).toBe(false);
+      expect(isMarketingPathname('/blog/some-post/')).toBe(false);
       expect(isMarketingPathname('//pricing')).toBe(true);
       expect(isMarketingPathname('//')).toBe(true);
       expect(isMarketingPathname('/dashboard/')).toBe(false);

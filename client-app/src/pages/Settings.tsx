@@ -29,6 +29,7 @@ import {
   normalizeAgentLanguage,
 } from '../lib/agentLanguages';
 import { getDefaultWelcomeGreeting, useBuilderUiT } from '../lib/agentBuilderI18n';
+import { isQvoStaff } from '../lib/surfacePolicy';
 
 interface Tenant {
   id: string;
@@ -102,6 +103,8 @@ const TABS: { key: Tab; labelKey: string; icon: typeof Settings2 }[] = [
   { key: 'privacy', labelKey: 'settings.tabs.privacy', icon: Lock },
 ];
 
+const CUSTOMER_TABS = TABS.filter((tab) => tab.key !== 'api-keys');
+
 interface AgentType {
   value: string;
   label: string;
@@ -137,6 +140,8 @@ function GeneralSettings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isOwner } = useRole();
+  const { user } = useAuth();
+  const isStaff = isQvoStaff(user);
   const [saved, setSaved] = useState(false);
   const [restartingOnboarding, setRestartingOnboarding] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
@@ -535,7 +540,7 @@ function GeneralSettings() {
         <p className="text-sm text-text-muted">{t('settings.general.owner_only')}</p>
       )}
 
-      <div className="bg-surface border border-border rounded-xl p-6">
+      {isStaff && <div className="bg-surface border border-border rounded-xl p-6">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -566,7 +571,7 @@ function GeneralSettings() {
             </button>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -2041,9 +2046,11 @@ export default function Settings() {
   // builder. See `client-app/src/lib/agentBuilderI18n.ts`.
   const leaveConfirmT = useBuilderUiT();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const visibleTabs = isQvoStaff(user) ? TABS : CUSTOMER_TABS;
   const params = useParams<{ tab?: string }>();
   const rawTab = params.tab ?? 'general';
-  const isValidTab = TABS.some((t) => t.key === rawTab);
+  const isValidTab = visibleTabs.some((t) => t.key === rawTab);
   const tab = (isValidTab ? rawTab : 'general') as Tab;
 
   // Track which tab panels have been opened so far. Once a tab has been
@@ -2082,10 +2089,10 @@ export default function Settings() {
     for (const [id, value] of Object.entries(dirtyMap)) {
       if (!value) continue;
       const tabKey = id.split(':', 1)[0] as Tab;
-      if (TABS.some((t) => t.key === tabKey)) set.add(tabKey);
+      if (visibleTabs.some((t) => t.key === tabKey)) set.add(tabKey);
     }
     return set;
-  }, [dirtyMap]);
+  }, [dirtyMap, visibleTabs]);
 
   // Aggregate "any panel dirty?" across every registration. Used to (a) warn
   // on browser-level unloads (close tab, refresh, navigate the address bar)
@@ -2151,7 +2158,7 @@ export default function Settings() {
           aria-label={tenantT('settings.sections_aria')}
           className="flex flex-wrap gap-1 mb-6 border-b border-border"
         >
-          {TABS.map((entry) => {
+          {visibleTabs.map((entry) => {
             const isDirty = dirtyTabs.has(entry.key);
             const label = tenantT(entry.labelKey);
             return (
@@ -2181,7 +2188,7 @@ export default function Settings() {
           })}
         </div>
 
-        {TABS.map(({ key }) => {
+        {visibleTabs.map(({ key }) => {
           if (!visited.has(key)) return null;
           const Panel = TAB_COMPONENTS[key];
           const isActive = tab === key;

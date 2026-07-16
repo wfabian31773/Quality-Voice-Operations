@@ -20,7 +20,7 @@
     "seo_description": "AI voice agents for call answering, appointment scheduling, and business automation. AI receptionist and call automation for HVAC, medical offices, dental, legal, and more.",
     "hero": {
       "badge": "AI-Powered Voice Platform",
-      "eyebrow": "Voice for every front desk · Healthcare-grade by default",
+      "eyebrow": "One voice core · Purpose-built healthcare workflow",
       "title_highlight": "AI Voice Agents",
       "title_rest": " That Run Your Business",
       "title": "Calls that don’t get missed.",
@@ -38,10 +38,10 @@
       "agents_deployed": "Agents Deployed",
       "uptime": "Uptime",
       "industries_served": "Industries Served",
-      "soc2_in_progress": "SOC 2 in progress",
-      "hipaa_ready": "HIPAA-ready",
-      "gdpr_compliant": "GDPR compliant",
-      "aes_encryption": "AES-256 encryption"
+      "soc2_in_progress": "Certifications not verified",
+      "hipaa_ready": "Healthcare pilot approval pending",
+      "gdpr_compliant": "Legal review pending",
+      "aes_encryption": "Recording disabled by default"
     },
     "industries": {
       "healthcare": "Healthcare",
@@ -553,13 +553,13 @@
       "up_to_10": "Up to 10"
     },
     "compliance": {
-      "eyebrow": "Enterprise-ready compliance",
-      "soc2": "SOC 2 Type II (in progress)",
-      "hipaa": "HIPAA available with BAA",
-      "gdpr": "GDPR compliant",
-      "ccpa": "CCPA / CPRA",
-      "tls": "TLS 1.2+ in transit",
-      "aes": "AES-256 at rest"
+      "eyebrow": "Evidence-state controls",
+      "soc2": "Certifications not verified",
+      "hipaa": "Healthcare pilot approval pending",
+      "gdpr": "Privacy review pending",
+      "ccpa": "Jurisdiction review pending",
+      "tls": "Deployment controls pending verification",
+      "aes": "Storage controls pending verification"
     },
     "faq": {
       "eyebrow": "FAQ",
@@ -1396,7 +1396,7 @@
     "healthcare": {
       "name": "Healthcare",
       "headline": "AI Voice Agents Built for Healthcare",
-      "subheadline": "Handle patient calls 24/7 — scheduling, intake, prescription refills, and triage — with HIPAA-aware voice AI that never puts patients on hold.",
+      "subheadline": "Handle patient calls with appointment requests, minimum-necessary intake, staff follow-up, and safe escalation. Production healthcare approval is pending.",
       "painPoints": [
         {
           "title": "Missed patient calls",
@@ -2171,7 +2171,7 @@
     },
     "healthcare": {
       "title": "Healthcare",
-      "description": "HIPAA-aware voice AI for patient scheduling, intake, refills, and after-hours triage.",
+      "description": "Healthcare voice workflow for appointment requests, minimum-necessary intake, follow-up, and safe escalation; production approval pending.",
       "keywords": "healthcare medical hipaa patient clinic"
     },
     "dental": {

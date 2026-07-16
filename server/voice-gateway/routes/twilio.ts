@@ -33,6 +33,7 @@ import {
   incrementHourlyCallCount,
   checkDailyMinuteCap,
 } from '../../../platform/billing/guardrails';
+import { authorizeHealthcareDeployment } from '../../../platform/compliance/HealthcareDeploymentApprovalService';
 
 const logger = createLogger('TWILIO_WEBHOOK');
 
@@ -204,6 +205,25 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       res.type('text/xml').send(
         `<?xml version="1.0" encoding="UTF-8"?>
 <Response><Say>This service is temporarily unavailable. Please contact support.</Say><Hangup/></Response>`,
+      );
+      return;
+    }
+
+    const healthcareApproval = await authorizeHealthcareDeployment({
+      tenantId,
+      agentId,
+      agentType,
+      subjectPhone: callerNumber,
+    });
+    if (!healthcareApproval.allowed) {
+      logger.warn('Healthcare call rejected by deployment approval gate', {
+        tenantId,
+        agentId,
+        code: healthcareApproval.code,
+      });
+      res.type('text/xml').send(
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Say>This healthcare service is not currently available. Please contact the practice directly.</Say><Hangup/></Response>`,
       );
       return;
     }
@@ -642,6 +662,45 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     return;
   }
 
+  let outboundAgent: Awaited<ReturnType<typeof getAgentConfig>>;
+  try {
+    outboundAgent = await getAgentConfig(tenantId, agentId);
+  } catch (err) {
+    logger.error('Outbound agent lookup failed', { tenantId, agentId, error: String(err) });
+    res.type('text/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+    );
+    return;
+  }
+  if (!outboundAgent) {
+    logger.warn('Outbound call blocked — agent not found', { tenantId, agentId });
+    res.type('text/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+    );
+    return;
+  }
+  const outboundSubjectPhone = String(req.body.To ?? req.query.To ?? '');
+  const healthcareApproval = await authorizeHealthcareDeployment({
+    tenantId,
+    agentId,
+    agentType: String(outboundAgent.type ?? 'general'),
+    subjectPhone: outboundSubjectPhone,
+  });
+  if (!healthcareApproval.allowed) {
+    logger.warn('Outbound healthcare call rejected by deployment approval gate', {
+      tenantId,
+      agentId,
+      code: healthcareApproval.code,
+    });
+    if (contactId) {
+      updateContactStatus(tenantId, contactId, 'failed', callSid, 'Healthcare deployment not approved', 'failed').catch(() => {});
+    }
+    res.type('text/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`,
+    );
+    return;
+  }
+
   try {
     const pool = (await import('../../../platform/db')).getPlatformPool();
     const { rows: phoneRows } = await pool.query(
@@ -715,8 +774,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     let voicemailMessage: string | undefined;
     if (tenantId && agentId) {
       try {
-        const agentRow = await getAgentConfig(tenantId, agentId);
-        voicemailMessage = (agentRow?.metadata as Record<string, unknown> | undefined)?.voicemailMessage as string | undefined;
+        voicemailMessage = (outboundAgent.metadata as Record<string, unknown> | undefined)?.voicemailMessage as string | undefined;
       } catch {
         // fall through to default behavior
       }

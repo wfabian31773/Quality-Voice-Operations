@@ -9,6 +9,7 @@ import {
   TICKET_TEMPLATE_TOKENS,
   findUnknownTicketTemplateTokens,
 } from '../../../shared/tickets/templateTokens';
+import { loadHealthcareOutcomeDashboardProjection } from '../services/healthcareOutcomeDashboard';
 
 const router = Router();
 const logger = createLogger('ADMIN_TICKETS');
@@ -258,6 +259,9 @@ export const listTicketsHandler: RequestHandler = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT t.*, u.email AS assignee_email, c.name AS category_name,
               sla.sla_instance,
+              outcome.payload->>'outcomeType' AS receptionist_outcome_type,
+              outcome.payload->>'requestedAction' AS receptionist_next_action,
+              outcome.status AS receptionist_delivery_status,
               COUNT(*) OVER() AS _total_count
        FROM tickets t
        LEFT JOIN users u ON u.id = t.assignee_user_id
@@ -269,6 +273,14 @@ export const listTicketsHandler: RequestHandler = async (req, res) => {
          ORDER BY si.created_at DESC
          LIMIT 1
        ) sla ON true
+       LEFT JOIN LATERAL (
+         SELECT om.payload, om.status
+         FROM outbox_messages om
+         WHERE om.tenant_id = t.tenant_id AND om.call_log_id = t.call_id
+           AND om.payload->>'type' = 'answering_service_ticket'
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) outcome ON true
        WHERE ${where}
        ORDER BY t.${orderCol} ${orderDir}
        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -340,12 +352,18 @@ const getTicketHandler: RequestHandler = async (req, res) => {
       [id, tenantId],
     );
 
+    const callId = typeof rows[0].call_id === 'string' ? rows[0].call_id : null;
+    const receptionistOutcome = callId
+      ? await loadHealthcareOutcomeDashboardProjection(pool, tenantId, callId)
+      : null;
+
     return res.json({
       ticket: rows[0],
       watchers,
       sla: slaInstances[0] || null,
       linkedTickets,
       attachments,
+      receptionistOutcome,
     });
   } catch (err) {
     logger.error('Failed to get ticket', { tenantId, error: String(err) });
@@ -424,7 +442,7 @@ const createTicketHandler: RequestHandler = async (req, res) => {
 
 const updateTicketHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
-  const { id } = req.params;
+  const id = String(req.params.id);
   const { subject, description, status, priority, assignee_user_id, notes, category_id, department, tags, contact_name, contact_email, contact_phone } = req.body;
   const pool = getPlatformPool();
 
@@ -659,7 +677,7 @@ const getTicketActivityHandler: RequestHandler = async (req, res) => {
 
 const addTicketNoteHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
-  const { id } = req.params;
+  const id = String(req.params.id);
   const { content, is_internal } = req.body;
 
   if (!content) return res.status(400).json({ error: 'content is required' });

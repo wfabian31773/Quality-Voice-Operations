@@ -6,6 +6,10 @@ export interface TemplateToolPermissions {
 }
 
 const TEMPLATE_PERMISSIONS: Record<string, TemplateToolPermissions> = {
+  'healthcare-receptionist': {
+    allowedTools: ['createServiceTicket', 'lookupSchedule', 'escalate_to_human'],
+    deniedTools: ['triageEscalate', 'scheduleDentalAppointment', 'scheduleConsultation', 'submitMaintenanceRequest', 'bookServiceAppointment'],
+  },
   'answering-service': {
     allowedTools: ['createServiceTicket', 'lookupSchedule'],
     deniedTools: ['triageEscalate', 'scheduleDentalAppointment', 'scheduleConsultation', 'submitMaintenanceRequest', 'bookServiceAppointment'],
@@ -57,9 +61,7 @@ export function filterToolsByPermissions(
 
   return tools.filter((t) => {
     const overrideEnabled = overrideMap.get(t.name);
-    if (overrideEnabled !== undefined) {
-      return overrideEnabled;
-    }
+    if (overrideEnabled === false) return false;
 
     if (permissions.deniedTools.includes(t.name)) {
       return false;
@@ -82,9 +84,7 @@ export function isToolDenied(
 
   if (overrides) {
     const override = overrides.find((o) => o.toolName === toolName);
-    if (override !== undefined) {
-      return !override.enabled;
-    }
+    if (override?.enabled === false) return true;
   }
 
   if (permissions.deniedTools.includes(toolName)) {

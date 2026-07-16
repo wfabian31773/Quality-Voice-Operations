@@ -1,3 +1,5 @@
+import type { LoadedAgentConfig } from '../../server/voice-gateway/services/agentLoader';
+
 export interface WorkforceTeam {
   id: string;
   tenant_id: string;
@@ -121,16 +123,7 @@ export interface HandoffRoutingInfo {
 export interface HandoffResult {
   success: boolean;
   targetAgentId?: string;
-  targetAgentConfig?: {
-    agentId: string;
-    agentType: string;
-    systemPrompt: string;
-    greeting: string;
-    voice: string;
-    model: string;
-    tools: unknown[];
-    guardrails: string[];
-  };
+  targetAgentConfig?: LoadedAgentConfig & { agentType: string };
   handoffGreeting?: string;
   reason: string;
   routingRuleId?: string;

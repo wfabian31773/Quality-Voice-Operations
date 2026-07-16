@@ -178,6 +178,7 @@ export async function runRealtimeStreamDiagnostic(
     const timers: NodeJS.Timeout[] = [];
     const connectStart = Date.now();
     let startSentAt = 0;
+    const hasConnected = () => Object.prototype.hasOwnProperty.call(latencies, 'ws_connect');
 
     const cleanup = () => {
       for (const t of timers) clearTimeout(t);
@@ -276,15 +277,17 @@ export async function runRealtimeStreamDiagnostic(
     ws.on('error', (err: Error) => {
       if (settled) return;
       const refused = /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH/.test(String(err));
-      stages.push({ stage: latencies.ws_connect ? 'session_setup' : 'ws_connect', status: 'fail', detail: String(err) });
-      settle(false, latencies.ws_connect ? 'session_setup' : 'ws_connect', refused ? 'connect_refused' : 'setup_error', String(err));
+      const stage: StreamStage = hasConnected() ? 'session_setup' : 'ws_connect';
+      stages.push({ stage, status: 'fail', detail: String(err) });
+      settle(false, stage, refused ? 'connect_refused' : 'setup_error', String(err));
     });
 
     ws.on('close', (code: number) => {
       if (settled) return;
       // Closed before we reached our success condition.
-      const stage: StreamStage = latencies.ws_connect ? 'session_setup' : 'ws_connect';
-      const reason: StreamFailureReason = !latencies.ws_connect
+      const connected = hasConnected();
+      const stage: StreamStage = connected ? 'session_setup' : 'ws_connect';
+      const reason: StreamFailureReason = !connected
         ? 'auth_rejected'
         : (Date.now() - startSentAt < 500 ? 'closed_early' : 'setup_error');
       stages.push({ stage, status: 'fail', detail: `socket closed (code ${code})` });

@@ -424,7 +424,7 @@ export default function WebsiteSalesWidget() {
                                   maximumFractionDigits: 0,
                                 })}/mo billed annually (save ${Math.round(ANNUAL_DISCOUNT * 100)}%)`
                             : null;
-                        const ctaHref = `/signup?plan=${plan}${isAnnual ? '&interval=annual' : ''}`;
+                        const ctaHref = `/book-demo?plan=${plan}${isAnnual ? '&interval=annual' : ''}`;
                         const setInterval = (next: BillingPeriod) => {
                           setRecommendIntervals(prev => ({ ...prev, [cardKey]: next }));
                           // Broadcast the visitor's choice so the
@@ -521,7 +521,7 @@ export default function WebsiteSalesWidget() {
                                   : 'text-primary hover:text-primary-hover'
                               }`}
                             >
-                              Start {planLabel} Trial
+                              Discuss {planLabel}
                               <ArrowRight className="h-3 w-3" />
                             </button>
                           </div>

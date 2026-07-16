@@ -31,6 +31,7 @@ const m = vi.hoisted(() => ({
   createRateLimitCheckerMock: vi.fn(),
   recordDemoAnalyticsEventMock: vi.fn(),
   scheduleDemoDataCleanupMock: vi.fn(),
+  authorizeHealthcareDeploymentMock: vi.fn(),
   // dynamic imports
   smsService: {} as Record<string, ReturnType<typeof vi.fn>>,
   csatService: {} as Record<string, ReturnType<typeof vi.fn>>,
@@ -82,6 +83,9 @@ vi.mock('../../../platform/billing/guardrails', () => ({
   incrementHourlyCallCount: m.incrementHourlyCallCountMock,
   checkDailyMinuteCap: m.checkDailyMinuteCapMock,
 }));
+vi.mock('../../../platform/compliance/HealthcareDeploymentApprovalService', () => ({
+  authorizeHealthcareDeployment: m.authorizeHealthcareDeploymentMock,
+}));
 vi.mock('../../../platform/sms/SmsConversationService', () => m.smsService);
 vi.mock('../../../platform/analytics/CsatSurveyService', () => m.csatService);
 
@@ -125,7 +129,8 @@ beforeEach(() => {
   m.recordTwilioCallCostMock.mockResolvedValue(undefined);
   m.recordDemoAnalyticsEventMock.mockResolvedValue(undefined);
   m.resolveContactByCallSidMock.mockResolvedValue(null);
-  m.getAgentConfigMock.mockResolvedValue(null);
+  m.getAgentConfigMock.mockResolvedValue({ type: 'general', metadata: {} });
+  m.authorizeHealthcareDeploymentMock.mockResolvedValue({ allowed: true, code: 'not_healthcare' });
   // dynamic-import service shims
   m.smsService.getOrCreateConversation = vi.fn().mockResolvedValue({ id: 'conv-1', assigneeUserId: 'u1' });
   m.smsService.saveMessage = vi.fn().mockResolvedValue(undefined);
@@ -172,6 +177,20 @@ describe('POST /twilio/voice', () => {
     expect(res.text).toContain('<Stream url="ws://');
     expect(res.text).toContain('name="tenantId" value="t1"');
     expect(m.incrementHourlyCallCountMock).toHaveBeenCalledWith('t1');
+  });
+
+  it('fails closed before streaming an unapproved healthcare inbound call', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({
+      tenantId: 't1', agentId: 'a1', agentType: 'answering_service', tenantName: 'Clinic', agentName: 'AI Receptionist',
+    });
+    m.authorizeHealthcareDeploymentMock.mockResolvedValue({ allowed: false, code: 'approval_missing' });
+    const res = await form(request(app()).post('/twilio/voice'), base);
+    expect(res.text).toContain('not currently available');
+    expect(res.text).not.toContain('<Stream');
+    expect(m.incrementHourlyCallCountMock).not.toHaveBeenCalled();
+    expect(m.authorizeHealthcareDeploymentMock).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 't1', agentId: 'a1', agentType: 'answering_service', subjectPhone: base.From,
+    }));
   });
 
   it('blocks the call when the hourly limit is exceeded', async () => {
@@ -249,6 +268,18 @@ describe('POST /twilio/outbound', () => {
     expect(res.text).toContain('<Connect>');
     expect(res.text).toContain('name="agentType" value="outbound"');
     expect(res.text).toContain('name="campaignId" value="camp1"');
+  });
+
+  it('fails closed before streaming an unapproved outbound healthcare call', async () => {
+    m.getAgentConfigMock.mockResolvedValue({ type: 'healthcare-receptionist', metadata: {} });
+    m.authorizeHealthcareDeploymentMock.mockResolvedValue({ allowed: false, code: 'approval_expired' });
+    const res = await form(request(app()).post('/twilio/outbound'), { ...base, To: '+15551234567' });
+    expect(res.text).toContain('<Hangup/>');
+    expect(res.text).not.toContain('<Stream');
+    expect(m.incrementHourlyCallCountMock).not.toHaveBeenCalled();
+    expect(m.authorizeHealthcareDeploymentMock).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 't1', agentId: 'a1', agentType: 'healthcare-receptionist', subjectPhone: '+15551234567',
+    }));
   });
 
   it('leaves a voicemail when an answering machine is detected', async () => {

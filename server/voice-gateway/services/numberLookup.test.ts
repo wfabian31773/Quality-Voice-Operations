@@ -40,7 +40,7 @@ describe('lookupByPhoneNumber', () => {
 
 describe('getAgentConfig', () => {
   it('returns the agent row', async () => {
-    a.clientQueryMock.mockImplementation(async (sql: string) => sql.includes('FROM agents') ? { rows: [{ id: 'ag1', name: 'Ava' }] } : { rows: [] });
+    a.clientQueryMock.mockImplementation(async (sql: string) => sql.includes('FROM agents a') ? { rows: [{ id: 'ag1', name: 'Ava', tenant_timezone: 'America/New_York' }] } : { rows: [] });
     expect(await getAgentConfig('t1', 'ag1')).toMatchObject({ id: 'ag1' });
   });
   it('returns null when the agent is missing', async () => {
@@ -48,7 +48,7 @@ describe('getAgentConfig', () => {
     expect(await getAgentConfig('t1', 'ag1')).toBeNull();
   });
   it('rolls back and rethrows on error', async () => {
-    a.clientQueryMock.mockImplementation(async (sql: string) => { if (sql.includes('FROM agents')) throw new Error('boom'); return { rows: [] }; });
+    a.clientQueryMock.mockImplementation(async (sql: string) => { if (sql.includes('FROM agents a')) throw new Error('boom'); return { rows: [] }; });
     await expect(getAgentConfig('t1', 'ag1')).rejects.toThrow('boom');
     expect(a.clientQueryMock).toHaveBeenCalledWith('ROLLBACK');
   });

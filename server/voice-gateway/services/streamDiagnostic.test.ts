@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { __resetRealtimeStreamMetricsForTests, getRealtimeStreamMetrics } from '../../../platform/core/observability';
@@ -73,9 +73,16 @@ describe('runRealtimeStreamDiagnostic — full mode', () => {
 
   it('reports closed_early when the gateway drops the socket after start', async () => {
     stub = await startStubGateway('close_on_start');
-    const report = await runRealtimeStreamDiagnostic({ mode: 'full', url: stub.url, firstAudioTimeoutMs: 2000 });
-    expect(report.ok).toBe(false);
-    expect(report.failureStage).toBe('session_setup');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    try {
+      const report = await runRealtimeStreamDiagnostic({ mode: 'full', url: stub.url, firstAudioTimeoutMs: 2000 });
+      expect(report.ok).toBe(false);
+      expect(report.latencies.ws_connect).toBe(0);
+      expect(report.failureStage).toBe('session_setup');
+      expect(report.failureReason).toBe('closed_early');
+    } finally {
+      now.mockRestore();
+    }
   });
 });
 

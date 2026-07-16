@@ -13,10 +13,14 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   initialized: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<MfaLoginFlow | null>;
   logout: () => void;
   checkAuth: () => void;
 }
+
+export type MfaLoginFlow =
+  | { mode: 'setup'; flowToken: string }
+  | { mode: 'challenge'; flowToken: string };
 
 function decodeToken(token: string): User | null {
   try {
@@ -59,13 +63,26 @@ export const useAuth = create<AuthState>((set) => ({
 
   login: async (email, password) => {
     const res = await api.post<{
-      token: string;
-      userId: string;
-      email: string;
-      role: string;
-      tenantId: string;
-      isPlatformAdmin: boolean;
+      token?: string;
+      userId?: string;
+      email?: string;
+      role?: string;
+      tenantId?: string;
+      isPlatformAdmin?: boolean;
+      mfaSetupRequired?: boolean;
+      mfaSetupToken?: string;
+      mfaRequired?: boolean;
+      mfaChallengeToken?: string;
     }>('/auth/login', { email, password });
+    if (res.mfaSetupRequired && res.mfaSetupToken) {
+      return { mode: 'setup', flowToken: res.mfaSetupToken };
+    }
+    if (res.mfaRequired && res.mfaChallengeToken) {
+      return { mode: 'challenge', flowToken: res.mfaChallengeToken };
+    }
+    if (!res.token || !res.userId || !res.email || !res.role || !res.tenantId) {
+      throw new Error('The server returned an incomplete sign-in response.');
+    }
     setToken(res.token);
     set({
       user: {
@@ -78,6 +95,7 @@ export const useAuth = create<AuthState>((set) => ({
       loading: false,
       initialized: true,
     });
+    return null;
   },
 
   logout: () => {

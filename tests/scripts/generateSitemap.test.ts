@@ -517,25 +517,18 @@ describe('generate-sitemap script', () => {
           expect(xml, `missing <loc>${url}</loc>`).toContain(`<loc>${url}</loc>`);
         }
       };
-      ['/', '/pricing', '/features', '/docs', '/blog', '/book-demo'].forEach(expectPathInEveryLocale);
+      ['/', '/pricing', '/demo', '/contact', '/industries/healthcare', '/book-demo'].forEach(expectPathInEveryLocale);
     });
 
-    it('includes dynamic doc/blog/guide/vertical slugs per locale', () => {
-      // These are stable slugs from the data files and the verticals map.
-      // If any of them ever genuinely disappears, update this test alongside.
-      const samples = [
+    it('does not publish deferred generic blog, docs, resource, or vertical routes', () => {
+      const hidden = [
         '/docs/quickstart',
         '/blog/what-are-ai-voice-agents',
         '/resources/getting-started-with-qvo',
-        '/industries/healthcare',
-        '/industries/dental',
         '/industries/home-services',
       ];
-      for (const p of samples) {
-        for (const locale of SUPPORTED_LOCALES) {
-          const url = `https://qvo.ai${withLocalePrefix(locale, p)}`;
-          expect(xml, `missing <loc>${url}</loc>`).toContain(`<loc>${url}</loc>`);
-        }
+      for (const p of hidden) {
+        expect(xml).not.toContain(`<loc>https://qvo.ai${p}</loc>`);
       }
     });
 

@@ -20,7 +20,7 @@
     "seo_description": "KI-Sprachagenten für Anrufannahme, Terminbuchung und Geschäftsautomatisierung. KI-Empfang und Anruf-Automatisierung für HLK, Arztpraxen, Zahnärzte, Kanzleien und mehr.",
     "hero": {
       "badge": "KI-gestützte Sprachplattform",
-      "eyebrow": "Stimme für jeden Empfang · Klinische Qualität ist Standard",
+      "eyebrow": "Ein Sprachkern · Spezialisierter Gesundheitsablauf",
       "title": "Anrufe, die nicht verloren gehen.",
       "title_2": "Kunden, die nicht verloren gehen.",
       "title_highlight": "KI-Sprachagenten",
@@ -38,10 +38,10 @@
       "agents_deployed": "Eingesetzte Agenten",
       "uptime": "Verfügbarkeit",
       "industries_served": "Bediente Branchen",
-      "soc2_in_progress": "SOC 2 in Vorbereitung",
-      "hipaa_ready": "HIPAA-bereit",
-      "gdpr_compliant": "DSGVO-konform",
-      "aes_encryption": "AES-256-Verschlüsselung"
+      "soc2_in_progress": "Zertifizierungen nicht verifiziert",
+      "hipaa_ready": "Genehmigung des Gesundheitspiloten ausstehend",
+      "gdpr_compliant": "Rechtliche Prüfung ausstehend",
+      "aes_encryption": "Aufzeichnung standardmäßig deaktiviert"
     },
     "industries": {
       "healthcare": "Gesundheitswesen",
@@ -553,13 +553,13 @@
       "up_to_10": "Bis zu 10"
     },
     "compliance": {
-      "eyebrow": "Enterprise-Compliance",
-      "soc2": "SOC 2 Typ II (in Vorbereitung)",
-      "hipaa": "HIPAA verfügbar mit BAA",
-      "gdpr": "DSGVO-konform",
-      "ccpa": "CCPA / CPRA",
-      "tls": "TLS 1.2+ in Übertragung",
-      "aes": "AES-256 im Ruhezustand"
+      "eyebrow": "Kontrollen nach Evidenzstatus",
+      "soc2": "Zertifizierungen nicht verifiziert",
+      "hipaa": "Genehmigung des Gesundheitspiloten ausstehend",
+      "gdpr": "Datenschutzprüfung ausstehend",
+      "ccpa": "Jurisdiktionsprüfung ausstehend",
+      "tls": "Bereitstellungsprüfung ausstehend",
+      "aes": "Speicherprüfung ausstehend"
     },
     "faq": {
       "eyebrow": "FAQ",
@@ -1396,7 +1396,7 @@
     "healthcare": {
       "name": "Gesundheitswesen",
       "headline": "KI-Sprachagenten für das Gesundheitswesen",
-      "subheadline": "Bearbeiten Sie Patientenanrufe rund um die Uhr — Terminvergabe, Anamnese, Rezeptverlängerungen und Triage — mit HIPAA-konformer Sprach-KI, die Patienten nie in die Warteschleife stellt.",
+      "subheadline": "Bearbeiten Sie Patientenanrufe mit Terminanfragen, minimaler Datenerfassung, Team-Nachverfolgung und sicherer Eskalation. Die Produktionsfreigabe im Gesundheitswesen steht aus.",
       "painPoints": [
         {
           "title": "Verpasste Patientenanrufe",
@@ -2171,7 +2171,7 @@
     },
     "healthcare": {
       "title": "Gesundheitswesen",
-      "description": "HIPAA-bewusste Sprach-KI für Patiententerminvergabe, Aufnahme, Rezeptverlängerungen und Triage außerhalb der Sprechzeiten.",
+      "description": "Gesundheits-Sprachablauf für Terminanfragen, minimale Datenerfassung, Nachverfolgung und sichere Eskalation; Produktionsfreigabe ausstehend.",
       "keywords": "gesundheitswesen medizin hipaa patient klinik"
     },
     "dental": {

@@ -1248,7 +1248,7 @@ export default function Pricing() {
               // the same card.
               const annualSavingsDollars = (monthlyPrice - annualMonthlyPrice) * 12;
               const annualSavingsFormatted = formatPriceForCurrency(annualSavingsDollars);
-              const signupHref = `/signup?plan=${tier.key}${isAnnual ? '&interval=annual' : ''}`;
+              const bookDemoHref = `/book-demo?plan=${tier.key}${isAnnual ? '&interval=annual' : ''}`;
               // Apply the active customer-level discount (if any) so the
               // card surfaces the post-coupon price the tenant will
               // actually be invoiced. We work in cents (matching what
@@ -1372,16 +1372,16 @@ export default function Pricing() {
                   <span className="text-xs text-text-secondary font-body">{tier.overage}</span>
                 </div>
                 <Link
-                  to={signupHref}
+                  to={bookDemoHref}
                   data-testid={`pricing-tier-${tier.key}-cta`}
                   className={`block text-center font-semibold py-3.5 px-4 rounded-lg text-sm transition-colors duration-[var(--motion-base)] min-h-[44px] ${
                     tier.popular
                       ? 'btn-primary-glow bg-primary hover:bg-primary-hover text-on-primary'
                       : 'bg-surface-hover hover:bg-primary text-text-primary hover:text-on-primary'
                   }`}
-                  onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_card', `${tier.key}_${billingPeriod}`)}
+                  onClick={() => trackCTAClick(CTA.BOOK_DEMO, 'pricing_card', `${tier.key}_${billingPeriod}`)}
                 >
-                  {t('pricing.tier_card.start_trial')}
+                  {t('common.book_a_demo')}
                   <ArrowRight className="h-4 w-4 inline-block ml-2" />
                 </Link>
               </div>
@@ -1542,13 +1542,6 @@ export default function Pricing() {
             >
               {t('common.book_a_demo')}
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/signup"
-              className="inline-flex items-center justify-center gap-2 bg-white/10 dark:bg-white/10 hover:bg-white/15 dark:hover:bg-white/15 text-white font-semibold px-6 py-3 rounded-lg text-sm transition-colors duration-[var(--motion-base)] border border-white/15 dark:border-white/15 hover:border-white/25 dark:hover:border-white/25 min-h-[44px]"
-              onClick={() => trackCTAClick(CTA.START_FREE_TRIAL, 'pricing_bottom')}
-            >
-              {t('common.start_free_trial')}
             </Link>
             <Link
               to="/contact"
