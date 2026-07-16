@@ -67,6 +67,7 @@ const ENV_VARS: EnvVar[] = [
 
 const OPTIONAL_VARS: EnvVar[] = [
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
+  { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },
   { name: 'VOICE_GATEWAY_PORT', required: 'development', purpose: 'Voice gateway listen port (default: 3001)' },
   { name: 'PORT', required: 'development', purpose: 'Generic port fallback (default: 5000 in prod)' },

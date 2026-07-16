@@ -14,6 +14,7 @@
 | `ADMIN_JWT_SECRET` | JWT signing secret for admin API auth | Generate: `openssl rand -base64 48` | Random 64+ char string |
 | `CONNECTOR_ENCRYPTION_KEY` | 32-byte hex key for encrypting tenant secrets | Generate: `openssl rand -hex 32` | 64 hex characters |
 | `ENCRYPTION_MASTER_KEY` | Dedicated master key for platform-admin TOTP seeds and encrypted application settings | Generate: `openssl rand -hex 32` | 64 hex characters; recommended, with `CONNECTOR_ENCRYPTION_KEY` as the compatibility fallback |
+| `CALL_EVENTS_PARTITION_PRUNING_ENABLED` | Explicit opt-in for destructive monthly `call_events` retention | Leave unset or `false` until retention approval; set to `true` only with an approved retention period | Fail-closed by default |
 
 ### Required (production/staging only)
 

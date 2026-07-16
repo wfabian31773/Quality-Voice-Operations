@@ -61,11 +61,18 @@ export async function runCallEventsRetentionCycle(
       }
     }
 
-    const { rows: pruneRows } = await pool.query<{ prune_call_events_older_than: string[] }>(
-      'SELECT prune_call_events_older_than($1::int) AS prune_call_events_older_than',
-      [retainDays],
-    );
-    const dropped = pruneRows[0]?.prune_call_events_older_than ?? [];
+    let dropped: string[] = [];
+    if (process.env.CALL_EVENTS_PARTITION_PRUNING_ENABLED === 'true') {
+      const { rows: pruneRows } = await pool.query<{ prune_call_events_older_than: string[] }>(
+        'SELECT prune_call_events_older_than($1::int) AS prune_call_events_older_than',
+        [retainDays],
+      );
+      dropped = pruneRows[0]?.prune_call_events_older_than ?? [];
+    } else {
+      logger.info('call_events partition pruning is disabled pending an approved retention policy', {
+        retainDays,
+      });
+    }
 
     if (dropped.length > 0) {
       logger.info('Pruned call_events partitions older than retention window', {
