@@ -140,6 +140,13 @@ export default function Signup() {
       return;
     }
 
+    const viteMode = (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE;
+    if (viteMode === 'test') {
+      // Unit tests assert the captcha slot is present; they must not
+      // fetch Cloudflare's script (happy-dom refuses remote JS).
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
     script.async = true;
