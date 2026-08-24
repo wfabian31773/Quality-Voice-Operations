@@ -167,6 +167,7 @@
     "per_month_short": "/mo",
     "verification_required": "Email verification required to activate your trial.",
     "captcha_failed": "Please complete the CAPTCHA verification.",
+    "captcha_unavailable": "Account signup is temporarily unavailable because CAPTCHA is not configured. Please try again later or contact support.",
     "password_too_short": "Password must be at least 8 characters.",
     "signup_failed_retry": "Signup failed. Please try again.",
     "benefit_trial": "7-day free trial on all plans",

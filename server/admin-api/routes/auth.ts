@@ -16,7 +16,14 @@ const logger = createLogger('ADMIN_AUTH_ROUTES');
 
 const VALID_PLANS = new Set<string>(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set<string>(['monthly', 'annual']);
-const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY;
+
+function turnstileSecret(): string {
+  return (process.env.TURNSTILE_SECRET_KEY || '').trim();
+}
+
+function publicTurnstileSiteKey(): string {
+  return (process.env.TURNSTILE_SITE_KEY || process.env.VITE_TURNSTILE_SITE_KEY || '').trim();
+}
 const loginRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 10,
@@ -30,7 +37,11 @@ const loginRateLimit = createRateLimiter({
 });
 
 async function verifyTurnstileToken(token: string, ip: string): Promise<boolean> {
-  if (!TURNSTILE_SECRET) {
+  const secret = turnstileSecret();
+  if (!secret) {
+    // Documented local/dev bypass. Production startup requires
+    // TURNSTILE_SECRET_KEY (assertProductionSecrets), so this skip
+    // cannot ship accidentally.
     logger.warn('TURNSTILE_SECRET_KEY not configured — skipping CAPTCHA verification');
     return true;
   }
@@ -40,7 +51,7 @@ async function verifyTurnstileToken(token: string, ip: string): Promise<boolean>
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        secret: TURNSTILE_SECRET,
+        secret,
         response: token,
         remoteip: ip,
       }),
@@ -163,6 +174,18 @@ router.post('/auth/login', loginRateLimit, async (req, res) => {
   }
 });
 
+// Public, unauthenticated. Returns only whether signup CAPTCHA is required
+// and the Turnstile *site* key (never the secret) so the form can render
+// the widget without a frontend rebuild.
+router.get('/auth/signup-config', (_req, res) => {
+  const siteKey = publicTurnstileSiteKey();
+  res.set('Cache-Control', 'public, max-age=30');
+  res.json({
+    captchaRequired: Boolean(turnstileSecret()),
+    siteKey: siteKey || null,
+  });
+});
+
 router.post('/auth/signup', async (req, res) => {
   const {
     name,
@@ -208,7 +231,7 @@ router.post('/auth/signup', async (req, res) => {
     return res.status(400).json({ error: `interval must be one of: ${[...VALID_INTERVALS].join(', ')}` });
   }
 
-  if (TURNSTILE_SECRET && !captchaToken) {
+  if (turnstileSecret() && !captchaToken) {
     return res.status(400).json({ error: 'CAPTCHA verification is required' });
   }
 

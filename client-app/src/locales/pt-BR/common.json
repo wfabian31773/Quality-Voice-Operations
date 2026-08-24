@@ -167,6 +167,7 @@
     "per_month_short": "/mês",
     "verification_required": "Verificação por e-mail necessária para ativar seu teste.",
     "captcha_failed": "Por favor, complete a verificação CAPTCHA.",
+    "captcha_unavailable": "O cadastro está temporariamente indisponível porque o CAPTCHA não está configurado. Tente novamente mais tarde ou entre em contato com o suporte.",
     "password_too_short": "A senha deve ter pelo menos 8 caracteres.",
     "signup_failed_retry": "Falha no cadastro. Tente novamente.",
     "benefit_trial": "Teste grátis de 7 dias em todos os planos",

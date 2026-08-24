@@ -167,6 +167,7 @@
     "per_month_short": "/mois",
     "verification_required": "Vérification par e-mail requise pour activer votre essai.",
     "captcha_failed": "Veuillez compléter la vérification CAPTCHA.",
+    "captcha_unavailable": "L'inscription est temporairement indisponible car CAPTCHA n'est pas configuré. Réessayez plus tard ou contactez le support.",
     "password_too_short": "Le mot de passe doit contenir au moins 8 caractères.",
     "signup_failed_retry": "Échec de l'inscription. Veuillez réessayer.",
     "benefit_trial": "Essai gratuit de 7 jours sur tous les plans",

@@ -21,8 +21,11 @@ import {
   useDisplayCurrency,
 } from '../../lib/displayCurrency';
 import DisplayCurrencyPicker from '../../components/DisplayCurrencyPicker';
-
-const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
+import {
+  BUILD_TIME_TURNSTILE_SITE_KEY,
+  parseSignupCaptchaConfig,
+  resolveCaptchaConfigAfterFetchFailure,
+} from '../../lib/signupCaptcha';
 
 export default function Signup() {
   const { t } = useTranslation(['common', 'marketing']);
@@ -37,7 +40,11 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaLoaded, setCaptchaLoaded] = useState(false);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [siteKey, setSiteKey] = useState(BUILD_TIME_TURNSTILE_SITE_KEY);
   const captchaRef = useRef<HTMLDivElement>(null);
+  const captchaUnavailable = captchaLoaded && captchaRequired && !siteKey;
   const { user } = useAuth();
   const navigate = useNavigate();
   const [displayCurrency] = useDisplayCurrency();
@@ -84,7 +91,29 @@ export default function Signup() {
   }, []);
 
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY || !captchaRef.current) return;
+    let cancelled = false;
+    api.get<unknown>('/auth/signup-config')
+      .then((raw) => {
+        if (cancelled) return;
+        const parsed = parseSignupCaptchaConfig(raw, BUILD_TIME_TURNSTILE_SITE_KEY);
+        setCaptchaRequired(parsed.captchaRequired);
+        setSiteKey(parsed.siteKey);
+        setCaptchaLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const parsed = resolveCaptchaConfigAfterFetchFailure(BUILD_TIME_TURNSTILE_SITE_KEY);
+        setCaptchaRequired(parsed.captchaRequired);
+        setSiteKey(parsed.siteKey);
+        setCaptchaLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!siteKey || !captchaRef.current) return;
 
     const win = window as unknown as Record<string, unknown>;
     // Detect current theme from the QVO `data-theme` attribute on <html>
@@ -99,7 +128,7 @@ export default function Signup() {
     const turnstileTheme = themeAttr === 'dark' ? 'dark' : 'light';
 
     const renderOpts = {
-      sitekey: TURNSTILE_SITE_KEY,
+      sitekey: siteKey,
       theme: turnstileTheme,
       callback: (token: string) => setCaptchaToken(token),
       'expired-callback': () => setCaptchaToken(''),
@@ -127,7 +156,7 @@ export default function Signup() {
       script.remove();
       delete win.onTurnstileLoad;
     };
-  }, []);
+  }, [siteKey]);
 
   if (user) {
     return <Navigate to="/dashboard" replace />;
@@ -142,7 +171,16 @@ export default function Signup() {
       return;
     }
 
-    if (TURNSTILE_SITE_KEY && !captchaToken) {
+    if (!captchaLoaded) {
+      return;
+    }
+
+    if (captchaUnavailable) {
+      setError(t('auth.captcha_unavailable'));
+      return;
+    }
+
+    if (siteKey && !captchaToken) {
       setError(t('auth.captcha_failed'));
       return;
     }
@@ -408,7 +446,16 @@ export default function Signup() {
                   </p>
                 </div>
 
-                {TURNSTILE_SITE_KEY && (
+                {captchaUnavailable && (
+                  <div
+                    className="bg-danger-light text-danger dark:text-danger text-sm px-3 py-2 rounded-lg border border-danger"
+                    data-testid="signup-captcha-unavailable"
+                  >
+                    {t('auth.captcha_unavailable')}
+                  </div>
+                )}
+
+                {siteKey && (
                   <div className="flex justify-center">
                     {/* Container has min-height so the captcha slot is
                         visible even before Turnstile finishes loading,
@@ -426,7 +473,7 @@ export default function Signup() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !captchaLoaded || captchaUnavailable}
                   className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors text-sm mt-2"
                 >
                   {loading ? (
