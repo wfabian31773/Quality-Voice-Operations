@@ -23,10 +23,6 @@ name: Billing config health tile (Stripe live) e2e
 # `crm-cached-identity-validators.yml` and `check-openai-realtime-voices.yml`).
 
 on:
-  schedule:
-    # 04:37 UTC nightly. Odd minute on purpose to avoid the
-    # top-of-the-hour cron storm GitHub Actions runs.
-    - cron: "37 4 * * *"
   workflow_dispatch:
 
 permissions:
