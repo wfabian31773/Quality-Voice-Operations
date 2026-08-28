@@ -22,6 +22,13 @@ import type { CorsOptions } from 'cors';
 
 const PRODUCTION_LIKE_ENVS = new Set(['production', 'staging']);
 
+/** Cloudflare's documented always-pass / always-fail / already-spent dummy secrets. */
+const CLOUDFLARE_TURNSTILE_DUMMY_SECRETS = new Set([
+  '1x0000000000000000000000000000000AA',
+  '2x0000000000000000000000000000000AA',
+  '3x0000000000000000000000000000000AA',
+]);
+
 export function isProductionLike(): boolean {
   const appEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
   if (appEnv) return PRODUCTION_LIKE_ENVS.has(appEnv);
@@ -230,6 +237,13 @@ export function assertProductionSecrets(): void {
   if (!oauthSecretConfigured) {
     errors.push(
       'connector OAuth state signing requires ADMIN_JWT_SECRET or CONNECTOR_ENCRYPTION_KEY (neither is set; /connectors/oauth/<provider>/init will refuse every tenant request)',
+    );
+  }
+
+  const turnstileSecret = (process.env.TURNSTILE_SECRET_KEY ?? '').trim();
+  if (turnstileSecret && CLOUDFLARE_TURNSTILE_DUMMY_SECRETS.has(turnstileSecret)) {
+    errors.push(
+      'TURNSTILE_SECRET_KEY is a Cloudflare test/dummy secret; set a real Turnstile secret in production',
     );
   }
 

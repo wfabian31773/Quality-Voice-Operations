@@ -66,6 +66,8 @@ const ENV_VARS: EnvVar[] = [
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
+  { name: 'TURNSTILE_SITE_KEY', required: 'development', purpose: 'Cloudflare Turnstile site key served to the signup form at runtime via GET /auth/signup-config. Prefer this over VITE_TURNSTILE_SITE_KEY so the widget can render without a frontend rebuild. The form fails closed when captcha is required and no site key is available.' },
+  { name: 'VITE_TURNSTILE_SITE_KEY', required: 'development', purpose: 'Build-time fallback Cloudflare Turnstile site key inlined into the signup bundle. Used when TURNSTILE_SITE_KEY is unset.' },
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },

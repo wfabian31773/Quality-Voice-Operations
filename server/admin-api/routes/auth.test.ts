@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -175,6 +175,69 @@ describe('POST /auth/forgot-password', () => {
     const res = await request(app()).post('/auth/forgot-password').send({ email: 'who@x.com' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+});
+
+describe('GET /auth/signup-config', () => {
+  const original = {
+    secret: process.env.TURNSTILE_SECRET_KEY,
+    site: process.env.TURNSTILE_SITE_KEY,
+    vite: process.env.VITE_TURNSTILE_SITE_KEY,
+  };
+
+  afterEach(() => {
+    if (original.secret === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+    else process.env.TURNSTILE_SECRET_KEY = original.secret;
+    if (original.site === undefined) delete process.env.TURNSTILE_SITE_KEY;
+    else process.env.TURNSTILE_SITE_KEY = original.site;
+    if (original.vite === undefined) delete process.env.VITE_TURNSTILE_SITE_KEY;
+    else process.env.VITE_TURNSTILE_SITE_KEY = original.vite;
+  });
+
+  it('reports captcha optional when no secret is configured', async () => {
+    delete process.env.TURNSTILE_SECRET_KEY;
+    delete process.env.TURNSTILE_SITE_KEY;
+    delete process.env.VITE_TURNSTILE_SITE_KEY;
+    const res = await request(app()).get('/auth/signup-config');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ captchaRequired: false, siteKey: null });
+  });
+
+  it('returns the runtime site key when captcha is required', async () => {
+    process.env.TURNSTILE_SECRET_KEY = 'real-secret';
+    process.env.TURNSTILE_SITE_KEY = '0xpublic';
+    delete process.env.VITE_TURNSTILE_SITE_KEY;
+    const res = await request(app()).get('/auth/signup-config');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ captchaRequired: true, siteKey: '0xpublic' });
+  });
+
+  it('falls back to the build-time Vite site key', async () => {
+    process.env.TURNSTILE_SECRET_KEY = 'real-secret';
+    delete process.env.TURNSTILE_SITE_KEY;
+    process.env.VITE_TURNSTILE_SITE_KEY = '0xvite';
+    const res = await request(app()).get('/auth/signup-config');
+    expect(res.body).toEqual({ captchaRequired: true, siteKey: '0xvite' });
+  });
+});
+
+describe('POST /auth/signup captcha gate', () => {
+  it('rejects signup without a token when the secret is configured', async () => {
+    const previous = process.env.TURNSTILE_SECRET_KEY;
+    process.env.TURNSTILE_SECRET_KEY = 'real-secret';
+    try {
+      const res = await request(app()).post('/auth/signup').send({
+        name: 'Ada',
+        email: 'ada@example.com',
+        password: 'password1',
+        plan: 'starter',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/CAPTCHA verification is required/i);
+    } finally {
+      if (previous === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+      else process.env.TURNSTILE_SECRET_KEY = previous;
+    }
   });
 });
 

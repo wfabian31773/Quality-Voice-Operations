@@ -21,6 +21,7 @@ const PublicLayout = lazy(() => import('./components/PublicLayout'));
 const PlatformAssistant = lazy(() => import('./components/PlatformAssistant'));
 
 const Login = lazy(() => import('./pages/Login'));
+const Signup = lazy(() => import('./pages/public/Signup'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Agents = lazy(() => import('./pages/Agents'));
@@ -173,6 +174,15 @@ export default function App() {
         <Route path="/security" element={<Security />} />
         <Route path="/security/posture" element={<SecurityPosture />} />
         <Route path="/subprocessors" element={<Subprocessors />} />
+      </Route>
+
+      {/* /signup is a hidden public page (not in the marketing sitemap /
+          Preact bundle). It still uses PublicLayout chrome so the existing
+          Signup form is a real route instead of the in-app 404. Kept in a
+          second PublicLayout group so sitemap coverage continues to read
+          only the marketing table above. */}
+      <Route element={<PublicLayout />}>
+        <Route path="/signup" element={<Signup />} />
       </Route>
 
       <Route
