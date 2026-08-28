@@ -22,10 +22,6 @@ name: Check OpenAI Realtime voices
 # confirm the diff has cleared without waiting for the next cron tick.
 
 on:
-  schedule:
-    # 13:17 UTC daily — odd minute on purpose so we don't pile up on
-    # the top-of-the-hour cron storm GitHub Actions runs.
-    - cron: "17 13 * * *"
   workflow_dispatch:
 
 permissions:

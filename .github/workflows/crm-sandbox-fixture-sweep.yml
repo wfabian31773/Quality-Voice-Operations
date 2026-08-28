@@ -7,9 +7,6 @@ name: CRM sandbox fixture sweep (weekly)
 # Automated fixture-namespace sweep).
 
 on:
-  schedule:
-    # Sunday 05:47 UTC — odd minute to dodge the top-of-hour cron storm.
-    - cron: "47 5 * * 0"
   push:
     branches: [main, master]
     paths:
