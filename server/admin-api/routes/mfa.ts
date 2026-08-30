@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getPlatformPool } from '../../../platform/db';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
+import { authAttemptRateLimitMax } from '../../../platform/security/authAttemptRateLimit';
 import {
   decryptTotpSecret,
   encryptTotpSecret,
@@ -28,7 +29,7 @@ const LOCK_MINUTES = 15;
 
 const mfaRateLimit = createRateLimiter({
   windowMs: 5 * 60 * 1000,
-  maxRequests: process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging' ? 10 : 200,
+  maxRequests: authAttemptRateLimitMax(),
   message: 'Too many MFA attempts. Please wait before trying again.',
   keyGenerator: (req) => `${req.ip ?? req.socket?.remoteAddress ?? 'unknown'}:${req.path}`,
 });

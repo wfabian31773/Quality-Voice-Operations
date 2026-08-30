@@ -17,17 +17,11 @@
  *     [data-accent] attribute, or _theme.css fails to load). Checked via
  *     a computed-style probe on the brand color custom property.
  *
- * Runs across ONE representative page per surface:
- *   - Public marketing root (/)
- *   - Public vertical landing (/industries/dental) — exercises
- *     [data-accent="teal-forward"]
+ * Walks the live public marketing surface plus one page per console:
+ *   - Public routes in PUBLIC_MARKETING_PATHS (retired slugs 404)
  *   - Tenant dashboard (/dashboard)
  *   - Admin dashboard (/admin/dashboard)
  *   - Ops console live monitor (/ops/monitor)
- *
- * The data-hydration specs already walk every individual page; this spec
- * deliberately stays narrow so it runs in <60s in CI and pinpoints brand
- * regressions without re-checking what the other specs cover.
  *
  * Runs against a real Chromium browser via the `playwright` runtime API
  * (no @playwright/test dependency). Standalone — no test runner.
@@ -75,35 +69,21 @@ interface PageCheck {
 }
 
 const PAGES: PageCheck[] = [
-  // Marketing surface — all public pages we've brand-restored. Every one
-  // got the radial-gradient hero treatment + defensive text-white +
-  // brand-token color audit pass. Walking the full set in CI means any
-  // future regression (e.g. someone reintroduces a raw Tailwind color or
-  // forgets the explicit text-white on a new dark-band heading) breaks
-  // the build instead of shipping silently.
+  // Live marketing surface only. Retired public slugs (/features, /signup,
+  // /product, …) now 404 and are asserted in customerSurfacePolicy tests.
   { path: '/', slug: 'public-landing', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/pricing', slug: 'public-pricing', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/features', slug: 'public-features', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/use-cases', slug: 'public-use-cases', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/product', slug: 'public-product', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/ai-agents', slug: 'public-agents-showcase', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/demo', slug: 'public-demo', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/contact', slug: 'public-contact', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/industries/healthcare', slug: 'public-vertical-healthcare', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/industries/dental', slug: 'public-vertical-dental', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/case-studies', slug: 'public-case-studies', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/book-demo', slug: 'public-book-demo', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/integrations', slug: 'public-integrations', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/resources', slug: 'public-resources', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/blog', slug: 'public-blog', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/terms', slug: 'public-terms', requiresAuth: false, expectedAccent: 'teal-forward' },
+  { path: '/privacy', slug: 'public-privacy', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/security', slug: 'public-security', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/security/posture', slug: 'public-security-posture', requiresAuth: false, expectedAccent: 'teal-forward' },
   { path: '/subprocessors', slug: 'public-subprocessors', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/signup', slug: 'public-signup', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/terms', slug: 'public-terms', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/privacy', slug: 'public-privacy', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/docs', slug: 'public-docs', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/industries/dental', slug: 'public-vertical-dental', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/industries/vertical-agents', slug: 'public-vertical-agents', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/product/federated-ingest', slug: 'public-federated-ingest', requiresAuth: false, expectedAccent: 'teal-forward' },
-  { path: '/product/global-intelligence-network', slug: 'public-gin', requiresAuth: false, expectedAccent: 'teal-forward' },
   // Console surface — sticky brand-prominence checks on the three
   // logged-in shells. requiresAuth=true triggers the login flow.
   { path: '/dashboard', slug: 'tenant-dashboard', requiresAuth: true },
