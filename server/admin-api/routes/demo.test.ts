@@ -125,7 +125,7 @@ describe('POST /demo/healthcare/run', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       mode: 'guided_production_workflow',
-      runtime: { coreVersion: '1.0.0', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0' },
+      runtime: { coreVersion: '2.0.0', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0' },
       tool: { name: 'createServiceTicket', status: 'success', productionContract: true },
       projection: { outcome: { type: 'appointment_request' } },
     });

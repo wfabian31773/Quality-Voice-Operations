@@ -1,8 +1,4 @@
 import {
-  buildAnsweringServiceSystemPrompt,
-  DEFAULT_ANSWERING_SERVICE_CONFIG,
-} from '../../../platform/agent-templates/answering-service';
-import {
   buildAfterHoursSystemPrompt,
   getAfterHoursGreeting,
   MEDICAL_SAFETY_GUARDRAILS,
@@ -139,27 +135,6 @@ const LOOKUP_SCHEDULE_TOOL: AgentToolDef = {
     required: [],
   },
 };
-
-const ANSWERING_SERVICE_TOOLS: AgentToolDef[] = [
-  {
-    name: 'createServiceTicket',
-    description:
-      'Create a service ticket after collecting the caller\'s information. Call this when you have the patient name, DOB, reason for call, and callback number.',
-    parameters: {
-      type: 'object',
-      properties: {
-        patientFirstName: { type: 'string', description: "Patient's first name" },
-        patientLastName: { type: 'string', description: "Patient's last name" },
-        patientPhone: { type: 'string', description: "Patient's phone number" },
-        patientDob: { type: 'string', description: 'Date of birth (MM/DD/YYYY)' },
-        reasonForCall: { type: 'string', description: 'Brief description of why they are calling' },
-        callbackNumber: { type: 'string', description: 'Number to call back on (default: caller ID)' },
-        additionalNotes: { type: 'string', description: 'Any additional information' },
-      },
-      required: ['patientFirstName', 'patientLastName', 'patientPhone', 'reasonForCall'],
-    },
-  },
-];
 
 const AFTER_HOURS_TOOLS: AgentToolDef[] = [
   {
@@ -565,38 +540,6 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         guardrails: role.guardrails,
         metadata: { ...meta, practiceName, role: 'healthcare-receptionist' },
       }, { id: role.rolePackageId, version: role.rolePackageVersion });
-    }
-
-    case 'answering-service': {
-      const practiceName = (meta.practiceName as string) ?? 'our office';
-      const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildAnsweringServiceSystemPrompt({
-            practiceName,
-            callerPhone,
-            callerMemorySummary,
-            config: DEFAULT_ANSWERING_SERVICE_CONFIG,
-          });
-      const baseTools = isAzulVision
-        ? [...ANSWERING_SERVICE_TOOLS, LOOKUP_SCHEDULE_TOOL]
-        : ANSWERING_SERVICE_TOOLS;
-      const mergedTools = mergeTools(baseTools, dbTools);
-      return finalize({
-        agentId,
-        tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? buildLocalizedGreeting(
-          'answering-service',
-          isAzulVision ? 'Azul Vision Eye Center' : practiceName,
-          language,
-        ),
-        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
-        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
-        tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
-        guardrails: [],
-        metadata: { practiceName },
-      });
     }
 
     case 'medical-after-hours': {

@@ -68,11 +68,10 @@ jobs:
           cache: "npm"
 
       - name: Install root dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: bash scripts/ci-npm-ci.sh
 
       - name: Install client-app dependencies
-        working-directory: client-app
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: bash scripts/ci-npm-ci.sh client-app
 
       - name: Install Playwright Chromium browser
         run: npx playwright install --with-deps chromium
