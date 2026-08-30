@@ -4,7 +4,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 const ALL_PROD_REQUIRED = [
   'PLATFORM_DB_POOL_URL',
-  'OPENAI_API_KEY',
+  'XAI_API_KEY',
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN',
   'TWILIO_OUTBOUND_NUMBER',
@@ -45,7 +45,7 @@ const ALL_PROD_REQUIRED = [
 ] as const;
 
 const ALWAYS_REQUIRED = [
-  'OPENAI_API_KEY',
+  'XAI_API_KEY',
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN',
   'TWILIO_OUTBOUND_NUMBER',
@@ -211,12 +211,12 @@ describe('validateEnvironment() — development branch', () => {
     for (const v of ALWAYS_REQUIRED) {
       process.env[v] = `dev-${v}`;
     }
-    delete process.env.OPENAI_API_KEY;
+    delete process.env.XAI_API_KEY;
     const { validateEnvironment } = await loadValidator();
     const result = validateEnvironment();
 
     expect(result.passed).toBe(false);
-    expect(result.missing).toEqual(['OPENAI_API_KEY']);
+    expect(result.missing).toEqual(['XAI_API_KEY']);
   });
 
   it('defaults the prod/dev branch to development when APP_ENV is unset', async () => {

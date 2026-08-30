@@ -16,7 +16,7 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 
 ### Technical Implementation
 - **Admin API (`server/admin-api/`):** An Express 5 application offering JWT-authenticated, RBAC-enabled access to tenant configurations, agent workflows, billing, usage metering, campaign management, knowledge base operations, and analytics. It enforces trial guardrails, rate limiting, and auto-suspension policies.
-- **Voice Gateway (`server/voice-gateway/`):** Acts as a Twilio webhook and OpenAI Realtime WebSocket bridge, managing call lifecycles, routing, and audio streaming for the embedded website widget. It includes replay protection for inbound webhooks.
+- **Voice Gateway (`server/voice-gateway/`):** Acts as a Twilio webhook and xAI Grok Voice Agent WebSocket bridge, managing call lifecycles, routing, and audio streaming for the embedded website widget. It includes replay protection for inbound webhooks. One Master Voice Agent runtime (`2.0.0`) plus a shared tool library (SMS, email, tickets, scheduling, dispatch) is the GTM core.
 - **Database:** PostgreSQL with Row-Level Security (RLS) for multi-tenancy.
 - **Core Services (`platform/`):** A comprehensive suite covering Audit, Billing & Usage, Analytics, Campaigns, Integrations, RBAC, Tenant Management, Agent Templates & Marketplace, Telephony & Messaging, Runtime, Email, Tools, Knowledge Management, Reasoning Framework, Workflow engine, and various Mini Systems (SMS Inbox, Scheduling, Enterprise Ticketing, Dispatch), AI Workforce Operating System, AI Business Autopilot, Global Intelligence Network (GIN), and Simulation Lab.
 - **Security:** Incorporates PHI redaction, encryption of tenant secrets, and strict enforcement of JWT, Stripe, and connector encryption keys. Inbound webhooks are protected against replay attacks using a combination of in-memory LRU+TTL cache and a durable Postgres backend.
@@ -32,7 +32,7 @@ The `client-app` is built with React 19, Vite 6, Tailwind CSS 4, TypeScript, and
 - **Database:** PostgreSQL (Supabase for production).
 - **Payment Processing:** Stripe (checkout, webhooks, customer portal, metered billing).
 - **Telephony:** Twilio (voice calls, SMS messaging, webhooks, number provisioning).
-- **AI/ML:** OpenAI (Realtime API, `text-embedding-3-small`, various GPT models).
+- **AI/ML:** xAI Grok Voice Agent API for live calls (`grok-voice-think-fast-2.0`). OpenAI remains only for non-voice utilities such as embeddings until those are replaced.
 - **Email:** Nodemailer (SMTP service), SendGrid Inbound Parse.
 - **CAPTCHA:** Cloudflare Turnstile.
 - **Frontend Libraries:** Zustand, `@tanstack/react-query`, `@xyflow/react`.

@@ -1,3 +1,8 @@
+import {
+  MASTER_VOICE_AGENT_CORE_VERSION,
+  MASTER_VOICE_AGENT_MODEL,
+} from '../../platform/agent-runtime/masterVoiceAgent';
+
 export const HEALTHCARE_APPROVAL_EVIDENCE_KEYS = [
   'compliance_owner_approval',
   'customer_agreement',
@@ -102,8 +107,8 @@ export function evaluateHealthcareDeploymentApproval(input: {
     return { allowed: false, code: 'approval_scope_mismatch' };
   }
   if (
-    approval.coreVersion !== '1.0.0'
-    || approval.model !== 'gpt-realtime-2'
+    approval.coreVersion !== MASTER_VOICE_AGENT_CORE_VERSION
+    || approval.model !== MASTER_VOICE_AGENT_MODEL
     || approval.rolePackageId !== 'healthcare-receptionist'
     || approval.rolePackageVersion !== '1.0.0'
   ) {

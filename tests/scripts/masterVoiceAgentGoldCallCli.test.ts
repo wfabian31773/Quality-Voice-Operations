@@ -55,8 +55,8 @@ describe('Master Voice Agent gold-call CLI', () => {
     expect(result.status).toBe(0);
     const output = JSON.parse(result.stdout) as Record<string, unknown>;
     expect(output).toMatchObject({
-      coreVersion: '1.0.0',
-      model: 'gpt-realtime-2',
+      coreVersion: '2.0.0',
+      model: 'grok-voice-think-fast-2.0',
       rolePackageId: 'healthcare-receptionist',
       rolePackageVersion: '1.0.0',
     });

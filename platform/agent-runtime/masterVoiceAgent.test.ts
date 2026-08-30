@@ -21,12 +21,13 @@ const baseRole = {
 describe('Master Voice Agent contract', () => {
   it('locks one semantic core version, production model, and session policy', () => {
     expect(MASTER_VOICE_AGENT_CONTRACT).toMatchObject({
-      coreVersion: '1.0.0',
-      model: 'gpt-realtime-2',
-      reasoningEffort: 'medium',
+      coreVersion: '2.0.0',
+      provider: 'xai',
+      model: 'grok-voice-think-fast-2.0',
+      reasoningEffort: 'none',
       session: {
-        inputFormat: 'g711_ulaw',
-        outputFormat: 'g711_ulaw',
+        inputFormat: 'audio/pcmu',
+        outputFormat: 'audio/pcmu',
         noiseReduction: 'far_field',
         turnDetection: {
           type: 'server_vad',
@@ -49,10 +50,10 @@ describe('Master Voice Agent contract', () => {
   it('compiles role settings onto the locked core and versions them independently', () => {
     const compiled = compileRolePackage(baseRole);
     expect(compiled).toMatchObject({
-      coreVersion: '1.0.0',
+      coreVersion: '2.0.0',
       rolePackageId: 'healthcare-receptionist',
       rolePackageVersion: '1.0.0',
-      model: 'gpt-realtime-2',
+      model: 'grok-voice-think-fast-2.0',
       preferredLanguage: 'en',
       timeZone: 'America/Los_Angeles',
     });

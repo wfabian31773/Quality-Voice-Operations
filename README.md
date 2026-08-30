@@ -8,7 +8,7 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
 - **Backend:** Express 5 + TypeScript (Admin API on port 3002, Voice Gateway on port 3001)
 - **Database:** PostgreSQL (Replit local for dev, Supabase for production)
 - **Auth:** JWT-based authentication with bcrypt password hashing
-- **Voice:** OpenAI Realtime API + Twilio SIP Trunking
+- **Voice:** xAI Grok Voice Agent API + Twilio Media Streams
 - **Billing:** Stripe integration
 
 ## Development

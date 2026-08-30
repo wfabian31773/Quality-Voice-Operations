@@ -8,7 +8,7 @@ import { verifyHealthcareActivationReadinessRef } from './HealthcareActivationRe
 function row(overrides: Record<string, unknown> = {}) {
   return {
     id: 'readiness-1', readiness_ref: 'har_abc', tenant_id: 'tenant-1', agent_id: 'agent-1',
-    target_environment: 'production', core_version: '1.0.0', model: 'gpt-realtime-2',
+    target_environment: 'production', core_version: '2.0.0', model: 'grok-voice-think-fast-2.0',
     role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0', recording_policy: 'disabled',
     catalog_version: '3.0.0', catalog_count: 188, discovered_count: 188,
     tenant_table_count: 188, rls_enabled_count: 188, verified_control_count: 11,

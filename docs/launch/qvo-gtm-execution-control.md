@@ -2,7 +2,7 @@
 
 **Status:** Canonical execution document
 **Document version:** 1.0
-**Ultimate objective:** Launch and operate QVO as a focused, managed healthcare AI receptionist built on one perfected Master Voice Agent runtime.
+**Ultimate objective:** Launch QVO on one xAI voice runtime, one Master Voice Agent core, and one shared tool library. The first GTM agent is `core-receptionist`. Public small-business website copy is last.
 **Current branch:** `codex/qvo-surface-reduction`
 **Baseline commit:** `748c7bb8871aba0de597ac89a03d96a468c85626`
 
@@ -44,7 +44,7 @@ This is the single source of truth for all work required to reach GTM readiness.
 
 ## 2. North-star product definition
 
-QVO is not a generic self-service agent platform. The GTM product is a managed healthcare AI receptionist that:
+QVO is not a generic self-service agent platform and it is not an OpenAI-Realtime product. The GTM product is one xAI-powered receptionist runtime plus a tool library. The first role package is `core-receptionist`. It must:
 
 1. Answers calls naturally.
 2. Understands and remembers the caller's context.
@@ -56,16 +56,16 @@ QVO is not a generic self-service agent platform. The GTM product is a managed h
 8. Captures complete caller intent and relevant details.
 9. Creates a staff-ready task, ticket, appointment request, or escalation.
 10. Persists the transcript, summary, outcome, and operational evidence.
-11. Avoids unsafe medical claims and escalates appropriately.
-12. Presents a focused customer portal and managed-service buying experience.
+11. Escalates when the caller asks for a person, a tool fails, or the request is outside policy.
+12. Presents a focused customer portal and managed-service buying experience after the core is live. Public website repositioning is last.
 
 ## 3. Non-negotiable architecture: one Master Voice Agent
 
 ### Canonical formula
 
-`Master Voice Agent runtime + role package + permitted capabilities + tenant context = deployed voice application`
+`xAI Grok Voice Agent + Master Voice Agent runtime + role package + tools selected from the shared library + tenant context = deployed voice application`
 
-There are no separate dental, medical, legal, scheduling, support, or sales agent engines. There is one perfected real-time voice process. A vertical changes what that process is instructed and permitted to accomplish.
+There are no separate dental, medical, legal, scheduling, support, or sales agent engines. There is one real-time voice process on xAI. A role package changes what that process is instructed and permitted to do by choosing tools from the library.
 
 ### Locked Master Voice Agent responsibilities
 
@@ -117,8 +117,8 @@ QVO reaches GTM through one runtime and an expanding catalog of approved role pa
 
 | Layer | Current GTM state | Rule for expansion |
 | --- | --- | --- |
-| Core runtime | Master Voice Agent `1.0.0`, model `gpt-realtime-2` | One constructor/session architecture. A core-invariant change requires a new core version and the complete gold evaluation. |
-| First role package | `healthcare-receptionist@1.0.0` | Role prompt, workflow, allowed tools, data requirements, and guardrails configure the unchanged core. |
+| Core runtime | Master Voice Agent `2.0.0`, provider `xai`, model `grok-voice-think-fast-2.0` | One constructor/session architecture. A core-invariant change requires a new core version and the complete gold evaluation. |
+| First role package | `core-receptionist@1.0.0` | Role prompt, workflow, allowed tools, data requirements, and guardrails configure the unchanged core. Healthcare remains a retained role package, not the launch offer. |
 | Current healthcare use cases | 10 durable outcome types and 15 deterministic scenario categories spanning appointments, callbacks, billing, refill, records, operational facts, professional callers, emergencies, escalation, tool failure, and missed-call recovery | A use case is accepted only when it has an explicit outcome, required evidence, truthfulness rule, failure/escalation behavior, deterministic tests, and live gold evidence where audio/runtime behavior is claimed. |
 | Future vertical roles | Not yet production-approved; legacy templates are migration inputs, not proof of an approved role package | Each must use the role-package compiler, preserve the core model/session, define its own outcome contract and permissions, pass the same core gold suite, and satisfy its applicable compliance gate. |
 | Deployment | Tenant/location configuration of an approved role package | Tenant data may select allowed deployment settings and supply bounded facts; it may never relabel a role version, replace its prompt, expand tools, or weaken core/role safety. |
@@ -131,7 +131,7 @@ This distinction is the standing architectural gate for every remaining work pac
 | --- | --- | --- | --- | --- |
 | 0 | Repository and validation baseline | Correct repository | No | `COMPLETE` with baseline blockers recorded |
 | 1 | Customer-facing surface reduction | WP0 | Yes | `BLOCKED` only on authoritative full-suite environment gate |
-| 2 | Master Voice Agent core | WP0; preserved voice runtime | Yes, after characterization baseline | `IMPLEMENTED — ACTIVATION BLOCKED ON LIVE GOLD EVAL` |
+| 2 | Master Voice Agent core | WP0; preserved voice runtime | Yes, after characterization baseline | `IN PROGRESS — xAI 2.0.0 CORE LANDED; ACTIVATION BLOCKED ON LIVE GOLD EVAL` |
 | 3 | Healthcare receptionist role package | WP2 contract | No | `COMPLETE — RE-AUDITED GTM-009; PRODUCTION SUBJECT TO WP2/WP6/WP7` |
 | 4 | End-to-end receptionist workflow and dashboard evidence | WP2, WP3, dashboard data contract | No | `COMPLETE — PRODUCTION SUBJECT TO WP6/WP7` |
 | 5 | Healthcare-first demo | WP3, WP4 | No | `COMPLETE — LIVE AUDIO REMAINS WP6` |

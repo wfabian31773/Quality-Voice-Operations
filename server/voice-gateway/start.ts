@@ -11,6 +11,7 @@ import { startStreamCanary, stopStreamCanary } from './services/streamCanary';
 import { validateEnvironment } from '../../scripts/validate-env';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
+import { registerToolLibrary } from '../../platform/tools/library';
 import { registerRetrieveKnowledgeTool } from '../../platform/tools/knowledge/retrieveKnowledgeTool';
 import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
 import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
@@ -20,6 +21,7 @@ const logger = createLogger('VOICE_GATEWAY');
 
 registerCoreTools();
 registerTemplateTools();
+registerToolLibrary();
 registerRetrieveKnowledgeTool();
 initOperatorNotificationPipeline();
 initToolHealthTracking();

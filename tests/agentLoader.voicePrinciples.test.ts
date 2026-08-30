@@ -14,7 +14,7 @@ function ctxFor(agentType: string, dbAgentOverrides: Record<string, unknown> = {
     dbAgent: {
       name: 'Test Agent',
       voice: 'sage',
-      model: 'gpt-realtime-2',
+      model: 'grok-voice-think-fast-2.0',
       metadata: { practiceName: 'Test Clinic', companyName: 'Test Co', firmName: 'Test LLP' },
       ...dbAgentOverrides,
     },

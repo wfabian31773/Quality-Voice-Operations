@@ -13,28 +13,32 @@ const h = vi.hoisted(() => {
   return { handleSilenceMock };
 });
 
-// Fake OpenAI Agents SDK — just enough surface for createRealtimeSession.
-// Defined inside the factory because vi.mock is hoisted above the imports.
-vi.mock('@openai/agents/realtime', async () => {
+vi.mock('./xaiRealtimeTransport', async () => {
   const { EventEmitter: NodeEventEmitter } = await import('events');
   class FakeTransport extends NodeEventEmitter {
     sendAudio = vi.fn();
     sendEvent = vi.fn();
-  }
-  class FakeRealtimeSession extends NodeEventEmitter {
     connect = vi.fn(async () => {});
-    close = vi.fn(async () => {
+    close = vi.fn(() => {
       this.emit('close');
     });
+    updateSession = vi.fn();
+    setFunctionHandler = vi.fn();
   }
-  class FakeRealtimeAgent {
-    constructor(_opts: unknown) {}
+  class FakeSession {
+    constructor(private readonly transport: FakeTransport) {}
+    connect = (opts: { apiKey: string }) => this.transport.connect(opts);
+    close = () => this.transport.close();
+    on = (event: string, listener: (...args: unknown[]) => void) => {
+      this.transport.on(event, listener);
+      return this;
+    };
+    updateSession = (session: unknown) => this.transport.updateSession(session);
+    setFunctionHandler = (handler: unknown) => this.transport.setFunctionHandler(handler);
   }
   return {
-    RealtimeAgent: FakeRealtimeAgent,
-    RealtimeSession: FakeRealtimeSession,
-    OpenAIRealtimeWebSocket: FakeTransport,
-    tool: vi.fn((def: unknown) => def),
+    XaiRealtimeTransport: FakeTransport,
+    XaiVoiceSession: FakeSession,
   };
 });
 

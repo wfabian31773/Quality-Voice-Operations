@@ -1,11 +1,6 @@
-import {
-  RealtimeAgent,
-  RealtimeSession,
-  OpenAIRealtimeWebSocket,
-  tool,
-} from '@openai/agents/realtime';
-import type { RealtimeItem, TransportLayerAudio } from '@openai/agents/realtime';
 import { createLogger } from '../../../platform/core/logger';
+import { XaiRealtimeTransport, XaiVoiceSession, type TransportLayerAudio } from './xaiRealtimeTransport';
+import { buildXaiFunctionTools, buildXaiSessionUpdate } from '../../../platform/agent-runtime/xaiSessionConfig';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import type { TenantId } from '../../../platform/core/types';
 import type { LoadedAgentConfig, AgentToolDef } from './agentLoader';
@@ -30,7 +25,6 @@ import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/r
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
 import { checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
 import {
-  modelSupportsReasoningEffort,
   calculateLlmCostCents,
   TTS_COST_PER_1K_CHARS_CENTS,
 } from '../../../platform/billing/cost/providerRates';
@@ -674,39 +668,8 @@ function buildToolHandler(
   };
 }
 
-function toJsonObjectSchema(params: Record<string, unknown>): {
-  type: 'object';
-  properties: Record<string, unknown>;
-  required: string[];
-  additionalProperties: true;
-} {
-  return {
-    type: 'object',
-    properties: (params.properties as Record<string, unknown>) ?? {},
-    required: (params.required as string[]) ?? [],
-    additionalProperties: true,
-  };
-}
-
-function buildRealtimeTools(
-  defs: AgentToolDef[],
-  toolHandler: (name: string, args: Record<string, unknown>) => Promise<string>,
-) {
-  return defs.map((def) => {
-    const schema = toJsonObjectSchema(def.parameters);
-    return tool({
-      name: def.name,
-      description: def.description,
-      parameters: schema,
-      strict: false,
-      execute: async (parsedArgs: unknown) => {
-        const args = (parsedArgs && typeof parsedArgs === 'object')
-          ? parsedArgs as Record<string, unknown>
-          : {};
-        return toolHandler(def.name, args);
-      },
-    });
-  });
+function buildRealtimeTools(defs: AgentToolDef[]) {
+  return buildXaiFunctionTools(defs);
 }
 
 export interface OpenAISessionConfigInput {
@@ -729,87 +692,15 @@ export interface OpenAISessionConfigInput {
 }
 
 export function buildOpenAISessionConfig(input: OpenAISessionConfigInput) {
-  // The configured language controls only the greeting. Transcription stays
-  // unpinned so the same session can detect languages and code-switch.
-  const transcription = { model: 'gpt-4o-mini-transcribe' as const };
-  const baseConfig = {
+  return buildXaiSessionUpdate({
+    instructions: '',
     voice: input.voice,
-    audio: {
-      input: {
-        format: 'g711_ulaw' as const,
-        transcription,
-        // Telephony-tuned input pipeline. The OpenAI Realtime SDK exposes
-        // both VAD modes and a noise-reduction filter as first-class
-        // session knobs — we wire them through here rather than letting
-        // the SDK fall back to its browser-microphone defaults.
-        //
-        // `noiseReduction: 'far_field'` is the SDK preset for distant /
-        // speakerphone audio, which matches what Twilio actually delivers
-        // (callers on speakerphone, in cars, with background noise). It
-        // runs server-side before the VAD ever sees the frame.
-        noiseReduction: { type: 'far_field' as const },
-        turnDetection: {
-          // `server_vad` is the per-frame energy-based detector. It's
-          // deterministic, doesn't require a model pass, and works
-          // reliably on the 8kHz g711_ulaw narrowband audio that
-          // Twilio's Media Streams emit. `semantic_vad` looks great in
-          // the docs but its prosody model is trained on full-band 24kHz
-          // audio — on narrowband it stalls until the 4s `eagerness:
-          // medium` ceiling fires, which makes the agent feel deaf.
-          type: 'server_vad' as const,
-          // 0.5 is OpenAI's documented default. Lower (0.3) picks up
-          // softer voices but starts triggering on hiss / road noise;
-          // higher (0.7) misses quiet callers. 0.5 is the right starting
-          // point with `far_field` noise reduction in front of it.
-          threshold: 0.5,
-          // 300ms of audio captured *before* the VAD trips. Anything
-          // shorter and the first phoneme of "Hello?" gets clipped off
-          // the transcription; longer wastes input tokens.
-          prefixPaddingMs: 300,
-          // 500ms of silence to declare end-of-turn. Default in the
-          // SDK; matches natural phone-call cadence. Shorter (200ms)
-          // makes the agent interrupt mid-thought; longer (1000ms)
-          // makes it feel sluggish.
-          silenceDurationMs: 500,
-          // NOTE: do NOT set `idleTimeoutMs` here. The voice gateway
-          // already runs a local `silenceTimer` (15s) below that calls
-          // `reasoningEngine.handleSilence()` and injects a context-
-          // aware recovery prompt. Enabling the server-side idle
-          // timeout in addition causes the two timers to race —
-          // server fires a generic re-prompt response at the lower
-          // bound, then our local watchdog fires another one a few
-          // seconds later, and the model ends up re-asking the same
-          // question over and over while the caller is still trying
-          // to answer. Pick one source of truth; we pick the local
-          // one because it has reasoning-engine context.
-          // Auto-generate a response when end-of-turn is detected and
-          // cancel the in-flight response if the caller starts talking
-          // — these together implement true barge-in.
-          createResponse: true,
-          interruptResponse: true,
-        },
-      },
-      output: {
-        format: 'g711_ulaw' as const,
-        voice: input.voice,
-      },
-    },
-  };
-  // The `reasoning.effort` knob is exclusive to gpt-realtime-2 (May
-  // 2026 GA). Cast through `unknown` because the @openai/agents SDK
-  // typings have not yet caught up with the new session field — the
-  // value is forwarded to the Realtime WS as part of session.update.
-  if (input.model && input.reasoningEffort && modelSupportsReasoningEffort(input.model)) {
-    return {
-      ...baseConfig,
-      reasoning: { effort: input.reasoningEffort },
-    } as unknown as typeof baseConfig;
-  }
-  return baseConfig;
+    reasoningEffort: MASTER_VOICE_AGENT_CONTRACT.reasoningEffort,
+  });
 }
 
 export interface RealtimeSessionResult {
-  session: RealtimeSession;
+  session: XaiVoiceSession;
   callSessionId: string;
   sendAudioToOpenAI: (audio: ArrayBuffer) => void;
   onOpenAIAudio: (handler: (audioEvent: TransportLayerAudio) => void) => void;
@@ -966,7 +857,7 @@ export async function createRealtimeSession(
   ctx.reasoningEngine = reasoningEngine;
 
   const toolHandler = buildToolHandler(ctx, callSessionId);
-  const agentTools = buildRealtimeTools(agentConfig.tools, toolHandler);
+  const agentTools = buildRealtimeTools(agentConfig.tools);
 
   let knowledgeAvailable = false;
   try {
@@ -1066,31 +957,19 @@ export async function createRealtimeSession(
   costTracker.inputTokens += Math.ceil(systemPromptWithMemory.length / 4);
   costTracker.routingDecisions.push(initialRouting);
 
-  const agent = new RealtimeAgent({
-    name: `${agentConfig.agentId}-${tenantId}`,
+  const sessionConfig = buildXaiSessionUpdate({
     instructions: systemPromptWithMemory,
-    tools: agentTools,
-  });
-
-  const wsTransport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
-
-  const sessionConfig = buildOpenAISessionConfig({
     voice: agentConfig.voice,
-    language: agentConfig.language,
-    model: activeModel,
+    tools: agentTools,
     reasoningEffort: MASTER_VOICE_AGENT_CONTRACT.reasoningEffort,
   });
 
-  const session = new RealtimeSession(agent, {
-    transport: wsTransport,
+  const wsTransport = new XaiRealtimeTransport({
+    sessionUpdate: sessionConfig,
     model: activeModel,
-    config: sessionConfig,
-    tracingDisabled: false,
-    tracing: {
-      workflowName: `VoiceAI_${agentConfig.agentId}`,
-      groupId: callSid,
-    },
-  } as ConstructorParameters<typeof RealtimeSession>[1]);
+    onFunctionCall: toolHandler,
+  });
+  const session = new XaiVoiceSession(wsTransport);
 
   const persistence = createPlatformPersistenceAdapter(tenantId);
 
@@ -1152,8 +1031,8 @@ export async function createRealtimeSession(
 
   resetSilenceTimer();
 
-  const attachSessionListeners = (targetSession: RealtimeSession): void => {
-    targetSession.on('history_added', (item: RealtimeItem) => {
+  const attachSessionListeners = (targetSession: XaiVoiceSession): void => {
+    targetSession.on('history_added', (item: unknown) => {
       const msg = item as RealtimeMessageItem;
       if (msg.type !== 'message') return;
 
@@ -1171,7 +1050,7 @@ export async function createRealtimeSession(
               tenantId,
               callSessionId,
               traceType: 'model_prompted',
-              stepName: 'OpenAIRealtimeSession',
+              stepName: 'XaiRealtimeSession',
               inputData: {
                 utterance: redactPHI(text),
                 role: 'user',
@@ -1322,7 +1201,7 @@ export async function createRealtimeSession(
               tenantId,
               callSessionId,
               traceType: 'model_responded',
-              stepName: 'OpenAIRealtimeSession',
+              stepName: 'XaiRealtimeSession',
               outputData: { response: redactPHI(c.text), role: 'assistant' },
               metadata: { model: agentConfig.model, agentId: agentConfig.agentId },
             }).catch(() => {});
@@ -1425,7 +1304,7 @@ export async function createRealtimeSession(
   // and log a scary (but benign) warn.
   let sessionClosed = false;
 
-  const attachCloseHandler = (targetSession: RealtimeSession): void => {
+  const attachCloseHandler = (targetSession: XaiVoiceSession): void => {
     const emitter = targetSession as unknown as { on(event: string, listener: (...args: unknown[]) => void): void };
     emitter.on('close', () => {
       sessionClosed = true;
@@ -1478,7 +1357,7 @@ export async function createRealtimeSession(
     try {
       activeTransport.sendAudio(audio);
     } catch (err) {
-      slog.error('Failed to send audio to OpenAI', { error: String(err) });
+      slog.error('Failed to send audio to xAI', { error: String(err) });
     }
   };
 
@@ -1558,7 +1437,7 @@ export async function createRealtimeSession(
     // no-ops the token math from this point on (see costTracker
     // definition above), so estimates and actuals never double-count.
     if (costTracker.captureSource === 'estimate') {
-      slog.info('Switching cost tracker from estimate to OpenAI usage event', {
+      slog.info('Switching cost tracker from estimate to xAI usage event', {
         estimatedInputBefore: costTracker.inputTokens,
         estimatedOutputBefore: costTracker.outputTokens,
         firstUsageInput: inputTokens,
@@ -1662,7 +1541,7 @@ export async function createRealtimeSession(
     });
 
     const newToolHandler = buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId);
-    const newAgentTools = buildRealtimeTools(newAgentConfig.tools, newToolHandler);
+    const newAgentTools = buildRealtimeTools(newAgentConfig.tools);
     const handoffPrompt = buildMasterVoiceAgentInstructions({
       rolePrompt: newAgentConfig.rolePrompt ?? newAgentConfig.systemPrompt,
       guardrails: newAgentConfig.guardrails,
@@ -1673,12 +1552,13 @@ export async function createRealtimeSession(
       timeZone: newAgentConfig.timeZone,
     });
 
-    const newAgent = new RealtimeAgent({
-      name: `${newAgentConfig.agentId}-${tenantId}`,
+    activeSession.setFunctionHandler(newToolHandler);
+    activeSession.updateSession(buildXaiSessionUpdate({
       instructions: handoffPrompt,
+      voice: newAgentConfig.voice,
       tools: newAgentTools,
-    });
-    await activeSession.updateAgent(newAgent);
+      reasoningEffort: MASTER_VOICE_AGENT_CONTRACT.reasoningEffort,
+    }));
     sendModelInstruction(
       `The role context changed while this same call and conversation continue. Say exactly: "${handoffGreeting}". Do not say anything else.`,
     );
