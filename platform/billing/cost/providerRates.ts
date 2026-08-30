@@ -40,6 +40,8 @@ export const MODEL_RATES: Record<string, ModelRate> = {
   //
   // Older Realtime SKUs are kept in the map only so cost analytics for
   // legacy DB rows that still reference them continue to compute.
+  'grok-voice-think-fast-2.0': { inputPer1kTokens: 0.8, outputPer1kTokens: 0.8, cachedInputPer1kTokens: 0.8 },
+  'grok-voice-latest': { inputPer1kTokens: 0.8, outputPer1kTokens: 0.8, cachedInputPer1kTokens: 0.8 },
   'gpt-realtime-2': { inputPer1kTokens: 3.2, outputPer1kTokens: 6.4, cachedInputPer1kTokens: 0.04 },
   'gpt-realtime': { inputPer1kTokens: 0.4, outputPer1kTokens: 1.6, cachedInputPer1kTokens: 0.04 },
   'gpt-realtime-mini': { inputPer1kTokens: 0.05, outputPer1kTokens: 0.2, cachedInputPer1kTokens: 0.03 },
@@ -100,9 +102,9 @@ export type ModelTier = 'economy' | 'standard' | 'premium';
 // been refreshed in the May 2026 release, so we keep the Aug 2025 GA
 // mini until OpenAI ships a v2 mini.
 export const TIER_MODEL_MAP: Record<ModelTier, string> = {
-  economy: 'gpt-realtime-mini',
-  standard: 'gpt-realtime-2',
-  premium: 'gpt-realtime-2',
+  economy: 'grok-voice-think-fast-2.0',
+  standard: 'grok-voice-think-fast-2.0',
+  premium: 'grok-voice-think-fast-2.0',
 };
 
 // Reasoning effort knob is exclusive to `gpt-realtime-2`. OpenAI's
@@ -123,7 +125,7 @@ export const TIER_REASONING_EFFORT: Record<ModelTier, 'low' | 'medium' | 'high'>
 // mini SKU or the legacy preview) is rejected with `invalid_request_error`,
 // so callers must gate on this before adding the knob to session.update.
 export function modelSupportsReasoningEffort(model: string): boolean {
-  return model === 'gpt-realtime-2' || model.startsWith('gpt-realtime-2-');
+  return model.startsWith('grok-voice') || model === 'gpt-realtime-2' || model.startsWith('gpt-realtime-2-');
 }
 
 export function getModelRate(model: string): ModelRate {

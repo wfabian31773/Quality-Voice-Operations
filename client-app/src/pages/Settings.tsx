@@ -140,8 +140,6 @@ function GeneralSettings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isOwner } = useRole();
-  const { user } = useAuth();
-  const isStaff = isQvoStaff(user);
   const [saved, setSaved] = useState(false);
   const [restartingOnboarding, setRestartingOnboarding] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
@@ -540,7 +538,7 @@ function GeneralSettings() {
         <p className="text-sm text-text-muted">{t('settings.general.owner_only')}</p>
       )}
 
-      {isStaff && <div className="bg-surface border border-border rounded-xl p-6">
+      {isOwner && <div className="bg-surface border border-border rounded-xl p-6">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
             <Sparkles className="h-5 w-5 text-primary" />

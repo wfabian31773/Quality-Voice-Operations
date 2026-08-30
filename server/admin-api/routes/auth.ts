@@ -10,6 +10,7 @@ import { getPlanPriceId, TRIAL_LIMITS, type PlanTier } from '../../../platform/b
 import { isSupportedBillingCurrency } from '../../../platform/billing/supportedCurrencies';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
+import { authAttemptRateLimitMax } from '../../../platform/security/authAttemptRateLimit';
 
 const router = Router();
 const logger = createLogger('ADMIN_AUTH_ROUTES');
@@ -19,7 +20,9 @@ const VALID_INTERVALS = new Set<string>(['monthly', 'annual']);
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY;
 const loginRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  maxRequests: 10,
+  // Admin e2e walks many specs against one seeded admin on a single
+  // runner IP. Production stays at 10; development needs headroom.
+  maxRequests: authAttemptRateLimitMax(),
   message: 'Too many sign-in attempts. Please wait before trying again.',
   keyGenerator: (req) => {
     const email = req.body && typeof req.body.email === 'string'

@@ -18,7 +18,8 @@ vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ error: 
 vi.mock('./security', () => ({ isProductionLike: () => false }));
 
 import {
-  requireAuth, issueToken, invalidateTenantStatusCache, clearTenantStatusCache, tenantStatusCacheSize,
+  requireAuth, issueToken, issueMfaFlowToken, verifyMfaFlowToken,
+  invalidateTenantStatusCache, clearTenantStatusCache, tenantStatusCacheSize,
 } from './auth';
 
 const SECRET = 'test-jwt-secret';
@@ -128,6 +129,29 @@ describe('tenant-status pending gate', () => {
     const res = await request(app()).get('/dashboard').set('Authorization', `Bearer ${token()}`);
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('TENANT_NOT_PROVISIONED');
+  });
+});
+
+describe('platform-admin MFA flow tokens', () => {
+  it('round-trips a valid MFA challenge token', () => {
+    const token = issueMfaFlowToken(
+      { userId: 'u1', tenantId: 't1', email: 'e@x.com', role: 'platform_admin' },
+      'mfa_challenge',
+    );
+    expect(verifyMfaFlowToken(token, 'mfa_challenge')).toEqual({
+      userId: 'u1',
+      tenantId: 't1',
+      email: 'e@x.com',
+      role: 'platform_admin',
+    });
+  });
+
+  it('rejects a token minted for a different MFA purpose', () => {
+    const token = issueMfaFlowToken(
+      { userId: 'u1', tenantId: 't1', email: 'e@x.com', role: 'platform_admin' },
+      'mfa_setup',
+    );
+    expect(() => verifyMfaFlowToken(token, 'mfa_challenge')).toThrow(/purpose/i);
   });
 });
 

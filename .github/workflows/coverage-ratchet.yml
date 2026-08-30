@@ -31,7 +31,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies (root)
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: bash scripts/ci-npm-ci.sh
 
       - name: Run coverage on ratcheted areas and check floors
         run: npm run coverage:ratchet:ci

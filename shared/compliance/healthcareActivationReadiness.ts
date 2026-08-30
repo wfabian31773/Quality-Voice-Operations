@@ -1,3 +1,8 @@
+import {
+  MASTER_VOICE_AGENT_CORE_VERSION,
+  MASTER_VOICE_AGENT_MODEL,
+} from '../../platform/agent-runtime/masterVoiceAgent';
+
 export const HEALTHCARE_ACTIVATION_CATALOG_VERSION = '3.0.0';
 export const HEALTHCARE_ACTIVATION_CATALOG_COUNT = 188;
 export const HEALTHCARE_ACTIVATION_EVIDENCE_CONTROL_COUNT = 11;
@@ -84,8 +89,8 @@ export function evaluateHealthcareActivationReadiness(input: {
     || readiness.targetEnvironment !== input.targetEnvironment
   ) return { valid: false, code: 'readiness_scope_mismatch' };
   if (
-    readiness.coreVersion !== '1.0.0'
-    || readiness.model !== 'gpt-realtime-2'
+    readiness.coreVersion !== MASTER_VOICE_AGENT_CORE_VERSION
+    || readiness.model !== MASTER_VOICE_AGENT_MODEL
     || readiness.rolePackageId !== 'healthcare-receptionist'
     || readiness.rolePackageVersion !== '1.0.0'
     || readiness.recordingPolicy !== 'disabled'

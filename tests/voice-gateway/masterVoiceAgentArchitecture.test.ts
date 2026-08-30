@@ -4,12 +4,16 @@ import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
 const sessionSource = readFileSync(resolve(root, 'server/voice-gateway/services/openaiSession.ts'), 'utf8');
+const transportSource = readFileSync(resolve(root, 'server/voice-gateway/services/xaiRealtimeTransport.ts'), 'utf8');
 const numberLookupSource = readFileSync(resolve(root, 'server/voice-gateway/services/numberLookup.ts'), 'utf8');
 
 describe('Master Voice Agent construction architecture', () => {
-  it('constructs exactly one realtime session and transitions role context on that session', () => {
-    expect(sessionSource.match(/new RealtimeSession\(/g)).toHaveLength(1);
-    expect(sessionSource).toContain('.updateAgent(');
+  it('constructs exactly one xAI voice session and keeps role transitions on that session', () => {
+    expect(sessionSource.match(/new XaiVoiceSession\(/g)).toHaveLength(1);
+    expect(sessionSource.match(/new XaiRealtimeTransport\(/g)).toHaveLength(1);
+    expect(sessionSource).toContain('updateSession(');
+    expect(sessionSource).not.toContain('new RealtimeSession(');
+    expect(transportSource).toContain('buildXaiRealtimeUrl(');
   });
 
   it('does not dynamically route or downgrade the locked production model', () => {

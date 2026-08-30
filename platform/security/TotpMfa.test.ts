@@ -10,6 +10,7 @@ import {
   verifyRecoveryCode,
   verifyTotp,
 } from './TotpMfa';
+import { DEV_PLATFORM_ADMIN_MFA_SECRET, encryptedDevPlatformAdminMfaSecret } from './devPlatformAdminMfa';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -26,6 +27,11 @@ describe('TOTP MFA primitives', () => {
   it('matches the RFC 6238 SHA-1 test vector', () => {
     const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
     expect(totpAt(secret, 59_000, { digits: 8 })).toBe('94287082');
+  });
+
+  it('encrypts the development platform-admin MFA seed with the same key material the login challenge uses', () => {
+    expect(totpAt(DEV_PLATFORM_ADMIN_MFA_SECRET)).toMatch(/^\d{6}$/);
+    expect(decryptTotpSecret(encryptedDevPlatformAdminMfaSecret())).toBe(DEV_PLATFORM_ADMIN_MFA_SECRET);
   });
 
   it('accepts only a bounded adjacent time step', () => {

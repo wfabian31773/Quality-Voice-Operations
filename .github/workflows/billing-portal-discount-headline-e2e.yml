@@ -77,7 +77,7 @@ jobs:
 
       - name: Install root dependencies
         if: steps.gate.outputs.run_spec == 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: bash scripts/ci-npm-ci.sh
 
       - name: Install Playwright Chromium browser
         if: steps.gate.outputs.run_spec == 'true'

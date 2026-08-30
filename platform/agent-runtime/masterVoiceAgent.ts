@@ -1,15 +1,19 @@
-export const MASTER_VOICE_AGENT_CORE_VERSION = '1.0.0';
-export const MASTER_VOICE_AGENT_MODEL = 'gpt-realtime-2';
-export const MASTER_VOICE_AGENT_REASONING_EFFORT = 'medium' as const;
+export const MASTER_VOICE_AGENT_CORE_VERSION = '2.0.0';
+export const MASTER_VOICE_AGENT_PROVIDER = 'xai' as const;
+export const MASTER_VOICE_AGENT_MODEL = 'grok-voice-think-fast-2.0';
+export const MASTER_VOICE_AGENT_REASONING_EFFORT = 'none' as const;
 export const MASTER_VOICE_AGENT_DEFAULT_TIME_ZONE = 'America/New_York';
+export const MASTER_VOICE_AGENT_DEFAULT_VOICE = 'eve';
+export const MASTER_VOICE_AGENT_REALTIME_URL = 'wss://api.x.ai/v1/realtime';
 
 export interface MasterVoiceAgentContract {
   readonly coreVersion: string;
+  readonly provider: 'xai';
   readonly model: string;
-  readonly reasoningEffort: 'medium';
+  readonly reasoningEffort: 'none' | 'high';
   readonly session: {
-    readonly inputFormat: 'g711_ulaw';
-    readonly outputFormat: 'g711_ulaw';
+    readonly inputFormat: 'audio/pcmu';
+    readonly outputFormat: 'audio/pcmu';
     readonly noiseReduction: 'far_field';
     readonly turnDetection: {
       readonly type: 'server_vad';
@@ -35,11 +39,12 @@ function deepFreeze<T extends object>(value: T): Readonly<T> {
 
 export const MASTER_VOICE_AGENT_CONTRACT: Readonly<MasterVoiceAgentContract> = deepFreeze({
   coreVersion: MASTER_VOICE_AGENT_CORE_VERSION,
+  provider: MASTER_VOICE_AGENT_PROVIDER,
   model: MASTER_VOICE_AGENT_MODEL,
   reasoningEffort: MASTER_VOICE_AGENT_REASONING_EFFORT,
   session: {
-    inputFormat: 'g711_ulaw',
-    outputFormat: 'g711_ulaw',
+    inputFormat: 'audio/pcmu',
+    outputFormat: 'audio/pcmu',
     noiseReduction: 'far_field',
     turnDetection: {
       type: 'server_vad',
@@ -101,6 +106,7 @@ TOOLS AND FUNCTIONS
 
 const CORE_OVERRIDE_KEYS = [
   'model',
+  'provider',
   'reasoningEffort',
   'session',
   'turnDetection',
@@ -285,7 +291,7 @@ export function compileRolePackage(input: RolePackageDefinition): CompiledRolePa
       timeZone,
     }),
     greeting: input.greeting,
-    voice: input.voice?.trim() || 'sage',
+    voice: input.voice?.trim() || MASTER_VOICE_AGENT_DEFAULT_VOICE,
     model: MASTER_VOICE_AGENT_MODEL,
     preferredLanguage,
     timeZone,

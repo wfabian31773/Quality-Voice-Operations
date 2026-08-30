@@ -53,7 +53,7 @@ describe('healthcare deployment approval repository', () => {
     mocks.query
       .mockResolvedValueOnce({ rows: [{
         id: 'approval-json', tenant_id: 'tenant-1', agent_id: 'agent-1',
-        approval_kind: 'production_healthcare', core_version: '1.0.0', model: 'gpt-realtime-2',
+        approval_kind: 'production_healthcare', core_version: '2.0.0', model: 'grok-voice-think-fast-2.0',
         role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0',
         recording_policy: 'disabled', evidence_refs: '{"pilot_acceptance":"evidence/pilot/1"}',
         synthetic_caller_hashes: ['hash-1', 42], approved_by: 'admin-1',
@@ -62,7 +62,7 @@ describe('healthcare deployment approval repository', () => {
       }] })
       .mockResolvedValueOnce({ rows: [{
         id: 'approval-malformed', tenant_id: 'tenant-1', agent_id: 'agent-1',
-        approval_kind: 'synthetic_test', core_version: '1.0.0', model: 'gpt-realtime-2',
+        approval_kind: 'synthetic_test', core_version: '2.0.0', model: 'grok-voice-think-fast-2.0',
         role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0',
         recording_policy: 'disabled', evidence_refs: '{malformed', synthetic_caller_hashes: null,
         approved_by: 'admin-1', approved_at: '2026-07-12T19:00:00.000Z',
@@ -94,7 +94,7 @@ describe('healthcare deployment approval repository', () => {
     const hash = createPiiLookupHash('tenant-1', '+15551234567', 'synthetic_test');
     mocks.query.mockResolvedValue({ rows: [{
       id: 'approval-1', tenant_id: 'tenant-1', agent_id: 'agent-1', approval_kind: 'synthetic_test',
-      core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+      core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
       role_package_version: '1.0.0', recording_policy: 'disabled', evidence_refs: {
         test_authorization: 'evidence/test/auth', synthetic_data_protocol: 'evidence/test/synthetic',
         recording_disabled: 'evidence/test/recording',
@@ -109,7 +109,7 @@ describe('healthcare deployment approval repository', () => {
   it('authorizes a complete production approval without requiring a caller hash', async () => {
     mocks.query.mockResolvedValue({ rows: [{
       id: 'approval-prod', tenant_id: 'tenant-1', agent_id: 'agent-1', approval_kind: 'production_healthcare',
-      core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+      core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
       role_package_version: '1.0.0', recording_policy: 'disabled', evidence_refs: {
         compliance_owner_approval: 'evidence/compliance/owner-1', customer_agreement: 'evidence/customer/1',
         twilio_approval: 'evidence/vendor/twilio-1', openai_approval: 'evidence/vendor/openai-1',
@@ -137,7 +137,7 @@ describe('healthcare deployment approval repository', () => {
   it('denies an otherwise complete production approval when registry evidence is invalidated', async () => {
     mocks.query.mockResolvedValue({ rows: [{
       id: 'approval-prod', tenant_id: 'tenant-1', agent_id: 'agent-1', approval_kind: 'production_healthcare',
-      core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+      core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
       role_package_version: '1.0.0', recording_policy: 'disabled', evidence_refs: Object.fromEntries([
         'compliance_owner_approval', 'customer_agreement', 'twilio_approval', 'openai_approval',
         'hosting_approval', 'storage_controls', 'retention_controls', 'deletion_controls',
@@ -156,7 +156,7 @@ describe('healthcare deployment approval repository', () => {
   it('denies an otherwise valid production approval when readiness is revoked later', async () => {
     mocks.query.mockResolvedValue({ rows: [{
       id: 'approval-prod', tenant_id: 'tenant-1', agent_id: 'agent-1', approval_kind: 'production_healthcare',
-      core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+      core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
       role_package_version: '1.0.0', recording_policy: 'disabled', readiness_ref: 'har_abc',
       evidence_refs: Object.fromEntries([
         'compliance_owner_approval', 'customer_agreement', 'twilio_approval', 'openai_approval',

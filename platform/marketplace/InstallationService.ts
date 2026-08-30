@@ -3,6 +3,10 @@ import { createLogger } from '../core/logger';
 import { checkEntitlement } from './EntitlementService';
 import { generateEmbedding } from '../knowledge/embeddingService';
 import type { TenantId } from '../core/types';
+import {
+  MASTER_VOICE_AGENT_DEFAULT_VOICE,
+  MASTER_VOICE_AGENT_MODEL,
+} from '../agent-runtime/masterVoiceAgent';
 
 const logger = createLogger('INSTALLATION_SERVICE');
 
@@ -105,8 +109,8 @@ export async function installTemplate(request: InstallRequest): Promise<InstallR
     }
 
     const agentName = name ?? template.display_name;
-    const voice = template.default_voice ?? 'sage';
-    const model = 'gpt-realtime-2';
+    const voice = template.default_voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE;
+    const model = MASTER_VOICE_AGENT_MODEL;
     const temperature = 0.8;
     const tools: unknown[] = [];
     const greeting = welcomeGreeting ?? null;

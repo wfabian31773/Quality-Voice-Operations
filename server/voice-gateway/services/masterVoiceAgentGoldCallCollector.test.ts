@@ -38,7 +38,7 @@ function queryClient(overrides: Record<string, Record<string, unknown>[]> = {}):
       if (sql.includes('FROM call_events')) {
         return { rows: overrides.events ?? [
           { event_type: 'call_received', payload: {
-            coreVersion: '1.0.0', model: 'gpt-realtime-2', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0',
+            coreVersion: '2.0.0', model: 'grok-voice-think-fast-2.0', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0',
           }, occurred_at: '2026-07-12T18:00:00.000Z' },
           { event_type: 'gold_first_audio', payload: { sessionSetupMs: 500, firstAudioMs: 900, totalMs: 1_400 }, occurred_at: '2026-07-12T18:00:01.400Z' },
         ] };
@@ -46,7 +46,7 @@ function queryClient(overrides: Record<string, Record<string, unknown>[]> = {}):
       if (sql.includes('FROM conversation_costs')) {
         return { rows: overrides.cost ?? [{
           input_tokens: 1_200, output_tokens: 260, total_cost_cents: 42,
-          twilio_price_cents: 1.25, usage_capture_source: 'usage_event', model_used: 'gpt-realtime-2',
+          twilio_price_cents: 1.25, usage_capture_source: 'usage_event', model_used: 'grok-voice-think-fast-2.0',
         }] };
       }
       if (sql.includes('gold-call dashboard timing')) {
@@ -76,7 +76,7 @@ describe('Master Voice Agent gold-call evidence collector', () => {
     expect(evidence).toMatchObject({
       deployment: 'staging',
       dialogue: { turnCount: 8, interruptionCount: 2 },
-      identity: { coreVersion: '1.0.0', model: 'gpt-realtime-2', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0' },
+      identity: { coreVersion: '2.0.0', model: 'grok-voice-think-fast-2.0', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0' },
       latencies: { sessionSetupMs: 500, firstAudioMs: 900, toolMs: 150, endToDashboardMs: 0, totalCallMs: 180_000 },
       outcome: { toolName: 'createServiceTicket', toolStatus: 'success', outboxStatus: 'sent', ticketStatus: 'open', dashboardProjected: true, falseSuccessDetected: false },
       usage: { durationSeconds: 180, inputTokens: 1_200, outputTokens: 260, aiCostCents: 42, carrierCostCents: 1.25, costCents: 43.25, source: 'usage_event' },
@@ -131,7 +131,7 @@ describe('Master Voice Agent gold-call evidence collector', () => {
       queryClient({
         events: [
           { event_type: 'call_received', payload: JSON.stringify({
-            coreVersion: '1.0.0', model: 'gpt-realtime-2', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0',
+            coreVersion: '2.0.0', model: 'grok-voice-think-fast-2.0', rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0',
           }) },
           { event_type: 'gold_first_audio', payload: JSON.stringify({ sessionSetupMs: 500, firstAudioMs: 900 }) },
         ],

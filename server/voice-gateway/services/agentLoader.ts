@@ -1,8 +1,4 @@
 import {
-  buildAnsweringServiceSystemPrompt,
-  DEFAULT_ANSWERING_SERVICE_CONFIG,
-} from '../../../platform/agent-templates/answering-service';
-import {
   buildAfterHoursSystemPrompt,
   getAfterHoursGreeting,
   MEDICAL_SAFETY_GUARDRAILS,
@@ -69,10 +65,13 @@ import {
   validateHealthcarePracticeName,
 } from '../../../platform/agent-templates/healthcare-receptionist';
 import {
+  MASTER_VOICE_AGENT_DEFAULT_VOICE,
+  MASTER_VOICE_AGENT_MODEL,
   MASTER_VOICE_CONVERSATION_POLICY,
   compileRolePackage,
   normalizeTimeZone,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
+import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -136,27 +135,6 @@ const LOOKUP_SCHEDULE_TOOL: AgentToolDef = {
     required: [],
   },
 };
-
-const ANSWERING_SERVICE_TOOLS: AgentToolDef[] = [
-  {
-    name: 'createServiceTicket',
-    description:
-      'Create a service ticket after collecting the caller\'s information. Call this when you have the patient name, DOB, reason for call, and callback number.',
-    parameters: {
-      type: 'object',
-      properties: {
-        patientFirstName: { type: 'string', description: "Patient's first name" },
-        patientLastName: { type: 'string', description: "Patient's last name" },
-        patientPhone: { type: 'string', description: "Patient's phone number" },
-        patientDob: { type: 'string', description: 'Date of birth (MM/DD/YYYY)' },
-        reasonForCall: { type: 'string', description: 'Brief description of why they are calling' },
-        callbackNumber: { type: 'string', description: 'Number to call back on (default: caller ID)' },
-        additionalNotes: { type: 'string', description: 'Any additional information' },
-      },
-      required: ['patientFirstName', 'patientLastName', 'patientPhone', 'reasonForCall'],
-    },
-  },
-];
 
 const AFTER_HOURS_TOOLS: AgentToolDef[] = [
   {
@@ -248,6 +226,9 @@ function mergeTools(templateTools: AgentToolDef[], dbTools: AgentToolDef[]): Age
 
 function resolveTemplateKey(agentType: string, agentId: string): string {
   const typeMap: Record<string, string> = {
+    'core-receptionist': 'core-receptionist',
+    'core_receptionist': 'core-receptionist',
+    'general': 'core-receptionist',
     'answering_service': 'healthcare-receptionist',
     'answering-service': 'healthcare-receptionist',
     'healthcare_receptionist': 'healthcare-receptionist',
@@ -303,8 +284,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getDentalGreeting(practiceName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(DENTAL_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: DENTAL_SAFETY_GUARDRAILS,
         metadata: { practiceName },
@@ -321,8 +302,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getPropertyManagementGreeting(companyName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(PROPERTY_MANAGEMENT_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: PROPERTY_MANAGEMENT_GUARDRAILS,
         metadata: { companyName },
@@ -340,8 +321,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getHomeServicesGreeting(companyName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(HOME_SERVICES_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: HOME_SERVICES_GUARDRAILS,
         metadata: { companyName, serviceTypes },
@@ -359,8 +340,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getLegalGreeting(firmName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(LEGAL_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: LEGAL_SAFETY_GUARDRAILS,
         metadata: { firmName, practiceAreas },
@@ -377,8 +358,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getCustomerSupportGreeting(companyName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(CUSTOMER_SUPPORT_TOOLS, dbTools),
         guardrails: CUSTOMER_SUPPORT_GUARDRAILS,
         metadata: { companyName },
@@ -396,8 +377,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getOutboundSalesGreeting(companyName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(OUTBOUND_SALES_TOOLS, dbTools),
         guardrails: OUTBOUND_SALES_GUARDRAILS,
         metadata: { companyName, productOrService },
@@ -415,8 +396,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getTechnicalSupportGreeting(companyName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(TECHNICAL_SUPPORT_TOOLS, dbTools),
         guardrails: TECHNICAL_SUPPORT_GUARDRAILS,
         metadata: { companyName, productName },
@@ -433,8 +414,8 @@ function buildTemplateConfig(
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getCollectionsGreeting(companyName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(COLLECTIONS_TOOLS, dbTools),
         guardrails: COLLECTIONS_GUARDRAILS,
         metadata: { companyName },
@@ -494,6 +475,28 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   };
 
   switch (templateKey) {
+    case 'core-receptionist': {
+      const businessName = (meta.businessName as string) ?? (meta.practiceName as string) ?? (meta.companyName as string) ?? 'the business';
+      const role = createCoreReceptionistRolePackage({
+        businessName,
+        greeting: meta.greeting as string | undefined,
+        preferredLanguage: language,
+        timeZone,
+        voice: dbAgent?.voice,
+      });
+      return finalize({
+        agentId,
+        tenantId,
+        systemPrompt: role.prompt,
+        greeting: role.greeting,
+        voice: role.voice ?? dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: MASTER_VOICE_AGENT_MODEL,
+        tools: filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides),
+        guardrails: role.guardrails,
+        metadata: { ...meta, businessName, role: 'core-receptionist' },
+      }, { id: role.id, version: role.version });
+    }
+
     case 'healthcare-receptionist': {
       const rawPracticeName = meta.practiceName;
       let practiceName = 'our healthcare practice';
@@ -539,38 +542,6 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       }, { id: role.rolePackageId, version: role.rolePackageVersion });
     }
 
-    case 'answering-service': {
-      const practiceName = (meta.practiceName as string) ?? 'our office';
-      const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildAnsweringServiceSystemPrompt({
-            practiceName,
-            callerPhone,
-            callerMemorySummary,
-            config: DEFAULT_ANSWERING_SERVICE_CONFIG,
-          });
-      const baseTools = isAzulVision
-        ? [...ANSWERING_SERVICE_TOOLS, LOOKUP_SCHEDULE_TOOL]
-        : ANSWERING_SERVICE_TOOLS;
-      const mergedTools = mergeTools(baseTools, dbTools);
-      return finalize({
-        agentId,
-        tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? buildLocalizedGreeting(
-          'answering-service',
-          isAzulVision ? 'Azul Vision Eye Center' : practiceName,
-          language,
-        ),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
-        tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
-        guardrails: [],
-        metadata: { practiceName },
-      });
-    }
-
     case 'medical-after-hours': {
       const practiceName = (meta.practiceName as string) ?? 'our practice';
       const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';
@@ -593,8 +564,8 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tenantId,
         systemPrompt,
         greeting: (meta.greeting as string) ?? getAfterHoursGreeting(practiceName, language),
-        voice: dbAgent?.voice ?? 'sage',
-        model: dbAgent?.model ?? 'gpt-realtime-2',
+        voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
         guardrails: MEDICAL_SAFETY_GUARDRAILS,
         metadata: { practiceName, onCallTransferNumber: onCallNumber },
@@ -612,8 +583,8 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
           tenantId,
           systemPrompt: dbAgent.system_prompt,
           greeting: (meta.greeting as string) ?? 'Hello, how can I help you today?',
-          voice: dbAgent.voice ?? 'sage',
-          model: dbAgent.model ?? 'gpt-realtime-2',
+          voice: dbAgent.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+          model: dbAgent.model ?? MASTER_VOICE_AGENT_MODEL,
           tools: filterToolsByPermissions(dbTools, templateKey, toolOverrides),
           guardrails: [],
           metadata: meta,
@@ -625,8 +596,8 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tenantId,
         systemPrompt: `You are a helpful voice assistant. Be polite, clear, and concise.`,
         greeting: 'Hello, how can I help you today?',
-        voice: 'sage',
-        model: 'gpt-realtime-2',
+        voice: MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: MASTER_VOICE_AGENT_MODEL,
         tools: [],
         guardrails: [],
         metadata: {},

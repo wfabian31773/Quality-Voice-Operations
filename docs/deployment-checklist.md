@@ -7,7 +7,7 @@
 | Variable | Purpose | Source | Example |
 |---|---|---|---|
 | `APP_ENV` | Environment selector | Set manually | `production` |
-| `OPENAI_API_KEY` | OpenAI Realtime API key for voice AI | OpenAI Dashboard > API Keys | `sk-...` |
+| `XAI_API_KEY` | xAI Grok Voice Agent API key for the Master Voice Agent runtime | xAI Console > API Keys | `xai-...` |
 | `TWILIO_ACCOUNT_SID` | Twilio account SID | Twilio Console > Account Info | `AC...` |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token | Twilio Console > Account Info | `...` |
 | `TWILIO_OUTBOUND_NUMBER` | Default outbound caller ID (E.164) | Twilio Console > Phone Numbers | `+1234567890` |

@@ -27,11 +27,10 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies (root)
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: bash scripts/ci-npm-ci.sh
 
       - name: Install dependencies (client-app)
-        working-directory: client-app
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: bash scripts/ci-npm-ci.sh client-app
 
       - name: Run client-app typecheck
         run: npm run typecheck:client

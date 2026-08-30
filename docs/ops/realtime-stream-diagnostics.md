@@ -1,7 +1,7 @@
 # Realtime stream diagnostics & telemetry
 
 A built-in, always-available way to **test and diagnose the realtime voice
-path** (Twilio Media Streams ↔ OpenAI Realtime) without placing a real phone
+path** (Twilio Media Streams ↔ xAI Grok Voice) without placing a real phone
 call, plus continuous telemetry on the numbers that matter: per-stage latency
 and failures.
 
@@ -9,7 +9,7 @@ and failures.
 
 The realtime path is: Twilio opens a WebSocket to the gateway
 (`/twilio/stream`) → sends a `start` frame → the gateway loads the agent and
-opens an OpenAI Realtime session → audio streams both ways. The diagnostic
+opens an xAI Voice session → audio streams both ways. The diagnostic
 drives that exact path as a synthetic Twilio client and times each stage:
 
 | stage           | meaning                                              |
@@ -23,11 +23,11 @@ drives that exact path as a synthetic Twilio client and times each stage:
 
 ```bash
 # Handshake check — verifies connectivity, auth, and start-frame handling.
-# Safe anywhere; no seeded agent or OpenAI key required.
+# Safe anywhere; no seeded agent or xAI key required.
 npm run diagnose:realtime-stream
 
 # Full check — also waits for first audio (needs a reachable gateway with a
-# seeded diagnostic agent + OPENAI_API_KEY).
+# seeded diagnostic agent + XAI_API_KEY).
 npm run diagnose:realtime-stream -- --mode=full
 
 # Point at a specific gateway / pass the stream token:
@@ -88,7 +88,7 @@ PLATFORM_DB_POOL_URL=... npm run seed:diagnostic-agent
 ```
 
 Then `--mode=full` / `STREAM_CANARY_MODE=full` works against an environment with
-`OPENAI_API_KEY` configured. The probe's default identity already matches the
+`XAI_API_KEY` configured. The probe's default identity already matches the
 seed (`tenantId='diagnostic'`, `agentId='diagnostic-probe'`).
 
 ## Telemetry

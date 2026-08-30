@@ -15,6 +15,7 @@ import { validateEnvironment, validateDatabaseConnection } from '../../scripts/v
 import { assertProductionSecrets } from './middleware/security';
 import { registerCoreTools } from '../../platform/tools/registerCoreTools';
 import { registerTemplateTools } from '../../platform/tools/registerTemplateTools';
+import { registerToolLibrary } from '../../platform/tools/library';
 import { startUsageGuardrailsScheduler, stopUsageGuardrailsScheduler } from '../../platform/billing/guardrails/UsageGuardrails';
 import { startInsightsScheduler, stopInsightsScheduler, startCallViewDigestScheduler, stopCallViewDigestScheduler, startCsatExpirationScheduler, stopCsatExpirationScheduler } from '../../platform/analytics';
 import { startWorkforceScheduler, stopWorkforceScheduler } from '../../platform/workforce/WorkforceScheduler';
@@ -55,6 +56,7 @@ const logger = createLogger('ADMIN_API');
 
 registerCoreTools();
 registerTemplateTools();
+registerToolLibrary();
 initOperatorNotificationPipeline();
 initToolHealthTracking();
 ensureReliabilityTables().catch((err) => {

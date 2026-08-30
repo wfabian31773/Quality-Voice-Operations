@@ -6,6 +6,22 @@ export interface TemplateToolPermissions {
 }
 
 const TEMPLATE_PERMISSIONS: Record<string, TemplateToolPermissions> = {
+  'core-receptionist': {
+    allowedTools: [
+      'get_current_tenant_time',
+      'record_language_change',
+      'send_sms',
+      'send_email',
+      'create_ticket',
+      'create_booking',
+      'create_dispatch_job',
+      'lookup_customer',
+      'retrieve_knowledge',
+      'escalate_to_human',
+      'record_call_outcome',
+    ],
+    deniedTools: [],
+  },
   'healthcare-receptionist': {
     allowedTools: ['createServiceTicket', 'lookupSchedule', 'escalate_to_human'],
     deniedTools: ['triageEscalate', 'scheduleDentalAppointment', 'scheduleConsultation', 'submitMaintenanceRequest', 'bookServiceAppointment'],

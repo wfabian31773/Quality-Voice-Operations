@@ -31,6 +31,7 @@ vi.mock('../../../platform/billing/stripe/plans', () => ({ getPlanPriceId: vi.fn
 vi.mock('../../../platform/billing/supportedCurrencies', () => ({ isSupportedBillingCurrency: () => true }));
 vi.mock('../../../platform/audit/AuditService', () => ({ writeAuditLog: a.writeAuditLogMock, extractIp: () => '127.0.0.1' }));
 
+import { authAttemptRateLimitMax } from '../../../platform/security/authAttemptRateLimit';
 import router from './auth';
 
 function app() {
@@ -54,6 +55,23 @@ const activeUserRow = {
   id: 'u1', email: 'me@x.com', password_hash: 'hash', is_active: true,
   is_platform_admin: false, email_verified: true, tenant_id: 't1', role: 'operations_manager',
 };
+
+describe('authAttemptRateLimitMax', () => {
+  it('stays at 10 in production and staging, and opens up otherwise', () => {
+    const previous = process.env.APP_ENV;
+    try {
+      process.env.APP_ENV = 'production';
+      expect(authAttemptRateLimitMax()).toBe(10);
+      process.env.APP_ENV = 'staging';
+      expect(authAttemptRateLimitMax()).toBe(10);
+      process.env.APP_ENV = 'development';
+      expect(authAttemptRateLimitMax()).toBe(200);
+    } finally {
+      if (previous === undefined) delete process.env.APP_ENV;
+      else process.env.APP_ENV = previous;
+    }
+  });
+});
 
 describe('POST /auth/login', () => {
   it('requires email + password', async () => {
@@ -119,15 +137,16 @@ describe('POST /auth/login', () => {
 
   it('rate-limits repeated password attempts for the same email and client', async () => {
     a.clientQueryMock.mockResolvedValue({ rows: [] });
+    const limit = authAttemptRateLimitMax();
     const statuses: number[] = [];
-    for (let attempt = 0; attempt < 11; attempt += 1) {
+    for (let attempt = 0; attempt < limit + 1; attempt += 1) {
       statuses.push((await request(app()).post('/auth/login').send({
         email: 'blocked@example.com',
         password: 'wrong-password',
       })).status);
     }
-    expect(statuses.slice(0, 10).every((status) => status === 401)).toBe(true);
-    expect(statuses[10]).toBe(429);
+    expect(statuses.slice(0, limit).every((status) => status === 401)).toBe(true);
+    expect(statuses[limit]).toBe(429);
   });
 });
 

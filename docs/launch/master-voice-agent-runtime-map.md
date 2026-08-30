@@ -1,9 +1,9 @@
 # Master Voice Agent Runtime Map
 
 **Execution record:** `GTM-003`
-**Core:** `Master Voice Agent 1.0.0`
-**Locked production model:** `gpt-realtime-2` (`medium` reasoning)
-**Status:** Implementation complete; production activation remains locked pending credentialed recorded-call evaluation.
+**Core:** `Master Voice Agent 2.0.0`
+**Locked production provider / model:** xAI `grok-voice-think-fast-2.0` (`none` reasoning)
+**Status:** xAI transport and tool library implemented; production activation remains locked pending credentialed recorded-call evaluation.
 
 ## Construction map
 
@@ -12,11 +12,11 @@
 | Tenant/agent lookup | `server/voice-gateway/services/numberLookup.ts` | Tenant configuration | Loads the agent record and canonical tenant IANA timezone using tenant-scoped parameters. |
 | Role selection | `server/voice-gateway/services/agentLoader.ts` | Role-package configuration | Existing vertical templates supply prompts, greetings, allowed tools, supplemental guardrails, and tenant presentation settings. They cannot select the model or session policy. |
 | Role compilation | `platform/agent-runtime/masterVoiceAgent.ts` | Core invariant | Validates and versions the role package, rejects prohibited core overrides, and composes role content beneath immutable core policy. |
-| Telephony/session construction | `server/voice-gateway/services/openaiSession.ts` | Core invariant | The only live `RealtimeSession` constructor. It always selects core `1.0.0` and `gpt-realtime-2`. |
+| Telephony/session construction | `server/voice-gateway/services/openaiSession.ts` | Core invariant | The only live session constructor. It always opens `XaiVoiceSession` on core `2.0.0` / `grok-voice-think-fast-2.0`. |
 | Inbound/outbound media | `server/voice-gateway/routes/stream.ts` | Transport adapter | Twilio media streams resolve a compiled role and call the canonical session constructor. |
 | Website widget | `server/voice-gateway/routes/stream.ts` | Transport adapter | Widget setup resolves the same compiled role and canonical session constructor. |
 | Demo/internal calls | Voice-gateway stream/diagnostic entrypoints | Transport/test adapter | Use the same loader, session configuration, model lock, and core version. |
-| Role transition | `platform/workforce/HandoffEngine.ts` and `openaiSession.ts` | Role-package transition | Uses `RealtimeSession.updateAgent`; it does not close transport or construct a second session. Transcript, call ID, memory, and tool state remain in the call. |
+| Role transition | `platform/workforce/HandoffEngine.ts` and `openaiSession.ts` | Role-package transition | Uses `session.update` on the same xAI socket. Transcript, call ID, memory, and tool state remain in the call. |
 | Human transfer | Escalation controller/Twilio adapter | External handoff | Remains a real human transfer and is not modeled as another AI runtime. |
 
 ## Ownership matrix
@@ -63,7 +63,7 @@
 
 ## Production-lock evidence still required
 
-The deterministic implementation is complete, but this workspace has no `OPENAI_API_KEY`, Twilio credentials, or `DATABASE_URL`. Therefore no honest recorded-audio or real-call latency result can be produced here. Core `1.0.0` must remain blocked from production activation until the following run is attached to this record:
+The deterministic implementation is complete, but this workspace has no `XAI_API_KEY`, Twilio credentials, or `DATABASE_URL`. Therefore no honest recorded-audio or real-call latency result can be produced here. Core `2.0.0` must remain blocked from production activation until the following run is attached to this record:
 
 - Recorded calls for quiet speech, background noise, speakerphone, accents, interruption, silence, ambiguous dates, tool failures, and unsafe requests.
 - English, Spanish, French, German, Portuguese, Chinese, and English/Chinese code-switch scenarios.

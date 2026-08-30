@@ -72,13 +72,15 @@ async function main(): Promise<void> {
          welcome_greeting, language, execution_mode, sync_mode,
          created_at, updated_at
        ) VALUES (
-         $1, $2, 'Realtime Diagnostic Probe', 'general', 'active', $3, 'alloy',
-         'gpt-realtime-2',
+         $1, $2, 'Realtime Diagnostic Probe', 'general', 'active', $3, 'eve',
+         'grok-voice-think-fast-2.0',
          'Diagnostic probe online.', 'en', 'native', 'event_push',
          NOW(), NOW()
        )
        ON CONFLICT (id) DO UPDATE SET
          system_prompt = EXCLUDED.system_prompt,
+         voice = EXCLUDED.voice,
+         model = EXCLUDED.model,
          status = 'active',
          updated_at = NOW()`,
       [AGENT_ID, TENANT_ID, SYSTEM_PROMPT],

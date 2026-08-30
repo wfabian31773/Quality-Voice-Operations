@@ -12,6 +12,10 @@ import {
   getAgentLanguageLabel,
   normalizeAgentLanguage,
 } from '../../client-app/src/lib/agentLanguages';
+import {
+  MASTER_VOICE_AGENT_DEFAULT_VOICE,
+  MASTER_VOICE_AGENT_MODEL,
+} from '../agent-runtime/masterVoiceAgent';
 
 const logger = createLogger('PLATFORM_ASSISTANT');
 
@@ -405,7 +409,7 @@ export async function executeToolCall(
 
         const { rows } = await pool.query(
           `INSERT INTO agents (tenant_id, name, type, system_prompt, welcome_greeting, language, voice, model, temperature, tools, escalation_config, metadata)
-           VALUES ($1, $2, $3, $4, $5, $6, 'alloy', 'gpt-realtime-2', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
+           VALUES ($1, $2, $3, $4, $5, $6, '${MASTER_VOICE_AGENT_DEFAULT_VOICE}', '${MASTER_VOICE_AGENT_MODEL}', 0.8, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)
            RETURNING id, name, type, status, language`,
           [tenantId, name, type, systemPrompt, welcomeGreeting, language],
         );

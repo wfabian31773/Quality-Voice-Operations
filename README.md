@@ -1,6 +1,8 @@
 # Voice AI Operations Hub
 
-Multi-tenant SaaS platform for managing AI-powered voice operations at enterprise scale.
+Multi-tenant SaaS platform for managing AI-powered voice operations.
+
+**GTM agent core (current lock):** one xAI voice layer, one Master Voice Agent runtime (`2.0.0` / `grok-voice-think-fast-2.0`), a fully tested `core-receptionist`, and a shared tool library that built agents pull from. Public small-business website copy is last. See [xAI voice runtime](docs/launch/xai-voice-runtime.md) and [tool library](docs/launch/tool-library.md).
 
 ## Tech Stack
 
@@ -8,7 +10,7 @@ Multi-tenant SaaS platform for managing AI-powered voice operations at enterpris
 - **Backend:** Express 5 + TypeScript (Admin API on port 3002, Voice Gateway on port 3001)
 - **Database:** PostgreSQL (Replit local for dev, Supabase for production)
 - **Auth:** JWT-based authentication with bcrypt password hashing
-- **Voice:** OpenAI Realtime API + Twilio SIP Trunking
+- **Voice:** xAI Grok Voice Agent API + Twilio Media Streams
 - **Billing:** Stripe integration
 
 ## Development

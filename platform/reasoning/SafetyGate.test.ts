@@ -29,6 +29,65 @@ const types = (r: { violations: { type: SafetyViolationType }[] }) =>
   r.violations.map((v) => v.type);
 
 describe('SafetyGate.checkPreExecution', () => {
+  it('blocks a healthcare professional caller outcome without an organization name', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'healthcare-receptionist',
+      toolsAvailable: ['createServiceTicket'],
+    });
+    const result = new SafetyGate('healthcare-receptionist').checkPreExecution(
+      ctx,
+      'createServiceTicket',
+      {
+        callerFirstName: 'Morgan',
+        callerLastName: 'Lee',
+        callerPhone: '+15555550120',
+        callbackNumber: '+15555550120',
+        callerType: 'pharmacy',
+        reasonForCall: 'Refill question',
+        outcomeType: 'staff_message',
+        requestedAction: 'Callback',
+        urgency: 'routine',
+        callbackPreference: 'morning',
+        identityVerificationStatus: 'partially_verified',
+        consentToContact: true,
+        evidenceSource: ['caller_statement'],
+      },
+      makeConfidence('high'),
+    );
+    expect(result.allowed).toBe(false);
+    expect(types(result)).toContain('missing_required_data');
+  });
+
+  it('blocks a healthcare human escalation that has no reason', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'healthcare-receptionist',
+      toolsAvailable: ['escalate_to_human'],
+    });
+    const result = new SafetyGate('healthcare-receptionist').checkPreExecution(
+      ctx,
+      'escalate_to_human',
+      { reason: '   ' },
+      makeConfidence('high'),
+    );
+    expect(result.allowed).toBe(false);
+    expect(types(result)).toContain('missing_required_data');
+  });
+
+  it('blocks an unverified healthcare schedule lookup', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'healthcare-receptionist',
+      toolsAvailable: ['lookupSchedule'],
+    });
+    const result = new SafetyGate('healthcare-receptionist').checkPreExecution(
+      ctx,
+      'lookupSchedule',
+      { phone: '+15555550100' },
+      makeConfidence('high'),
+    );
+    expect(result.allowed).toBe(false);
+    expect(types(result)).toContain('phi_exposure_risk');
+  });
+
   it('allows a tool when it is authorized and all required data is present', () => {
     const ctx = makeReasoningContext({
       toolsAvailable: ['createServiceTicket'],

@@ -99,43 +99,23 @@ describe('buildOpenAISessionConfig - transcription language plumbing', () => {
     'keeps automatic transcription language detection for %s',
     (code) => {
       const sessionConfig = buildOpenAISessionConfig({ voice: 'sage', language: code });
-      expect(sessionConfig.audio.input.transcription).toEqual({
-        model: 'gpt-4o-mini-transcribe',
-      });
-      expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
+      expect(sessionConfig.audio.input).not.toHaveProperty('transcription');
     },
   );
 
-  it('omits transcription.language when the agent language is English', () => {
-    const sessionConfig = buildOpenAISessionConfig({ voice: 'sage', language: 'en' });
-    expect(sessionConfig.audio.input.transcription).toEqual({
-      model: 'gpt-4o-mini-transcribe',
-    });
-    expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
+  it('does not pin transcription language for English, empty, or omitted language', () => {
+    expect(buildOpenAISessionConfig({ voice: 'sage', language: 'en' }).audio.input).not.toHaveProperty('transcription');
+    expect(buildOpenAISessionConfig({ voice: 'sage' }).audio.input).not.toHaveProperty('transcription');
+    expect(buildOpenAISessionConfig({ voice: 'sage', language: '' }).audio.input).not.toHaveProperty('transcription');
   });
 
-  it('omits transcription.language when no language is supplied', () => {
-    const sessionConfig = buildOpenAISessionConfig({ voice: 'sage' });
-    expect(sessionConfig.audio.input.transcription).toEqual({
-      model: 'gpt-4o-mini-transcribe',
-    });
-    expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
-  });
-
-  it('omits transcription.language when language is an empty string', () => {
-    const sessionConfig = buildOpenAISessionConfig({ voice: 'sage', language: '' });
-    expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
-  });
-
-  it('keeps voice and audio formats consistent regardless of language', () => {
+  it('keeps xAI voice and audio formats consistent regardless of language', () => {
     const en = buildOpenAISessionConfig({ voice: 'sage', language: 'en' });
     const es = buildOpenAISessionConfig({ voice: 'sage', language: 'es' });
-    expect(en.voice).toBe('sage');
-    expect(es.voice).toBe('sage');
-    expect(en.audio.input.format).toBe('g711_ulaw');
-    expect(es.audio.input.format).toBe('g711_ulaw');
-    expect(en.audio.output).toEqual({ format: 'g711_ulaw', voice: 'sage' });
-    expect(es.audio.output).toEqual({ format: 'g711_ulaw', voice: 'sage' });
+    expect(en.voice).toBe('eve');
+    expect(es.voice).toBe('eve');
+    expect(en.audio.input.format).toEqual({ type: 'audio/pcmu' });
+    expect(es.audio.input.format).toEqual({ type: 'audio/pcmu' });
   });
 });
 
@@ -148,10 +128,7 @@ describe('end-to-end: loadAgentConfig flows into buildOpenAISessionConfig', () =
         voice: agentConfig.voice,
         language: agentConfig.language,
       });
-      expect(sessionConfig.audio.input.transcription).toEqual({
-        model: 'gpt-4o-mini-transcribe',
-      });
-      expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
+      expect(sessionConfig.audio.input).not.toHaveProperty('transcription');
     },
   );
 
@@ -161,6 +138,6 @@ describe('end-to-end: loadAgentConfig flows into buildOpenAISessionConfig', () =
       voice: agentConfig.voice,
       language: agentConfig.language,
     });
-    expect(sessionConfig.audio.input.transcription).not.toHaveProperty('language');
+    expect(sessionConfig.audio.input).not.toHaveProperty('transcription');
   });
 });

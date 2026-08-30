@@ -21,10 +21,10 @@ describe('healthcare receptionist voice-gateway integration', () => {
       });
 
       expect(config).toMatchObject({
-        coreVersion: '1.0.0',
+        coreVersion: '2.0.0',
         rolePackageId: 'healthcare-receptionist',
         rolePackageVersion: '1.0.0',
-        model: 'gpt-realtime-2',
+        model: 'grok-voice-think-fast-2.0',
         language: 'es',
         timeZone: 'America/Los_Angeles',
       });
@@ -67,7 +67,7 @@ describe('healthcare receptionist voice-gateway integration', () => {
     });
 
     expect(config).toMatchObject({
-      coreVersion: '1.0.0',
+      coreVersion: '2.0.0',
       rolePackageId: 'healthcare-receptionist',
       rolePackageVersion: '1.0.0',
     });

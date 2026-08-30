@@ -684,13 +684,13 @@ export function attachWebSocket(server: HTTPServer): void {
                 }
               });
 
-              const apiKey = process.env.OPENAI_API_KEY;
+              const apiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
               if (apiKey) {
                 sessionResult.triggerGreeting();
                 await sessionResult.session.connect({ apiKey });
-                slog.info('OpenAI Realtime session connected', { agentId });
+                slog.info('xAI Voice session connected', { agentId, provider: 'xai' });
               } else {
-                slog.error('OPENAI_API_KEY not set — cannot connect realtime session');
+                slog.error('XAI_API_KEY not set — cannot connect xAI voice session');
               }
 
               // The caller may have hung up while session.connect() was
@@ -1036,13 +1036,13 @@ export function attachWebSocket(server: HTTPServer): void {
                 ws.send(JSON.stringify({ type: 'audio', data: base64Audio }));
               });
 
-              const apiKey = process.env.OPENAI_API_KEY;
+              const apiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
               if (apiKey) {
                 sessionResult.triggerGreeting();
                 await sessionResult.session.connect({ apiKey });
-                slog.info('Widget OpenAI session connected');
+                slog.info('Widget xAI session connected');
               } else {
-                slog.error('OPENAI_API_KEY not set');
+                slog.error('XAI_API_KEY not set');
                 ws.close(4005, 'Server configuration error');
                 return;
               }
