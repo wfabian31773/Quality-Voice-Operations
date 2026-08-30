@@ -1,5 +1,6 @@
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
+import { encryptedDevPlatformAdminMfaSecret } from '../platform/security/devPlatformAdminMfa';
 
 const ADMIN_TENANT_ID = 'admin-org';
 const ADMIN_TENANT_SLUG = 'admin-org';
@@ -120,6 +121,22 @@ async function main() {
          VALUES ($1, $2, 'tenant_owner')
          ON CONFLICT (user_id, tenant_id, role) DO NOTHING`,
         [userId, ADMIN_TENANT_ID],
+      );
+
+      // Platform-admin login is fail-closed on MFA. CI and local e2e use
+      // this well-known development seed so specs can complete the TOTP
+      // challenge without an interactive authenticator.
+      console.log('[SEED-ADMIN] Enrolling development platform-admin MFA...');
+      await client.query(
+        `UPDATE users
+            SET mfa_totp_secret_encrypted = $2,
+                mfa_enabled_at = COALESCE(mfa_enabled_at, NOW()),
+                mfa_pending_totp_secret_encrypted = NULL,
+                mfa_pending_expires_at = NULL,
+                mfa_failed_attempts = 0,
+                mfa_locked_until = NULL
+          WHERE id = $1`,
+        [userId, encryptedDevPlatformAdminMfaSecret()],
       );
     }
 

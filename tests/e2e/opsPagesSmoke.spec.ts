@@ -71,6 +71,7 @@
 import { chromium, type Browser, type Page, type Response } from 'playwright';
 import { mkdir } from 'fs/promises';
 import path from 'path';
+import { loginViaUi } from './helpers/login';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5000';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@voiceaihub.dev';
@@ -240,13 +241,7 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 async function login(page: Page, email: string = ADMIN_EMAIL, password: string = ADMIN_PASSWORD): Promise<void> {
-  await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await Promise.all([
-    page.waitForURL((u) => !u.toString().endsWith('/login'), { timeout: 15_000 }),
-    page.click('button[type="submit"]'),
-  ]);
+  await loginViaUi(page, email, password, { waitUntil: 'networkidle' });
 }
 
 async function checkPage(page: Page, check: PageCheck): Promise<PageFailure | null> {

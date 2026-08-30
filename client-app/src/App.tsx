@@ -179,12 +179,10 @@ export default function App() {
         path="/onboarding"
         element={
           <ProtectedRoute>
-            <PlatformAdminGuard>
-              <>
-                <Onboarding />
-                <PlatformAssistant />
-              </>
-            </PlatformAdminGuard>
+            <>
+              <Onboarding />
+              <PlatformAssistant />
+            </>
           </ProtectedRoute>
         }
       />
@@ -192,12 +190,10 @@ export default function App() {
         path="/agents/:id/builder"
         element={
           <ProtectedRoute>
-            <PlatformAdminGuard>
-              <>
-                <AgentBuilder />
-                <PlatformAssistant />
-              </>
-            </PlatformAdminGuard>
+            <>
+              <AgentBuilder />
+              <PlatformAssistant />
+            </>
           </ProtectedRoute>
         }
       />

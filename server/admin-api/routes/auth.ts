@@ -19,7 +19,9 @@ const VALID_INTERVALS = new Set<string>(['monthly', 'annual']);
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY;
 const loginRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  maxRequests: 10,
+  // Admin e2e walks many specs against one seeded admin on a single
+  // runner IP. Production stays at 10; development needs headroom.
+  maxRequests: process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging' ? 10 : 200,
   message: 'Too many sign-in attempts. Please wait before trying again.',
   keyGenerator: (req) => {
     const email = req.body && typeof req.body.email === 'string'

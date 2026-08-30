@@ -115,6 +115,20 @@ describe('customer surface policy', () => {
     expect(internalBlock).toContain('path="/developer"');
   });
 
+  it('keeps tenant onboarding and the first-agent builder reachable without platform-admin MFA', () => {
+    const app = readSource('client-app/src/App.tsx');
+    const onboarding = app.match(
+      /path="\/onboarding"\s+element=\{\s*<ProtectedRoute>[\s\S]*?<Onboarding \/>[\s\S]*?<\/ProtectedRoute>\s*\}\s*\/>/,
+    )?.[0] ?? '';
+    const builder = app.match(
+      /path="\/agents\/:id\/builder"\s+element=\{\s*<ProtectedRoute>[\s\S]*?<AgentBuilder \/>[\s\S]*?<\/ProtectedRoute>\s*\}\s*\/>/,
+    )?.[0] ?? '';
+    expect(onboarding).toContain('<Onboarding />');
+    expect(onboarding).not.toContain('PlatformAdminGuard');
+    expect(builder).toContain('<AgentBuilder />');
+    expect(builder).not.toContain('PlatformAdminGuard');
+  });
+
   it('filters command-palette commands with the same staff policy', () => {
     const palette = readSource('client-app/src/components/CommandPalette.tsx');
     expect(palette).toContain('isQvoStaff(user)');

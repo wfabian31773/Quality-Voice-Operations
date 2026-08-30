@@ -44,6 +44,7 @@ jobs:
       ADMIN_PASSWORD: test-password-123
       E2E_ADMIN_EMAIL: admin@voiceaihub.dev
       E2E_ADMIN_PASSWORD: test-password-123
+      E2E_ADMIN_MFA_SECRET: JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
       E2E_BASE_URL: http://localhost:5000
       # Both specs honour E2E_ARTIFACT_DIR for failure screenshots; pinning
       # it inside .ci-logs/ means the per-job upload step picks them up.

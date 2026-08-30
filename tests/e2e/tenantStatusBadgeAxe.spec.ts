@@ -55,6 +55,7 @@
 import { chromium, type Browser, type Page } from 'playwright';
 import { mkdir, readFile } from 'fs/promises';
 import path from 'path';
+import { loginViaUi } from './helpers/login';
 // axe-core ships with bundled TypeScript types under `axe-core/axe.d.ts`.
 // Importing them as types lets us strongly type both the result shape
 // returned over `page.evaluate(...)` and the `window.axe` global the
@@ -166,13 +167,7 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 async function login(page: Page): Promise<void> {
-  await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await Promise.all([
-    page.waitForURL((u) => !u.toString().endsWith('/login'), { timeout: 15_000 }),
-    page.click('button[type="submit"]'),
-  ]);
+  await loginViaUi(page, ADMIN_EMAIL, ADMIN_PASSWORD, { waitUntil: 'networkidle' });
 }
 
 let cachedAxeSource: string | null = null;
