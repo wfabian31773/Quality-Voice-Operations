@@ -63,7 +63,7 @@
 
 ## Production-lock evidence still required
 
-The deterministic implementation is complete, but this workspace has no `OPENAI_API_KEY`, Twilio credentials, or `DATABASE_URL`. Therefore no honest recorded-audio or real-call latency result can be produced here. Core `1.0.0` must remain blocked from production activation until the following run is attached to this record:
+The deterministic implementation is complete, but this workspace has no `XAI_API_KEY`, Twilio credentials, or `DATABASE_URL`. Therefore no honest recorded-audio or real-call latency result can be produced here. Core `2.0.0` must remain blocked from production activation until the following run is attached to this record:
 
 - Recorded calls for quiet speech, background noise, speakerphone, accents, interruption, silence, ambiguous dates, tool failures, and unsafe requests.
 - English, Spanish, French, German, Portuguese, Chinese, and English/Chinese code-switch scenarios.

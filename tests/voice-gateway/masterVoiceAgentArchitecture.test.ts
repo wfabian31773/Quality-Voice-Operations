@@ -13,7 +13,7 @@ describe('Master Voice Agent construction architecture', () => {
     expect(sessionSource.match(/new XaiRealtimeTransport\(/g)).toHaveLength(1);
     expect(sessionSource).toContain('updateSession(');
     expect(sessionSource).not.toContain('new RealtimeSession(');
-    expect(transportSource).toContain('wss://api.x.ai/v1/realtime');
+    expect(transportSource).toContain('buildXaiRealtimeUrl(');
   });
 
   it('does not dynamically route or downgrade the locked production model', () => {

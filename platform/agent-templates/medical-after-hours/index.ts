@@ -27,7 +27,7 @@ export function createAfterHoursAgentConfig(opts: AfterHoursTemplateOptions): Ag
     agentType: 'inbound',
     description: `Medical after-hours triage agent for ${opts.practiceName}`,
     version: opts.version ?? '1.0.0',
-    voice: opts.voice ?? 'sage',
+    voice: opts.voice ?? 'eve',
     language: opts.language ?? 'en',
     greeting: `Thank you for calling ${opts.practiceName}. All offices are currently closed. If this is a medical emergency, please call 911.`,
     metadata: {

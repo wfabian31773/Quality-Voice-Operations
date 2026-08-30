@@ -12,7 +12,6 @@ const ENV_VARS: EnvVar[] = [
   { name: 'DATABASE_URL', required: 'development', purpose: 'Local PostgreSQL connection string (Replit)' },
   { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Supabase transaction pooler URL (port 6543, SSL)' },
   { name: 'XAI_API_KEY', required: 'always', purpose: 'xAI Grok Voice Agent API key for the Master Voice Agent runtime' },
-  { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for embeddings / non-voice utilities' },
   { name: 'TWILIO_ACCOUNT_SID', required: 'always', purpose: 'Twilio account SID' },
   { name: 'TWILIO_AUTH_TOKEN', required: 'always', purpose: 'Twilio auth token' },
   { name: 'TWILIO_OUTBOUND_NUMBER', required: 'always', purpose: 'Default outbound caller ID (E.164)' },
@@ -67,6 +66,7 @@ const ENV_VARS: EnvVar[] = [
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
+  { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },

@@ -3,8 +3,9 @@
 **Status:** Canonical execution document
 **Document version:** 1.0
 **Ultimate objective:** Launch QVO on one xAI voice runtime, one Master Voice Agent core, and one shared tool library. The first GTM agent is `core-receptionist`. Public small-business website copy is last.
-**Current branch:** `codex/qvo-surface-reduction`
-**Baseline commit:** `748c7bb8871aba0de597ac89a03d96a468c85626`
+**Current branch:** `cursor/xai-voice-runtime-core-0598`
+**Baseline commit:** `e60e6dec` (`origin/main` at branch cut)
+**Canonical core docs:** [xAI voice runtime](./xai-voice-runtime.md) · [Tool library](./tool-library.md) · [Runtime map](./master-voice-agent-runtime-map.md)
 
 ## 1. Authority and operating rules
 
@@ -332,13 +333,27 @@ This distinction is the standing architectural gate for every remaining work pac
 - [x] Prohibit production activation when a core invariant regresses.
 - [x] Lock the approved core version and require a new version/evaluation cycle for future changes.
 
-**Execution outcome (`GTM-003`):** Core `1.0.0` implementation and deterministic verification are complete. Production activation is intentionally blocked because this workspace has no OpenAI, Twilio, or database credentials; therefore the unchecked recorded-audio, measured-latency, full role-package evaluation, memory-governance, and universal side-effect-idempotency evidence cannot be manufactured. See [Master Voice Agent runtime map](./master-voice-agent-runtime-map.md).
+**Execution outcome (`GTM-003`):** Core `1.0.0` implementation and deterministic verification were completed on OpenAI Realtime. That lock is historical. `GTM-017` cut the live constructor to xAI core `2.0.0`. Production activation remains blocked until credentialed recorded-call evidence exists. See [Master Voice Agent runtime map](./master-voice-agent-runtime-map.md) and [xAI voice runtime](./xai-voice-runtime.md).
 
-**Acceptance gate:** Every call path uses one core version; all non-negotiable characteristics and gold evaluations pass; vertical behavior changes only through role packages.
+### Task 2.10 — xAI GTM agent core and tool library
+
+- [x] Lock the production provider to `xai` and the model to `grok-voice-think-fast-2.0` on core `2.0.0`.
+- [x] Keep one session constructor. Live calls open `XaiVoiceSession`, not `@openai/agents/realtime`.
+- [x] Publish one executable tool library (SMS, email, ticket, booking, dispatch, CRM, knowledge, escalate, time, language).
+- [x] Make new agents choose tools from that library. Role packages may not add a second handler path.
+- [x] Ship `core-receptionist@1.0.0` as the first GTM role package.
+- [x] Keep healthcare, dental, and other templates as retained role packages, not the launch offer.
+- [x] Update current-state GTM docs. Leave public website/small-business copy for WP8.
+- [x] Add deterministic contract tests for the core lock, library handlers, and core-receptionist compile.
+- [ ] Attach recorded gold-call evidence against xAI before production activation.
+
+**Execution outcome (`GTM-017`):** The GTM agent core is xAI Grok Voice + one Master Voice Agent runtime + a shared tool library. `core-receptionist` is the first role. Live gold-call activation still requires `XAI_API_KEY`, Twilio, and a routed test number.
+
+**Acceptance gate:** Every call path uses one core version; all non-negotiable characteristics and gold evaluations pass; vertical behavior changes only through role packages that select tools from the library.
 
 ## 8. Work Package 3 — Healthcare receptionist role package
 
-**Goal:** Configure—not fork—the Master Voice Agent to perform the first GTM role safely and completely.
+**Goal:** Configure—not fork—the Master Voice Agent as a retained healthcare role package. This is no longer the launch offer. The first GTM role is `core-receptionist`. Healthcare stays implemented and gated.
 
 - [x] Define the healthcare receptionist role objective.
 - [x] Define greeting and identity disclosure.
@@ -399,7 +414,7 @@ WP3 implementation is complete. Pilot/production activation must still wait for 
 
 **Audit conclusion:** Task 3 is complete for its authorized implementation and deterministic-verification boundary. The audit repaired three integrity gaps before reaffirming completion: unapproved role-version relabeling, instruction-like practice identity injection, and untrusted caller-ID prompt injection. These changes preserve the single-core architecture and make future role/use-case expansion safer.
 
-**Next GTM execution:** complete Task 6.1 when infrastructure owners provide the staging OpenAI/gateway/test-number dependencies; in parallel, begin WP7 with a code-backed PHI/recording/retention/vendor posture inventory for compliance-owner approval.
+**Next GTM execution:** prove `core-receptionist` on the xAI core with recorded gold-call evidence (WP6) when infrastructure owners provide `XAI_API_KEY`, Twilio, a routed test number, and a reachable gateway. Healthcare remains a retained role package and still needs WP7 before any PHI traffic. Public website/small-business copy stays last (WP8).
 
 ## 9. Work Package 4 — Complete receptionist workflow and dashboard evidence
 
@@ -467,35 +482,35 @@ WP4 may begin independently of live Twilio credentials using deterministic call/
 **Goal:** Prove the production call path under realistic conditions.
 
 - [ ] Validate real Twilio inbound call setup.
-- [ ] Validate OpenAI Realtime connectivity and the locked model/configuration.
+- [ ] Validate xAI Grok Voice connectivity and the locked model/configuration.
 - [ ] Validate first-audio latency and dead-air handling.
 - [ ] Validate interruption and barge-in.
 - [ ] Validate multilingual and code-switch calls.
 - [ ] Validate date/time/timezone behavior.
 - [ ] Validate memory and returning-caller behavior.
-- [ ] Validate every required healthcare tool/function.
+- [ ] Validate every required `core-receptionist` tool-library function. Healthcare tool proof remains a retained-role gate.
 - [ ] Validate dashboard persistence and staff-ready outcomes.
 - [ ] Validate failure, retry, fallback, and escalation behavior.
 - [ ] Validate usage, cost, and operational telemetry.
 - [ ] Record evidence for every scripted scenario.
 
-**External dependencies:** Twilio, OpenAI, database, deployment environment, phone number, and test caller access.
+**External dependencies:** Twilio, xAI (`XAI_API_KEY`), database, deployment environment, phone number, and test caller access.
 
-**Acceptance gate:** The real production path passes the gold voice and healthcare workflow suite.
+**Acceptance gate:** The real production path passes the gold voice suite on `core-receptionist`. Healthcare remains a retained role package and still requires its own recorded proof plus WP7 before PHI.
 
 ### Recommended next execution — Task 6.0 credentialed gold call trace
 
 Start WP6 with one synthetic-data, credentialed inbound appointment request and carry it through the real carrier/runtime/dashboard path before expanding the matrix:
 
-1. Run a secrets-and-service preflight for a non-production Twilio number, OpenAI Realtime access, database, deployment, and an authorized test caller. Never record credentials in evidence.
-2. Pin the call to Master Voice Agent `1.0.0`, `gpt-realtime-2`, and `healthcare-receptionist@1.0.0`; reject any runtime/model/session drift before calling.
-3. Execute one Spanish-to-English appointment-request call containing a real interruption, date/time question, retained callback detail, and confirmed `createServiceTicket` invocation.
+1. Run a secrets-and-service preflight for a non-production Twilio number, xAI Grok Voice access (`XAI_API_KEY`), database, deployment, and an authorized test caller. Never record credentials in evidence.
+2. Pin the call to Master Voice Agent `2.0.0`, `grok-voice-think-fast-2.0`, and `core-receptionist@1.0.0`; reject any runtime/model/session drift before calling.
+3. Execute one Spanish-to-English booking-or-ticket call containing a real interruption, date/time question, retained callback detail, and a confirmed tool-library side effect (`create_ticket` or `create_booking`).
 4. Trace the real Twilio call SID and core/role versions through transcript, tool execution, durable outbox, ticket, Calls, and Tickets evidence using synthetic caller data only.
 5. Record first-audio, turn, interruption, tool, end-to-dashboard, usage, and cost telemetry; compare each against an explicit gold threshold.
 6. Add the emergency/safe-escalation call, tool failure, carrier disconnect, and retry/fallback cases only after the first trace is green.
 7. Produce replayable redacted evidence and a credential-free harness path for CI. If credentials are unavailable, complete the harness, preflight, evidence schema, and gold thresholds, then mark only the live-call rows blocked on the named infrastructure owner.
 
-**Immediate dependencies:** Twilio test number and credentials, OpenAI Realtime credentials, reachable database/deployment, and authorized test-caller access. WP7 compliance approval is not required for synthetic test data, but is required before production PHI traffic.
+**Immediate dependencies:** Twilio test number and credentials, `XAI_API_KEY`, reachable database/deployment, and authorized test-caller access. WP7 compliance approval is not required for synthetic test data, but is required before production PHI traffic.
 
 ## 12. Work Package 7 — Compliance and PHI launch gate
 
@@ -863,7 +878,7 @@ If implementation discovers a necessary edit outside the recorded scope, update 
 | ID | Decision | Consequence | Status |
 | --- | --- | --- | --- |
 | `GTM-D001` | QVO has one Master Voice Agent runtime | Verticals become role packages; no new vertical-specific runtime branches | Approved |
-| `GTM-D002` | QVO GTM is a managed healthcare receptionist, not a generic self-service agent platform | Customer/public surfaces and commercial workflows must remain focused | Approved |
+| `GTM-D002` | QVO GTM is one xAI voice runtime, one Master Voice Agent core, and one shared tool library. The first role is `core-receptionist`. Healthcare remains a retained role package. Public small-business website copy is last. | Customer/public repositioning waits until the core is live. New agents pull tools from the library; they do not fork a runtime. | Approved |
 | `GTM-D003` | Hide and internalize before deletion | Retained implementations require telemetry/dependency proof and separate approval before removal | Approved |
 | `GTM-D004` | Shared runtime integration may be hardened before the credentialed Master Voice Agent production lock, but it may not fork by vertical or change the locked contract/model/session architecture silently | WP3's shared reasoning/tool-authorization hardening remains in core candidate `1.0.0`; after the live gold lock, any core-invariant change requires a semantic version bump and complete reevaluation | Approved for pre-activation candidate |
 | `GTM-D005` | Healthcare tenant context is structured data, not a free-form prompt extension | Practice-specific facts use bounded approved categories; arbitrary database prompts and legacy custom instructions cannot modify the healthcare role | Approved |
@@ -891,6 +906,7 @@ If implementation discovers a necessary edit outside the recorded scope, update 
 | `GTM-014` | 2026-07-12 | WP7 Task 7.4 inline operational blocker clearance | Owner-classify and preserve the demo target, reconcile migration history, close live RLS gaps, apply the reviewed schema sequence, and drive the normalized preflight toward all-pass without manufacturing owner evidence | Failing-first migration/alias/discovery tests; disposable RLS behavior proof; clean full-chain migration; exact-target rollback rehearsal; transactional external migration; guarded HMAC backfill; rollback-only first-party deletion rehearsal; redacted post-state/preflight proof | Owner classified all rows as demo and the imported Azul Vision tenant as preserved demo data. Migration `117`, schema-verified alias reconciliation, configured-role capability proof, and one-row-per-root discovery are implemented. The target has zero pending local migrations and 188/188 RLS/policy coverage. The dedicated HMAC backfill reconciled 14/14 demo rows and healthcare caller proof is `3/3` current with zero missing/stale. A synthetic mixed-ID deletion rehearsal proves zero first-party rows across all 188 classified relations and zero rollback residue, but does not claim external/backup deletion. On 2026-07-13 the owner confirmed no third-party BAA exists, Supabase is Pro with seven-day daily-backup/log defaults, Replit eligibility is unknown, and Wayne Fabian will be the independent reviewer. Team plus HIPAA/PITR is approved as the production direction but intentionally deferred to the go-live readiness window. Authorized OpenAI and Replit inquiries were sent from the owner's work account and verified in Sent Items; Twilio outreach was explicitly tabled during account issues. Yaritza Ferreras Fernandez is designated as the separate evidence submitter, but her distinct QVO identity, least-privilege platform-admin assignment, MFA, and access review remain pending. Vendor responses/agreements, eleven artifacts, approved retention/external deletion, readiness, approval, and the gold call also remain. No purchase, durable deletion, readiness, approval, call, or PHI activation occurred. | `ACTIVE — SUBMITTER NAMED; PROVISIONING/VENDOR RESPONSES REQUIRED; TWILIO DEFERRED` |
 | `GTM-015` | 2026-07-13 | WP7 secure independent-reviewer provisioning | Add a fail-closed platform-admin TOTP MFA and audited invitation path so the named submitter can be provisioned without granting password-only global access | Failing-first cryptographic, migration, auth, replay, recovery, lockout, rate-limit, invitation, and client-flow tests; migration rehearsal/application; affected typecheck/lint; deployment and identity runbook | Migration `118` is applied to the demo target. Platform-admin password/invitation authentication now requires TOTP enrollment or challenge before privileged session issuance; encrypted pending/enabled seeds, hashed single-use recovery codes, replay prevention, lockout, rate limits, live authorization checks, audit events, and a 72-hour invitation flow are implemented. Fifty-four focused assertions, client typecheck, affected lint, and diff guard pass. Yaritza Ferreras Fernandez's sign-in is owner-confirmed as `yferrera05@hotmail.com`, but no account or invitation was created because code deployment, public `APP_URL`, complete SMTP/encryption configuration, and Wayne's MFA enrollment are prerequisites. | `ENGINEERING COMPLETE — DEPLOYMENT/ENROLLMENT ACTIVATION BLOCKED` |
 | `GTM-016` | 2026-07-15 | WP7 fail-closed call-event partition retention | Prevent Replit schema publishing and application startup from deleting historical monthly call-event partitions before the retention policy is approved | Failing-first scheduler tests; explicit destructive opt-in; affected tests/type/lint/build; Replit schema reconciliation | Partition creation remains automatic. `prune_call_events_older_than` is not called unless `CALL_EVENTS_PARTITION_PRUNING_ENABLED=true`; the deployment checklist requires the setting to remain absent/false until retention approval. | `IMPLEMENTED — REPLIT RECONCILIATION PENDING` |
+| `GTM-017` | 2026-08-30 | WP2 Task 2.10 xAI GTM agent core | Cut the live voice layer to xAI, keep one Master Voice Agent runtime, ship a tested `core-receptionist`, and publish a tool library that built agents pull from. Leave public small-business website copy for WP8. | Core lock tests; xAI transport tests; tool-library handler tests; core-receptionist compile tests; current-state GTM/runtime/docs update | Core `2.0.0` / `grok-voice-think-fast-2.0` / `XaiVoiceSession` is the only live constructor. Library tools: SMS, email, ticket, booking, dispatch plus retained CRM/knowledge/escalate/time/language. First GTM role is `core-receptionist@1.0.0`. Healthcare remains retained. Live gold-call activation is still blocked on credentials. | `IMPLEMENTED — ACTIVATION BLOCKED ON LIVE GOLD EVAL` |
 
 Every future implementation must add an entry here before it begins and update the result before handoff.
 
@@ -899,6 +915,8 @@ Every future implementation must add an entry here before it begins and update t
 | Artifact | Purpose | Authority |
 | --- | --- | --- |
 | [Route and surface inventory](./route-surface-inventory.md) | Detailed WP1 route map, file manifest, baseline, final evidence, and manual checks | Supporting evidence |
+| [xAI voice runtime](./xai-voice-runtime.md) | Current GTM agent core: xAI provider, one constructor, locked model/session, first role, and code map | Canonical current-state architecture |
+| [Tool library](./tool-library.md) | How built agents select and execute shared tools | Canonical current-state architecture |
 | [Master Voice Agent runtime map](./master-voice-agent-runtime-map.md) | WP2 construction map, ownership matrix, removed branches, security review, test evidence, and production-lock requirements | Supporting evidence |
 | [Healthcare Receptionist Role Package](./healthcare-receptionist-role-package.md) | WP3 role contract, outcome/tool matrix, multilingual scenarios, security review, changed-file manifest, validation results, and production gates | Supporting evidence |
 | [Healthcare Outcome Dashboard Contract](./healthcare-outcome-dashboard-contract.md) | WP4 durable-source inventory, typed tenant projection, truth-state rules, recording policy, operational-value boundary, and verification checklist | Supporting evidence |

@@ -34,7 +34,7 @@ export function createAnsweringServiceAgentConfig(
     agentType: 'inbound',
     description: `Answering service ticketing agent for ${opts.practiceName}`,
     version: opts.version ?? '1.0.0',
-    voice: opts.voice ?? 'sage',
+    voice: opts.voice ?? 'eve',
     language: opts.language ?? 'en',
     greeting: opts.greeting ?? `Thank you for calling ${opts.practiceName}. How can I help you today?`,
     metadata: {

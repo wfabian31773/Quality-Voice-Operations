@@ -8,7 +8,7 @@ function ctx(over: Partial<AgentLoadContext> = {}): AgentLoadContext {
 describe('loadAgentConfig', () => {
   it('builds the answering-service template with defaults and appends voice principles', () => {
     const cfg = loadAgentConfig(ctx({ agentType: 'answering_service' }));
-    expect(cfg).toMatchObject({ agentId: 'ag1', tenantId: 't1', voice: 'sage', model: 'gpt-realtime-2', language: 'en' });
+    expect(cfg).toMatchObject({ agentId: 'ag1', tenantId: 't1', voice: 'eve', model: 'grok-voice-think-fast-2.0', language: 'en' });
     expect(cfg.systemPrompt).toContain('VOICE CONVERSATION PRINCIPLES');
     expect(cfg.greeting.length).toBeGreaterThan(0);
     expect(Array.isArray(cfg.tools)).toBe(true);
@@ -53,8 +53,8 @@ describe('loadAgentConfig', () => {
   it('honours presentation voice but rejects DB overrides of the locked model', () => {
     const cfg = loadAgentConfig(ctx({ dbAgent: { name: 'A', system_prompt: 'X', voice: 'verse', model: 'gpt-4o-realtime' } }));
     expect(cfg.voice).toBe('verse');
-    expect(cfg.model).toBe('gpt-realtime-2');
-    expect(cfg.coreVersion).toBe('1.0.0');
+    expect(cfg.model).toBe('grok-voice-think-fast-2.0');
+    expect(cfg.coreVersion).toBe('2.0.0');
   });
 
   it('uses a non-English setting as the greeting preference without pinning the call', () => {
@@ -81,7 +81,7 @@ describe('loadAgentConfig', () => {
     const cfg = loadAgentConfig(ctx({ agentType: 'totally_unknown' }));
     expect(cfg.systemPrompt).toContain('helpful voice assistant');
     expect(cfg.tools.map((tool) => tool.name)).toContain('record_language_change');
-    expect(cfg.voice).toBe('sage');
+    expect(cfg.voice).toBe('eve');
   });
 
   it.each([
@@ -91,8 +91,8 @@ describe('loadAgentConfig', () => {
     const cfg = loadAgentConfig(ctx({ agentType }));
     expect(cfg.systemPrompt).toContain('VOICE CONVERSATION PRINCIPLES');
     expect(cfg.greeting.length).toBeGreaterThan(0);
-    expect(cfg.model).toBe('gpt-realtime-2');
-    expect(cfg.coreVersion).toBe('1.0.0');
+    expect(cfg.model).toBe('grok-voice-think-fast-2.0');
+    expect(cfg.coreVersion).toBe('2.0.0');
     expect(cfg.rolePackageVersion).toMatch(/^\d+\.\d+\.\d+$/);
     expect(Array.isArray(cfg.tools)).toBe(true);
   });

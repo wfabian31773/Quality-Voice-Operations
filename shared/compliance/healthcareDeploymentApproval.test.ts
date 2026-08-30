@@ -81,7 +81,7 @@ describe('healthcare deployment approval policy', () => {
   it.each([
     ['tenant mismatch', { tenantId: 'tenant-2' }, 'approval_scope_mismatch'],
     ['agent mismatch', { agentId: 'agent-2' }, 'approval_scope_mismatch'],
-    ['core drift', { coreVersion: '2.0.0' }, 'runtime_identity_mismatch'],
+    ['core drift', { coreVersion: '1.0.0' }, 'runtime_identity_mismatch'],
     ['model drift', { model: 'other-model' }, 'runtime_identity_mismatch'],
     ['role drift', { rolePackageVersion: '2.0.0' }, 'runtime_identity_mismatch'],
     ['recording enabled', { recordingPolicy: 'enabled' }, 'recording_not_approved'],

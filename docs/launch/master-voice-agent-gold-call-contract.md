@@ -8,7 +8,7 @@
 
 ## Objective
 
-Prove that the one locked Master Voice Agent can receive a real Twilio call, connect to OpenAI Realtime with the approved model/session contract, handle a healthcare receptionist conversation, invoke the production tool path, and leave a truthful staff-ready outcome with measurable latency, safety, usage, and cost evidence.
+Prove that the one locked Master Voice Agent can receive a real Twilio call, connect to xAI Grok Voice with the approved model/session contract, handle a `core-receptionist` conversation, invoke the shared tool library, and leave a truthful staff-ready outcome with measurable latency, safety, usage, and cost evidence. Healthcare remains a retained role-package evaluation, not the first GTM gold lock.
 
 This package may not create a second runtime, substitute the guided WP5 scenario for live evidence, expose secrets, place a call without an explicit synthetic-test opt-in, or mark activation green from incomplete metrics.
 
@@ -16,12 +16,12 @@ This package may not create a second runtime, substitute the guided WP5 scenario
 
 | Layer | Required value | Evidence source |
 | --- | --- | --- |
-| Core | Master Voice Agent `1.0.0` | Persisted call context and runtime report |
-| Model | `gpt-realtime-2` | Session configuration and call evidence |
-| Role | `healthcare-receptionist@1.0.0` | Persisted role package identity |
-| Voice transport | Twilio Media Streams → voice gateway → OpenAI Realtime | Twilio SID, stream correlation, gateway stages |
-| Tool | Production `createServiceTicket` | Tool execution plus durable outbox/ticket evidence |
-| Outcome | WP4 `HealthcareOutcomeDashboardProjection` | Tenant-scoped Calls/Tickets projection |
+| Core | Master Voice Agent `2.0.0` | Persisted call context and runtime report |
+| Provider / model | xAI `grok-voice-think-fast-2.0` | Session configuration and call evidence |
+| First GTM role | `core-receptionist@1.0.0` | Persisted role package identity |
+| Voice transport | Twilio Media Streams → voice gateway → xAI Grok Voice | Twilio SID, stream correlation, gateway stages |
+| Tools | Shared library (`create_ticket`, `create_booking`, `send_sms`, `send_email`, `create_dispatch_job`, plus retained CRM/knowledge/escalate) | Tool execution plus durable side-effect evidence |
+| Outcome | Staff-ready ticket, pending booking, SMS, email, or dispatch job | Tenant-scoped Calls/Tickets/Scheduling evidence |
 
 Any mismatch blocks the run before activation evaluation.
 
@@ -32,7 +32,7 @@ Any mismatch blocks the run before activation evaluation.
 | Twilio account SID/auth token | Present in local `.env`; values not inspected or logged | Infrastructure owner confirms non-production account | Carrier API/webhook proof |
 | Twilio test QVO number | Absent | Infrastructure owner supplies an E.164 test number routed to the staging gateway | Inbound call |
 | Authorized synthetic test caller | Absent | Test operator supplies an E.164 destination/caller and explicit authorization | Automated/manual test call |
-| OpenAI Realtime key | Absent | Infrastructure owner provisions staging key | Realtime connection/audio |
+| xAI Grok Voice key | Absent | Infrastructure owner provisions staging `XAI_API_KEY` | Realtime connection/audio |
 | Database | Pool URL present; connectivity not yet asserted | Infrastructure owner confirms staging/test tenant | Durable outcome trace |
 | Public voice-gateway URL | Absent | Deployment owner supplies HTTPS/WSS staging URL | Twilio webhook/stream routing |
 | Stream auth token/URL | Absent | Deployment owner configures matching gateway/probe values | Authenticated diagnostic |
@@ -74,9 +74,9 @@ Published evidence must never contain API keys, auth tokens, raw phone numbers, 
 
 ## Scenario matrix
 
-The production lock requires the existing `MASTER_VOICE_AGENT_SCENARIOS` matrix against the healthcare role, including quiet English, Spanish speakerphone/background noise, French accent/interruption, German silence, Portuguese ambiguous date, Chinese-English code switch, tool timeout/unknown outcome, and unsafe medical request.
+The production lock requires the existing `MASTER_VOICE_AGENT_SCENARIOS` matrix against `core-receptionist`, including quiet English, Spanish speakerphone/background noise, French accent/interruption, German silence, Portuguese ambiguous date, Chinese-English code switch, tool timeout/unknown outcome, and an unsafe or out-of-policy request.
 
-Task 6.0 starts with one Spanish-to-English appointment-request trace. That trace proves the harness but cannot activate the core alone. Activation remains false until every required scenario and every threshold has sufficient recorded evidence.
+Task 6.0 starts with one Spanish-to-English ticket-or-booking trace. That trace proves the harness but cannot activate the core alone. Activation remains false until every required scenario and every threshold has sufficient recorded evidence. The retained healthcare role must later pass the same core suite plus its own safety/compliance scenarios; it is not the first GTM lock.
 
 ## Security boundary
 
@@ -110,7 +110,7 @@ Task 6.0 starts with one Spanish-to-English appointment-request trace. That trac
 ## Harness completion evidence — 2026-07-12
 
 - `platform/agent-runtime/masterVoiceAgentGoldCall.ts` owns the versioned synthetic-only evidence schema, strict validator, identifier fingerprinting, dependency preflight, diagnostic sanitizer, completeness floors, and activation evaluation. It imports the locked core/model/role and the existing gold thresholds/scenario matrix.
-- `server/voice-gateway/services/masterVoiceAgentGoldCallCollector.ts` joins tenant-scoped call identity, first-audio, production tool, durable outbox/ticket, WP4 dashboard projection, OpenAI usage/AI cost, and Twilio carrier-cost records. It never loads or emits raw transcripts, caller/patient details, phone numbers, provider errors, secrets, or database URLs.
+- `server/voice-gateway/services/masterVoiceAgentGoldCallCollector.ts` joins tenant-scoped call identity, first-audio, production tool, durable outbox/ticket, WP4 dashboard projection, xAI usage/AI cost, and Twilio carrier-cost records. It never loads or emits raw transcripts, caller/patient details, phone numbers, provider errors, secrets, or database URLs.
 - `server/voice-gateway/routes/stream.ts` now appends a bounded `gold_first_audio` event containing only session-setup, first-audio, and total elapsed milliseconds. Existing runtime behavior and database shape are unchanged.
 - `scripts/master-voice-agent-gold.ts` supplies manifest, preflight, validation, evaluation, and gated stream-diagnostic modes. Live mode refuses to run until every staging dependency plus both synthetic-data opt-ins are green.
 - Forty-one focused core/runtime/stream/CLI regressions pass. The two WP6 evidence modules have 89.53% statement, 82.17% branch, 98.24% function, and 93.92% line coverage.

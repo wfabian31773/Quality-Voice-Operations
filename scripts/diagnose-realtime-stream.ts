@@ -75,9 +75,9 @@ function hintFor(reason: string | undefined): string {
     case 'closed_early':
       return '  • Gateway closed the socket right after `start` — check required stream params and logs.';
     case 'setup_error':
-      return '  • Session setup failed — inspect WS_STREAM logs for agent load / OpenAI connect errors.';
+      return '  • Session setup failed — inspect WS_STREAM logs for agent load / xAI connect errors.';
     case 'first_audio_timeout':
-      return '  • No audio returned in time — check OPENAI_API_KEY, the seeded diagnostic agent, and provider latency.';
+      return '  • No audio returned in time — check XAI_API_KEY, the seeded diagnostic agent, and provider latency.';
     default:
       return '  • Inspect the WS_STREAM and STREAM_DIAGNOSTIC logs for the correlation id above.';
   }

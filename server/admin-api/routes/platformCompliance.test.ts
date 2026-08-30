@@ -172,7 +172,7 @@ describe('healthcare deployment approvals', () => {
       if (sql.includes('FROM agents')) return { rows: [{ id: 'a1', tenant_id: 't1', type: 'answering_service' }] };
       if (sql.includes('INSERT INTO healthcare_deployment_approvals')) return { rows: [{
         id: 'approval-1', tenant_id: 't1', agent_id: 'a1', approval_kind: 'production_healthcare',
-        core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+        core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
         role_package_version: '1.0.0', recording_policy: 'disabled', approved_by: 'u1',
         approved_at: '2026-07-12T19:00:00.000Z', expires_at: validApprovalExpiry(), revoked_at: null, readiness_ref: 'har_abc',
       }] };
@@ -184,7 +184,7 @@ describe('healthcare deployment approvals', () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.approval).toMatchObject({
-      id: 'approval-1', coreVersion: '1.0.0', model: 'gpt-realtime-2',
+      id: 'approval-1', coreVersion: '2.0.0', model: 'grok-voice-think-fast-2.0',
       rolePackageId: 'healthcare-receptionist', rolePackageVersion: '1.0.0', recordingPolicy: 'disabled',
       readinessRef: 'har_abc',
     });
@@ -235,7 +235,7 @@ describe('healthcare deployment approvals', () => {
       if (sql.includes('INSERT INTO healthcare_deployment_approvals')) {
         expect(JSON.stringify(values)).not.toContain('5551234567');
         expect(JSON.stringify(values)).toMatch(/[a-f0-9]{64}/);
-        return { rows: [{ id: 'approval-s1', tenant_id: 't1', agent_id: 'a1', approval_kind: 'synthetic_test', core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0', recording_policy: 'disabled', approved_by: 'u1', approved_at: '2026-07-12T19:00:00.000Z', expires_at: validApprovalExpiry(), revoked_at: null }] };
+        return { rows: [{ id: 'approval-s1', tenant_id: 't1', agent_id: 'a1', approval_kind: 'synthetic_test', core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0', recording_policy: 'disabled', approved_by: 'u1', approved_at: '2026-07-12T19:00:00.000Z', expires_at: validApprovalExpiry(), revoked_at: null }] };
       }
       return { rows: [] };
     });
@@ -250,7 +250,7 @@ describe('healthcare deployment approvals', () => {
   });
 
   it('lists redacted approvals and revokes by id with a bounded reason', async () => {
-    a.queryMock.mockResolvedValue({ rows: [{ id: 'approval-1', tenant_id: 't1', agent_id: 'a1', approval_kind: 'synthetic_test', core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0', recording_policy: 'disabled', approved_by: 'u1', approved_at: '2026-07-12T19:00:00.000Z', expires_at: validApprovalExpiry(), revoked_at: null, synthetic_caller_count: 1 }] });
+    a.queryMock.mockResolvedValue({ rows: [{ id: 'approval-1', tenant_id: 't1', agent_id: 'a1', approval_kind: 'synthetic_test', core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0', recording_policy: 'disabled', approved_by: 'u1', approved_at: '2026-07-12T19:00:00.000Z', expires_at: validApprovalExpiry(), revoked_at: null, synthetic_caller_count: 1 }] });
     const list = await request(app()).get('/platform/compliance/healthcare-approvals');
     expect(list.status).toBe(200);
     expect(JSON.stringify(list.body)).not.toContain('synthetic_caller_hashes');
@@ -417,7 +417,7 @@ describe('healthcare activation readiness registry', () => {
         expect(values).toContain('3.0.0');
         return { rows: [{
           id: 'r1', readiness_ref: 'har_abc', tenant_id: 't1', agent_id: 'a1',
-          target_environment: 'production', core_version: '1.0.0', model: 'gpt-realtime-2',
+          target_environment: 'production', core_version: '2.0.0', model: 'grok-voice-think-fast-2.0',
           role_package_id: 'healthcare-receptionist', role_package_version: '1.0.0', recording_policy: 'disabled',
           catalog_version: '3.0.0', catalog_count: 188, discovered_count: 188,
           tenant_table_count: 188, rls_enabled_count: 188, verified_control_count: 11,
@@ -448,7 +448,7 @@ describe('healthcare activation readiness registry', () => {
   it('requires independent verification and supports audited revocation', async () => {
     const base = {
       id: 'r1', readiness_ref: 'har_abc', tenant_id: 't1', agent_id: 'a1', target_environment: 'production',
-      core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+      core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
       role_package_version: '1.0.0', recording_policy: 'disabled', catalog_version: '3.0.0',
       catalog_count: 188, discovered_count: 188, tenant_table_count: 188, rls_enabled_count: 188,
       verified_control_count: 11, caller_missing_count: 0, caller_stale_count: 0,
@@ -469,7 +469,7 @@ describe('healthcare activation readiness registry', () => {
   it('lists bounded metadata without proof digests', async () => {
     a.queryMock.mockResolvedValue({ rows: [{
       id: 'r1', readiness_ref: 'har_abc', tenant_id: 't1', agent_id: 'a1', target_environment: 'production',
-      core_version: '1.0.0', model: 'gpt-realtime-2', role_package_id: 'healthcare-receptionist',
+      core_version: '2.0.0', model: 'grok-voice-think-fast-2.0', role_package_id: 'healthcare-receptionist',
       role_package_version: '1.0.0', recording_policy: 'disabled', catalog_version: '3.0.0',
       catalog_count: 188, discovered_count: 188, tenant_table_count: 188, rls_enabled_count: 188,
       verified_control_count: 11, caller_missing_count: 0, caller_stale_count: 0,

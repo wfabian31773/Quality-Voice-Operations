@@ -77,7 +77,7 @@ The first GTM role package is `core-receptionist@1.0.0`. It selects the tools ab
 
 ## Truthfulness
 
-A tool success means the library persisted or sent the side effect. It never means the underlying job is finished. Bookings are `requested`. Dispatch jobs are `pending`. Tickets are for staff review.
+A tool success means the library persisted or sent the side effect. It never means the underlying job is finished. Bookings are stored as `pending` with `booking_source = ai_agent`. Dispatch jobs are `pending`. Tickets are for staff review.
 
 ## GTM path on this core
 

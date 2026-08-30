@@ -13,6 +13,10 @@ import {
   normalizeAgentLanguage,
 } from '../../../platform/agent-templates/agentLanguages';
 import { recordActivationEvent } from '../../../platform/activation/ActivationService';
+import {
+  MASTER_VOICE_AGENT_DEFAULT_VOICE,
+  MASTER_VOICE_AGENT_MODEL,
+} from '../../../platform/agent-runtime/masterVoiceAgent';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -20,7 +24,7 @@ const logger = createLogger('ADMIN_AGENTS');
 const MAX_SYSTEM_PROMPT_LENGTH = 32_000;
 
 const VALID_AGENT_TYPES = new Set([
-  'general', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
+  'general', 'core-receptionist', 'answering-service', 'medical-after-hours', 'outbound-scheduling',
   'appointment-confirmation', 'custom', 'dental', 'property-management',
   'home-services', 'legal', 'customer-support', 'outbound-sales',
   'technical-support', 'collections', 'real-estate', 'restaurant', 'salon',
@@ -117,7 +121,7 @@ router.get('/agents', requireAuth, async (req, res) => {
 router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => {
   const { tenantId } = req.user!;
   const body = req.body as Record<string, unknown>;
-  const { name, type = 'general', system_prompt, welcome_greeting, voice = 'alloy', model = 'gpt-realtime-2',
+  const { name, type = 'general', system_prompt, welcome_greeting, voice = MASTER_VOICE_AGENT_DEFAULT_VOICE, model = MASTER_VOICE_AGENT_MODEL,
           temperature = 0.8, tools = [], escalation_config = {}, metadata = {}, scheduling_provider = null,
           language = DEFAULT_AGENT_LANGUAGE, workflow_definition = null } = body;
 
@@ -955,8 +959,8 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
 
     const draftSettings = (wd.settings || {}) as Record<string, unknown>;
 
-    const publishVoice = (draftSettings.voice as string) || agent.voice || 'alloy';
-    const publishModel = (draftSettings.model as string) || agent.model || 'gpt-realtime-2';
+    const publishVoice = (draftSettings.voice as string) || agent.voice || MASTER_VOICE_AGENT_DEFAULT_VOICE;
+    const publishModel = (draftSettings.model as string) || agent.model || MASTER_VOICE_AGENT_MODEL;
     const publishTemp = (draftSettings.temperature as number) ?? agent.temperature ?? 0.8;
     const publishGreeting = (draftSettings.welcome_greeting as string) ?? agent.welcome_greeting ?? '';
     const publishName = (draftSettings.name as string) || agent.name;

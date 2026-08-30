@@ -27,8 +27,8 @@ vi.mock('./xaiRealtimeTransport', async () => {
   }
   class FakeSession {
     constructor(private readonly transport: FakeTransport) {}
-    connect = (opts: { apiKey: string }) => this.transport.connect(opts);
-    close = () => this.transport.close();
+    connect = vi.fn((opts: { apiKey: string }) => this.transport.connect(opts));
+    close = vi.fn(() => this.transport.close());
     on = (event: string, listener: (...args: unknown[]) => void) => {
       this.transport.on(event, listener);
       return this;
