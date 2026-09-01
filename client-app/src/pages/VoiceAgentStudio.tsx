@@ -1,15 +1,24 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
-  ArrowLeft, AudioLines, Check, Loader2, Pencil, Phone, RefreshCw, Sparkles,
+  ArrowLeft, AudioLines, Check, Loader2, Pencil, Sparkles,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useRole } from '../lib/useRole';
 import { XAI_BUILTIN_VOICES } from '../../../platform/agent-runtime/xaiSessionConfig';
 import { MASTER_VOICE_AGENT_MODEL } from '../../../platform/agent-runtime/masterVoiceAgent';
 import { AGENT_LANGUAGES, normalizeAgentLanguage } from '../lib/agentLanguages';
+import VoiceAgentDeploymentTab from '../components/voice-agents/VoiceAgentDeploymentTab';
+import VoiceAgentConversationsTab from '../components/voice-agents/VoiceAgentConversationsTab';
+import VoiceAgentInsightsTab from '../components/voice-agents/VoiceAgentInsightsTab';
+import {
+  formatAssignedNumbers,
+  phonesRoutedToAgent,
+  readPostCallPreference,
+  type StudioPhoneNumber,
+} from '../lib/voiceAgentStudioMetrics';
 
 type StudioTab = 'configuration' | 'speech' | 'deployment' | 'conversations' | 'insights';
 
@@ -30,14 +39,6 @@ interface LibraryTool {
   name: string;
   description: string;
   category: string;
-}
-
-interface CallRow {
-  id: string;
-  start_time: string;
-  caller_number?: string | null;
-  lifecycle_state?: string;
-  duration_seconds?: number | null;
 }
 
 const TABS: { id: StudioTab; label: string }[] = [
@@ -78,7 +79,15 @@ export default function VoiceAgentStudio() {
   const [voice, setVoice] = useState('eve');
   const [language, setLanguage] = useState('en');
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
+  const [postCallNotify, setPostCallNotify] = useState(false);
+  const [postCallEmail, setPostCallEmail] = useState('');
   const [saved, setSaved] = useState(false);
+
+  const phonesQuery = useQuery({
+    queryKey: ['phone-numbers'],
+    queryFn: () => api.get<{ phoneNumbers: StudioPhoneNumber[] }>('/phone-numbers?limit=100'),
+  });
+  const assignedPhones = phonesRoutedToAgent(phonesQuery.data?.phoneNumbers ?? [], id ?? '');
 
   useEffect(() => {
     if (!agent) return;
@@ -90,6 +99,9 @@ export default function VoiceAgentStudio() {
     setLanguage(normalizeAgentLanguage(agent.language));
     const stored = agent.metadata?.enabledLibraryTools;
     setEnabledTools(Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []);
+    const postCall = readPostCallPreference(agent.metadata);
+    setPostCallNotify(postCall.enabled);
+    setPostCallEmail(postCall.email);
   }, [agent]);
 
   const save = useMutation({
@@ -105,6 +117,8 @@ export default function VoiceAgentStudio() {
         metadata: {
           ...(agent?.metadata ?? {}),
           enabledLibraryTools: enabledTools,
+          postCallNotify,
+          postCallEmail: postCallEmail.trim(),
         },
       });
     },
@@ -237,6 +251,8 @@ export default function VoiceAgentStudio() {
                 : [...current, toolName]
             ));
           }}
+          assignedPhones={assignedPhones}
+          onOpenDeployment={() => setSearchParams({ tab: 'deployment' })}
         />
       )}
       {tab === 'speech' && (
@@ -248,9 +264,22 @@ export default function VoiceAgentStudio() {
           onLanguage={setLanguage}
         />
       )}
-      {tab === 'deployment' && <DeploymentTab agentId={agent.id} isStaff={isPlatformAdmin} />}
-      {tab === 'conversations' && <ConversationsTab agentId={agent.id} />}
-      {tab === 'insights' && <InsightsTab agentId={agent.id} />}
+      {tab === 'deployment' && (
+        <VoiceAgentDeploymentTab
+          agentId={agent.id}
+          phones={phonesQuery.data?.phoneNumbers ?? []}
+          canEdit={isManager}
+          isStaff={isPlatformAdmin}
+          postCallNotify={postCallNotify}
+          postCallEmail={postCallEmail}
+          onPostCallNotify={setPostCallNotify}
+          onPostCallEmail={setPostCallEmail}
+          onSave={() => save.mutate()}
+          saving={save.isPending}
+        />
+      )}
+      {tab === 'conversations' && <VoiceAgentConversationsTab agentId={agent.id} />}
+      {tab === 'insights' && <VoiceAgentInsightsTab agentId={agent.id} />}
     </div>
   );
 }
@@ -286,6 +315,8 @@ function ConfigurationTab({
   onGreeting,
   onWelcomeOn,
   onToggleTool,
+  assignedPhones,
+  onOpenDeployment,
 }: {
   instructions: string;
   greeting: string;
@@ -297,14 +328,24 @@ function ConfigurationTab({
   onGreeting: (value: string) => void;
   onWelcomeOn: (value: boolean) => void;
   onToggleTool: (name: string) => void;
+  assignedPhones: StudioPhoneNumber[];
+  onOpenDeployment: () => void;
 }) {
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between rounded-xl border border-border bg-surface-secondary px-4 py-3">
-        <p className="text-sm text-text-secondary">Set up a phone number to call your agent.</p>
-        <Link to="/phone-numbers" className="rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-on-primary">
-          Set up
-        </Link>
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-secondary px-4 py-3">
+        <p className="text-sm text-text-secondary">
+          {assignedPhones.length > 0
+            ? `This agent is reachable at ${formatAssignedNumbers(assignedPhones)}.`
+            : 'Set up a phone number to call your agent.'}
+        </p>
+        <button
+          type="button"
+          onClick={onOpenDeployment}
+          className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-on-primary"
+        >
+          {assignedPhones.length > 0 ? 'Manage' : 'Set up'}
+        </button>
       </div>
 
       <section className="space-y-2">
@@ -431,117 +472,6 @@ function SpeechTab({
           <option>1.0x</option>
         </select>
       </SettingRow>
-    </div>
-  );
-}
-
-function DeploymentTab({ agentId, isStaff }: { agentId: string; isStaff: boolean }) {
-  return (
-    <div className="space-y-8">
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-text-primary">Phone numbers</h3>
-          <Link to="/phone-numbers" className="text-sm font-medium text-primary">Add number</Link>
-        </div>
-        <p className="mb-4 text-sm text-text-muted">
-          Let callers reach this agent on a number routed to the Master Voice Agent runtime.
-        </p>
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-border px-6 py-10 text-center">
-          <Phone className="h-6 w-6 text-text-muted" />
-          <p className="text-sm text-text-secondary">Set up a phone number. Enable your agent to serve customers by phone.</p>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-sm font-semibold text-text-primary">Post-call notifications</h3>
-        <p className="mt-1 text-sm text-text-muted">No email is sent when a call ends.</p>
-      </section>
-      {isStaff && (
-        <p className="text-sm">
-          <Link to={`/agents/${agentId}/builder`} className="text-primary hover:underline">
-            Open advanced workflow canvas
-          </Link>
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ConversationsTab({ agentId }: { agentId: string }) {
-  const { data, refetch, isFetching } = useQuery({
-    queryKey: ['agent-calls', agentId],
-    queryFn: () => api.get<{ calls?: CallRow[]; sessions?: CallRow[] }>(`/calls?agent_id=${agentId}&limit=20`),
-  });
-  const rows = data?.calls ?? data?.sessions ?? [];
-
-  return (
-    <div className="space-y-4">
-      <p className="rounded-xl bg-surface-secondary px-4 py-3 text-sm text-text-secondary">
-        Conversations are retained with the rest of your call history.
-      </p>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
-      {rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <AudioLines className="h-8 w-8 text-text-muted" />
-          <p className="text-sm text-text-secondary">
-            No conversations yet. Conversations will appear here after callers reach this agent.
-          </p>
-        </div>
-      ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border">
-          {rows.map((row) => (
-            <li key={row.id} className="flex items-center justify-between px-4 py-3 text-sm">
-              <Link to={`/calls?q=${row.id}`} className="font-mono text-primary hover:underline">{row.id}</Link>
-              <span className="text-text-muted">{row.caller_number || '—'}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function InsightsTab({ agentId }: { agentId: string }) {
-  const { data } = useQuery({
-    queryKey: ['agent-insights', agentId],
-    queryFn: () => api.get<{ calls?: CallRow[]; sessions?: CallRow[] }>(`/calls?agent_id=${agentId}&limit=100`),
-  });
-  const rows = data?.calls ?? data?.sessions ?? [];
-  const minutes = useMemo(
-    () => rows.reduce((sum, row) => sum + (row.duration_seconds ?? 0), 0) / 60,
-    [rows],
-  );
-
-  const cards = [
-    { label: 'Conversations', value: String(rows.length) },
-    { label: 'Total minutes', value: minutes.toFixed(1) },
-    { label: 'Cost (USD)', value: '—' },
-    { label: 'Tool calls', value: '—' },
-    { label: 'Duration (p50)', value: '—' },
-    { label: 'Time to first audio (p50)', value: '—' },
-    { label: 'Error rate', value: '—' },
-    { label: 'Transfer rate', value: '—' },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-success">Live calls: {rows.filter((row) => row.lifecycle_state === 'in_progress').length}</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {cards.map((card) => (
-          <div key={card.label} className="rounded-xl border border-border bg-surface px-4 py-5">
-            <p className="text-xs uppercase tracking-wide text-text-muted">{card.label}</p>
-            <p className="mt-2 text-2xl font-semibold text-text-primary">{card.value}</p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
