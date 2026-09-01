@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Mic, PhoneOff, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import {
+  PCMU_SAMPLE_RATE,
+  base64ToBytes,
+  bytesToBase64,
+  decodePcmuToPcm16,
+  downsamplePcm16,
+  encodePcmuFromPcm16,
+} from '../../../../platform/agent-runtime/pcmuCodec';
 
 type LiveState = 'idle' | 'requesting' | 'connecting' | 'live' | 'error';
 
-function playPcm16(base64: string, ctx: AudioContext, nextTime: { current: number }): void {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  const int16 = new Int16Array(bytes.buffer);
-  const float32 = new Float32Array(int16.length);
-  for (let i = 0; i < int16.length; i += 1) {
-    float32[i] = int16[i] / (int16[i] < 0 ? 0x8000 : 0x7fff);
+function playPcmu(base64: string, ctx: AudioContext, nextTime: { current: number }): void {
+  const pcm16 = decodePcmuToPcm16(base64ToBytes(base64));
+  const float32 = new Float32Array(pcm16.length);
+  for (let i = 0; i < pcm16.length; i += 1) {
+    float32[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff);
   }
-  const buffer = ctx.createBuffer(1, float32.length, 24000);
+  const buffer = ctx.createBuffer(1, float32.length, PCMU_SAMPLE_RATE);
   buffer.getChannelData(0).set(float32);
   const source = ctx.createBufferSource();
   source.buffer = buffer;
@@ -64,10 +69,10 @@ export default function TryItLiveModal({
               void startMic(socket);
             } else if (payload.type === 'audio' && payload.data) {
               if (!playbackCtxRef.current || playbackCtxRef.current.state === 'closed') {
-                playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
+                playbackCtxRef.current = new AudioContext({ sampleRate: PCMU_SAMPLE_RATE });
                 playbackNextRef.current = 0;
               }
-              playPcm16(payload.data, playbackCtxRef.current, playbackNextRef);
+              playPcmu(payload.data, playbackCtxRef.current, playbackNextRef);
             } else if (payload.type === 'error') {
               setState('error');
               setMessage(payload.message || 'The live preview could not start.');
@@ -116,10 +121,10 @@ export default function TryItLiveModal({
           const sample = Math.max(-1, Math.min(1, float32[i]));
           int16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
         }
-        const bytes = new Uint8Array(int16.buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-        socket.send(JSON.stringify({ type: 'audio', data: btoa(binary) }));
+        const pcmu = encodePcmuFromPcm16(
+          downsamplePcm16(int16, audioContext.sampleRate || 24000, PCMU_SAMPLE_RATE),
+        );
+        socket.send(JSON.stringify({ type: 'audio', data: bytesToBase64(pcmu) }));
       };
     } catch {
       setState('error');
