@@ -29,6 +29,7 @@ import { validateWidgetToken, getWidgetConfig, getPublicWidgetConfig } from '../
 import { HandoffEngine } from '../../../platform/workforce/HandoffEngine';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { authorizeHealthcareDeployment } from '../../../platform/compliance/HealthcareDeploymentApprovalService';
+import { handleStudioPreviewConnection } from './studioPreviewStream';
 
 const logger = createLogger('WS_STREAM');
 const widgetLogger = createLogger('WS_WIDGET');
@@ -79,6 +80,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export function attachWebSocket(server: HTTPServer): void {
   const wss = new WebSocketServer({ noServer: true });
   const widgetWss = new WebSocketServer({ noServer: true });
+  const studioWss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
@@ -104,9 +106,23 @@ export function attachWebSocket(server: HTTPServer): void {
       widgetWss.handleUpgrade(request, socket, head, (ws) => {
         widgetWss.emit('connection', ws, request);
       });
+    } else if (url.pathname === '/studio/stream') {
+      const previewToken = url.searchParams.get('token');
+      if (!previewToken) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      studioWss.handleUpgrade(request, socket, head, (ws) => {
+        studioWss.emit('connection', ws, request);
+      });
     } else {
       socket.destroy();
     }
+  });
+
+  studioWss.on('connection', (ws, request) => {
+    void handleStudioPreviewConnection(ws, request);
   });
 
   wss.on('connection', (ws: WebSocket) => {

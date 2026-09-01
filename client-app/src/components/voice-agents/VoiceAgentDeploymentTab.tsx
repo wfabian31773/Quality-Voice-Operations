@@ -189,12 +189,18 @@ export default function VoiceAgentDeploymentTab({
       </section>
 
       {isStaff ? (
-        <p className="text-sm">
+        <p className="text-sm text-text-muted">
+          This studio is the default editor.{' '}
           <Link to={`/agents/${agentId}/builder`} className="text-primary hover:underline">
-            Open advanced workflow canvas
+            Open the staff-only workflow canvas
           </Link>
+          {' '}for ReactFlow debugging. Tenants should stay here.
         </p>
-      ) : null}
+      ) : (
+        <p className="text-sm text-text-muted">
+          This studio is the default editor. The advanced workflow canvas is reserved for QVO staff.
+        </p>
+      )}
     </div>
   );
 }
