@@ -21,6 +21,7 @@ import ConnectorAuthBanner from '../components/ConnectorAuthBanner';
 import { PageHeader, StatCard, StatusBadge, StatusDot, type BadgeTone } from '../components/ui';
 import { EmptyState } from '../components/state';
 import { useAuth } from '../lib/auth';
+import { useRole } from '../lib/useRole';
 import { isQvoStaff } from '../lib/surfacePolicy';
 
 const CELEBRATION_KEY = 'qvo_first_call_celebrated';
@@ -305,6 +306,7 @@ export default function Dashboard() {
   const { t: tenantT } = useTranslation('tenant');
   const { user } = useAuth();
   const isStaff = isQvoStaff(user);
+  const { isManager } = useRole();
   const navigate = useNavigate();
   const todaySince = todayIso();
   const [showCelebration, setShowCelebration] = useState(false);
@@ -425,7 +427,7 @@ export default function Dashboard() {
             </StatusBadge>
           )
         }
-        actions={isStaff ? (
+        actions={isManager ? (
           <button
             onClick={() => navigate('/agents')}
             className="hidden sm:inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -577,18 +579,16 @@ export default function Dashboard() {
         <div className="bg-surface border border-border rounded-xl shadow-sm">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <h2 className="text-base font-semibold text-text-primary">{tenantT('dashboard.sections.your_agents')}</h2>
-            {isStaff && (
-              <button onClick={() => navigate('/agents')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
-                {tenantT('dashboard.actions.manage')} <ArrowRight className="h-3 w-3" />
-              </button>
-            )}
+            <button onClick={() => navigate('/agents')} className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1">
+              {tenantT('dashboard.actions.manage')} <ArrowRight className="h-3 w-3" />
+            </button>
           </div>
           {agents.length === 0 ? (
             <EmptyState
               icon={Bot}
               title={tenantT('dashboard.your_agents.no_agents_title')}
               description={tenantT('dashboard.your_agents.no_agents_description')}
-              primaryAction={isStaff ? {
+              primaryAction={isManager ? {
                 label: tenantT('dashboard.actions.create_agent'),
                 onClick: () => navigate('/agents'),
                 icon: Plus,
@@ -599,8 +599,8 @@ export default function Dashboard() {
               {agents.slice(0, 5).map((agent) => (
                 <div
                   key={agent.id}
-                  className={`px-5 py-3 flex items-center gap-3 ${isStaff ? 'hover:bg-surface-hover transition-colors cursor-pointer' : ''}`}
-                  onClick={isStaff ? () => navigate('/agents') : undefined}
+                  className="px-5 py-3 flex items-center gap-3 hover:bg-surface-hover transition-colors cursor-pointer"
+                  onClick={() => navigate(`/agents/${agent.id}`)}
                 >
                   <div className="p-1.5 rounded-lg bg-primary/10">
                     <Bot className="h-4 w-4 text-primary" />

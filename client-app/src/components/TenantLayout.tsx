@@ -38,6 +38,7 @@ export interface NavItem {
 
 export const tenantLinks: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, i18nKey: 'tenant_nav.dashboard' },
+  { to: '/agents', icon: Bot, i18nKey: 'tenant_nav.agents' },
   { to: '/calls', icon: PhoneCall, i18nKey: 'tenant_nav.conversations' },
   { to: '/tickets', icon: ClipboardList, i18nKey: 'tenant_nav.tickets' },
   { to: '/knowledge-base', icon: BookOpen, i18nKey: 'tenant_nav.knowledge' },
@@ -46,7 +47,6 @@ export const tenantLinks: NavItem[] = [
 ];
 
 export const internalPrimaryLinks: NavItem[] = [
-  { to: '/agents', icon: Bot, i18nKey: 'tenant_nav.agents' },
   { to: '/campaigns', icon: Megaphone, i18nKey: 'tenant_nav.campaigns' },
   { to: '/analytics', icon: BarChart3, i18nKey: 'tenant_nav.analytics' },
 ];

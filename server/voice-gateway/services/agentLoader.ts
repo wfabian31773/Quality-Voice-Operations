@@ -484,14 +484,29 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         timeZone,
         voice: dbAgent?.voice,
       });
+      const enabledLibraryTools = Array.isArray(meta.enabledLibraryTools)
+        ? meta.enabledLibraryTools.filter((name): name is string => typeof name === 'string')
+        : null;
+      const mergedTools = filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides);
+      const selectedTools = enabledLibraryTools
+        ? mergedTools.filter((tool) => (
+          enabledLibraryTools.includes(tool.name)
+          || tool.name === 'get_current_tenant_time'
+          || tool.name === 'record_language_change'
+        ))
+        : mergedTools;
       return finalize({
         agentId,
         tenantId,
-        systemPrompt: role.prompt,
-        greeting: role.greeting,
+        systemPrompt: typeof dbAgent?.system_prompt === 'string' && dbAgent.system_prompt.trim()
+          ? dbAgent.system_prompt
+          : role.prompt,
+        greeting: typeof dbAgent?.welcome_greeting === 'string' && dbAgent.welcome_greeting.trim()
+          ? dbAgent.welcome_greeting
+          : role.greeting,
         voice: role.voice ?? dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: MASTER_VOICE_AGENT_MODEL,
-        tools: filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides),
+        tools: selectedTools,
         guardrails: role.guardrails,
         metadata: { ...meta, businessName, role: 'core-receptionist' },
       }, { id: role.id, version: role.version });

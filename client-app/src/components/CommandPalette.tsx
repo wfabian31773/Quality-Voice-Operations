@@ -52,7 +52,7 @@ export default function CommandPalette({
 
   const commands: Command[] = useMemo(() => [
     { id: 'dashboard', label: t('command_palette.go_dashboard'), icon: LayoutDashboard, group: 'navigate', run: go('/dashboard') },
-    { id: 'agents', label: t('command_palette.go_agents'), icon: Bot, group: 'navigate', run: go('/agents'), internalOnly: true },
+    { id: 'agents', label: t('command_palette.go_agents'), icon: Bot, group: 'navigate', run: go('/agents') },
     { id: 'calls', label: t('command_palette.go_calls'), icon: PhoneCall, group: 'navigate', keywords: ['calls'], run: go('/calls') },
     { id: 'campaigns', label: t('command_palette.go_campaigns'), icon: Megaphone, group: 'navigate', run: go('/campaigns'), internalOnly: true },
     { id: 'analytics', label: t('command_palette.go_analytics'), icon: BarChart3, group: 'navigate', run: go('/analytics'), internalOnly: true },
@@ -67,7 +67,7 @@ export default function CommandPalette({
     { id: 'marketplace', label: t('command_palette.go_marketplace'), icon: Store, group: 'navigate', run: go('/marketplace'), internalOnly: true },
     { id: 'phones', label: t('command_palette.go_phones'), icon: Phone, group: 'navigate', run: go('/phone-numbers') },
     { id: 'settings', label: t('command_palette.open_settings'), icon: Settings2, group: 'navigate', run: go('/settings') },
-    { id: 'new-agent', label: t('command_palette.new_agent'), icon: Plus, group: 'actions', run: go('/agents'), internalOnly: true },
+    { id: 'new-agent', label: t('command_palette.new_agent'), icon: Plus, group: 'actions', run: go('/agents') },
     { id: 'new-campaign', label: t('command_palette.new_campaign'), icon: Plus, group: 'actions', run: go('/campaigns'), internalOnly: true },
     { id: 'new-doc', label: t('command_palette.new_doc'), icon: FileText, group: 'actions', run: go('/knowledge-base') },
     ...(onStartTour ? [{ id: 'tour', label: t('command_palette.start_tour'), icon: HelpCircle, group: 'help' as const, run: () => { onStartTour(); onClose(); } }] : []),
