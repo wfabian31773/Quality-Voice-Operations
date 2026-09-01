@@ -22,6 +22,16 @@ import {
   runVoiceAgentAssistTurn,
   type AssistChatMessage,
 } from '../../../platform/agent-runtime/voiceAgentAssist';
+import {
+  ImproveRequestError,
+  ImproveUnavailableError,
+  improveVoiceAgentCopy,
+} from '../../../platform/agent-runtime/voiceAgentImprove';
+import {
+  STUDIO_PREVIEW_TTL_SECONDS,
+  signStudioPreviewToken,
+  studioPreviewStreamPath,
+} from '../../../platform/agent-runtime/studioPreviewToken';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -342,6 +352,78 @@ router.get('/agents/:id', requireAuth, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     return res.status(500).json({ error: 'Failed to retrieve agent' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/agents/:id/improve', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId } = req.user!;
+  const { id } = req.params;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const instructions = typeof body.instructions === 'string' ? body.instructions : '';
+  const goal = typeof body.goal === 'string' ? body.goal : undefined;
+
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT id FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    await client.query('COMMIT');
+    if (rows.length === 0) return res.status(404).json({ error: 'Agent not found' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to load agent for improve', { tenantId, agentId: id, error: String(err) });
+    return res.status(500).json({ error: 'Failed to improve instructions' });
+  } finally {
+    client.release();
+  }
+
+  try {
+    const result = await improveVoiceAgentCopy({ instructions, goal });
+    return res.json(result);
+  } catch (err) {
+    if (err instanceof ImproveRequestError) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof ImproveUnavailableError) {
+      return res.status(503).json({ error: err.message });
+    }
+    logger.error('Improve with Grok failed', { tenantId, agentId: id, error: String(err) });
+    return res.status(502).json({ error: 'Could not improve instructions right now.' });
+  }
+});
+
+router.post('/agents/:id/live-preview', requireAuth, requireRole('manager'), async (req, res) => {
+  const { tenantId, userId } = req.user!;
+  const { id } = req.params;
+  const pool = getPlatformPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
+      `SELECT id, name FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    await client.query('COMMIT');
+    if (rows.length === 0) return res.status(404).json({ error: 'Agent not found' });
+
+    const token = signStudioPreviewToken({ tenantId, agentId: id, userId });
+    return res.json({
+      streamPath: studioPreviewStreamPath(token),
+      expiresInSeconds: STUDIO_PREVIEW_TTL_SECONDS,
+      agentName: rows[0].name,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('Failed to issue studio preview token', { tenantId, agentId: id, error: String(err) });
+    return res.status(500).json({ error: 'Could not start a live preview.' });
   } finally {
     client.release();
   }

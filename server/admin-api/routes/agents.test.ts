@@ -136,6 +136,61 @@ describe('POST /agents', () => {
   });
 });
 
+describe('POST /agents/:id/improve', () => {
+  it('404 when the agent is missing', async () => {
+    a.queryMock.mockImplementation(async (sql: string) => (
+      sql.includes('SELECT id FROM agents WHERE id = $1') ? { rows: [] } : { rows: [] }
+    ));
+    expect((await request(app()).post('/agents/a1/improve').send({ instructions: 'Hi' })).status).toBe(404);
+  });
+
+  it('400 when instructions are empty', async () => {
+    a.queryMock.mockImplementation(async (sql: string) => (
+      sql.includes('SELECT id FROM agents WHERE id = $1') ? { rows: [{ id: 'a1' }] } : { rows: [] }
+    ));
+    expect((await request(app()).post('/agents/a1/improve').send({ instructions: '  ' })).status).toBe(400);
+  });
+
+  it('503 when XAI_API_KEY is not configured', async () => {
+    const previous = process.env.XAI_API_KEY;
+    delete process.env.XAI_API_KEY;
+    a.queryMock.mockImplementation(async (sql: string) => (
+      sql.includes('SELECT id FROM agents WHERE id = $1') ? { rows: [{ id: 'a1' }] } : { rows: [] }
+    ));
+    try {
+      expect((await request(app()).post('/agents/a1/improve').send({ instructions: 'Answer the phone.' })).status).toBe(503);
+    } finally {
+      if (previous === undefined) delete process.env.XAI_API_KEY;
+      else process.env.XAI_API_KEY = previous;
+    }
+  });
+});
+
+describe('POST /agents/:id/live-preview', () => {
+  it('404 when the agent is missing', async () => {
+    a.queryMock.mockImplementation(async (sql: string) => (
+      sql.includes('SELECT id, name FROM agents') ? { rows: [] } : { rows: [] }
+    ));
+    expect((await request(app()).post('/agents/a1/live-preview').send({})).status).toBe(404);
+  });
+
+  it('issues a voice-gateway preview path for the agent', async () => {
+    a.queryMock.mockImplementation(async (sql: string) => (
+      sql.includes('SELECT id, name FROM agents') ? { rows: [{ id: 'a1', name: 'Front desk' }] } : { rows: [] }
+    ));
+    const res = await request(app()).post('/agents/a1/live-preview').send({});
+    expect(res.status).toBe(200);
+    expect(res.body.agentName).toBe('Front desk');
+    expect(res.body.streamPath).toMatch(/^\/vg\/studio\/stream\?token=/);
+    expect(res.body.expiresInSeconds).toBeGreaterThan(0);
+  });
+
+  it('rejects a viewer', async () => {
+    a.user.role = 'support_reviewer';
+    expect((await request(app()).post('/agents/a1/live-preview').send({})).status).toBe(403);
+  });
+});
+
 describe('PATCH /agents/:id validation', () => {
   it('rejects an invalid type', async () => {
     expect((await request(app()).patch('/agents/a1').send({ type: 'spaceship' })).status).toBe(400);

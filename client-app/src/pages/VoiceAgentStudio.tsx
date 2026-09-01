@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -13,6 +13,7 @@ import { AGENT_LANGUAGES, normalizeAgentLanguage } from '../lib/agentLanguages';
 import VoiceAgentDeploymentTab from '../components/voice-agents/VoiceAgentDeploymentTab';
 import VoiceAgentConversationsTab from '../components/voice-agents/VoiceAgentConversationsTab';
 import VoiceAgentInsightsTab from '../components/voice-agents/VoiceAgentInsightsTab';
+import TryItLiveModal from '../components/voice-agents/TryItLiveModal';
 import {
   formatAssignedNumbers,
   phonesRoutedToAgent,
@@ -82,6 +83,8 @@ export default function VoiceAgentStudio() {
   const [postCallNotify, setPostCallNotify] = useState(false);
   const [postCallEmail, setPostCallEmail] = useState('');
   const [saved, setSaved] = useState(false);
+  const [liveOpen, setLiveOpen] = useState(false);
+  const [improveError, setImproveError] = useState<string | null>(null);
 
   const phonesQuery = useQuery({
     queryKey: ['phone-numbers'],
@@ -137,6 +140,17 @@ export default function VoiceAgentStudio() {
     },
   });
 
+  const improve = useMutation({
+    mutationFn: () => api.post<{ instructions: string }>(`/agents/${id}/improve`, { instructions }),
+    onSuccess: (result) => {
+      setInstructions(result.instructions);
+      setImproveError(null);
+    },
+    onError: (err) => {
+      setImproveError(err instanceof Error ? err.message : 'Could not improve instructions.');
+    },
+  });
+
   if (agentQuery.isLoading) {
     return <div className="text-sm text-text-muted">Loading agent…</div>;
   }
@@ -184,13 +198,14 @@ export default function VoiceAgentStudio() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/phone-numbers"
+          <button
+            type="button"
+            onClick={() => setLiveOpen(true)}
             className="inline-flex items-center gap-2 rounded-full border border-primary/40 px-4 py-2 text-sm font-medium text-primary hover:bg-primary-light"
           >
             <AudioLines className="h-4 w-4" />
             Try it live
-          </Link>
+          </button>
           {isManager && (
             <button
               type="button"
@@ -253,6 +268,10 @@ export default function VoiceAgentStudio() {
           }}
           assignedPhones={assignedPhones}
           onOpenDeployment={() => setSearchParams({ tab: 'deployment' })}
+          onImprove={() => improve.mutate()}
+          improving={improve.isPending}
+          improveError={improveError}
+          canImprove={isManager}
         />
       )}
       {tab === 'speech' && (
@@ -280,6 +299,7 @@ export default function VoiceAgentStudio() {
       )}
       {tab === 'conversations' && <VoiceAgentConversationsTab agentId={agent.id} />}
       {tab === 'insights' && <VoiceAgentInsightsTab agentId={agent.id} />}
+      {liveOpen ? <TryItLiveModal agentId={agent.id} onClose={() => setLiveOpen(false)} /> : null}
     </div>
   );
 }
@@ -317,6 +337,10 @@ function ConfigurationTab({
   onToggleTool,
   assignedPhones,
   onOpenDeployment,
+  onImprove,
+  improving,
+  improveError,
+  canImprove,
 }: {
   instructions: string;
   greeting: string;
@@ -330,6 +354,10 @@ function ConfigurationTab({
   onToggleTool: (name: string) => void;
   assignedPhones: StudioPhoneNumber[];
   onOpenDeployment: () => void;
+  onImprove: () => void;
+  improving: boolean;
+  improveError: string | null;
+  canImprove: boolean;
 }) {
   return (
     <div className="space-y-8">
@@ -349,13 +377,19 @@ function ConfigurationTab({
       </div>
 
       <section className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-text-primary">Instructions</h3>
-          <span className="inline-flex items-center gap-1 text-xs text-text-muted">
-            <Sparkles className="h-3.5 w-3.5" />
+          <button
+            type="button"
+            disabled={!canImprove || improving}
+            onClick={onImprove}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:text-text-muted disabled:no-underline"
+          >
+            {improving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             Improve with Grok
-          </span>
+          </button>
         </div>
+        {improveError ? <p className="text-xs text-danger">{improveError}</p> : null}
         <textarea
           value={instructions}
           onChange={(event) => onInstructions(event.target.value)}
