@@ -87,9 +87,9 @@ export default function VoiceAgentInsightsTab({ agentId }: { agentId: string }) 
       </div>
 
       <p className="text-xs text-text-muted">
-        Cost, tools, duration, errors, and transfers come from this agent’s call history.
-        Time to first audio is not stored on call sessions, so that card stays empty.
-        {range === '100' ? ' Showing up to the 100 most recent conversations.' : null}
+        Cost, tools, duration, errors, and transfers come from this agent's call history
+        (up to 100 conversations in the selected window). Time to first audio is not stored
+        on call sessions, so that card stays empty.
       </p>
     </div>
   );
