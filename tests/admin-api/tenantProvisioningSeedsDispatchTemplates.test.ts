@@ -10,6 +10,7 @@ const connectMock = vi.fn(async () => ({ query: queryMock, release: releaseMock 
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ connect: connectMock }),
+  getPrivilegedPool: () => ({ connect: connectMock }),
 }));
 vi.mock('../../platform/core/logger', () => ({
   createLogger: () => ({

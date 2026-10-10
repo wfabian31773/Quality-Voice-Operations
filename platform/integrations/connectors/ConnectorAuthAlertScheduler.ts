@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../../db';
+import { getPrivilegedPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
   sendEmail,
@@ -144,7 +144,7 @@ interface PendingAuthFailure {
 }
 
 export async function findPendingAuthFailures(): Promise<PendingAuthFailure[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query<PendingAuthFailure>(
     `SELECT tenant_id,
             id AS integration_id,
@@ -176,7 +176,7 @@ async function getTenantAdmins(tenantId: string): Promise<{
   emails: string[];
   userIds: string[];
 }> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   let name: string | undefined;
   let emails: string[] = [];
   let userIds: string[] = [];
@@ -211,7 +211,7 @@ async function getTenantAdmins(tenantId: string): Promise<{
  * the freshly-stamped 24h window.
  */
 async function stampAuthAlertSlot(integrationId: string, tenantId: string): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     await pool.query(
       `UPDATE integrations
@@ -251,7 +251,7 @@ async function claimAuthAlertSlot(
   tenantId: string,
   options: { episodeScoped?: boolean } = {},
 ): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const predicate = options.episodeScoped
     ? `auth_alert_sent_at IS NULL`
     : `(
@@ -284,7 +284,7 @@ async function recentInAppNotificationExists(
   integrationId: string,
   provider: string,
 ): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query(
       `SELECT 1 FROM tenant_notifications
@@ -401,7 +401,7 @@ export interface DispatchAuthAlertResult {
 export async function dispatchConnectorAuthAlert(
   params: DispatchAuthAlertParams,
 ): Promise<DispatchAuthAlertResult> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const reason = params.reason ?? 'needs_reconnect';
 
   let row: {
@@ -994,7 +994,7 @@ async function claimExpiryWarningSlot(
   integrationId: string,
   tenantId: string,
 ): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const result = await pool.query(
       `UPDATE integrations
@@ -1326,7 +1326,7 @@ interface PendingAutoDisable {
 export async function findIntegrationsToAutoDisable(
   thresholdDays: number,
 ): Promise<PendingAutoDisable[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query<PendingAutoDisable>(
     `SELECT tenant_id,
             id AS integration_id,
@@ -1363,7 +1363,7 @@ export async function findIntegrationsToAutoDisable(
  * "we disabled this" email for the same outage.
  */
 async function autoDisableIntegration(row: PendingAutoDisable): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     // Re-assert the full auth-class criteria the SELECT used so we cannot
     // race-disable a row whose status has just transitioned (e.g. another

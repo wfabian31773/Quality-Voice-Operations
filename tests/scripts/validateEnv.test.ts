@@ -64,6 +64,7 @@ function resetEnv(): void {
     delete process.env[v];
   }
   delete process.env.DATABASE_URL;
+  delete process.env.DATABASE_URL_PRIVILEGED;
   delete process.env.CALENDLY_WEBHOOK_SECRET;
   delete process.env.STRIPE_PRICE_STARTER_AI_MINUTES;
   delete process.env.STRIPE_PRICE_PRO_AI_MINUTES;
@@ -97,6 +98,7 @@ function applyAllProductionVars(): void {
   process.env.STRIPE_PRICE_STARTER_AI_MINUTES = 'price_starter_ai_metered';
   process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_pro_ai_metered';
   process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES = 'price_ent_ai_metered';
+  process.env.DATABASE_URL_PRIVILEGED = 'postgresql://postgres:pw@db.example.com:5432/postgres';
 }
 
 let logSpy: ReturnType<typeof vi.spyOn>;
@@ -421,6 +423,16 @@ describe('validateEnvironment() — warnings', () => {
     const result = validateEnvironment();
 
     expect(result.warnings.some(w => w.includes('ADMIN_JWT_SECRET'))).toBe(true);
+    expect(result.passed).toBe(true);
+  });
+
+  it('warns when DATABASE_URL_PRIVILEGED is not set', async () => {
+    applyAllProductionVars();
+    delete process.env.DATABASE_URL_PRIVILEGED;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('DATABASE_URL_PRIVILEGED'))).toBe(true);
     expect(result.passed).toBe(true);
   });
 

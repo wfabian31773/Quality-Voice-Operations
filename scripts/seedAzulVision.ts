@@ -1,4 +1,4 @@
-import { getPlatformPool, closePlatformPool } from '../platform/db';
+import { getPrivilegedPool, closePlatformPool } from '../platform/db';
 import { generateApiKey } from '../platform/rbac/ApiKeyService';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
@@ -72,7 +72,7 @@ const FEDERATED_AGENTS: FederatedAgent[] = [
 ];
 
 async function seedAzulVision(): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {

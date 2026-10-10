@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getPlatformPool, withPrivilegedClient } from '../db';
+import { getPlatformPool, getPrivilegedPool, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('TENANT_ISOLATION');
@@ -31,12 +31,13 @@ export interface RunAllIsolationTestsResult {
 
 /**
  * Pick an active tenant id to use as the "self" perspective when running
- * cross-tenant access tests. Returns null when no active tenant exists,
- * in which case the cross-tenant suite is skipped (RLS-enabled checks
- * still run since they don't need a tenant context).
+ * cross-tenant access tests. Uses the privileged pool because `tenants`
+ * is RLS-scoped to app.tenant_id. Returns null when no active tenant
+ * exists, in which case the cross-tenant suite is skipped (RLS-enabled
+ * and rolbypassrls checks still run).
  */
 export async function pickActiveTenantForIsolationTest(): Promise<string | null> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query<{ id: string }>(
       `SELECT id FROM tenants
@@ -58,6 +59,55 @@ const RLS_TABLES = [
   'audit_logs', 'api_keys', 'user_roles', 'analytics_metrics',
   'encryption_keys', 'encrypted_fields', 'gdpr_requests',
 ];
+
+/**
+ * Fail loudly when the restricted pool is still a BYPASSRLS / superuser
+ * role. Cross-tenant COUNT(*) checks are meaningless on that connection.
+ */
+export async function verifyConnectedRoleDoesNotBypassRls(): Promise<IsolationTestResult> {
+  const pool = getPlatformPool();
+  try {
+    const { rows } = await pool.query<{
+      rolname: string;
+      rolbypassrls: boolean;
+      rolsuper: boolean;
+    }>(
+      `SELECT rolname, rolbypassrls, rolsuper
+         FROM pg_roles
+        WHERE rolname = CURRENT_USER`,
+    );
+    const role = rows[0];
+    if (!role) {
+      return {
+        testName: 'Connected role subject to RLS',
+        passed: false,
+        details: 'Could not resolve CURRENT_USER in pg_roles — failing closed',
+      };
+    }
+    if (role.rolbypassrls || role.rolsuper) {
+      return {
+        testName: 'Connected role subject to RLS',
+        passed: false,
+        details:
+          `CONNECTED ROLE BYPASSES RLS: "${role.rolname}" has rolbypassrls=${role.rolbypassrls} ` +
+          `rolsuper=${role.rolsuper}. Isolation tests on this pool cannot detect leaks. ` +
+          'Point DATABASE_URL / PLATFORM_DB_POOL_URL at qvo_app (NOBYPASSRLS) and set ' +
+          'DATABASE_URL_PRIVILEGED to the postgres URL.',
+      };
+    }
+    return {
+      testName: 'Connected role subject to RLS',
+      passed: true,
+      details: `Connected as "${role.rolname}" with rolbypassrls=false rolsuper=false`,
+    };
+  } catch (err) {
+    return {
+      testName: 'Connected role subject to RLS',
+      passed: false,
+      details: `Error checking connected role: ${String(err)}`,
+    };
+  }
+}
 
 export async function verifyRLSEnabled(): Promise<IsolationTestResult[]> {
   const results: IsolationTestResult[] = [];
@@ -178,14 +228,15 @@ export async function runAllIsolationTests(
   const source: IsolationTestSource = options.source ?? 'manual';
   const runId = randomUUID();
 
+  const roleResult = await verifyConnectedRoleDoesNotBypassRls();
   const rlsResults = await verifyRLSEnabled();
-
   const crossTenantResults = await verifyCrossTenantAccessBlocked(tenantId);
 
-  const allResults = [...rlsResults, ...crossTenantResults];
+  const allResults = [roleResult, ...rlsResults, ...crossTenantResults];
   const passed = allResults.filter(r => r.passed).length;
-  const failed = allResults.filter(r => !r.passed).length;
+  const failed = allResults.filter(r => r.passed === false).length;
 
+  // tenant_isolation_tests has no tenant_id / RLS — restricted pool is fine.
   const pool = getPlatformPool();
   for (const result of allResults) {
     try {

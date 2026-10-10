@@ -7,6 +7,7 @@ const { mockScenario, callsMatching } = createScenarioDispatcher(queryMock);
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 const sendEmailMock = vi.fn(async () => ({ success: true }));

@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../../db';
+import { getPrivilegedPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import { sendEmail, connectorSchedulingDriftEmail } from '../../email';
 import { filterEmailRecipientsByPreference } from '../../notifications/NotificationPreferences';
@@ -59,7 +59,7 @@ export interface TenantDrift {
  * number by name. We bucket per-tenant in JS below.
  */
 export async function findPendingSchedulingDrift(): Promise<TenantDrift[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query<{
     tenant_id: string;
     tenant_name: string | null;
@@ -146,7 +146,7 @@ export async function findPendingSchedulingDrift(): Promise<TenantDrift[]> {
  * cannot both fan out an email.
  */
 async function claimSchedulingDriftSlot(tenantId: string): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const result = await pool.query(
       `UPDATE tenants
@@ -175,7 +175,7 @@ async function claimSchedulingDriftSlot(tenantId: string): Promise<boolean> {
  * would silence the alert for 24h.
  */
 async function releaseSchedulingDriftSlot(tenantId: string): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     await pool.query(
       `UPDATE tenants

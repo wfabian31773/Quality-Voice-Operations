@@ -9,6 +9,7 @@ import type { VerifiedCallerId } from '../../platform/telephony/TrustedCallerSer
 const queryMock = vi.fn(async () => ({ rows: [] as Array<{ name: string }> }));
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 // ---- platform/email ---------------------------------------------------------

@@ -2,7 +2,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { createLogger } from '../../../platform/core/logger';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
-import { getPlatformPool } from '../../../platform/db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext } from '../../../platform/db';
 import { sendEmail, type EmailResult } from '../../../platform/email/EmailService';
 import {
   addSupportEmailSuppression,
@@ -109,7 +109,7 @@ async function raiseDeliveryFailureAlert(input: {
   });
   if (tenantId) {
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       await pool.query(
         `INSERT INTO operations_alerts (tenant_id, type, severity, message, metadata)
          VALUES ($1, $2, $3, $4, $5)`,
@@ -149,7 +149,7 @@ const INBOUND_SECRET = process.env.SUPPORT_INBOUND_SECRET ?? '';
  */
 async function resolveDestination(plan: string, topic: string): Promise<string> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query<{ destination: string }>(
       `SELECT destination FROM support_routing
        WHERE (plan = $1 OR plan = '*') AND (topic = $2 OR topic = '*')
@@ -172,7 +172,7 @@ async function resolveDestination(plan: string, topic: string): Promise<string> 
 
 async function lookupPlan(tenantId: string): Promise<string | null> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query<{ plan: string | null }>(
       'SELECT plan FROM tenants WHERE id = $1 LIMIT 1',
       [tenantId],
@@ -258,14 +258,25 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
   let persisted = true;
   try {
     const pool = getPlatformPool();
-    await pool.query(
-      `INSERT INTO support_tickets (id, tenant_id, user_id, user_email, plan, topic, message, recent_errors, context, routed_to, inbound_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [
-        ticketId, user.tenantId, user.userId, user.email, plan,
-        normalizedTopic, message, recent_errors || null, JSON.stringify(safeContext), routedTo, inboundToken,
-      ],
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await withTenantContext(client, user.tenantId, async () => {});
+      await client.query(
+        `INSERT INTO support_tickets (id, tenant_id, user_id, user_email, plan, topic, message, recent_errors, context, routed_to, inbound_token)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          ticketId, user.tenantId, user.userId, user.email, plan,
+          normalizedTopic, message, recent_errors || null, JSON.stringify(safeContext), routedTo, inboundToken,
+        ],
+      );
+      await client.query('COMMIT');
+    } catch (persistErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw persistErr;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     persisted = false;
     logger.error('Failed to persist support ticket', { ticketId, error: String(err) });
@@ -303,7 +314,7 @@ router.post('/support/tickets', requireAuth, async (req: Request, res: Response)
     const opsPermanent = !opsResult.success && (opsResult.permanent === true || isPermanentSmtpError(opsErr));
     const opsSkipReason = opsPermanent ? 'permanent_smtp_failure' : null;
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       await pool.query(
         `UPDATE support_tickets
          SET email_message_id = $2,
@@ -397,7 +408,7 @@ router.post('/docs/feedback', async (req: Request, res: Response) => {
   }
 
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     await pool.query(
       `INSERT INTO docs_feedback (article_slug, vote, comment, page_path, user_agent, reply_email)
        VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -437,7 +448,7 @@ router.get('/docs/feedback/summary', requireAuth, requirePlatformAdmin, async (r
       orderBy = 'helpful_ratio ASC NULLS FIRST, total_votes DESC';
   }
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query(
       `SELECT
          article_slug,
@@ -494,7 +505,7 @@ router.get('/docs/feedback/comments', requireAuth, requirePlatformAdmin, async (
   const HARD_BOUNCE_CLASSIFY_CAP = 2000;
   const sqlLimit = hardBounceOnly ? HARD_BOUNCE_CLASSIFY_CAP : limit;
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const params: unknown[] = [sqlLimit];
     let where = `WHERE f.comment IS NOT NULL AND length(trim(f.comment)) > 0`;
     if (slug) {
@@ -590,7 +601,7 @@ router.patch('/docs/feedback/comments/:id', requireAuth, requirePlatformAdmin, a
     return;
   }
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const actor = req.user?.email ?? req.user?.userId ?? null;
     const r = await pool.query(
       `UPDATE docs_feedback
@@ -618,7 +629,7 @@ router.get('/docs/feedback/comments/:id/replies', requireAuth, requirePlatformAd
     return;
   }
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     // retry_count + last_retry_at let the reply history render the same
     // "Auto-retried N/MAX" badge the inbox row uses, so an admin scrolling
     // through the chain can see how many times the background scheduler
@@ -649,7 +660,7 @@ interface DocsFeedbackComment {
 async function loadDocsFeedbackComment(
   id: number,
 ): Promise<DocsFeedbackComment | null> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<DocsFeedbackComment>(
     `SELECT id, article_slug, comment, reply_email FROM docs_feedback WHERE id = $1`,
     [id],
@@ -676,7 +687,7 @@ async function deliverDocsFeedbackReply(input: {
   if (!comment.reply_email) {
     throw new Error('comment has no reply_email');
   }
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   // Visible unsubscribe footer derived from the recipient address. The
   // shared renderer accepts an optional footer so the background
   // DocsFeedbackReplyRetryScheduler can produce a byte-identical email
@@ -921,7 +932,7 @@ router.post(
       return;
     }
 
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     let lastReply: {
       id: number;
       subject: string;
@@ -1051,7 +1062,7 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
   }
   const hardBounceOnly = replyStateParam === 'hard_bounce';
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const params: unknown[] = [];
     const whereParts: string[] = [];
     if (status && status !== 'all') {
@@ -1152,7 +1163,7 @@ router.get('/support/tickets', requireAuth, requirePlatformAdmin, async (req, re
 
 router.get('/support/tickets/stats', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     // Initial-send failures live on support_tickets.email_error. Outbound
     // reply failures live on support_ticket_replies.email_error and are
     // counted separately so the admin banner can call them out.
@@ -1258,7 +1269,7 @@ router.get(
       500,
     );
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       const candidatesRes = await pool.query<{
         reply_id: number;
         ticket_id: string;
@@ -1463,7 +1474,7 @@ router.get(
   requirePlatformAdmin,
   async (_req, res) => {
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       const r = await pool.query<{
         total: number;
         last_7d: number;
@@ -1520,7 +1531,7 @@ router.get(
     const RESUBSCRIBE_WINDOW_DAYS = 30;
     const RESUBSCRIBE_LIMIT = 200;
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       // Three cheap reads in parallel: the unsubscribe slice, the
       // unsubscribe count for the "showing N of M" banner, and the
       // 30-day window of resubscribes. We don't need a separate count
@@ -1614,7 +1625,7 @@ router.delete(
       return;
     }
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       const r = await pool.query<{ email_lower: string }>(
         `DELETE FROM support_recipient_bounce_alerts
          WHERE email_lower = $1
@@ -1785,7 +1796,7 @@ router.patch('/support/tickets/:id/status', requireAuth, requirePlatformAdmin, a
     return;
   }
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const before = await pool.query<{ status: string }>(
       `SELECT status FROM support_tickets WHERE id = $1`,
       [id],
@@ -1872,7 +1883,7 @@ router.post(
 
 router.get('/docs/feedback/alerts', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query(
       `SELECT article_slug, last_alerted_at, last_total_votes, last_not_helpful_count,
               last_helpful_ratio, last_reason, alert_count
@@ -1889,7 +1900,7 @@ router.get('/docs/feedback/alerts', requireAuth, requirePlatformAdmin, async (_r
 // ----- Platform admin: configurable routing (global config; not tenant-scoped) -----
 router.get('/support/routing', requireAuth, requirePlatformAdmin, async (_req, res) => {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query(
       `SELECT id, plan, topic, destination, priority, notes, updated_at
        FROM support_routing ORDER BY priority DESC, plan, topic`,
@@ -1908,7 +1919,7 @@ router.put('/support/routing/:id', requireAuth, requirePlatformAdmin, async (req
     return;
   }
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query(
       `UPDATE support_routing
        SET destination = $2, priority = COALESCE($3, priority), notes = COALESCE($4, notes), updated_at = NOW()
@@ -1932,7 +1943,7 @@ router.post('/support/routing', requireAuth, requirePlatformAdmin, async (req, r
     return;
   }
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query(
       `INSERT INTO support_routing (plan, topic, destination, priority, notes)
        VALUES ($1,$2,$3,$4,$5)
@@ -1951,7 +1962,7 @@ router.post('/support/routing', requireAuth, requirePlatformAdmin, async (req, r
 router.get('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, async (req, res) => {
   const { id } = req.params;
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query<{
       id: number;
       ticket_id: string;
@@ -2030,7 +2041,7 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
     status: string;
   };
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query<typeof ticket>(
       `SELECT id, user_email, topic, inbound_token, status FROM support_tickets WHERE id = $1 LIMIT 1`,
       [id],
@@ -2055,7 +2066,7 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
   if (!token) {
     token = generateInboundToken();
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       await pool.query(`UPDATE support_tickets SET inbound_token = $2 WHERE id = $1`, [id, token]);
     } catch { /* non-fatal */ }
   }
@@ -2129,7 +2140,7 @@ router.post('/support/tickets/:id/replies', requireAuth, requirePlatformAdmin, a
 
   let replyRow: unknown = null;
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const ins = await pool.query(
       `INSERT INTO support_ticket_replies
          (ticket_id, direction, author_user_id, author_email, body,
@@ -2216,7 +2227,7 @@ router.post(
       return;
     }
 
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
 
     // Load the reply and verify it belongs to this ticket and is a previously
     // failed outbound message. We never re-send already-Sent replies (that would
@@ -2586,7 +2597,7 @@ router.post(
       return;
     }
 
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
 
     let reply: {
       id: number;
@@ -3010,7 +3021,7 @@ router.post('/support/inbound', async (req, res) => {
   const tokenMatch = to.match(/support\+([a-f0-9]{12,64})@/i);
   if (tokenMatch) {
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       const r = await pool.query<{ id: string }>(
         `SELECT id FROM support_tickets WHERE inbound_token = $1 LIMIT 1`,
         [tokenMatch[1].toLowerCase()],
@@ -3022,7 +3033,7 @@ router.post('/support/inbound', async (req, res) => {
     const subjMatch = subject.match(/\((tkt_[A-Za-z0-9]+)\)/i);
     if (subjMatch) {
       try {
-        const pool = getPlatformPool();
+        const pool = getPrivilegedPool();
         // Match case-insensitively so users replying from email clients that
         // normalize the subject still thread back to the same ticket.
         const r = await pool.query<{ id: string }>(
@@ -3045,7 +3056,7 @@ router.post('/support/inbound', async (req, res) => {
   const authorEmail = (fromMatch ? fromMatch[1] : from).toLowerCase();
 
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     await pool.query(
       `INSERT INTO support_ticket_replies
          (ticket_id, direction, author_email, body, source)
@@ -3160,7 +3171,7 @@ router.post('/support/email-bounce', express.text({ type: 'text/*', limit: '2mb'
     return;
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   let processed = 0;
   let alerted = 0;
   for (const ev of events) {

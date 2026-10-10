@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../platform/db';
+import { getPrivilegedPool, withTenantContext, withPrivilegedClient } from '../platform/db';
 import { randomUUID } from 'crypto';
 
 const AGENT_NAME = 'Quality Voice Operations Agent';
@@ -15,7 +15,7 @@ async function main() {
     process.exit(1);
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {

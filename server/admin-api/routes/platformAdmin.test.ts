@@ -20,7 +20,21 @@ vi.mock('../middleware/auth', () => ({
 // requirePlatformAdmin from ../middleware/rbac stays real.
 vi.mock('../../../platform/db', () => ({
   withPrivilegedClient: async (cb: (c: unknown) => Promise<unknown>) => cb({ query: a.privQueryMock }),
-  getPlatformPool: () => ({ query: a.poolQueryMock }),
+  withTenantContext: async (_c: unknown, _t: string, fn: () => Promise<unknown>) => fn(),
+  getPlatformPool: () => ({
+    query: a.poolQueryMock,
+    connect: async () => ({
+      query: a.poolQueryMock,
+      release: () => {},
+    }),
+  }),
+  getPrivilegedPool: () => ({
+    query: a.poolQueryMock,
+    connect: async () => ({
+      query: a.poolQueryMock,
+      release: () => {},
+    }),
+  }),
 }));
 vi.mock('../../../platform/activation/ActivationService', () => ({ getAllTenantsActivationMetrics: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../../platform/analytics', () => ({ getCallAnalytics: vi.fn(), getCampaignAnalytics: vi.fn(), getCostAnalytics: vi.fn() }));

@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from 'crypto';
-import { getPlatformPool } from '../db';
+import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('API_KEY_SERVICE');
@@ -39,12 +39,25 @@ export async function generateApiKey(
   const keyPrefix = rawKey.slice(0, 12);
 
   const pool = getPlatformPool();
-  const { rows } = await pool.query(
-    `INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, scopes, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, tenant_id, name, key_prefix, scopes, last_used_at, expires_at, created_at, revoked_at`,
-    [tenantId, name, keyHash, keyPrefix, JSON.stringify(scopes), expiresAt],
-  );
+  const client = await pool.connect();
+  let rows: Record<string, unknown>[];
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const inserted = await client.query(
+      `INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, scopes, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, tenant_id, name, key_prefix, scopes, last_used_at, expires_at, created_at, revoked_at`,
+      [tenantId, name, keyHash, keyPrefix, JSON.stringify(scopes), expiresAt],
+    );
+    rows = inserted.rows;
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 
   const row = rows[0];
   logger.info('API key generated', { tenantId, keyId: row.id as string, name });
@@ -69,64 +82,61 @@ export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | 
   if (!rawKey.startsWith(KEY_PREFIX)) return null;
 
   const keyHash = hashKey(rawKey);
-  const pool = getPlatformPool();
-  const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL row_security = off');
+    return await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, tenant_id, scopes, expires_at, revoked_at
+         FROM api_keys
+         WHERE key_hash = $1`,
+        [keyHash],
+      );
 
-    const { rows } = await client.query(
-      `SELECT id, tenant_id, scopes, expires_at, revoked_at
-       FROM api_keys
-       WHERE key_hash = $1`,
-      [keyHash],
-    );
+      if (rows.length === 0) return null;
 
-    if (rows.length === 0) {
-      await client.query('COMMIT');
-      return null;
-    }
+      const row = rows[0];
+      if (row.revoked_at) return null;
+      if (row.expires_at && new Date(row.expires_at as string) < new Date()) return null;
 
-    const row = rows[0];
-    if (row.revoked_at) {
-      await client.query('COMMIT');
-      return null;
-    }
-    if (row.expires_at && new Date(row.expires_at as string) < new Date()) {
-      await client.query('COMMIT');
-      return null;
-    }
+      await client.query(
+        `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
+        [row.id],
+      );
 
-    await client.query(
-      `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
-      [row.id],
-    );
-    await client.query('COMMIT');
-
-    return {
-      tenantId: row.tenant_id as string,
-      keyId: row.id as string,
-      scopes: row.scopes as string[],
-    };
+      return {
+        tenantId: row.tenant_id as string,
+        keyId: row.id as string,
+        scopes: row.scopes as string[],
+      };
+    });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to validate API key', { error: String(err) });
     return null;
-  } finally {
-    client.release();
   }
 }
 
 export async function listApiKeys(tenantId: string): Promise<ApiKeyRecord[]> {
   const pool = getPlatformPool();
-  const { rows } = await pool.query(
-    `SELECT id, tenant_id, name, key_prefix, scopes, last_used_at, expires_at, created_at, revoked_at
-     FROM api_keys
-     WHERE tenant_id = $1 AND revoked_at IS NULL
-     ORDER BY created_at DESC`,
-    [tenantId],
-  );
+  const client = await pool.connect();
+  let rows: Record<string, unknown>[];
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const listed = await client.query(
+      `SELECT id, tenant_id, name, key_prefix, scopes, last_used_at, expires_at, created_at, revoked_at
+       FROM api_keys
+       WHERE tenant_id = $1 AND revoked_at IS NULL
+       ORDER BY created_at DESC`,
+      [tenantId],
+    );
+    rows = listed.rows;
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 
   return rows.map((row) => ({
     id: row.id as string,
@@ -143,10 +153,23 @@ export async function listApiKeys(tenantId: string): Promise<ApiKeyRecord[]> {
 
 export async function revokeApiKey(tenantId: string, keyId: string): Promise<boolean> {
   const pool = getPlatformPool();
-  const { rowCount } = await pool.query(
-    `UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
-    [keyId, tenantId],
-  );
+  const client = await pool.connect();
+  let rowCount: number | null | undefined;
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const updated = await client.query(
+      `UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
+      [keyId, tenantId],
+    );
+    rowCount = updated.rowCount;
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
   if (rowCount && rowCount > 0) {
     logger.info('API key revoked', { tenantId, keyId });
     return true;

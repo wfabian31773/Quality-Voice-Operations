@@ -24,6 +24,7 @@ vi.mock('../middleware/auth', () => ({
 vi.mock('../middleware/security', () => ({ authCookieOptions: () => ({ httpOnly: true }) }));
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ connect: async () => ({ query: a.clientQueryMock, release: a.releaseMock }), query: a.poolQueryMock }),
+  getPrivilegedPool: () => ({ connect: async () => ({ query: a.clientQueryMock, release: a.releaseMock }), query: a.poolQueryMock }),
 }));
 vi.mock('bcryptjs', () => ({ default: { compare: a.bcryptCompareMock, hash: vi.fn().mockResolvedValue('hashed') } }));
 vi.mock('../../../platform/billing/stripe/client', () => ({ getStripeClient: vi.fn() }));

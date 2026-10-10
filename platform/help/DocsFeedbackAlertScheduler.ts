@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { postToOpsSlackWebhook } from '../messaging/SlackWebhookNotifier';
 
@@ -28,7 +28,7 @@ export interface UnderperformingArticle {
 }
 
 export async function findUnderperformingArticles(): Promise<UnderperformingArticle[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{
     article_slug: string;
     total_votes: number;
@@ -70,7 +70,7 @@ export async function findUnderperformingArticles(): Promise<UnderperformingArti
 
 async function getRecentlyAlertedSlugs(slugs: string[]): Promise<Set<string>> {
   if (slugs.length === 0) return new Set();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{ article_slug: string }>(
     `SELECT article_slug FROM docs_feedback_alerts
      WHERE article_slug = ANY($1::varchar[])
@@ -81,7 +81,7 @@ async function getRecentlyAlertedSlugs(slugs: string[]): Promise<Set<string>> {
 }
 
 async function recordAlert(article: UnderperformingArticle): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(
     `INSERT INTO docs_feedback_alerts (
        article_slug, last_alerted_at, last_total_votes, last_not_helpful_count,
@@ -106,7 +106,7 @@ async function recordAlert(article: UnderperformingArticle): Promise<void> {
 }
 
 async function getPlatformAdminEmails(): Promise<string[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const r = await pool.query<{ email: string }>(
       `SELECT email FROM users
@@ -209,7 +209,7 @@ export interface PendingReplyComment {
 }
 
 export async function findPendingReplyComments(): Promise<PendingReplyComment[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{
     id: number;
     article_slug: string;
@@ -252,7 +252,7 @@ export async function findPendingReplyComments(): Promise<PendingReplyComment[]>
 
 async function markPendingReplyAlerted(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(
     `UPDATE docs_feedback
      SET pending_reply_alerted_at = NOW()

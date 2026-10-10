@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../db';
+import { withTenantClient } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('GIN_GOVERNANCE');
@@ -21,11 +21,13 @@ export interface PolicyAcceptanceRecord {
 }
 
 export async function getGinParticipation(tenantId: string): Promise<GinParticipationSettings> {
-  const pool = getPlatformPool();
-  const { rows } = await pool.query(
-    `SELECT gin_participation, gin_opted_in_at, gin_data_usage_accepted FROM tenants WHERE id = $1`,
-    [tenantId],
-  );
+  const rows = await withTenantClient(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT gin_participation, gin_opted_in_at, gin_data_usage_accepted FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    return result.rows;
+  });
 
   if (rows.length === 0) {
     return { ginParticipation: false, ginOptedInAt: null, ginDataUsageAccepted: false };
@@ -44,17 +46,12 @@ export async function updateGinParticipation(
   acceptDataUsage: boolean,
   userId?: string,
 ): Promise<GinParticipationSettings> {
-  const pool = getPlatformPool();
-
   if (participate && !acceptDataUsage) {
     throw new Error('Data usage policy must be accepted to participate in GIN');
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows } = await client.query(
+  const rows = await withTenantClient(tenantId, async (client) => {
+    const updated = await client.query(
       `UPDATE tenants SET
          gin_participation = $2,
          gin_opted_in_at = ${participate ? 'NOW()' : 'gin_opted_in_at'},
@@ -65,8 +62,7 @@ export async function updateGinParticipation(
       [tenantId, participate, acceptDataUsage],
     );
 
-    if (rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (updated.rows.length === 0) {
       throw new Error('Tenant not found');
     }
 
@@ -76,35 +72,32 @@ export async function updateGinParticipation(
       [tenantId, participate ? 'opt_in' : 'opt_out', CURRENT_POLICY_VERSION, userId || null],
     );
 
-    await client.query('COMMIT');
+    return updated.rows;
+  });
 
-    logger.info('GIN participation updated', { tenantId, participate, acceptDataUsage, policyVersion: CURRENT_POLICY_VERSION });
+  logger.info('GIN participation updated', { tenantId, participate, acceptDataUsage, policyVersion: CURRENT_POLICY_VERSION });
 
-    return {
-      ginParticipation: rows[0].gin_participation as boolean,
-      ginOptedInAt: rows[0].gin_opted_in_at ? String(rows[0].gin_opted_in_at) : null,
-      ginDataUsageAccepted: rows[0].gin_data_usage_accepted as boolean,
-    };
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+  return {
+    ginParticipation: rows[0].gin_participation as boolean,
+    ginOptedInAt: rows[0].gin_opted_in_at ? String(rows[0].gin_opted_in_at) : null,
+    ginDataUsageAccepted: rows[0].gin_data_usage_accepted as boolean,
+  };
 }
 
 export async function getPolicyAcceptanceHistory(
   tenantId: string,
   limit = 20,
 ): Promise<PolicyAcceptanceRecord[]> {
-  const pool = getPlatformPool();
-  const { rows } = await pool.query(
-    `SELECT * FROM gin_policy_acceptance_records
-     WHERE tenant_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [tenantId, limit],
-  );
+  const rows = await withTenantClient(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT * FROM gin_policy_acceptance_records
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [tenantId, limit],
+    );
+    return result.rows;
+  });
 
   return rows.map(r => ({
     id: r.id as string,

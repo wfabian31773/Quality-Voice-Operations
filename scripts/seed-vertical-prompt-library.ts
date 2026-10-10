@@ -1,9 +1,12 @@
 import { Pool } from 'pg';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.DATABASE_URL_PRIVILEGED ?? process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   console.error('DATABASE_URL is required');
   process.exit(1);
+}
+if (!process.env.DATABASE_URL_PRIVILEGED) {
+  console.warn('[SEED] DATABASE_URL_PRIVILEGED is not set — using DATABASE_URL.');
 }
 
 const pool = new Pool({ connectionString: DATABASE_URL });

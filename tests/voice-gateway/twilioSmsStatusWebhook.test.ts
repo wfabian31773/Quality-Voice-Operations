@@ -34,7 +34,13 @@ const queryMock = vi.fn();
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
-  withPrivilegedClient: vi.fn(),
+  getPrivilegedPool: () => ({ query: queryMock }),
+  withPrivilegedClient: vi.fn(async (fn: (c: { query: typeof queryMock }) => Promise<unknown>) =>
+    fn({ query: queryMock }),
+  ),
+  withTenantClient: vi.fn(async (_tenantId: string, fn: (c: { query: typeof queryMock }) => Promise<unknown>) =>
+    fn({ query: queryMock }),
+  ),
 }));
 
 vi.mock('../../platform/core/logger', () => ({

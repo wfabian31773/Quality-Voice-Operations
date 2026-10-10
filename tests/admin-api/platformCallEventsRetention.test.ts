@@ -24,6 +24,7 @@ const mockPool: MockPool = { query: vi.fn() };
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => mockPool,
+  getPrivilegedPool: () => mockPool,
 }));
 
 vi.mock('../../platform/core/logger', () => ({

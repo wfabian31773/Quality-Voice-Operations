@@ -43,6 +43,8 @@ vi.mock('../middleware/twilioSignature', () => ({
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ query: m.poolQueryMock }),
   withPrivilegedClient: m.withPrivilegedClientMock,
+  withTenantClient: async (_tenantId: string, fn: (c: { query: typeof m.poolQueryMock }) => Promise<unknown>) =>
+    fn({ query: m.poolQueryMock }),
 }));
 vi.mock('../services/numberLookup', () => ({
   lookupByPhoneNumber: m.lookupByPhoneNumberMock,

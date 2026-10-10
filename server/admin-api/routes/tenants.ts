@@ -93,7 +93,7 @@ router.post('/tenants/me/verify-checkout', requireAuth, async (req, res) => {
     let tenantStatus: string;
     try {
       await client.query('BEGIN');
-      await client.query(`SET LOCAL row_security = off`);
+      await withTenantContext(client, tenantId, async () => {});
       const { rows } = await client.query(`SELECT status FROM tenants WHERE id = $1`, [tenantId]);
       await client.query('COMMIT');
       tenantStatus = (rows[0]?.status as string) ?? 'unknown';
@@ -123,7 +123,7 @@ router.post('/tenants/me/verify-checkout', requireAuth, async (req, res) => {
     const subClient = await pool.connect();
     try {
       await subClient.query('BEGIN');
-      await subClient.query(`SET LOCAL row_security = off`);
+      await withTenantContext(subClient, tenantId, async () => {});
       await subClient.query(
         `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
            monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled)

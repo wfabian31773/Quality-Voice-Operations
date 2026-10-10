@@ -56,6 +56,7 @@ const {
 
 vi.mock('../../db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 vi.mock('../../email', () => ({

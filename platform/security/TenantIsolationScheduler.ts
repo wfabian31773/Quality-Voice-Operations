@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email';
 import { fanoutInAppNotification } from '../notifications/NotificationPreferences';
@@ -9,6 +9,7 @@ import {
   type RunAllIsolationTestsResult,
   pickActiveTenantForIsolationTest,
   runAllIsolationTests,
+  verifyConnectedRoleDoesNotBypassRls,
   verifyRLSEnabled,
 } from './TenantIsolationService';
 
@@ -48,7 +49,7 @@ function appBaseUrl(): string {
 }
 
 async function getPlatformAdminEmails(): Promise<string[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query<{ email: string }>(
       `SELECT email FROM users
@@ -72,7 +73,7 @@ interface PlatformAdminUser {
 }
 
 async function getPlatformAdminUsers(): Promise<PlatformAdminUser[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query<PlatformAdminUser>(
       `SELECT id, tenant_id, email FROM users
@@ -296,13 +297,16 @@ export async function runTenantIsolationScheduledCycle(): Promise<IsolationSched
       // No active tenant — still run the RLS-enabled checks so we get a
       // signal even before the first customer onboards. Skip the cross-
       // tenant suite (it requires a tenant context).
-      logger.info('No active tenant available; running RLS-enabled checks only');
-      const rlsResults = await verifyRLSEnabled();
+      logger.info('No active tenant available; running RLS-enabled and role checks only');
+      const rlsResults = [
+        await verifyConnectedRoleDoesNotBypassRls(),
+        ...(await verifyRLSEnabled()),
+      ];
       const passed = rlsResults.filter((r) => r.passed).length;
       const failed = rlsResults.filter((r) => !r.passed).length;
       const runId = randomUUID();
 
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
       for (const result of rlsResults) {
         try {
           await pool.query(

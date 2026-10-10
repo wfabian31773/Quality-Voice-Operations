@@ -37,7 +37,7 @@
  */
 
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { getRetryCooldownSeconds } from './docsFeedbackRetryLimiter';
 import { getSupportReplyRetryCooldownSeconds } from './supportReplyRetryLimiter';
 
@@ -80,7 +80,7 @@ export async function runRetryAttemptsCleanupCycle(
 
   let deleted = 0;
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     // The `retry_attempts_last_attempt_at_idx` index added by
     // migration 071 makes this DELETE cheap — Postgres can use the index
     // to find expired rows without scanning the whole table.

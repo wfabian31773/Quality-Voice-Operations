@@ -15,7 +15,7 @@
  * lifecycle. See StripePriceVerificationScheduler.ts.
  */
 
-import { getPlatformPool, withPrivilegedClient } from '../db';
+import { getPrivilegedPool, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 import { getStripeClient } from './stripe/client';
 import {

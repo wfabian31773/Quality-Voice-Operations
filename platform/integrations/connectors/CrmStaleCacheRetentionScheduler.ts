@@ -18,7 +18,7 @@
  */
 
 import { createLogger } from '../../core/logger';
-import { getPlatformPool } from '../../db';
+import { getPrivilegedPool } from '../../db';
 
 const logger = createLogger('CRM_STALE_CACHE_RETENTION');
 
@@ -58,7 +58,7 @@ export async function runCrmStaleCacheRetentionCycle(
 
   let deleted = 0;
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const r = await pool.query(
       `DELETE FROM crm_stale_cache_scrubs
         WHERE occurred_at < NOW() - make_interval(days => $1::int)`,

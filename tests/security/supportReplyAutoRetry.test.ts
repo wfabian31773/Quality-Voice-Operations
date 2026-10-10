@@ -110,6 +110,7 @@ vi.mock('../../platform/db', () => {
   return {
     __queryMock: queryMock,
     getPlatformPool: () => ({ query: wrappedQuery }),
+    getPrivilegedPool: () => ({ query: wrappedQuery }),
   };
 });
 

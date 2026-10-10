@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { createLogger } from '../core/logger';
 import { WorkforceOptimizationEngine } from './WorkforceOptimizationEngine';
 import { WorkforceRevenueService } from './WorkforceRevenueService';
@@ -15,7 +15,7 @@ const OPTIMIZATION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const REVENUE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 async function getActiveTenantTeams(): Promise<Array<{ tenantId: string; teamId: string }>> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query(
     `SELECT DISTINCT t.tenant_id, t.id as team_id
      FROM workforce_teams t

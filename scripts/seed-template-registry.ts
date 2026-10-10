@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { getPlatformPool } from '../platform/db';
+import { getPrivilegedPool } from '../platform/db';
 
 interface ManifestData {
   slug: string;
@@ -53,7 +53,7 @@ const CATEGORIES: Record<string, { displayName: string; description: string; ico
 };
 
 async function seedTemplateRegistry(): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {

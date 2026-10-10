@@ -35,6 +35,7 @@ const { queryMock, fireDispatchPushMock, dispatchEventMock, enqueueGeocodeMock }
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
   withTenantContext: vi.fn(async () => {}),
   withPrivilegedClient: vi.fn(),
 }));

@@ -340,17 +340,22 @@ async function main(): Promise<void> {
   let url: string;
   let sslConfig: { rejectUnauthorized: boolean } | false = false;
 
-  if (env === 'development') {
+  if (process.env.DATABASE_URL_PRIVILEGED) {
+    url = process.env.DATABASE_URL_PRIVILEGED;
+    if (env !== 'development') sslConfig = { rejectUnauthorized: false };
+  } else if (env === 'development') {
     url = process.env.DATABASE_URL ?? '';
     if (!url) {
       throw new Error('[BACKFILL] DATABASE_URL is not set for development.');
     }
+    console.warn('[BACKFILL] DATABASE_URL_PRIVILEGED is not set — using DATABASE_URL.');
   } else {
     url = process.env.PLATFORM_DB_POOL_URL ?? '';
     if (!url) {
       throw new Error('[BACKFILL] PLATFORM_DB_POOL_URL is not set for production/staging.');
     }
     sslConfig = { rejectUnauthorized: false };
+    console.warn('[BACKFILL] DATABASE_URL_PRIVILEGED is not set — using PLATFORM_DB_POOL_URL.');
   }
 
   console.log(

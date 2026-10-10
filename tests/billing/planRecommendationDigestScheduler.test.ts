@@ -29,6 +29,12 @@ vi.mock('../../platform/db', async () => {
         release: tenantClientReleaseMock,
       }),
     }),
+    getPrivilegedPool: () => ({
+      connect: async () => ({
+        query: tenantClientQueryMock,
+        release: tenantClientReleaseMock,
+      }),
+    }),
   };
 });
 

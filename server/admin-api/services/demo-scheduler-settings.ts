@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
-import { getPlatformPool } from '../../../platform/db';
+import { getPrivilegedPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 
 const logger = createLogger('DEMO_SCHEDULER_SETTINGS');
@@ -130,7 +130,7 @@ export function resolveEnvFallbackConfig(): DemoSchedulerPublicConfig {
 
 export async function getDemoSchedulerSettings(): Promise<DemoSchedulerSettings> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const { rows } = await pool.query<{ value: unknown }>(
       `SELECT value FROM platform_settings WHERE key = $1`,
       [SETTINGS_KEY],
@@ -280,7 +280,7 @@ export async function setDemoSchedulerSettings(
     }
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(
     `INSERT INTO platform_settings (key, value, updated_by)
      VALUES ($1, $2::jsonb, $3)

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
-import { withPrivilegedClient, getPlatformPool } from '../../../platform/db';
+import { withPrivilegedClient, getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { getAllTenantsActivationMetrics } from '../../../platform/activation/ActivationService';
 import {
@@ -1392,9 +1392,12 @@ router.post('/platform/sales-alert-settings/test', requireAuth, requirePlatformA
 router.get('/platform/notifications', requireAuth, async (req, res) => {
   const { tenantId, userId } = req.user!;
   const pool = getPlatformPool();
+  const client = await pool.connect();
 
   try {
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const { rows } = await client.query(
       `SELECT id, type, title, message, metadata, read, created_at
        FROM tenant_notifications
        WHERE tenant_id = $1 AND (user_id IS NULL OR user_id = $2)
@@ -1402,11 +1405,15 @@ router.get('/platform/notifications', requireAuth, async (req, res) => {
        LIMIT 50`,
       [tenantId, userId],
     );
+    await client.query('COMMIT');
 
     return res.json({ notifications: rows });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to get notifications', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to get notifications' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1414,18 +1421,25 @@ router.patch('/platform/notifications/:id/read', requireAuth, async (req, res) =
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
   const pool = getPlatformPool();
+  const client = await pool.connect();
 
   try {
-    await pool.query(
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    await client.query(
       `UPDATE tenant_notifications
           SET read = TRUE
         WHERE id = $1 AND tenant_id = $2 AND (user_id IS NULL OR user_id = $3)`,
       [id, tenantId, userId],
     );
+    await client.query('COMMIT');
     return res.json({ success: true });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to mark notification read', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update notification' });
+  } finally {
+    client.release();
   }
 });
 

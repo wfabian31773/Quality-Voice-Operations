@@ -66,6 +66,7 @@ function buildPlatformDbMock(behavior: DbBehavior) {
     poolQuery,
     connect,
     getPlatformPool: () => ({ connect, query: poolQuery }),
+    getPrivilegedPool: () => ({ connect, query: poolQuery }),
     withTenantContext: vi.fn(async () => {}),
     withPrivilegedClient: vi.fn(async (fn: (c: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
       const privClient = {
@@ -81,6 +82,7 @@ async function loadAuthModule(behavior: DbBehavior) {
   vi.resetModules();
   vi.doMock('../../platform/db', () => ({
     getPlatformPool: dbMock.getPlatformPool,
+    getPrivilegedPool: dbMock.getPrivilegedPool,
     withTenantContext: dbMock.withTenantContext,
     withPrivilegedClient: dbMock.withPrivilegedClient,
   }));

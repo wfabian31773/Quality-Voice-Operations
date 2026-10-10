@@ -23,7 +23,7 @@
  */
 
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 
 const logger = createLogger('CALL_EVENTS_RETENTION');
 
@@ -39,7 +39,7 @@ export interface CallEventsRetentionResult {
 export async function runCallEventsRetentionCycle(
   retainDays: number = DEFAULT_RETENTION_DAYS,
 ): Promise<CallEventsRetentionResult> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const ensured: string[] = [];
   const startedAt = new Date();
 
@@ -127,7 +127,7 @@ interface RecordRetentionRunInput {
 }
 
 async function recordRetentionRun(input: RecordRetentionRunInput): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     await pool.query(
       `INSERT INTO call_events_retention_runs

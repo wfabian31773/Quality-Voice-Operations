@@ -31,6 +31,7 @@ const fireDispatchPushMock = vi.fn();
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
   withPrivilegedClient: vi.fn(),
 }));
 

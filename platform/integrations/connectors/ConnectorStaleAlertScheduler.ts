@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../../db';
+import { getPrivilegedPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import { sendEmail } from '../../email';
 import { postToOpsSlackWebhook } from '../../messaging/SlackWebhookNotifier';
@@ -223,7 +223,7 @@ export function decideStaleAlerts(
 }
 
 async function loadAlertLedger(): Promise<StaleAlertLedgerRow[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query<StaleAlertLedgerRow>(
     `SELECT tenant_id, integration_id, last_alerted_at, resolved_at, alert_count
        FROM connector_stale_alerts`,
@@ -233,7 +233,7 @@ async function loadAlertLedger(): Promise<StaleAlertLedgerRow[]> {
 
 async function stampAlerted(entries: StaleConnectorEntry[]): Promise<void> {
   if (entries.length === 0) return;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   // One row per entry rather than a single bulk INSERT … VALUES (…) so the
   // dedup logic stays trivially correct: each upsert recomputes
   // `alert_count + 1` against its own existing row, and a single failure
@@ -267,7 +267,7 @@ async function stampResolved(
   recovered: Array<{ tenantId: string; integrationId: string }>,
 ): Promise<void> {
   if (recovered.length === 0) return;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   for (const r of recovered) {
     try {
       await pool.query(
@@ -289,7 +289,7 @@ async function stampResolved(
 }
 
 async function getPlatformAdminEmails(): Promise<string[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query<{ email: string }>(
       `SELECT email FROM users

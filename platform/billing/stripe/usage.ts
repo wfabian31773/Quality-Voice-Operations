@@ -1,5 +1,5 @@
 import { getStripeClient } from './client';
-import { getPlatformPool } from '../../db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('STRIPE_USAGE');
@@ -18,9 +18,14 @@ function getLastCompletedHourBucket(): { periodStart: Date; periodEnd: Date } {
 export async function reportUsageForTenant(tenantId: string): Promise<void> {
   const pool = getPlatformPool();
   const client = await pool.connect();
+  const { periodStart, periodEnd } = getLastCompletedHourBucket();
+  let customerId: string | null = null;
+  let totalAiMinutes = 0;
+  let totalCalls = 0;
 
   try {
-    const { periodStart, periodEnd } = getLastCompletedHourBucket();
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
 
     const { rows: subRows } = await client.query(
       `SELECT stripe_customer_id, stripe_subscription_id, plan FROM subscriptions
@@ -28,25 +33,33 @@ export async function reportUsageForTenant(tenantId: string): Promise<void> {
       [tenantId],
     );
 
-    if (subRows.length === 0) return;
+    if (subRows.length > 0) {
+      customerId = subRows[0].stripe_customer_id as string | null;
+      const { rows: usageRows } = await client.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN quantity ELSE 0 END), 0) AS total_ai_minutes,
+           COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN quantity ELSE 0 END), 0) AS total_calls
+         FROM usage_metrics
+         WHERE tenant_id = $1
+           AND period_start >= $2 AND period_end <= $3`,
+        [tenantId, periodStart.toISOString(), periodEnd.toISOString()],
+      );
+      totalAiMinutes = parseInt(usageRows[0]?.total_ai_minutes ?? '0', 10);
+      totalCalls = parseInt(usageRows[0]?.total_calls ?? '0', 10);
+    }
 
-    const customerId = subRows[0].stripe_customer_id as string | null;
-    if (!customerId) return;
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Usage reporting failed', { tenantId, error: String(err) });
+    return;
+  } finally {
+    client.release();
+  }
 
-    const { rows: usageRows } = await client.query(
-      `SELECT
-         COALESCE(SUM(CASE WHEN metric_type = 'ai_minutes' THEN quantity ELSE 0 END), 0) AS total_ai_minutes,
-         COALESCE(SUM(CASE WHEN metric_type IN ('calls_inbound', 'calls_outbound') THEN quantity ELSE 0 END), 0) AS total_calls
-       FROM usage_metrics
-       WHERE tenant_id = $1
-         AND period_start >= $2 AND period_end <= $3`,
-      [tenantId, periodStart.toISOString(), periodEnd.toISOString()],
-    );
+  if (!customerId || (totalAiMinutes <= 0 && totalCalls <= 0)) return;
 
-    const totalAiMinutes = parseInt(usageRows[0]?.total_ai_minutes ?? '0', 10);
-    const totalCalls = parseInt(usageRows[0]?.total_calls ?? '0', 10);
-    if (totalAiMinutes <= 0 && totalCalls <= 0) return;
-
+  try {
     const stripe = getStripeClient();
     const hourKey = periodStart.toISOString();
     const timestamp = Math.floor(periodEnd.getTime() / 1000);
@@ -87,13 +100,11 @@ export async function reportUsageForTenant(tenantId: string): Promise<void> {
     });
   } catch (err) {
     logger.error('Usage reporting failed', { tenantId, error: String(err) });
-  } finally {
-    client.release();
   }
 }
 
 export async function reportUsageForAllTenants(): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {

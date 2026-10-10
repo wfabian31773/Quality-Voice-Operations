@@ -1,4 +1,4 @@
-import { getPlatformPool, withTenantContext, withPrivilegedClient } from '../db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('GDPR');
@@ -97,7 +97,7 @@ export async function exportUserData(tenantId: string, userEmail: string): Promi
 }
 
 export async function eraseUserData(tenantId: string, userEmail: string): Promise<{ erasedFields: string[]; userId: string | null }> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
   const erasedFields: string[] = [];
 
@@ -244,7 +244,7 @@ export async function createGdprRequest(
 }
 
 export async function processGdprRequest(requestId: string, tenantId: string): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {

@@ -80,9 +80,9 @@
 
 | Component | Status | Config Source | Required Env Vars | Currently Active |
 |-----------|--------|-------------|-------------------|-----------------|
-| **PostgreSQL (Dev)** | OPERATIONAL | `DATABASE_URL` | `DATABASE_URL` | YES - 28 migrations applied |
-| **PostgreSQL (Prod)** | CONFIGURED | `PLATFORM_DB_POOL_URL` | `PLATFORM_DB_POOL_URL` | NO (dev mode) |
-| **RLS Policies** | ENFORCED | `migrations/011,013,017` | n/a | YES - 52/55 tables covered |
+| **PostgreSQL (Dev)** | OPERATIONAL | `DATABASE_URL` (restricted `qvo_app` after rollout) | `DATABASE_URL`, `DATABASE_URL_PRIVILEGED` | YES — historically connected as `postgres` (`rolbypassrls=true`) |
+| **PostgreSQL (Prod)** | CONFIGURED | `PLATFORM_DB_POOL_URL` (restricted `qvo_app` after rollout) | `PLATFORM_DB_POOL_URL`, `DATABASE_URL_PRIVILEGED` | NO (dev mode) |
+| **RLS Policies** | BYPASSED UNTIL ROLLOUT | `migrations/011,013,017,117,120` | n/a | Policies exist, but the live app role is `postgres` (`rolbypassrls=true`) so RLS is ignored. Migration `120` creates `qvo_app` (NOBYPASSRLS). Isolation suite now fails loudly if the restricted pool still bypasses RLS. |
 | **Background Workers** | | | | |
 | - Metrics Rollup | RUNNING | `platform/core/observability/metricsRollup.ts` | none | YES (1hr interval) |
 | - System Metrics | RUNNING | `platform/core/observability/systemMetrics.ts` | none | YES (60s interval) |
@@ -316,7 +316,7 @@ These tables correctly have no tenant-scoped RLS:
 
 | Security Area | Status | Details |
 |--------------|--------|---------|
-| **Tenant Data Isolation** | STRONG | PostgreSQL RLS on 52/55 tables; `withTenantContext` sets `app.tenant_id` per transaction; `WITH CHECK` prevents cross-tenant writes |
+| **Tenant Data Isolation** | BROKEN (app role bypasses RLS) | Policies on tenant-scoped tables are correct (`tenant_id = current_setting('app.tenant_id')`) and `withTenantContext` / `withTenantClient` set `SET LOCAL app.tenant_id` inside a transaction. The daily isolation suite still fails `Cross-tenant read blocked` on `agents` / `audit_logs` because the app connects as `postgres` (`rolbypassrls=true`). Migration `120` introduces `qvo_app` (LOGIN, NOBYPASSRLS) plus FORCE RLS. Default pool = `DATABASE_URL` / `PLATFORM_DB_POOL_URL` (restricted). Privileged pool = `DATABASE_URL_PRIVILEGED` (postgres) for migrations, workers, platform-admin, seeds, and pre-tenant webhooks. **Residual risk after role switch:** some tenant-scoped route handlers still call `getPlatformPool().query()` without `SET LOCAL`; those queries will return empty until wrapped in `withTenantClient`. **Do not treat isolation as ENFORCED until `DATABASE_URL` is `qvo_app` and the isolation suite passes.** |
 | **PHI Redaction** | COMPLETE | `platform/core/phi/redact.ts` -- regex-based redaction of SSNs, phone numbers, DOBs, names; applied before all logging |
 | **API Key Security** | COMPLETE | `vai_` prefix; SHA-256 hashed storage; expiration + revocation support; middleware validation |
 | **Webhook Signature Validation** | COMPLETE | Twilio: `validateRequest` on `X-Twilio-Signature`. Stripe: `constructEvent` with `STRIPE_WEBHOOK_SECRET`. Both fail-closed in production. |
@@ -386,12 +386,13 @@ Rate limiting is implemented but not uniformly applied:
 
 ### Overall Assessment: PLATFORM SUBSTANTIALLY COMPLETE
 
-The platform architecture is mature with 19/19 subsystems implemented (17 complete, 2 partially implemented). The codebase demonstrates production-grade patterns including tenant isolation via RLS, graceful shutdown, circuit breakers, PHI redaction, and structured observability.
+The platform architecture is mature with 19/19 subsystems implemented (17 complete, 2 partially implemented). Tenant isolation via RLS is **not currently enforced at runtime**: the application database role is `postgres` (`rolbypassrls=true`), so every policy is ignored. Treat this as a P0 production-block until the `qvo_app` rollout in `replit.md` / `README.md` is complete and `runAllIsolationTests` reports the connected role as NOBYPASSRLS. Other production-grade patterns (graceful shutdown, circuit breakers, PHI redaction, structured observability) remain in place.
 
 ### Priority Actions for Production Launch
 
 | Priority | Action | Effort |
 |----------|--------|--------|
+| **P0** | Roll out `qvo_app` (migration 120 + `DATABASE_URL_PRIVILEGED` + switch `DATABASE_URL` / `PLATFORM_DB_POOL_URL`). Confirm the daily isolation suite passes and the connected role is NOBYPASSRLS | Medium |
 | **P0** | Configure all Stripe environment variables and validate billing flow end-to-end | Low |
 | **P0** | Set `ADMIN_JWT_SECRET` and `CONNECTOR_ENCRYPTION_KEY` for production | Low |
 | **P0** | Configure SMTP for email delivery (invitations, password resets) | Low |

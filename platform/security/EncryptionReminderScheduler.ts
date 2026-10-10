@@ -33,7 +33,7 @@
  * write DOES log loudly but does not abort the cycle for the
  * remaining tenants.
  */
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email/EmailService';
 import { encryptionInitializationReminderEmail } from '../email/templates';
@@ -106,7 +106,7 @@ export async function findTenantsDueForReminder(
   cooldownDays: number = getCooldownDays(),
   limit: number = getMaxPerCycle(),
 ): Promise<DueReminderTenant[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query<{
     tenant_id: string;
     tenant_name: string;

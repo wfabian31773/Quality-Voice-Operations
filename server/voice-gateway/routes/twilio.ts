@@ -23,7 +23,7 @@ import {
 import type { ContactStatus, ContactOutcome } from '../../../platform/campaigns';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
 import { createRateLimitChecker } from '../../../platform/infra/rate-limit/createRateLimiter';
-import { getPlatformPool, withPrivilegedClient } from '../../../platform/db';
+import { withPrivilegedClient, withTenantClient } from '../../../platform/db';
 import { extractStirTelemetry } from '../../../platform/telephony/stirAttestation';
 import { recordTwilioCallCost } from '../../../platform/billing/cost';
 import crypto from 'crypto';
@@ -77,11 +77,12 @@ function hashIp(ip: string): string {
 
 async function incrementDemoCallCount(): Promise<void> {
   try {
-    const pool = getPlatformPool();
-    await pool.query(
-      `UPDATE tenants SET demo_call_count = COALESCE(demo_call_count, 0) + 1 WHERE id = $1`,
-      [DEMO_TENANT_ID],
-    );
+    await withTenantClient(DEMO_TENANT_ID, async (client) => {
+      await client.query(
+        `UPDATE tenants SET demo_call_count = COALESCE(demo_call_count, 0) + 1 WHERE id = $1`,
+        [DEMO_TENANT_ID],
+      );
+    });
   } catch (err) {
     logger.warn('Failed to increment demo call count', { error: String(err) });
   }
@@ -109,13 +110,14 @@ export function getTwilioAdapter(): TwilioTransferAdapter | undefined {
 
 async function resolveTenantPlan(tenantId: string): Promise<'trial' | 'starter' | 'pro' | 'enterprise'> {
   try {
-    const pool = getPlatformPool();
-    const { rows } = await pool.query(
-      `SELECT plan, status FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
-      [tenantId],
-    );
-    if (rows.length === 0 || rows[0].status === 'trialing') return 'trial';
-    return (rows[0].plan as 'starter' | 'pro' | 'enterprise') || 'starter';
+    return await withTenantClient(tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT plan, status FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        [tenantId],
+      );
+      if (rows.length === 0 || rows[0].status === 'trialing') return 'trial';
+      return (rows[0].plan as 'starter' | 'pro' | 'enterprise') || 'starter';
+    });
   } catch {
     return 'starter';
   }
@@ -123,12 +125,13 @@ async function resolveTenantPlan(tenantId: string): Promise<'trial' | 'starter' 
 
 async function checkTenantSuspended(tenantId: string): Promise<boolean> {
   try {
-    const pool = getPlatformPool();
-    const { rows } = await pool.query(
-      `SELECT status FROM tenants WHERE id = $1`,
-      [tenantId],
-    );
-    return rows.length > 0 && rows[0].status === 'suspended';
+    return await withTenantClient(tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT status FROM tenants WHERE id = $1`,
+        [tenantId],
+      );
+      return rows.length > 0 && rows[0].status === 'suspended';
+    });
   } catch {
     return false;
   }
@@ -482,11 +485,13 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
         recordDemoAnalyticsEvent(eventType, entry.ipHash, entry.agentType, callDuration).catch(() => {});
 
         try {
-          const pool = getPlatformPool();
-          const { rows } = await pool.query(
-            `SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2 LIMIT 1`,
-            [DEMO_TENANT_ID, callSid],
-          );
+          const rows = await withTenantClient(DEMO_TENANT_ID, async (client) => {
+            const result = await client.query(
+              `SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2 LIMIT 1`,
+              [DEMO_TENANT_ID, callSid],
+            );
+            return result.rows;
+          });
           if (rows.length > 0) {
             scheduleDemoDataCleanup(rows[0].id as string);
           }
@@ -575,13 +580,9 @@ router.post('/twilio/sms-status', async (req: Request, res: Response) => {
   const isTerminalFailure = messageStatus === 'undelivered' || messageStatus === 'failed';
 
   try {
-    const pool = getPlatformPool();
-    // We refuse to downgrade `delivery_status`. The SMS path writes 'sent'
-    // when Twilio accepts the request; only the terminal `delivered` /
-    // `undelivered` / `failed` callbacks promote it further. Intermediate
-    // 'queued' / 'sending' callbacks just refresh the live indicator
-    // timestamp and the verbatim Twilio status.
-    const result = await pool.query(
+    // Webhook has MessageSid, not tenant_id — privileged so RLS cannot hide
+    // the recipient row before we know which tenant it belongs to.
+    const result = await withPrivilegedClient(async (client) => client.query(
       `UPDATE connector_alert_recipients
           SET twilio_message_status = $2,
               twilio_error_code = COALESCE($3, twilio_error_code),
@@ -606,7 +607,7 @@ router.post('/twilio/sms-status', async (req: Request, res: Response) => {
         isTerminalFailure,
         errorMessage,
       ],
-    );
+    ));
 
     if ((result.rowCount ?? 0) === 0) {
       logger.debug('Twilio SMS status callback for unknown SID', {
@@ -702,11 +703,13 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
   }
 
   try {
-    const pool = (await import('../../../platform/db')).getPlatformPool();
-    const { rows: phoneRows } = await pool.query(
-      `SELECT phone_verified FROM users WHERE tenant_id = $1 AND role = 'admin' ORDER BY created_at ASC LIMIT 1`,
-      [tenantId],
-    );
+    const phoneRows = await withTenantClient(tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT phone_verified FROM users WHERE tenant_id = $1 AND role = 'admin' ORDER BY created_at ASC LIMIT 1`,
+        [tenantId],
+      );
+      return rows;
+    });
     if (phoneRows.length > 0 && !(phoneRows[0].phone_verified as boolean)) {
       logger.warn('Outbound call blocked — phone not verified', { tenantId, callSid });
       if (contactId) {

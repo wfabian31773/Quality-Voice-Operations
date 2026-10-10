@@ -29,6 +29,7 @@ const fakePool = { query: queryMock };
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => fakePool,
+  getPrivilegedPool: () => fakePool,
 }));
 
 vi.mock('../../platform/email/EmailService', () => ({

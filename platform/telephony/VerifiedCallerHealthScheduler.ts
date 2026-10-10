@@ -12,7 +12,7 @@ import {
   filterEmailRecipientsByPreference,
 } from '../notifications/NotificationPreferences';
 import { getTenantAlertEmailRecipients } from '../integrations/connectors/ConnectorAlertRecipients';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import {
   attachTrustHubRegistration,
   EXPIRING_SOON_THRESHOLD_DAYS,
@@ -99,7 +99,7 @@ function appBaseUrl(): string {
 
 async function getTenantName(tenantId: string): Promise<string | undefined> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const { rows } = await pool.query<{ name: string | null }>(
       `SELECT name FROM tenants WHERE id = $1 LIMIT 1`,
       [tenantId],
@@ -184,7 +184,7 @@ async function recordVerifiedCallerAlertRecipient(
   row: RecipientAuditRow,
 ): Promise<void> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     await pool.query(
       `INSERT INTO verified_caller_alert_recipients (
          tenant_id, caller_id, dispatch_id, health_status,

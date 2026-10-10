@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../db';
+import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('TENANT_CURRENCY');
@@ -28,7 +28,7 @@ export async function getTenantBillingCurrency(tenantId: string): Promise<string
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL row_security = off`);
+    await withTenantContext(client, tenantId, async () => {});
     const { rows } = await client.query(
       `SELECT COALESCE(billing_currency, 'usd') AS billing_currency FROM tenants WHERE id = $1`,
       [tenantId],

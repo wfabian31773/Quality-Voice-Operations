@@ -30,6 +30,7 @@ const fakePool: FakePool = {
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => fakePool,
+  getPrivilegedPool: () => fakePool,
 }));
 
 import { runCallEventsRetentionCycle } from '../../platform/billing/CallEventsRetentionScheduler';

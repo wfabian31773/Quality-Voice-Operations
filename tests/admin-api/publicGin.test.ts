@@ -18,6 +18,7 @@ const queryMock = vi.fn();
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 vi.mock('../../platform/infra/rate-limit/createRateLimiter', () => ({

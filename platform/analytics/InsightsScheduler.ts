@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { createLogger } from '../core/logger';
 import { runInsightsAnalysis, detectAnomalies, generateWeeklyReport, measureInsightImpact } from './InsightsEngine';
 
@@ -15,7 +15,7 @@ const WEEKLY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const IMPACT_MEASUREMENT_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 async function getActiveTenantIds(): Promise<string[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query(
     `SELECT DISTINCT id FROM tenants WHERE status = 'active' LIMIT 100`,
   );

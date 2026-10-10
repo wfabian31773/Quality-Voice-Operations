@@ -9,8 +9,8 @@ interface EnvVar {
 
 const ENV_VARS: EnvVar[] = [
   { name: 'APP_ENV', required: 'always', purpose: 'Environment selector (development | staging | production)' },
-  { name: 'DATABASE_URL', required: 'development', purpose: 'Local PostgreSQL connection string (Replit)' },
-  { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Supabase transaction pooler URL (port 6543, SSL)' },
+  { name: 'DATABASE_URL', required: 'development', purpose: 'Restricted application role (qvo_app after RLS rollout) — local PostgreSQL' },
+  { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Restricted application role (qvo_app after RLS rollout) — Supabase transaction pooler URL (port 6543, SSL)' },
   { name: 'XAI_API_KEY', required: 'always', purpose: 'xAI Grok Voice Agent API key for the Master Voice Agent runtime' },
   { name: 'TWILIO_ACCOUNT_SID', required: 'always', purpose: 'Twilio account SID' },
   { name: 'TWILIO_AUTH_TOKEN', required: 'always', purpose: 'Twilio auth token' },
@@ -66,6 +66,7 @@ const ENV_VARS: EnvVar[] = [
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
+  { name: 'DATABASE_URL_PRIVILEGED', required: 'development', purpose: 'Postgres / BYPASSRLS URL for migrations, workers, platform-admin, seeds, and pre-tenant webhooks. Falls back to DATABASE_URL / PLATFORM_DB_POOL_URL with a loud warning when unset.' },
   { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
@@ -214,6 +215,12 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   if (isProd && process.env.PLATFORM_DB_POOL_URL && !process.env.PLATFORM_DB_POOL_URL.includes('6543')) {
     warnings.push('PLATFORM_DB_POOL_URL may not be using transaction pooler port 6543');
+  }
+
+  if (!process.env.DATABASE_URL_PRIVILEGED) {
+    warnings.push(
+      'DATABASE_URL_PRIVILEGED is not set — privileged jobs fall back to the default pool URL. After switching DATABASE_URL / PLATFORM_DB_POOL_URL to qvo_app this must be the postgres URL.',
+    );
   }
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {

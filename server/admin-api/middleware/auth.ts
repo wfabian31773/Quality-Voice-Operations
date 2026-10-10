@@ -199,11 +199,24 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
           if (tenantStatus === null) {
             try {
               const pool = getPlatformPool();
-              const { rows } = await pool.query(
-                `SELECT status FROM tenants WHERE id = $1`,
-                [tenantId],
-              );
-              tenantStatus = (rows[0]?.status as string) ?? 'unknown';
+              const client = await pool.connect();
+              let rows: Array<{ status: string }>;
+              try {
+                await client.query('BEGIN');
+                await withTenantContext(client, tenantId, async () => {});
+                const result = await client.query(
+                  `SELECT status FROM tenants WHERE id = $1`,
+                  [tenantId],
+                );
+                rows = result.rows as Array<{ status: string }>;
+                await client.query('COMMIT');
+              } catch (statusErr) {
+                await client.query('ROLLBACK').catch(() => {});
+                throw statusErr;
+              } finally {
+                client.release();
+              }
+              tenantStatus = rows[0]?.status ?? 'unknown';
               setCachedTenantStatus(tenantId, tenantStatus);
             } catch (checkErr) {
               const correlationId = crypto.randomUUID();

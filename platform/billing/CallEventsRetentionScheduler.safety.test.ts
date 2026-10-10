@@ -4,6 +4,7 @@ const query = vi.fn();
 
 vi.mock('../db', () => ({
   getPlatformPool: () => ({ query }),
+  getPrivilegedPool: () => ({ query }),
 }));
 
 vi.mock('../core/logger', () => ({

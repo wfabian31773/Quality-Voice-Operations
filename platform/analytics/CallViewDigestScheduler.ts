@@ -1,4 +1,4 @@
-import { getPlatformPool, withTenantContext } from '../db';
+import { getPrivilegedPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email/EmailService';
 
@@ -96,7 +96,7 @@ interface SampleRow {
 }
 
 async function evaluateView(view: SavedViewRow, sinceIso: string, untilIso: string): Promise<{ count: number; samples: SampleRow[] }> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -144,7 +144,7 @@ async function evaluateView(view: SavedViewRow, sinceIso: string, untilIso: stri
 }
 
 async function loadEnabledViews(): Promise<SavedViewRow[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows } = await pool.query<SavedViewRow>(
     `SELECT id, tenant_id, name, filters, is_shared, created_by,
             digest_enabled, digest_subscribers, digest_last_run_at
@@ -157,7 +157,7 @@ async function loadEnabledViews(): Promise<SavedViewRow[]> {
 }
 
 async function getRecipients(view: SavedViewRow): Promise<{ ownerEmail: string | null; subscribers: string[]; tenantName: string | null }> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   let ownerEmail: string | null = null;
   if (view.created_by) {
     const { rows } = await pool.query<{ email: string | null }>(
@@ -267,7 +267,7 @@ function renderDigest(view: SavedViewRow, count: number, samples: SampleRow[], t
 }
 
 async function markRan(viewId: string, count: number): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(
     `UPDATE call_saved_views
      SET digest_last_run_at = NOW(), digest_last_match_count = $2
