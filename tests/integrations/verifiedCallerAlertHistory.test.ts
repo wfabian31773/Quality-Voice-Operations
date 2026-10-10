@@ -6,6 +6,8 @@ const queryMock = vi.fn();
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
   getPrivilegedPool: () => ({ query: queryMock }),
+  withTenantClient: async (_tenantId: string, fn: (c: { query: typeof queryMock }) => Promise<unknown>) =>
+    fn({ query: queryMock }),
 }));
 
 import {

@@ -46,7 +46,7 @@ export async function generateWidgetToken(
        RETURNING *`,
       [tenantId, hash, label],
     );
-    return rows[0] as WidgetToken;
+    return rows[0] as unknown as WidgetToken;
   });
 
   logger.info('Widget token generated', { tenantId, tokenId: token.id });
@@ -77,7 +77,7 @@ export async function listWidgetTokens(tenantId: string): Promise<WidgetToken[]>
        ORDER BY created_at DESC`,
       [tenantId],
     );
-    return rows as WidgetToken[];
+    return rows as unknown as WidgetToken[];
   });
 }
 
@@ -102,7 +102,7 @@ export async function getWidgetConfig(tenantId: string): Promise<WidgetConfig | 
       `SELECT * FROM widget_configs WHERE tenant_id = $1`,
       [tenantId],
     );
-    return rows.length > 0 ? (rows[0] as WidgetConfig) : null;
+    return rows.length > 0 ? (rows[0] as unknown as WidgetConfig) : null;
   });
 }
 
@@ -167,7 +167,7 @@ export async function upsertWidgetConfig(
        RETURNING *`,
       values,
     );
-    return rows[0] as WidgetConfig;
+    return rows[0] as unknown as WidgetConfig;
   });
 }
 
@@ -189,7 +189,7 @@ export async function getPublicWidgetConfig(tenantId: string): Promise<{
        WHERE wc.tenant_id = $1 AND wc.enabled = true`,
       [tenantId],
     );
-    return rows.length > 0 ? (rows[0] as WidgetConfig & { tenant_name: string }) : null;
+    return rows.length > 0 ? (rows[0] as unknown as WidgetConfig & { tenant_name: string }) : null;
   });
 
   if (!row) return null;

@@ -66,6 +66,8 @@ const {
 vi.mock('../../db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
   getPrivilegedPool: () => ({ query: queryMock }),
+  withTenantClient: async (_tenantId: string, fn: (c: { query: typeof queryMock }) => Promise<unknown>) =>
+    fn({ query: queryMock }),
 }));
 
 vi.mock('../../email', () => ({
@@ -137,7 +139,10 @@ function setupQueries(opts: {
       rows: opts.tenantName !== undefined ? [{ name: opts.tenantName }] : [],
     }));
     queryMock.mockImplementationOnce(async () => ({
-      rows: (opts.adminEmails ?? ['admin@example.com']).map((email) => ({ email })),
+      rows: (opts.adminEmails ?? ['admin@example.com']).map((email, i) => ({
+        id: `user-${i + 1}`,
+        email,
+      })),
     }));
   }
 }

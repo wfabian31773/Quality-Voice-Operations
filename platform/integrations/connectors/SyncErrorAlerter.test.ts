@@ -57,6 +57,8 @@ const {
 vi.mock('../../db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
   getPrivilegedPool: () => ({ query: queryMock }),
+  withTenantClient: async (_tenantId: string, fn: (c: { query: typeof queryMock }) => Promise<unknown>) =>
+    fn({ query: queryMock }),
 }));
 
 vi.mock('../../email', () => ({

@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../../db';
+import { withTenantClient } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
   LEADERSHIP_RECIPIENT_WHERE_CLAUSE,
@@ -45,17 +45,12 @@ export async function getTenantAlertEmailRecipients(
   tenantId: string,
   limit: number,
 ): Promise<TenantAlertEmailRecipientSet> {
-  const pool = getPlatformPool();
   try {
     // ORDER BY makes the LIMIT subset deterministic for large admin teams.
     // DISTINCT collapses duplicates from users who hold the role via both
     // user_roles and the legacy users.role column.
-    const { rows } = await pool.query<{
-      id: string | null;
-      email: string | null;
-      first_name: string | null;
-      last_name: string | null;
-    }>(
+    const { rows } = await withTenantClient(tenantId, async (client) =>
+      client.query(
       `SELECT DISTINCT u.id, u.email, u.first_name, u.last_name, u.created_at
          FROM users u
          ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
@@ -66,7 +61,7 @@ export async function getTenantAlertEmailRecipients(
         ORDER BY u.created_at NULLS LAST, u.id
         LIMIT $2`,
       [tenantId, limit],
-    );
+    ));
     const recipients: TenantAlertEmailRecipient[] = rows
       .map((r) => ({
         id: (r.id as string | null) ?? '',
@@ -105,15 +100,9 @@ export async function getTenantAlertPhoneRecipients(
   tenantId: string,
   limit: number,
 ): Promise<TenantAlertPhoneRecipient[]> {
-  const pool = getPlatformPool();
   try {
-    const { rows } = await pool.query<{
-      id: string | null;
-      phone_number: string | null;
-      first_name: string | null;
-      last_name: string | null;
-      email: string | null;
-    }>(
+    const { rows } = await withTenantClient(tenantId, async (client) =>
+      client.query(
       `SELECT DISTINCT u.id, u.phone_number, u.first_name, u.last_name, u.email, u.created_at
          FROM users u
          ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
@@ -125,7 +114,7 @@ export async function getTenantAlertPhoneRecipients(
         ORDER BY u.created_at NULLS LAST, u.id
         LIMIT $2`,
       [tenantId, limit],
-    );
+    ));
     return rows
       .map((r) => ({
         id: (r.id as string | null) ?? '',
