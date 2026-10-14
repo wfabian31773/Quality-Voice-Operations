@@ -82,6 +82,24 @@ describe('Signup CAPTCHA gating', () => {
     });
   });
 
+  it('does not require a token when a site key exists but the server skips verification', async () => {
+    apiGet.mockResolvedValue({ captchaRequired: false, siteKey: '0xpublic-site-key' });
+    apiPost.mockResolvedValue({ token: '', checkoutUrl: '' });
+    renderSignup();
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: /start free trial/i }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(screen.queryByTestId('signup-captcha-slot')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/organization name/i), { target: { value: 'Acme' } });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password1' } });
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
+    expect((apiPost.mock.calls[0][1] as { captchaToken?: string }).captchaToken).toBeUndefined();
+  });
+
   it('resets the single-use Turnstile token after the server rejects a signup', async () => {
     let solve: (token: string) => void = () => {};
     const turnstile = {

@@ -52,6 +52,10 @@ export default function Signup() {
   const captchaRef = useRef<HTMLDivElement>(null);
   const captchaWidgetId = useRef<string | null>(null);
   const captchaUnavailable = captchaLoaded && captchaRequired && !siteKey;
+  // Only render / require the widget when the server will verify a token.
+  // With a site key but no secret (dev bypass) a production-restricted key
+  // may be unsolvable on localhost, so don't block signup on it.
+  const activeSiteKey = captchaLoaded && captchaRequired ? siteKey : '';
   const { user } = useAuth();
   const navigate = useNavigate();
   const [displayCurrency] = useDisplayCurrency();
@@ -122,7 +126,7 @@ export default function Signup() {
   useEffect(() => {
     // Wait for /auth/signup-config so a runtime site key that differs from
     // the build-time one doesn't render a second widget into the slot.
-    if (!captchaLoaded || !siteKey || !captchaRef.current) return;
+    if (!activeSiteKey || !captchaRef.current) return;
 
     const win = window as unknown as { turnstile?: TurnstileApi; onTurnstileLoad?: () => void };
     // Detect current theme from the QVO `data-theme` attribute on <html>
@@ -137,7 +141,7 @@ export default function Signup() {
     const turnstileTheme = themeAttr === 'dark' ? 'dark' : 'light';
 
     const renderOpts = {
-      sitekey: siteKey,
+      sitekey: activeSiteKey,
       theme: turnstileTheme,
       callback: (token: string) => setCaptchaToken(token),
       'expired-callback': () => setCaptchaToken(''),
@@ -181,7 +185,7 @@ export default function Signup() {
       delete win.onTurnstileLoad;
       removeWidget();
     };
-  }, [captchaLoaded, siteKey]);
+  }, [activeSiteKey]);
 
   // Turnstile tokens are single-use: once the server has verified one, a
   // rejected signup (e.g. 409 email already exists) must not resubmit it.
@@ -215,7 +219,7 @@ export default function Signup() {
       return;
     }
 
-    if (siteKey && !captchaToken) {
+    if (activeSiteKey && !captchaToken) {
       setError(t('auth.captcha_failed'));
       return;
     }
@@ -491,7 +495,7 @@ export default function Signup() {
                   </div>
                 )}
 
-                {siteKey && (
+                {activeSiteKey && (
                   <div className="flex justify-center">
                     {/* Container has min-height so the captcha slot is
                         visible even before Turnstile finishes loading,
