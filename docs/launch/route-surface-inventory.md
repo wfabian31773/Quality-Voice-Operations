@@ -47,7 +47,6 @@ Tenant role names such as `tenant_owner`, `tenant_admin`, `operations_manager`, 
 | `/docs`, `/docs/:slug` | Public before package | Hidden/deferred | Standard public `*` not-found | Self-service developer/product docs; source retained |
 | `/resources`, `/resources/:slug` | Public before package | Hidden/deferred | Standard public `*` not-found | Current guides advertise self-service Agent Builder, integrations, and campaigns; source retained |
 | `/blog`, `/blog/:slug` | Public before package | Hidden/deferred | Standard public `*` not-found | Broad generic voice-agent positioning; source retained |
-| `/signup` | Public before package | Hidden/deferred | Standard public `*` not-found | Managed setup replaces self-service signup; source retained |
 | `/industries/vertical-agents`, `/industries/legal`, `/industries/real-estate`, `/industries/home-services` | Public before package | Hidden/deferred | Standard public `*` not-found | Non-launch verticals; source retained |
 
 Localized variants use the same classification after stripping `/en`, `/es`, `/pt-BR`, `/fr`, or `/de`. Hidden public routes are absent from both SPA route entrypoints, the shared marketing classifier, public navigation/search, and the generated sitemap.
@@ -57,6 +56,7 @@ Localized variants use the same classification after stripping `/en`, `/es`, `/p
 | Route | Classification | Guard/behavior |
 | --- | --- | --- |
 | `/login`, `/signin`, `/forgot-password`, `/accept-invite`, `/auth/verify-email` | Authentication | Existing authentication flow |
+| `/signup` | Authentication (unlisted) | Registered in `App.tsx` in its own `PublicLayout` group, outside the marketing route table, so it stays out of `PublicApp.tsx`, the marketing bundle classifier, public navigation/search, and the sitemap. Reached from **Sign up** on `/login` (and `/login?mode=signup`, which redirects here keeping `plan`/`interval`). Renders Cloudflare Turnstile using the site key from `GET /auth/signup-config` (`TURNSTILE_SITE_KEY`) or `VITE_TURNSTILE_SITE_KEY`, and fails closed when CAPTCHA is required but no site key is configured. Restored by the PR #83 rebuild after managed setup alone left no way to create an account. |
 | `/track/:token` | Public utility | Token-scoped booking tracker |
 | `/internal/design-directions` | Internal-only utility | `ProtectedRoute` + `PlatformAdminGuard` |
 | `/onboarding` | Internal-only | `ProtectedRoute` + `PlatformAdminGuard` |
@@ -260,5 +260,5 @@ No lockfile, backend route, API, migration, database schema, or retained feature
 2. For each customer role, try `/agents`, `/agents/example/builder`, `/marketplace/installed`, `/developer`, `/autopilot?tab=actions`, `/ops/monitor`, and `/internal/design-directions`; confirm the established redirect/access-denied behavior and no loop.
 3. Sign in as a platform admin; confirm the retained internal tenant groups, operations routes, Agent Builder, and admin console still open.
 4. As a customer, open command search, notifications, help, keyboard shortcuts, dashboard cards, and phone-number status; confirm no internal route can be launched.
-5. As an anonymous visitor, open the retained public routes and confirm `/features`, `/product/global-intelligence-network`, `/docs`, `/resources`, `/blog`, `/signup`, and non-healthcare verticals render the standard not-found page.
+5. As an anonymous visitor, open the retained public routes and confirm `/features`, `/product/global-intelligence-network`, `/docs`, `/resources`, `/blog`, and non-healthcare verticals render the standard not-found page. `/signup` intentionally renders the signup form (see Authentication routes) but must not appear in navigation or the sitemap.
 6. Inspect `/sitemap.xml`; confirm it contains the focused localized routes and none of the hidden URLs.
