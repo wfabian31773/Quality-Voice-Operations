@@ -125,7 +125,7 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   console.log('Required variables:');
   for (const v of ENV_VARS) {
-    const present = !!process.env[v.name];
+    const present = !!process.env[v.name]?.trim();
     const isRequired =
       v.required === 'always' ||
       (v.required === 'production' && isProd) ||
@@ -143,7 +143,7 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   console.log('\nOptional variables:');
   for (const v of OPTIONAL_VARS) {
-    const present = !!process.env[v.name];
+    const present = !!process.env[v.name]?.trim();
     if (present) {
       console.log(`  SET   ${v.name}`);
     } else {

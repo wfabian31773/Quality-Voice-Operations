@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 void React;
@@ -40,6 +40,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  delete (window as unknown as { turnstile?: unknown }).turnstile;
 });
 
 function renderSignup() {
@@ -79,5 +80,39 @@ describe('Signup CAPTCHA gating', () => {
       expect(screen.queryByTestId('signup-captcha-slot')).toBeNull();
       expect((screen.getByRole('button', { name: /start free trial/i }) as HTMLButtonElement).disabled).toBe(false);
     });
+  });
+
+  it('resets the single-use Turnstile token after the server rejects a signup', async () => {
+    let solve: (token: string) => void = () => {};
+    const turnstile = {
+      render: vi.fn((_el: HTMLElement, opts: Record<string, unknown>) => {
+        solve = opts.callback as (token: string) => void;
+        return 'widget-1';
+      }),
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+    (window as unknown as { turnstile?: unknown }).turnstile = turnstile;
+    apiGet.mockResolvedValue({ captchaRequired: true, siteKey: '0xpublic-site-key' });
+    apiPost.mockRejectedValue(new Error('An account with this email already exists'));
+    renderSignup();
+
+    await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
+    solve('token-1');
+
+    fireEvent.change(screen.getByLabelText(/organization name/i), { target: { value: 'Acme' } });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password1' } });
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    expect(await screen.findByText(/already exists/i)).toBeTruthy();
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect((apiPost.mock.calls[0][1] as { captchaToken?: string }).captchaToken).toBe('token-1');
+    expect(turnstile.reset).toHaveBeenCalledWith('widget-1');
+
+    // Retrying without re-solving must not resubmit the consumed token.
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+    expect(await screen.findByText(/complete the CAPTCHA/i)).toBeTruthy();
+    expect(apiPost).toHaveBeenCalledTimes(1);
   });
 });

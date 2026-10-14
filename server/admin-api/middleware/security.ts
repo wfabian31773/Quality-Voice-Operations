@@ -212,7 +212,10 @@ export function assertProductionSecrets(): void {
     ]);
   }
 
-  const missing = required.filter(([name]) => !process.env[name]);
+  // Trim before deciding a secret is present: a whitespace-only value is
+  // treated as unset by its consumers (e.g. the Turnstile verifier), so it
+  // must fail closed here too instead of silently disabling the control.
+  const missing = required.filter(([name]) => !(process.env[name] ?? '').trim());
 
   // Task #995: Surface the connector OAuth state-signing requirement
   // explicitly at boot. `connectorOAuth.ts::getStateSecret()` accepts

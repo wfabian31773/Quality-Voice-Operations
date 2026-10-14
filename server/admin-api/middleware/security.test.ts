@@ -135,4 +135,20 @@ describe('assertProductionSecrets', () => {
     process.env.CALENDLY_WEBHOOK_SECRET = 's';
     expect(() => assertProductionSecrets()).not.toThrow();
   });
+  it('treats a whitespace-only required secret as missing', () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 's';
+    process.env.ALLOWED_ORIGINS = 'https://a.com';
+    process.env.TURNSTILE_SECRET_KEY = '  ';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
+    expect(() => assertProductionSecrets()).toThrow(/missing required env var\(s\): TURNSTILE_SECRET_KEY/);
+  });
+  it('rejects Cloudflare dummy Turnstile secrets in production', () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 's';
+    process.env.ALLOWED_ORIGINS = 'https://a.com';
+    process.env.TURNSTILE_SECRET_KEY = ' 1x0000000000000000000000000000000AA ';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
+    expect(() => assertProductionSecrets()).toThrow(/Cloudflare test\/dummy secret/);
+  });
 });
