@@ -11,15 +11,17 @@
  * documented local/dev bypass that cannot ship accidentally.
  */
 
-function readViteEnv(name: string): string {
-  return ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[name] || '').trim();
-}
+type ViteImportMeta = ImportMeta & {
+  env: { VITE_TURNSTILE_SITE_KEY?: string; PROD?: boolean };
+};
 
-export const BUILD_TIME_TURNSTILE_SITE_KEY = readViteEnv('VITE_TURNSTILE_SITE_KEY');
+// Vite only guarantees replacement of `import.meta.env.VITE_*` written as a
+// full static property access, so never look these up by a dynamic key.
+export const BUILD_TIME_TURNSTILE_SITE_KEY = (
+  (import.meta as ViteImportMeta).env.VITE_TURNSTILE_SITE_KEY || ''
+).trim();
 
-export const IS_PROD_BUILD = Boolean(
-  (import.meta as unknown as { env?: { PROD?: boolean } }).env?.PROD,
-);
+export const IS_PROD_BUILD = Boolean((import.meta as ViteImportMeta).env.PROD);
 
 export type SignupCaptchaConfig = {
   captchaRequired: boolean;
