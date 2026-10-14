@@ -34,12 +34,12 @@ vi.mock('./callPersistence', () => ({
   createPlatformPersistenceAdapter: vi.fn(() => ({})),
 }));
 
-const hasKnowledgeArticles = vi.fn(async () => true);
+const hasKnowledgeArticles = vi.fn(async (..._args: unknown[]) => true);
 vi.mock('../../../platform/knowledge/knowledgeContext', () => ({
   hasKnowledgeArticles: (...args: unknown[]) => hasKnowledgeArticles(...args),
 }));
 
-const wakeUp = vi.fn(async () => {});
+const wakeUp = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('../../../platform/integrations/azul-vision/ticketingClient', () => ({
   wakeUp: (...args: unknown[]) => wakeUp(...args),
 }));
@@ -144,12 +144,15 @@ describe('createRealtimeSession xAI constructor path', () => {
     expect(hasKnowledgeArticles).toHaveBeenCalled();
     expect(wakeUp).toHaveBeenCalled();
 
-    result.session.emit('history_added', {
+    // XaiVoiceSession is mocked as an EventEmitter above; the real class
+    // only exposes `on`, so reach the fake's `emit` through a narrow cast.
+    const session = result.session as unknown as { emit: (event: string, payload: unknown) => boolean };
+    session.emit('history_added', {
       type: 'message',
       role: 'user',
       content: [{ type: 'input_text', text: 'I am locked out of my shop.' }],
     });
-    result.session.emit('history_added', {
+    session.emit('history_added', {
       type: 'message',
       role: 'assistant',
       content: [{ type: 'output_text', text: 'I can help with that.' }],

@@ -1,10 +1,10 @@
 import '../styles/tw-public.css';
-import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useState, type FormEvent } from 'react';
 import { useAuth, type MfaLoginFlow } from '../lib/auth';
-import { api, setToken } from '../lib/api';
-import { LogIn, UserPlus } from 'lucide-react';
+import { setToken } from '../lib/api';
+import { LogIn } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { safeRedirect } from '../lib/safeRedirect';
 import PlatformAdminMfaFlow from '../components/PlatformAdminMfaFlow';
@@ -19,16 +19,19 @@ function readPostLoginTarget(searchParams: URLSearchParams): string | null {
   return searchParams.get('next') ?? searchParams.get('redirectTo');
 }
 
+function signupHref(searchParams: URLSearchParams): string {
+  const next = new URLSearchParams(searchParams);
+  next.delete('mode');
+  next.delete('cancelled');
+  const qs = next.toString();
+  return qs ? `/signup?${qs}` : '/signup';
+}
+
 export default function Login() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
-  const [mode, setMode] = useState<'login' | 'signup'>(
-    searchParams.get('mode') === 'signup' ? 'signup' : 'login'
-  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [plan, setPlan] = useState(searchParams.get('plan') || 'starter');
   const [error, setError] = useState(searchParams.get('cancelled') ? t('auth.checkout_cancelled') : '');
   const [loading, setLoading] = useState(false);
   const [mfaFlow, setMfaFlow] = useState<MfaLoginFlow | null>(null);
@@ -54,7 +57,14 @@ export default function Login() {
     return <Navigate to={destinationFor(user)} replace />;
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // The login page used to own an inline signup form that posted to
+  // /auth/signup without a CAPTCHA token. Send visitors to the real
+  // /signup route (and keep ?plan= / ?interval= query params).
+  if (searchParams.get('mode') === 'signup') {
+    return <Navigate to={signupHref(searchParams)} replace />;
+  }
+
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -84,27 +94,6 @@ export default function Login() {
     navigate(currentUser ? destinationFor(currentUser) : '/admin/dashboard');
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const res = await api.post<{ checkoutUrl: string; token: string }>('/auth/signup', { name, email, password, plan });
-      if (res.token) {
-        setToken(res.token);
-      }
-      if (res.checkoutUrl) {
-        window.location.href = res.checkoutUrl;
-      } else {
-        setError(t('auth.checkout_init_failed'));
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('auth.signup_failed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-surface-secondary px-4">
       <div className="w-full flex justify-end pt-4">
@@ -114,11 +103,11 @@ export default function Login() {
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-white mb-4">
-              {mode === 'login' ? <LogIn className="h-6 w-6" /> : <UserPlus className="h-6 w-6" />}
+              <LogIn className="h-6 w-6" />
             </div>
             <h1 className="text-2xl font-bold text-text-primary font-display">{t('auth.brand_title')}</h1>
             <p className="text-sm text-text-secondary mt-1">
-              {mode === 'login' ? t('auth.sign_in_subtitle') : t('auth.sign_up_subtitle')}
+              {t('auth.sign_in_subtitle')}
             </p>
           </div>
 
@@ -129,27 +118,12 @@ export default function Login() {
               onComplete={completeMfaLogin}
             />
           ) : <form
-            onSubmit={mode === 'login' ? handleLogin : handleSignup}
+            onSubmit={handleLogin}
             className="bg-surface rounded-xl border border-border p-6 space-y-4 shadow-sm"
           >
             {error && (
               <div className="bg-danger-light text-danger text-sm px-3 py-2 rounded-lg">
                 {error}
-              </div>
-            )}
-
-            {mode === 'signup' && (
-              <div>
-                <label htmlFor="login-company-name" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.company_name')}</label>
-                <input
-                  id="login-company-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                  placeholder={t('auth.company_name_placeholder')}
-                />
               </div>
             )}
 
@@ -170,14 +144,12 @@ export default function Login() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label htmlFor="login-password" className="block text-sm font-medium text-text-primary">{t('auth.password')}</label>
-                {mode === 'login' && (
-                  <Link
-                    to="/forgot-password"
-                    className="text-xs text-primary hover:underline font-medium"
-                  >
-                    {t('auth.forgot_password_link')}
-                  </Link>
-                )}
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  {t('auth.forgot_password_link')}
+                </Link>
               </div>
               <input
                 id="login-password"
@@ -185,62 +157,25 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={mode === 'signup' ? 8 : undefined}
-                // F-5: tell the browser/password-manager which credential
-                // form this field belongs to so it can autofill / save the
-                // right value (and it silences the React DOM warning).
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                autoComplete="current-password"
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                placeholder={mode === 'signup' ? t('auth.password_min_placeholder') : t('auth.password_placeholder')}
+                placeholder={t('auth.password_placeholder')}
               />
             </div>
-
-            {mode === 'signup' && (
-              <div>
-                <label htmlFor="login-plan" className="block text-sm font-medium text-text-primary mb-1.5">{t('auth.plan')}</label>
-                <select
-                  id="login-plan"
-                  value={plan}
-                  onChange={(e) => setPlan(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-                >
-                  <option value="starter">{t('auth.plan_starter')}</option>
-                  <option value="pro">{t('auth.plan_pro')}</option>
-                  <option value="enterprise">{t('auth.plan_enterprise')}</option>
-                </select>
-              </div>
-            )}
 
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
             >
-              {loading
-                ? mode === 'login'
-                  ? t('auth.signing_in')
-                  : t('auth.creating_account')
-                : mode === 'login'
-                  ? t('auth.sign_in_button')
-                  : t('auth.sign_up_button')}
+              {loading ? t('auth.signing_in') : t('auth.sign_in_button')}
             </button>
 
             <div className="text-center text-sm text-text-secondary pt-1">
-              {mode === 'login' ? (
-                <>
-                  {t('auth.no_account')}{' '}
-                  <button type="button" onClick={() => { setMode('signup'); setError(''); }} className="text-primary hover:underline font-medium">
-                    {t('auth.sign_up_link')}
-                  </button>
-                </>
-              ) : (
-                <>
-                  {t('auth.have_account')}{' '}
-                  <button type="button" onClick={() => { setMode('login'); setError(''); }} className="text-primary hover:underline font-medium">
-                    {t('auth.sign_in_link')}
-                  </button>
-                </>
-              )}
+              {t('auth.no_account')}{' '}
+              <Link to={signupHref(searchParams)} className="text-primary hover:underline font-medium">
+                {t('auth.sign_up_link')}
+              </Link>
             </div>
           </form>}
         </div>

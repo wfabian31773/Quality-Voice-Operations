@@ -21,8 +21,17 @@ import {
   useDisplayCurrency,
 } from '../../lib/displayCurrency';
 import DisplayCurrencyPicker from '../../components/DisplayCurrencyPicker';
+import {
+  BUILD_TIME_TURNSTILE_SITE_KEY,
+  parseSignupCaptchaConfig,
+  resolveCaptchaConfigAfterFetchFailure,
+} from '../../lib/signupCaptcha';
 
-const TURNSTILE_SITE_KEY = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_TURNSTILE_SITE_KEY) || '';
+type TurnstileApi = {
+  render: (el: HTMLElement, opts: Record<string, unknown>) => string | undefined;
+  reset?: (widgetId: string) => void;
+  remove?: (widgetId: string) => void;
+};
 
 export default function Signup() {
   const { t } = useTranslation(['common', 'marketing']);
@@ -37,7 +46,16 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaLoaded, setCaptchaLoaded] = useState(false);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [siteKey, setSiteKey] = useState(BUILD_TIME_TURNSTILE_SITE_KEY);
   const captchaRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetId = useRef<string | null>(null);
+  const captchaUnavailable = captchaLoaded && captchaRequired && !siteKey;
+  // Only render / require the widget when the server will verify a token.
+  // With a site key but no secret (dev bypass) a production-restricted key
+  // may be unsolvable on localhost, so don't block signup on it.
+  const activeSiteKey = captchaLoaded && captchaRequired ? siteKey : '';
   const { user } = useAuth();
   const navigate = useNavigate();
   const [displayCurrency] = useDisplayCurrency();
@@ -84,9 +102,33 @@ export default function Signup() {
   }, []);
 
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY || !captchaRef.current) return;
+    let cancelled = false;
+    api.get<unknown>('/auth/signup-config')
+      .then((raw) => {
+        if (cancelled) return;
+        const parsed = parseSignupCaptchaConfig(raw, BUILD_TIME_TURNSTILE_SITE_KEY);
+        setCaptchaRequired(parsed.captchaRequired);
+        setSiteKey(parsed.siteKey);
+        setCaptchaLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const parsed = resolveCaptchaConfigAfterFetchFailure(BUILD_TIME_TURNSTILE_SITE_KEY);
+        setCaptchaRequired(parsed.captchaRequired);
+        setSiteKey(parsed.siteKey);
+        setCaptchaLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    const win = window as unknown as Record<string, unknown>;
+  useEffect(() => {
+    // Wait for /auth/signup-config so a runtime site key that differs from
+    // the build-time one doesn't render a second widget into the slot.
+    if (!activeSiteKey || !captchaRef.current) return;
+
+    const win = window as unknown as { turnstile?: TurnstileApi; onTurnstileLoad?: () => void };
     // Detect current theme from the QVO `data-theme` attribute on <html>
     // (set by client-app/src/lib/theme.ts on toggle). Pass it explicitly
     // to Turnstile so the widget renders with the correct surface — the
@@ -99,15 +141,35 @@ export default function Signup() {
     const turnstileTheme = themeAttr === 'dark' ? 'dark' : 'light';
 
     const renderOpts = {
-      sitekey: TURNSTILE_SITE_KEY,
+      sitekey: activeSiteKey,
       theme: turnstileTheme,
       callback: (token: string) => setCaptchaToken(token),
       'expired-callback': () => setCaptchaToken(''),
+      'error-callback': () => setCaptchaToken(''),
     };
 
-    if (typeof win.turnstile !== 'undefined') {
-      const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
-      turnstile.render(captchaRef.current, renderOpts);
+    const renderWidget = () => {
+      if (captchaRef.current && win.turnstile && captchaWidgetId.current === null) {
+        captchaWidgetId.current = win.turnstile.render(captchaRef.current, renderOpts) ?? null;
+      }
+    };
+    const removeWidget = () => {
+      if (captchaWidgetId.current !== null) {
+        win.turnstile?.remove?.(captchaWidgetId.current);
+        captchaWidgetId.current = null;
+      }
+      setCaptchaToken('');
+    };
+
+    if (win.turnstile) {
+      renderWidget();
+      return removeWidget;
+    }
+
+    const viteMode = (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE;
+    if (viteMode === 'test') {
+      // Unit tests assert the captcha slot is present; they must not
+      // fetch Cloudflare's script (happy-dom refuses remote JS).
       return;
     }
 
@@ -115,19 +177,25 @@ export default function Signup() {
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
     script.async = true;
 
-    win.onTurnstileLoad = () => {
-      if (captchaRef.current && typeof win.turnstile !== 'undefined') {
-        const turnstile = win.turnstile as { render: (el: HTMLElement, opts: Record<string, unknown>) => void };
-        turnstile.render(captchaRef.current, renderOpts);
-      }
-    };
+    win.onTurnstileLoad = renderWidget;
 
     document.head.appendChild(script);
     return () => {
       script.remove();
       delete win.onTurnstileLoad;
+      removeWidget();
     };
-  }, []);
+  }, [activeSiteKey]);
+
+  // Turnstile tokens are single-use: once the server has verified one, a
+  // rejected signup (e.g. 409 email already exists) must not resubmit it.
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    const win = window as unknown as { turnstile?: TurnstileApi };
+    if (captchaWidgetId.current !== null) {
+      win.turnstile?.reset?.(captchaWidgetId.current);
+    }
+  };
 
   if (user) {
     return <Navigate to="/dashboard" replace />;
@@ -142,7 +210,16 @@ export default function Signup() {
       return;
     }
 
-    if (TURNSTILE_SITE_KEY && !captchaToken) {
+    if (!captchaLoaded) {
+      return;
+    }
+
+    if (captchaUnavailable) {
+      setError(t('auth.captcha_unavailable'));
+      return;
+    }
+
+    if (activeSiteKey && !captchaToken) {
       setError(t('auth.captcha_failed'));
       return;
     }
@@ -180,6 +257,7 @@ export default function Signup() {
         navigate('/onboarding');
       }
     } catch (err: unknown) {
+      resetCaptcha();
       setError(err instanceof Error ? err.message : t('auth.signup_failed_retry'));
     } finally {
       setLoading(false);
@@ -408,7 +486,16 @@ export default function Signup() {
                   </p>
                 </div>
 
-                {TURNSTILE_SITE_KEY && (
+                {captchaUnavailable && (
+                  <div
+                    className="bg-danger-light text-danger dark:text-danger text-sm px-3 py-2 rounded-lg border border-danger"
+                    data-testid="signup-captcha-unavailable"
+                  >
+                    {t('auth.captcha_unavailable')}
+                  </div>
+                )}
+
+                {activeSiteKey && (
                   <div className="flex justify-center">
                     {/* Container has min-height so the captcha slot is
                         visible even before Turnstile finishes loading,
@@ -426,7 +513,7 @@ export default function Signup() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !captchaLoaded || captchaUnavailable}
                   className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors text-sm mt-2"
                 >
                   {loading ? (

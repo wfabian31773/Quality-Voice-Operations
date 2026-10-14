@@ -183,6 +183,7 @@ This distinction is the standing architectural gate for every remaining work pac
 ### Public experience
 
 - [x] Remove generic platform, GIN, federated ingest, builder, marketplace, broad vertical, Docs, Resources, Blog, and self-service signup routes from active public discovery.
+  - `/signup` is reachable again as an unlisted authentication route (linked only from `/login`) so new accounts can be created; it remains out of navigation, marketing search, the public bundle, and the sitemap. See [route inventory](./route-surface-inventory.md#authentication-and-standalone-routes).
 - [x] Reduce header, footer, mobile navigation, calls to action, and marketing search.
 - [x] Remove deferred routes from the sitemap and public bundle classifier.
 - [x] Preserve source components for later evidence-based deletion.

@@ -77,6 +77,7 @@ Findings:
 `Public signup → Turnstile → email verify → checkout → webhook → tenant ready → onboarding wizard → first agent → first phone → first call`
 
 - **Turnstile** is verified server-side but the public signup form does **not include** the Turnstile widget when `TURNSTILE_SITE_KEY` is set, so server verification always passes silently (B-38).
+  - *Update (PR #83 rebuild):* `/signup` now renders the Turnstile widget using the site key from `GET /auth/signup-config` (`TURNSTILE_SITE_KEY`, falling back to `VITE_TURNSTILE_SITE_KEY`), fails closed when `TURNSTILE_SECRET_KEY` is set but no site key exists, and the `/login` inline signup form (which never sent a token) was removed in favour of a link to `/signup`.
 - **Email verify** uses a JWT-backed token; expiry is 24 hours but the public verify page does not render a "request a new link" CTA on expiry.
 - **Welcome email** does not include a calendar link to book onboarding help (sales-assist).
 - **First-call detection** — a milestone ("first inbound call answered") is fired by the milestone scheduler, but the welcome email triggered by it is sent regardless of when the tenant subscribes (could fire weeks after signup).
