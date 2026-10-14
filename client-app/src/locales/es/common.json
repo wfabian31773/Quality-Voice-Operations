@@ -167,6 +167,7 @@
     "per_month_short": "/mes",
     "verification_required": "Se requiere verificación por correo para activar tu prueba.",
     "captcha_failed": "Por favor, completa la verificación CAPTCHA.",
+    "captcha_unavailable": "El registro no está disponible temporalmente porque CAPTCHA no está configurado. Inténtalo de nuevo más tarde o contacta a soporte.",
     "password_too_short": "La contraseña debe tener al menos 8 caracteres.",
     "signup_failed_retry": "Error al registrarse. Por favor, inténtalo de nuevo.",
     "benefit_trial": "Prueba gratis de 7 días en todos los planes",

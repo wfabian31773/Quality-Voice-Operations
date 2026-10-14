@@ -66,7 +66,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 401) {
     if (token === tokenAtStart) {
       setToken(null);
-      const publicPaths = ['/demo', '/login', '/accept-invite', '/pricing'];
+      const publicPaths = ['/demo', '/login', '/signup', '/accept-invite', '/pricing'];
       const isPublicPage = publicPaths.some((p) => window.location.pathname.startsWith(p));
       if (!isPublicPage) {
         // Task #499 / #1513: preserve the page the user was on so we can

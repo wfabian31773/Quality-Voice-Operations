@@ -273,6 +273,16 @@ describe('assertProductionSecrets()', () => {
     expect(() => assertProductionSecrets()).not.toThrow();
   });
 
+  it('throws in production when TURNSTILE_SECRET_KEY is a Cloudflare dummy secret', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 'jwt';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = '1x0000000000000000000000000000000AA';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).toThrow(/dummy secret/i);
+  });
+
   it('throws in production when CONNECTOR_EMAIL_WEBHOOK_SECRET is missing', async () => {
     process.env.APP_ENV = 'production';
     process.env.ADMIN_JWT_SECRET = 'jwt';
