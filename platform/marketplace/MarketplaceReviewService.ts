@@ -1,4 +1,4 @@
-import { getPlatformPool, getPrivilegedPool, withPrivilegedClient, withTenantContext } from '../db';
+import { getPrivilegedPool, withPrivilegedClient } from '../db';
 import { createLogger } from '../core/logger';
 import type { TenantId } from '../core/types';
 
@@ -28,6 +28,13 @@ export interface ReviewSummary {
   distribution: Record<number, number>;
 }
 
+/**
+ * Create or update the caller's review and recompute the shared template
+ * rating in one privileged transaction: the rating aggregates every
+ * tenant's reviews, so a tenant-bound (RLS) read would see only this
+ * tenant's rows. The review rows themselves stay scoped by the explicit
+ * tenant_id / user_id predicates.
+ */
 export async function createReview(input: ReviewInput): Promise<{ success: boolean; error?: string; review?: Review }> {
   const { tenantId, userId, templateId, rating, reviewText } = input;
 
@@ -35,59 +42,50 @@ export async function createReview(input: ReviewInput): Promise<{ success: boole
     return { success: false, error: 'Rating must be an integer between 1 and 5' };
   }
 
-  const pool = getPlatformPool();
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-    await withTenantContext(client, tenantId, async () => {});
+    return await withPrivilegedClient(async (client) => {
+      const { rows: installed } = await client.query(
+        `SELECT id FROM tenant_agent_installations
+         WHERE tenant_id = $1 AND template_id = $2 AND status = 'active'`,
+        [tenantId, templateId],
+      );
 
-    const { rows: installed } = await client.query(
-      `SELECT id FROM tenant_agent_installations
-       WHERE tenant_id = $1 AND template_id = $2 AND status = 'active'`,
-      [tenantId, templateId],
-    );
+      if (installed.length === 0) {
+        return { success: false, error: 'You must install this template before leaving a review' };
+      }
 
-    if (installed.length === 0) {
-      await client.query('COMMIT');
-      return { success: false, error: 'You must install this template before leaving a review' };
-    }
+      const { rows } = await client.query(
+        `INSERT INTO marketplace_reviews (tenant_id, user_id, template_id, rating, review_text)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, user_id, template_id) DO UPDATE SET
+           rating = EXCLUDED.rating,
+           review_text = EXCLUDED.review_text,
+           updated_at = NOW()
+         RETURNING *`,
+        [tenantId, userId, templateId, rating, reviewText ?? null],
+      );
 
-    const { rows } = await client.query(
-      `INSERT INTO marketplace_reviews (tenant_id, user_id, template_id, rating, review_text)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (tenant_id, user_id, template_id) DO UPDATE SET
-         rating = EXCLUDED.rating,
-         review_text = EXCLUDED.review_text,
-         updated_at = NOW()
-       RETURNING *`,
-      [tenantId, userId, templateId, rating, reviewText ?? null],
-    );
+      await updateAggregateRating(client, templateId);
 
-    await client.query('COMMIT');
-    await refreshAggregateRating(templateId);
+      const review = rows[0];
+      logger.info('Review created/updated', { tenantId, userId, templateId, rating });
 
-    const review = rows[0];
-    logger.info('Review created/updated', { tenantId, userId, templateId, rating });
-
-    return {
-      success: true,
-      review: {
-        id: review.id,
-        templateId: review.template_id,
-        rating: review.rating,
-        reviewText: review.review_text,
-        status: review.status,
-        createdAt: review.created_at,
-        updatedAt: review.updated_at,
-      },
-    };
+      return {
+        success: true,
+        review: {
+          id: review.id as string,
+          templateId: review.template_id as string,
+          rating: review.rating as number,
+          reviewText: review.review_text as string | null,
+          status: review.status as Review['status'],
+          createdAt: review.created_at as string,
+          updatedAt: review.updated_at as string,
+        },
+      };
+    });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to create review', { tenantId, templateId, error: String(err) });
     return { success: false, error: 'Failed to create review' };
-  } finally {
-    client.release();
   }
 }
 
@@ -145,40 +143,31 @@ export async function getReviewsForTemplate(
   };
 }
 
+/** Delete the caller's review and recompute the shared rating atomically (see createReview). */
 export async function deleteReview(
   tenantId: TenantId,
   userId: string,
   reviewId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const pool = getPlatformPool();
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-    await withTenantContext(client, tenantId, async () => {});
+    return await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `DELETE FROM marketplace_reviews
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3
+         RETURNING template_id`,
+        [reviewId, tenantId, userId],
+      );
 
-    const { rows } = await client.query(
-      `DELETE FROM marketplace_reviews
-       WHERE id = $1 AND tenant_id = $2 AND user_id = $3
-       RETURNING template_id`,
-      [reviewId, tenantId, userId],
-    );
+      if (rows.length === 0) {
+        return { success: false, error: 'Review not found' };
+      }
 
-    if (rows.length === 0) {
-      await client.query('COMMIT');
-      return { success: false, error: 'Review not found' };
-    }
-
-    await client.query('COMMIT');
-    await refreshAggregateRating(rows[0].template_id as string);
-
-    return { success: true };
+      await updateAggregateRating(client, rows[0].template_id as string);
+      return { success: true };
+    });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to delete review', { tenantId, reviewId, error: String(err) });
     return { success: false, error: 'Failed to delete review' };
-  } finally {
-    client.release();
   }
 }
 
@@ -206,19 +195,6 @@ export async function moderateReview(
   } catch (err) {
     logger.error('Failed to moderate review', { reviewId, error: String(err) });
     return { success: false, error: 'Failed to moderate review' };
-  }
-}
-
-/**
- * Recompute the shared template rating from every tenant's reviews. Runs on
- * the privileged pool after the tenant's own write commits; a tenant-bound
- * client would see only that tenant's rows and overwrite the global value.
- */
-async function refreshAggregateRating(templateId: string): Promise<void> {
-  try {
-    await withPrivilegedClient((client) => updateAggregateRating(client, templateId));
-  } catch (err) {
-    logger.error('Failed to refresh template rating', { templateId, error: String(err) });
   }
 }
 

@@ -38,9 +38,16 @@ beforeEach(() => {
       ? { rows: [{ review_count: 2, avg_rating: '4.50', r1: 0, r2: 0, r3: 0, r4: 1, r5: 1 }] }
       : { rows: [{ id: 'r1', template_id: 'tpl-1', rating: 5 }, { id: 'r2', template_id: 'tpl-1', rating: 4 }] },
   );
-  a.privClientQuery.mockReset().mockImplementation(async (sql: string) =>
-    sql.includes('UPDATE marketplace_reviews') ? { rows: [{ template_id: 'tpl-1' }] } : { rows: [] },
-  );
+  a.privClientQuery.mockReset().mockImplementation(async (sql: string) => {
+    if (sql.includes('FROM tenant_agent_installations')) return { rows: [{ id: 'inst-1' }] };
+    if (sql.includes('INSERT INTO marketplace_reviews')) {
+      return { rows: [{ id: 'r1', template_id: 'tpl-1', rating: 5, review_text: null, status: 'active' }] };
+    }
+    if (sql.includes('UPDATE marketplace_reviews') || sql.includes('DELETE FROM marketplace_reviews')) {
+      return { rows: [{ template_id: 'tpl-1' }] };
+    }
+    return { rows: [] };
+  });
 });
 
 describe('MarketplaceReviewService cross-tenant paths', () => {
@@ -51,23 +58,33 @@ describe('MarketplaceReviewService cross-tenant paths', () => {
     expect(result.summary).toMatchObject({ avgRating: 4.5, reviewCount: 2 });
   });
 
-  it('creates a review in the tenant transaction, then recomputes the shared rating privileged', async () => {
+  it('creates a review and recomputes the shared rating in one privileged transaction', async () => {
     const result = await createReview({ tenantId: 't1', userId: 'u1', templateId: 'tpl-1', rating: 5 } as never);
     expect(result.success).toBe(true);
-    expect(sqls(a.tenantQuery)).toEqual(['BEGIN', 'SELECT id', 'INSERT INTO', 'COMMIT']);
+    expect(sqls(a.privClientQuery)).toEqual(['SELECT id', 'INSERT INTO', 'UPDATE template_registry']);
+    expect(a.privClientQuery.mock.calls[1][1]).toEqual(['t1', 'u1', 'tpl-1', 5, null]);
+    expect(a.tenantQuery).not.toHaveBeenCalled();
+  });
+
+  it('refuses a review for a template the tenant has not installed', async () => {
+    a.privClientQuery.mockResolvedValueOnce({ rows: [] });
+    const result = await createReview({ tenantId: 't1', userId: 'u1', templateId: 'tpl-1', rating: 5 } as never);
+    expect(result.success).toBe(false);
     expect(a.privClientQuery).toHaveBeenCalledTimes(1);
-    expect(String(a.privClientQuery.mock.calls[0][0])).toContain('UPDATE template_registry');
   });
 
-  it('deletes a review tenant-bound and recomputes the rating privileged', async () => {
+  it('deletes only the caller\'s review and recomputes the rating atomically', async () => {
     expect(await deleteReview('t1' as never, 'u1', 'r1')).toEqual({ success: true });
-    expect(sqls(a.tenantQuery)).toEqual(['BEGIN', 'DELETE FROM', 'COMMIT']);
-    expect(String(a.privClientQuery.mock.calls[0][0])).toContain('UPDATE template_registry');
+    expect(sqls(a.privClientQuery)).toEqual(['DELETE FROM', 'UPDATE template_registry']);
+    expect(a.privClientQuery.mock.calls[0][1]).toEqual(['r1', 't1', 'u1']);
   });
 
-  it('keeps the review when the rating refresh fails', async () => {
-    a.privClientQuery.mockRejectedValueOnce(new Error('db down'));
-    expect(await deleteReview('t1' as never, 'u1', 'r1')).toEqual({ success: true });
+  it('fails the whole operation when the rating recompute fails (rolled back together)', async () => {
+    a.privClientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('UPDATE template_registry')) throw new Error('db down');
+      return sql.includes('DELETE') ? { rows: [{ template_id: 'tpl-1' }] } : { rows: [] };
+    });
+    expect(await deleteReview('t1' as never, 'u1', 'r1')).toEqual({ success: false, error: 'Failed to delete review' });
   });
 
   it('moderates any tenant\'s review on the privileged client', async () => {
