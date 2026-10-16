@@ -24,12 +24,16 @@ export type ServiceName = (typeof SERVICE_ORDER)[number];
 export const VOICE_WINDOW = { startMinutes: 30, endMinutes: 6 * 60 + 30, timeZone: 'America/New_York' } as const;
 export const ZERO_CALLS_MAX_WAIT_MS = 15 * 60_000;
 export const ZERO_CALLS_POLL_MS = 30_000;
+export const DRAIN_STATUS_TIMEOUT_MS = 10_000;
 export const DEPLOY_POLL_MS = 15_000;
 export const DEPLOY_MAX_WAIT_MS = 45 * 60_000;
 
 const DEPLOY_FAILED_STATUSES = new Set(['build_failed', 'update_failed', 'canceled', 'pre_deploy_failed', 'deactivated']);
 
-type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
+type FetchLike = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
+) => Promise<{
   ok: boolean;
   status: number;
   json: () => Promise<unknown>;
@@ -101,12 +105,29 @@ export async function waitForZeroCalls(
   const url = `${voiceBaseUrl.replace(/\/+$/, '')}/internal/drain-status`;
   let last = 'no response yet';
   for (;;) {
+    // Bound each request by the time left on the gate so a hung endpoint
+    // cannot stall the release; a timeout just means "poll again".
+    const timeoutMs = Math.max(1, Math.min(DRAIN_STATUS_TIMEOUT_MS, maxWaitMs - (deps.now().getTime() - started)));
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`timed out after ${timeoutMs} ms`));
+      }, timeoutMs);
+    });
     try {
-      const res = await deps.fetch(url, { headers: { 'x-admin-token': adminToken, accept: 'application/json' } });
-      if (!res.ok) {
+      const request = (async () => {
+        const res = await deps.fetch(url, {
+          headers: { 'x-admin-token': adminToken, accept: 'application/json' },
+          signal: controller.signal,
+        });
+        return { res, body: res.ok ? ((await res.json()) as DrainStatusBody) : null };
+      })();
+      const { res, body } = await Promise.race([request, timeout]);
+      if (!res.ok || !body) {
         last = `drain-status HTTP ${res.status}`;
       } else {
-        const body = (await res.json()) as DrainStatusBody;
         const calls = Number(body.activeSessions ?? NaN);
         const streams = Number(body.openStreams ?? 0);
         if (calls === 0 && streams === 0) return { ok: true, detail: '0 active calls' };
@@ -114,6 +135,8 @@ export async function waitForZeroCalls(
       }
     } catch (err) {
       last = `drain-status unreachable (${err instanceof Error ? err.message : String(err)})`;
+    } finally {
+      clearTimeout(timer);
     }
     const elapsed = deps.now().getTime() - started;
     if (elapsed >= maxWaitMs) {

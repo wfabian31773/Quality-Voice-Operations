@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   isInsideVoiceWindow,
   newYorkMinutes,
@@ -102,6 +102,36 @@ describe('zero-calls gate', () => {
     expect((await waitForZeroCalls(t2.d, 'https://v', 'tok', 60_000)).ok).toBe(false);
     const t3 = deps(() => { throw new Error('ECONNREFUSED'); }, INSIDE);
     expect((await waitForZeroCalls(t3.d, 'https://v', 'tok', 60_000)).detail).toContain('unreachable');
+  });
+});
+
+describe('zero-calls gate with a hung endpoint', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('times out each request (≤ 10 s, aborting it), keeps polling and skips at 15 min', async () => {
+    vi.useFakeTimers({ now: new Date(INSIDE) });
+    const signals: AbortSignal[] = [];
+    const d: DeployDeps = {
+      fetch: vi.fn((_url: string, init?: { signal?: AbortSignal }) => {
+        if (init?.signal) signals.push(init.signal);
+        return new Promise<never>(() => {});
+      }),
+      now: () => new Date(),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      log: () => {},
+    };
+    let result: { ok: boolean; detail: string } | undefined;
+    void waitForZeroCalls(d, 'https://v', 'tok').then((r) => (result = r));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(signals[0].aborted).toBe(true);
+    expect(result).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(result?.ok).toBe(false);
+    expect(result?.detail).toContain('after 15 min');
+    expect(result?.detail).toContain('timed out');
+    // 10 s timeout + 30 s sleep per poll, then a final poll at the 15 min mark.
+    expect((d.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(24);
+    expect(signals.every((s) => s.aborted)).toBe(true);
   });
 });
 
