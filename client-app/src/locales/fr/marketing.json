@@ -3,7 +3,7 @@
     "try_live_demo": "Essayer la démo en direct",
     "see_use_cases": "Voir les cas d'usage",
     "explore_agents": "Explorer les agents",
-    "start_free_trial": "Commencer l'essai gratuit",
+    "start_free_trial": "Créer un compte",
     "book_demo": "Réserver une démo",
     "talk_to_us": "Nous contacter",
     "book_a_demo": "Réserver une démo",
@@ -372,9 +372,9 @@
     },
     "bottom_cta": {
       "title": "Voyez par vous-même.",
-      "subtitle": "Essayez nos agents de démo en direct ou démarrez votre essai gratuit dès aujourd'hui.",
+      "subtitle": "Essayez nos agents de démo en direct ou réservez une démonstration.",
       "try_demo": "Essayer la démo",
-      "start_trial": "Commencer l'essai gratuit"
+      "start_trial": "Créer un compte"
     }
   },
   "features": {
@@ -479,7 +479,7 @@
       "per_month": "/mois",
       "minutes_included": "{{minutes}} minutes IA incluses",
       "overage_label": "{{overage}} de dépassement",
-      "start_trial": "Commencer l'essai gratuit",
+      "start_trial": "Créer un compte",
       "recommended": "RECOMMANDÉ",
       "billed_monthly": "Facturation mensuelle · annulez à tout moment",
       "billed_annually": "Facturation annuelle · économisez 20%",
@@ -935,7 +935,7 @@
     "custom_cta": {
       "title": "Besoin d'une intégration sur mesure ?",
       "subtitle": "L'API REST et le système de webhooks de QVO vous permettent de vous connecter à n'importe quel service externe. Notre documentation développeur couvre l'authentification, les types d'événements et les formats de payload.",
-      "start_trial": "Démarrer l'essai gratuit",
+      "start_trial": "Créer un compte",
       "talk_engineering": "Parler à l'ingénierie"
     }
   },
@@ -981,7 +981,7 @@
   },
   "vertical_page": {
     "hero": {
-      "start_trial": "Démarrer l’essai gratuit",
+      "start_trial": "Créer un compte",
       "try_demo": "Essayer la démo en direct"
     },
     "card": {
@@ -1014,7 +1014,7 @@
     "bottom_cta": {
       "title": "Prêt à transformer votre activité {{vertical}} ?",
       "subtitle": "Nous intégrons actuellement des ateliers pilotes.",
-      "start_trial": "Démarrer l’essai gratuit",
+      "start_trial": "Créer un compte",
       "see_demo": "Voir la démo en direct"
     },
     "not_found": {

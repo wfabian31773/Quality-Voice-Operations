@@ -16,7 +16,7 @@
     "sign_in": "Sign In",
     "sign_out": "Sign Out",
     "book_demo": "Book a Demo",
-    "start_trial": "Start Free Trial",
+    "start_trial": "Create an account",
     "open_menu": "Open menu",
     "close": "Close"
   },
@@ -148,7 +148,7 @@
     "signup_failed": "Signup failed",
     "checkout_init_failed": "Failed to initiate checkout",
     "signup_eyebrow": "Get Started",
-    "signup_headline": "Start your free trial today.",
+    "signup_headline": "Create your QVO account.",
     "signup_subhead": "Deploy AI voice agents in minutes. Handle calls, schedule appointments, and qualify leads — all on autopilot.",
     "signup_help": "Need help choosing a plan?",
     "signup_compare": "Compare plans",
@@ -163,9 +163,9 @@
     "billing_monthly_note": "Billed monthly · cancel anytime.",
     "billing_annual_note": "Billed annually · save 20% on the base plan.",
     "popular": "Popular",
-    "start_trial_button": "Start Free Trial",
+    "start_trial_button": "Create an account",
     "per_month_short": "/mo",
-    "verification_required": "Email verification required to activate your trial.",
+    "verification_required": "Email verification required to activate your account.",
     "captcha_failed": "Please complete the CAPTCHA verification.",
     "captcha_unavailable": "Account signup is temporarily unavailable because CAPTCHA is not configured. Please try again later or contact support.",
     "password_too_short": "Password must be at least 8 characters.",
@@ -517,7 +517,7 @@
       "title": "Want to see your numbers in context?",
       "subtitle": "Book a demo and we'll walk you through a sample GIN benchmark for your vertical — and show you exactly what gets shared (and what never does).",
       "cta_primary": "Book a demo",
-      "cta_secondary": "Start free trial"
+      "cta_secondary": "Create an account"
     }
   },
   "vertical_agents_page": {
@@ -682,7 +682,7 @@
     "bottom_cta": {
       "title": "Skip the blank prompt. Start with a vertical agent.",
       "subtitle": "Spin up an agent that already knows your vertical. Customize what's specific to your practice, leave the rest as defaults, and go live in days, not months.",
-      "cta_primary": "Start free trial",
+      "cta_primary": "Create an account",
       "cta_secondary": "See use cases"
     }
   },

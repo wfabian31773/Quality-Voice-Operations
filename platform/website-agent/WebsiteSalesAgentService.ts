@@ -74,7 +74,7 @@ KEY FEATURES:
 - Agent Builder: Visual tool to customize agent personality, scripts, and escalation rules
 - Widget: Embeddable chat/voice widget for websites
 - Multi-channel: Phone, SMS, web chat support
-- HIPAA Compliant: Enterprise-grade security with audit logging
+- Healthcare pilot approval pending. Recording disabled by default. Certifications not verified.
 
 AGENT TEMPLATES (Pre-built, ready to deploy):
 1. Medical Receptionist — Patient intake, appointment scheduling, prescription refills, insurance verification

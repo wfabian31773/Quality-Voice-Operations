@@ -22,7 +22,13 @@ export const BANNED_PHRASES: Array<{ id: string; pattern: RegExp }> = [
   { id: '14-day-fr', pattern: /14 jours/i },
   { id: '14-day-de', pattern: /14 Tage|14-t[aä]gige/i },
   { id: '14-day-pt', pattern: /14 dias/i },
+  { id: 'free-trial-en', pattern: /free trial/i },
+  { id: 'activate-trial-en', pattern: /activate your trial/i },
   { id: '7-day-trial', pattern: /7-day free trial|free for 7 days/i },
+  { id: 'free-trial-es', pattern: /prueba gratis|prueba gratuita/i },
+  { id: 'free-trial-fr', pattern: /essai gratuit/i },
+  { id: 'free-trial-de', pattern: /kostenlose Test(?:version|phase)/i },
+  { id: 'free-trial-pt', pattern: /teste gr[aá]tis|teste gratuito/i },
   { id: '7-day-es', pattern: /prueba gratis de 7 d[ií]as|gratis por 7 d[ií]as/i },
   { id: '7-day-fr', pattern: /essai gratuit de 7 jours|gratuit pendant 7 jours/i },
   { id: '7-day-de', pattern: /7 Tage kostenlos(?:e Testversion)?/i },
@@ -53,6 +59,12 @@ export const BANNED_PHRASES: Array<{ id: string; pattern: RegExp }> = [
   { id: 'cypress-hill', pattern: /Cypress Hill Realty/i },
   { id: 'bayside-eye', pattern: /Bayside Eye/i },
   { id: 'parkview-apartments', pattern: /Parkview Apartments/i },
+];
+
+/** Extra bans for the live public sales-assistant prompt only (not vertical locale copy kept for TODO(PR-04) routes). */
+const ASSISTANT_PROMPT_EXTRA_BANS: Array<{ id: string; pattern: RegExp }> = [
+  { id: 'hipaa-compliant', pattern: /HIPAA[- ]compliant/i },
+  { id: 'hipaa-ready', pattern: /HIPAA[- ]ready/i },
 ];
 
 function source(relativePath: string): string {
@@ -158,6 +170,25 @@ describe('PR-04 prohibited public-site claims', () => {
     const haystack = 'Built and battle-tested on 40,000+ real healthcare calls';
     const hit = BANNED_PHRASES.find(({ pattern }) => pattern.test(haystack));
     expect(hit?.id).toBe('40000-calls');
+  });
+
+  it('fails when a generic free-trial promise is reintroduced', () => {
+    const haystack = 'Start your free trial today.';
+    const hit = BANNED_PHRASES.find(({ pattern }) => pattern.test(haystack));
+    expect(hit?.id).toBe('free-trial-en');
+  });
+
+  it('sales-assistant prompt contains no HIPAA-compliant claim', () => {
+    const text = source('platform/website-agent/WebsiteSalesAgentService.ts');
+    for (const { id, pattern } of ASSISTANT_PROMPT_EXTRA_BANS) {
+      expect(text, `WebsiteSalesAgentService matched ${id}`).not.toMatch(pattern);
+    }
+  });
+
+  it('fails when the sales-assistant prompt reintroduces HIPAA Compliant', () => {
+    const haystack = '- HIPAA Compliant: Enterprise-grade security with audit logging';
+    const hit = ASSISTANT_PROMPT_EXTRA_BANS.find(({ pattern }) => pattern.test(haystack));
+    expect(hit?.id).toBe('hipaa-compliant');
   });
 
   const tsSources = sources.filter((s) => /\.(tsx|ts|jsx|js)$/.test(s.relativePath));

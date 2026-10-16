@@ -3,7 +3,7 @@
     "try_live_demo": "Probar demo en vivo",
     "see_use_cases": "Ver casos de uso",
     "explore_agents": "Explorar agentes",
-    "start_free_trial": "Comenzar prueba gratis",
+    "start_free_trial": "Crear una cuenta",
     "book_demo": "Reservar una demo",
     "talk_to_us": "Hablar con nosotros",
     "book_a_demo": "Reservar una demo",
@@ -372,9 +372,9 @@
     },
     "bottom_cta": {
       "title": "Velo en acción.",
-      "subtitle": "Prueba nuestros agentes de demo en vivo o comienza tu prueba gratis hoy.",
+      "subtitle": "Prueba nuestros agentes de demo en vivo o reserva una demostración.",
       "try_demo": "Probar la demo",
-      "start_trial": "Comenzar prueba gratis"
+      "start_trial": "Crear una cuenta"
     }
   },
   "features": {
@@ -479,7 +479,7 @@
       "per_month": "/mes",
       "minutes_included": "{{minutes}} minutos de IA incluidos",
       "overage_label": "{{overage}} por exceso",
-      "start_trial": "Iniciar prueba gratis",
+      "start_trial": "Crear una cuenta",
       "recommended": "RECOMENDADO",
       "billed_monthly": "Facturación mensual · cancela cuando quieras",
       "billed_annually": "Facturación anual · ahorra 20%",
@@ -935,7 +935,7 @@
     "custom_cta": {
       "title": "¿Necesitas una integración a medida?",
       "subtitle": "La API REST y el sistema de webhooks de QVO te permiten conectarte con cualquier servicio externo. Nuestra documentación cubre autenticación, tipos de eventos y formatos de payload.",
-      "start_trial": "Iniciar prueba gratuita",
+      "start_trial": "Crear una cuenta",
       "talk_engineering": "Hablar con ingeniería"
     }
   },
@@ -981,7 +981,7 @@
   },
   "vertical_page": {
     "hero": {
-      "start_trial": "Comienza tu prueba gratis",
+      "start_trial": "Crear una cuenta",
       "try_demo": "Prueba la demo en vivo"
     },
     "card": {
@@ -1014,7 +1014,7 @@
     "bottom_cta": {
       "title": "¿Listo para transformar tu negocio de {{vertical}}?",
       "subtitle": "Ahora estamos dando de alta talleres piloto.",
-      "start_trial": "Comienza tu prueba gratis",
+      "start_trial": "Crear una cuenta",
       "see_demo": "Ver demo en vivo"
     },
     "not_found": {

@@ -60,7 +60,7 @@ describe('Signup CAPTCHA gating', () => {
     expect(await screen.findByTestId('signup-captcha-slot')).toBeTruthy();
     expect(screen.queryByTestId('signup-captcha-unavailable')).toBeNull();
     await waitFor(() => {
-      expect((screen.getByRole('button', { name: /start free trial/i }) as HTMLButtonElement).disabled).toBe(false);
+      expect((screen.getByRole('button', { name: /create an account/i }) as HTMLButtonElement).disabled).toBe(false);
     });
   });
 
@@ -69,7 +69,7 @@ describe('Signup CAPTCHA gating', () => {
     renderSignup();
     expect(await screen.findByTestId('signup-captcha-unavailable')).toBeTruthy();
     expect(screen.queryByTestId('signup-captcha-slot')).toBeNull();
-    expect((screen.getByRole('button', { name: /start free trial/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /create an account/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('allows the documented local/dev bypass when captcha is not required', async () => {
@@ -78,7 +78,7 @@ describe('Signup CAPTCHA gating', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('signup-captcha-unavailable')).toBeNull();
       expect(screen.queryByTestId('signup-captcha-slot')).toBeNull();
-      expect((screen.getByRole('button', { name: /start free trial/i }) as HTMLButtonElement).disabled).toBe(false);
+      expect((screen.getByRole('button', { name: /create an account/i }) as HTMLButtonElement).disabled).toBe(false);
     });
   });
 
@@ -87,14 +87,14 @@ describe('Signup CAPTCHA gating', () => {
     apiPost.mockResolvedValue({ token: '', checkoutUrl: '' });
     renderSignup();
     await waitFor(() => {
-      expect((screen.getByRole('button', { name: /start free trial/i }) as HTMLButtonElement).disabled).toBe(false);
+      expect((screen.getByRole('button', { name: /create an account/i }) as HTMLButtonElement).disabled).toBe(false);
     });
     expect(screen.queryByTestId('signup-captcha-slot')).toBeNull();
 
     fireEvent.change(screen.getByLabelText(/organization name/i), { target: { value: 'Acme' } });
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password1' } });
-    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create an account/i }));
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
     expect((apiPost.mock.calls[0][1] as { captchaToken?: string }).captchaToken).toBeUndefined();
@@ -121,7 +121,7 @@ describe('Signup CAPTCHA gating', () => {
     fireEvent.change(screen.getByLabelText(/organization name/i), { target: { value: 'Acme' } });
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password1' } });
-    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create an account/i }));
 
     expect(await screen.findByText(/already exists/i)).toBeTruthy();
     expect(apiPost).toHaveBeenCalledTimes(1);
@@ -129,7 +129,7 @@ describe('Signup CAPTCHA gating', () => {
     expect(turnstile.reset).toHaveBeenCalledWith('widget-1');
 
     // Retrying without re-solving must not resubmit the consumed token.
-    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create an account/i }));
     expect(await screen.findByText(/complete the CAPTCHA/i)).toBeTruthy();
     expect(apiPost).toHaveBeenCalledTimes(1);
   });
