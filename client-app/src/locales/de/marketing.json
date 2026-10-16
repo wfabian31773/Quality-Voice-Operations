@@ -13,19 +13,20 @@
     "contact_sales": "Vertrieb kontaktieren",
     "send_message": "Nachricht senden",
     "sending": "Wird gesendet...",
+    "pilot_onboarding": "Wir nehmen gerade Pilotbetriebe auf.",
     "trusted_by": "Vertraut von"
   },
   "landing": {
     "seo_title": "QVO — KI-Sprachagenten, die Ihr Geschäft am Laufen halten",
-    "seo_description": "KI-Sprachagenten für Anrufannahme, Terminbuchung und Geschäftsautomatisierung. KI-Empfang und Anruf-Automatisierung für HLK, Arztpraxen, Zahnärzte, Kanzleien und mehr.",
+    "seo_description": "Sprachagenten für Handwerk und Hausdienste. Wir nehmen gerade Pilotbetriebe auf.",
     "hero": {
       "badge": "KI-gestützte Sprachplattform",
-      "eyebrow": "Ein Sprachkern · Spezialisierter Gesundheitsablauf",
+      "eyebrow": "Sprachbetrieb für Handwerk und Hausdienste",
       "title": "Anrufe, die nicht verloren gehen.",
       "title_2": "Kunden, die nicht verloren gehen.",
       "title_highlight": "KI-Sprachagenten",
       "title_rest": ", die Ihr Geschäft am Laufen halten",
-      "description": "Setzen Sie intelligente Sprachagenten ein, die Anrufe annehmen, Termine buchen, Techniker disponieren und Kundenfragen beantworten — rund um die Uhr, vollautomatisch.",
+      "description": "Wir nehmen gerade Pilotbetriebe auf. QVO nimmt Anrufe entgegen, qualifiziert, plant und fasst nach — rund um die Uhr, mit einer Stimme, der Kunden vertrauen.",
       "benefits": {
         "never_miss_call": "Keinen Anruf mehr verpassen",
         "book_appointments": "Termine automatisch buchen",
@@ -36,7 +37,7 @@
     "stats": {
       "calls_handled": "Bearbeitete Anrufe",
       "agents_deployed": "Eingesetzte Agenten",
-      "uptime": "Verfügbarkeit",
+      "uptime": "Verfügbarkeitsbezeichnung",
       "industries_served": "Bediente Branchen",
       "soc2_in_progress": "Zertifizierungen nicht verifiziert",
       "hipaa_ready": "Genehmigung des Gesundheitspiloten ausstehend",
@@ -173,25 +174,25 @@
         "metric": "400 %",
         "metric_label": "Schnellere Lead-Reaktion",
         "industry": "Immobilien",
-        "quote": "QVO beantwortet jede Anfrage in Sekunden. Unsere Makler hetzen keinen Leads mehr hinterher, sondern schließen Geschäfte ab. Die Reaktionszeit fiel von 4 Stunden auf unter eine Minute.",
-        "name": "Marcus Rivera",
-        "role": "Makler, Summit Realty Group"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "name": "Pilotbetreiber",
+        "role": "Makler, Pilotbetrieb"
       },
       "medical": {
         "metric": "40 %",
         "metric_label": "Weniger verpasste Anrufe",
         "industry": "Medizin",
-        "quote": "In der Grippesaison war unser Empfang überlastet. QVO hat den Überlauf so reibungslos abgefangen, dass die Patienten dachten, sie sprechen mit unserem Team.",
-        "name": "Dr. Sarah Chen",
-        "role": "Inhaberin, Bright Smiles Dental"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "name": "Pilotbetreiber",
+        "role": "Inhaberin, Name Ihres Betriebs"
       },
       "legal": {
         "metric": "2x",
         "metric_label": "Conversion-Rate",
         "industry": "Recht",
-        "quote": "Wir haben unsere Beratungstermine verdoppelt, indem wir Anrufe außerhalb der Bürozeiten annehmen. Jeder potenzielle Mandant erhält jetzt einen professionellen ersten Eindruck.",
-        "name": "James Whitfield",
-        "role": "Geschäftsführender Partner, Summit Legal"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "name": "Pilotbetreiber",
+        "role": "Geschäftsführender Partner, Pilotbetrieb"
       }
     },
     "testimonials": {
@@ -215,7 +216,7 @@
     },
     "bottom_cta": {
       "title": "Setzen Sie heute Ihren ersten KI-Sprachagenten ein",
-      "subtitle": "Schließen Sie sich hunderten Unternehmen an, die QVO nutzen, um Anrufe zu automatisieren, Leads zu erfassen und ihren Umsatz zu steigern. Keine Verträge, jederzeit kündbar.",
+      "subtitle": "Wir nehmen gerade Pilotbetriebe auf. Buchen Sie einen Rundgang, um zu starten.",
       "try_live": "Live-Demo testen"
     }
   },
@@ -461,11 +462,11 @@
   },
   "pricing": {
     "seo_title": "Preise — KI-Sprachagenten-Pläne mit KI-Minuten, Agenten und Integrationen",
-    "seo_description": "Die Preise von QVO starten ab {{starter}}/Monat. Vergleichen Sie die Pläne Starter, Pro und Enterprise mit KI-Minuten, unbegrenzten Agenten, CRM-Integrationen und Demo-Zugang. 14-tägige kostenlose Testphase.",
+    "seo_description": "Die Preise von QVO starten ab {{starter}}/Monat. Vergleichen Sie die Pläne Starter, Pro und Enterprise mit KI-Minuten, unbegrenzten Agenten, CRM-Integrationen und Demo-Zugang.",
     "hero": {
       "eyebrow": "Preise",
       "title": "Einfache Pläne, ehrliche Preise.",
-      "description": "Starten Sie mit einer 14-tägigen kostenlosen Testphase in jedem Plan. Keine Verträge, keine versteckten Gebühren. Skalieren Sie, wie Ihr Unternehmen wächst.",
+      "description": "Wir nehmen gerade Pilotbetriebe auf. Buchen Sie einen Rundgang, um zu starten.",
       "guarantee": "30-Tage-Geld-zurück-Garantie"
     },
     "tier_copy": {
@@ -547,7 +548,7 @@
       "priority": "Prioritäts-Support",
       "onboarding": "Dediziertes Onboarding",
       "demo": "Zugang zur interaktiven Demo",
-      "trial": "14 Tage kostenlos testen",
+      "trial": "Aufnahme von Pilotbetrieben",
       "unlimited": "Unbegrenzt",
       "up_to_3": "Bis zu 3",
       "up_to_10": "Bis zu 10"
@@ -565,8 +566,8 @@
       "eyebrow": "FAQ",
       "title": "Häufige Fragen zur Abrechnung.",
       "subtitle": "Alles, was Sie zu unseren Plänen und Preisen wissen müssen.",
-      "q1": "Wie funktioniert die 14-tägige kostenlose Testphase?",
-      "a1": "Sie erhalten 14 Tage lang vollen Zugriff auf alle Funktionen Ihres gewählten Plans. Kein Kreditkarteneintrag nötig, um zu starten. Wenn Sie nicht weitermachen, wird Ihr Konto einfach pausiert — keine Kosten.",
+      "q1": "Wie starte ich?",
+      "a1": "Wir nehmen gerade Pilotbetriebe auf. Buchen Sie einen Rundgang, um über einen Einsatz für Ihren Betrieb zu sprechen.",
       "q2": "Was zählt als KI-Minute?",
       "a2": "Eine KI-Minute ist eine Minute aktiver Anrufzeit, die Ihr Sprachagent bearbeitet. Wartezeit, Klingeln und Systemverarbeitung zählen nicht. Nur die tatsächliche Gesprächszeit wird abgerechnet.",
       "q3": "Was passiert, wenn ich meine enthaltenen Minuten überschreite?",
@@ -577,8 +578,8 @@
       "a5": "Nein. Alle Pläne sind monatsweise und ohne langfristige Verträge. Sie können jederzeit kündigen und Ihr Konto bleibt bis zum Ende des aktuellen Abrechnungszeitraums aktiv.",
       "q6": "Bieten Sie Jahrespreise an?",
       "a6": "Ja. Die jährliche Abrechnung spart 20 % gegenüber der monatlichen. Sprechen Sie unser Sales-Team an oder wählen Sie bei der Anmeldung die jährliche Abrechnung, um den Rabatt zu erhalten.",
-      "q7": "Gibt es eine Einrichtungsgebühr?",
-      "a7": "Keine Einrichtungsgebühr in irgendeinem Plan. Starter und Pro sind komplett Self-Service. Enterprise enthält dediziertes Onboarding ohne Mehrkosten.",
+      "q7": "Wie läuft die Einrichtung?",
+      "a7": "Wir nehmen gerade Pilotbetriebe auf. Die Einrichtung wird im Rundgang besprochen.",
       "q8": "Welche Zahlungsmethoden akzeptieren Sie?",
       "a8": "Wir akzeptieren alle gängigen Kreditkarten (Visa, Mastercard, American Express) sowie ACH-Banküberweisungen für jährliche Enterprise-Pläne. Rechnungsstellung ist für Enterprise-Kunden verfügbar."
     },
@@ -587,7 +588,7 @@
       "subtitle": "Sehen Sie, wie viel Ihr Unternehmen mit KI-Sprachagenten von QVO sparen könnte."
     },
     "logos": {
-      "title": "Teams, die schon mit QVO arbeiten"
+      "title": "Wir nehmen gerade Pilotbetriebe auf"
     },
     "bottom_cta": {
       "title": "Fragen zu den Preisen?",
@@ -772,7 +773,7 @@
     "conversion": {
       "experienced": "Sie haben gerade QVO erlebt",
       "title": "Setzen Sie in wenigen Minuten Ihre eigenen KI-Sprachagenten ein",
-      "subtitle": "Was Sie gerade gehört haben, ist dieselbe Technologie, die hunderte Unternehmen antreibt. Starten Sie heute mit Ihren eigenen, individuellen Sprachagenten.",
+      "subtitle": "Wir nehmen gerade Pilotbetriebe auf. Starten Sie heute mit einem Rundgang.",
       "feat1_title": "Einrichtung in 5 Minuten",
       "feat1_desc": "Setzen Sie Ihren ersten Agenten in Minuten ein, nicht in Wochen",
       "feat2_title": "HIPAA-bereit",
@@ -824,7 +825,7 @@
       "email_label": "E-Mail",
       "email_placeholder": "jane@praxis.de",
       "company_label": "Unternehmens- oder Praxisname",
-      "company_placeholder": "Bright Smiles Dental",
+      "company_placeholder": "Name Ihres Betriebs",
       "message_label": "Wie können wir helfen?",
       "message_placeholder": "Erzählen Sie uns von Ihrem Anrufvolumen, Ihrer aktuellen Einrichtung und was Sie verbessern möchten.",
       "send_default_error": "Nachricht konnte nicht gesendet werden",
@@ -974,7 +975,7 @@
     "empty": "Keine Agenten in dieser Kategorie gefunden.",
     "bottom_cta": {
       "title": "Bereit, Ihren ersten Agenten einzusetzen?",
-      "subtitle": "Starten Sie mit einer 14-tägigen kostenlosen Testphase. Wählen Sie eine Vorlage, passen Sie sie an Ihr Unternehmen an und gehen Sie in Minuten live.",
+      "subtitle": "Wir nehmen gerade Pilotbetriebe auf. Buchen Sie einen Rundgang, um über einen Einsatz für Ihren Betrieb zu sprechen.",
       "view_pricing": "Preise ansehen"
     }
   },
@@ -985,7 +986,7 @@
     },
     "card": {
       "live_performance": "Live-Leistung",
-      "from_customers_in": "Von QVO-Kunden im Bereich {{vertical}}",
+      "from_customers_in": "Wir nehmen gerade Pilotbetriebe in {{vertical}} auf",
       "pre_built_for": "Vorgefertigt für {{vertical}}",
       "deploy_minutes": "In Minuten einsatzbereit, ohne Code"
     },
@@ -1012,7 +1013,7 @@
     },
     "bottom_cta": {
       "title": "Bereit, Ihr {{vertical}}-Geschäft zu transformieren?",
-      "subtitle": "Schließen Sie sich Hunderten von {{vertical_lower}}-Unternehmen an, die QVO nutzen, um jeden Anruf zu beantworten, mehr Termine zu buchen und den Umsatz zu steigern.",
+      "subtitle": "Wir nehmen gerade Pilotbetriebe auf.",
       "start_trial": "Kostenlose Testphase starten",
       "see_demo": "Live-Demo ansehen"
     },
@@ -1301,8 +1302,8 @@
       "conversation": [
         "Hallo, mein Küchenwasserhahn tropft ziemlich stark.",
         "Das tut mir leid. Ich helfe Ihnen, das zu beheben. Können Sie mir Ihren Namen und Ihre Wohnungsnummer nennen?",
-        "Sarah Mitchell, Wohnung 304 in den Parkview Apartments.",
-        "Danke, Sarah. Ist das Leck eingedämmt oder läuft das Wasser aktiv über?",
+        "Ich bin Kim, Wohnung 304.",
+        "Danke, Kim. Ist das Leck eingedämmt oder läuft das Wasser aktiv über?",
         "Es tropft stetig, läuft aber nicht über.",
         "Verstanden. Ich habe eine Wartungsanfrage erstellt und als dringend markiert. Ein Klempner meldet sich innerhalb von 4 Stunden, um einen Besuch zu vereinbaren. Sie erhalten eine SMS mit den Details. Versuchen Sie in der Zwischenzeit, das Wasserabsperrventil unter dem Spülbecken zu schließen."
       ],
@@ -1466,10 +1467,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Wir sind von 1 von 3 verpassten Anrufen auf das Annehmen jedes einzelnen umgestiegen. Unsere Patientenzufriedenheit stieg im ersten Monat um 22 Punkte.",
-        "author": "Dr. Sarah Mitchell",
-        "role": "Praxisadministratorin",
-        "company": "Lakewood Family Medicine"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für das Gesundheitswesen | QVO",
       "metaDescription": "Automatisieren Sie Terminvergabe, Anamnese und Triage außerhalb der Sprechzeiten mit HIPAA-konformen KI-Sprachagenten. Beantworten Sie jeden Anruf rund um die Uhr und reduzieren Sie Nichterscheinen um 28 %."
@@ -1547,10 +1548,10 @@
         }
       ],
       "testimonial": {
-        "quote": "QVO antwortet auf unsere Zillow-Leads in Sekunden. Unsere Konversionsrate hat sich verdoppelt, weil wir immer als Erste reagieren.",
-        "author": "Marcus Chen",
-        "role": "Makler/Inhaber",
-        "company": "Pinnacle Realty Group"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für die Immobilienbranche | QVO",
       "metaDescription": "Antworten Sie in Sekunden auf Immobilien-Leads, qualifizieren Sie Käufer automatisch und planen Sie Besichtigungen rund um die Uhr mit KI-Sprachagenten."
@@ -1628,10 +1629,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Wir verloren 8–10 potenzielle Mandanten pro Woche durch verpasste Anrufe. QVO erfasst jetzt jeden, und die Aufnahmequalität ist besser als bei unserem früheren Personal.",
-        "author": "Jennifer Park",
-        "role": "Geschäftsführende Partnerin",
-        "company": "Park & Associates Law"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Anwaltskanzleien | QVO",
       "metaDescription": "Erfassen Sie jeden Mandantenanruf mit KI-gestützten rechtlichen Aufnahme-Agenten. Qualifizieren Sie Fälle, planen Sie Beratungen und reduzieren Sie Aufnahmekosten um 65 %."
@@ -1709,10 +1710,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Während der Kältewelle im letzten Winter haben wir das Dreifache unseres normalen Anrufvolumens bewältigt, ohne eine einzige Person einzustellen. QVO entsandte Techniker schneller als unser bester Disponent.",
-        "author": "Mike Rodriguez",
-        "role": "Inhaber",
-        "company": "Comfort First HVAC"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Haushaltsservices | QVO",
       "metaDescription": "Verpassen Sie keinen Notdienstanruf mehr. KI-Sprachagenten für HLK-, Sanitär- und Elektrobetriebe, die rund um die Uhr Techniker entsenden und Kunden informieren."
@@ -1790,10 +1791,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Unsere Nichterscheinen-Quote sank im ersten Quartal von 18 % auf 7 %. Allein der Recall-Kampagnen-Agent brachte 140 überfällige Patienten zurück.",
-        "author": "Dr. Lisa Nguyen",
-        "role": "Praxisinhaberin",
-        "company": "Bright Smile Dental"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Zahnarztpraxen | QVO",
       "metaDescription": "Füllen Sie Ihren Zahnarztkalender und reduzieren Sie Nichterscheinen mit KI-Sprachagenten. Automatisieren Sie Patiententerminierung, Recall-Kampagnen und Notfall-Triage rund um die Uhr."
@@ -1871,10 +1872,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Unsere TFAs haben ihre Nachmittage zurück. Rezeptanrufe und Terminbuchungen erledigen sich jetzt einfach … von selbst, und unsere Kunden sagen uns immer wieder, dass das Telefonerlebnis persönlicher wirkt, nicht weniger.",
-        "author": "Dr. Amelia Park",
-        "role": "Medizinische Leiterin",
-        "company": "Riverside Animal Hospital"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Tierkliniken | QVO",
       "metaDescription": "Buchen Sie Tiertermine, triagieren Sie Notfälle und bearbeiten Sie Rezeptverlängerungen rund um die Uhr mit KI-Sprachagenten für Tierkliniken."
@@ -1952,10 +1953,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Wir haben früher zwei oder drei Geschäfte pro Woche durch verpasste Anrufe nach 19 Uhr verloren. QVO erfasst diese Leads, qualifiziert sie und der Verkäufer sieht das gesamte Gespräch am Morgen in unserem CRM.",
-        "author": "Tony Alvarez",
-        "role": "Geschäftsführer",
-        "company": "Hillcrest Auto Group"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Autohäuser und Servicezentren | QVO",
       "metaDescription": "Buchen Sie Service-Termine, erfassen Sie Vertriebs-Leads rund um die Uhr und automatisieren Sie RO-Statusupdates mit KI-Sprachagenten für die Automobilbranche."
@@ -2033,10 +2034,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Jeder Interessent erhält jetzt innerhalb von 60 Sekunden eine geschliffene, skriptkonforme Aufnahme — auch um 21 Uhr. Unsere Berater gehen in Discovery-Calls und wissen schon, dass die Beziehung qualifiziert ist und die Hinweispflichten erfüllt sind.",
-        "author": "David Whitman, CFP®",
-        "role": "Geschäftsführender Partner",
-        "company": "Whitman Wealth Advisors"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Finanzberater und RIAs | QVO",
       "metaDescription": "Qualifizieren Sie Interessenten in unter einer Minute, buchen Sie Beratergespräche und bearbeiten Sie Routine-Kundenservice-Anrufe mit strukturierten, prüfbaren KI-Sprachagenten für Finanzdienstleistungen."
@@ -2114,10 +2115,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Unser Concierge-Team hat endlich Zeit für die Gäste in der Lobby. Telefonische Reservierungen sind um fast 40 % gestiegen, und unsere französisch- und mandarinsprachigen Gäste erhalten jetzt das gleiche herzliche Erlebnis wie alle anderen.",
-        "author": "Isabelle Moreau",
-        "role": "Generaldirektorin",
-        "company": "The Marlow Boutique Hotel"
+        "quote": "Wir nehmen gerade Pilotbetriebe auf.",
+        "author": "Pilotbetreiber",
+        "role": "Betriebsrolle",
+        "company": "Pilotbetrieb"
       },
       "metaTitle": "KI-Sprachagenten für Hotels und Restaurants | QVO",
       "metaDescription": "Nehmen Sie Reservierungen entgegen, beantworten Sie Gästefragen und bearbeiten Sie Anfragen in über 30 Sprachen mit KI-Sprachagenten für das Gastgewerbe."

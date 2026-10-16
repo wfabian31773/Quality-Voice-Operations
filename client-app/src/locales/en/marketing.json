@@ -13,19 +13,20 @@
     "contact_sales": "Contact sales",
     "send_message": "Send message",
     "sending": "Sending...",
+    "pilot_onboarding": "Now onboarding pilot shops.",
     "trusted_by": "Trusted by"
   },
   "landing": {
     "seo_title": "QVO — AI Voice Agents That Run Your Business",
-    "seo_description": "AI voice agents for call answering, appointment scheduling, and business automation. AI receptionist and call automation for HVAC, medical offices, dental, legal, and more.",
+    "seo_description": "Voice agents for trade and home-service shops. Now onboarding pilot shops.",
     "hero": {
       "badge": "AI-Powered Voice Platform",
-      "eyebrow": "One voice core · Purpose-built healthcare workflow",
+      "eyebrow": "Voice operations for trade and home-service shops",
       "title_highlight": "AI Voice Agents",
       "title_rest": " That Run Your Business",
       "title": "Calls that don’t get missed.",
       "title_2": "Customers that don’t get lost.",
-      "description": "Built and battle-tested on 40,000+ real healthcare calls — and ready for every business that lives by the phone. QVO answers, qualifies, schedules, and follows up 24/7, in a voice your customers trust.",
+      "description": "Now onboarding pilot shops. QVO answers, qualifies, schedules, and follows up 24/7, in a voice your customers trust.",
       "benefits": {
         "never_miss_call": "Never Miss a Call",
         "book_appointments": "Book Appointments Automatically",
@@ -36,7 +37,7 @@
     "stats": {
       "calls_handled": "Calls Handled",
       "agents_deployed": "Agents Deployed",
-      "uptime": "Uptime",
+      "uptime": "Availability label",
       "industries_served": "Industries Served",
       "soc2_in_progress": "Certifications not verified",
       "hipaa_ready": "Healthcare pilot approval pending",
@@ -167,37 +168,37 @@
     },
     "results": {
       "badge": "Customer Results",
-      "title": "Real Businesses, Real Results",
-      "subtitle": "See how businesses across industries are transforming their operations with QVO.",
+      "title": "Pilot onboarding",
+      "subtitle": "Now onboarding pilot shops.",
       "real_estate": {
         "metric": "400%",
         "metric_label": "Faster Lead Response",
         "industry": "Real Estate",
-        "quote": "QVO answers every inquiry within seconds. Our agents went from chasing leads to closing deals. Response time dropped from 4 hours to under a minute.",
-        "name": "Marcus Rivera",
-        "role": "Broker, Summit Realty Group"
+        "quote": "Now onboarding pilot shops.",
+        "name": "Pilot operator",
+        "role": "Broker, Pilot shop"
       },
       "medical": {
         "metric": "40%",
         "metric_label": "Fewer Missed Calls",
         "industry": "Medical",
-        "quote": "During flu season, our front desk was drowning. QVO handled overflow so seamlessly that patients thought they were speaking to our staff.",
-        "name": "Dr. Sarah Chen",
-        "role": "Practice Owner, Bright Smiles Dental"
+        "quote": "Now onboarding pilot shops.",
+        "name": "Pilot operator",
+        "role": "Practice Owner, Your shop name"
       },
       "legal": {
         "metric": "2x",
         "metric_label": "Conversion Rate",
         "industry": "Legal",
-        "quote": "We doubled our consultation bookings by capturing after-hours intake calls. Every potential client gets a professional first impression now.",
-        "name": "James Whitfield",
-        "role": "Managing Partner, Summit Legal"
+        "quote": "Now onboarding pilot shops.",
+        "name": "Pilot operator",
+        "role": "Managing Partner, Pilot shop"
       }
     },
     "testimonials": {
       "badge": "In Their Words",
       "title": "Hear it straight from operators.",
-      "subtitle": "Real teams replacing missed calls and overwhelmed front desks with QVO."
+      "subtitle": "Now onboarding pilot shops."
     },
     "comparison": {
       "badge": "How We Compare",
@@ -215,7 +216,7 @@
     },
     "bottom_cta": {
       "title": "Deploy Your First AI Voice Agent Today",
-      "subtitle": "Join hundreds of businesses using QVO to automate calls, capture leads, and grow revenue. No contracts, cancel anytime.",
+      "subtitle": "Now onboarding pilot shops. Book a walkthrough to get started.",
       "try_live": "Try the Live Demo"
     }
   },
@@ -461,11 +462,11 @@
   },
   "pricing": {
     "seo_title": "Pricing — AI Voice Agent Plans with AI Minutes, Agents & Integrations",
-    "seo_description": "QVO pricing starts at {{starter}}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access. 14-day free trial.",
+    "seo_description": "QVO pricing starts at {{starter}}/month. Compare Starter, Pro, and Enterprise plans with AI minutes, unlimited agents, CRM integrations, and demo access.",
     "hero": {
       "eyebrow": "Pricing",
       "title": "Simple plans, honest pricing.",
-      "description": "Start with a 14-day free trial on any plan. No contracts, no hidden fees. Scale as your business grows.",
+      "description": "Now onboarding pilot shops. Book a walkthrough to get started.",
       "guarantee": "30-day money-back guarantee"
     },
     "tier_copy": {
@@ -547,7 +548,7 @@
       "priority": "Priority support",
       "onboarding": "Dedicated onboarding",
       "demo": "Interactive demo access",
-      "trial": "14-day free trial",
+      "trial": "Pilot onboarding",
       "unlimited": "Unlimited",
       "up_to_3": "Up to 3",
       "up_to_10": "Up to 10"
@@ -565,8 +566,8 @@
       "eyebrow": "FAQ",
       "title": "Common questions about billing.",
       "subtitle": "Everything you need to know about our plans and pricing.",
-      "q1": "How does the 14-day free trial work?",
-      "a1": "You get full access to all features on your chosen plan for 14 days. No credit card required to start. If you decide not to continue, your account is simply paused — no charges.",
+      "q1": "How do I get started?",
+      "a1": "Now onboarding pilot shops. Book a walkthrough to talk about a deployment for your shop.",
       "q2": "What counts as an AI minute?",
       "a2": "An AI minute is one minute of active call time handled by your voice agent. Hold time, ringing, and system processing are not counted. Only actual conversation time is billed.",
       "q3": "What happens if I exceed my included minutes?",
@@ -577,8 +578,8 @@
       "a5": "No. All plans are month-to-month with no long-term contracts. You can cancel at any time and your account will remain active through the end of your current billing period.",
       "q6": "Do you offer annual pricing?",
       "a6": "Yes. Annual billing saves you 20% compared to monthly pricing. Contact our sales team or select annual billing during signup to get the discounted rate.",
-      "q7": "Is there a setup fee?",
-      "a7": "No setup fees on any plan. Starter and Pro plans are entirely self-service. Enterprise plans include dedicated onboarding at no additional cost.",
+      "q7": "How does setup work?",
+      "a7": "Now onboarding pilot shops. Setup is discussed during your walkthrough.",
       "q8": "What payment methods do you accept?",
       "a8": "We accept all major credit cards (Visa, Mastercard, American Express) and ACH bank transfers for annual Enterprise plans. Invoicing is available for Enterprise customers."
     },
@@ -587,7 +588,7 @@
       "subtitle": "See how much your business could save with QVO AI voice agents."
     },
     "logos": {
-      "title": "Teams already running on QVO"
+      "title": "Now onboarding pilot shops"
     },
     "bottom_cta": {
       "title": "Questions about pricing?",
@@ -772,7 +773,7 @@
     "conversion": {
       "experienced": "You just experienced QVO",
       "title": "Deploy your own AI voice agents in minutes",
-      "subtitle": "What you just heard is the same technology powering hundreds of businesses. Get started with your own custom voice agents today.",
+      "subtitle": "Now onboarding pilot shops. Get started with a walkthrough today.",
       "feat1_title": "5-Minute Setup",
       "feat1_desc": "Deploy your first agent in minutes, not weeks",
       "feat2_title": "HIPAA Ready",
@@ -824,7 +825,7 @@
       "email_label": "Email",
       "email_placeholder": "jane@practice.com",
       "company_label": "Company or practice name",
-      "company_placeholder": "Bright Smiles Dental",
+      "company_placeholder": "Your shop name",
       "message_label": "How can we help?",
       "message_placeholder": "Tell us about your call volume, current setup, and what you'd like to improve.",
       "send_default_error": "Failed to send message",
@@ -974,7 +975,7 @@
     "empty": "No agents found in this category.",
     "bottom_cta": {
       "title": "Ready to deploy your first agent?",
-      "subtitle": "Start with a 14-day free trial. Pick a template, customize it for your business, and go live in minutes.",
+      "subtitle": "Now onboarding pilot shops. Book a walkthrough to talk about a deployment for your shop.",
       "view_pricing": "View Pricing"
     }
   },
@@ -985,7 +986,7 @@
     },
     "card": {
       "live_performance": "Live performance",
-      "from_customers_in": "From QVO customers in {{vertical}}",
+      "from_customers_in": "Now onboarding pilot shops in {{vertical}}",
       "pre_built_for": "Pre-built for {{vertical}}",
       "deploy_minutes": "Deploy in minutes, no code"
     },
@@ -1012,7 +1013,7 @@
     },
     "bottom_cta": {
       "title": "Ready to Transform Your {{vertical}} Practice?",
-      "subtitle": "Join hundreds of {{vertical_lower}} businesses using QVO to answer every call, book more appointments, and grow revenue.",
+      "subtitle": "Now onboarding pilot shops.",
       "start_trial": "Start Your Free Trial",
       "see_demo": "See Live Demo"
     },
@@ -1301,8 +1302,8 @@
       "conversation": [
         "Hi, my kitchen faucet is leaking pretty badly.",
         "I'm sorry to hear that. Let me help get that resolved. Can I get your name and unit number?",
-        "It's Sarah Mitchell, unit 304 at Parkview Apartments.",
-        "Thank you, Sarah. Is the leak contained, or is water actively flooding?",
+        "It's Jordan, unit 304.",
+        "Thank you, Jordan. Is the leak contained, or is water actively flooding?",
         "It's dripping steadily but not flooding.",
         "Got it. I've created a maintenance request and flagged it as urgent. A plumber will contact you within 4 hours to schedule a visit. You'll get an SMS with the details. In the meantime, try turning off the water valve under the sink."
       ],
@@ -1466,10 +1467,10 @@
         }
       ],
       "testimonial": {
-        "quote": "We went from missing 1 in 3 calls to answering every single one. Our patient satisfaction scores jumped 22 points in the first month.",
-        "author": "Dr. Sarah Mitchell",
-        "role": "Practice Administrator",
-        "company": "Lakewood Family Medicine"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Healthcare | QVO",
       "metaDescription": "Automate patient scheduling, intake, and after-hours triage with HIPAA-aware AI voice agents. Answer every call 24/7 and reduce no-shows by 28%."
@@ -1547,10 +1548,10 @@
         }
       ],
       "testimonial": {
-        "quote": "QVO responds to our Zillow leads in seconds. Our conversion rate doubled because we're always first to respond.",
-        "author": "Marcus Chen",
-        "role": "Broker/Owner",
-        "company": "Pinnacle Realty Group"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Real Estate | QVO",
       "metaDescription": "Respond to real estate leads in seconds, qualify buyers automatically, and schedule showings 24/7 with AI voice agents."
@@ -1628,10 +1629,10 @@
         }
       ],
       "testimonial": {
-        "quote": "We were losing 8-10 potential clients per week to missed calls. QVO captures every one now, and the intake quality is better than our previous staff.",
-        "author": "Jennifer Park",
-        "role": "Managing Partner",
-        "company": "Park & Associates Law"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Law Firms | QVO",
       "metaDescription": "Capture every potential client call with AI-powered legal intake agents. Qualify cases, schedule consultations, and reduce intake costs by 65%."
@@ -1709,10 +1710,10 @@
         }
       ],
       "testimonial": {
-        "quote": "During last winter's cold snap, we handled 3x our normal call volume without adding a single person. QVO dispatched technicians faster than our best dispatcher.",
-        "author": "Mike Rodriguez",
-        "role": "Owner",
-        "company": "Comfort First HVAC"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Home Services | QVO",
       "metaDescription": "Never miss an emergency service call. AI voice agents for HVAC, plumbing, and electrical companies that dispatch technicians and update customers 24/7."
@@ -1790,10 +1791,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Our no-show rate dropped from 18% to 7% in the first quarter. The recall campaign agent alone brought back 140 overdue patients.",
-        "author": "Dr. Lisa Nguyen",
-        "role": "Practice Owner",
-        "company": "Bright Smile Dental"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Dental Practices | QVO",
       "metaDescription": "Fill your dental schedule and reduce no-shows with AI voice agents. Automate patient scheduling, recall campaigns, and emergency triage 24/7."
@@ -1871,10 +1872,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Our techs got their afternoons back. Refill calls and appointment booking just… handle themselves now, and our clients keep telling us the phone experience feels more personal, not less.",
-        "author": "Dr. Amelia Park",
-        "role": "Medical Director",
-        "company": "Riverside Animal Hospital"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Veterinary Clinics | QVO",
       "metaDescription": "Book pet appointments, triage emergencies, and handle prescription refills 24/7 with AI voice agents built for veterinary practices."
@@ -1952,10 +1953,10 @@
         }
       ],
       "testimonial": {
-        "quote": "We used to lose two or three deals a week to missed calls after 7 PM. QVO captures those leads, qualifies them, and the salesperson sees the full conversation in our CRM by morning.",
-        "author": "Tony Alvarez",
-        "role": "General Manager",
-        "company": "Hillcrest Auto Group"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Auto Dealers & Service Centers | QVO",
       "metaDescription": "Book service appointments, capture sales leads 24/7, and automate RO status updates with AI voice agents built for the automotive industry."
@@ -2033,10 +2034,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Every prospect now gets a polished, on-script intake within 60 seconds — even at 9 PM. Our advisors walk into discovery calls already knowing the relationship is qualified and disclosures are on file.",
-        "author": "David Whitman, CFP®",
-        "role": "Managing Principal",
-        "company": "Whitman Wealth Advisors"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Financial Advisors & RIAs | QVO",
       "metaDescription": "Qualify prospects in under a minute, book advisor consultations, and handle routine client service calls with structured, auditable AI voice agents for financial services."
@@ -2114,10 +2115,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Our concierge team finally has time for guests in the lobby. Phone reservations are up almost 40% and our French and Mandarin-speaking guests now get the same warm experience as everyone else.",
-        "author": "Isabelle Moreau",
-        "role": "General Manager",
-        "company": "The Marlow Boutique Hotel"
+        "quote": "Now onboarding pilot shops.",
+        "author": "Pilot operator",
+        "role": "Shop role",
+        "company": "Pilot shop"
       },
       "metaTitle": "AI Voice Agents for Hotels & Restaurants | QVO",
       "metaDescription": "Take reservations, answer guest questions, and handle requests in 30+ languages with AI voice agents built for hospitality."

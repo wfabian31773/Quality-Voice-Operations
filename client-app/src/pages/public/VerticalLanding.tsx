@@ -29,6 +29,11 @@ import {
 import { VERTICAL_ACTION, CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import { CTA } from '../../lib/analyticsCtas';
 
+// TODO(PR-04): Healthcare and Dental vertical routes stay reachable so
+// existing tests do not break. They are hidden from public nav/footer in
+// PublicLayout. Remove the routes in a follow-up once tests no longer
+// depend on them. QVO serves trade/home-service shops; it does no healthcare.
+
 interface VerticalConfig {
   slug: string;
   icon: typeof Phone;
@@ -47,17 +52,6 @@ interface AgentExample {
   description: string;
   capabilities: string[];
 }
-interface Stat {
-  value: string;
-  label: string;
-}
-interface Testimonial {
-  quote: string;
-  author: string;
-  role: string;
-  company: string;
-}
-
 const verticals: Record<string, VerticalConfig> = {
   healthcare: {
     slug: 'healthcare',
@@ -165,7 +159,7 @@ export default function VerticalLanding() {
           <p className="text-text-secondary mb-6">
             {t('vertical_page.not_found.subtitle')}
           </p>
-          <Link to="/industries/healthcare" className="text-primary hover:underline">
+          <Link to="/pricing" className="text-primary hover:underline">
             {t('vertical_page.not_found.view_all')} &rarr;
           </Link>
         </div>
@@ -182,49 +176,6 @@ export default function VerticalLanding() {
   const metaDescription = t(`${dataKey}.metaDescription`);
   const painPoints = t(`${dataKey}.painPoints`, { returnObjects: true }) as PainPoint[];
   const agentExamples = t(`${dataKey}.agentExamples`, { returnObjects: true }) as AgentExample[];
-  const stats = t(`${dataKey}.stats`, { returnObjects: true }) as Stat[];
-  const testimonial = t(`${dataKey}.testimonial`, { returnObjects: true }) as Testimonial;
-
-  // Floating live-performance card rendered in the hero's right column on lg+.
-  const heroRightCard = (
-    <div className="relative max-w-sm w-full">
-      <div className="rounded-2xl bg-black/55 backdrop-blur-md border border-white/15 p-6 shadow-2xl">
-        <div className="flex items-center gap-2 mb-5">
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-primary-light">
-            {t('vertical_page.card.live_performance')}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-5">
-          {stats.slice(0, 4).map((stat) => (
-            <div key={stat.label}>
-              <p className="font-display text-2xl font-bold text-white leading-none tabular-nums">
-                {stat.value}
-              </p>
-              <p className="text-[11px] text-white/65 mt-1.5">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 pt-4 border-t border-white/15 flex items-center gap-2 text-[11px] text-white/70">
-          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-          {t('vertical_page.card.from_customers_in', { vertical: verticalLower })}
-        </div>
-      </div>
-      <div className="absolute -bottom-4 -left-4 rounded-xl bg-surface shadow-xl border border-border p-3 flex items-center gap-3 max-w-[260px]">
-        <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-muted ring-1 ring-border/60 shrink-0">
-          <img src={config.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-text-primary leading-tight">
-            {t('vertical_page.card.pre_built_for', { vertical: verticalName })}
-          </p>
-          <p className="text-[10px] text-text-muted leading-tight mt-0.5">
-            {t('vertical_page.card.deploy_minutes')}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <>
@@ -242,7 +193,6 @@ export default function VerticalLanding() {
         }}
       />
 
-      {/* 1 · HERO via shared component, with floating stats card */}
       <PageHero
         lightSrc={config.heroLight}
         darkSrc={config.heroDark}
@@ -277,24 +227,13 @@ export default function VerticalLanding() {
             },
           },
         ]}
-        rightContent={heroRightCard}
       />
 
-      {/* 2 · STATS STRIP */}
-      <section className="bg-surface py-14 border-b border-border/60">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="font-display text-3xl md:text-4xl font-bold text-text-primary tabular-nums">
-                  {stat.value}
-                </p>
-                <p className="text-xs lg:text-sm text-text-secondary font-body mt-2 uppercase tracking-wider">
-                  {stat.label}
-                </p>
-              </div>
-            ))}
-          </div>
+      <section className="bg-surface py-10 border-b border-border/60">
+        <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
+          <p className="font-body text-text-secondary">
+            {t('common.pilot_onboarding', 'Now onboarding pilot shops.')}
+          </p>
         </div>
       </section>
 
@@ -389,31 +328,6 @@ export default function VerticalLanding() {
             </div>
           </RevealSection>
           <ROICalculator vertical={config.slug} />
-        </div>
-      </section>
-
-      {/* 6 · TESTIMONIAL */}
-      <section className="bg-sidebar-bg py-24 lg:py-32">
-        <div className="max-w-4xl mx-auto px-6 lg:px-8">
-          <RevealSection>
-            <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary-light mb-6 text-center">
-              {t('vertical_page.testimonial.eyebrow', 'From the front desk')}
-            </p>
-            <blockquote className="font-display text-2xl lg:text-[34px] text-white font-bold leading-[1.25] text-center max-w-3xl mx-auto mb-10 [text-wrap:balance]">
-              &ldquo;{testimonial.quote}&rdquo;
-            </blockquote>
-            <div className="flex items-center justify-center gap-4">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-white/10 ring-1 ring-white/20 shrink-0">
-                <img src={config.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
-              </div>
-              <div className="text-left">
-                <p className="font-display text-sm font-semibold text-white">{testimonial.author}</p>
-                <p className="font-body text-xs text-white/65 mt-0.5">
-                  {testimonial.role} · {testimonial.company}
-                </p>
-              </div>
-            </div>
-          </RevealSection>
         </div>
       </section>
 

@@ -13,19 +13,20 @@
     "contact_sales": "Falar com vendas",
     "send_message": "Enviar mensagem",
     "sending": "Enviando...",
+    "pilot_onboarding": "Agora estamos fazendo o onboarding de oficinas piloto.",
     "trusted_by": "Quem já confia"
   },
   "landing": {
     "seo_title": "QVO — Agentes de voz com IA que operam o seu negócio",
-    "seo_description": "Agentes de voz com IA para atender chamadas, agendar consultas e automatizar operações. Recepção virtual e automação de chamadas para climatização, consultórios médicos, odontológicos, jurídicos e muito mais.",
+    "seo_description": "Agentes de voz para ofícios e serviços residenciais. Agora estamos fazendo o onboarding de oficinas piloto.",
     "hero": {
       "badge": "Plataforma de voz com IA",
-      "eyebrow": "Um núcleo de voz · Fluxo de saúde especializado",
+      "eyebrow": "Operações de voz para ofícios e serviços residenciais",
       "title": "Chamadas que não são perdidas.",
       "title_2": "Clientes que não se perdem.",
       "title_highlight": "Agentes de voz com IA",
       "title_rest": " que operam o seu negócio",
-      "description": "Implante agentes de voz inteligentes que atendem chamadas, marcam consultas, despacham técnicos e respondem aos clientes — 24/7, no piloto automático.",
+      "description": "Agora estamos fazendo o onboarding de oficinas piloto. A QVO atende, qualifica, agenda e faz o acompanhamento 24/7, com uma voz em que seus clientes confiam.",
       "benefits": {
         "never_miss_call": "Nunca perca uma chamada",
         "book_appointments": "Agende compromissos automaticamente",
@@ -36,7 +37,7 @@
     "stats": {
       "calls_handled": "Chamadas atendidas",
       "agents_deployed": "Agentes implantados",
-      "uptime": "Disponibilidade",
+      "uptime": "Rótulo de disponibilidade",
       "industries_served": "Setores atendidos",
       "soc2_in_progress": "Certificações não verificadas",
       "hipaa_ready": "Aprovação do piloto de saúde pendente",
@@ -173,25 +174,25 @@
         "metric": "400%",
         "metric_label": "Resposta mais rápida a leads",
         "industry": "Imobiliário",
-        "quote": "A QVO responde a cada contato em segundos. Nossos corretores deixaram de correr atrás de leads para fechar negócios. O tempo de resposta caiu de 4 horas para menos de um minuto.",
-        "name": "Marcus Rivera",
-        "role": "Corretor, Summit Realty Group"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "name": "Operador piloto",
+        "role": "Corretor, Oficina piloto"
       },
       "medical": {
         "metric": "40%",
         "metric_label": "Menos chamadas perdidas",
         "industry": "Saúde",
-        "quote": "Na temporada de gripe, nossa recepção não dava conta. A QVO atendeu o transbordo tão bem que os pacientes acharam que estavam falando com a nossa equipe.",
-        "name": "Dra. Sarah Chen",
-        "role": "Proprietária, Bright Smiles Dental"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "name": "Operador piloto",
+        "role": "Proprietária, Nome da sua oficina"
       },
       "legal": {
         "metric": "2x",
         "metric_label": "Taxa de conversão",
         "industry": "Jurídico",
-        "quote": "Dobramos as consultas marcadas ao capturar chamadas fora do horário. Cada cliente em potencial recebe uma primeira impressão profissional.",
-        "name": "James Whitfield",
-        "role": "Sócio responsável, Summit Legal"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "name": "Operador piloto",
+        "role": "Sócio responsável, Oficina piloto"
       }
     },
     "testimonials": {
@@ -215,7 +216,7 @@
     },
     "bottom_cta": {
       "title": "Implante hoje o seu primeiro agente de voz com IA",
-      "subtitle": "Junte-se a centenas de negócios que usam a QVO para automatizar chamadas, capturar leads e crescer em receita. Sem contratos, cancele quando quiser.",
+      "subtitle": "Agora estamos fazendo o onboarding de oficinas piloto. Agende uma demonstração para começar.",
       "try_live": "Testar a demo ao vivo"
     }
   },
@@ -461,11 +462,11 @@
   },
   "pricing": {
     "seo_title": "Preços — Planos de agentes de voz com IA, minutos, agentes e integrações",
-    "seo_description": "Os preços da QVO começam em {{starter}}/mês. Compare os planos Starter, Pro e Enterprise com minutos de IA, agentes ilimitados, integrações com CRM e acesso à demo. Teste gratuito de 14 dias.",
+    "seo_description": "Os preços da QVO começam em {{starter}}/mês. Compare os planos Starter, Pro e Enterprise com minutos de IA, agentes ilimitados, integrações com CRM e acesso à demo.",
     "hero": {
       "eyebrow": "Preços",
       "title": "Planos simples, preços honestos.",
-      "description": "Comece com um teste gratuito de 14 dias em qualquer plano. Sem contratos, sem taxas escondidas. Escale conforme o seu negócio cresce.",
+      "description": "Agora estamos fazendo o onboarding de oficinas piloto. Agende uma demonstração para começar.",
       "guarantee": "Garantia de devolução em 30 dias"
     },
     "tier_copy": {
@@ -547,7 +548,7 @@
       "priority": "Suporte prioritário",
       "onboarding": "Onboarding dedicado",
       "demo": "Acesso à demo interativa",
-      "trial": "Teste gratuito de 14 dias",
+      "trial": "Onboarding de oficinas piloto",
       "unlimited": "Ilimitado",
       "up_to_3": "Até 3",
       "up_to_10": "Até 10"
@@ -565,8 +566,8 @@
       "eyebrow": "FAQ",
       "title": "Dúvidas comuns sobre faturamento.",
       "subtitle": "Tudo o que você precisa saber sobre nossos planos e preços.",
-      "q1": "Como funciona o teste gratuito de 14 dias?",
-      "a1": "Você tem acesso completo a todos os recursos do plano escolhido por 14 dias. Não pedimos cartão de crédito para começar. Se decidir não continuar, sua conta é apenas pausada — sem cobranças.",
+      "q1": "Como eu começo?",
+      "a1": "Agora estamos fazendo o onboarding de oficinas piloto. Agende uma demonstração para falar sobre uma implantação para a sua oficina.",
       "q2": "O que conta como um minuto de IA?",
       "a2": "Um minuto de IA é um minuto de chamada ativa atendida pelo seu agente. Tempo de espera, toque e processamento do sistema não contam. Apenas o tempo real de conversa é cobrado.",
       "q3": "O que acontece se eu ultrapassar os minutos inclusos?",
@@ -577,8 +578,8 @@
       "a5": "Não. Todos os planos são mês a mês, sem contratos de longo prazo. Você pode cancelar quando quiser, e a conta segue ativa até o fim do ciclo atual.",
       "q6": "Vocês oferecem preço anual?",
       "a6": "Sim. O faturamento anual gera 20% de economia em relação ao mensal. Fale com o time de vendas ou escolha faturamento anual no cadastro para ter o desconto.",
-      "q7": "Tem taxa de setup?",
-      "a7": "Não. Sem taxa de setup em nenhum plano. Starter e Pro são totalmente self-service. Enterprise inclui onboarding dedicado sem custo adicional.",
+      "q7": "Como funciona a configuração inicial?",
+      "a7": "Agora estamos fazendo o onboarding de oficinas piloto. A configuração inicial é discutida na demonstração.",
       "q8": "Quais formas de pagamento vocês aceitam?",
       "a8": "Aceitamos os principais cartões de crédito (Visa, Mastercard, American Express) e ACH para planos Enterprise anuais. Faturamento por boleto está disponível para clientes Enterprise."
     },
@@ -587,7 +588,7 @@
       "subtitle": "Veja quanto o seu negócio pode economizar com agentes de voz com IA da QVO."
     },
     "logos": {
-      "title": "Times que já operam com a QVO"
+      "title": "Agora estamos fazendo o onboarding de oficinas piloto"
     },
     "bottom_cta": {
       "title": "Dúvidas sobre preços?",
@@ -772,7 +773,7 @@
     "conversion": {
       "experienced": "Você acabou de experimentar a QVO",
       "title": "Implante seus próprios agentes de voz com IA em minutos",
-      "subtitle": "O que você acabou de ouvir é a mesma tecnologia que move centenas de negócios. Comece com seus próprios agentes de voz personalizados hoje.",
+      "subtitle": "Agora estamos fazendo o onboarding de oficinas piloto. Comece hoje com uma demonstração.",
       "feat1_title": "Setup em 5 minutos",
       "feat1_desc": "Implante seu primeiro agente em minutos, não em semanas",
       "feat2_title": "Pronto para HIPAA",
@@ -824,7 +825,7 @@
       "email_label": "E-mail",
       "email_placeholder": "jane@clinica.com",
       "company_label": "Nome da empresa ou clínica",
-      "company_placeholder": "Bright Smiles Dental",
+      "company_placeholder": "Nome da sua oficina",
       "message_label": "Como podemos ajudar?",
       "message_placeholder": "Conte sobre o seu volume de chamadas, sua configuração atual e o que gostaria de melhorar.",
       "send_default_error": "Falha ao enviar a mensagem",
@@ -974,7 +975,7 @@
     "empty": "Nenhum agente encontrado nesta categoria.",
     "bottom_cta": {
       "title": "Pronto para implantar seu primeiro agente?",
-      "subtitle": "Comece com um teste gratuito de 14 dias. Escolha um modelo, personalize para o seu negócio e entre no ar em minutos.",
+      "subtitle": "Agora estamos fazendo o onboarding de oficinas piloto. Agende uma demonstração para falar sobre uma implantação para a sua oficina.",
       "view_pricing": "Ver preços"
     }
   },
@@ -985,7 +986,7 @@
     },
     "card": {
       "live_performance": "Desempenho ao vivo",
-      "from_customers_in": "De clientes da QVO em {{vertical}}",
+      "from_customers_in": "Agora estamos fazendo o onboarding de oficinas piloto em {{vertical}}",
       "pre_built_for": "Pronto para {{vertical}}",
       "deploy_minutes": "Implante em minutos, sem código"
     },
@@ -1012,7 +1013,7 @@
     },
     "bottom_cta": {
       "title": "Pronto para transformar seu negócio de {{vertical}}?",
-      "subtitle": "Junte-se a centenas de empresas de {{vertical_lower}} que usam a QVO para atender cada ligação, agendar mais consultas e aumentar a receita.",
+      "subtitle": "Agora estamos fazendo o onboarding de oficinas piloto.",
       "start_trial": "Comece seu teste grátis",
       "see_demo": "Ver demo ao vivo"
     },
@@ -1301,8 +1302,8 @@
       "conversation": [
         "Olá, minha torneira da cozinha está vazando bastante.",
         "Lamento por isso. Vou ajudar a resolver. Pode me informar seu nome e número da unidade?",
-        "É Sarah Mitchell, unidade 304 no Parkview Apartments.",
-        "Obrigado, Sarah. O vazamento está contido ou está alagando?",
+        "É João, unidade 304.",
+        "Obrigado, João. O vazamento está contido ou está alagando?",
         "Está pingando bastante, mas não está alagando.",
         "Entendido. Abri uma solicitação de manutenção e marquei como urgente. Um encanador entrará em contato em até 4 horas para agendar a visita. Você vai receber um SMS com os detalhes. Enquanto isso, tente fechar o registro de água embaixo da pia."
       ],
@@ -1466,10 +1467,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Saímos de perder 1 em cada 3 chamadas para atender todas elas. A satisfação dos pacientes subiu 22 pontos no primeiro mês.",
-        "author": "Dra. Sarah Mitchell",
-        "role": "Administradora da clínica",
-        "company": "Lakewood Family Medicine"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para a área da saúde | QVO",
       "metaDescription": "Automatize agendamento, triagem e atendimento fora do horário com agentes de voz IA conscientes da HIPAA. Atenda cada chamada 24/7 e reduza faltas em 28%."
@@ -1547,10 +1548,10 @@
         }
       ],
       "testimonial": {
-        "quote": "A QVO responde aos nossos leads do Zillow em segundos. Nossa taxa de conversão dobrou porque somos sempre os primeiros a responder.",
-        "author": "Marcus Chen",
-        "role": "Corretor/Proprietário",
-        "company": "Pinnacle Realty Group"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para o mercado imobiliário | QVO",
       "metaDescription": "Responda a leads imobiliários em segundos, qualifique compradores automaticamente e agende visitas 24/7 com agentes de voz IA."
@@ -1628,10 +1629,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Estávamos perdendo de 8 a 10 clientes em potencial por semana com chamadas não atendidas. A QVO captura todos eles agora, e a qualidade da triagem é melhor do que com nossa equipe anterior.",
-        "author": "Jennifer Park",
-        "role": "Sócia administradora",
-        "company": "Park & Associates Law"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para escritórios de advocacia | QVO",
       "metaDescription": "Capture cada chamada de cliente em potencial com agentes de triagem jurídica com IA. Qualifique casos, agende consultas e reduza os custos de triagem em 65%."
@@ -1709,10 +1710,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Durante a onda de frio do inverno passado, atendemos 3 vezes nosso volume normal de chamadas sem contratar uma pessoa sequer. A QVO despachou técnicos mais rápido que nosso melhor despachante.",
-        "author": "Mike Rodriguez",
-        "role": "Proprietário",
-        "company": "Comfort First HVAC"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para serviços para casa | QVO",
       "metaDescription": "Nunca perca uma chamada de emergência. Agentes de voz IA para empresas de HVAC, encanamento e elétrica que despacham técnicos e atualizam clientes 24/7."
@@ -1790,10 +1791,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nossa taxa de faltas caiu de 18% para 7% no primeiro trimestre. Só o agente de campanha de recall trouxe de volta 140 pacientes atrasados.",
-        "author": "Dra. Lisa Nguyen",
-        "role": "Proprietária da clínica",
-        "company": "Bright Smile Dental"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para clínicas odontológicas | QVO",
       "metaDescription": "Lote sua agenda odontológica e reduza faltas com agentes de voz IA. Automatize o agendamento de pacientes, campanhas de recall e triagem de emergências 24/7."
@@ -1871,10 +1872,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nossos técnicos recuperaram suas tardes. Ligações de renovação e marcação de consultas simplesmente… se resolvem sozinhas agora, e os clientes seguem dizendo que a experiência ao telefone parece mais pessoal, não menos.",
-        "author": "Dra. Amelia Park",
-        "role": "Diretora médica",
-        "company": "Riverside Animal Hospital"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para clínicas veterinárias | QVO",
       "metaDescription": "Marque consultas de pets, faça triagem de emergências e cuide de renovações de receitas 24/7 com agentes de voz IA criados para clínicas veterinárias."
@@ -1952,10 +1953,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Antes perdíamos dois ou três negócios por semana com chamadas não atendidas após as 19h. A QVO captura esses leads, qualifica e o vendedor vê a conversa completa no nosso CRM pela manhã.",
-        "author": "Tony Alvarez",
-        "role": "Gerente geral",
-        "company": "Hillcrest Auto Group"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para concessionárias e centros de serviço | QVO",
       "metaDescription": "Marque consultas de serviço, capture leads de vendas 24/7 e automatize as atualizações de status de OS com agentes de voz IA criados para o setor automotivo."
@@ -2033,10 +2034,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Cada prospect agora recebe uma triagem polida, no roteiro, em menos de 60 segundos — mesmo às 21h. Nossos assessores entram nas reuniões de descoberta já sabendo que a relação está qualificada e que as divulgações estão registradas.",
-        "author": "David Whitman, CFP®",
-        "role": "Sócio principal",
-        "company": "Whitman Wealth Advisors"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para assessores financeiros e RIAs | QVO",
       "metaDescription": "Qualifique prospects em menos de um minuto, marque consultas com assessores e atenda chamadas rotineiras com agentes de voz IA estruturados e auditáveis para serviços financeiros."
@@ -2114,10 +2115,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nossa equipe de concierge finalmente tem tempo para os hóspedes no lobby. As reservas por telefone subiram quase 40% e nossos hóspedes que falam francês e mandarim agora têm a mesma experiência calorosa que todos os outros.",
-        "author": "Isabelle Moreau",
-        "role": "Gerente geral",
-        "company": "The Marlow Boutique Hotel"
+        "quote": "Agora estamos fazendo o onboarding de oficinas piloto.",
+        "author": "Operador piloto",
+        "role": "Função da oficina",
+        "company": "Oficina piloto"
       },
       "metaTitle": "Agentes de voz IA para hotéis e restaurantes | QVO",
       "metaDescription": "Receba reservas, responda perguntas de hóspedes e atenda solicitações em mais de 30 idiomas com agentes de voz IA criados para hospitalidade."
