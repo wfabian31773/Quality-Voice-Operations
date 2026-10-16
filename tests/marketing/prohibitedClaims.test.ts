@@ -107,6 +107,8 @@ function remountedClaimComponent(spec: string): string | null {
 function publicSources(): Array<{ relativePath: string; text: string }> {
   const files: string[] = [
     join(repoRoot, 'client-app/src/components/PublicLayout.tsx'),
+    join(repoRoot, 'client-app/src/components/WebsiteSalesWidget.tsx'),
+    join(repoRoot, 'platform/website-agent/WebsiteSalesAgentService.ts'),
     ...listFiles(join(repoRoot, 'client-app/src/pages/public'), (name) =>
       /\.(tsx|ts|jsx|js)$/.test(name),
     ),
@@ -136,6 +138,14 @@ describe('PR-04 prohibited public-site claims', () => {
     expect(sources.some((s) => s.relativePath.endsWith('locales/pt-BR/marketing.json'))).toBe(
       true,
     );
+    expect(
+      sources.some((s) =>
+        s.relativePath.endsWith('platform/website-agent/WebsiteSalesAgentService.ts'),
+      ),
+    ).toBe(true);
+    expect(
+      sources.some((s) => s.relativePath.endsWith('components/WebsiteSalesWidget.tsx')),
+    ).toBe(true);
   });
 
   it.each(sources)('$relativePath contains no banned phrase', ({ relativePath, text }) => {
