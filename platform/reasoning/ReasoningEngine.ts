@@ -193,8 +193,22 @@ export class ReasoningEngine {
     };
 
     const pack = getIndustryPack(this.config.vertical);
-    const packMatch = pack?.intentPatterns ? scorePatterns(pack.intentPatterns) : null;
-    const genericMatch = scorePatterns(patterns);
+    const dropNonAffirmativeChange = (
+      match: { intent: string; confidence: ConfidenceLevel; score: number } | null,
+    ) => {
+      if (!match) return null;
+      if (
+        (match.intent === 'cancel' || match.intent === 'reschedule_cancel')
+        && !hasCancelOrRescheduleLanguage(utterance)
+      ) {
+        return null;
+      }
+      return match;
+    };
+    const packMatch = dropNonAffirmativeChange(
+      pack?.intentPatterns ? scorePatterns(pack.intentPatterns) : null,
+    );
+    const genericMatch = dropNonAffirmativeChange(scorePatterns(patterns));
 
     if (packMatch && (!genericMatch || packMatch.score >= genericMatch.score)) {
       return { intent: packMatch.intent, confidence: packMatch.confidence };

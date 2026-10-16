@@ -176,6 +176,14 @@ describe('salon booking conversation', () => {
     expect(engine.classifyIntent('Necesito mover la cita').intent).toBe('reschedule_cancel');
   });
 
+  it('does not classify policy questions or cancel-negations as reschedule_cancel', () => {
+    const engine = makeSalonEngine();
+    expect(engine.classifyIntent('what is your cancellation policy?').intent).not.toBe('reschedule_cancel');
+    expect(engine.classifyIntent('do not cancel my appointment').intent).not.toBe('reschedule_cancel');
+    expect(engine.classifyIntent('no cancele mi cita').intent).not.toBe('reschedule_cancel');
+    expect(engine.classifyIntent('cancel my haircut appointment').intent).toBe('reschedule_cancel');
+  });
+
   it('asks for a new time before calling update_booking on a reschedule', () => {
     const engine = makeSalonEngine();
     const decision = engine.processUtterance(

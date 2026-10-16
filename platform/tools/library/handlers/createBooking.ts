@@ -5,6 +5,7 @@ import { transitionBooking } from '../../../scheduling/bookingLifecycle';
 import { buildOverrideConflictResponse, getTenantTimezone } from '../../../../server/admin-api/routes/scheduling';
 import type { ToolContext, ToolDefinition } from '../../registry/types';
 import { getToolLibraryEntry } from '../catalog';
+import { consumeBookingConfirmation, issueBookingConfirmation } from './bookingConfirmation';
 
 const logger = createLogger('TOOL_CREATE_BOOKING');
 
@@ -93,22 +94,28 @@ function toCandidate(row: {
   };
 }
 
-function isConfirmed(value: unknown): boolean {
-  return value === true || String(value ?? '').trim().toLowerCase() === 'true';
+export interface UpdateBookingResult {
+  success: boolean;
+  message: string;
+  bookingId?: string;
+  action?: string;
+  status?: 'needs_selection' | 'needs_confirmation' | 'updated';
+  needsSelection?: boolean;
+  needsConfirmation?: boolean;
+  confirmationToken?: string;
+  candidates?: UpcomingBookingCandidate[];
+}
+
+function challengeResult(
+  extras: Omit<UpdateBookingResult, 'success'>,
+): UpdateBookingResult {
+  return { success: true, ...extras };
 }
 
 export async function executeUpdateBooking(
   input: Record<string, unknown>,
   context: ToolContext,
-): Promise<{
-  success: boolean;
-  message: string;
-  bookingId?: string;
-  action?: string;
-  needsSelection?: boolean;
-  needsConfirmation?: boolean;
-  candidates?: UpcomingBookingCandidate[];
-}> {
+): Promise<UpdateBookingResult> {
   const action = String(input.action ?? '').trim().toLowerCase();
   if (action !== 'cancel' && action !== 'reschedule') {
     return { success: false, message: 'action must be cancel or reschedule.' };
@@ -133,8 +140,8 @@ export async function executeUpdateBooking(
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
-    let candidates: UpcomingBookingCandidate[] = [];
-    await withTenantContext(client, context.tenantId, async () => {
+    await client.query('BEGIN');
+    const result = await withTenantContext(client, context.tenantId, async () => {
       const { rows: existing } = await client.query(
         `SELECT id, start_time, end_time, status, title
          FROM bookings
@@ -145,98 +152,110 @@ export async function executeUpdateBooking(
          ORDER BY start_time ASC`,
         [context.tenantId, lookupDigits.slice(-10)],
       );
-      candidates = (existing as Array<{
+      const candidates = (existing as Array<{
         id: string;
         start_time: Date | string;
         end_time: Date | string;
         status: string;
         title: string;
       }>).map(toCandidate);
-    });
 
-    if (candidates.length === 0) {
-      return {
-        success: false,
-        message: 'No upcoming booking was found for this caller. Do not create a new booking. Offer to leave a message for the shop.',
+      if (candidates.length === 0) {
+        return {
+          success: false,
+          message: 'No upcoming booking was found for this caller. Do not create a new booking. Offer to leave a message for the shop.',
+          action,
+        } satisfies UpdateBookingResult;
+      }
+
+      const requestedId = String(input.bookingId ?? '').trim();
+      if (candidates.length > 1 && !requestedId) {
+        return challengeResult({
+          action,
+          status: 'needs_selection',
+          needsSelection: true,
+          candidates,
+          message: 'This caller has more than one upcoming booking. Read the date, time, and service for each and ask which one to change. Do not change anything yet.',
+        });
+      }
+
+      const selected = requestedId
+        ? candidates.find((row) => row.bookingId === requestedId)
+        : candidates[0];
+      if (!selected) {
+        return challengeResult({
+          action,
+          status: 'needs_selection',
+          needsSelection: true,
+          candidates,
+          message: 'That booking is not one of this caller\'s upcoming appointments. Ask which date, time, and service to change.',
+        });
+      }
+
+      const presentedToken = String(input.confirmationToken ?? '').trim();
+      const tokenAccepted = consumeBookingConfirmation(
+        context,
+        selected.bookingId,
         action,
-      };
-    }
-
-    const requestedId = String(input.bookingId ?? '').trim();
-    if (candidates.length > 1 && !requestedId) {
-      return {
-        success: false,
-        action,
-        needsSelection: true,
-        candidates,
-        message: 'This caller has more than one upcoming booking. Read the date, time, and service for each and ask which one to change. Do not change anything yet.',
-      };
-    }
-
-    const selected = requestedId
-      ? candidates.find((row) => row.bookingId === requestedId)
-      : candidates[0];
-    if (!selected) {
-      return {
-        success: false,
-        action,
-        needsSelection: true,
-        candidates,
-        message: 'That booking is not one of this caller\'s upcoming appointments. Ask which date, time, and service to change.',
-      };
-    }
-
-    if (!isConfirmed(input.confirmed)) {
-      return {
-        success: false,
-        action,
-        needsConfirmation: true,
-        bookingId: selected.bookingId,
-        candidates: [selected],
-        message: `Confirm with the caller before changing anything: ${selected.title} on ${selected.startTime}. Then call update_booking again with bookingId and confirmed=true.`,
-      };
-    }
-
-    if (action === 'reschedule' && newStart) {
-      const durationMs = Math.max(
-        new Date(selected.endTime).getTime() - new Date(selected.startTime).getTime(),
-        30 * 60_000,
+        presentedToken,
       );
-      newEnd = new Date(newStart.getTime() + durationMs);
-    }
+      if (!tokenAccepted) {
+        const confirmationToken = issueBookingConfirmation(context, selected.bookingId, action);
+        return challengeResult({
+          action,
+          status: 'needs_confirmation',
+          needsConfirmation: true,
+          bookingId: selected.bookingId,
+          confirmationToken,
+          candidates: [selected],
+          message: `Confirm with the caller before changing anything: ${selected.title} on ${selected.startTime}. Then call update_booking again with bookingId ${selected.bookingId}, confirmationToken ${confirmationToken}, and the same action.`,
+        });
+      }
 
-    const result = await transitionBooking(client, {
-      tenantId: context.tenantId,
-      bookingId: selected.bookingId,
-      action,
-      cancellationReason: String(input.notes ?? 'Caller cancelled on a voice call').trim(),
-      newStartTime: newStart?.toISOString(),
-      newEndTime: newEnd?.toISOString(),
-      changedBy: context.agentSlug ?? 'voice_agent',
-    }, {
-      checkBlackout: async ({ startTime, endTime, providerId }) => {
-        const tenantTz = await getTenantTimezone(client, context.tenantId);
-        return buildOverrideConflictResponse(client, context.tenantId, startTime, endTime, providerId, tenantTz);
-      },
+      if (action === 'reschedule' && newStart) {
+        const durationMs = Math.max(
+          new Date(selected.endTime).getTime() - new Date(selected.startTime).getTime(),
+          30 * 60_000,
+        );
+        newEnd = new Date(newStart.getTime() + durationMs);
+      }
+
+      const transition = await transitionBooking(client, {
+        tenantId: context.tenantId,
+        bookingId: selected.bookingId,
+        action,
+        cancellationReason: String(input.notes ?? 'Caller cancelled on a voice call').trim(),
+        newStartTime: newStart?.toISOString(),
+        newEndTime: newEnd?.toISOString(),
+        changedBy: context.agentSlug ?? 'voice_agent',
+      }, {
+        checkBlackout: async ({ startTime, endTime, providerId }) => {
+          const tenantTz = await getTenantTimezone(client, context.tenantId);
+          return buildOverrideConflictResponse(client, context.tenantId, startTime, endTime, providerId, tenantTz);
+        },
+      });
+
+      if (!transition.ok) {
+        const conflictMessage = transition.httpStatus === 409
+          ? 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.'
+          : String(transition.body.error ?? 'Failed to update the existing booking.');
+        return { success: false, action, bookingId: selected.bookingId, message: conflictMessage };
+      }
+
+      return {
+        success: true,
+        action,
+        status: 'updated',
+        bookingId: String(transition.body.booking.id ?? selected.bookingId),
+        message: action === 'cancel'
+          ? 'Existing booking cancelled through the scheduling lifecycle. Do not claim a new appointment was booked.'
+          : 'Existing booking rescheduled through the scheduling lifecycle. Do not create another booking.',
+      } satisfies UpdateBookingResult;
     });
-
-    if (!result.ok) {
-      const conflictMessage = result.httpStatus === 409
-        ? 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.'
-        : String(result.body.error ?? 'Failed to update the existing booking.');
-      return { success: false, action, bookingId: selected.bookingId, message: conflictMessage };
-    }
-
-    const bookingId = String(result.body.booking.id ?? selected.bookingId);
-    return {
-      success: true,
-      action,
-      bookingId,
-      message: action === 'cancel'
-        ? 'Existing booking cancelled through the scheduling lifecycle. Do not claim a new appointment was booked.'
-        : 'Existing booking rescheduled through the scheduling lifecycle. Do not create another booking.',
-    };
+    await client.query('COMMIT');
+    return result;
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     logger.error('update_booking failed', { tenantId: context.tenantId, error: String(err) });
     return { success: false, message: 'Failed to update the existing booking. Offer to leave a message for the shop.' };
   } finally {

@@ -69,6 +69,9 @@ describe('ReasoningEngine.classifyIntent', () => {
       intent: 'reschedule_cancel',
       confidence: 'high',
     });
+    expect(engine.classifyIntent('what is your cancellation policy?').intent).not.toBe('reschedule_cancel');
+    expect(engine.classifyIntent('do not cancel my appointment').intent).not.toBe('reschedule_cancel');
+    expect(engine.classifyIntent('no cancele mi cita').intent).not.toBe('reschedule_cancel');
   });
 });
 

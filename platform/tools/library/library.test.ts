@@ -8,10 +8,19 @@ import {
 import { executeSendEmail } from './handlers/sendEmail';
 import { executeCreateTicket } from './handlers/createTicket';
 import { executeCreateBooking, executeUpdateBooking } from './handlers/createBooking';
+import { resetBookingConfirmations } from './handlers/bookingConfirmation';
 import { executeCreateDispatchJob } from './handlers/createDispatchJob';
 import { registerToolLibrary, listRegisteredLibraryTools } from './registerToolLibrary';
 import { globalToolRegistry } from '../registry';
 import { unifiedToolRegistry } from '../ToolRegistry';
+
+function assertGatewayDeliversToModel(jsonResult: string): Record<string, unknown> {
+  const parsed = JSON.parse(jsonResult) as { success?: boolean; message?: string };
+  if (parsed && typeof parsed === 'object' && parsed.success === false) {
+    throw new Error(`ToolExecutionFailed: ${parsed.message || 'Tool returned success: false'}`);
+  }
+  return parsed as Record<string, unknown>;
+}
 
 vi.mock('../../email/EmailService', () => ({
   sendEmail: vi.fn(async () => ({ success: true, messageId: 'msg-1' })),
@@ -89,6 +98,7 @@ describe('tool library handlers', () => {
   beforeEach(() => {
     query.mockClear();
     transitionBooking.mockClear();
+    resetBookingConfirmations();
     upcomingRows.splice(0, upcomingRows.length, {
       id: 'bk-existing',
       start_time: '2026-10-20T15:00:00.000Z',
@@ -155,7 +165,8 @@ describe('tool library handlers', () => {
       confirmed: true,
     }, ctx);
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('needs_selection');
     expect(result.needsSelection).toBe(true);
     expect(result.candidates).toHaveLength(2);
     expect(result.candidates?.map((row) => row.title)).toEqual(['Haircut', 'Color']);
@@ -164,20 +175,54 @@ describe('tool library handlers', () => {
 
   it('asks the caller to confirm a single match before applying a change', async () => {
     const result = await executeUpdateBooking({ action: 'cancel' }, ctx);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('needs_confirmation');
     expect(result.needsConfirmation).toBe(true);
     expect(result.bookingId).toBe('bk-existing');
+    expect(result.confirmationToken).toEqual(expect.any(String));
     expect(transitionBooking).not.toHaveBeenCalled();
   });
 
-  it('applies a confirmed cancel through the scheduling lifecycle, not a raw booking insert', async () => {
-    await expect(executeUpdateBooking({
+  it('does not apply when the model sends confirmed:true on the first call', async () => {
+    const result = await executeUpdateBooking({
       action: 'cancel',
       confirmed: true,
+      notes: 'Caller cannot make it',
+    }, ctx);
+    expect(result.success).toBe(true);
+    expect(result.needsConfirmation).toBe(true);
+    expect(result.status).toBe('needs_confirmation');
+    expect(transitionBooking).not.toHaveBeenCalled();
+  });
+
+  it('delivers the confirmation challenge to the model without treating it as a tool error', async () => {
+    const result = await executeUpdateBooking({ action: 'cancel' }, ctx);
+    const delivered = assertGatewayDeliversToModel(JSON.stringify(result));
+    expect(delivered.success).toBe(true);
+    expect(delivered.needsConfirmation).toBe(true);
+    expect(delivered.confirmationToken).toEqual(expect.any(String));
+    expect(delivered.candidates).toEqual([
+      expect.objectContaining({ bookingId: 'bk-existing', title: 'Haircut' }),
+    ]);
+    expect(String(delivered.message)).toMatch(/confirm/i);
+    expect(String(delivered.message)).toContain(String(delivered.confirmationToken));
+    expect(transitionBooking).not.toHaveBeenCalled();
+  });
+
+  it('applies cancel only after a later call presents the server-issued token', async () => {
+    const challenge = await executeUpdateBooking({ action: 'cancel' }, ctx);
+    expect(challenge.confirmationToken).toBeTruthy();
+    expect(transitionBooking).not.toHaveBeenCalled();
+
+    await expect(executeUpdateBooking({
+      action: 'cancel',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
       notes: 'Caller cannot make it',
     }, ctx)).resolves.toMatchObject({
       success: true,
       action: 'cancel',
+      status: 'updated',
       bookingId: 'bk-existing',
     });
 
@@ -192,6 +237,12 @@ describe('tool library handlers', () => {
     );
     const sql = query.mock.calls.map((call) => String(call[0]));
     expect(sql.some((statement) => statement.includes('INSERT INTO bookings'))).toBe(false);
+    const begin = sql.findIndex((statement) => statement === 'BEGIN');
+    const select = sql.findIndex((statement) => statement.includes('SELECT id, start_time, end_time, status, title'));
+    const commit = sql.findIndex((statement) => statement === 'COMMIT');
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(select).toBeGreaterThan(begin);
+    expect(commit).toBeGreaterThan(select);
   });
 });
 
