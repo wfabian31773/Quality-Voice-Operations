@@ -33,7 +33,7 @@ import { startDocsFeedbackReplyRetryScheduler, stopDocsFeedbackReplyRetrySchedul
 import { startSupportReplyRetryScheduler, stopSupportReplyRetryScheduler } from '../help/SupportReplyRetryScheduler';
 import { startRetryAttemptsCleanupScheduler, stopRetryAttemptsCleanupScheduler } from '../help/RetryAttemptsCleanupScheduler';
 import { startConnectorAuthAlertScheduler, stopConnectorAuthAlertScheduler } from '../integrations/connectors/ConnectorAuthAlertScheduler';
-import { startConnectorStaleAlertScheduler, stopConnectorStaleAlertScheduler, runConnectorStaleAlertCycle } from '../integrations/connectors/ConnectorStaleAlertScheduler';
+import { startConnectorStaleAlertScheduler, stopConnectorStaleAlertScheduler, runConnectorStaleAlertCycle, type StaleAlertCycleResult } from '../integrations/connectors/ConnectorStaleAlertScheduler';
 import { startVerifiedCallerHealthScheduler, stopVerifiedCallerHealthScheduler, startTrustHubStatusScheduler, stopTrustHubStatusScheduler } from '../telephony/VerifiedCallerHealthScheduler';
 import { startVerifiedCallerSyncScheduler, stopVerifiedCallerSyncScheduler } from '../telephony/VerifiedCallerSyncScheduler';
 import {
@@ -47,15 +47,15 @@ import { startSchedulingDriftAlertScheduler, stopSchedulingDriftAlertScheduler }
 import { startOAuthTokenRefreshScheduler, stopOAuthTokenRefreshScheduler, startCrmCallerIdentityRevalidationScheduler, stopCrmCallerIdentityRevalidationScheduler, startCrmStaleCacheRetentionScheduler, stopCrmStaleCacheRetentionScheduler } from '../integrations/connectors';
 import { runCrmStaleCacheRetentionCycle } from '../integrations/connectors/CrmStaleCacheRetentionScheduler';
 import { startCallEventsRetentionScheduler, stopCallEventsRetentionScheduler, runCallEventsRetentionCycle } from '../billing/CallEventsRetentionScheduler';
-import { startTenantIsolationScheduler, stopTenantIsolationScheduler, runTenantIsolationScheduledCycle } from '../security/TenantIsolationScheduler';
-import { startEncryptionReminderScheduler, stopEncryptionReminderScheduler, runEncryptionReminderCycle } from '../security/EncryptionReminderScheduler';
+import { startTenantIsolationScheduler, stopTenantIsolationScheduler, runTenantIsolationScheduledCycle, type IsolationSchedulerCycleResult } from '../security/TenantIsolationScheduler';
+import { startEncryptionReminderScheduler, stopEncryptionReminderScheduler, runEncryptionReminderCycle, type ReminderCycleResult } from '../security/EncryptionReminderScheduler';
 import { startRouteExportArchiveCleanupScheduler, stopRouteExportArchiveCleanupScheduler } from '../dispatch/RouteExportArchiveCleanupScheduler';
-import { startPlanRecommendationDigestScheduler, stopPlanRecommendationDigestScheduler, runPlanRecommendationDigestCycle } from '../billing/PlanRecommendationDigestScheduler';
-import { startRecommendationDirectionDigestScheduler, stopRecommendationDirectionDigestScheduler, runRecommendationDirectionDigestCycle } from '../billing/RecommendationDirectionDigestScheduler';
+import { startPlanRecommendationDigestScheduler, stopPlanRecommendationDigestScheduler, runPlanRecommendationDigestCycle, type RecommendationCycleResult } from '../billing/PlanRecommendationDigestScheduler';
+import { startRecommendationDirectionDigestScheduler, stopRecommendationDirectionDigestScheduler, runRecommendationDirectionDigestCycle, type DirectionDigestCycleResult } from '../billing/RecommendationDirectionDigestScheduler';
 import { startStripePriceVerificationScheduler, stopStripePriceVerificationScheduler, runStripePriceVerificationCycle } from '../billing/StripePriceVerificationScheduler';
 import { startMarketplaceDiscountBackfillScheduler, stopMarketplaceDiscountBackfillScheduler } from '../billing/MarketplaceDiscountBackfillScheduler';
-import { startPortalConfigCleanupScheduler, stopPortalConfigCleanupScheduler, runPortalConfigCleanupCycle } from '../billing/PortalConfigCleanupScheduler';
-import { startBillingReconciliationScheduler, stopBillingReconciliationScheduler, runReconciliationCycle } from '../billing/BillingReconciliationScheduler';
+import { startPortalConfigCleanupScheduler, stopPortalConfigCleanupScheduler, runPortalConfigCleanupCycle, type PortalConfigCleanupSnapshot } from '../billing/PortalConfigCleanupScheduler';
+import { startBillingReconciliationScheduler, stopBillingReconciliationScheduler, runReconciliationCycle, type ReconciliationCycleSummary } from '../billing/BillingReconciliationScheduler';
 import type { ProcessRole } from './processRole';
 
 export interface SchedulerContext {
@@ -74,6 +74,12 @@ export interface SchedulerDefinition {
    * worker never starts their interval version, so they cannot run twice.
    */
   nightly?: () => Promise<unknown>;
+  /**
+   * Reads the result `nightly` resolved with and returns a short failure
+   * reason when the run-once function caught its own error and reported it
+   * in the result instead of throwing. Fixed strings only (no values).
+   */
+  nightlyFailed?: (result: unknown) => string | null;
   /** Returns a skip reason when the scheduler cannot run in this environment. */
   skipReason?: (env: Record<string, string | undefined>) => string | null;
 }
@@ -124,6 +130,7 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     start: () => startConnectorStaleAlertScheduler(),
     stop: stopConnectorStaleAlertScheduler,
     nightly: () => runConnectorStaleAlertCycle(),
+    nightlyFailed: (r) => ((r as StaleAlertCycleResult).snapshotLoadFailed ? 'connector snapshot load failed' : null),
   },
   { name: 'verified-caller-health', start: () => startVerifiedCallerHealthScheduler(), stop: stopVerifiedCallerHealthScheduler },
   { name: 'verified-caller-sync', start: () => startVerifiedCallerSyncScheduler(), stop: stopVerifiedCallerSyncScheduler },
@@ -155,12 +162,14 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     start: () => startTenantIsolationScheduler(),
     stop: stopTenantIsolationScheduler,
     nightly: () => runTenantIsolationScheduledCycle(),
+    nightlyFailed: (r) => ((r as IsolationSchedulerCycleResult).skippedReason ? 'isolation cycle threw' : null),
   },
   {
     name: 'encryption-reminder',
     start: () => startEncryptionReminderScheduler(),
     stop: stopEncryptionReminderScheduler,
     nightly: () => runEncryptionReminderCycle(),
+    nightlyFailed: (r) => ((r as ReminderCycleResult).failed > 0 ? 'reminder emails failed' : null),
   },
   {
     name: 'route-export-archive-cleanup',
@@ -176,12 +185,14 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     start: () => startPlanRecommendationDigestScheduler(),
     stop: stopPlanRecommendationDigestScheduler,
     nightly: () => runPlanRecommendationDigestCycle(),
+    nightlyFailed: (r) => ((r as RecommendationCycleResult).failed > 0 ? 'recommendation emails failed' : null),
   },
   {
     name: 'recommendation-direction-digest',
     start: () => startRecommendationDirectionDigestScheduler(),
     stop: stopRecommendationDirectionDigestScheduler,
     nightly: () => runRecommendationDirectionDigestCycle(),
+    nightlyFailed: (r) => ((r as DirectionDigestCycleResult).failed ? 'direction digest failed' : null),
   },
   {
     name: 'stripe-price-verification',
@@ -195,12 +206,14 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     start: () => startPortalConfigCleanupScheduler(),
     stop: stopPortalConfigCleanupScheduler,
     nightly: () => runPortalConfigCleanupCycle(),
+    nightlyFailed: (r) => ((r as PortalConfigCleanupSnapshot).status === 'failure' ? 'portal config cleanup failed' : null),
   },
   {
     name: 'billing-reconciliation',
     start: () => startBillingReconciliationScheduler(),
     stop: stopBillingReconciliationScheduler,
     nightly: () => runReconciliationCycle('cron'),
+    nightlyFailed: (r) => ((r as ReconciliationCycleSummary).errors > 0 ? 'reconciliation errors' : null),
   },
   { name: 'federal-dnc-sync', start: () => startFederalDncSyncScheduler(), stop: stopFederalDncSyncScheduler },
 ];

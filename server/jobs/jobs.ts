@@ -1,7 +1,7 @@
 /**
  * One-shot jobs for Render cron services (PR-00). Each job is a list of
  * steps; steps run sequentially, a failing step never skips the rest, and
- * the job fails if any step threw.
+ * the job fails if any step threw or its `failed` check reported a failure.
  *
  * `nightly` = the run-once function of every daily scheduler in the
  * registry that has one (see `nightly` in platform/runtime/schedulers.ts).
@@ -15,6 +15,8 @@ const logger = createLogger('JOBS');
 export interface JobStep {
   name: string;
   run: () => Promise<unknown>;
+  /** Failure reason for a resolved result (see `nightlyFailed`), else null. */
+  failed?: (result: unknown) => string | null;
 }
 
 export interface JobResult {
@@ -24,7 +26,11 @@ export interface JobResult {
 }
 
 export function nightlySteps(registry?: readonly SchedulerDefinition[]): JobStep[] {
-  return nightlySchedulers(registry).map((s) => ({ name: s.name, run: s.nightly as () => Promise<unknown> }));
+  return nightlySchedulers(registry).map((s) => ({
+    name: s.name,
+    run: s.nightly as () => Promise<unknown>,
+    failed: s.nightlyFailed,
+  }));
 }
 
 export const JOBS: Record<string, () => JobStep[]> = {
@@ -37,7 +43,9 @@ export async function runJob(job: string, steps: JobStep[]): Promise<JobResult> 
   for (const step of steps) {
     const startedAt = Date.now();
     try {
-      await step.run();
+      const value = await step.run();
+      const reason = step.failed?.(value) ?? null;
+      if (reason) throw new Error(reason);
       result.steps.push({ name: step.name, ok: true, durationMs: Date.now() - startedAt });
       logger.info('Job step complete', { job, step: step.name, durationMs: Date.now() - startedAt });
     } catch (err) {
