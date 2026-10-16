@@ -1,4 +1,4 @@
-import { getPlatformPool, withTenantContext } from '../db';
+import { getPlatformPool, getPrivilegedPool, withPrivilegedClient, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import type { TenantId } from '../core/types';
 
@@ -64,8 +64,8 @@ export async function createReview(input: ReviewInput): Promise<{ success: boole
       [tenantId, userId, templateId, rating, reviewText ?? null],
     );
 
-    await updateAggregateRating(client, templateId);
     await client.query('COMMIT');
+    await refreshAggregateRating(templateId);
 
     const review = rows[0];
     logger.info('Review created/updated', { tenantId, userId, templateId, rating });
@@ -95,7 +95,9 @@ export async function getReviewsForTemplate(
   templateId: string,
   options: { limit?: number; offset?: number } = {},
 ): Promise<{ reviews: Review[]; summary: ReviewSummary }> {
-  const pool = getPlatformPool();
+  // Every tenant's active reviews of a shared template (no tenant ids are
+  // returned): privileged pool, or RLS would show only the caller's own.
+  const pool = getPrivilegedPool();
   const limit = Math.min(options.limit ?? 20, 100);
   const offset = options.offset ?? 0;
 
@@ -167,8 +169,8 @@ export async function deleteReview(
       return { success: false, error: 'Review not found' };
     }
 
-    await updateAggregateRating(client, rows[0].template_id);
     await client.query('COMMIT');
+    await refreshAggregateRating(rows[0].template_id as string);
 
     return { success: true };
   } catch (err) {
@@ -180,38 +182,43 @@ export async function deleteReview(
   }
 }
 
+/** Platform moderation acts on any tenant's review: privileged pool. */
 export async function moderateReview(
   reviewId: string,
   status: 'active' | 'flagged' | 'removed',
 ): Promise<{ success: boolean; error?: string }> {
-  const pool = getPlatformPool();
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
+    return await withPrivilegedClient(async (client) => {
+      const { rows } = await client.query(
+        `UPDATE marketplace_reviews SET status = $1, updated_at = NOW()
+         WHERE id = $2
+         RETURNING template_id`,
+        [status, reviewId],
+      );
 
-    const { rows } = await client.query(
-      `UPDATE marketplace_reviews SET status = $1, updated_at = NOW()
-       WHERE id = $2
-       RETURNING template_id`,
-      [status, reviewId],
-    );
+      if (rows.length === 0) {
+        return { success: false, error: 'Review not found' };
+      }
 
-    if (rows.length === 0) {
-      await client.query('COMMIT');
-      return { success: false, error: 'Review not found' };
-    }
-
-    await updateAggregateRating(client, rows[0].template_id);
-    await client.query('COMMIT');
-
-    return { success: true };
+      await updateAggregateRating(client, rows[0].template_id as string);
+      return { success: true };
+    });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     logger.error('Failed to moderate review', { reviewId, error: String(err) });
     return { success: false, error: 'Failed to moderate review' };
-  } finally {
-    client.release();
+  }
+}
+
+/**
+ * Recompute the shared template rating from every tenant's reviews. Runs on
+ * the privileged pool after the tenant's own write commits; a tenant-bound
+ * client would see only that tenant's rows and overwrite the global value.
+ */
+async function refreshAggregateRating(templateId: string): Promise<void> {
+  try {
+    await withPrivilegedClient((client) => updateAggregateRating(client, templateId));
+  } catch (err) {
+    logger.error('Failed to refresh template rating', { templateId, error: String(err) });
   }
 }
 
