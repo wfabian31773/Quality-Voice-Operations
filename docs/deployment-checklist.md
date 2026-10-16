@@ -1,5 +1,7 @@
 # Quality Voice Operations — Production Deployment Checklist
 
+> **Render is the target; Replit is the fallback until cutover.** The Render setup (services, roles, `/healthz`/`/readyz`, zero-dropped-call drain, env inventory, gated deploy script, Twilio cutover and rollback) is in [docs/deploy/render.md](deploy/render.md). This checklist still describes the Replit deployment, which keeps working unchanged (`QVO_PROCESS_ROLE` unset = `all`).
+
 ## 1. Environment Variables
 
 ### Required (all environments)
