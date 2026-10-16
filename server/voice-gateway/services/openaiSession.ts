@@ -807,7 +807,8 @@ export async function createRealtimeSession(
       toolsAvailable: agentConfig.tools.map((t) => t.name),
       memoryStorage: ctx.callerMemory ?? null,
       humanTransferAvailable: Boolean(
-        (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+        ctx.onHandoff
+        || (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
       ),
     };
     reasoningEngine = new ReasoningEngine(reasoningConfig);
