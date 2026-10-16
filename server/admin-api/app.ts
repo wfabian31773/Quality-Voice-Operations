@@ -8,6 +8,7 @@ import { auditMutation } from '../../platform/audit/auditMutation';
 import { createLogger } from '../../platform/core/logger';
 import { corsOptions, securityHeaders } from './middleware/security';
 import { attachSpaFallback, isProductionBoot } from './spaFallback';
+import { resolveVoiceGatewayProxyTarget } from '../../platform/runtime/processRole';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
 import mfaRoutes from './routes/mfa';
@@ -88,10 +89,14 @@ app.use(cookieParser());
 // TwiML response points at `wss://<public-host>/vg/twilio/stream`, both
 // of which we forward to the voice-gateway here. The path rewrite strips
 // the `/vg` prefix so the voice-gateway routes (mounted at `/`) match.
-// `ws: true` is wired through `server.on('upgrade', ...)` in start.ts.
-const voiceGatewayPort = parseInt(process.env.VOICE_GATEWAY_PORT ?? '3001', 10);
+// `ws: true` is wired through `server.on('upgrade', ...)` in start.ts
+// (Replit / role `all` only).
+//
+// On Render the voice gateway is its own service: the HTTP arm targets its
+// private-network `hostport` (VOICE_GATEWAY_INTERNAL_HOSTPORT, wired with
+// `fromService` in render.yaml). Without it, keep 127.0.0.1 (Replit).
 export const voiceGatewayProxy = createProxyMiddleware({
-  target: `http://127.0.0.1:${voiceGatewayPort}`,
+  target: resolveVoiceGatewayProxyTarget(),
   changeOrigin: false,
   ws: true,
   pathRewrite: { '^/vg': '' },

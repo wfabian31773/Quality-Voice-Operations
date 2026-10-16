@@ -1,7 +1,19 @@
 import { Router } from 'express';
 import { getPlatformPool } from '../../../platform/db';
+import { createProbeRouter } from '../../../platform/runtime/health';
+import { resolveProcessRole } from '../../../platform/runtime/processRole';
 
 const router = Router();
+
+// PR-00: `/healthz` (liveness, Render healthCheckPath) and `/readyz`
+// (env + DB + registries + not draining). `/health` below is unchanged.
+router.use(
+  createProbeRouter({
+    service: 'admin-api',
+    role: () => resolveProcessRole(),
+    dbPing: () => getPlatformPool().query('SELECT 1'),
+  }),
+);
 
 router.get('/health', async (_req, res) => {
   let db: 'connected' | 'error' = 'error';

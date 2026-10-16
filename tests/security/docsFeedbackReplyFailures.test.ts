@@ -16,8 +16,10 @@ const schedulerFile = readFileSync(
   join(process.cwd(), 'platform/help/DocsFeedbackReplyDigestScheduler.ts'),
   'utf8',
 );
+// PR-00: the admin API's scheduler list moved to the shared registry
+// (started by the admin API for role `all`, by the worker on Render).
 const startFile = readFileSync(
-  join(process.cwd(), 'server/admin-api/start.ts'),
+  join(process.cwd(), 'platform/runtime/schedulers.ts'),
   'utf8',
 );
 const migration = readFileSync(

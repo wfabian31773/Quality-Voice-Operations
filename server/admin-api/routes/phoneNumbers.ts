@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { resolveVoiceGatewayBaseUrl } from '../../../platform/runtime/processRole';
 import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
@@ -35,14 +36,22 @@ function getTwilioClient() {
   return twilio(accountSid, authToken);
 }
 
+// VOICE_GATEWAY_BASE_URL, else (off Render) the Replit dev domain. Never
+// `https://undefined/...`: refuse before buying a number Twilio can't reach.
+function getVoiceGatewayBase(): string {
+  const base = resolveVoiceGatewayBaseUrl();
+  if (!base) {
+    throw new Error('VOICE_GATEWAY_BASE_URL is not configured');
+  }
+  return base;
+}
+
 function getVoiceWebhookUrl(): string {
-  const base = process.env.VOICE_GATEWAY_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  return `${base}/twilio/voice`;
+  return `${getVoiceGatewayBase()}/twilio/voice`;
 }
 
 function getStatusCallbackUrl(): string {
-  const base = process.env.VOICE_GATEWAY_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  return `${base}/twilio/status`;
+  return `${getVoiceGatewayBase()}/twilio/status`;
 }
 
 router.get('/phone-numbers', requireAuth, async (req, res) => {
