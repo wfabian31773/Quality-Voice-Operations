@@ -2,10 +2,41 @@ import { createLogger } from '../../../core/logger';
 import { getPlatformPool, withTenantContext } from '../../../db';
 import { phoneDigits } from '../../../reasoning/sessionBinding';
 import { transitionBooking } from '../../../scheduling/bookingLifecycle';
-import { buildOverrideConflictResponse, getTenantTimezone } from '../../../../server/admin-api/routes/scheduling';
+import {
+  buildOverrideConflictResponse,
+  getTenantTimezone,
+  wallClockInTimezoneToUtc,
+} from '../../../../server/admin-api/routes/scheduling';
 import type { ToolContext, ToolDefinition } from '../../registry/types';
 import { getToolLibraryEntry } from '../catalog';
 import { consumeBookingConfirmation, issueBookingConfirmation } from './bookingConfirmation';
+
+const HAS_EXPLICIT_OFFSET = /(?:[zZ]|[+-]\d{2}:?\d{2})$/;
+
+export function parseBookingDateTime(raw: string, timeZone: string): Date | null {
+  const value = raw.trim();
+  if (!value) return null;
+  if (HAS_EXPLICIT_OFFSET.test(value)) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/,
+  );
+  if (!match) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return wallClockInTimezoneToUtc(
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6] ?? 0),
+    timeZone,
+  );
+}
 
 const logger = createLogger('TOOL_CREATE_BOOKING');
 
@@ -100,16 +131,26 @@ export interface UpdateBookingResult {
   bookingId?: string;
   action?: string;
   status?: 'needs_selection' | 'needs_confirmation' | 'updated';
+  pending?: boolean;
   needsSelection?: boolean;
   needsConfirmation?: boolean;
   confirmationToken?: string;
   candidates?: UpcomingBookingCandidate[];
 }
 
+export function isPendingBookingChallenge(result: {
+  pending?: boolean;
+  status?: string;
+}): boolean {
+  return result.pending === true
+    || result.status === 'needs_selection'
+    || result.status === 'needs_confirmation';
+}
+
 function challengeResult(
-  extras: Omit<UpdateBookingResult, 'success'>,
+  extras: Omit<UpdateBookingResult, 'success' | 'pending'>,
 ): UpdateBookingResult {
-  return { success: true, ...extras };
+  return { success: true, pending: true, ...extras };
 }
 
 export async function executeUpdateBooking(
@@ -131,14 +172,14 @@ export async function executeUpdateBooking(
   let newEnd: Date | null = null;
   if (action === 'reschedule') {
     const startTime = String(input.startTime ?? '').trim();
-    newStart = startTime ? new Date(startTime) : null;
-    if (!newStart || Number.isNaN(newStart.getTime())) {
+    if (!startTime) {
       return { success: false, message: 'Reschedule requires a valid startTime. Ask the caller for the new day and time first.' };
     }
   }
 
   const pool = getPlatformPool();
   const client = await pool.connect();
+  let afterCommit: Array<() => void> = [];
   try {
     await client.query('BEGIN');
     const result = await withTenantContext(client, context.tenantId, async () => {
@@ -212,7 +253,12 @@ export async function executeUpdateBooking(
         });
       }
 
-      if (action === 'reschedule' && newStart) {
+      if (action === 'reschedule') {
+        const tenantTz = await getTenantTimezone(client, context.tenantId);
+        newStart = parseBookingDateTime(String(input.startTime ?? '').trim(), tenantTz);
+        if (!newStart) {
+          return { success: false, message: 'Reschedule requires a valid startTime. Ask the caller for the new day and time first.' };
+        }
         const durationMs = Math.max(
           new Date(selected.endTime).getTime() - new Date(selected.startTime).getTime(),
           30 * 60_000,
@@ -229,6 +275,7 @@ export async function executeUpdateBooking(
         newEndTime: newEnd?.toISOString(),
         changedBy: context.agentSlug ?? 'voice_agent',
       }, {
+        deferSideEffects: true,
         checkBlackout: async ({ startTime, endTime, providerId }) => {
           const tenantTz = await getTenantTimezone(client, context.tenantId);
           return buildOverrideConflictResponse(client, context.tenantId, startTime, endTime, providerId, tenantTz);
@@ -242,6 +289,7 @@ export async function executeUpdateBooking(
         return { success: false, action, bookingId: selected.bookingId, message: conflictMessage };
       }
 
+      afterCommit = transition.afterCommit ?? [];
       return {
         success: true,
         action,
@@ -253,6 +301,7 @@ export async function executeUpdateBooking(
       } satisfies UpdateBookingResult;
     });
     await client.query('COMMIT');
+    for (const effect of afterCommit) effect();
     return result;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

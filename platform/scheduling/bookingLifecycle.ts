@@ -151,7 +151,12 @@ export interface TransitionBookingInput {
 }
 
 export type TransitionBookingResult =
-  | { ok: true; httpStatus: 200; body: { booking: Record<string, unknown>; previous_booking_id?: string } }
+  | {
+    ok: true;
+    httpStatus: 200;
+    body: { booking: Record<string, unknown>; previous_booking_id?: string };
+    afterCommit?: Array<() => void>;
+  }
   | { ok: false; httpStatus: number; body: Record<string, unknown> };
 
 export interface TransitionBookingHooks {
@@ -160,6 +165,7 @@ export interface TransitionBookingHooks {
     endTime: string;
     providerId: string | null;
   }) => Promise<{ status: number; body: Record<string, unknown> } | null>;
+  deferSideEffects?: boolean;
 }
 
 export async function transitionBooking(
@@ -192,6 +198,11 @@ export async function transitionBooking(
   }
 
   const newStatus = STATUS_MAP[action];
+  const afterCommit: Array<() => void> = [];
+  const scheduleSideEffect = (effect: () => void) => {
+    if (hooks.deferSideEffects) afterCommit.push(effect);
+    else effect();
+  };
   const updateFragments: string[] = ['status = $3', 'updated_at = NOW()'];
   const updateValues: unknown[] = [bookingId, tenantId, newStatus];
 
@@ -279,36 +290,41 @@ export async function transitionBooking(
 
     const newBooking = newBookingRows[0] as Record<string, unknown> | undefined;
     if (newBooking?.resource_id) {
-      void fireDispatchPush({
-        event: 'booking_rescheduled',
-        tenantId,
-        resourceIds: [newBooking.resource_id as string],
-        booking: {
-          id: newBooking.id as string,
-          title: (newBooking.title as string | null) ?? null,
-          start_time: newBooking.start_time
-            ? (newBooking.start_time instanceof Date
-              ? newBooking.start_time.toISOString()
-              : String(newBooking.start_time))
-            : null,
-        },
+      scheduleSideEffect(() => {
+        void fireDispatchPush({
+          event: 'booking_rescheduled',
+          tenantId,
+          resourceIds: [newBooking.resource_id as string],
+          booking: {
+            id: newBooking.id as string,
+            title: (newBooking.title as string | null) ?? null,
+            start_time: newBooking.start_time
+              ? (newBooking.start_time instanceof Date
+                ? newBooking.start_time.toISOString()
+                : String(newBooking.start_time))
+              : null,
+          },
+        });
       });
     }
 
-    dispatchAppointmentLifecycleEvent(
-      tenantId,
-      buildAppointmentLifecyclePayload(booking, 'appointment.rescheduled', {
-        newAppointmentId: newBooking?.id ?? undefined,
-        newStartTime: bookingTimeToISO(input.newStartTime),
-        newEndTime: bookingTimeToISO(input.newEndTime),
-        rescheduleReason: input.overrideReason || undefined,
-      }),
-    );
+    scheduleSideEffect(() => {
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(booking, 'appointment.rescheduled', {
+          newAppointmentId: newBooking?.id ?? undefined,
+          newStartTime: bookingTimeToISO(input.newStartTime),
+          newEndTime: bookingTimeToISO(input.newEndTime),
+          rescheduleReason: input.overrideReason || undefined,
+        }),
+      );
+    });
 
     return {
       ok: true,
       httpStatus: 200,
       body: { booking: newBookingRows[0] as Record<string, unknown>, previous_booking_id: bookingId },
+      afterCommit,
     };
   }
 
@@ -330,35 +346,41 @@ export async function transitionBooking(
     }
 
     if (booking.resource_id) {
-      void fireDispatchPush({
-        event: 'booking_cancelled',
-        tenantId,
-        resourceIds: [booking.resource_id as string],
-        booking: {
-          id: booking.id as string,
-          title: (booking.title as string | null) ?? null,
-          start_time: booking.start_time
-            ? (booking.start_time instanceof Date
-              ? booking.start_time.toISOString()
-              : String(booking.start_time))
-            : null,
-        },
+      scheduleSideEffect(() => {
+        void fireDispatchPush({
+          event: 'booking_cancelled',
+          tenantId,
+          resourceIds: [booking.resource_id as string],
+          booking: {
+            id: booking.id as string,
+            title: (booking.title as string | null) ?? null,
+            start_time: booking.start_time
+              ? (booking.start_time instanceof Date
+                ? booking.start_time.toISOString()
+                : String(booking.start_time))
+              : null,
+          },
+        });
       });
     }
 
-    dispatchAppointmentLifecycleEvent(
-      tenantId,
-      buildAppointmentLifecyclePayload(booking, 'appointment.cancelled', {
-        cancellationReason: input.cancellationReason || input.overrideReason || undefined,
-      }),
-    );
+    scheduleSideEffect(() => {
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(booking, 'appointment.cancelled', {
+          cancellationReason: input.cancellationReason || input.overrideReason || undefined,
+        }),
+      );
+    });
   }
 
   if (action === 'no_show') {
-    dispatchAppointmentLifecycleEvent(
-      tenantId,
-      buildAppointmentLifecyclePayload(booking, 'appointment.no_show'),
-    );
+    scheduleSideEffect(() => {
+      dispatchAppointmentLifecycleEvent(
+        tenantId,
+        buildAppointmentLifecyclePayload(booking, 'appointment.no_show'),
+      );
+    });
   }
 
   await writeSchedulingAuditLog(
@@ -382,5 +404,6 @@ export async function transitionBooking(
     ok: true,
     httpStatus: 200,
     body: { booking: updated[0] as Record<string, unknown> },
+    afterCommit,
   };
 }

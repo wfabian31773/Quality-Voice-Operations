@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { connectorService } from '../integrations/connectors';
+import { fireDispatchPush } from '../notifications/dispatchPush';
 import { checkBookingConflicts, transitionBooking } from './bookingLifecycle';
 
 vi.mock('../integrations/connectors', () => ({
@@ -31,6 +33,11 @@ describe('checkBookingConflicts', () => {
 });
 
 describe('transitionBooking', () => {
+  beforeEach(() => {
+    vi.mocked(fireDispatchPush).mockClear();
+    vi.mocked(connectorService.dispatchEvent).mockClear();
+  });
+
   it('rejects a conflicting reschedule before writing the new row', async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('SELECT * FROM bookings WHERE id')) {
@@ -101,5 +108,46 @@ describe('transitionBooking', () => {
     expect(result.ok).toBe(true);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('scheduling_waitlist'))).toBe(true);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('scheduling_audit_log'))).toBe(true);
+  });
+
+  it('defers calendar dispatch and staff push until afterCommit when asked', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('SELECT * FROM bookings WHERE id') && !sql.includes('scheduling_waitlist')) {
+        return {
+          rows: [{
+            id: 'bk-1',
+            status: 'confirmed',
+            provider_id: null,
+            appointment_type_id: null,
+            resource_id: 'tech-1',
+            start_time: '2026-10-20T15:00:00.000Z',
+            title: 'Haircut',
+          }],
+        };
+      }
+      if (sql.includes('UPDATE bookings')) return { rows: [], rowCount: 1 };
+      if (sql.includes('FROM scheduling_waitlist')) return { rows: [] };
+      if (sql.includes('INSERT INTO scheduling_audit_log')) return { rows: [] };
+      if (sql.includes('SELECT * FROM bookings WHERE id')) {
+        return { rows: [{ id: 'bk-1', status: 'cancelled' }] };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const result = await transitionBooking({ query }, {
+      tenantId: 'tenant-1',
+      bookingId: 'bk-1',
+      action: 'cancel',
+      cancellationReason: 'Caller asked',
+    }, { deferSideEffects: true });
+
+    expect(result.ok).toBe(true);
+    expect(fireDispatchPush).not.toHaveBeenCalled();
+    expect(connectorService.dispatchEvent).not.toHaveBeenCalled();
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.afterCommit).toHaveLength(2);
+    for (const effect of result.afterCommit ?? []) effect();
+    expect(fireDispatchPush).toHaveBeenCalledWith(expect.objectContaining({ event: 'booking_cancelled' }));
+    expect(connectorService.dispatchEvent).toHaveBeenCalled();
   });
 });

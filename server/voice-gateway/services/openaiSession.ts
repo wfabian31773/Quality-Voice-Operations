@@ -22,6 +22,7 @@ import { recordTrace } from '../../../platform/core/observability/traceLogger';
 import { handleDemoToolCall } from './demoToolHandler';
 import { buildMessageFallbackInstruction } from './messageFallbackInstruction';
 import { bindSessionToolArgs } from '../../../platform/reasoning/sessionBinding';
+import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
@@ -643,7 +644,9 @@ function buildToolHandler(
 
     if (ctx.reasoningEngine) {
       try {
-        if (executionStatus === 'success') {
+        const pendingChallenge = parsedResult && typeof parsedResult === 'object'
+          && isPendingBookingChallenge(parsedResult as Record<string, unknown>);
+        if (executionStatus === 'success' && !pendingChallenge) {
           ctx.reasoningEngine.handleToolSuccess(toolName);
           const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
           if (stepTool === toolName) {
