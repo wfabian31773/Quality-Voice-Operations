@@ -109,6 +109,53 @@ export async function verifyConnectedRoleDoesNotBypassRls(): Promise<IsolationTe
   }
 }
 
+/**
+ * Fail loudly when the restricted role can sidestep policies as a table
+ * owner: owners bypass RLS unless the table has FORCE ROW LEVEL SECURITY
+ * (migration 120). Also fails when FORCE is missing on any checked table,
+ * so a reverted migration shows up even while qvo_app owns nothing.
+ */
+export async function verifyRestrictedRoleCannotBypassAsOwner(): Promise<IsolationTestResult[]> {
+  const results: IsolationTestResult[] = [];
+  const pool = getPlatformPool();
+  try {
+    const { rows } = await pool.query<{
+      relname: string;
+      relforcerowsecurity: boolean;
+      owned_by_current_role: boolean;
+    }>(
+      `SELECT c.relname,
+              c.relforcerowsecurity,
+              pg_has_role(CURRENT_USER, c.relowner, 'USAGE') AS owned_by_current_role
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'
+          AND c.relname = ANY($1::text[])`,
+      [RLS_TABLES],
+    );
+    for (const row of rows) {
+      const ownerBypass = row.owned_by_current_role && !row.relforcerowsecurity;
+      results.push({
+        testName: `FORCE RLS on ${row.relname}`,
+        passed: row.relforcerowsecurity && !ownerBypass,
+        details: ownerBypass
+          ? `CONNECTED ROLE OWNS ${row.relname} WITHOUT FORCE ROW LEVEL SECURITY — owner bypasses every policy`
+          : row.relforcerowsecurity
+            ? 'FORCE ROW LEVEL SECURITY is set'
+            : 'FORCE ROW LEVEL SECURITY missing (re-run migration 120)',
+      });
+    }
+  } catch (err) {
+    results.push({
+      testName: 'FORCE RLS check',
+      passed: false,
+      details: `Error checking table ownership / FORCE RLS: ${String(err)}`,
+    });
+  }
+  return results;
+}
+
 export async function verifyRLSEnabled(): Promise<IsolationTestResult[]> {
   const results: IsolationTestResult[] = [];
 
@@ -230,9 +277,10 @@ export async function runAllIsolationTests(
 
   const roleResult = await verifyConnectedRoleDoesNotBypassRls();
   const rlsResults = await verifyRLSEnabled();
+  const ownerResults = await verifyRestrictedRoleCannotBypassAsOwner();
   const crossTenantResults = await verifyCrossTenantAccessBlocked(tenantId);
 
-  const allResults = [roleResult, ...rlsResults, ...crossTenantResults];
+  const allResults = [roleResult, ...rlsResults, ...ownerResults, ...crossTenantResults];
   const passed = allResults.filter(r => r.passed).length;
   const failed = allResults.filter(r => r.passed === false).length;
 
