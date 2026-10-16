@@ -10,7 +10,6 @@ import MinutesPricingCalculator, {
   type BillingPeriod,
   type CurrentPlanOverride,
 } from '../../components/MinutesPricingCalculator';
-import LogosStrip from '../../components/LogosStrip';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
 import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
@@ -1066,7 +1065,6 @@ export default function Pricing() {
     { nameKey: 'priority', starter: false, pro: true, enterprise: true },
     { nameKey: 'onboarding', starter: false, pro: false, enterprise: true },
     { nameKey: 'demo', starter: true, pro: true, enterprise: true },
-    { nameKey: 'trial', starter: true, pro: true, enterprise: true },
   ];
 
   const TIER_COPY: Record<'starter' | 'pro' | 'enterprise', { desc: string; popular?: boolean }> = {
@@ -1123,13 +1121,13 @@ export default function Pricing() {
         name: 'How much does QVO cost?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: `QVO offers three plans: Starter at ${formatPlanMonthlyPrice('starter', displayCurrency)}/month, Pro at ${formatPlanMonthlyPrice('pro', displayCurrency)}/month, and Enterprise at ${formatPlanMonthlyPrice('enterprise', displayCurrency)}/month. All plans include a 14-day free trial.${isApprox ? ` Prices in ${displayCurrency} are approximate; final billing happens in your selected billing currency.` : ''}`,
+          text: `QVO offers three plans: Starter at ${formatPlanMonthlyPrice('starter', displayCurrency)}/month, Pro at ${formatPlanMonthlyPrice('pro', displayCurrency)}/month, and Enterprise at ${formatPlanMonthlyPrice('enterprise', displayCurrency)}/month. Now onboarding pilot shops.${isApprox ? ` Prices in ${displayCurrency} are approximate; final billing happens in your selected billing currency.` : ''}`,
         },
       },
       {
         '@type': 'Question',
-        name: 'What is included in the free trial?',
-        acceptedAnswer: { '@type': 'Answer', text: 'Every QVO plan includes a 14-day free trial with full access to all features in your chosen tier. No credit card required to start.' },
+        name: 'How do I get started?',
+        acceptedAnswer: { '@type': 'Answer', text: 'Now onboarding pilot shops. Book a walkthrough to talk about a deployment for your shop.' },
       },
       {
         '@type': 'Question',
@@ -1517,8 +1515,10 @@ export default function Pricing() {
       </section>
 
       <section className="bg-surface py-14 border-t border-border/20">
-        <div className="max-w-6xl mx-auto px-6 lg:px-8">
-          <LogosStrip title={t('pricing.logos.title')} />
+        <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
+          <p className="font-body text-text-secondary">
+            {t('common.pilot_onboarding', 'Now onboarding pilot shops.')}
+          </p>
         </div>
       </section>
 

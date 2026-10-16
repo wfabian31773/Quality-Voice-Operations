@@ -21,9 +21,9 @@ export default function PublicLayout() {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  // TODO(PR-04): Healthcare/Dental routes stay registered for existing tests
+  // but are hidden from public navigation. QVO serves trade/home-service shops.
   const navItems: SimpleLink[] = [
-    { kind: 'link', to: '/industries/healthcare', i18nKey: 'footer.healthcare' },
-    { kind: 'link', to: '/industries/dental', i18nKey: 'footer.dental' },
     { kind: 'link', to: '/pricing', i18nKey: 'public_nav.pricing' },
     { kind: 'link', to: '/demo', i18nKey: 'public_nav.demo' },
     { kind: 'link', to: '/contact', i18nKey: 'public_nav.contact' },
@@ -194,8 +194,8 @@ export default function PublicLayout() {
             <div>
               <h4 className="font-display text-sm font-semibold text-on-sidebar mb-4">{t('footer.section_solutions')}</h4>
               <ul className="space-y-2.5">
-                <li><Link to="/industries/healthcare" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.healthcare')}</Link></li>
-                <li><Link to="/industries/dental" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.dental')}</Link></li>
+                {/* TODO(PR-04): /industries/healthcare and /industries/dental remain
+                    reachable by URL but are unlinked from public nav/footer. */}
                 <li><Link to="/case-studies" className="text-sm hover:text-on-sidebar transition-colors">{t('footer.case_studies')}</Link></li>
               </ul>
             </div>

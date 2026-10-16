@@ -209,7 +209,7 @@ export default function BookDemo() {
             <div className="bg-surface rounded-2xl border border-border/30 p-6">
               <p className="text-xs uppercase tracking-wider font-semibold text-text-secondary mb-3">Want to explore first?</p>
               <p className="text-sm text-text-primary/70 font-body mb-4">
-                Try the healthcare receptionist demo before your consultation.
+                Try the live receptionist demo before your consultation.
               </p>
               <Link
                 to="/demo"
@@ -261,10 +261,10 @@ export default function BookDemo() {
                     Try the live demo
                   </Link>
                   <Link
-                    to="/case-studies"
+                    to="/contact"
                     className="flex-1 inline-flex items-center justify-center gap-2 bg-surface-secondary hover:bg-surface-hover text-text-primary font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
                   >
-                    Read customer stories
+                    Contact us
                   </Link>
                 </div>
               </div>

@@ -179,14 +179,14 @@ export default function CaseStudies() {
     <>
       <SEO
         title="Customer Success Stories | QVO"
-        description="See how businesses across healthcare, legal, real estate, and home services use QVO AI voice agents to automate calls and grow revenue."
+        description="Now onboarding pilot shops. Book a walkthrough to talk about a QVO deployment for your trade or home-service shop."
       />
 
       <section className="py-20 bg-gradient-to-br from-sidebar-bg via-sidebar-bg to-[#1e293b]">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">Customer Success Stories</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
-            Real results from real businesses using QVO AI voice agents to transform their operations.
+            Now onboarding pilot shops.
           </p>
         </div>
       </section>
@@ -199,28 +199,11 @@ export default function CaseStudies() {
             </div>
           ) : studies.length === 0 ? (
             <div>
-              <div className="grid md:grid-cols-3 gap-6 mb-10">
-                {[
-                  { vertical: 'Healthcare', name: 'Lakewood Family Medicine', metric: '63%', label: 'reduction in missed calls', summary: 'Replaced an overflowed front desk with a 24/7 voice agent that handles intake and reschedules.' },
-                  { vertical: 'Home Services', name: 'Comfort First HVAC', metric: '$184K', label: 'recovered annually', summary: 'After-hours emergency calls now book directly into the dispatch queue without an on-call coordinator.' },
-                  { vertical: 'Legal', name: 'Park & Associates', metric: '4.9 / 5', label: 'caller satisfaction', summary: 'Intake automation freed paralegals from screening calls so they could focus on case work.' },
-                ].map((s) => (
-                  <div key={s.name} className="bg-surface border border-border/30 rounded-2xl p-6">
-                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full">{s.vertical}</span>
-                    <h3 className="font-display text-lg font-bold text-text-primary mt-4 mb-2">{s.name}</h3>
-                    <div className="mb-3">
-                      <p className="font-display text-3xl font-bold text-primary">{s.metric}</p>
-                      <p className="text-xs text-text-primary/60 font-body">{s.label}</p>
-                    </div>
-                    <p className="text-sm text-text-primary/70 font-body leading-relaxed">{s.summary}</p>
-                  </div>
-                ))}
-              </div>
               <div className="text-center bg-surface border border-border/30 rounded-2xl py-10 px-6">
                 <BarChart3 className="h-10 w-10 text-text-muted mx-auto mb-3" />
-                <h3 className="text-lg font-display font-semibold text-text-primary mb-2">Detailed case studies coming soon</h3>
+                <h3 className="text-lg font-display font-semibold text-text-primary mb-2">Now onboarding pilot shops</h3>
                 <p className="text-text-secondary mb-5 max-w-xl mx-auto text-sm">
-                  We are publishing in-depth stories from our healthcare, legal, and home-service customers. In the meantime, request a custom walkthrough.
+                  Published customer stories are not available yet. Book a walkthrough to talk about a deployment for your shop.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <Link to="/book-demo" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
@@ -247,7 +230,7 @@ export default function CaseStudies() {
       <section className="py-16 bg-surface">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-text-primary mb-4">Ready to Be Our Next Success Story?</h2>
-          <p className="text-text-secondary mb-8">Talk with QVO about a focused healthcare receptionist deployment.</p>
+          <p className="text-text-secondary mb-8">Talk with QVO about a voice operations deployment for your shop.</p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link to="/book-demo" className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-8 py-3.5 rounded-xl font-semibold transition-colors">
               Book a Demo <ArrowRight className="h-4 w-4" />

@@ -267,8 +267,8 @@ export default function Signup() {
   return (
     <div>
       <SEO
-        title="Sign Up — Start Your Free Trial"
-        description="Create your QVO account and start your 7-day free trial. Set up AI voice agents for your business in minutes. No credit card required."
+        title="Sign Up — QVO"
+        description="Create your QVO account. Now onboarding pilot shops."
         canonicalPath="/signup"
       />
       {/*

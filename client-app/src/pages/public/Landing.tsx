@@ -1,17 +1,13 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import SEO from '../../components/SEO';
-import RevealSection from '../../components/RevealSection';
-import ComparisonTable from '../../components/ComparisonTable';
 import {
   PageHero,
   SectionImage,
   BottomCTA,
   Pillars,
-  StatsStrip,
 } from '../../components/marketing';
 import {
   trackPageView,
@@ -21,21 +17,6 @@ import {
 } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
 import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
-
-const verticalCards = [
-  {
-    slug: 'healthcare',
-    name: 'Healthcare',
-    avatar: '/assets/avatars-v2-web/medical.jpg',
-    tagline: 'Healthcare intake, appointment requests, follow-up, and safe escalation.',
-  },
-  {
-    slug: 'dental',
-    name: 'Dental',
-    avatar: '/assets/avatars-v2-web/dental.jpg',
-    tagline: 'Hygiene recall, new-patient intake, treatment plans.',
-  },
-];
 
 export default function Landing() {
   const { user, initialized } = useAuth();
@@ -78,25 +59,15 @@ export default function Landing() {
         structuredData={organizationSchema}
       />
 
-      {/* 1 · HERO
-          Positioning: lead UNIVERSAL ("voice for every front desk") with
-          healthcare prominent as the initial operational proof. Hero imagery stays
-          healthcare (V1 consultation suite) so the visual anchors the
-          specialty while the copy opens the aperture to every vertical.
-          Per Wayne 2026-05-25: "highlight healthcare but also make it
-          obvious that voice can be applied in any setting." */}
       <PageHero
-        lightSrc="/assets/moodboards-web/V1-hero.jpg"
+        lightSrc="/industry-hero/home-services.jpg"
         darkSrc="/assets/sections-web/D1-dark-office.jpg"
-        eyebrow={t(
-          'landing.hero.eyebrow',
-          'One voice core · Purpose-built healthcare workflow',
-        )}
+        eyebrow={t('landing.hero.eyebrow', 'Voice operations for trade and home-service shops')}
         title={t('landing.hero.title', 'Calls that don’t get missed.')}
         titleAccent={t('landing.hero.title_2', 'Customers that don’t get lost.')}
         description={t(
           'landing.hero.description',
-          'Built and battle-tested on 40,000+ real healthcare calls — and ready for every business that lives by the phone. QVO answers, qualifies, schedules, and follows up 24/7, in a voice your customers trust.',
+          'Now onboarding pilot shops. QVO answers, qualifies, schedules, and follows up 24/7, in a voice your customers trust.',
         )}
         ctas={[
           {
@@ -120,7 +91,6 @@ export default function Landing() {
         ]}
       />
 
-      {/* 2 · THREE PILLARS + stats */}
       <Pillars
         eyebrow={t('landing.pillars.eyebrow', 'Why QVO exists')}
         title={t(
@@ -142,30 +112,19 @@ export default function Landing() {
           },
           {
             num: '03',
-            title: 'Built for healthcare.',
-            body:
-              'Minimum-necessary intake, safe escalation, and an explicit recording-disabled default while healthcare approval remains pending.',
+            title: t('common.pilot_onboarding', 'Now onboarding pilot shops.'),
+            body: 'QVO serves trade and home-service shops.',
           },
         ]}
-      >
-        <StatsStrip
-          stats={[
-            { value: 2400000, suffix: '+', label: t('landing.stats.calls_handled', 'Calls handled') },
-            { value: 850, suffix: '+', label: t('landing.stats.agents_deployed', 'Agents deployed') },
-            { display: '99.9', suffix: '%', label: t('landing.stats.uptime', 'Voice uptime') },
-            { value: 30, suffix: '+', label: t('landing.stats.locations', 'Live locations') },
-          ]}
-        />
-      </Pillars>
+      />
 
-      {/* 3 · VISUAL PROOF — three alternating splits */}
       <section className="bg-surface-secondary">
         <SectionImage
           img="/assets/sections-web/L2-waiting-room.jpg"
-          alt="A modern, calm clinic waiting room with sage chairs and soft natural light."
-          eyebrow="Built for real clinics"
+          alt="A calm shop waiting area with chairs and soft natural light."
+          eyebrow="Built for real shops"
           title="The voice belongs in the room."
-          body="QVO sounds like a competent member of your front desk — calm, warm, on-brand. Not the robotic voice your patients have been trained to hang up on."
+          body="QVO sounds like a competent member of your front desk — calm, warm, on-brand. Not the robotic voice callers have been trained to hang up on."
           eager
         />
         <SectionImage
@@ -173,7 +132,7 @@ export default function Landing() {
           alt="A silver desk phone on a marble counter, lit by warm window light."
           eyebrow="Always on the line"
           title="Answered in under two rings."
-          body="Every call, every hour, every location. Through staff turnover, weekends, holidays, and the 2am questions you didn’t know patients asked."
+          body="Every call, every hour, every location. Through staff turnover, weekends, holidays, and the 2am questions you didn’t know callers asked."
           reverse
         />
         <SectionImage
@@ -185,137 +144,14 @@ export default function Landing() {
         />
       </section>
 
-      {/* 4 · SOLUTIONS BY VERTICAL */}
       <section className="bg-surface py-24 lg:py-32">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <RevealSection>
-            <div className="max-w-3xl mb-16">
-              <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary mb-3">
-                {t('landing.solutions.eyebrow', 'Solutions by vertical')}
-              </p>
-              <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.1] mb-5 [text-wrap:balance]">
-                {t('landing.solutions.title', 'A different agent for every front desk you run.')}
-              </h2>
-              <p className="font-body text-lg text-text-secondary leading-relaxed">
-                {t(
-                  'landing.solutions.subtitle',
-                  'Pre-trained voice agents for the workflows your industry actually uses — not generic "AI receptionists" glued onto a chat model.',
-                )}
-              </p>
-            </div>
-          </RevealSection>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {verticalCards.map((v, i) => (
-              <RevealSection key={v.slug} delay={`scroll-delay-${(i % 3) + 1}`}>
-                <Link
-                  to={`/industries/${v.slug}`}
-                  className="group relative block bg-surface border border-border/60 rounded-2xl p-6 hover:border-primary/40 hover:shadow-[0_12px_40px_-12px_rgba(14,39,56,0.15)] transition-all h-full"
-                >
-                  <div className="flex items-center gap-4 mb-5">
-                    <div className="relative w-14 h-14 rounded-full overflow-hidden bg-surface-muted ring-1 ring-border/60">
-                      <img
-                        src={v.avatar}
-                        alt=""
-                        loading="lazy"
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    </div>
-                    <h3 className="font-display text-lg font-semibold text-text-primary">
-                      {v.name}
-                    </h3>
-                  </div>
-                  <p className="font-body text-sm text-text-secondary leading-relaxed mb-6">
-                    {v.tagline}
-                  </p>
-                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary group-hover:gap-2.5 transition-all">
-                    {t('common.explore', 'Explore')}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </span>
-                </Link>
-              </RevealSection>
-            ))}
-          </div>
-
+        <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">
+          <p className="font-body text-lg text-text-secondary leading-relaxed">
+            {t('common.pilot_onboarding', 'Now onboarding pilot shops.')}
+          </p>
         </div>
       </section>
 
-      {/* 5 · CUSTOMER RESULTS */}
-      <section className="bg-surface-secondary py-24 lg:py-32 border-y border-border/60">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <RevealSection>
-            <div className="max-w-3xl mb-16">
-              <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary mb-3">
-                {t('landing.results.eyebrow', 'Results from real customers')}
-              </p>
-              <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.1] [text-wrap:balance]">
-                {t('landing.results.title', 'Numbers from rooms, calls, and clinics — not slideware.')}
-              </h2>
-            </div>
-          </RevealSection>
-
-          <div className="grid md:grid-cols-3 gap-10 lg:gap-12">
-            {[
-              {
-                metric: t('landing.results.real_estate.metric', '38%'),
-                metricLabel: t('landing.results.real_estate.metric_label', 'lift in qualified showings'),
-                quote: t('landing.results.real_estate.quote', '"Our buyer leads stopped going cold overnight."'),
-                name: t('landing.results.real_estate.name', 'Maya Reyes'),
-                role: t('landing.results.real_estate.role', 'Broker · Cypress Hill Realty'),
-              },
-              {
-                metric: t('landing.results.medical.metric', '92%'),
-                metricLabel: t('landing.results.medical.metric_label', 'after-hours intake handled'),
-                quote: t('landing.results.medical.quote', '"Used to be a panicked Monday voicemail queue."'),
-                name: t('landing.results.medical.name', 'Dr. Priya Shah'),
-                role: t('landing.results.medical.role', 'Practice Lead · Bayside Eye'),
-              },
-              {
-                metric: t('landing.results.legal.metric', '3.1×'),
-                metricLabel: t('landing.results.legal.metric_label', 'consultation conversion'),
-                quote: t('landing.results.legal.quote', '"Conflict-checks and lead qualification before a paralegal ever sees the file."'),
-                name: t('landing.results.legal.name', 'Daniel Vega'),
-                role: t('landing.results.legal.role', 'Managing Partner · Vega & Co.'),
-              },
-            ].map((r, i) => (
-              <RevealSection key={r.name} delay={`scroll-delay-${i + 1}`}>
-                <div className="border-l-2 border-primary pl-6">
-                  <p className="font-display text-5xl lg:text-6xl font-bold text-text-primary tabular-nums leading-none mb-2">
-                    {r.metric}
-                  </p>
-                  <p className="font-body text-sm text-text-secondary mb-6">{r.metricLabel}</p>
-                  <p className="font-body text-base text-text-primary leading-relaxed mb-5 italic">
-                    {r.quote}
-                  </p>
-                  <p className="font-display text-sm font-semibold text-text-primary">{r.name}</p>
-                  <p className="font-body text-xs text-text-secondary mt-0.5">{r.role}</p>
-                </div>
-              </RevealSection>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 6 · COMPARE */}
-      <section className="bg-surface py-24 lg:py-32">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <RevealSection>
-            <div className="max-w-3xl mb-12">
-              <p className="font-display text-[11px] tracking-[0.18em] uppercase text-primary mb-3">
-                {t('landing.comparison.eyebrow', 'Honest comparison')}
-              </p>
-              <h2 className="font-display text-3xl lg:text-5xl font-bold text-text-primary leading-[1.1] [text-wrap:balance]">
-                {t('landing.comparison.title', 'Why teams move from generic AI receptionists to QVO.')}
-              </h2>
-            </div>
-          </RevealSection>
-          <RevealSection>
-            <ComparisonTable />
-          </RevealSection>
-        </div>
-      </section>
-
-      {/* 7 · BOTTOM CTA */}
       <BottomCTA
         eyebrow={t('landing.bottom_cta.eyebrow', 'Ready when you are')}
         title={t(
@@ -324,7 +160,7 @@ export default function Landing() {
         )}
         body={t(
           'landing.bottom_cta.subtitle',
-          'Drop in a phone number. Pick a workflow. Listen to your first call by tomorrow morning.',
+          'Now onboarding pilot shops. Book a walkthrough to get started.',
         )}
         ctas={[
           {

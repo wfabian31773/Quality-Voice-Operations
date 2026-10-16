@@ -306,28 +306,6 @@ describe('Marketing conversion funnel: Landing CTAs', () => {
     ).toBe(true);
   });
 
-  it('navigates from landing to /signup when the Start Free Trial CTA is clicked', async () => {
-    render(
-      <FunnelHarness
-        initialPath="/"
-        pageRoutePath="/"
-        pageElement={<Landing />}
-      />,
-    );
-
-    const link = findFirstLinkWithHref(/start free trial/i, '/signup');
-    fireEvent.click(link);
-
-    await waitFor(() => {
-      expect(screen.getByText(STUB_MARKERS.signup)).toBeTruthy();
-    });
-
-    expect(
-      analyticsCalls.ctaClicks.some(
-        (c) => c.ctaText === CTA.START_FREE_TRIAL && c.page === '/',
-      ),
-    ).toBe(true);
-  });
 });
 
 describe('Marketing conversion funnel: Pricing CTAs', () => {
@@ -356,7 +334,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     ).toBe(true);
   });
 
-  it('navigates from each pricing tier to /signup with the right ?plan query', async () => {
+  it('navigates from each pricing tier to /book-demo with the right ?plan query', async () => {
     render(
       <FunnelHarness
         initialPath="/pricing"
@@ -365,31 +343,27 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
       />,
     );
 
-    const trialLinks = findLinksByText(/start free trial/i);
-    // 3 tiers in the pricing cards + 1 in the bottom CTA strip.
+    const trialLinks = findLinksByText(/book a demo/i);
     expect(trialLinks.length).toBeGreaterThanOrEqual(3);
 
-    // Every Start Free Trial link should target /signup (with or without
-    // ?plan=…). Confirm by inspecting hrefs.
     for (const link of trialLinks) {
       const href = link.getAttribute('href') ?? '';
       expect(
-        href === '/signup' || href.startsWith('/signup?plan='),
-        `Start Free Trial link href should target /signup, got ${href}`,
+        href === '/book-demo' || href.startsWith('/book-demo?plan='),
+        `Book a demo link href should target /book-demo, got ${href}`,
       ).toBe(true);
     }
 
-    // Then click the first tier card and confirm a real navigation happens.
     const tierLink = trialLinks.find((a) =>
-      (a.getAttribute('href') ?? '').startsWith('/signup?plan='),
+      (a.getAttribute('href') ?? '').startsWith('/book-demo?plan='),
     )!;
     fireEvent.click(tierLink);
     await waitFor(() => {
-      expect(screen.getByText(STUB_MARKERS.signup)).toBeTruthy();
+      expect(screen.getByText(STUB_MARKERS.bookDemo)).toBeTruthy();
     });
   });
 
-  it('appends interval=annual to plan-card signup links when Annual is selected', () => {
+  it('appends interval=annual to plan-card book-demo links when Annual is selected', () => {
     render(
       <FunnelHarness
         initialPath="/pricing"
@@ -400,13 +374,11 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
 
     // Default (monthly): tier CTAs should NOT carry interval=annual.
     const monthlyCta = screen.getByTestId('pricing-tier-pro-cta') as HTMLAnchorElement;
-    expect(monthlyCta.getAttribute('href')).toBe('/signup?plan=pro');
+    expect(monthlyCta.getAttribute('href')).toBe('/book-demo?plan=pro');
 
     // Toggle Annual on the pricing page.
     fireEvent.click(screen.getByTestId('pricing-billing-annual'));
 
-    // Now every tier CTA should pass interval=annual through to /signup so
-    // the server creates an ANNUAL Stripe checkout.
     const tiers: ReadonlyArray<'starter' | 'pro' | 'enterprise'> = [
       'starter',
       'pro',
@@ -414,7 +386,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     ];
     for (const tier of tiers) {
       const cta = screen.getByTestId(`pricing-tier-${tier}-cta`) as HTMLAnchorElement;
-      expect(cta.getAttribute('href')).toBe(`/signup?plan=${tier}&interval=annual`);
+      expect(cta.getAttribute('href')).toBe(`/book-demo?plan=${tier}&interval=annual`);
     }
 
     // The calculator (which lives below the cards) is controlled by the same
@@ -507,7 +479,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     }
   });
 
-  it('mirrors a toggle change on the calculator back into plan-card signup links', () => {
+  it('mirrors a toggle change on the calculator back into plan-card book-demo links', () => {
     render(
       <FunnelHarness
         initialPath="/pricing"
@@ -523,7 +495,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
       (screen.getByTestId('pricing-tier-pro-cta') as HTMLAnchorElement).getAttribute(
         'href',
       ),
-    ).toBe('/signup?plan=pro&interval=annual');
+    ).toBe('/book-demo?plan=pro&interval=annual');
     expect(
       screen.getByTestId('pricing-billing-annual').getAttribute('aria-pressed'),
     ).toBe('true');
@@ -631,7 +603,7 @@ describe('Marketing conversion funnel: Case Studies CTAs', () => {
     // shows its empty-state CTA group.
     await waitFor(() => {
       expect(
-        screen.getByText(/detailed case studies coming soon/i),
+        screen.getByText(/now onboarding pilot shops/i),
       ).toBeTruthy();
     });
     expect(

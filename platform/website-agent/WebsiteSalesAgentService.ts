@@ -50,7 +50,7 @@ function buildPricingBlock(): string {
     `- Starter: $${starterPrice}/month — ${starter.includedMinutes.toLocaleString()} AI minutes, up to 3 phone numbers, 3 team members, inbound calls, transcripts, analytics. Best for small practices getting started.`,
     `- Pro: $${proPrice}/month — ${pro.includedMinutes.toLocaleString()} AI minutes, up to 10 phone numbers, 10 team members, outbound campaigns, quality scoring, API access, CRM integrations, custom templates, priority support. Best for growing businesses. MOST POPULAR.`,
     `- Enterprise: $${enterprisePrice}/month — ${enterprise.includedMinutes.toLocaleString()} AI minutes, unlimited phone numbers & team members, audit logs, multi-location support, dedicated onboarding. Best for multi-location organizations.`,
-    `- All plans include a 14-day free trial, no credit card required.`,
+    `- Now onboarding pilot shops. Book a walkthrough to get started.`,
     `- Overage rates: Starter $${starter.overageRatePerMinute.toFixed(2)}/min, Pro $${pro.overageRatePerMinute.toFixed(2)}/min, Enterprise $${enterprise.overageRatePerMinute.toFixed(2)}/min.`,
     `- Annual billing saves 20%.`,
   ].join('\n');

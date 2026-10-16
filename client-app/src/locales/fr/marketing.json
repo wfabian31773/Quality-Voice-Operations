@@ -13,19 +13,20 @@
     "contact_sales": "Contacter les ventes",
     "send_message": "Envoyer le message",
     "sending": "Envoi en cours...",
+    "pilot_onboarding": "Nous intégrons actuellement des ateliers pilotes.",
     "trusted_by": "Ils nous font confiance"
   },
   "landing": {
     "seo_title": "QVO — Des agents vocaux IA qui font tourner votre activité",
-    "seo_description": "Agents vocaux IA pour la prise d'appels, la prise de rendez-vous et l'automatisation des opérations. Standard IA et automatisation d'appels pour la climatisation, les cabinets médicaux, dentaires, juridiques et plus.",
+    "seo_description": "Agents vocaux pour les métiers et services à domicile. Nous intégrons actuellement des ateliers pilotes.",
     "hero": {
       "badge": "Plateforme vocale propulsée par l'IA",
-      "eyebrow": "Un noyau vocal · Un flux de santé spécialisé",
+      "eyebrow": "Opérations vocales pour les métiers et services à domicile",
       "title": "Aucun appel manqué.",
       "title_2": "Aucun client perdu.",
       "title_highlight": "Des agents vocaux IA",
       "title_rest": " qui font tourner votre activité",
-      "description": "Déployez des agents vocaux intelligents qui répondent aux appels, prennent les rendez-vous, dépêchent les techniciens et répondent aux clients — 24h/24, 7j/7, en pilote automatique.",
+      "description": "Nous intégrons actuellement des ateliers pilotes. QVO répond, qualifie, planifie et assure le suivi 24h/24, avec une voix de confiance.",
       "benefits": {
         "never_miss_call": "Ne ratez plus jamais un appel",
         "book_appointments": "Prenez les rendez-vous automatiquement",
@@ -36,7 +37,7 @@
     "stats": {
       "calls_handled": "Appels traités",
       "agents_deployed": "Agents déployés",
-      "uptime": "Disponibilité",
+      "uptime": "Libellé de disponibilité",
       "industries_served": "Secteurs servis",
       "soc2_in_progress": "Certifications non vérifiées",
       "hipaa_ready": "Approbation du pilote de santé en attente",
@@ -173,25 +174,25 @@
         "metric": "400 %",
         "metric_label": "Réponse plus rapide aux prospects",
         "industry": "Immobilier",
-        "quote": "QVO répond à chaque demande en quelques secondes. Nos agents sont passés de la course aux prospects à la conclusion d'affaires. Le temps de réponse est passé de 4 heures à moins d'une minute.",
-        "name": "Marcus Rivera",
-        "role": "Courtier, Summit Realty Group"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "name": "Opérateur pilote",
+        "role": "Courtier, Atelier pilote"
       },
       "medical": {
         "metric": "40 %",
         "metric_label": "Moins d'appels manqués",
         "industry": "Médical",
-        "quote": "Pendant la grippe, notre standard était débordé. QVO a absorbé le surplus si bien que les patients pensaient parler à notre équipe.",
-        "name": "Dre Sarah Chen",
-        "role": "Propriétaire, Bright Smiles Dental"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "name": "Opérateur pilote",
+        "role": "Propriétaire, Nom de votre atelier"
       },
       "legal": {
         "metric": "2x",
         "metric_label": "Taux de conversion",
         "industry": "Juridique",
-        "quote": "Nous avons doublé nos consultations en captant les appels en dehors des heures. Chaque client potentiel reçoit une première impression professionnelle.",
-        "name": "James Whitfield",
-        "role": "Associé gérant, Summit Legal"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "name": "Opérateur pilote",
+        "role": "Associé gérant, Atelier pilote"
       }
     },
     "testimonials": {
@@ -215,7 +216,7 @@
     },
     "bottom_cta": {
       "title": "Déployez votre premier agent vocal IA dès aujourd'hui",
-      "subtitle": "Rejoignez les centaines d'entreprises qui utilisent QVO pour automatiser leurs appels, capter des prospects et augmenter leur revenu. Sans contrat, annulable à tout moment.",
+      "subtitle": "Nous intégrons actuellement des ateliers pilotes. Réservez une démonstration pour commencer.",
       "try_live": "Essayer la démo en direct"
     }
   },
@@ -461,11 +462,11 @@
   },
   "pricing": {
     "seo_title": "Tarifs — Plans d'agents vocaux IA, minutes IA, agents et intégrations",
-    "seo_description": "Les tarifs QVO commencent à {{starter}}/mois. Comparez les plans Starter, Pro et Enterprise avec minutes IA, agents illimités, intégrations CRM et accès à la démo. Essai gratuit de 14 jours.",
+    "seo_description": "Les tarifs QVO commencent à {{starter}}/mois. Comparez les plans Starter, Pro et Enterprise avec minutes IA, agents illimités, intégrations CRM et accès à la démo.",
     "hero": {
       "eyebrow": "Tarifs",
       "title": "Plans simples, tarifs honnêtes.",
-      "description": "Démarrez avec un essai gratuit de 14 jours sur n'importe quel plan. Sans contrat, sans frais cachés. Évoluez à mesure que votre activité grandit.",
+      "description": "Nous intégrons actuellement des ateliers pilotes. Réservez une démonstration pour commencer.",
       "guarantee": "Garantie satisfait ou remboursé sous 30 jours"
     },
     "tier_copy": {
@@ -547,7 +548,7 @@
       "priority": "Support prioritaire",
       "onboarding": "Onboarding dédié",
       "demo": "Accès démo interactive",
-      "trial": "Essai gratuit de 14 jours",
+      "trial": "Intégration d’ateliers pilotes",
       "unlimited": "Illimité",
       "up_to_3": "Jusqu'à 3",
       "up_to_10": "Jusqu'à 10"
@@ -565,8 +566,8 @@
       "eyebrow": "FAQ",
       "title": "Questions fréquentes sur la facturation.",
       "subtitle": "Tout ce qu'il faut savoir sur nos plans et tarifs.",
-      "q1": "Comment fonctionne l'essai gratuit de 14 jours ?",
-      "a1": "Vous accédez à toutes les fonctionnalités du plan choisi pendant 14 jours. Aucune carte bancaire requise pour démarrer. Si vous décidez de ne pas continuer, votre compte est simplement mis en pause — sans aucun débit.",
+      "q1": "Comment commencer ?",
+      "a1": "Nous intégrons actuellement des ateliers pilotes. Réservez une démonstration pour parler d’un déploiement pour votre atelier.",
       "q2": "Qu'est-ce qu'une minute IA ?",
       "a2": "Une minute IA correspond à une minute de conversation active prise en charge par votre agent vocal. Le temps d'attente, de sonnerie et de traitement système n'est pas comptabilisé. Seul le temps réel de conversation est facturé.",
       "q3": "Que se passe-t-il si je dépasse mes minutes incluses ?",
@@ -577,8 +578,8 @@
       "a5": "Non. Tous les plans sont mensuels, sans engagement long terme. Vous pouvez annuler à tout moment et votre compte reste actif jusqu'à la fin du cycle en cours.",
       "q6": "Proposez-vous un tarif annuel ?",
       "a6": "Oui. La facturation annuelle vous fait économiser 20 % par rapport au mensuel. Contactez l'équipe commerciale ou choisissez la facturation annuelle à l'inscription pour bénéficier du tarif réduit.",
-      "q7": "Y a-t-il des frais de mise en service ?",
-      "a7": "Aucun frais de mise en service, quel que soit le plan. Starter et Pro sont entièrement en self-service. Enterprise inclut un onboarding dédié sans coût supplémentaire.",
+      "q7": "Comment se passe la mise en place ?",
+      "a7": "Nous intégrons actuellement des ateliers pilotes. La mise en place se discute pendant la démonstration.",
       "q8": "Quels moyens de paiement acceptez-vous ?",
       "a8": "Nous acceptons les principales cartes de crédit (Visa, Mastercard, American Express) et les virements ACH pour les plans Enterprise annuels. La facturation est disponible pour les clients Enterprise."
     },
@@ -587,7 +588,7 @@
       "subtitle": "Découvrez combien votre activité peut économiser avec les agents vocaux IA de QVO."
     },
     "logos": {
-      "title": "Des équipes qui tournent déjà avec QVO"
+      "title": "Nous intégrons actuellement des ateliers pilotes"
     },
     "bottom_cta": {
       "title": "Des questions sur les tarifs ?",
@@ -772,7 +773,7 @@
     "conversion": {
       "experienced": "Vous venez de découvrir QVO",
       "title": "Déployez vos propres agents vocaux IA en quelques minutes",
-      "subtitle": "Ce que vous venez d'entendre, c'est la même technologie que celle qui anime des centaines d'entreprises. Lancez vos propres agents vocaux personnalisés dès aujourd'hui.",
+      "subtitle": "Nous intégrons actuellement des ateliers pilotes. Commencez aujourd’hui avec une démonstration.",
       "feat1_title": "Configuration en 5 minutes",
       "feat1_desc": "Déployez votre premier agent en minutes, pas en semaines",
       "feat2_title": "Compatible HIPAA",
@@ -824,7 +825,7 @@
       "email_label": "E-mail",
       "email_placeholder": "jane@cabinet.com",
       "company_label": "Nom de l'entreprise ou du cabinet",
-      "company_placeholder": "Bright Smiles Dental",
+      "company_placeholder": "Nom de votre atelier",
       "message_label": "Comment pouvons-nous vous aider ?",
       "message_placeholder": "Parlez-nous de votre volume d'appels, de votre configuration actuelle et de ce que vous aimeriez améliorer.",
       "send_default_error": "Échec de l'envoi du message",
@@ -974,7 +975,7 @@
     "empty": "Aucun agent trouvé dans cette catégorie.",
     "bottom_cta": {
       "title": "Prêt à déployer votre premier agent ?",
-      "subtitle": "Commencez par un essai gratuit de 14 jours. Choisissez un modèle, personnalisez-le pour votre activité et passez en production en quelques minutes.",
+      "subtitle": "Nous intégrons actuellement des ateliers pilotes. Réservez une démonstration pour parler d’un déploiement pour votre atelier.",
       "view_pricing": "Voir les tarifs"
     }
   },
@@ -985,7 +986,7 @@
     },
     "card": {
       "live_performance": "Performances en direct",
-      "from_customers_in": "Issu de clients QVO dans le secteur {{vertical}}",
+      "from_customers_in": "Nous intégrons actuellement des ateliers pilotes en {{vertical}}",
       "pre_built_for": "Prêt pour {{vertical}}",
       "deploy_minutes": "Déployez en quelques minutes, sans code"
     },
@@ -1012,7 +1013,7 @@
     },
     "bottom_cta": {
       "title": "Prêt à transformer votre activité {{vertical}} ?",
-      "subtitle": "Rejoignez des centaines d’entreprises du secteur {{vertical_lower}} qui utilisent QVO pour répondre à chaque appel, planifier plus de rendez-vous et augmenter leur chiffre d’affaires.",
+      "subtitle": "Nous intégrons actuellement des ateliers pilotes.",
       "start_trial": "Démarrer l’essai gratuit",
       "see_demo": "Voir la démo en direct"
     },
@@ -1301,8 +1302,8 @@
       "conversation": [
         "Bonjour, mon robinet de cuisine fuit assez fort.",
         "Je suis désolé d'entendre cela. Laissez-moi vous aider à le résoudre. Puis-je avoir votre nom et votre numéro d'unité ?",
-        "C'est Sarah Mitchell, unité 304 à Parkview Apartments.",
-        "Merci, Sarah. La fuite est-elle contenue ou y a-t-il une inondation active ?",
+        "C'est Camille, unité 304.",
+        "Merci, Camille. La fuite est-elle contenue ou y a-t-il une inondation active ?",
         "Ça goutte régulièrement, mais pas d'inondation.",
         "Très bien. J'ai créé une demande de maintenance et je l'ai marquée comme urgente. Un plombier vous contactera sous 4 heures pour planifier une visite. Vous recevrez un SMS avec les détails. En attendant, essayez de fermer la vanne d'eau sous l'évier."
       ],
@@ -1466,10 +1467,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nous sommes passés de 1 appel manqué sur 3 à une réponse à chacun. La satisfaction des patients a bondi de 22 points dès le premier mois.",
-        "author": "Dre Sarah Mitchell",
-        "role": "Administratrice du cabinet",
-        "company": "Lakewood Family Medicine"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour la santé | QVO",
       "metaDescription": "Automatisez la prise de rendez-vous, l'accueil et le triage hors horaires avec des agents vocaux IA conformes HIPAA. Répondez à chaque appel 24/7 et réduisez les absences de 28 %."
@@ -1547,10 +1548,10 @@
         }
       ],
       "testimonial": {
-        "quote": "QVO répond à nos leads Zillow en quelques secondes. Notre taux de conversion a doublé parce que nous sommes toujours les premiers à répondre.",
-        "author": "Marcus Chen",
-        "role": "Courtier/Propriétaire",
-        "company": "Pinnacle Realty Group"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour l'immobilier | QVO",
       "metaDescription": "Répondez aux leads immobiliers en quelques secondes, qualifiez automatiquement les acheteurs et planifiez des visites 24/7 avec des agents vocaux IA."
@@ -1628,10 +1629,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nous perdions 8 à 10 clients potentiels par semaine à cause d'appels manqués. QVO les capte tous maintenant, et la qualité de l'accueil est meilleure qu'avec notre ancien personnel.",
-        "author": "Jennifer Park",
-        "role": "Associée gérante",
-        "company": "Park & Associates Law"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour cabinets d'avocats | QVO",
       "metaDescription": "Capturez chaque appel de client potentiel avec des agents d'accueil juridique IA. Qualifiez les dossiers, planifiez des consultations et réduisez les coûts d'accueil de 65 %."
@@ -1709,10 +1710,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Lors de la vague de froid de l'hiver dernier, nous avons traité 3 fois notre volume d'appels habituel sans embaucher une seule personne. QVO a dépêché les techniciens plus vite que notre meilleur dispatcheur.",
-        "author": "Mike Rodriguez",
-        "role": "Propriétaire",
-        "company": "Comfort First HVAC"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour les services à domicile | QVO",
       "metaDescription": "Ne ratez plus jamais un appel de service d'urgence. Agents vocaux IA pour entreprises de CVC, plomberie et électricité qui dépêchent les techniciens et tiennent les clients informés 24/7."
@@ -1790,10 +1791,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Notre taux d'absences est passé de 18 % à 7 % au premier trimestre. L'agent de campagne de rappel à lui seul a fait revenir 140 patients en retard.",
-        "author": "Dre Lisa Nguyen",
-        "role": "Propriétaire du cabinet",
-        "company": "Bright Smile Dental"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour cabinets dentaires | QVO",
       "metaDescription": "Remplissez votre planning dentaire et réduisez les absences avec des agents vocaux IA. Automatisez la prise de rendez-vous, les campagnes de rappel et le triage des urgences 24/7."
@@ -1871,10 +1872,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nos techniciens ont retrouvé leurs après-midi. Les appels de renouvellement et la prise de rendez-vous… se font tout seuls maintenant, et nos clients continuent de nous dire que l'expérience téléphonique semble plus personnelle, pas moins.",
-        "author": "Dre Amelia Park",
-        "role": "Directrice médicale",
-        "company": "Riverside Animal Hospital"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour cliniques vétérinaires | QVO",
       "metaDescription": "Prenez les rendez-vous animaux, triez les urgences et gérez les renouvellements d'ordonnance 24/7 avec des agents vocaux IA conçus pour les cliniques vétérinaires."
@@ -1952,10 +1953,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Nous perdions deux ou trois affaires par semaine à cause d'appels manqués après 19 h. QVO capte ces leads, les qualifie, et le commercial voit toute la conversation dans notre CRM dès le matin.",
-        "author": "Tony Alvarez",
-        "role": "Directeur général",
-        "company": "Hillcrest Auto Group"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour concessionnaires et centres de service | QVO",
       "metaDescription": "Réservez les rendez-vous d'atelier, captez les leads commerciaux 24/7 et automatisez les mises à jour de statut d'OR avec des agents vocaux IA conçus pour l'industrie automobile."
@@ -2033,10 +2034,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Chaque prospect reçoit désormais un accueil soigné, conforme au script, en moins de 60 secondes — même à 21 h. Nos conseillers entrent en réunion de découverte en sachant déjà que la relation est qualifiée et que les avertissements sont consignés.",
-        "author": "David Whitman, CFP®",
-        "role": "Associé directeur",
-        "company": "Whitman Wealth Advisors"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour conseillers financiers et RIA | QVO",
       "metaDescription": "Qualifiez les prospects en moins d'une minute, planifiez les consultations conseiller et traitez les appels de service client courants avec des agents vocaux IA structurés et auditables pour les services financiers."
@@ -2114,10 +2115,10 @@
         }
       ],
       "testimonial": {
-        "quote": "Notre équipe concierge a enfin du temps pour les clients dans le hall. Les réservations téléphoniques ont augmenté de près de 40 % et nos clients francophones et sinophones ont désormais la même expérience chaleureuse que tous les autres.",
-        "author": "Isabelle Moreau",
-        "role": "Directrice générale",
-        "company": "The Marlow Boutique Hotel"
+        "quote": "Nous intégrons actuellement des ateliers pilotes.",
+        "author": "Opérateur pilote",
+        "role": "Rôle de l’atelier",
+        "company": "Atelier pilote"
       },
       "metaTitle": "Agents vocaux IA pour hôtels et restaurants | QVO",
       "metaDescription": "Prenez les réservations, répondez aux questions des clients et traitez les demandes dans plus de 30 langues avec des agents vocaux IA conçus pour l'hôtellerie."
