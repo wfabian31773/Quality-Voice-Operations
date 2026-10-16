@@ -95,7 +95,10 @@ const ENV_VARS: EnvVar[] = [
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
-  { name: 'DATABASE_URL_PRIVILEGED', required: 'development', purpose: 'Postgres / BYPASSRLS URL for migrations, workers, platform-admin, seeds, and pre-tenant webhooks. Falls back to DATABASE_URL / PLATFORM_DB_POOL_URL with a loud warning when unset.' },
+  // PR #88: every role (api login/webhooks, voice number lookup, worker
+  // schedulers, cron jobs, pre-deploy migrations). Required once the pool
+  // URL is qvo_app (checked below).
+  { name: 'DATABASE_URL_PRIVILEGED', required: 'development', purpose: 'Postgres / BYPASSRLS URL for migrations, workers, platform-admin, seeds, and pre-tenant webhooks. Falls back to DATABASE_URL / PLATFORM_DB_POOL_URL with a loud warning when unset; required once that URL is qvo_app.' },
   { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
   { name: 'TURNSTILE_SITE_KEY', required: 'development', purpose: 'Cloudflare Turnstile site key served to the signup form at runtime via GET /auth/signup-config. Prefer this over VITE_TURNSTILE_SITE_KEY so the widget can render without a frontend rebuild. The form fails closed when captcha is required and no site key is available.' },
   { name: 'VITE_TURNSTILE_SITE_KEY', required: 'development', purpose: 'Build-time fallback Cloudflare Turnstile site key inlined into the signup bundle. Used when TURNSTILE_SITE_KEY is unset.' },
@@ -136,6 +139,17 @@ function resolveBookDemoSchedulerProvider(): string {
       .trim()
       .toLowerCase();
   return v || 'cal.com';
+}
+
+/** True when a Postgres URL logs in as the restricted role (`qvo_app` or Supavisor `qvo_app.<ref>`). */
+export function isQvoAppUrl(url: string | undefined): boolean {
+  if (!url?.trim()) return false;
+  try {
+    const user = decodeURIComponent(new URL(url).username);
+    return user === 'qvo_app' || user.startsWith('qvo_app.');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -273,6 +287,20 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
     warnings.push(
       'DATABASE_URL_PRIVILEGED is not set — privileged jobs fall back to the default pool URL. After switching DATABASE_URL / PLATFORM_DB_POOL_URL to qvo_app this must be the postgres URL.',
     );
+  }
+
+  // Once the restricted pool is qvo_app, the privileged URL must exist and be
+  // a different (BYPASSRLS) role, or migrations, login, workers and
+  // pre-tenant webhooks fail. Before rollout this stays a warning only.
+  const restrictedPoolVar = isProd ? 'PLATFORM_DB_POOL_URL' : 'DATABASE_URL';
+  if (isQvoAppUrl(process.env[restrictedPoolVar])) {
+    const privileged = process.env.DATABASE_URL_PRIVILEGED;
+    if (!privileged?.trim() || isQvoAppUrl(privileged)) {
+      console.log(
+        `\n  FAIL  DATABASE_URL_PRIVILEGED — ${restrictedPoolVar} connects as qvo_app, so DATABASE_URL_PRIVILEGED must be set to the postgres (BYPASSRLS) URL`,
+      );
+      if (!missing.includes('DATABASE_URL_PRIVILEGED')) missing.push('DATABASE_URL_PRIVILEGED');
+    }
   }
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {

@@ -10,6 +10,8 @@ async function main() {
 
   if (process.env.DATABASE_URL_PRIVILEGED) {
     url = process.env.DATABASE_URL_PRIVILEGED;
+    // Same SSL rule as the platform pools: Supabase outside development.
+    if (env !== 'development') sslConfig = { rejectUnauthorized: false };
   } else if (env === 'development') {
     url = process.env.DATABASE_URL ?? '';
     if (!url) {

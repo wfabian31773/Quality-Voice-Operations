@@ -648,3 +648,47 @@ describe('validateEnvironment() — exitOnFailure option', () => {
     }
   });
 });
+
+describe('qvo_app restricted pool (PR #88)', () => {
+  it('fails when PLATFORM_DB_POOL_URL is qvo_app and DATABASE_URL_PRIVILEGED is unset', async () => {
+    applyAllProductionVars();
+    process.env.PLATFORM_DB_POOL_URL = 'postgresql://qvo_app.projref:pw@pooler.example.com:6543/postgres';
+    delete process.env.DATABASE_URL_PRIVILEGED;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+    expect(result.missing).toContain('DATABASE_URL_PRIVILEGED');
+    expect(result.passed).toBe(false);
+  });
+
+  it('fails when DATABASE_URL_PRIVILEGED is also qvo_app', async () => {
+    applyAllProductionVars();
+    process.env.PLATFORM_DB_POOL_URL = 'postgresql://qvo_app.projref:pw@pooler.example.com:6543/postgres';
+    process.env.DATABASE_URL_PRIVILEGED = 'postgresql://qvo_app.projref:pw@pooler.example.com:5432/postgres';
+    const { validateEnvironment } = await loadValidator();
+    expect(validateEnvironment().missing).toContain('DATABASE_URL_PRIVILEGED');
+  });
+
+  it('passes when the pool is qvo_app and the privileged URL is postgres', async () => {
+    applyAllProductionVars();
+    process.env.PLATFORM_DB_POOL_URL = 'postgresql://qvo_app.projref:pw@pooler.example.com:6543/postgres';
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+    expect(result.missing).not.toContain('DATABASE_URL_PRIVILEGED');
+  });
+
+  it('checks DATABASE_URL in development', async () => {
+    process.env.APP_ENV = 'development';
+    process.env.DATABASE_URL = 'postgresql://qvo_app@localhost:5432/qvo';
+    const { validateEnvironment } = await loadValidator();
+    expect(validateEnvironment().missing).toContain('DATABASE_URL_PRIVILEGED');
+  });
+
+  it('isQvoAppUrl recognises direct and Supavisor usernames only', async () => {
+    const { isQvoAppUrl } = await loadValidator();
+    expect(isQvoAppUrl('postgresql://qvo_app:pw@h:5432/db')).toBe(true);
+    expect(isQvoAppUrl('postgresql://qvo_app.ref:pw@h:6543/db')).toBe(true);
+    expect(isQvoAppUrl('postgresql://postgres.ref:pw@h:6543/db')).toBe(false);
+    expect(isQvoAppUrl('not a url')).toBe(false);
+    expect(isQvoAppUrl(undefined)).toBe(false);
+  });
+});
