@@ -14,6 +14,7 @@ export interface ToolContext {
   callSid?: string;
   agentSlug?: string;
   callerNumber?: string;
+  transcriptTurnIndex?: number;
   metadata?: Record<string, unknown>;
 }
 

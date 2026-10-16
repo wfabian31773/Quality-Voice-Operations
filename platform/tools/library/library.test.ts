@@ -99,7 +99,8 @@ describe('tool library catalog', () => {
 });
 
 describe('tool library handlers', () => {
-  const ctx = { tenantId: 't-lib', callLogId: 'cs-1', callSid: 'CA1', callerNumber: '+15551230000' };
+  const ctx = { tenantId: 't-lib', callLogId: 'cs-1', callSid: 'CA1', callerNumber: '+15551230000', transcriptTurnIndex: 1 };
+  const confirmCtx = { ...ctx, transcriptTurnIndex: 2 };
 
   beforeEach(() => {
     query.mockReset();
@@ -236,7 +237,7 @@ describe('tool library handlers', () => {
       bookingId: challenge.bookingId,
       confirmationToken: challenge.confirmationToken,
       notes: 'Caller cannot make it',
-    }, ctx)).resolves.toMatchObject({
+    }, confirmCtx)).resolves.toMatchObject({
       success: true,
       action: 'cancel',
       status: 'updated',
@@ -282,7 +283,7 @@ describe('tool library handlers', () => {
       action: 'cancel',
       bookingId: challenge.bookingId,
       confirmationToken: challenge.confirmationToken,
-    }, ctx);
+    }, confirmCtx);
 
     expect(result.success).toBe(false);
     expect(sideEffect).not.toHaveBeenCalled();
@@ -301,7 +302,7 @@ describe('tool library handlers', () => {
       startTime: '2026-10-20T14:00:00',
       bookingId: challenge.bookingId,
       confirmationToken: challenge.confirmationToken,
-    }, ctx)).resolves.toMatchObject({ success: true, status: 'updated' });
+    }, confirmCtx)).resolves.toMatchObject({ success: true, status: 'updated' });
 
     expect(transitionBooking).toHaveBeenCalledWith(
       expect.anything(),
@@ -351,7 +352,7 @@ describe('tool library handlers', () => {
     };
     expect(engine.authorizeToolRequest('update_booking', confirmArgs).allowed).toBe(true);
 
-    const applied = await executeUpdateBooking(confirmArgs, ctx);
+    const applied = await executeUpdateBooking(confirmArgs, confirmCtx);
     expect(applied.status).toBe('updated');
     expect(applied.success).toBe(true);
     expect(isPendingBookingChallenge(applied)).toBe(false);
@@ -380,6 +381,63 @@ describe('tool library handlers', () => {
     );
     expect(afterChallengeTreatedAsDone.action).toBe('complete_interaction');
     expect(finished.authorizeToolRequest('update_booking', confirmArgs).allowed).toBe(false);
+  });
+
+  it('rejects an immediate token replay with no newer caller turn', async () => {
+    const challenge = await executeUpdateBooking({ action: 'cancel' }, ctx);
+    const replay = await executeUpdateBooking({
+      action: 'cancel',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, ctx);
+    expect(replay.pending).toBe(true);
+    expect(replay.status).toBe('needs_confirmation');
+    expect(transitionBooking).not.toHaveBeenCalled();
+  });
+
+  it('rejects a confirm call whose reschedule time does not match the issued change', async () => {
+    const challenge = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+    }, ctx);
+    const mismatch = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T16:00:00',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, confirmCtx);
+    expect(mismatch.pending).toBe(true);
+    expect(mismatch.status).toBe('needs_confirmation');
+    expect(transitionBooking).not.toHaveBeenCalled();
+  });
+
+  it('accepts the normal confirm path after a newer caller turn with the same change', async () => {
+    const challenge = await executeUpdateBooking({ action: 'cancel' }, ctx);
+    await expect(executeUpdateBooking({
+      action: 'cancel',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, confirmCtx)).resolves.toMatchObject({
+      success: true,
+      status: 'updated',
+      bookingId: 'bk-existing',
+    });
+    expect(transitionBooking).toHaveBeenCalledTimes(1);
+  });
+
+  it('interprets an offset-less create_booking time in the tenant timezone', async () => {
+    await expect(executeCreateBooking({
+      title: 'Haircut',
+      startTime: '2026-10-20T14:00:00',
+      contactName: 'Ada Cole',
+      contactPhone: '+15551230000',
+    }, ctx)).resolves.toMatchObject({ success: true, bookingId: 'bk-1' });
+
+    const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO bookings'));
+    expect(insert?.[1]).toEqual(expect.arrayContaining([
+      '2026-10-20T18:00:00.000Z',
+      '2026-10-20T18:30:00.000Z',
+    ]));
   });
 });
 

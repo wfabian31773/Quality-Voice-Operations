@@ -52,20 +52,23 @@ export async function executeCreateBooking(
     return { success: false, message: 'title, startTime, contactName, and contactPhone are required.' };
   }
 
-  const start = new Date(startTime);
-  if (Number.isNaN(start.getTime())) {
-    return { success: false, message: 'startTime must be a valid ISO-8601 timestamp.' };
-  }
   const durationMinutes = Number(input.durationMinutes ?? 30);
   const duration = Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30;
-  const end = new Date(start.getTime() + duration * 60_000);
 
   const pool = getPlatformPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     let bookingId: string | undefined;
+    let invalidStart = false;
     await withTenantContext(client, context.tenantId, async () => {
+      const tenantTz = await getTenantTimezone(client, context.tenantId);
+      const start = parseBookingDateTime(startTime, tenantTz);
+      if (!start) {
+        invalidStart = true;
+        return;
+      }
+      const end = new Date(start.getTime() + duration * 60_000);
       const { rows } = await client.query(
         `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
             contact_name, contact_phone, contact_email, notes, booking_source, timezone)
@@ -86,6 +89,10 @@ export async function executeCreateBooking(
       );
       bookingId = rows[0]?.id as string;
     });
+    if (invalidStart) {
+      await client.query('ROLLBACK').catch(() => {});
+      return { success: false, message: 'startTime must be a valid ISO-8601 timestamp.' };
+    }
     await client.query('COMMIT');
     return {
       success: true,
@@ -233,26 +240,6 @@ export async function executeUpdateBooking(
         });
       }
 
-      const presentedToken = String(input.confirmationToken ?? '').trim();
-      const tokenAccepted = consumeBookingConfirmation(
-        context,
-        selected.bookingId,
-        action,
-        presentedToken,
-      );
-      if (!tokenAccepted) {
-        const confirmationToken = issueBookingConfirmation(context, selected.bookingId, action);
-        return challengeResult({
-          action,
-          status: 'needs_confirmation',
-          needsConfirmation: true,
-          bookingId: selected.bookingId,
-          confirmationToken,
-          candidates: [selected],
-          message: `Confirm with the caller before changing anything: ${selected.title} on ${selected.startTime}. Then call update_booking again with bookingId ${selected.bookingId}, confirmationToken ${confirmationToken}, and the same action.`,
-        });
-      }
-
       if (action === 'reschedule') {
         const tenantTz = await getTenantTimezone(client, context.tenantId);
         newStart = parseBookingDateTime(String(input.startTime ?? '').trim(), tenantTz);
@@ -264,6 +251,26 @@ export async function executeUpdateBooking(
           30 * 60_000,
         );
         newEnd = new Date(newStart.getTime() + durationMs);
+      }
+
+      const requestedChange = {
+        bookingId: selected.bookingId,
+        action,
+        newStartTime: newStart?.toISOString() ?? null,
+      };
+      const presentedToken = String(input.confirmationToken ?? '').trim();
+      const tokenAccepted = consumeBookingConfirmation(context, requestedChange, presentedToken);
+      if (!tokenAccepted) {
+        const confirmationToken = issueBookingConfirmation(context, requestedChange);
+        return challengeResult({
+          action,
+          status: 'needs_confirmation',
+          needsConfirmation: true,
+          bookingId: selected.bookingId,
+          confirmationToken,
+          candidates: [selected],
+          message: `Confirm with the caller before changing anything: ${selected.title} on ${selected.startTime}. Then call update_booking again with bookingId ${selected.bookingId}, confirmationToken ${confirmationToken}, and the same action.`,
+        });
       }
 
       const transition = await transitionBooking(client, {

@@ -554,6 +554,7 @@ function buildToolHandler(
               callSid,
               agentSlug: agentConfig.agentId,
               callerNumber: ctx.callerNumber,
+              transcriptTurnIndex: ctx.reasoningEngine?.getTranscript().length ?? 0,
             });
             rawResult = JSON.stringify(toolResult);
             return assertToolSuccess(rawResult, toolName);
