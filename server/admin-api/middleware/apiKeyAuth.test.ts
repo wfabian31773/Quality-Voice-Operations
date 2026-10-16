@@ -7,6 +7,7 @@ vi.mock('../../../platform/rbac/ApiKeyService', () => ({ validateApiKey: a.valid
 vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }) }));
 
 import { requireApiKeyOrJwt } from './apiKeyAuth';
+import { getScopedTenantId } from '../../../platform/db/tenantScope';
 
 function ctx(authorization?: string) {
   const req = { headers: authorization ? { authorization } : {} } as unknown as Request;
@@ -45,5 +46,13 @@ describe('requireApiKeyOrJwt', () => {
     expect(next).toHaveBeenCalled();
     expect(req.user).toMatchObject({ userId: 'apikey:k1', tenantId: 't1', role: 'tenant_owner' });
     expect(req.apiKeyScopes).toEqual(['write']);
+  });
+  it('runs the rest of the request inside the api key tenant scope', async () => {
+    a.validateApiKeyMock.mockResolvedValue({ keyId: 'k1', tenantId: 't1', scopes: ['write'] });
+    const { req, res, next } = ctx('Bearer vai_goodkey');
+    let seen: string | undefined;
+    next.mockImplementation(() => { seen = getScopedTenantId(); });
+    await requireApiKeyOrJwt(vi.fn())(req, res, next);
+    expect(seen).toBe('t1');
   });
 });

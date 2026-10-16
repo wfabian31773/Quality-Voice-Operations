@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../../../platform/core/logger';
+import { runWithTenantScope } from '../../../platform/db/tenantScope';
 
 const logger = createLogger('TENANT_GUARD');
 
@@ -45,5 +46,7 @@ export function requireTenantContext(req: Request, res: Response, next: NextFunc
     }
   }
 
-  next();
+  // Bind every restricted-pool `query()` in this request to the tenant so
+  // RLS sees app.tenant_id once the pool connects as qvo_app.
+  runWithTenantScope(tenantId, () => next());
 }

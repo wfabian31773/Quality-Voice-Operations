@@ -1,5 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { getScopedTenantId } from './tenantScope';
+
+export { runWithTenantScope, getScopedTenantId } from './tenantScope';
 
 let _pool: Pool | null = null;
 let _privilegedPool: Pool | null = null;
@@ -80,10 +83,56 @@ function attachPoolErrorHandler(pool: Pool, label: string): void {
   });
 }
 
-/** Restricted pool. Tenant-scoped request handlers must SET LOCAL app.tenant_id. */
+type PoolQueryArgs = Parameters<Pool['query']>;
+
+/**
+ * Inside a tenant scope, run a promise-style `pool.query()` on its own
+ * transaction with `SET LOCAL app.tenant_id`, so RLS sees the tenant once
+ * the pool connects as qvo_app (NOBYPASSRLS). Outside a scope, and for
+ * callback / submittable (cursor, stream) queries, behaviour is unchanged.
+ * Checked-out clients (`pool.connect()`) are not touched: those callers
+ * already BEGIN + withTenantContext themselves.
+ */
+export function bindPoolQueriesToTenantScope(pool: Pool): Pool {
+  const unbound = pool.query.bind(pool) as (...args: unknown[]) => unknown;
+  const bound = (...args: unknown[]): unknown => {
+    const tenantId = getScopedTenantId();
+    const [first] = args;
+    const isSubmittable =
+      typeof first === 'object' && first !== null && typeof (first as { submit?: unknown }).submit === 'function';
+    if (!tenantId || isSubmittable || args.some((a) => typeof a === 'function')) {
+      return unbound(...args);
+    }
+    return queryInTenantTransaction(pool, tenantId, args);
+  };
+  (pool as unknown as { query: typeof bound }).query = bound;
+  return pool;
+}
+
+async function queryInTenantTransaction(pool: Pool, tenantId: string, args: unknown[]): Promise<unknown> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const result = await client.query(...(args as PoolQueryArgs));
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Restricted pool. `pool.query()` inside `runWithTenantScope` is bound to
+ * that tenant automatically; explicit transactions must SET LOCAL
+ * app.tenant_id via withTenantContext / withTenantClient.
+ */
 export function getPlatformPool(): Pool {
   if (!_pool) {
-    _pool = new Pool(getPoolConfig(getRestrictedPoolUrl()));
+    _pool = bindPoolQueriesToTenantScope(new Pool(getPoolConfig(getRestrictedPoolUrl())));
     attachPoolErrorHandler(_pool, 'restricted');
   }
   return _pool;
