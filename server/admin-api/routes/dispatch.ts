@@ -24,6 +24,11 @@ import {
   ObjectNotFoundError,
 } from '../../replit_integrations/object_storage';
 import {
+  isObjectStorageConfigured,
+  requireObjectStorage,
+  STORAGE_NOT_CONFIGURED_BODY,
+} from '../../replit_integrations/object_storage/guard';
+import {
   sendEmail,
   dispatchRouteExportReadyEmail,
   dispatchRouteExportFailedEmail,
@@ -2063,6 +2068,9 @@ export const addAttachmentHandler: RequestHandler = async (req, res) => {
     let resolvedFileUrl: string | null = file_url || null;
 
     if (object_path) {
+      if (!isObjectStorageConfigured()) {
+        return res.status(503).json(STORAGE_NOT_CONFIGURED_BODY);
+      }
       const storage = new ObjectStorageService();
       try {
         normalizedObjectPath = await storage.trySetObjectEntityAclPolicy(
@@ -5667,8 +5675,8 @@ router.post('/dispatch/jobs/:id/follow-up', requireAuth, requireMiniSystemWrite,
 router.post('/dispatch/jobs/:id/exceptions', requireAuth, requireMiniSystemWrite, createExceptionHandler);
 router.put('/dispatch/exceptions/:exceptionId/resolve', requireAuth, requireMiniSystemWrite, resolveExceptionHandler);
 router.post('/dispatch/jobs/:id/attachments', requireAuth, requireMiniSystemWrite, addAttachmentHandler);
-router.post('/dispatch/uploads/request-url', requireAuth, requireMiniSystemWrite, requestAttachmentUploadUrlHandler);
-router.get('/dispatch/attachments/:attachmentId/file', requireAuth, getAttachmentFileHandler);
+router.post('/dispatch/uploads/request-url', requireAuth, requireMiniSystemWrite, requireObjectStorage, requestAttachmentUploadUrlHandler);
+router.get('/dispatch/attachments/:attachmentId/file', requireAuth, requireObjectStorage, getAttachmentFileHandler);
 router.post('/dispatch/jobs/batch', requireAuth, requireMiniSystemWrite, batchUpdateHandler);
 router.delete('/dispatch/jobs/:id', requireAuth, requireMiniSystemWrite, deleteJobHandler);
 
@@ -5685,7 +5693,7 @@ router.delete('/dispatch/resources/:id', requireAuth, requireMiniSystemWrite, de
 router.put('/dispatch/resources/:id/skills', requireAuth, requireMiniSystemWrite, syncResourceSkillsHandler);
 router.get('/dispatch/resource-locations', requireAuth, listResourceLocationsHandler);
 router.get('/dispatch/jobs/:id/route', requireAuth, getJobRouteHandler);
-router.post('/dispatch/jobs/routes/export', requireAuth, bulkExportJobRoutesHandler);
+router.post('/dispatch/jobs/routes/export', requireAuth, requireObjectStorage, bulkExportJobRoutesHandler);
 router.get('/dispatch/route-exports', requireAuth, listRouteExportsHandler);
 // SSE channel + companion ack endpoint. Registered BEFORE the
 // `/:id` parameterised routes so Express matches the literal "stream"
@@ -5693,21 +5701,22 @@ router.get('/dispatch/route-exports', requireAuth, listRouteExportsHandler);
 router.get('/dispatch/route-exports/stream', requireAuth, routeExportsStreamHandler);
 router.post('/dispatch/route-exports/stream/ack', requireAuth, routeExportsStreamAckHandler);
 router.get('/dispatch/route-exports/:id', requireAuth, getRouteExportStatusHandler);
-router.post('/dispatch/route-exports/:id/retry', requireAuth, retryRouteExportHandler);
+router.post('/dispatch/route-exports/:id/retry', requireAuth, requireObjectStorage, retryRouteExportHandler);
 // Intentionally NOT behind requireAuth — the per-export `download_token`
 // embedded in the email link is the only credential. See
 // `downloadRouteExportHandler` for the full token / expiry / status
 // gating that protects this endpoint.
-router.get('/dispatch/route-exports/:id/download', downloadRouteExportHandler);
+router.get('/dispatch/route-exports/:id/download', requireObjectStorage, downloadRouteExportHandler);
 
 // Public, token-authenticated proof-of-completion photo proxy. NO
 // requireAuth — the HMAC-signed token in the email link (over
 // `(tenantId, attachmentId, expiresAtSec)`) is the only credential.
 // See `getCompletionPhotoHandler` for the full token / expiry gating.
-router.get('/dispatch/completion-photos/:attachmentId', getCompletionPhotoHandler);
+router.get('/dispatch/completion-photos/:attachmentId', requireObjectStorage, getCompletionPhotoHandler);
 router.get(
   '/dispatch/route-exports/:id/file',
   requireAuth,
+  requireObjectStorage,
   downloadRouteExportAuthenticatedHandler,
 );
 

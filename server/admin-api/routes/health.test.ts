@@ -41,3 +41,36 @@ describe('GET /health (admin-api)', () => {
     expect(res.body).toMatchObject({ status: 'degraded', db: 'error' });
   });
 });
+
+describe('GET /healthz + /readyz (admin-api, PR-00)', () => {
+  it('/healthz is 200 with the DB down and never touches the pool', async () => {
+    const res = await request(app()).get('/healthz');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'ok', service: 'admin-api' });
+    expect(a.getPoolMock).not.toHaveBeenCalled();
+  });
+
+  it('/readyz is 503 with the DB down and 200 once it answers', async () => {
+    const { __resetReadinessForTests, markEnvValidated, markRegistriesLoaded, markDraining } = await import(
+      '../../../platform/runtime/health'
+    );
+    __resetReadinessForTests();
+    markEnvValidated(true);
+    markRegistriesLoaded();
+
+    a.getPoolMock.mockReturnValue({ query: () => Promise.reject(new Error('down')) });
+    let res = await request(app()).get('/readyz');
+    expect(res.status).toBe(503);
+    expect(res.body.reasons).toEqual(['db_unreachable']);
+
+    a.getPoolMock.mockReturnValue({ query: () => Promise.resolve({ rows: [] }) });
+    res = await request(app()).get('/readyz');
+    expect(res.status).toBe(200);
+
+    markDraining();
+    res = await request(app()).get('/readyz');
+    expect(res.status).toBe(503);
+    expect(res.body.reasons).toEqual(['draining']);
+    __resetReadinessForTests();
+  });
+});

@@ -1,5 +1,7 @@
 # Quality Voice Operations — Production Deployment Checklist
 
+> **Render is the target; Replit is the fallback until cutover.** The Render setup (services, roles, `/healthz`/`/readyz`, zero-dropped-call drain, env inventory, gated deploy script, Twilio cutover and rollback) is in [docs/deploy/render.md](deploy/render.md). This checklist still describes the Replit deployment, which keeps working unchanged (`QVO_PROCESS_ROLE` unset = `all`).
+
 ## 1. Environment Variables
 
 ### Required (all environments)
@@ -23,6 +25,7 @@
 | `PLATFORM_DB_POOL_URL` | Supabase transaction pooler URL (port 6543, SSL) | Supabase Dashboard > Project Settings > Database > Connection string (Transaction pooler) | `postgresql://user:pass@host:6543/db` |
 | `STRIPE_SECRET_KEY` | Stripe API secret key (live key for production) | Stripe Dashboard > Developers > API keys | `sk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | Stripe Dashboard > Developers > Webhooks > Signing secret | `whsec_...` |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile **secret** used by `POST /auth/signup` to verify the signup CAPTCHA. Admin API startup (`assertProductionSecrets()`) refuses to boot when it is missing, whitespace-only, or one of Cloudflare's documented dummy test secrets (`1x…AA`, `2x…AA`, `3x…AA`). When unset (local/dev only) CAPTCHA verification is skipped. | Cloudflare Dashboard > Turnstile > Site > Secret key | `0x4AAAA...` |
 | `STRIPE_PRICE_STARTER_MONTHLY` | Stripe Price ID for Starter monthly plan | Stripe Dashboard > Products > Price ID | `price_...` |
 | `STRIPE_PRICE_STARTER_ANNUAL` | Stripe Price ID for Starter annual plan | Stripe Dashboard > Products > Price ID | `price_...` |
 | `STRIPE_PRICE_PRO_MONTHLY` | Stripe Price ID for Pro monthly plan | Stripe Dashboard > Products > Price ID | `price_...` |
@@ -59,6 +62,8 @@
 | `PORT` | `5000` (prod) | Generic port fallback |
 | `LOG_LEVEL` | `info` | Logging level: debug, info, warn, error |
 | `BUILD_VERSION` | `local` | Build identifier for observability |
+| `TURNSTILE_SITE_KEY` | unset | Public Cloudflare Turnstile **site** key served to the `/signup` form at runtime by `GET /auth/signup-config` (no rebuild needed). **Set this in production** alongside `TURNSTILE_SECRET_KEY`: when the secret is set but no site key is available, the signup form fails closed and shows "signup temporarily unavailable" instead of submitting without a token. |
+| `VITE_TURNSTILE_SITE_KEY` | unset | Build-time fallback for the Turnstile site key (inlined by `vite build`). Used when `TURNSTILE_SITE_KEY` is unset; `GET /auth/signup-config` also falls back to it. |
 | `TWILIO_COST_PER_MINUTE_CENTS` | `2` | Twilio cost per minute (cents) for usage metering |
 | `AI_COST_PER_MINUTE_CENTS` | `6` | AI cost per minute (cents) for usage metering |
 | `SMS_COST_PER_MESSAGE_CENTS` | `1` | SMS cost per message (cents) for usage metering |
@@ -452,6 +457,7 @@ For local development without a real Cal.com or Calendly webhook, you can either
 5. Make a test inbound call to verify the voice gateway
 6. Check the analytics dashboard loads correctly
 7. Verify Stripe webhook delivery in the Stripe dashboard
+8. Open `/signup` (or **Sign up** on `/login`) and confirm the Turnstile widget renders. `curl https://{ADMIN_API_BASE_URL}/api/auth/signup-config` should return `{"captchaRequired":true,"siteKey":"0x…"}`; a `null` site key means signup is failing closed.
 
 ## 7. Security Checklist
 
@@ -465,6 +471,7 @@ For local development without a real Cal.com or Calendly webhook, you can either
 - [ ] Stripe webhook signing secret is configured and verified
 - [ ] `CALCOM_WEBHOOK_SECRET` is set (and matches the secret pasted into the Cal.com webhook config) — verifier fails closed in production. Confirmed by `scripts/validate-env.ts` / Admin API startup (no manual review needed).
 - [ ] *(Calendly only)* `CALENDLY_WEBHOOK_SECRET` is set (and matches the `signing_key` registered with Calendly's `POST /webhook_subscriptions` API) — verifier fails closed in production. Confirmed by `scripts/validate-env.ts` and `assertProductionSecrets()` (both add this var to the missing-vars list when `BOOK_DEMO_SCHEDULER_PROVIDER`/`VITE_BOOK_DEMO_SCHEDULER_PROVIDER` is `calendly`).
+- [ ] `TURNSTILE_SECRET_KEY` is a real (non-dummy) Turnstile secret and `TURNSTILE_SITE_KEY` (or the build-time `VITE_TURNSTILE_SITE_KEY`) is its matching public site key. The secret is enforced at Admin API startup; the site key is not, so a missing one only shows up as a fail-closed `/signup` form.
 - [ ] `SALES_NOTIFICATION_EMAIL` points at a monitored sales inbox so demo leads and bookings are not silently dropped. Confirmed by `scripts/validate-env.ts` / Admin API startup.
 - [ ] `VITE_BOOK_DEMO_SCHEDULER_URL` was set **before** running the production `vite build` (re-run the build if you change it later). Confirmed by `scripts/validate-env.ts` — run it as part of the pre-build step.
 

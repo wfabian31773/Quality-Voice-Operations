@@ -113,3 +113,26 @@ describe('mini-system-write gate', () => {
     expect((await request(app()).post('/dispatch/territories').send({ name: 'North' })).status).toBe(403);
   });
 });
+
+describe('object storage guard (PR-00: no Replit sidecar without PRIVATE_OBJECT_DIR)', () => {
+  it.each([
+    ['post', '/dispatch/uploads/request-url'],
+    ['get', '/dispatch/attachments/att-1/file'],
+    ['post', '/dispatch/jobs/routes/export'],
+    ['post', '/dispatch/route-exports/exp-1/retry'],
+    ['get', '/dispatch/route-exports/exp-1/download'],
+    ['get', '/dispatch/route-exports/exp-1/file'],
+    ['get', '/dispatch/completion-photos/att-1'],
+  ] as const)('%s %s → 503 storage not configured', async (method, path) => {
+    const saved = process.env.PRIVATE_OBJECT_DIR;
+    delete process.env.PRIVATE_OBJECT_DIR;
+    try {
+      const res = await request(app())[method](path).send({});
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ error: 'storage not configured', code: 'STORAGE_NOT_CONFIGURED' });
+      expect(a.poolQueryMock).not.toHaveBeenCalled();
+    } finally {
+      if (saved !== undefined) process.env.PRIVATE_OBJECT_DIR = saved;
+    }
+  });
+});

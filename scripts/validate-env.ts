@@ -1,32 +1,56 @@
 import { getPlatformPool } from '../platform/db';
 import { validateBillingConfig } from '../platform/billing/stripe/plans';
+import { resolveProcessRole, isRenderRuntime, REPLIT_ONLY_ENV_NAMES, type ProcessRole } from '../platform/runtime/processRole';
+
+type SplitRole = Exclude<ProcessRole, 'all'>;
 
 interface EnvVar {
   name: string;
   required: 'always' | 'production' | 'development';
   purpose: string;
+  /**
+   * PR-00 (Render): roles that need this var. Omitted = every role. Role
+   * `all` (Replit, the default) always uses the full list, so its
+   * requirements are unchanged.
+   */
+  roles?: SplitRole[];
 }
+
+const API: SplitRole[] = ['api'];
+const API_WORKER: SplitRole[] = ['api', 'worker'];
+const API_WORKER_CRON: SplitRole[] = ['api', 'worker', 'cron'];
+
+/**
+ * Names that belong to Azul (shared infrastructure). QVO on Render must not
+ * depend on them; warn (never fail) when they are set. docs/deploy/render.md.
+ */
+export const AZUL_ONLY_ENV_NAMES = [
+  'SUPABASE_DATABASE_URL',
+  'TICKETING_SYSTEM_URL',
+  'TICKETING_API_KEY',
+  'AZUL_VISION_ONCALL_NUMBER',
+] as const;
 
 const ENV_VARS: EnvVar[] = [
   { name: 'APP_ENV', required: 'always', purpose: 'Environment selector (development | staging | production)' },
-  { name: 'DATABASE_URL', required: 'development', purpose: 'Restricted application role (qvo_app after RLS rollout) — local PostgreSQL' },
+  { name: 'DATABASE_URL', required: 'development', purpose: 'Restricted application role (qvo_app after RLS rollout) — local PostgreSQL (dev / Replit only; not read on Render production)' },
   { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Restricted application role (qvo_app after RLS rollout) — Supabase transaction pooler URL (port 6543, SSL)' },
-  { name: 'XAI_API_KEY', required: 'always', purpose: 'xAI Grok Voice Agent API key for the Master Voice Agent runtime' },
-  { name: 'TWILIO_ACCOUNT_SID', required: 'always', purpose: 'Twilio account SID' },
-  { name: 'TWILIO_AUTH_TOKEN', required: 'always', purpose: 'Twilio auth token' },
-  { name: 'TWILIO_OUTBOUND_NUMBER', required: 'always', purpose: 'Default outbound caller ID (E.164)' },
-  { name: 'ADMIN_JWT_SECRET', required: 'production', purpose: 'JWT signing secret for admin API auth' },
+  { name: 'XAI_API_KEY', required: 'always', purpose: 'xAI Grok Voice Agent API key for the Master Voice Agent runtime', roles: ['voice', 'api'] },
+  { name: 'TWILIO_ACCOUNT_SID', required: 'always', purpose: 'Twilio account SID', roles: ['voice', 'api', 'worker'] },
+  { name: 'TWILIO_AUTH_TOKEN', required: 'always', purpose: 'Twilio auth token', roles: ['voice', 'api', 'worker'] },
+  { name: 'TWILIO_OUTBOUND_NUMBER', required: 'always', purpose: 'Default outbound caller ID (E.164)', roles: ['voice', 'api', 'worker'] },
+  { name: 'ADMIN_JWT_SECRET', required: 'production', purpose: 'JWT signing secret for admin API auth', roles: API_WORKER },
   { name: 'CONNECTOR_ENCRYPTION_KEY', required: 'production', purpose: '32-byte hex key for encrypting tenant connector secrets' },
-  { name: 'STRIPE_SECRET_KEY', required: 'production', purpose: 'Stripe API secret key' },
-  { name: 'STRIPE_WEBHOOK_SECRET', required: 'production', purpose: 'Stripe webhook signing secret (whsec_...)' },
-  { name: 'STRIPE_PRICE_STARTER_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Starter monthly plan' },
-  { name: 'STRIPE_PRICE_STARTER_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Starter annual plan' },
-  { name: 'STRIPE_PRICE_PRO_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Pro monthly plan' },
-  { name: 'STRIPE_PRICE_PRO_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Pro annual plan' },
-  { name: 'STRIPE_PRICE_ENTERPRISE_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Enterprise monthly plan' },
-  { name: 'STRIPE_PRICE_ENTERPRISE_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Enterprise annual plan' },
-  { name: 'STRIPE_METER_EVENT_CALLS', required: 'production', purpose: 'Stripe meter event name for call usage' },
-  { name: 'STRIPE_METER_EVENT_AI_MINUTES', required: 'production', purpose: 'Stripe meter event name for AI minute usage' },
+  { name: 'STRIPE_SECRET_KEY', required: 'production', purpose: 'Stripe API secret key', roles: API_WORKER_CRON },
+  { name: 'STRIPE_WEBHOOK_SECRET', required: 'production', purpose: 'Stripe webhook signing secret (whsec_...)', roles: API },
+  { name: 'STRIPE_PRICE_STARTER_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Starter monthly plan', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_STARTER_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Starter annual plan', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_PRO_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Pro monthly plan', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_PRO_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Pro annual plan', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_ENTERPRISE_MONTHLY', required: 'production', purpose: 'Stripe Price ID for Enterprise monthly plan', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_ENTERPRISE_ANNUAL', required: 'production', purpose: 'Stripe Price ID for Enterprise annual plan', roles: API_WORKER_CRON },
+  { name: 'STRIPE_METER_EVENT_CALLS', required: 'production', purpose: 'Stripe meter event name for call usage', roles: API_WORKER_CRON },
+  { name: 'STRIPE_METER_EVENT_AI_MINUTES', required: 'production', purpose: 'Stripe meter event name for AI minute usage', roles: API_WORKER_CRON },
   // Per-tier metered AI-minutes Stripe Price IDs. Originally optional under
   // Task #1269 (the upgrade-preview endpoint fell back to the catalog overage
   // rate when unset) so pre-migration deployments would not break overnight.
@@ -38,36 +62,43 @@ const ENV_VARS: EnvVar[] = [
   // `STRIPE_METER_EVENT_AI_MINUTES` is set, providing belt-and-braces
   // coverage in environments (e.g. local dev opting in for testing) where
   // the static `production` gate here does not fire.
-  { name: 'STRIPE_PRICE_STARTER_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Starter per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
-  { name: 'STRIPE_PRICE_PRO_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Pro per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
-  { name: 'STRIPE_PRICE_ENTERPRISE_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Enterprise per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).' },
-  { name: 'VOICE_GATEWAY_BASE_URL', required: 'production', purpose: 'Public URL of the voice gateway (for Twilio webhooks)' },
-  { name: 'VOICE_GATEWAY_STREAM_TOKEN', required: 'production', purpose: 'Strong bearer token authenticating Twilio and widget WebSocket stream upgrades' },
+  { name: 'STRIPE_PRICE_STARTER_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Starter per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_PRO_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Pro per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).', roles: API_WORKER_CRON },
+  { name: 'STRIPE_PRICE_ENTERPRISE_AI_MINUTES', required: 'production', purpose: 'Stripe metered Price ID for Enterprise per-minute AI overage. Required in production now that the per-tier metered-pricing migration is complete (Task #1321).', roles: API_WORKER_CRON },
+  { name: 'VOICE_GATEWAY_BASE_URL', required: 'production', purpose: 'Public URL of the voice gateway (for Twilio webhooks)', roles: API_WORKER },
+  { name: 'VOICE_GATEWAY_STREAM_TOKEN', required: 'production', purpose: 'Strong bearer token authenticating Twilio and widget WebSocket stream upgrades', roles: ['voice', 'api'] },
   { name: 'QVO_PII_LOOKUP_HMAC_KEY', required: 'production', purpose: 'Strong purpose-separated HMAC key for tenant-scoped caller lookup identifiers' },
   { name: 'QVO_PII_LOOKUP_HMAC_KEY_VERSION', required: 'production', purpose: 'Stable lowercase identifier for the active caller-lookup HMAC key' },
-  { name: 'ADMIN_API_BASE_URL', required: 'production', purpose: 'Public URL of the admin API' },
-  { name: 'SMTP_HOST', required: 'production', purpose: 'SMTP server hostname for transactional email' },
-  { name: 'SMTP_PORT', required: 'production', purpose: 'SMTP server port (e.g. 587 for STARTTLS)' },
-  { name: 'SMTP_USER', required: 'production', purpose: 'SMTP authentication username' },
-  { name: 'SMTP_PASS', required: 'production', purpose: 'SMTP authentication password' },
-  { name: 'EMAIL_FROM', required: 'production', purpose: 'Default sender address for outbound email' },
-  { name: 'APP_URL', required: 'production', purpose: 'Public application URL (for invite links, redirects)' },
-  { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com booking webhooks. Cal.com itself signs only the body (no timestamp), so register the Cal.com webhook against the adapter URL `/book-demo/calcom-native-webhook` — that route authenticates the native body-only signature and re-signs the payload with the envelope `t=<unix>,v1=HMAC(secret,"<t>.<body>")` before handing it to the canonical `/book-demo/calendar-webhook` verifier (5-minute replay window). Production fails closed without this secret. See docs/deployment-checklist.md §5 (Cal.com Webhook).' },
+  { name: 'ADMIN_API_BASE_URL', required: 'production', purpose: 'Public URL of the admin API', roles: API_WORKER },
+  { name: 'SMTP_HOST', required: 'production', purpose: 'SMTP server hostname for transactional email', roles: API_WORKER_CRON },
+  { name: 'SMTP_PORT', required: 'production', purpose: 'SMTP server port (e.g. 587 for STARTTLS)', roles: API_WORKER_CRON },
+  { name: 'SMTP_USER', required: 'production', purpose: 'SMTP authentication username', roles: API_WORKER_CRON },
+  { name: 'SMTP_PASS', required: 'production', purpose: 'SMTP authentication password', roles: API_WORKER_CRON },
+  { name: 'EMAIL_FROM', required: 'production', purpose: 'Default sender address for outbound email', roles: API_WORKER_CRON },
+  { name: 'APP_URL', required: 'production', purpose: 'Public application URL (for invite links, redirects)', roles: API_WORKER_CRON },
+  { name: 'CALCOM_WEBHOOK_SECRET', required: 'production', purpose: 'HMAC-SHA256 secret for verifying Cal.com booking webhooks. Cal.com itself signs only the body (no timestamp), so register the Cal.com webhook against the adapter URL `/book-demo/calcom-native-webhook` — that route authenticates the native body-only signature and re-signs the payload with the envelope `t=<unix>,v1=HMAC(secret,"<t>.<body>")` before handing it to the canonical `/book-demo/calendar-webhook` verifier (5-minute replay window). Production fails closed without this secret. See docs/deployment-checklist.md §5 (Cal.com Webhook).', roles: API },
   // CALENDLY_WEBHOOK_SECRET is conditionally required in production — only when
   // VITE_BOOK_DEMO_SCHEDULER_PROVIDER (or BOOK_DEMO_SCHEDULER_PROVIDER) is set
   // to "calendly". The conditional check runs in `validateEnvironment` below
   // rather than this static table so the var stays optional for the default
   // Cal.com configuration.
 
-  { name: 'SALES_NOTIFICATION_EMAIL', required: 'production', purpose: 'Sales inbox that receives demo lead and Cal.com booking lifecycle emails' },
-  { name: 'VITE_BOOK_DEMO_SCHEDULER_URL', required: 'production', purpose: 'Embedded scheduler URL inlined into the /book-demo client bundle at vite build time' },
-  { name: 'TURNSTILE_SECRET_KEY', required: 'production', purpose: 'Cloudflare Turnstile secret key for verifying sign-up CAPTCHA (production fails closed without it)' },
-  { name: 'ALLOWED_ORIGINS', required: 'production', purpose: 'Comma-separated list of CORS origins allowed in production (e.g. https://app.example.com)' },
+  { name: 'SALES_NOTIFICATION_EMAIL', required: 'production', purpose: 'Sales inbox that receives demo lead and Cal.com booking lifecycle emails', roles: API },
+  { name: 'VITE_BOOK_DEMO_SCHEDULER_URL', required: 'production', purpose: 'Embedded scheduler URL inlined into the /book-demo client bundle at vite build time', roles: API },
+  { name: 'TURNSTILE_SECRET_KEY', required: 'production', purpose: 'Cloudflare Turnstile secret key for verifying sign-up CAPTCHA (production fails closed without it)', roles: API },
+  // PR-00 (Render) role-specific requirements. Not required for role `all`
+  // (Replit), whose behavior must not change.
+  { name: 'VOICE_PUBLIC_BASE_URL', required: 'production', purpose: 'Public https origin of the voice service (TwiML <Stream> URL, Twilio signature URL, drain redirect)', roles: ['voice'] },
+  { name: 'ADMIN_INTERNAL_TOKEN', required: 'production', purpose: 'Admin token for voice /metrics and /internal/drain-status (deploy gate)', roles: ['voice'] },
+  { name: 'WORKER_LEADER_DB_URL', required: 'production', purpose: 'Session-mode Postgres URL (Supabase session pooler port 5432 or direct) holding the worker leader advisory lock', roles: ['worker'] },
+  { name: 'ALLOWED_ORIGINS', required: 'production', purpose: 'Comma-separated list of CORS origins allowed in production (e.g. https://app.example.com)', roles: ['api', 'voice'] },
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
   { name: 'DATABASE_URL_PRIVILEGED', required: 'development', purpose: 'Postgres / BYPASSRLS URL for migrations, workers, platform-admin, seeds, and pre-tenant webhooks. Falls back to DATABASE_URL / PLATFORM_DB_POOL_URL with a loud warning when unset.' },
   { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
+  { name: 'TURNSTILE_SITE_KEY', required: 'development', purpose: 'Cloudflare Turnstile site key served to the signup form at runtime via GET /auth/signup-config. Prefer this over VITE_TURNSTILE_SITE_KEY so the widget can render without a frontend rebuild. The form fails closed when captcha is required and no site key is available.' },
+  { name: 'VITE_TURNSTILE_SITE_KEY', required: 'development', purpose: 'Build-time fallback Cloudflare Turnstile site key inlined into the signup bundle. Used when TURNSTILE_SITE_KEY is unset.' },
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },
@@ -107,16 +138,32 @@ function resolveBookDemoSchedulerProvider(): string {
   return v || 'cal.com';
 }
 
-export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
+/**
+ * Whether an ENV_VARS entry applies to this process role. Role `all` (the
+ * default, Replit) keeps the pre-PR-00 table: every entry without a role
+ * list, plus every entry that was required before PR-00. Entries added for
+ * the Render split only (`VOICE_PUBLIC_BASE_URL`, `ADMIN_INTERNAL_TOKEN`,
+ * `WORKER_LEADER_DB_URL`) are skipped for `all`.
+ */
+const SPLIT_ONLY_VARS = new Set(['VOICE_PUBLIC_BASE_URL', 'ADMIN_INTERNAL_TOKEN', 'WORKER_LEADER_DB_URL']);
+function appliesToRole(v: EnvVar, role: ProcessRole): boolean {
+  if (role === 'all') return !SPLIT_ONLY_VARS.has(v.name);
+  return !v.roles || v.roles.includes(role);
+}
+
+export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: ProcessRole }): {
   passed: boolean;
   missing: string[];
   warnings: string[];
 } {
   const appEnv = process.env.APP_ENV ?? 'development';
   const isProd = appEnv === 'production' || appEnv === 'staging';
+  const role = options?.role ?? resolveProcessRole();
+  const onRender = isRenderRuntime();
+  const roleNeeds = (...roles: ProcessRole[]) => role === 'all' || roles.includes(role);
 
   console.log(`\n========================================`);
-  console.log(`  Environment Validation — ${appEnv}`);
+  console.log(`  Environment Validation — ${appEnv} (role: ${role}${onRender ? ', Render' : ''})`);
   console.log(`========================================\n`);
 
   const missing: string[] = [];
@@ -124,7 +171,12 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   console.log('Required variables:');
   for (const v of ENV_VARS) {
-    const present = !!process.env[v.name];
+    const present = !!process.env[v.name]?.trim();
+    if (!appliesToRole(v, role)) {
+      if (!present) console.log(`  SKIP  ${v.name} — not used by role ${role}`);
+      else console.log(`  PASS  ${v.name}`);
+      continue;
+    }
     const isRequired =
       v.required === 'always' ||
       (v.required === 'production' && isProd) ||
@@ -142,7 +194,7 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
 
   console.log('\nOptional variables:');
   for (const v of OPTIONAL_VARS) {
-    const present = !!process.env[v.name];
+    const present = !!process.env[v.name]?.trim();
     if (present) {
       console.log(`  SET   ${v.name}`);
     } else {
@@ -166,7 +218,7 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
   // check. Setting any non-empty value here also wins over the DB-stored
   // secret; clear the env var first if you want the panel value to take over.
   const provider = resolveBookDemoSchedulerProvider();
-  if (isProd && provider === 'calendly') {
+  if (isProd && provider === 'calendly' && roleNeeds('api')) {
     console.log('\nConditional variables:');
     if (!process.env.CALENDLY_WEBHOOK_SECRET) {
       console.log(
@@ -193,7 +245,7 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
   // `passed` will be false regardless. Keeping `missing` to real env-var
   // names protects downstream consumers (e.g. log scrapers, runbook tooling)
   // that may treat the array as a list of literal vars to set.
-  if (isProd) {
+  if (isProd && roleNeeds('api')) {
     const oauthSecretConfigured = !!(
       process.env.ADMIN_JWT_SECRET || process.env.CONNECTOR_ENCRYPTION_KEY
     );
@@ -296,7 +348,7 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
   // avoid double-reporting the other billing warnings (STRIPE_SECRET_KEY,
   // STRIPE_WEBHOOK_SECRET, the tier × interval base prices) that are
   // already enforced as production-required entries in the ENV_VARS table.
-  if (isProd) {
+  if (isProd && roleNeeds('api', 'worker', 'cron')) {
     const billingCheck = validateBillingConfig();
     const aiMinutesErrors = billingCheck.errors.filter(e => e.includes('_AI_MINUTES'));
     for (const e of aiMinutesErrors) {
@@ -308,6 +360,34 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean }): {
       if (envName && !missing.includes(envName)) {
         console.log(`  FAIL  ${envName} — ${e}`);
         missing.push(envName);
+      }
+    }
+  }
+
+  // PR-00: on Render there is no Replit dev domain to fall back to, so the
+  // two public base URLs are hard requirements for every role, whatever
+  // APP_ENV says. Replit-only names are ignored (removed at boot).
+  if (onRender) {
+    console.log('\nRender:');
+    for (const name of ['APP_URL', 'VOICE_GATEWAY_BASE_URL']) {
+      if (!process.env[name]?.trim()) {
+        console.log(`  FAIL  ${name} — required on Render (no REPLIT_DEV_DOMAIN fallback)`);
+        if (!missing.includes(name)) missing.push(name);
+      } else {
+        console.log(`  PASS  ${name}`);
+      }
+    }
+    for (const name of REPLIT_ONLY_ENV_NAMES) {
+      if (process.env[name] !== undefined) {
+        warnings.push(`${name} is set but ignored on Render (Replit-only)`);
+      }
+    }
+  }
+
+  if (isProd || onRender) {
+    for (const name of AZUL_ONLY_ENV_NAMES) {
+      if (process.env[name]?.trim()) {
+        warnings.push(`${name} is set but is an Azul-owned name; QVO must not depend on it (see docs/deploy/render.md)`);
       }
     }
   }

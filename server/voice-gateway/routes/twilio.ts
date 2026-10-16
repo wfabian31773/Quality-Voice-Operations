@@ -9,6 +9,7 @@ import { CallLifecycleCoordinator } from '../../../platform/runtime/lifecycle/Ca
 import { createPlatformPersistenceAdapter } from '../services/callPersistence';
 import type { TwilioTransferAdapter } from '../services/escalation';
 import { twilioSignatureMiddleware } from '../middleware/twilioSignature';
+import { resolveVoicePublicBaseUrl } from '../../../platform/runtime/processRole';
 import {
   updateContactStatus,
   reconcileInboundCallback,
@@ -163,6 +164,34 @@ function resolveForwardedWsTarget(req: Request): { wsProtocol: 'wss' | 'ws'; hos
   return { wsProtocol: proto === 'https' ? 'wss' : 'ws', host };
 }
 
+// Externally-visible `<Stream>` URL. When the voice gateway is hosted
+// directly (Render, `VOICE_PUBLIC_BASE_URL=https://voice.…`) we build it from
+// that configured origin and never trust forwarded headers. Otherwise keep
+// the Replit path: forwarded headers + the admin-api `/vg` prefix.
+export function buildStreamUrl(req: Request): string {
+  const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
+  const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
+  const publicBase = resolveVoicePublicBaseUrl();
+  if (publicBase) {
+    const wsBase = publicBase.replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:');
+    return `${wsBase}/twilio/stream${tokenParam}`;
+  }
+  const { wsProtocol, host } = resolveForwardedWsTarget(req);
+  return `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
+}
+
+/** Query flag on the drain `<Redirect>` so the redirected request is never redirected again. */
+export const DRAIN_REDIRECT_PARAM = 'qvoDrainRedirect';
+
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 router.use('/twilio/voice', twilioSignatureMiddleware);
 router.use('/twilio/status', twilioSignatureMiddleware);
 router.use('/twilio/outbound', twilioSignatureMiddleware);
@@ -181,6 +210,21 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
   });
 
   if (sessionManager.isDraining()) {
+    // Render routes new requests to the new instance once it is healthy, so
+    // bounce the call back through the public URL instead of refusing it.
+    // A request that already followed one drain redirect gets the old
+    // message (no redirect loops if both instances are draining).
+    const publicBase = resolveVoicePublicBaseUrl();
+    const alreadyRedirected = req.query?.[DRAIN_REDIRECT_PARAM] === '1';
+    if (publicBase && !alreadyRedirected) {
+      logger.warn('Redirecting call — server is draining', { callSid });
+      const target = `${publicBase}/twilio/voice?${DRAIN_REDIRECT_PARAM}=1`;
+      res.type('text/xml').send(
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Redirect method="POST">${escapeXmlAttr(target)}</Redirect></Response>`,
+      );
+      return;
+    }
     logger.warn('Rejecting call — server is draining', { callSid });
     res.type('text/xml').send(
       `<?xml version="1.0" encoding="UTF-8"?>
@@ -319,10 +363,7 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       logger.warn('Callback reconciliation lookup failed — continuing without', { callSid, error: String(err) });
     }
 
-    const { wsProtocol, host } = resolveForwardedWsTarget(req);
-    const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
-    const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
-    const wsUrl = `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
+    const wsUrl = buildStreamUrl(req);
 
     // Immediate, premium-voice greeting that plays while the media stream
     // connects and the OpenAI Realtime session warms up — fills the setup
@@ -818,10 +859,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     return;
   }
 
-  const { wsProtocol, host } = resolveForwardedWsTarget(req);
-  const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
-  const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
-  const wsUrl = `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
+  const wsUrl = buildStreamUrl(req);
 
   logger.info('Outbound call connected — starting stream', {
     tenantId,

@@ -91,7 +91,7 @@ vi.mock('../../../platform/compliance/HealthcareDeploymentApprovalService', () =
 vi.mock('../../../platform/sms/SmsConversationService', () => m.smsService);
 vi.mock('../../../platform/analytics/CsatSurveyService', () => m.csatService);
 
-import twilioRouter from './twilio';
+import twilioRouter, { buildStreamUrl } from './twilio';
 
 function app() {
   const a = express();
@@ -107,6 +107,7 @@ beforeEach(() => {
     if (typeof v === 'function' && 'mockReset' in v) (v as ReturnType<typeof vi.fn>).mockReset();
   }
   delete process.env.VOICE_GATEWAY_STREAM_TOKEN;
+  delete process.env.VOICE_PUBLIC_BASE_URL;
   m.poolQueryMock.mockResolvedValue({ rows: [], rowCount: 0 });
   m.withPrivilegedClientMock.mockImplementation(async (cb: (c: unknown) => Promise<void>) =>
     cb({ query: m.poolQueryMock }),
@@ -331,5 +332,64 @@ describe('POST /twilio/sms', () => {
     const res = await form(request(app()).post('/twilio/sms'), { ...base, Body: '5' });
     expect(res.text).toContain('<Response></Response>');
     expect(m.smsService.getOrCreateConversation).not.toHaveBeenCalled();
+  });
+});
+
+describe('PR-00 drain + direct voice hosting', () => {
+  const base = { CallSid: 'CA1', From: '+15551112222', To: '+15553334444' };
+  const routing = { tenantId: 't1', agentId: 'a1', agentType: 'inbound', tenantName: 'Acme', agentName: 'Bot' };
+
+  it('redirects a new call to VOICE_PUBLIC_BASE_URL/twilio/voice while draining', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com/';
+    m.isDrainingMock.mockReturnValue(true);
+    const res = await form(request(app()).post('/twilio/voice'), base);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(
+      '<Redirect method="POST">https://voice.example.com/twilio/voice?qvoDrainRedirect=1</Redirect>',
+    );
+    expect(res.text).not.toContain('<Hangup/>');
+    expect(m.lookupByPhoneNumberMock).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect twice: an already-redirected call gets the unavailable message', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com';
+    m.isDrainingMock.mockReturnValue(true);
+    const res = await form(request(app()).post('/twilio/voice?qvoDrainRedirect=1'), base);
+    expect(res.text).toContain('currently unavailable');
+    expect(res.text).not.toContain('<Redirect');
+  });
+
+  it('a redirected call is handled normally once it lands on a non-draining instance', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com';
+    m.lookupByPhoneNumberMock.mockResolvedValue(routing);
+    const res = await form(request(app()).post('/twilio/voice?qvoDrainRedirect=1'), base);
+    expect(res.text).toContain('<Stream url="wss://voice.example.com/twilio/stream"');
+  });
+
+  it('builds the <Stream> URL from VOICE_PUBLIC_BASE_URL, ignoring forwarded headers', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com';
+    process.env.VOICE_GATEWAY_STREAM_TOKEN = 'tok/with+chars';
+    m.lookupByPhoneNumberMock.mockResolvedValue(routing);
+    const res = await form(
+      request(app()).post('/twilio/voice').set('x-forwarded-host', 'evil.example').set('x-forwarded-proto', 'http'),
+      base,
+    );
+    expect(res.text).toContain('<Stream url="wss://voice.example.com/twilio/stream?token=tok%2Fwith%2Bchars"');
+    expect(res.text).not.toContain('evil.example');
+    expect(res.text).not.toContain('/vg/');
+  });
+
+  it('keeps the Replit forwarded-header path with the /vg prefix when VOICE_PUBLIC_BASE_URL is unset', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue(routing);
+    const res = await form(
+      request(app()).post('/twilio/voice').set('x-forwarded-host', 'qvo.replit.app').set('x-forwarded-proto', 'https,http'),
+      base,
+    );
+    expect(res.text).toContain('<Stream url="wss://qvo.replit.app/vg/twilio/stream"');
+  });
+
+  it('buildStreamUrl maps http → ws for a plain-http public base', () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'http://localhost:3001';
+    expect(buildStreamUrl({ headers: {}, protocol: 'http' } as never)).toBe('ws://localhost:3001/twilio/stream');
   });
 });

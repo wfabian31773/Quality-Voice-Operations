@@ -7,8 +7,10 @@ const schedulerFile = readFileSync(
   join(process.cwd(), 'platform/help/DocsFeedbackReplyRetryScheduler.ts'),
   'utf8',
 );
+// PR-00: the admin API's scheduler list moved to the shared registry
+// (started by the admin API for role `all`, by the worker on Render).
 const startFile = readFileSync(
-  join(process.cwd(), 'server/admin-api/start.ts'),
+  join(process.cwd(), 'platform/runtime/schedulers.ts'),
   'utf8',
 );
 const migration = readFileSync(
@@ -80,7 +82,7 @@ describe('DocsFeedbackReplyRetryScheduler — wiring & contract', () => {
     expect(startFile).toMatch(/stopDocsFeedbackReplyRetryScheduler/);
     // Wired right next to the digest scheduler so the two are obviously paired.
     expect(startFile).toMatch(
-      /startDocsFeedbackReplyDigestScheduler\(\);\s*\n\s*startDocsFeedbackReplyRetryScheduler\(\);/,
+      /startDocsFeedbackReplyDigestScheduler\(\)[^\n]*\n(?:[^\n]*\n){0,4}[^\n]*startDocsFeedbackReplyRetryScheduler\(\)/,
     );
   });
 });

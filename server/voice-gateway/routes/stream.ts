@@ -82,6 +82,17 @@ export function attachWebSocket(server: HTTPServer): void {
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
+    // Draining (SIGTERM): refuse new streams so they land on the new
+    // instance; streams already open keep running until they end.
+    if (
+      sessionManager.isDraining()
+      && (url.pathname === '/twilio/stream' || url.pathname === '/widget/stream')
+    ) {
+      logger.warn('WebSocket upgrade refused — server is draining', { path: url.pathname });
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     if (url.pathname === '/twilio/stream') {
       if (!validateStreamOrigin(request)) {
         logger.warn('WebSocket connection rejected — invalid stream token', {
@@ -92,6 +103,7 @@ export function attachWebSocket(server: HTTPServer): void {
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws) => {
+        ws.once('close', sessionManager.trackConnection());
         wss.emit('connection', ws, request);
       });
     } else if (url.pathname === '/widget/stream') {
@@ -102,6 +114,7 @@ export function attachWebSocket(server: HTTPServer): void {
         return;
       }
       widgetWss.handleUpgrade(request, socket, head, (ws) => {
+        ws.once('close', sessionManager.trackConnection());
         widgetWss.emit('connection', ws, request);
       });
     } else {

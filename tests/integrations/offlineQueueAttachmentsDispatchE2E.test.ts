@@ -293,6 +293,9 @@ function configureQueryMock(): void {
 }
 
 beforeAll(async () => {
+  // PR-00: the dispatch upload routes refuse with 503 unless object storage
+  // is configured; the storage service itself is mocked above.
+  process.env.PRIVATE_OBJECT_DIR = process.env.PRIVATE_OBJECT_DIR || '/test-bucket/private';
   const app = express();
   app.use(express.json());
 

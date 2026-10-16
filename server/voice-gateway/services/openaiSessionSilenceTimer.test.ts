@@ -18,7 +18,7 @@ vi.mock('./xaiRealtimeTransport', async () => {
   class FakeTransport extends NodeEventEmitter {
     sendAudio = vi.fn();
     sendEvent = vi.fn();
-    connect = vi.fn(async () => {});
+    connect = vi.fn(async (_opts?: { apiKey: string }) => {});
     close = vi.fn(() => {
       this.emit('close');
     });

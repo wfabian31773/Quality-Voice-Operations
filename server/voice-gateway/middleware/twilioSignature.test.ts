@@ -77,3 +77,82 @@ describe('twilioSignatureMiddleware', () => {
     expect(a.recordRejectionMock).toHaveBeenCalledWith('validator_unavailable');
   });
 });
+
+describe('twilioSignatureMiddleware — VOICE_PUBLIC_BASE_URL (PR-00)', () => {
+  // Real HMAC: the middleware's require('twilio') is not intercepted by
+  // vi.mock, so sign with the real helper and prove which URL was verified.
+  async function sign(url: string, params: Record<string, string>): Promise<string> {
+    const twilio = (await vi.importActual<Record<string, unknown>>('twilio')) as {
+      getExpectedTwilioSignature?: (t: string, u: string, p: Record<string, string>) => string;
+      default?: { getExpectedTwilioSignature: (t: string, u: string, p: Record<string, string>) => string };
+    };
+    const fn = twilio.getExpectedTwilioSignature ?? twilio.default!.getExpectedTwilioSignature;
+    return fn('tok', url, params);
+  }
+
+  beforeEach(() => {
+    process.env.TWILIO_AUTH_TOKEN = 'tok';
+    process.env.APP_ENV = 'production';
+  });
+  afterEach(() => {
+    delete process.env.VOICE_PUBLIC_BASE_URL;
+  });
+
+  it('verifies against VOICE_PUBLIC_BASE_URL + path and ignores forwarded headers', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com/';
+    const params = { CallSid: 'CA1' };
+    const sig = await sign('https://voice.example.com/twilio/voice', params);
+    const res = await request(app())
+      .post('/twilio/voice')
+      .set('X-Twilio-Signature', sig)
+      .set('x-forwarded-host', 'evil.example')
+      .set('x-forwarded-proto', 'http')
+      .set('x-forwarded-prefix', '/vg')
+      .type('form')
+      .send(params);
+    expect(res.status).toBe(200);
+    expect(a.isReplayMock).toHaveBeenCalledWith('call:CA1');
+  });
+
+  it('rejects a signature made for the forwarded-header URL when VOICE_PUBLIC_BASE_URL is set', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com';
+    const params = { CallSid: 'CA1' };
+    const sig = await sign('https://evil.example/vg/twilio/voice', params);
+    const res = await request(app())
+      .post('/twilio/voice')
+      .set('X-Twilio-Signature', sig)
+      .set('x-forwarded-host', 'evil.example')
+      .set('x-forwarded-proto', 'https')
+      .set('x-forwarded-prefix', '/vg')
+      .type('form')
+      .send(params);
+    expect(res.status).toBe(403);
+  });
+
+  it('keeps the Replit forwarded-header URL (with /vg prefix) when unset', async () => {
+    const params = { CallSid: 'CA1' };
+    const sig = await sign('https://qvo.replit.app/vg/twilio/voice', params);
+    const res = await request(app())
+      .post('/twilio/voice')
+      .set('X-Twilio-Signature', sig)
+      .set('x-forwarded-host', 'qvo.replit.app')
+      .set('x-forwarded-proto', 'https,http')
+      .set('x-forwarded-prefix', '/vg')
+      .type('form')
+      .send(params);
+    expect(res.status).toBe(200);
+  });
+
+  it('gives the drain-redirect hop its own replay nonce so the same CallSid is not rejected', async () => {
+    process.env.VOICE_PUBLIC_BASE_URL = 'https://voice.example.com';
+    const params = { CallSid: 'CA1' };
+    const sig = await sign('https://voice.example.com/twilio/voice?qvoDrainRedirect=1', params);
+    const res = await request(app())
+      .post('/twilio/voice?qvoDrainRedirect=1')
+      .set('X-Twilio-Signature', sig)
+      .type('form')
+      .send(params);
+    expect(res.status).toBe(200);
+    expect(a.isReplayMock).toHaveBeenCalledWith('call:CA1:drain-redirect');
+  });
+});
