@@ -42,6 +42,7 @@
 
 import type { Pool } from 'pg';
 import { createLogger } from '../../core/logger';
+import { runWithPrivilegedScope } from '../../db/tenantScope';
 import { geocodeAddressCached } from './index';
 import { getConfiguredGeocoderProvider } from './geocoder';
 import { defaultRpsFor } from './rateLimits';
@@ -162,7 +163,9 @@ export function enqueueJobGeocode(
 function startWorker(pool: Pool): void {
   if (workerActive) return;
   workerActive = true;
-  workerCompletion = (async () => {
+  // One worker serves every tenant's queued jobs, so it must not inherit the
+  // tenant scope of the request that happened to start it.
+  workerCompletion = runWithPrivilegedScope(async () => {
     try {
       const geocode = overrides.geocode ?? geocodeAddressCached;
       const persist = overrides.persist ?? defaultPersist;
@@ -216,7 +219,7 @@ function startWorker(pool: Pool): void {
       workerActive = false;
       workerCompletion = null;
     }
-  })();
+  });
 }
 
 /**

@@ -123,7 +123,8 @@ describe.skipIf(!PRIV_URL)('qvo_app RLS against real Postgres', () => {
     const count = async (tenantId: string) =>
       Number((await pool.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = $1`, [tenantId])).rows[0].n);
 
-    expect(await count(TENANT_A)).toBe(0); // unbound: RLS hides everything
+    expect(await db.runWithRestrictedScope(() => count(TENANT_A))).toBe(0); // qvo_app, no tenant: RLS hides all
+    expect(await count(TENANT_A)).toBe(1); // no scope: privileged pool, as before the switch
     expect(await db.runWithTenantScope(TENANT_A, () => count(TENANT_A))).toBe(1);
     expect(await db.runWithTenantScope(TENANT_B, () => count(TENANT_A))).toBe(0);
   });
@@ -146,13 +147,15 @@ describe.skipIf(!PRIV_URL)('qvo_app RLS against real Postgres', () => {
     expect(await countViaClient(TENANT_A, true)).toBe(1);
     expect(await countViaClient(TENANT_A, false)).toBe(1);
     expect(await countViaClient(TENANT_B, true)).toBe(0);
-    const client = await pool.connect(); // released client is unbound again
-    try {
-      const { rows } = await client.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = $1`, [TENANT_A]);
-      expect(Number(rows[0].n)).toBe(0);
-    } finally {
-      client.release();
-    }
+    await db.runWithRestrictedScope(async () => {
+      const client = await pool.connect(); // released client is unbound again
+      try {
+        const { rows } = await client.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = $1`, [TENANT_A]);
+        expect(Number(rows[0].n)).toBe(0);
+      } finally {
+        client.release();
+      }
+    });
   });
 
   it('sends restricted-pool work to the privileged pool in a privileged (scheduler) scope', async () => {

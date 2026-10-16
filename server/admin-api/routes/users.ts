@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
-import { getPlatformPool, withTenantContext } from '../../../platform/db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole, simpleToDatabaseRole, dbRoleToSimple, type SimpleRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
@@ -88,7 +88,10 @@ router.post('/users/invite', requireAuth, requireRole('owner'), async (req, res)
     const passwordHash = password ? await bcrypt.hash(password, 12) : null;
     const dbRole = simpleToDatabaseRole(role as SimpleRole);
 
-    const { rows: existing } = await client.query(
+    // Emails are unique across tenants, so look the user up across tenants
+    // (privileged): under RLS a tenant-bound read misses other tenants' users
+    // and the insert below then fails the unique constraint.
+    const { rows: existing } = await getPrivilegedPool().query(
       `SELECT id, email, first_name, last_name, created_at FROM users WHERE email = $1`,
       [email.toLowerCase()],
     );

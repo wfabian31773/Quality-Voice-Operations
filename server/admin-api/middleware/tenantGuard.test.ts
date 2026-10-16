@@ -41,6 +41,13 @@ describe('requireTenantContext', () => {
     expect(seen).toBe('t1');
     expect(getScopedTenantId()).toBeUndefined();
   });
+  it('leaves platform-admin requests unscoped (privileged pool)', () => {
+    const { req, res, next } = ctx({ user: { userId: 'u1', tenantId: 't1', isPlatformAdmin: true } });
+    let seen: string | undefined = 'unset';
+    next.mockImplementation(() => { seen = getScopedTenantId(); });
+    requireTenantContext(req, res, next);
+    expect(seen).toBeUndefined();
+  });
   it('blocks a cross-tenant body tenant_id', () => {
     const { req, res, next } = ctx({ user: { userId: 'u1', tenantId: 't1' }, body: { tenant_id: 't2' } });
     requireTenantContext(req, res, next);

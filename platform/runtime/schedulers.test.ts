@@ -114,7 +114,7 @@ describe('scheduler registry', () => {
   });
 
   it('startSchedulers starts schedulers (and their timers) in the privileged DB scope', async () => {
-    const { isPrivilegedScope } = await import('../db/tenantScope');
+    const { isPrivilegedScope, runWithTenantScope } = await import('../db/tenantScope');
     const seen: boolean[] = [];
     const probe: SchedulerDefinition = {
       name: 'probe',
@@ -124,10 +124,10 @@ describe('scheduler registry', () => {
       },
       stop: () => {},
     };
-    startSchedulers([probe], { voiceGatewayBaseUrl: 'https://voice.example' });
+    // Even when started from inside a tenant request scope.
+    runWithTenantScope('t1', () => startSchedulers([probe], { voiceGatewayBaseUrl: 'https://voice.example' }));
     await new Promise((r) => setTimeout(r, 5));
     expect(seen).toEqual([true, true]);
-    expect(isPrivilegedScope()).toBe(false);
   });
 
   it('stopSchedulers stops every started scheduler and survives a throwing stop', () => {

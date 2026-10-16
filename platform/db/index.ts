@@ -2,7 +2,13 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
 import { getScopedTenantId, isPrivilegedScope } from './tenantScope';
 
-export { runWithTenantScope, runWithPrivilegedScope, getScopedTenantId, isPrivilegedScope } from './tenantScope';
+export {
+  runWithTenantScope,
+  runWithPrivilegedScope,
+  runWithRestrictedScope,
+  getScopedTenantId,
+  isPrivilegedScope,
+} from './tenantScope';
 
 let _pool: Pool | null = null;
 let _privilegedPool: Pool | null = null;
@@ -160,12 +166,16 @@ function bindClientToTenant(client: PoolClient, tenantId: string): PoolClient {
 
 /**
  * Route restricted-pool work by scope (`./tenantScope`):
- *   - tenant scope (authenticated request): `query()` and checked-out
- *     clients are bound to app.tenant_id, so RLS sees the tenant once the
- *     pool connects as qvo_app (NOBYPASSRLS).
- *   - privileged scope (schedulers, nightly jobs): `query()` / `connect()`
- *     go to the privileged pool, as before the role switch.
- *   - no scope, callback-style and submittable queries: unchanged.
+ *   - tenant scope (authenticated tenant request): `query()` and checked-out
+ *     clients are bound to app.tenant_id, so RLS is enforced once the pool
+ *     connects as qvo_app (NOBYPASSRLS).
+ *   - restricted scope: the plain restricted pool (isolation suite).
+ *   - privileged scope or no scope (webhooks, public routes, voice gateway,
+ *     platform admins, schedulers): `query()` / `connect()` go to the
+ *     privileged pool, which is how they ran before the role switch.
+ * Callback-style and submittable queries are never rewritten, and nothing
+ * is rerouted when the privileged pool is this pool (no
+ * DATABASE_URL_PRIVILEGED).
  */
 export function bindPoolQueriesToTenantScope(pool: Pool, privilegedPool: () => Pool = () => pool): Pool {
   const unboundQuery = pool.query.bind(pool) as AnyQuery;
@@ -207,10 +217,10 @@ export function bindPoolQueriesToTenantScope(pool: Pool, privilegedPool: () => P
 }
 
 /**
- * Restricted pool. Inside `runWithTenantScope` its queries and checked-out
- * clients are bound to that tenant; inside `runWithPrivilegedScope` they go
- * to the privileged pool. Outside any scope, transactions must SET LOCAL
- * app.tenant_id via withTenantContext / withTenantClient.
+ * Restricted (qvo_app) pool. Inside `runWithTenantScope` its queries and
+ * checked-out clients are bound to that tenant; outside a tenant or
+ * restricted scope they are sent to the privileged pool (see
+ * bindPoolQueriesToTenantScope).
  */
 export function getPlatformPool(): Pool {
   if (!_pool) {

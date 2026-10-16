@@ -184,4 +184,15 @@ describe('bindPoolQueriesToTenantScope', () => {
     await runWithPrivilegedScope(() => pool.query('SELECT 1'));
     expect(f.poolQuery).toHaveBeenCalledTimes(1);
   });
+
+  it('sends unscoped work to a distinct privileged pool and keeps restricted scope on this pool', async () => {
+    const { bindPoolQueriesToTenantScope, runWithRestrictedScope } = await import('./index');
+    const f = fakePool();
+    const priv = fakePool();
+    const pool = bindPoolQueriesToTenantScope(f.pool as never, () => priv.pool as never);
+    await pool.query('SELECT 1');
+    await runWithRestrictedScope(() => pool.query('SELECT 2'));
+    expect(priv.poolQuery).toHaveBeenCalledTimes(1);
+    expect(f.poolQuery).toHaveBeenCalledTimes(1);
+  });
 });

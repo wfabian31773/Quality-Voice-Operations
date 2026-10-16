@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getPlatformPool, getPrivilegedPool, withPrivilegedClient } from '../db';
-import { runOutsideDbScope } from '../db/tenantScope';
+import { runWithRestrictedScope } from '../db/tenantScope';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('TENANT_ISOLATION');
@@ -278,7 +278,7 @@ export async function runAllIsolationTests(
 
   // The restricted-pool checks must hit the real app role even when the
   // daily run starts from a scheduler (privileged DB scope) or a request.
-  const { roleResult, rlsResults, ownerResults, crossTenantResults } = await runOutsideDbScope(async () => ({
+  const { roleResult, rlsResults, ownerResults, crossTenantResults } = await runWithRestrictedScope(async () => ({
     roleResult: await verifyConnectedRoleDoesNotBypassRls(),
     rlsResults: await verifyRLSEnabled(),
     ownerResults: await verifyRestrictedRoleCannotBypassAsOwner(),

@@ -5,7 +5,7 @@ vi.mock('../../platform/core/logger', () => ({
 }));
 
 import { runJob, nightlySteps } from './jobs';
-import { isPrivilegedScope } from '../../platform/db/tenantScope';
+import { isPrivilegedScope, runWithTenantScope } from '../../platform/db/tenantScope';
 import { SCHEDULERS, type SchedulerDefinition } from '../../platform/runtime/schedulers';
 
 describe('runJob', () => {
@@ -22,9 +22,10 @@ describe('runJob', () => {
 
   it('runs each step in the privileged DB scope', async () => {
     let privileged = false;
-    await runJob('nightly', [{ name: 'a', run: async () => { privileged = isPrivilegedScope(); } }]);
+    await runWithTenantScope('t1', () =>
+      runJob('nightly', [{ name: 'a', run: async () => { privileged = isPrivilegedScope(); } }]),
+    );
     expect(privileged).toBe(true);
-    expect(isPrivilegedScope()).toBe(false);
   });
 
   it('keeps going after a failing step but fails the job', async () => {
