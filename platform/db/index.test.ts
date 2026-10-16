@@ -196,3 +196,39 @@ describe('bindPoolQueriesToTenantScope', () => {
     expect(f.poolQuery).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('pingDatabasePools', () => {
+  async function setup(impl: (pool: 'restricted' | 'privileged', sql: string) => unknown) {
+    process.env.DATABASE_URL = 'postgresql://qvo_app@127.0.0.1:1/none';
+    process.env.DATABASE_URL_PRIVILEGED = 'postgresql://postgres@127.0.0.1:1/none';
+    const { Pool } = await import('pg');
+    const db = await import('./index');
+    // Spy before the pools exist: the restricted pool binds query() on creation.
+    let privileged: unknown;
+    vi.spyOn(Pool.prototype, 'query').mockImplementation(async function (this: unknown, sql: unknown) {
+      return impl(this === privileged ? 'privileged' : 'restricted', String(sql)) as never;
+    });
+    db.getPlatformPool();
+    privileged = db.getPrivilegedPool();
+    return db;
+  }
+
+  it('probes the restricted pool itself and the privileged pool', async () => {
+    const seen: string[] = [];
+    const db = await setup((pool, sql) => {
+      seen.push(`${pool}:${sql}`);
+      return { rows: [{ ok: 1 }] };
+    });
+    const result = await db.pingDatabasePools('SELECT 1 AS ok');
+    expect(result.rows[0]).toEqual({ ok: 1 });
+    expect(seen).toEqual(['restricted:SELECT 1 AS ok', 'privileged:SELECT 1']);
+  });
+
+  it('fails when the restricted pool is broken even if the privileged pool works', async () => {
+    const db = await setup((pool) => {
+      if (pool === 'privileged') return { rows: [] };
+      throw new Error('password authentication failed for user "qvo_app"');
+    });
+    await expect(db.pingDatabasePools()).rejects.toThrow('qvo_app');
+  });
+});

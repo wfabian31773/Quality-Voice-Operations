@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
-import { getScopedTenantId, isPrivilegedScope } from './tenantScope';
+import { getScopedTenantId, isPrivilegedScope, runWithRestrictedScope } from './tenantScope';
 
 export {
   runWithTenantScope,
@@ -253,6 +253,20 @@ export function getPrivilegedPool(): Pool {
   _privilegedPool = new Pool(getPoolConfig(privilegedUrl));
   attachPoolErrorHandler(_privilegedPool, 'privileged');
   return _privilegedPool;
+}
+
+/**
+ * Health / readiness probe. Runs `sql` on the restricted (qvo_app) pool
+ * itself, not the privileged pool that unscoped calls are routed to, and
+ * `SELECT 1` on the privileged pool, so a broken URL for either fails the
+ * probe. Returns the restricted-pool result.
+ */
+export async function pingDatabasePools(sql = 'SELECT 1'): Promise<{ rows: Record<string, unknown>[] }> {
+  const pool = getPlatformPool();
+  const result = await runWithRestrictedScope(() => pool.query(sql));
+  const privileged = getPrivilegedPool();
+  if (privileged !== pool) await privileged.query('SELECT 1');
+  return result;
 }
 
 export function getPlatformDb(): ReturnType<typeof drizzle> {

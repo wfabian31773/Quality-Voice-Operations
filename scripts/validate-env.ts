@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../platform/db';
+import { getPlatformPool, runWithRestrictedScope } from '../platform/db';
 import { validateBillingConfig } from '../platform/billing/stripe/plans';
 import { resolveProcessRole, isRenderRuntime, REPLIT_ONLY_ENV_NAMES, type ProcessRole } from '../platform/runtime/processRole';
 
@@ -439,8 +439,10 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
 
 export async function validateDatabaseConnection(): Promise<boolean> {
   try {
+    // The restricted (qvo_app) pool itself, not the privileged pool that
+    // unscoped calls are routed to.
     const pool = getPlatformPool();
-    const client = await pool.connect();
+    const client = await runWithRestrictedScope(() => pool.connect());
     const { rows } = await client.query('SELECT COUNT(*) AS cnt FROM schema_migrations');
     const migrationCount = parseInt(rows[0]?.cnt as string, 10);
     console.log(`  DB connection: OK (${migrationCount} migrations applied)`);
