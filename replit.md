@@ -1,5 +1,8 @@
 # Quality Voice Operations (QVO) — Multi-Tenant SaaS
 
+## Hosting
+Render is the target; Replit is the fallback until cutover. See `docs/deploy/render.md`. With `QVO_PROCESS_ROLE` unset (role `all`), the `.replit` run command behaves exactly as before: the Admin API starts every scheduler and proxies `/vg` to the voice gateway.
+
 ## Overview
 QVO is a multi-tenant SaaS platform designed to manage AI-powered voice operations for enterprises, enhancing customer service and sales. It facilitates the deployment and management of AI agents, handles customer interactions, and provides advanced analytics. Key capabilities include a visual agent builder, a real-time voice gateway, robust analytics, AI workforce orchestration, and an agent template marketplace. The platform offers a Tenant Portal, Platform Admin Console, and Operations Console, secured by a 4-tier RBAC system, aiming to boost efficiency, improve customer satisfaction, and create new revenue streams through AI in voice channels.
 

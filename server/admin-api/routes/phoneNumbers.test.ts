@@ -7,6 +7,11 @@ const a = vi.hoisted(() => ({
   queryMock: vi.fn(),
   releaseMock: vi.fn(),
   writeAuditLogMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+}));
+
+vi.mock('../../../platform/core/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: a.loggerErrorMock }),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -91,5 +96,32 @@ describe('POST /phone-numbers/provision', () => {
     );
     const res = await request(app()).post('/phone-numbers/provision').send({ phone_number: '+14155550123' });
     expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /phone-numbers/provision — webhook base URL (PR-00)', () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    for (const k of ['RENDER', 'REPLIT_DEV_DOMAIN', 'VOICE_GATEWAY_BASE_URL']) {
+      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    }
+  });
+
+  it('refuses before buying a number when no base URL can be resolved (never https://undefined)', async () => {
+    process.env.TWILIO_ACCOUNT_SID = 'AC00000000000000000000000000000000';
+    process.env.TWILIO_AUTH_TOKEN = 'test-token';
+    process.env.RENDER = 'true';
+    process.env.REPLIT_DEV_DOMAIN = 'should-not-be-used.replit.dev';
+    delete process.env.VOICE_GATEWAY_BASE_URL;
+    a.loggerErrorMock.mockReset();
+    a.queryMock.mockImplementation(async (sql: string) =>
+      sql.includes('COUNT(*) AS total') ? { rows: [{ total: '0', has_free: false }] } : { rows: [] },
+    );
+    const res = await request(app()).post('/phone-numbers/provision').send({ phone_number: '+14155550123' });
+    expect(res.status).toBe(500);
+    expect(a.loggerErrorMock).toHaveBeenCalledWith(
+      'Failed to provision phone number',
+      expect.objectContaining({ error: 'VOICE_GATEWAY_BASE_URL is not configured' }),
+    );
   });
 });

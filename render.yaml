@@ -1,0 +1,148 @@
+# Blueprint for QVO on Render (PR-00). See docs/deploy/render.md.
+#
+# - Region is immutable after creation: virginia for everything.
+# - autoDeployTrigger is off everywhere: merges to main never deploy by
+#   themselves. Releases go through scripts/render/deploy.ts (dry-run by
+#   default; voice only off-hours and at zero active calls).
+# - No secret values in this file. Shared secrets live in the `qvo-secrets`
+#   env group (created in the Dashboard before this Blueprint is applied);
+#   per-service secrets use `sync: false` and are entered in the Dashboard.
+# - Replit is unaffected: QVO_PROCESS_ROLE defaults to `all` there.
+# - Start commands run `node --import tsx` (one OS process) rather than
+#   `npx tsx`: `npm exec` does not forward SIGTERM to the node grandchild,
+#   which would skip the zero-dropped-call drain and orphan the process.
+#   tsx is a devDependency, installed by build.sh (`--include=dev`).
+previews:
+  generation: off
+projects:
+  - name: qvo
+    environments:
+      - name: production
+        services:
+          - type: web
+            name: qvo-voice
+            runtime: node
+            region: virginia
+            plan: starter # standard for pilots
+            numInstances: 1
+            buildCommand: bash scripts/render/build.sh voice
+            startCommand: node --import tsx server/voice-gateway/start.ts
+            healthCheckPath: /healthz
+            # Live calls drain naturally for up to DRAIN_TIMEOUT_MS (285 s)
+            # after SIGTERM; 300 s is Render's maximum.
+            maxShutdownDelaySeconds: 300
+            autoDeployTrigger: off
+            domains:
+              - voice.qualityvoiceoperations.com
+            envVars:
+              - fromGroup: qvo-secrets
+              - key: QVO_PROCESS_ROLE
+                value: voice
+              - key: APP_ENV
+                value: production
+              - key: DISABLE_PHI_LOGGING
+                value: "true"
+              - key: DRAIN_TIMEOUT_MS
+                value: "285000"
+              - key: VOICE_PUBLIC_BASE_URL
+                value: https://voice.qualityvoiceoperations.com
+              - key: VOICE_GATEWAY_BASE_URL
+                value: https://voice.qualityvoiceoperations.com
+              - key: APP_URL
+                value: https://api.qualityvoiceoperations.com
+
+          - type: web
+            name: qvo-api
+            runtime: node
+            region: virginia
+            plan: starter
+            numInstances: 1
+            buildCommand: bash scripts/render/build.sh api
+            # Migrations use PLATFORM_DB_POOL_URL in production today
+            # (scripts/run-migrations.ts). Switch to the privileged URL name
+            # once PR #88 (DATABASE_URL_PRIVILEGED) merges.
+            preDeployCommand: npm run db:migrate
+            startCommand: node --import tsx server/admin-api/start.ts
+            healthCheckPath: /healthz
+            maxShutdownDelaySeconds: 60
+            autoDeployTrigger: off
+            domains:
+              - api.qualityvoiceoperations.com
+            envVars:
+              - fromGroup: qvo-secrets
+              - key: QVO_PROCESS_ROLE
+                value: api
+              - key: APP_ENV
+                value: production
+              - key: DISABLE_PHI_LOGGING
+                value: "true"
+              - key: APP_URL
+                value: https://api.qualityvoiceoperations.com
+              - key: ADMIN_API_BASE_URL
+                value: https://api.qualityvoiceoperations.com
+              - key: VOICE_GATEWAY_BASE_URL
+                value: https://voice.qualityvoiceoperations.com
+              - key: VOICE_GATEWAY_INTERNAL_HOSTPORT
+                fromService:
+                  type: web
+                  name: qvo-voice
+                  property: hostport
+              - key: STRIPE_WEBHOOK_SECRET
+                sync: false
+
+          - type: worker
+            name: qvo-worker
+            runtime: node
+            region: virginia
+            plan: starter
+            numInstances: 1
+            buildCommand: bash scripts/render/build.sh worker
+            startCommand: node --import tsx server/worker/start.ts
+            maxShutdownDelaySeconds: 120
+            autoDeployTrigger: off
+            envVars:
+              - fromGroup: qvo-secrets
+              - key: QVO_PROCESS_ROLE
+                value: worker
+              - key: APP_ENV
+                value: production
+              - key: DISABLE_PHI_LOGGING
+                value: "true"
+              - key: APP_URL
+                value: https://api.qualityvoiceoperations.com
+              - key: ADMIN_API_BASE_URL
+                value: https://api.qualityvoiceoperations.com
+              - key: VOICE_GATEWAY_BASE_URL
+                value: https://voice.qualityvoiceoperations.com
+              # Unset/"none" during shadow (the code defaults to none for
+              # this role); a list or "all" at cutover.
+              - key: SCHEDULERS_ENABLED
+                sync: false
+              # Session-mode Postgres URL (Supabase session pooler :5432 or
+              # direct) for the leader advisory lock. Never :6543.
+              - key: WORKER_LEADER_DB_URL
+                sync: false
+
+          - type: cron
+            name: qvo-nightly
+            runtime: node
+            region: virginia
+            plan: starter
+            schedule: "30 7 * * *" # 07:30 UTC = 3:30 AM EDT / 2:30 AM EST
+            buildCommand: bash scripts/render/build.sh worker
+            startCommand: node --import tsx server/jobs/run.ts nightly
+            autoDeployTrigger: off
+            envVars:
+              - fromGroup: qvo-secrets
+              - key: QVO_PROCESS_ROLE
+                value: cron
+              - key: APP_ENV
+                value: production
+              - key: DISABLE_PHI_LOGGING
+                value: "true"
+              - key: APP_URL
+                value: https://api.qualityvoiceoperations.com
+              - key: ADMIN_API_BASE_URL
+                value: https://api.qualityvoiceoperations.com
+              - key: VOICE_GATEWAY_BASE_URL
+                value: https://voice.qualityvoiceoperations.com
