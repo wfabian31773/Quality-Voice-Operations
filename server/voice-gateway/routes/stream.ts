@@ -1,4 +1,5 @@
 import type { Server as HTTPServer, IncomingMessage } from 'http';
+import { timingSafeEqual } from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createLogger } from '../../../platform/core/logger';
 import { redactPHI } from '../../../platform/core/phi/redact';
@@ -34,12 +35,28 @@ const logger = createLogger('WS_STREAM');
 const widgetLogger = createLogger('WS_WIDGET');
 
 const STREAM_AUTH_TOKEN = process.env.VOICE_GATEWAY_STREAM_TOKEN;
+const START_AUTH_TIMEOUT_MS = 10_000;
+
+function streamTokensEqual(provided: unknown, expected: string): boolean {
+  if (typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
 
 function validateStreamOrigin(request: IncomingMessage): boolean {
   if (!STREAM_AUTH_TOKEN) return true;
   const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
   const token = url.searchParams.get('token');
-  return token === STREAM_AUTH_TOKEN;
+  // Twilio does not forward Stream URL query strings (error 31920). A query
+  // token is optional here; the start-frame customParameters.token is required.
+  if (token == null) return true;
+  return streamTokensEqual(token, STREAM_AUTH_TOKEN);
 }
 
 function createBudgetGuard(tenantId: string): BudgetGuardService {
@@ -147,6 +164,14 @@ export function attachWebSocket(server: HTTPServer): void {
     // state (so the demo live-call UI never ends).
     let streamEnded = false;
     const streamStartedAt = Date.now();
+    let startAuthenticated = !STREAM_AUTH_TOKEN;
+    const startAuthTimeout = STREAM_AUTH_TOKEN
+      ? setTimeout(() => {
+          if (startAuthenticated) return;
+          logger.warn('WebSocket closed — start frame timeout');
+          ws.close(1008);
+        }, START_AUTH_TIMEOUT_MS)
+      : undefined;
     let slog: SessionLogger = logger;
 
     // Realtime-stream telemetry timing for the live (non-probe) path. Mirrors
@@ -338,7 +363,19 @@ export function attachWebSocket(server: HTTPServer): void {
 
         switch (msg.event) {
           case 'start': {
-            const params = msg.start?.customParameters ?? {};
+            const rawParams = (msg.start?.customParameters ?? {}) as Record<string, unknown>;
+            if (STREAM_AUTH_TOKEN) {
+              if (!streamTokensEqual(rawParams.token, STREAM_AUTH_TOKEN)) {
+                logger.warn('Stream start rejected — invalid stream token');
+                if (startAuthTimeout) clearTimeout(startAuthTimeout);
+                ws.close(1008);
+                return;
+              }
+              startAuthenticated = true;
+              if (startAuthTimeout) clearTimeout(startAuthTimeout);
+            }
+            const params = { ...rawParams } as Record<string, string>;
+            delete params.token;
             tenantId = params.tenantId;
             const agentId = params.agentId;
             streamAgentId = agentId;
@@ -816,6 +853,7 @@ export function attachWebSocket(server: HTTPServer): void {
     });
 
     ws.on('close', () => {
+      if (startAuthTimeout) clearTimeout(startAuthTimeout);
       finalizeStream().catch((err) => {
         slog.error('Error during WebSocket close finalization', { error: String(err) });
       });

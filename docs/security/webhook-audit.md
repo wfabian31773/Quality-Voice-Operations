@@ -64,7 +64,7 @@ These are intentionally public but are **not** third-party webhooks and are out 
 
 ## 4. Adjacent: `/twilio/stream` WebSocket
 
-The voice gateway also exposes a WebSocket upgrade at `/twilio/stream` (`server/voice-gateway/routes/stream.ts`). It is **not** a Twilio webhook (Twilio cannot sign WS upgrades), but it is externally reachable and accepts streaming audio that is billed against tenant budgets. Authentication is via the `?token=` query parameter checked against `VOICE_GATEWAY_STREAM_TOKEN`. The same env var is used to mint the token in the TwiML `<Stream>` element returned by `/twilio/voice`, so Twilio echoes it back on the upgrade.
+The voice gateway also exposes a WebSocket upgrade at `/twilio/stream` (`server/voice-gateway/routes/stream.ts`). It is **not** a Twilio webhook (Twilio cannot sign WS upgrades), but it is externally reachable and accepts streaming audio that is billed against tenant budgets. Authentication is via a nested TwiML `<Parameter name="token">` on the `<Stream>` element minted from `VOICE_GATEWAY_STREAM_TOKEN`. Twilio Media Streams do not forward Stream URL query strings (error 31920); they echo nested `<Parameter>` values on the WebSocket `start` frame as `customParameters`. The gateway validates `customParameters.token` against `VOICE_GATEWAY_STREAM_TOKEN` before any session, budget, model, or billable work. A `?token=` query string is not required on the upgrade; if one is present it is still accepted.
 
 If `VOICE_GATEWAY_STREAM_TOKEN` is unset, both the TwiML generator and the WS validator silently no-op (development convenience). Production deployments **must** set this secret. See `docs/deployment-checklist.md` for the required env vars.
 

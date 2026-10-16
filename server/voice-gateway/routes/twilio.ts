@@ -166,15 +166,15 @@ function resolveForwardedWsTarget(req: Request): { wsProtocol: 'wss' | 'ws'; hos
 // that configured origin and never trust forwarded headers. Otherwise keep
 // the Replit path: forwarded headers + the admin-api `/vg` prefix.
 export function buildStreamUrl(req: Request): string {
-  const streamToken = process.env.VOICE_GATEWAY_STREAM_TOKEN;
-  const tokenParam = streamToken ? `?token=${encodeURIComponent(streamToken)}` : '';
+  // Twilio Media Streams drop Stream URL query strings (error 31920).
+  // The stream token is sent as a nested <Parameter>, not `?token=`.
   const publicBase = resolveVoicePublicBaseUrl();
   if (publicBase) {
     const wsBase = publicBase.replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:');
-    return `${wsBase}/twilio/stream${tokenParam}`;
+    return `${wsBase}/twilio/stream`;
   }
   const { wsProtocol, host } = resolveForwardedWsTarget(req);
-  return `${wsProtocol}://${host}/vg/twilio/stream${tokenParam}`;
+  return `${wsProtocol}://${host}/vg/twilio/stream`;
 }
 
 /** Query flag on the drain `<Redirect>` so the redirected request is never redirected again. */
@@ -187,6 +187,13 @@ function escapeXmlAttr(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+function streamTokenParameterXml(): string {
+  const token = process.env.VOICE_GATEWAY_STREAM_TOKEN;
+  if (!token) return '';
+  return `
+      <Parameter name="token" value="${escapeXmlAttr(token)}" />`;
 }
 
 router.use('/twilio/voice', twilioSignatureMiddleware);
@@ -377,7 +384,7 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
 <Response>
   ${preTransferSay}
   <Connect>
-    <Stream url="${wsUrl}">
+    <Stream url="${wsUrl}">${streamTokenParameterXml()}
       <Parameter name="tenantId" value="${tenantId}" />
       <Parameter name="agentId" value="${agentId}" />
       <Parameter name="agentType" value="${agentType}" />
@@ -875,7 +882,7 @@ router.post('/twilio/outbound', async (req: Request, res: Response) => {
     `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}">
+    <Stream url="${wsUrl}">${streamTokenParameterXml()}
       <Parameter name="tenantId" value="${tenantId}" />
       <Parameter name="agentId" value="${agentId}" />
       <Parameter name="agentType" value="outbound" />
