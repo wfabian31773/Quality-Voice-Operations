@@ -49,20 +49,12 @@ The app must **not** connect as `postgres`. That role has `rolbypassrls=true`, s
 
 | Env var | Role after rollout |
 |---------|--------------------|
-| `DATABASE_URL` (dev) / `PLATFORM_DB_POOL_URL` (prod) | Restricted `qvo_app` (`LOGIN`, `NOBYPASSRLS`) |
-| `DATABASE_URL_PRIVILEGED` | Current `postgres` URL (migrations, workers, platform-admin, seeds, pre-tenant webhooks) |
+| `PLATFORM_DB_POOL_URL` (production, Render `qvo-secrets`) / `DATABASE_URL` (development only) | Restricted `qvo_app` (`LOGIN`, `NOBYPASSRLS`) |
+| `DATABASE_URL_PRIVILEGED` | Current `postgres` URL (migrations, workers, platform-admin, seeds, pre-tenant webhooks, voice number lookup) |
 
-**Rollout checklist (do not skip):**
+**Rollout, verification and rollback:** follow [`docs/runbooks/qvo-app-rls-rollout.md`](docs/runbooks/qvo-app-rls-rollout.md) step by step (Render first; Replit is legacy/fallback).
 
-1. Run migrations (includes `120_qvo_app_restricted_role.sql`). Use `DATABASE_URL_PRIVILEGED` or the current postgres URL so DDL is allowed.
-2. In Supabase, set a password on `qvo_app` out-of-band (`ALTER ROLE qvo_app WITH PASSWORD '…'`). The migration does **not** store a password.
-3. In Replit, add `DATABASE_URL_PRIVILEGED` = the current postgres `DATABASE_URL`.
-4. Switch `DATABASE_URL` (and production `PLATFORM_DB_POOL_URL`) to the `qvo_app` connection string.
-5. Redeploy.
-6. Confirm the isolation suite passes, including **Connected role subject to RLS**.
-7. **Rollback:** swap `DATABASE_URL` / `PLATFORM_DB_POOL_URL` back to the postgres URL (`DATABASE_URL_PRIVILEGED`). Privileged jobs keep working; RLS is bypassed again.
-
-Tenant-scoped request handlers must `BEGIN` and `SET LOCAL app.tenant_id` via `withTenantContext` before querying. Cross-tenant work must use `withPrivilegedClient` / `getPrivilegedPool()`.
+Authenticated admin-API requests run inside `runWithTenantScope(tenantId)` (set by `requireTenantContext` / API-key auth), so `getPlatformPool().query()` there is bound to `app.tenant_id` automatically. Explicit transactions must `BEGIN` and `SET LOCAL app.tenant_id` via `withTenantContext` / `withTenantClient`. Cross-tenant work must use `withPrivilegedClient` / `getPrivilegedPool()`.
 
 ## Linting
 
