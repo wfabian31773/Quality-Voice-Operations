@@ -23,14 +23,14 @@ function paginate(req: { query: Record<string, unknown> }): { limit: number; off
 router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
-  const pool = getPlatformPool();
-  const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
-    await withTenantContext(client, tenantId, async () => {});
-
-    const { rows } = await client.query(
+    // Members are users with a user_roles row in this tenant, including users
+    // whose home tenant is another one (invited by email). The users RLS
+    // policy is home-tenant based, so read through the privileged pool with
+    // the explicit membership predicate.
+    const pool = getPrivilegedPool();
+    const { rows } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active,
               u.email_verified, u.last_login_at, u.created_at,
               ur.role
@@ -41,11 +41,10 @@ router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
       [tenantId, limit, offset],
     );
 
-    const { rows: countRows } = await client.query(
+    const { rows: countRows } = await pool.query(
       `SELECT COUNT(*) AS total FROM user_roles WHERE tenant_id = $1`,
       [tenantId],
     );
-    await client.query('COMMIT');
 
     const mappedUsers = rows.map((row) => ({
       ...row,
@@ -54,11 +53,8 @@ router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
 
     return res.json({ users: mappedUsers, total: parseInt(countRows[0].total as string), limit, offset });
   } catch (err) {
-    await client.query('ROLLBACK');
     logger.error('Failed to list users', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list users' });
-  } finally {
-    client.release();
   }
 });
 

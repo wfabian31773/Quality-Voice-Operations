@@ -8,7 +8,7 @@
  * canary never touches demo/customer data.
  *
  * Idempotent: ON CONFLICT DO UPDATE keeps re-runs safe. Targets the live DB via
- * PLATFORM_DB_POOL_URL.
+ * DATABASE_URL_PRIVILEGED (preferred, postgres) or PLATFORM_DB_POOL_URL.
  *
  *   PLATFORM_DB_POOL_URL=... npm run seed:diagnostic-agent
  *
@@ -17,8 +17,9 @@
  */
 import { Pool } from 'pg';
 
-const url = process.env.PLATFORM_DB_POOL_URL;
-if (!url) throw new Error('PLATFORM_DB_POOL_URL is required');
+// Privileged (postgres) when set: seeding writes RLS tables without a tenant context.
+const url = process.env.DATABASE_URL_PRIVILEGED || process.env.PLATFORM_DB_POOL_URL;
+if (!url) throw new Error('DATABASE_URL_PRIVILEGED or PLATFORM_DB_POOL_URL is required');
 
 const TENANT_ID = 'diagnostic';
 const AGENT_ID = 'diagnostic-probe';
