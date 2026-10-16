@@ -7,7 +7,7 @@ import { FallbackManager } from './FallbackManager';
 import { SafetyGate } from './SafetyGate';
 import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
-import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction } from './cancelRescheduleLanguage';
+import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction, isPolicyOrNegatedCancel } from './cancelRescheduleLanguage';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -262,6 +262,9 @@ export class ReasoningEngine {
     this.slotTracker.advanceTurn();
 
     const previousIntent = this.currentIntent;
+    if (previousIntent !== 'unknown' && isPolicyOrNegatedCancel(utterance)) {
+      intent = previousIntent;
+    }
 
     if (previousIntent !== 'unknown' && intent !== previousIntent && intent !== 'unknown') {
       const priorContext = this.buildContext(utterance);
@@ -288,10 +291,11 @@ export class ReasoningEngine {
         }
       }
 
-      if (!this.workflowPlan || this.workflowPlan.status !== 'active') {
-        const context = this.buildContext(utterance);
-        this.workflowPlan = this.workflowPlanner.createPlan(context);
+      if (this.workflowPlan?.status === 'active') {
+        this.workflowPlanner.markAbandoned(this.workflowPlan);
       }
+      const context = this.buildContext(utterance);
+      this.workflowPlan = this.workflowPlanner.createPlan(context);
     }
 
     this.extractSlotsFromUtterance(utterance);

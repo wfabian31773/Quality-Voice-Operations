@@ -16,7 +16,7 @@ const CANCEL_RESCHEDULE_PHRASES = [
   'cambiar cita',
 ];
 
-function isPolicyOrNegatedCancel(utterance: string): boolean {
+export function isPolicyOrNegatedCancel(utterance: string): boolean {
   const lower = utterance.toLowerCase();
   if (/\b(?:cancellation|cancel|cancelaci[oó]n)\s+polic(?:y|ies)\b/.test(lower)) return true;
   if (/\bpol[ií]tica de cancelaci[oó]n\b/.test(lower)) return true;

@@ -459,6 +459,31 @@ describe('tool library handlers', () => {
     expect(delivered.success).toBe(true);
   });
 
+  it('returns a stale-status conflict after confirm without retrying', async () => {
+    const challenge = await executeUpdateBooking({ action: 'cancel' }, ctx);
+    transitionBooking.mockResolvedValueOnce({
+      ok: false,
+      httpStatus: 409,
+      body: {
+        error: 'That appointment was just changed by the shop. Do not claim it was cancelled or moved. Offer to check again or leave a message.',
+        reason: 'stale_status',
+      },
+    });
+
+    const conflict = await executeUpdateBooking({
+      action: 'cancel',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, confirmCtx);
+
+    expect(conflict.success).toBe(true);
+    expect(conflict.status).toBe('conflict');
+    expect(String(conflict.message)).toMatch(/just changed/i);
+    expect(isPendingBookingChallenge(conflict)).toBe(true);
+    expect(() => assertGatewayDeliversToModel(JSON.stringify(conflict))).not.toThrow();
+    expect(transitionBooking).toHaveBeenCalledTimes(1);
+  });
+
   it('returns a not-found result without treating it as a tool error', async () => {
     upcomingRows.splice(0, upcomingRows.length);
     const result = await executeUpdateBooking({ action: 'cancel' }, ctx);

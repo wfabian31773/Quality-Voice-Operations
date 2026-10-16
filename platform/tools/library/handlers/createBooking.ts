@@ -297,7 +297,9 @@ export async function executeUpdateBooking(
             action,
             status: 'conflict',
             bookingId: selected.bookingId,
-            message: 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.',
+            message: transition.body.reason === 'stale_status'
+              ? String(transition.body.error ?? 'That appointment was just changed by the shop. Do not claim it was cancelled or moved. Offer to check again or leave a message.')
+              : 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.',
           });
         }
         if (transition.httpStatus === 404) {

@@ -256,10 +256,21 @@ export async function transitionBooking(
     }
   }
 
-  await pool.query(
-    `UPDATE bookings SET ${updateFragments.join(', ')} WHERE id = $1 AND tenant_id = $2`,
+  updateValues.push(String(booking.status));
+  const { rowCount } = await pool.query(
+    `UPDATE bookings SET ${updateFragments.join(', ')} WHERE id = $1 AND tenant_id = $2 AND status = $${updateValues.length}`,
     updateValues,
   );
+  if (!rowCount) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      body: {
+        error: 'That appointment was just changed by the shop. Do not claim it was cancelled or moved. Offer to check again or leave a message.',
+        reason: 'stale_status',
+      },
+    };
+  }
 
   if (action === 'reschedule') {
     // Original row is already marked rescheduled; copy its prior status so

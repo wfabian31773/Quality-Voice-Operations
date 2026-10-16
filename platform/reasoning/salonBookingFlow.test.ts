@@ -199,6 +199,95 @@ describe('salon booking conversation', () => {
     }).allowed).toBe(false);
   });
 
+  it('switches from a mid-call booking to cancel and reaches update_booking', () => {
+    const engine = makeSalonEngine();
+    engine.processUtterance(
+      'Hi, I want to book a haircut tomorrow at 2pm. My name is Jordan Lee, you can reach me at 555-201-3344.',
+      'book_appointment',
+      'high',
+    );
+    expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+    expect(engine.getCurrentWorkflowStepTool()).toBe('create_booking');
+
+    const cancelUtterance = 'actually, cancel my appointment, this is Jordan';
+    const classified = engine.classifyIntent(cancelUtterance);
+    expect(classified.intent).toBe('reschedule_cancel');
+
+    const decision = engine.processUtterance(
+      cancelUtterance,
+      classified.intent,
+      classified.confidence,
+    );
+    expect(engine.getWorkflowPlan()?.intent).toBe('reschedule_cancel');
+    expect(engine.getWorkflowPlan()?.status).toBe('active');
+    expect(decision.toolToExecute).toBe('update_booking');
+    expect(decision.toolToExecute).not.toBe('create_booking');
+
+    const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+    expect(slots.action?.value).toBe('cancel');
+    expect(engine.authorizeToolRequest('update_booking', {
+      action: 'cancel',
+      contactName: 'Jordan',
+    }).allowed).toBe(true);
+  });
+
+  it('switches from a mid-call booking to cancel in Spanish', () => {
+    const engine = makeSalonEngine();
+    engine.processUtterance(
+      'Quiero reservar un corte mañana a las 2, this is Jordan',
+      'book_appointment',
+      'high',
+    );
+
+    const cancelUtterance = 'en realidad, quiero cancelar mi cita, this is Jordan';
+    const classified = engine.classifyIntent(cancelUtterance);
+    expect(classified.intent).toBe('reschedule_cancel');
+
+    const decision = engine.processUtterance(
+      cancelUtterance,
+      classified.intent,
+      classified.confidence,
+    );
+    expect(decision.toolToExecute).toBe('update_booking');
+    const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+    expect(slots.action?.value).toBe('cancel');
+    expect(engine.authorizeToolRequest('update_booking', {
+      action: 'cancel',
+      contactName: 'Jordan',
+    }).allowed).toBe(true);
+  });
+
+  it('does not switch off a booking for policy questions or cancel-negations', () => {
+    const phrases = [
+      'what is your cancellation policy?',
+      'do not cancel my appointment',
+      "don't cancel my appointment",
+      'cuál es su política de cancelación',
+      'no cancele mi cita',
+    ];
+
+    for (const phrase of phrases) {
+      const engine = makeSalonEngine();
+      engine.processUtterance(
+        'Hi, I want to book a haircut tomorrow at 2pm. My name is Jordan Lee, you can reach me at 555-201-3344.',
+        'book_appointment',
+        'high',
+      );
+      const classified = engine.classifyIntent(phrase);
+      expect(classified.intent).not.toBe('reschedule_cancel');
+
+      const decision = engine.processUtterance(phrase, classified.intent, classified.confidence);
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+      expect(engine.getWorkflowPlan()?.status).toBe('active');
+      expect(engine.getCurrentWorkflowStepTool()).toBe('create_booking');
+      expect(decision.toolToExecute).not.toBe('update_booking');
+      expect(engine.authorizeToolRequest('update_booking', {
+        action: 'cancel',
+        contactName: 'Jordan Lee',
+      }).allowed).toBe(false);
+    }
+  });
+
   it('routes cancel and reschedule to update_booking and never authorizes create_booking', () => {
     const engine = makeSalonEngine();
     const classified = engine.classifyIntent('I need to cancel my appointment, this is Jordan');
