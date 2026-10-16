@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const a = vi.hoisted(() => ({ poolQueryMock: vi.fn(), getSalesAlertSettingsMock: vi.fn() }));
 
-vi.mock('../../../platform/db', () => ({ getPlatformPool: () => ({ query: a.poolQueryMock }) }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: () => ({ query: a.poolQueryMock }),
+  getPrivilegedPool: () => ({ query: a.poolQueryMock }),
+}));
 vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
 vi.mock('../../../platform/messaging/SlackWebhookNotifier', () => ({ postToOpsSlackWebhook: vi.fn().mockResolvedValue(undefined), getOpsSlackWebhookUrl: () => null }));
 vi.mock('../../../platform/email/EmailService', () => ({ sendEmail: vi.fn().mockResolvedValue({ success: true }) }));

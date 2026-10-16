@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const a = vi.hoisted(() => ({ poolQueryMock: vi.fn() }));
 
-vi.mock('../../../platform/db', () => ({ getPlatformPool: () => ({ query: a.poolQueryMock }) }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: () => ({ query: a.poolQueryMock }),
+  getPrivilegedPool: () => ({ query: a.poolQueryMock }),
+}));
 vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
 
 import {

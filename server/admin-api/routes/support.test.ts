@@ -15,7 +15,10 @@ vi.mock('../middleware/auth', () => ({
   },
 }));
 // requirePlatformAdmin from ../middleware/rbac stays real.
-vi.mock('../../../platform/db', () => ({ getPlatformPool: () => ({ query: a.poolQueryMock }) }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: () => ({ query: a.poolQueryMock }),
+  getPrivilegedPool: () => ({ query: a.poolQueryMock }),
+}));
 vi.mock('../../../platform/email/EmailService', () => ({ sendEmail: a.sendEmailMock }));
 vi.mock('../../../platform/email/SupportEmailSuppression', () => ({
   addSupportEmailSuppression: vi.fn(), addSupportEmailSuppressionStrict: vi.fn(), addSupportEmailUnsubscribe: vi.fn(),
