@@ -18,6 +18,7 @@ import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
 import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
 import { resolveProcessRole, resolveVoicePort, isRenderRuntime, scrubReplitFallbacks } from '../../platform/runtime/processRole';
 import { markEnvValidated, markRegistriesLoaded } from '../../platform/runtime/health';
+import { closeWithTimeout } from '../../platform/runtime/boundedClose';
 import { createVoiceShutdown } from './shutdown';
 
 const logger = createLogger('VOICE_GATEWAY');
@@ -74,7 +75,9 @@ server.listen(PORT, '0.0.0.0', () => {
 const { drainAndExit, fastShutdown } = createVoiceShutdown({
   server,
   sessions: sessionManager,
-  closePool: closePlatformPool,
+  closePool: async () => {
+    await closeWithTimeout('DB pool', closePlatformPool);
+  },
   stopCanary: stopStreamCanary,
   exit: (code) => process.exit(code),
 });

@@ -15,6 +15,7 @@ import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityT
 import { selectSchedulers, startSchedulers, stopSchedulers } from '../../platform/runtime/schedulers';
 import { resolveProcessRole, resolveApiPort, isRenderRuntime, scrubReplitFallbacks, resolveVoiceGatewayBaseUrl } from '../../platform/runtime/processRole';
 import { markDraining, markEnvValidated, markRegistriesLoaded } from '../../platform/runtime/health';
+import { closeWithTimeout } from '../../platform/runtime/boundedClose';
 
 const logger = createLogger('ADMIN_API');
 
@@ -153,9 +154,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     server.closeIdleConnections?.();
   });
 
-  await closePlatformPool().catch((err) => {
-    logger.warn('DB pool close failed', { error: String(err) });
-  });
+  await closeWithTimeout('DB pool', closePlatformPool);
   logger.info('Shutdown complete');
   process.exit(0);
 }

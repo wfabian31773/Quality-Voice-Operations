@@ -10,6 +10,7 @@ import { closePlatformPool } from '../../platform/db';
 import { createLogger } from '../../platform/core/logger';
 import { validateEnvironment } from '../../scripts/validate-env';
 import { resolveProcessRole, isRenderRuntime, scrubReplitFallbacks } from '../../platform/runtime/processRole';
+import { closeWithTimeout } from '../../platform/runtime/boundedClose';
 import { JOBS, runJob } from './jobs';
 
 const logger = createLogger('JOBS');
@@ -40,6 +41,6 @@ main()
     return 1;
   })
   .then(async (code) => {
-    await closePlatformPool().catch(() => {});
+    await closeWithTimeout('DB pool', closePlatformPool);
     process.exit(code);
   });

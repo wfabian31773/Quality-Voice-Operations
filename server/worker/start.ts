@@ -19,6 +19,7 @@ import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorN
 import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
 import { selectSchedulers } from '../../platform/runtime/schedulers';
 import { LeaderElector, resolveLeaderLockUrl } from '../../platform/runtime/leaderLock';
+import { closeWithTimeout } from '../../platform/runtime/boundedClose';
 import {
   resolveProcessRole,
   isRenderRuntime,
@@ -76,7 +77,9 @@ const worker = new SchedulerWorker({
       onLose: hooks.onLose,
     }),
   pool: () => getPlatformPool(),
-  closePool: closePlatformPool,
+  closePool: async () => {
+    await closeWithTimeout('DB pool', closePlatformPool);
+  },
 });
 
 worker.start().catch((err) => {
