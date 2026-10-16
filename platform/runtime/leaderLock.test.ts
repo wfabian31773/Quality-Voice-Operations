@@ -115,6 +115,30 @@ describe('LeaderElector', () => {
     await e.stop();
   });
 
+  it('gives up leadership (onLose, lock freed) when onAcquire throws, then retries', async () => {
+    let failAcquire = true;
+    const onAcquire = vi.fn(() => {
+      if (failAcquire) {
+        failAcquire = false;
+        throw new Error('scheduler threw on start');
+      }
+    });
+    const { e, clients, onLose } = elector({ onAcquire, healthCheckIntervalMs: 1_000 });
+    await e.start();
+    expect(e.isLeader()).toBe(false);
+    expect(onLose).toHaveBeenCalledTimes(1);
+    expect(clients[0].ended).toBe(true);
+    expect(FakeClient.lockHolder).toBeNull();
+    // No health check fires on the dropped client.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(clients[0].queries.filter((q) => q === 'SELECT 1')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(e.isLeader()).toBe(true);
+    expect(onAcquire).toHaveBeenCalledTimes(2);
+    expect(clients).toHaveLength(2);
+    await e.stop();
+  });
+
   it('retries after a failed connection attempt', async () => {
     let fail = true;
     const { e } = elector({

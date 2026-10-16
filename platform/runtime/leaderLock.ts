@@ -144,7 +144,13 @@ export class LeaderElector {
         this.leader = true;
         logger.info('Acquired worker leadership');
         this.scheduleHealthCheck();
-        await this.opts.onAcquire();
+        try {
+          await this.opts.onAcquire();
+        } catch (err) {
+          logger.error('onAcquire handler failed; giving up leadership', { error: String(err) });
+          await this.abandonLeadership();
+          this.scheduleRetry();
+        }
         return;
       }
       logger.info('Another worker holds leadership; standing by', { retryInMs: this.retryIntervalMs });
@@ -199,6 +205,21 @@ export class LeaderElector {
       }
     }
     this.scheduleRetry();
+  }
+
+  /** Undo a partial onAcquire: stop what was started, then free the lock. */
+  private async abandonLeadership(): Promise<void> {
+    this.leader = false;
+    if (this.healthTimer) {
+      clearTimeout(this.healthTimer);
+      this.healthTimer = null;
+    }
+    try {
+      await this.opts.onLose();
+    } catch (err) {
+      logger.error('onLose handler failed', { error: String(err) });
+    }
+    await this.dropClient();
   }
 
   private async dropClient(): Promise<void> {
