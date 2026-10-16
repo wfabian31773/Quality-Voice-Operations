@@ -72,7 +72,7 @@ BEGIN
         ON col.table_schema = n.nspname
        AND col.table_name = c.relname
      WHERE n.nspname = 'public'
-       AND c.relkind = 'r'
+       AND c.relkind IN ('r', 'p') -- include partitioned parents (call_events)
        AND c.relrowsecurity
        AND col.column_name = 'tenant_id'
   LOOP

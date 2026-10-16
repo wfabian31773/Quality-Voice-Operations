@@ -11,6 +11,7 @@ import {
   pickActiveTenantForIsolationTest,
   runAllIsolationTests,
   verifyConnectedRoleDoesNotBypassRls,
+  verifyRestrictedRoleCannotBypassAsOwner,
   verifyRLSEnabled,
 } from './TenantIsolationService';
 
@@ -295,7 +296,7 @@ export async function runTenantIsolationScheduledCycle(): Promise<IsolationSched
 
     let runResult: RunAllIsolationTestsResult;
     if (tenantId === null) {
-      // No active tenant — still run the RLS-enabled checks so we get a
+      // No active tenant — still run the RLS-enabled, role and FORCE checks so we get a
       // signal even before the first customer onboards. Skip the cross-
       // tenant suite (it requires a tenant context).
       logger.info('No active tenant available; running RLS-enabled and role checks only');
@@ -304,6 +305,7 @@ export async function runTenantIsolationScheduledCycle(): Promise<IsolationSched
       const rlsResults = [
         await runWithRestrictedScope(() => verifyConnectedRoleDoesNotBypassRls()),
         ...(await verifyRLSEnabled()),
+        ...(await runWithRestrictedScope(() => verifyRestrictedRoleCannotBypassAsOwner())),
       ];
       const passed = rlsResults.filter((r) => r.passed).length;
       const failed = rlsResults.filter((r) => !r.passed).length;

@@ -131,7 +131,7 @@ export async function verifyRestrictedRoleCannotBypassAsOwner(): Promise<Isolati
          FROM pg_class c
          JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public'
-          AND c.relkind = 'r'
+          AND c.relkind IN ('r', 'p')
           AND c.relname = ANY($1::text[])`,
       [RLS_TABLES],
     );

@@ -158,6 +158,15 @@ describe.skipIf(!PRIV_URL)('qvo_app RLS against real Postgres', () => {
     });
   });
 
+  it('withTenantClient uses qvo_app even outside a request scope', async () => {
+    const count = (tenantId: string) =>
+      db.withTenantClient(tenantId, async (client) =>
+        Number((await client.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = $1`, [TENANT_A])).rows[0].n),
+      );
+    expect(await count(TENANT_A)).toBe(1);
+    expect(await count(TENANT_B)).toBe(0); // privileged would return 1
+  });
+
   it('sends restricted-pool work to the privileged pool in a privileged (scheduler) scope', async () => {
     const pool = db.getPlatformPool();
     const { rows } = await db.runWithPrivilegedScope(() =>

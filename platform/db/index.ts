@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
-import { getScopedTenantId, isPrivilegedScope, runWithRestrictedScope } from './tenantScope';
+import { getScopedTenantId, isPrivilegedScope, runWithRestrictedScope, runWithTenantScope } from './tenantScope';
 
 export {
   runWithTenantScope,
@@ -305,7 +305,9 @@ export async function withTenantClient<T>(
   fn: (client: QueryClient) => Promise<T>,
 ): Promise<T> {
   const pool = getPlatformPool();
-  const client = await pool.connect();
+  // Acquire in a tenant scope so callers outside a request (voice gateway,
+  // schedulers) still get the qvo_app pool, not the privileged one.
+  const client = await runWithTenantScope(tenantId, () => pool.connect());
   try {
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
