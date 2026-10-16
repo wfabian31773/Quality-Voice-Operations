@@ -218,4 +218,10 @@ describe('parseArgs', () => {
     expect(parseArgs([])).toEqual({ execute: false, forceVoice: false, commitId: undefined });
     expect(parseArgs(['--execute', '--force-voice', '--commit', 'abc'])).toEqual({ execute: true, forceVoice: true, commitId: 'abc' });
   });
+
+  it('rejects --commit without a SHA instead of deploying the branch tip', () => {
+    expect(() => parseArgs(['--execute', '--commit'])).toThrow(/--commit requires a commit SHA/);
+    expect(() => parseArgs(['--commit', '--execute'])).toThrow(/--commit requires a commit SHA/);
+    expect(() => parseArgs(['--commit', ''])).toThrow(/--commit requires a commit SHA/);
+  });
 });

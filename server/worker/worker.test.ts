@@ -90,6 +90,36 @@ describe('SchedulerWorker', () => {
     expect(t.closePool).toHaveBeenCalled();
   });
 
+  it('waits for a scheduler reporting inFlight even when the pool is idle', async () => {
+    const t = setup({ current: { totalCount: 1, idleCount: 1, waitingCount: 0 } });
+    let ticking = true; // e.g. campaigns awaiting Twilio with no DB client held
+    t.s1.inFlight = () => ticking;
+    await t.worker.start();
+    t.hooks().onAcquire();
+    const p = t.worker.shutdown('SIGTERM');
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(t.elector.stop).not.toHaveBeenCalled();
+    expect(t.closePool).not.toHaveBeenCalled();
+    ticking = false;
+    await vi.advanceTimersByTimeAsync(3_000);
+    await p;
+    expect(t.order).toEqual(['stop:campaigns', 'release-lock', 'close-pool']);
+  });
+
+  it('still gives up after 100 s when a scheduler never clears inFlight', async () => {
+    const t = setup({ current: { totalCount: 0, idleCount: 0, waitingCount: 0 } });
+    t.s2.inFlight = () => true;
+    await t.worker.start();
+    t.hooks().onAcquire();
+    const p = t.worker.shutdown('SIGTERM');
+    await vi.advanceTimersByTimeAsync(99_000);
+    expect(t.elector.stop).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await p;
+    expect(t.elector.stop).toHaveBeenCalled();
+    expect(t.closePool).toHaveBeenCalled();
+  });
+
   it('a standby (never leader) shuts down without waiting', async () => {
     const t = setup({ current: { totalCount: 5, idleCount: 0, waitingCount: 0 } });
     await t.worker.start();

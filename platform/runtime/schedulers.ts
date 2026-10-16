@@ -16,6 +16,7 @@
  */
 import { startUsageMeteringWorker, stopUsageMeteringWorker } from '../billing/stripe/usage';
 import {
+  type CampaignScheduler,
   startCampaignScheduler,
   stopCampaignScheduler,
   startFederalDncSyncScheduler,
@@ -82,6 +83,26 @@ export interface SchedulerDefinition {
   nightlyFailed?: (result: unknown) => string | null;
   /** Returns a skip reason when the scheduler cannot run in this environment. */
   skipReason?: (env: Record<string, string | undefined>) => string | null;
+  /**
+   * True while a tick is mid-flight (it may hold no DB client, e.g. while
+   * awaiting Twilio). The worker's shutdown waits for this to clear.
+   */
+  inFlight?: () => boolean;
+}
+
+/**
+ * Last campaign scheduler started here. Kept after stop() (which only clears
+ * the interval) so shutdown can still see a tick that is mid-flight.
+ */
+let campaignScheduler: CampaignScheduler | null = null;
+
+/**
+ * CampaignScheduler's private `running` flag is set for the whole tick
+ * (cleared in its finally). Read-only access here until it exposes a public
+ * `isTicking()` getter (requested from the campaigns lane).
+ */
+function campaignTickInFlight(): boolean {
+  return (campaignScheduler as unknown as { running?: boolean } | null)?.running === true;
 }
 
 /** Order matches the pre-PR-00 start order in server/admin-api/start.ts. */
@@ -92,13 +113,15 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
   { name: 'usage-guardrails', start: () => startUsageGuardrailsScheduler(), stop: stopUsageGuardrailsScheduler },
   {
     name: 'campaigns',
-    start: (ctx) =>
-      startCampaignScheduler({
+    start: (ctx) => {
+      campaignScheduler = startCampaignScheduler({
         outboundCallbackBaseUrl: ctx.voiceGatewayBaseUrl,
         statusCallbackUrl: `${ctx.voiceGatewayBaseUrl}/twilio/status`,
         pollIntervalMs: 15_000,
-      }),
+      });
+    },
     stop: stopCampaignScheduler,
+    inFlight: campaignTickInFlight,
   },
   { name: 'insights', start: () => startInsightsScheduler(), stop: stopInsightsScheduler },
   { name: 'call-view-digest', start: () => startCallViewDigestScheduler(), stop: stopCallViewDigestScheduler },

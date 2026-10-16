@@ -274,10 +274,15 @@ export async function runRelease(opts: DeployOptions, deps: DeployDeps): Promise
 
 export function parseArgs(argv: string[]): Pick<DeployOptions, 'execute' | 'forceVoice' | 'commitId'> {
   const i = argv.indexOf('--commit');
+  const commitId = i >= 0 ? argv[i + 1] : undefined;
+  // A bare `--commit` must not silently fall back to deploying the branch tip.
+  if (i >= 0 && (!commitId || commitId.startsWith('--'))) {
+    throw new Error('--commit requires a commit SHA (e.g. --commit 56a6589)');
+  }
   return {
     execute: argv.includes('--execute'),
     forceVoice: argv.includes('--force-voice'),
-    commitId: i >= 0 ? argv[i + 1] : undefined,
+    commitId,
   };
 }
 
@@ -289,7 +294,13 @@ export function exitCodeFor(report: DeployReport): number {
 }
 
 if (require.main === module) {
-  const args = parseArgs(process.argv.slice(2));
+  let args: ReturnType<typeof parseArgs>;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
   const deps: DeployDeps = {
     fetch: (url, init) => fetch(url, init),
     now: () => new Date(),

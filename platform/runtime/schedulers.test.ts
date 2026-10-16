@@ -7,11 +7,17 @@ const h = vi.hoisted(() => {
   const calls: Array<{ fn: string; args: unknown[] }> = [];
   const mod = (...names: string[]) =>
     Object.fromEntries(names.map((n) => [n, (...args: unknown[]) => { calls.push({ fn: n, args }); }]));
-  return { calls, mod };
+  // Stand-in for the CampaignScheduler instance (its private `running` flag).
+  const campaign = { running: false };
+  return { calls, mod, campaign };
 });
 
 vi.mock('../billing/stripe/usage', () => h.mod('startUsageMeteringWorker', 'stopUsageMeteringWorker'));
-vi.mock('../campaigns', () => h.mod('startCampaignScheduler', 'stopCampaignScheduler', 'startFederalDncSyncScheduler', 'stopFederalDncSyncScheduler'));
+vi.mock('../campaigns', () => {
+  const m = h.mod('startCampaignScheduler', 'stopCampaignScheduler', 'startFederalDncSyncScheduler', 'stopFederalDncSyncScheduler');
+  const record = m.startCampaignScheduler;
+  return { ...m, startCampaignScheduler: (...args: unknown[]) => (record(...args), h.campaign) };
+});
 vi.mock('../core/observability', () => h.mod('startMetricsRollup', 'stopMetricsRollup', 'startSystemMetricsWriter', 'stopSystemMetricsWriter'));
 vi.mock('../billing/guardrails/UsageGuardrails', () => h.mod('startUsageGuardrailsScheduler', 'stopUsageGuardrailsScheduler'));
 vi.mock('../analytics', () => h.mod('startInsightsScheduler', 'stopInsightsScheduler', 'startCallViewDigestScheduler', 'stopCallViewDigestScheduler', 'startCsatExpirationScheduler', 'stopCsatExpirationScheduler'));
@@ -169,5 +175,16 @@ describe('scheduler registry', () => {
       'runPortalConfigCleanupCycle', 'runReconciliationCycle',
     ]);
     expect(h.calls.find((c) => c.fn === 'runReconciliationCycle')?.args).toEqual(['cron']);
+  });
+
+  it('campaigns reports inFlight while its tick is running, also after stop()', () => {
+    const campaigns = SCHEDULERS.find((s) => s.name === 'campaigns')!;
+    campaigns.start({ voiceGatewayBaseUrl: 'https://voice.example.com' });
+    expect(campaigns.inFlight!()).toBe(false);
+    h.campaign.running = true;
+    campaigns.stop();
+    expect(campaigns.inFlight!()).toBe(true);
+    h.campaign.running = false;
+    expect(campaigns.inFlight!()).toBe(false);
   });
 });

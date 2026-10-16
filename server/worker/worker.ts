@@ -5,8 +5,8 @@
  *   - Runs the selected schedulers only while holding the Postgres advisory
  *     lock (single leader). Standbys retry every 10 s.
  *   - On SIGTERM: stop scheduling new ticks, wait for the in-flight tick
- *     (≤ 100 s, observed as "no checked-out DB clients"), release the lock,
- *     close the pool, exit.
+ *     (≤ 100 s, observed as "no checked-out DB clients and no scheduler
+ *     reporting inFlight"), release the lock, close the pool, exit.
  */
 import { createLogger } from '../../platform/core/logger';
 import type { SchedulerContext, SchedulerDefinition } from '../../platform/runtime/schedulers';
@@ -41,20 +41,23 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Wait until no DB client is checked out (and none is waiting) for two
- * consecutive polls, or until `timeoutMs`. Every scheduler tick goes through
- * the platform pool, so an idle pool means no tick is mid-flight.
+ * Wait until no DB client is checked out (and none is waiting) and
+ * `schedulerBusy()` is false, for two consecutive polls, or until
+ * `timeoutMs`. The pool alone is not enough: a tick can release its client
+ * while awaiting an outside call (campaigns → Twilio), so schedulers that
+ * track their own tick report it via `inFlight`.
  */
 export async function awaitInFlightWork(
   stats: () => PoolStats | null,
   timeoutMs: number,
   pollIntervalMs = 1_000,
+  schedulerBusy: () => boolean = () => false,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   let quiet = 0;
   for (;;) {
     const s = stats();
-    const busy = s ? s.totalCount - s.idleCount + s.waitingCount : 0;
+    const busy = (s ? s.totalCount - s.idleCount + s.waitingCount : 0) + (schedulerBusy() ? 1 : 0);
     quiet = busy === 0 ? quiet + 1 : 0;
     if (quiet >= 2) return true;
     if (Date.now() >= deadline) return false;
@@ -117,6 +120,7 @@ export class SchedulerWorker {
         this.opts.pool,
         this.opts.inFlightTimeoutMs ?? 100_000,
         this.opts.pollIntervalMs ?? 1_000,
+        () => this.opts.schedulers.some((s) => s.inFlight?.() === true),
       );
       if (!idle) logger.warn('In-flight scheduler work still running after timeout; exiting anyway');
     }
