@@ -282,7 +282,7 @@ export async function runRealtimeStreamDiagnostic(
       // Closed before we reached our success condition.
       const connected = hasConnected();
       const stage: StreamStage = connected ? 'session_setup' : 'ws_connect';
-      const reason: StreamFailureReason = !connected
+      const reason: StreamFailureReason = !connected || code === 1008
         ? 'auth_rejected'
         : (Date.now() - startSentAt < 500 ? 'closed_early' : 'setup_error');
       stages.push({ stage, status: 'fail', detail: `socket closed (code ${code})` });

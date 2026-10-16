@@ -53,7 +53,7 @@ describe('realtime stream diagnostic against the real gateway', () => {
     expect(report.ok).toBe(false);
     expect(report.latencies.ws_connect).toBeGreaterThanOrEqual(0);
     expect(report.failureStage).toBe('session_setup');
-    expect(report.failureReason).toBe('closed_early');
+    expect(report.failureReason).toBe('auth_rejected');
     expect(report.error).toMatch(/1008/);
     expect(getRealtimeStreamMetrics().bySource.probe.failures).toBe(1);
   });
@@ -119,5 +119,15 @@ describe('Twilio start-frame stream token', () => {
       ws.on('error', (err) => resolve(err));
     });
     await expect(failed).resolves.toMatchObject({ message: expect.stringMatching(/403/) });
+  });
+
+  it('accepts a start frame without customParameters.token when the query token is valid', async () => {
+    const ws = await openStream(`${baseUrl}?token=integration-token`);
+    const closed = new Promise<{ code: number }>((resolve) => {
+      ws.on('close', (code) => resolve({ code }));
+    });
+    sendStart(ws, { tenantId: '', agentId: '', callSid: '' });
+    const result = await closed;
+    expect(result.code).not.toBe(1008);
   });
 });
