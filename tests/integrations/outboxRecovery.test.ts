@@ -206,6 +206,10 @@ vi.mock('../../platform/db', () => ({
     query: fakeQuery,
     connect: fakeConnect,
   }),
+  getPrivilegedPool: () => ({
+    query: fakeQuery,
+    connect: fakeConnect,
+  }),
   withTenantContext: vi.fn(async (_client: unknown, _t: string, fn: () => Promise<unknown>) => fn()),
 }));
 

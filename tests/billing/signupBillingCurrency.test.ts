@@ -33,8 +33,8 @@ let capturedQueries: CapturedQuery[] = [];
 
 const checkoutCreateMock = vi.fn();
 
-vi.mock('../../platform/db', () => ({
-  getPlatformPool: () => ({
+vi.mock('../../platform/db', () => {
+  const pool = () => ({
     connect: async () => ({
       query: vi.fn(async (sql: string, values?: unknown[]) => {
         capturedQueries.push({ sql, values });
@@ -66,8 +66,9 @@ vi.mock('../../platform/db', () => ({
       }),
       release: vi.fn(),
     }),
-  }),
-}));
+  });
+  return { getPlatformPool: pool, getPrivilegedPool: pool };
+});
 
 vi.mock('../../platform/billing/stripe/client', () => ({
   getStripeClient: () => ({

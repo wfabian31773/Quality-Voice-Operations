@@ -51,6 +51,9 @@ function buildPlatformDbMock(behavior: DbBehavior) {
         if (sql.startsWith('BEGIN') || sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK')) {
           return { rows: [] };
         }
+        // Tenant-status lookup runs on a tenant-bound transaction client
+        // (RLS); route it through poolQuery so the call counts stay meaningful.
+        if (/FROM tenants/i.test(sql)) return poolQuery();
         if (/FROM user_roles/i.test(sql)) {
           if (behavior.roleQueryError) throw behavior.roleQueryError;
           return { rows: behavior.roleRows ?? ROLE_ROW };
