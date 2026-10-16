@@ -146,3 +146,22 @@ twilio-inventory.json
 # transcripts, and failure screenshots here so the GitHub Action can
 # upload them as a build artifact. None of it should ever be committed.
 .ci-logs/
+
+# Scratch leftovers that used to land at the repo root (landing-page merge
+# conflict chunks, Replit edit backups, unused screenshots). Root-anchored
+# so they never ignore tracked files in subdirectories.
+/block_*.txt
+/conflict_block_*
+/final_*.txt
+/*.bak
+/replit.new
+/fix_replit.py
+/resolve_replit.py
+/mid_block.txt
+/start_of_render.txt
+/testimonial_block.txt
+/problem_section_start.txt
+/sidebar.png
+/sidebar-expanded.png
+/widget-configuration-page.png
+
