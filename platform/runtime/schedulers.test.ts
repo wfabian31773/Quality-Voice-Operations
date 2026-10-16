@@ -113,6 +113,23 @@ describe('scheduler registry', () => {
     for (const c of h.calls.filter((x) => x.fn !== 'startCampaignScheduler')) expect(c.args).toEqual([]);
   });
 
+  it('startSchedulers starts schedulers (and their timers) in the privileged DB scope', async () => {
+    const { isPrivilegedScope } = await import('../db/tenantScope');
+    const seen: boolean[] = [];
+    const probe: SchedulerDefinition = {
+      name: 'probe',
+      start: () => {
+        seen.push(isPrivilegedScope());
+        setTimeout(() => seen.push(isPrivilegedScope()), 0);
+      },
+      stop: () => {},
+    };
+    startSchedulers([probe], { voiceGatewayBaseUrl: 'https://voice.example' });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(seen).toEqual([true, true]);
+    expect(isPrivilegedScope()).toBe(false);
+  });
+
   it('stopSchedulers stops every started scheduler and survives a throwing stop', () => {
     const boom: SchedulerDefinition = { name: 'boom', start: () => {}, stop: () => { throw new Error('x'); } };
     const errors: string[] = [];

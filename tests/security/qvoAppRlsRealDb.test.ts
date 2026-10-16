@@ -5,8 +5,9 @@
 //   - the daily isolation suite passes when the app pool is qvo_app,
 //   - it fails loudly when the role can bypass RLS (BYPASSRLS, table owner
 //     without FORCE, FORCE missing) or a policy is broken,
-//   - restricted-pool `query()` inside a request tenant scope is bound to
-//     app.tenant_id (Codex P1 on platform/db/index.ts).
+//   - restricted-pool `query()` and checked-out clients inside a request
+//     tenant scope are bound to app.tenant_id, and a privileged (scheduler)
+//     scope reaches every tenant (Codex P1s on platform/db/index.ts).
 //
 // Skips unless QVO_RLS_TEST_DATABASE_URL is set. It must point at a
 // DISPOSABLE local database already migrated as postgres, e.g.
@@ -106,6 +107,17 @@ describe.skipIf(!PRIV_URL)('qvo_app RLS against real Postgres', () => {
     expect(await failedTests()).toEqual([]);
   });
 
+  it('still tests the qvo_app pool when run from a scheduler or a request scope', async () => {
+    for (const run of [db.runWithPrivilegedScope, (fn: () => Promise<unknown>) => db.runWithTenantScope(TENANT_A, fn)]) {
+      const result = (await run(() => isolation.runAllIsolationTests(TENANT_A, { source: 'scheduled' }))) as Awaited<
+        ReturnType<typeof isolation.runAllIsolationTests>
+      >;
+      const role = result.results.find((r) => r.testName === 'Connected role subject to RLS');
+      expect(role?.details).toContain('"qvo_app"');
+      expect(result.results.filter((r) => !r.passed)).toEqual([]);
+    }
+  });
+
   it('binds restricted-pool queries to the request tenant scope', async () => {
     const pool = db.getPlatformPool();
     const count = async (tenantId: string) =>
@@ -114,6 +126,41 @@ describe.skipIf(!PRIV_URL)('qvo_app RLS against real Postgres', () => {
     expect(await count(TENANT_A)).toBe(0); // unbound: RLS hides everything
     expect(await db.runWithTenantScope(TENANT_A, () => count(TENANT_A))).toBe(1);
     expect(await db.runWithTenantScope(TENANT_B, () => count(TENANT_A))).toBe(0);
+  });
+
+  it('binds checked-out clients to the request tenant scope', async () => {
+    const pool = db.getPlatformPool();
+    const countViaClient = (tenantId: string, explicitTx: boolean) =>
+      db.runWithTenantScope(tenantId, async () => {
+        const client = await pool.connect();
+        try {
+          if (explicitTx) await client.query('BEGIN');
+          const { rows } = await client.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = $1`, [TENANT_A]);
+          if (explicitTx) await client.query('COMMIT');
+          return Number(rows[0].n);
+        } finally {
+          client.release();
+        }
+      });
+
+    expect(await countViaClient(TENANT_A, true)).toBe(1);
+    expect(await countViaClient(TENANT_A, false)).toBe(1);
+    expect(await countViaClient(TENANT_B, true)).toBe(0);
+    const client = await pool.connect(); // released client is unbound again
+    try {
+      const { rows } = await client.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = $1`, [TENANT_A]);
+      expect(Number(rows[0].n)).toBe(0);
+    } finally {
+      client.release();
+    }
+  });
+
+  it('sends restricted-pool work to the privileged pool in a privileged (scheduler) scope', async () => {
+    const pool = db.getPlatformPool();
+    const { rows } = await db.runWithPrivilegedScope(() =>
+      pool.query(`SELECT COUNT(*) AS n FROM agents WHERE tenant_id = ANY($1)`, [[TENANT_A, TENANT_B]]),
+    );
+    expect(Number(rows[0].n)).toBe(2);
   });
 
   it('fails when a policy leaks rows across tenants', async () => {

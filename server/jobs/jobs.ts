@@ -9,6 +9,7 @@
  */
 import { createLogger } from '../../platform/core/logger';
 import { nightlySchedulers, type SchedulerDefinition } from '../../platform/runtime/schedulers';
+import { runWithPrivilegedScope } from '../../platform/db/tenantScope';
 
 const logger = createLogger('JOBS');
 
@@ -43,7 +44,8 @@ export async function runJob(job: string, steps: JobStep[]): Promise<JobResult> 
   for (const step of steps) {
     const startedAt = Date.now();
     try {
-      const value = await step.run();
+      // Cross-tenant jobs: privileged DB scope (see startSchedulers).
+      const value = await runWithPrivilegedScope(() => step.run());
       const reason = step.failed?.(value) ?? null;
       if (reason) throw new Error(reason);
       result.steps.push({ name: step.name, ok: true, durationMs: Date.now() - startedAt });

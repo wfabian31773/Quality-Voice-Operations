@@ -58,6 +58,7 @@ import { startMarketplaceDiscountBackfillScheduler, stopMarketplaceDiscountBackf
 import { startPortalConfigCleanupScheduler, stopPortalConfigCleanupScheduler, runPortalConfigCleanupCycle, type PortalConfigCleanupSnapshot } from '../billing/PortalConfigCleanupScheduler';
 import { startBillingReconciliationScheduler, stopBillingReconciliationScheduler, runReconciliationCycle, type ReconciliationCycleSummary } from '../billing/BillingReconciliationScheduler';
 import type { ProcessRole } from './processRole';
+import { runWithPrivilegedScope } from '../db/tenantScope';
 
 export interface SchedulerContext {
   /** Public voice-gateway base URL used for campaign TwiML/status callbacks. */
@@ -318,8 +319,15 @@ export function selectSchedulers(
   return { enabled, skipped, unknown, setting };
 }
 
+/**
+ * Schedulers work across tenants, so start them (and every timer they set)
+ * in the privileged DB scope: restricted-pool calls go to the privileged
+ * pool once the app pool is qvo_app (PR #88).
+ */
 export function startSchedulers(list: readonly SchedulerDefinition[], ctx: SchedulerContext): void {
-  for (const s of list) s.start(ctx);
+  runWithPrivilegedScope(() => {
+    for (const s of list) s.start(ctx);
+  });
 }
 
 /** Stop every scheduler in the list; one failing stop never blocks the rest. */

@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import { getScopedTenantId } from './tenantScope';
+import { Pool, type PoolClient } from 'pg';
+import { getScopedTenantId, isPrivilegedScope } from './tenantScope';
 
-export { runWithTenantScope, getScopedTenantId } from './tenantScope';
+export { runWithTenantScope, runWithPrivilegedScope, getScopedTenantId, isPrivilegedScope } from './tenantScope';
 
 let _pool: Pool | null = null;
 let _privilegedPool: Pool | null = null;
@@ -83,56 +83,138 @@ function attachPoolErrorHandler(pool: Pool, label: string): void {
   });
 }
 
-type PoolQueryArgs = Parameters<Pool['query']>;
+type AnyQuery = (...args: unknown[]) => Promise<unknown>;
+
+const SET_TENANT_SQL = `SELECT set_config('app.tenant_id', $1, true)`;
+const TX_BEGIN = /^\s*(BEGIN|START\s+TRANSACTION)\b/i;
+const TX_END = /^\s*(COMMIT|END|ABORT)\b|^\s*ROLLBACK\b(?!\s+TO\b)/i;
+
+/** Callback-style and submittable (cursor / stream) queries are never rewritten. */
+function isPassThroughQuery(args: unknown[]): boolean {
+  const [first] = args;
+  const isSubmittable =
+    typeof first === 'object' && first !== null && typeof (first as { submit?: unknown }).submit === 'function';
+  return isSubmittable || args.some((a) => typeof a === 'function');
+}
+
+function sqlText(arg: unknown): string {
+  if (typeof arg === 'string') return arg;
+  if (typeof arg === 'object' && arg !== null && typeof (arg as { text?: unknown }).text === 'string') {
+    return (arg as { text: string }).text;
+  }
+  return '';
+}
 
 /**
- * Inside a tenant scope, run a promise-style `pool.query()` on its own
- * transaction with `SET LOCAL app.tenant_id`, so RLS sees the tenant once
- * the pool connects as qvo_app (NOBYPASSRLS). Outside a scope, and for
- * callback / submittable (cursor, stream) queries, behaviour is unchanged.
- * Checked-out clients (`pool.connect()`) are not touched: those callers
- * already BEGIN + withTenantContext themselves.
+ * Bind a checked-out client to `tenantId` until it is released: right
+ * after BEGIN it runs SET LOCAL app.tenant_id, and a statement outside a
+ * transaction runs in its own BEGIN / SET LOCAL / COMMIT. Callers that
+ * also call withTenantContext just set the same value again.
  */
-export function bindPoolQueriesToTenantScope(pool: Pool): Pool {
-  const unbound = pool.query.bind(pool) as (...args: unknown[]) => unknown;
-  const bound = (...args: unknown[]): unknown => {
-    const tenantId = getScopedTenantId();
-    const [first] = args;
-    const isSubmittable =
-      typeof first === 'object' && first !== null && typeof (first as { submit?: unknown }).submit === 'function';
-    if (!tenantId || isSubmittable || args.some((a) => typeof a === 'function')) {
-      return unbound(...args);
+function bindClientToTenant(client: PoolClient, tenantId: string): PoolClient {
+  const hadOwnQuery = Object.prototype.hasOwnProperty.call(client, 'query');
+  const ownQuery = client.query;
+  const raw = client.query.bind(client) as AnyQuery;
+  const release = client.release;
+  let inTransaction = false;
+
+  const query: AnyQuery = (...args) => {
+    if (isPassThroughQuery(args)) return raw(...args);
+    const text = sqlText(args[0]);
+    if (TX_BEGIN.test(text)) {
+      return (async () => {
+        const result = await raw(...args);
+        inTransaction = true;
+        await raw(SET_TENANT_SQL, [tenantId]);
+        return result;
+      })();
     }
-    return queryInTenantTransaction(pool, tenantId, args);
+    if (TX_END.test(text)) {
+      inTransaction = false;
+      return raw(...args);
+    }
+    if (inTransaction) return raw(...args);
+    return (async () => {
+      await raw('BEGIN');
+      try {
+        await raw(SET_TENANT_SQL, [tenantId]);
+        const result = await raw(...args);
+        await raw('COMMIT');
+        return result;
+      } catch (err) {
+        await raw('ROLLBACK').catch(() => {});
+        throw err;
+      }
+    })();
   };
-  (pool as unknown as { query: typeof bound }).query = bound;
+
+  client.query = query as PoolClient['query'];
+  client.release = ((err?: Error | boolean) => {
+    if (hadOwnQuery) client.query = ownQuery;
+    else delete (client as { query?: unknown }).query;
+    client.release = release;
+    return release(err);
+  }) as PoolClient['release'];
+  return client;
+}
+
+/**
+ * Route restricted-pool work by scope (`./tenantScope`):
+ *   - tenant scope (authenticated request): `query()` and checked-out
+ *     clients are bound to app.tenant_id, so RLS sees the tenant once the
+ *     pool connects as qvo_app (NOBYPASSRLS).
+ *   - privileged scope (schedulers, nightly jobs): `query()` / `connect()`
+ *     go to the privileged pool, as before the role switch.
+ *   - no scope, callback-style and submittable queries: unchanged.
+ */
+export function bindPoolQueriesToTenantScope(pool: Pool, privilegedPool: () => Pool = () => pool): Pool {
+  const unboundQuery = pool.query.bind(pool) as AnyQuery;
+  const unboundConnect = pool.connect.bind(pool) as (...args: unknown[]) => Promise<unknown>;
+  const privilegedTarget = (): Pool | null => {
+    if (!isPrivilegedScope()) return null;
+    const target = privilegedPool();
+    return target === pool ? null : target;
+  };
+
+  const connectBound = async (tenantId: string): Promise<PoolClient> =>
+    bindClientToTenant((await unboundConnect()) as PoolClient, tenantId);
+
+  const query: AnyQuery = (...args) => {
+    const target = privilegedTarget();
+    if (target) return (target.query as unknown as AnyQuery)(...args);
+    const tenantId = getScopedTenantId();
+    if (!tenantId || isPassThroughQuery(args)) return unboundQuery(...args);
+    return (async () => {
+      const client = await connectBound(tenantId);
+      try {
+        return await (client.query as unknown as AnyQuery)(...args);
+      } finally {
+        client.release();
+      }
+    })();
+  };
+
+  const connect = (...args: unknown[]): unknown => {
+    if (args.length > 0) return unboundConnect(...args);
+    const target = privilegedTarget();
+    if (target) return target.connect();
+    const tenantId = getScopedTenantId();
+    return tenantId ? connectBound(tenantId) : unboundConnect();
+  };
+
+  Object.assign(pool, { query, connect });
   return pool;
 }
 
-async function queryInTenantTransaction(pool: Pool, tenantId: string, args: unknown[]): Promise<unknown> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await withTenantContext(client, tenantId, async () => {});
-    const result = await client.query(...(args as PoolQueryArgs));
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
 /**
- * Restricted pool. `pool.query()` inside `runWithTenantScope` is bound to
- * that tenant automatically; explicit transactions must SET LOCAL
+ * Restricted pool. Inside `runWithTenantScope` its queries and checked-out
+ * clients are bound to that tenant; inside `runWithPrivilegedScope` they go
+ * to the privileged pool. Outside any scope, transactions must SET LOCAL
  * app.tenant_id via withTenantContext / withTenantClient.
  */
 export function getPlatformPool(): Pool {
   if (!_pool) {
-    _pool = bindPoolQueriesToTenantScope(new Pool(getPoolConfig(getRestrictedPoolUrl())));
+    _pool = bindPoolQueriesToTenantScope(new Pool(getPoolConfig(getRestrictedPoolUrl())), getPrivilegedPool);
     attachPoolErrorHandler(_pool, 'restricted');
   }
   return _pool;
@@ -180,7 +262,7 @@ export async function withTenantContext<T>(
   tenantId: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+  await client.query(SET_TENANT_SQL, [tenantId]);
   return fn();
 }
 

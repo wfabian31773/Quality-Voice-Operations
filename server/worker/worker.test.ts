@@ -6,6 +6,7 @@ vi.mock('../../platform/core/logger', () => ({
 
 import { SchedulerWorker, awaitInFlightWork, type PoolStats } from './worker';
 import type { SchedulerDefinition } from '../../platform/runtime/schedulers';
+import { isPrivilegedScope } from '../../platform/db/tenantScope';
 
 function fakeScheduler(name: string): SchedulerDefinition & { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> } {
   return { name, start: vi.fn(), stop: vi.fn() } as never;
@@ -59,6 +60,15 @@ describe('SchedulerWorker', () => {
     expect(t.s1.stop).toHaveBeenCalledTimes(1);
     expect(t.s2.stop).toHaveBeenCalledTimes(1);
     expect(t.worker.isRunningSchedulers()).toBe(false);
+  });
+
+  it('starts schedulers in the privileged DB scope', async () => {
+    const t = setup({ current: { totalCount: 0, idleCount: 0, waitingCount: 0 } });
+    let privileged = false;
+    t.s1.start.mockImplementation(() => { privileged = isPrivilegedScope(); });
+    await t.worker.start();
+    t.hooks().onAcquire();
+    expect(privileged).toBe(true);
   });
 
   it('SIGTERM: stop ticks → wait for the in-flight tick → release lock → close pool', async () => {

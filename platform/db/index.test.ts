@@ -60,11 +60,13 @@ describe('pool URL helpers', () => {
 
 describe('bindPoolQueriesToTenantScope', () => {
   function fakePool() {
-    const clientQuery = vi.fn(async (sql: string, _values?: unknown[]) => (sql.startsWith('SELECT t') ? { rows: [{ id: 'r1' }] } : { rows: [] }));
+    const clientQuery = vi.fn(async (sql: unknown, _values?: unknown[]) => (String(sql).startsWith('SELECT t') ? { rows: [{ id: 'r1' }] } : { rows: [] }));
     const release = vi.fn();
     const poolQuery = vi.fn(async () => ({ rows: [{ unbound: true }] }));
-    const pool = { query: poolQuery, connect: vi.fn(async () => ({ query: clientQuery, release })) };
-    return { pool, poolQuery, clientQuery, release };
+    const client = { query: clientQuery, release };
+    const connect = vi.fn(async () => client);
+    const pool = { query: poolQuery, connect };
+    return { pool, poolQuery, client, clientQuery, release, connect };
   }
 
   it('passes through unchanged outside a tenant scope', async () => {
@@ -73,7 +75,7 @@ describe('bindPoolQueriesToTenantScope', () => {
     const pool = bindPoolQueriesToTenantScope(f.pool as never);
     const result = await pool.query('SELECT t FROM tickets WHERE tenant_id = $1', ['t1']);
     expect(result.rows).toEqual([{ unbound: true }]);
-    expect(f.pool.connect).not.toHaveBeenCalled();
+    expect(f.connect).not.toHaveBeenCalled();
   });
 
   it('binds app.tenant_id with SET LOCAL inside a tenant scope', async () => {
@@ -98,7 +100,7 @@ describe('bindPoolQueriesToTenantScope', () => {
   it('rolls back, releases and rethrows when the bound query fails', async () => {
     const { bindPoolQueriesToTenantScope, runWithTenantScope } = await import('./index');
     const f = fakePool();
-    f.clientQuery.mockImplementation(async (sql: string) => {
+    f.clientQuery.mockImplementation(async (sql: unknown) => {
       if (sql === 'SELECT boom') throw new Error('boom');
       return { rows: [] };
     });
@@ -119,6 +121,67 @@ describe('bindPoolQueriesToTenantScope', () => {
       pool.query(cursor);
     });
     expect(f.poolQuery).toHaveBeenCalledTimes(2);
-    expect(f.pool.connect).not.toHaveBeenCalled();
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+
+  it('binds a checked-out client inside a tenant scope and restores it on release', async () => {
+    const { bindPoolQueriesToTenantScope, runWithTenantScope } = await import('./index');
+    const f = fakePool();
+    const pool = bindPoolQueriesToTenantScope(f.pool as never);
+    await runWithTenantScope('tenant-a', async () => {
+      const client = await pool.connect();
+      await client.query('BEGIN');
+      await client.query('SELECT t FROM tickets WHERE id = $1', ['x']);
+      await client.query('ROLLBACK TO SAVEPOINT s1');
+      await client.query('INSERT INTO ticket_attachments VALUES (1)');
+      await client.query('COMMIT');
+      await client.query({ text: 'UPDATE tickets SET x = 1' });
+      client.release();
+    });
+    expect(f.clientQuery.mock.calls.map((c) => (typeof c[0] === 'string' ? c[0] : (c[0] as { text: string }).text))).toEqual([
+      'BEGIN',
+      `SELECT set_config('app.tenant_id', $1, true)`,
+      'SELECT t FROM tickets WHERE id = $1',
+      'ROLLBACK TO SAVEPOINT s1',
+      'INSERT INTO ticket_attachments VALUES (1)',
+      'COMMIT',
+      'BEGIN',
+      `SELECT set_config('app.tenant_id', $1, true)`,
+      'UPDATE tickets SET x = 1',
+      'COMMIT',
+    ]);
+    expect(f.release).toHaveBeenCalledTimes(1);
+    expect(f.client.query).toBe(f.clientQuery);
+  });
+
+  it('does not bind checked-out clients outside a scope', async () => {
+    const { bindPoolQueriesToTenantScope } = await import('./index');
+    const f = fakePool();
+    const pool = bindPoolQueriesToTenantScope(f.pool as never);
+    const client = await pool.connect();
+    expect(client.query).toBe(f.clientQuery);
+  });
+
+  it('sends restricted-pool work to the privileged pool inside a privileged scope', async () => {
+    const { bindPoolQueriesToTenantScope, runWithPrivilegedScope } = await import('./index');
+    const f = fakePool();
+    const priv = fakePool();
+    const pool = bindPoolQueriesToTenantScope(f.pool as never, () => priv.pool as never);
+    await runWithPrivilegedScope(async () => {
+      await pool.query('SELECT 1');
+      await pool.connect();
+    });
+    expect(priv.poolQuery).toHaveBeenCalledTimes(1);
+    expect(priv.connect).toHaveBeenCalledTimes(1);
+    expect(f.poolQuery).not.toHaveBeenCalled();
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+
+  it('stays on the same pool in a privileged scope when the privileged pool is an alias', async () => {
+    const { bindPoolQueriesToTenantScope, runWithPrivilegedScope } = await import('./index');
+    const f = fakePool();
+    const pool = bindPoolQueriesToTenantScope(f.pool as never);
+    await runWithPrivilegedScope(() => pool.query('SELECT 1'));
+    expect(f.poolQuery).toHaveBeenCalledTimes(1);
   });
 });
