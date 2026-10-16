@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getPrivilegedPool } from '../db';
+import { runWithRestrictedScope } from '../db/tenantScope';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email';
 import { fanoutInAppNotification } from '../notifications/NotificationPreferences';
@@ -298,8 +299,10 @@ export async function runTenantIsolationScheduledCycle(): Promise<IsolationSched
       // signal even before the first customer onboards. Skip the cross-
       // tenant suite (it requires a tenant context).
       logger.info('No active tenant available; running RLS-enabled and role checks only');
+      // Restricted scope: the role check must hit the qvo_app pool, not the
+      // privileged pool this scheduler's scope routes to.
       const rlsResults = [
-        await verifyConnectedRoleDoesNotBypassRls(),
+        await runWithRestrictedScope(() => verifyConnectedRoleDoesNotBypassRls()),
         ...(await verifyRLSEnabled()),
       ];
       const passed = rlsResults.filter((r) => r.passed).length;
