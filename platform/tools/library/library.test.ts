@@ -290,6 +290,36 @@ describe('tool library handlers', () => {
     expect(query.mock.calls.some(([sql]) => String(sql) === 'ROLLBACK')).toBe(true);
   });
 
+  it('keeps a 15-minute appointment 15 minutes when rescheduling', async () => {
+    upcomingRows.splice(0, upcomingRows.length, {
+      id: 'bk-trim',
+      start_time: '2026-10-20T15:00:00.000Z',
+      end_time: '2026-10-20T15:15:00.000Z',
+      status: 'confirmed',
+      title: 'Beard trim',
+    });
+    const challenge = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+    }, ctx);
+    await expect(executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, confirmCtx)).resolves.toMatchObject({ success: true, status: 'updated' });
+
+    expect(transitionBooking).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'reschedule',
+        newStartTime: '2026-10-20T18:00:00.000Z',
+        newEndTime: '2026-10-20T18:15:00.000Z',
+      }),
+      expect.anything(),
+    );
+  });
+
   it('interprets an offset-less reschedule time in the tenant timezone', async () => {
     const challenge = await executeUpdateBooking({
       action: 'reschedule',

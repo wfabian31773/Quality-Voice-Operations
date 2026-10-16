@@ -248,10 +248,8 @@ export async function executeUpdateBooking(
         if (!newStart) {
           return { success: false, message: 'Reschedule requires a valid startTime. Ask the caller for the new day and time first.' };
         }
-        const durationMs = Math.max(
-          new Date(selected.endTime).getTime() - new Date(selected.startTime).getTime(),
-          30 * 60_000,
-        );
+        const storedDurationMs = new Date(selected.endTime).getTime() - new Date(selected.startTime).getTime();
+        const durationMs = storedDurationMs > 0 ? storedDurationMs : 30 * 60_000;
         newEnd = new Date(newStart.getTime() + durationMs);
       }
 

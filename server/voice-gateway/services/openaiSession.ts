@@ -770,6 +770,34 @@ export interface RealtimeSessionResult {
   routedTier: string;
 }
 
+export async function resolveHumanEscalationRoute(input: {
+  hasOnCallNumber: boolean;
+  onEscalation?: SessionContext['onEscalation'];
+  onHandoff?: SessionContext['onHandoff'];
+  callSessionId: string;
+  callSid: string;
+  reason: string;
+}): Promise<{
+  route: 'phone' | 'handoff' | 'ticket';
+  handoff?: Awaited<ReturnType<NonNullable<SessionContext['onHandoff']>>>;
+}> {
+  if (input.hasOnCallNumber && input.onEscalation) {
+    await input.onEscalation(input.callSessionId, input.callSid, input.reason);
+    return { route: 'phone' };
+  }
+  if (input.onHandoff) {
+    try {
+      const handoff = await input.onHandoff(input.callSessionId, 'human_request', input.reason);
+      if (handoff.success) {
+        return { route: 'handoff', handoff };
+      }
+    } catch {
+      // Fall through to a message so the caller is never left in silence.
+    }
+  }
+  return { route: 'ticket' };
+}
+
 export async function createRealtimeSession(
   ctx: SessionContext,
 ): Promise<RealtimeSessionResult> {
@@ -1152,16 +1180,69 @@ export async function createRealtimeSession(
                   escalation: reasoningResult.escalation?.trigger,
                 }).catch(() => {});
 
-                if (reasoningResult.action === 'escalate_to_human' && ctx.onEscalation) {
+                if (reasoningResult.action === 'escalate_to_human') {
                   const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
-                  updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
-                  writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
-                    trigger: reasoningResult.escalation?.trigger,
-                    output: reasoningResult.escalation?.output,
+                  const hasOnCallNumber = Boolean(
+                    (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+                  );
+                  void resolveHumanEscalationRoute({
+                    hasOnCallNumber,
+                    onEscalation: ctx.onEscalation,
+                    onHandoff: ctx.onHandoff,
+                    callSessionId,
+                    callSid,
                     reason: escalationReason,
-                  }).catch(() => {});
-                  ctx.onEscalation(callSessionId, callSid, escalationReason).catch((escErr) => {
-                    slog.error('Reasoning-triggered escalation failed', { error: String(escErr) });
+                  }).then((resolved) => {
+                    if (resolved.route === 'phone') {
+                      updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
+                      writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
+                        trigger: reasoningResult.escalation?.trigger,
+                        output: reasoningResult.escalation?.output,
+                        reason: escalationReason,
+                      }).catch(() => {});
+                      return;
+                    }
+                    if (resolved.route === 'handoff') {
+                      updateCallState(tenantId, callSessionId, 'HANDOFF', { escalationReason }).catch(() => {});
+                      writeCallEvent(tenantId, callSessionId, 'reasoning_handoff', 'ACTIVE_CONVERSATION', 'HANDOFF', {
+                        trigger: reasoningResult.escalation?.trigger,
+                        reason: escalationReason,
+                      }).catch(() => {});
+                      if (resolved.handoff?.targetAgentConfig && ctx.onSessionSwapRequired) {
+                        void ctx.onSessionSwapRequired(
+                          resolved.handoff.targetAgentConfig,
+                          resolved.handoff.message,
+                        ).catch((swapErr) => {
+                          slog.error('Workforce session swap failed after reasoning handoff', { error: String(swapErr) });
+                        });
+                      }
+                      try {
+                        sendModelInstruction(
+                          resolved.handoff?.message
+                            ? `A teammate is taking this call. Tell the caller: ${resolved.handoff.message}`
+                            : 'A teammate is taking this call. Tell the caller you are transferring them now.',
+                        );
+                      } catch (injectErr) {
+                        slog.error('Failed to inject workforce handoff instruction', { error: String(injectErr) });
+                      }
+                      return;
+                    }
+                    writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                      trigger: reasoningResult.escalation?.trigger,
+                      reason: 'no_live_transfer',
+                    }).catch(() => {});
+                    try {
+                      sendModelInstruction(
+                        buildMessageFallbackInstruction('create_ticket'),
+                      );
+                    } catch (injectErr) {
+                      slog.error('Failed to inject take-message fallback', { error: String(injectErr) });
+                    }
+                  }).catch((escErr) => {
+                    slog.error('Reasoning-triggered escalation routing failed', { error: String(escErr) });
+                    try {
+                      sendModelInstruction(buildMessageFallbackInstruction('create_ticket'));
+                    } catch { /* never leave the caller without a spoken next step */ }
                   });
                 }
 

@@ -124,4 +124,61 @@ describe('createRealtimeSession workforce handoff transfer', () => {
 
     await result.session.close();
   });
+
+  it('routes a workforce-only ask-for-a-person through onHandoff, not the dead-end onEscalation path', async () => {
+    const onHandoff = vi.fn(async () => ({ success: true, message: 'Transferring you now.' }));
+    const onEscalation = vi.fn(async () => {});
+    const ctx = {
+      tenantId: 't-handoff' as never,
+      agentConfig: {
+        agentId: 'a-salon',
+        tenantId: 't-handoff',
+        systemPrompt: 'You are the receptionist.',
+        rolePrompt: 'Answer the phone.',
+        greeting: 'Hello',
+        voice: 'eve',
+        model: 'grok-voice-think-fast-2.0',
+        language: 'en',
+        preferredLanguage: 'en',
+        timeZone: 'America/New_York',
+        tools: [
+          { name: 'transfer_to_agent', description: 'Transfer to a teammate', parameters: { type: 'object', properties: {} } },
+          { name: 'create_ticket', description: 'Create a ticket', parameters: { type: 'object', properties: {} } },
+          { name: 'escalate_to_human', description: 'Escalate', parameters: { type: 'object', properties: {} } },
+        ],
+        guardrails: [],
+        metadata: { practiceName: 'Demo Cuts' },
+        coreVersion: '2.0.0',
+        rolePackageId: 'salon',
+        rolePackageVersion: '1.0.0',
+      } as never,
+      callerNumber: '+15551112222',
+      calledNumber: '+15553334444',
+      callSid: 'CA-handoff-live',
+      direction: 'inbound',
+      templateKey: 'salon',
+      lifecycleCoordinator: makeCoordinator() as never,
+      onHandoff,
+      onEscalation,
+    } satisfies Partial<SessionContext> as SessionContext;
+
+    const result = await createRealtimeSession(ctx);
+    const session = result.session as unknown as { emit: (event: string, payload: unknown) => boolean };
+    session.emit('history_added', {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: 'I want to talk to a person' }],
+    });
+
+    await vi.waitFor(() => expect(onHandoff).toHaveBeenCalled());
+    expect(onEscalation).not.toHaveBeenCalled();
+    expect(onHandoff).toHaveBeenCalledWith(
+      'cs-handoff',
+      'human_request',
+      expect.stringMatching(/human|person|transfer/i),
+    );
+
+    await result.session.close();
+  });
 });
+
