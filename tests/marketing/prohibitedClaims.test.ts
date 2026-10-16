@@ -72,6 +72,38 @@ function listFiles(dir: string, predicate: (name: string) => boolean): string[] 
   return out;
 }
 
+/**
+ * These components still contain banned customer names (out of this PR's
+ * file lane). Public pages must not remount them: a source scan of the
+ * importer would miss Lakewood / Comfort First / etc. living in the
+ * component file.
+ */
+const UNMOUNTED_CLAIM_COMPONENTS = [
+  'LogosStrip',
+  'TestimonialsCarousel',
+  'ComparisonTable',
+] as const;
+
+const IMPORT_SPEC = /(?:from|import\(|require\()\s*['"]([^'"]+)['"]/g;
+
+function extractImportSpecs(text: string): string[] {
+  return [...text.matchAll(IMPORT_SPEC)].map((match) => match[1]);
+}
+
+function remountedClaimComponent(spec: string): string | null {
+  for (const name of UNMOUNTED_CLAIM_COMPONENTS) {
+    if (
+      spec === name ||
+      spec.endsWith(`/${name}`) ||
+      spec.endsWith(`/${name}.ts`) ||
+      spec.endsWith(`/${name}.tsx`)
+    ) {
+      return name;
+    }
+  }
+  return null;
+}
+
 function publicSources(): Array<{ relativePath: string; text: string }> {
   const files: string[] = [
     join(repoRoot, 'client-app/src/components/PublicLayout.tsx'),
@@ -116,6 +148,26 @@ describe('PR-04 prohibited public-site claims', () => {
     const haystack = 'Built and battle-tested on 40,000+ real healthcare calls';
     const hit = BANNED_PHRASES.find(({ pattern }) => pattern.test(haystack));
     expect(hit?.id).toBe('40000-calls');
+  });
+
+  const tsSources = sources.filter((s) => /\.(tsx|ts|jsx|js)$/.test(s.relativePath));
+
+  it.each(tsSources)(
+    '$relativePath does not remount components that still contain banned names',
+    ({ relativePath, text }) => {
+      for (const spec of extractImportSpecs(text)) {
+        const hit = remountedClaimComponent(spec);
+        expect(hit, `${relativePath} remounts ${hit} via ${spec}`).toBeNull();
+      }
+    },
+  );
+
+  it('fails when a public page remounts LogosStrip', () => {
+    const haystack = "import LogosStrip from '../../components/LogosStrip';";
+    const hit = extractImportSpecs(haystack)
+      .map(remountedClaimComponent)
+      .find(Boolean);
+    expect(hit).toBe('LogosStrip');
   });
 
   it('still reads the live Landing hero (sanity that the scan target exists)', () => {
