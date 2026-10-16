@@ -102,23 +102,19 @@ workspace `DATABASE_URL` is the pool URL instead. Roll back the same way.
 
 ## How request paths are bound (for reviewers)
 
-`platform/db/tenantScope.ts` + `bindPoolQueriesToTenantScope` in `platform/db/index.ts`:
+`platform/db/tenantScope.ts` + `bindPoolQueriesToTenantScope` in `platform/db/index.ts`
+decide what `getPlatformPool()` does in each async context:
 
-- **Authenticated admin-API requests:** `requireTenantContext` (JWT) and API-key
-  auth run the rest of the request inside `runWithTenantScope(tenantId)`. In that
-  scope, `getPlatformPool().query()` runs in its own `BEGIN` / `SET LOCAL
-  app.tenant_id` / `COMMIT`, and a checked-out client (`pool.connect()`) sets
-  `app.tenant_id` right after `BEGIN` and wraps statements outside a transaction
-  the same way. The client is unbound again on `release()`.
-- **Schedulers and nightly jobs:** `startSchedulers`, the worker's leader start,
-  and `runJob` steps run inside `runWithPrivilegedScope`. Restricted-pool calls
-  made there (including from timers they set) go to the privileged pool, the same
-  as before the switch.
-- Code that already uses `withTenantContext` / `withTenantClient` /
-  `getPrivilegedPool()` is unchanged.
-- **Not covered** (returns empty rows after the switch rather than leaking):
-  unauthenticated handlers and other background code that read RLS tables through
-  `getPlatformPool()` outside both scopes. Watch the logs in "Verify after deploy"
-  step 4.
-- Proof against a real Postgres: `tests/security/qvoAppRlsRealDb.test.ts`
-  (local disposable DB only; see the file header for the command).
+| Context | Pool | RLS |
+|---|---|---|
+| Authenticated **tenant** request (`requireTenantContext` / API-key auth → `runWithTenantScope`) | `qvo_app`. `query()` runs in `BEGIN` / `SET LOCAL app.tenant_id` / `COMMIT`; a checked-out client gets `app.tenant_id` right after `BEGIN` (autocommit statements wrapped the same way), and is unbound on `release()` | **enforced** |
+| Isolation suite (`runWithRestrictedScope`) | `qvo_app`, no tenant | enforced (that is what it tests) |
+| Everything else: webhooks, public routes, voice gateway, MFA-verified platform admins, schedulers / nightly jobs (`runWithPrivilegedScope`), timers | privileged (`DATABASE_URL_PRIVILEGED`) | bypassed — **same as today** |
+
+So the switch enforces RLS for tenant-user traffic without changing any other
+path. Code that already uses `withTenantContext` / `withTenantClient` /
+`getPrivilegedPool()` is unchanged. Moving webhooks, the voice gateway and public
+routes onto `qvo_app` is follow-up work, path by path.
+
+Proof against a real Postgres: `tests/security/qvoAppRlsRealDb.test.ts` (local
+disposable DB only; see the file header for the command).
