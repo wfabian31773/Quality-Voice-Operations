@@ -4,10 +4,14 @@ import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
-import { fireDispatchPush } from '../../../platform/notifications/dispatchPush';
-import { connectorService } from '../../../platform/integrations/connectors';
-import type { StandardEventType } from '../../../platform/integrations/connectors/types';
-import type { TenantId } from '../../../platform/core/types';
+import {
+  bookingTimeToISO,
+  buildAppointmentLifecyclePayload,
+  checkBookingConflicts,
+  dispatchAppointmentLifecycleEvent,
+  transitionBooking,
+  writeSchedulingAuditLog,
+} from '../../../platform/scheduling/bookingLifecycle';
 
 const router = Router();
 const logger = createLogger('ADMIN_SCHEDULING');
@@ -30,86 +34,6 @@ const logger = createLogger('ADMIN_SCHEDULING');
 // (e.g. the booking was created via the admin UI rather than a voice call),
 // the dispatch falls back to the per-agent scheduling preference instead of
 // broadcasting to every enabled scheduling integration.
-function bookingTimeToISO(value: unknown): string | undefined {
-  if (!value) return undefined;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
-}
-
-function buildAppointmentLifecyclePayload(
-  booking: Record<string, unknown>,
-  type: StandardEventType,
-  extras: Record<string, unknown> = {},
-): { type: StandardEventType; [key: string]: unknown } {
-  const payload: Record<string, unknown> = {
-    type,
-    appointmentId: booking.id,
-    agentId: booking.agent_id ?? undefined,
-    title: booking.title ?? undefined,
-    contactName: booking.contact_name ?? undefined,
-    callerPhone: booking.contact_phone ?? undefined,
-    attendeeEmail: booking.contact_email ?? undefined,
-    startTime: bookingTimeToISO(booking.start_time),
-    endTime: bookingTimeToISO(booking.end_time),
-    timezone: booking.timezone ?? undefined,
-    ...extras,
-  };
-  for (const key of Object.keys(payload)) {
-    if (payload[key] === undefined) delete payload[key];
-  }
-  return payload as { type: StandardEventType; [key: string]: unknown };
-}
-
-function dispatchAppointmentLifecycleEvent(
-  tenantId: TenantId,
-  payload: { type: StandardEventType; [key: string]: unknown },
-): void {
-  // Fire-and-forget so a slow / failing connector doesn't block the admin
-  // API response. Failures are logged so on-call can catch them via the
-  // existing connector error alerter pipeline.
-  //
-  // Two failure modes have to be surfaced here:
-  //
-  //   1. The dispatch itself rejected (network blip, auth refresh threw).
-  //      Caught below.
-  //   2. The dispatch resolved cleanly but every adapter call returned
-  //      `success: false` — or there was no scheduling adapter to call
-  //      at all (no connector configured for this tenant, the dispatch
-  //      ledger has no entry for the original booking, and there is no
-  //      agent fallback). `dispatchEvent` does not throw in this case;
-  //      it just resolves with `{ dispatched: 0, results: [] }` (or with
-  //      `results` full of `success:false` rows). Without this branch
-  //      the reschedule notification silently disappears and on-call has
-  //      no signal that the calendar update never happened.
-  void connectorService
-    .dispatchEvent(tenantId, payload.type, payload)
-    .then((result) => {
-      const successful = result.results.filter((r) => r.success).length;
-      if (successful > 0) return;
-      const firstError = result.results.find((r) => !r.success)?.error;
-      const reason = firstError
-        ?? (result.results.length === 0
-          ? 'no_scheduling_adapter_dispatched'
-          : 'all_adapters_returned_failure');
-      logger.warn('Appointment lifecycle dispatch produced no successful adapter executions', {
-        tenantId,
-        eventType: payload.type,
-        appointmentId: payload.appointmentId,
-        dispatched: result.dispatched,
-        attempted: result.results.length,
-        reason,
-      });
-    })
-    .catch((err) => {
-      logger.warn('Appointment lifecycle dispatch failed', {
-        tenantId,
-        eventType: payload.type,
-        appointmentId: payload.appointmentId,
-        error: String(err),
-      });
-    });
-}
-
 async function auditLog(
   pool: ReturnType<typeof getPlatformPool>,
   tenantId: string,
@@ -121,10 +45,16 @@ async function auditLog(
   details: Record<string, unknown> = {},
   overrideReason = '',
 ) {
-  await pool.query(
-    `INSERT INTO scheduling_audit_log (tenant_id, booking_id, action, previous_status, new_status, changed_by, details, override_reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [tenantId, bookingId, action, previousStatus, newStatus, changedBy, JSON.stringify(details), overrideReason],
+  await writeSchedulingAuditLog(
+    pool,
+    tenantId,
+    bookingId,
+    action,
+    previousStatus,
+    newStatus,
+    changedBy,
+    details,
+    overrideReason,
   );
 }
 
@@ -973,23 +903,7 @@ export const getBookingHandler: RequestHandler = async (req, res) => {
 };
 
 async function checkConflicts(pool: ReturnType<typeof getPlatformPool>, tenantId: string, startTime: string, endTime: string, providerId?: string, resourceId?: string, excludeBookingId?: string) {
-  const conds: string[] = ['tenant_id = $1', "status NOT IN ('cancelled', 'no_show', 'rescheduled')"];
-  const vals: unknown[] = [tenantId];
-
-  vals.push(startTime);
-  vals.push(endTime);
-  conds.push(`start_time < $3::timestamptz`);
-  conds.push(`end_time > $2::timestamptz`);
-
-  if (providerId) { vals.push(providerId); conds.push(`provider_id = $${vals.length}`); }
-  if (resourceId) { vals.push(resourceId); conds.push(`resource_id = $${vals.length}`); }
-  if (excludeBookingId) { vals.push(excludeBookingId); conds.push(`id != $${vals.length}`); }
-
-  const { rows } = await pool.query(
-    `SELECT id, title, start_time, end_time FROM bookings WHERE ${conds.join(' AND ')}`,
-    vals,
-  );
-  return rows;
+  return checkBookingConflicts(pool, tenantId, startTime, endTime, providerId, resourceId, excludeBookingId);
 }
 
 async function getBookingRules(pool: ReturnType<typeof getPlatformPool>, tenantId: string, appointmentTypeId?: string) {
@@ -1237,223 +1151,23 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
   const { action, cancellation_reason, override_reason, new_start_time, new_end_time } = req.body;
   const pool = getPlatformPool();
 
-  const VALID_TRANSITIONS: Record<string, string[]> = {
-    confirm: ['pending'],
-    check_in: ['confirmed'],
-    complete: ['checked_in', 'confirmed'],
-    no_show: ['confirmed', 'checked_in'],
-    cancel: ['pending', 'confirmed', 'checked_in'],
-    reschedule: ['pending', 'confirmed'],
-    reopen: ['cancelled', 'no_show', 'completed'],
-  };
-
-  if (!VALID_TRANSITIONS[action]) {
-    return res.status(400).json({ error: `Invalid action: ${action}` });
-  }
-
   try {
-    const { rows: existing } = await pool.query(
-      `SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
-    );
-    if (existing.length === 0) return res.status(404).json({ error: 'Booking not found' });
-
-    const booking = existing[0];
-    if (!VALID_TRANSITIONS[action].includes(booking.status)) {
-      return res.status(400).json({
-        error: `Cannot ${action} a booking with status '${booking.status}'. Allowed from: ${VALID_TRANSITIONS[action].join(', ')}`,
-      });
-    }
-
-    const STATUS_MAP: Record<string, string> = {
-      confirm: 'confirmed',
-      check_in: 'checked_in',
-      complete: 'completed',
-      no_show: 'no_show',
-      cancel: 'cancelled',
-      reschedule: 'rescheduled',
-      reopen: 'pending',
-    };
-
-    const newStatus = STATUS_MAP[action];
-    const updates: string[] = [`status = '${newStatus}'`, 'updated_at = NOW()'];
-
-    if (action === 'check_in') updates.push('checked_in_at = NOW()');
-    if (action === 'complete') updates.push('completed_at = NOW()');
-    if (action === 'cancel' && cancellation_reason) {
-      updates.push(`cancellation_reason = '${cancellation_reason.replace(/'/g, "''")}'`);
-    }
-
-    if (action === 'reschedule') {
-      if (!new_start_time || !new_end_time) {
-        return res.status(400).json({ error: 'new_start_time and new_end_time required for reschedule' });
-      }
-      const conflicts = await checkConflicts(pool, tenantId, new_start_time, new_end_time, booking.provider_id, booking.resource_id, id);
-      if (conflicts.length > 0 && !override_reason) {
-        return res.status(409).json({ error: 'New time slot has conflicts', conflicts });
-      }
-      if (!override_reason) {
+    const result = await transitionBooking(pool, {
+      tenantId,
+      bookingId: id,
+      action,
+      cancellationReason: cancellation_reason,
+      overrideReason: override_reason,
+      newStartTime: new_start_time,
+      newEndTime: new_end_time,
+      changedBy: req.user!.userId,
+    }, {
+      checkBlackout: async ({ startTime, endTime, providerId }) => {
         const tenantTz = await getTenantTimezone(pool, tenantId);
-        const overrideConflict = await buildOverrideConflictResponse(
-          pool, tenantId, new_start_time, new_end_time, booking.provider_id || null, tenantTz,
-        );
-        if (overrideConflict) {
-          return res.status(overrideConflict.status).json(overrideConflict.body);
-        }
-      }
-    }
-
-    // Re-activating a previously inactive booking (`reopen`: cancelled /
-    // no_show / completed → pending) or confirming a pending booking can
-    // both move a booking back into the "live" set. If an admin created a
-    // schedule override AFTER the original booking was made, we must
-    // re-check it now so the booking is not silently activated into a
-    // window that is no longer bookable.
-    if ((action === 'reopen' || action === 'confirm') && !override_reason) {
-      const tenantTz = await getTenantTimezone(pool, tenantId);
-      const overrideConflict = await buildOverrideConflictResponse(
-        pool,
-        tenantId,
-        booking.start_time instanceof Date
-          ? booking.start_time.toISOString()
-          : String(booking.start_time),
-        booking.end_time instanceof Date
-          ? booking.end_time.toISOString()
-          : String(booking.end_time),
-        booking.provider_id || null,
-        tenantTz,
-      );
-      if (overrideConflict) {
-        return res.status(overrideConflict.status).json(overrideConflict.body);
-      }
-    }
-
-    await pool.query(
-      `UPDATE bookings SET ${updates.join(', ')} WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
-    );
-
-    if (action === 'reschedule') {
-      const { rows: newBookingRows } = await pool.query(
-        `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
-          contact_name, contact_phone, contact_email, agent_id, created_by, notes,
-          provider_id, appointment_type_id, resource_id, recurring_series_id,
-          intake_data, timezone, location, booking_source)
-         SELECT tenant_id, title, description, $3, $4, 'confirmed',
-           contact_name, contact_phone, contact_email, agent_id, $5, notes,
-           provider_id, appointment_type_id, resource_id, recurring_series_id,
-           intake_data, timezone, location, booking_source
-         FROM bookings WHERE id = $1 AND tenant_id = $2
-         RETURNING *`,
-        [id, tenantId, new_start_time, new_end_time, req.user!.userId],
-      );
-
-      await auditLog(pool, tenantId, id, 'rescheduled', booking.status, 'rescheduled', req.user!.userId, { new_booking_id: newBookingRows[0]?.id, new_start_time, new_end_time }, override_reason || '');
-
-      // Notify the assigned technician (if any) that the booking has been
-      // moved into a new slot — this is one of the "rescheduled into the
-      // technician's day" cases the mobile push spec calls out.
-      const newBooking = newBookingRows[0];
-      if (newBooking?.resource_id) {
-        void fireDispatchPush({
-          event: 'booking_rescheduled',
-          tenantId,
-          resourceIds: [newBooking.resource_id as string],
-          booking: {
-            id: newBooking.id as string,
-            title: (newBooking.title as string | null) ?? null,
-            start_time: newBooking.start_time
-              ? (newBooking.start_time instanceof Date
-                  ? newBooking.start_time.toISOString()
-                  : String(newBooking.start_time))
-              : null,
-          },
-        });
-      }
-
-      // Fan the reschedule out to whichever scheduling integration received
-      // the original booking. Identifiers are derived from the ORIGINAL
-      // booking row (`appointmentId`, `callerPhone`, original `startTime`)
-      // so the dispatch ledger lookup resolves the calendar that holds the
-      // existing event; the new slot travels along in `newStartTime` /
-      // `newEndTime` so adapters can update the calendar entry in place.
-      dispatchAppointmentLifecycleEvent(
-        tenantId,
-        buildAppointmentLifecyclePayload(booking, 'appointment.rescheduled', {
-          newAppointmentId: newBooking?.id ?? undefined,
-          newStartTime: bookingTimeToISO(new_start_time),
-          newEndTime: bookingTimeToISO(new_end_time),
-          rescheduleReason: override_reason || undefined,
-        }),
-      );
-
-      return res.json({ booking: newBookingRows[0], previous_booking_id: id });
-    }
-
-    if (action === 'cancel') {
-      const { rows: waitlistRows } = await pool.query(
-        `SELECT * FROM scheduling_waitlist
-         WHERE tenant_id = $1 AND status = 'waiting'
-           AND (appointment_type_id IS NULL OR appointment_type_id = $2)
-           AND (provider_id IS NULL OR provider_id = $3)
-         ORDER BY created_at ASC LIMIT 1`,
-        [tenantId, booking.appointment_type_id, booking.provider_id],
-      );
-
-      if (waitlistRows.length > 0) {
-        await pool.query(
-          `UPDATE scheduling_waitlist SET status = 'offered', notified_at = NOW(), updated_at = NOW() WHERE id = $1`,
-          [waitlistRows[0].id],
-        );
-      }
-
-      // Push the assigned technician (if any) that the appointment is cancelled.
-      if (booking.resource_id) {
-        void fireDispatchPush({
-          event: 'booking_cancelled',
-          tenantId,
-          resourceIds: [booking.resource_id as string],
-          booking: {
-            id: booking.id as string,
-            title: (booking.title as string | null) ?? null,
-            start_time: booking.start_time
-              ? (booking.start_time instanceof Date
-                  ? booking.start_time.toISOString()
-                  : String(booking.start_time))
-              : null,
-          },
-        });
-      }
-
-      // Fan the cancellation out to whichever scheduling integration received
-      // the original booking. The original booking row is the source of
-      // truth for the lookup keys (appointmentId, callerPhone+startTime).
-      dispatchAppointmentLifecycleEvent(
-        tenantId,
-        buildAppointmentLifecyclePayload(booking, 'appointment.cancelled', {
-          cancellationReason: cancellation_reason || override_reason || undefined,
-        }),
-      );
-    }
-
-    if (action === 'no_show') {
-      // Mirror the cancel path: tell the original calendar that the
-      // appointment didn't happen so the slot can be reclaimed (or marked
-      // as a no-show on the booking event itself).
-      dispatchAppointmentLifecycleEvent(
-        tenantId,
-        buildAppointmentLifecyclePayload(booking, 'appointment.no_show'),
-      );
-    }
-
-    await auditLog(pool, tenantId, id, action, booking.status, newStatus, req.user!.userId, { cancellation_reason }, override_reason || '');
-
-    const { rows: updated } = await pool.query(
-      `SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
-    );
-
-    return res.json({ booking: updated[0] });
+        return buildOverrideConflictResponse(pool, tenantId, startTime, endTime, providerId, tenantTz);
+      },
+    });
+    return res.status(result.httpStatus).json(result.body);
   } catch (err) {
     logger.error('Failed to transition booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to transition booking' });

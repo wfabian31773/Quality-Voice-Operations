@@ -226,6 +226,27 @@ describe('DecisionEngine free-form (no plan) handling', () => {
     expect(fourth.escalation).toBeUndefined();
   });
 
+  it('asks for the new time before executing a reschedule', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      currentIntent: 'reschedule_cancel',
+      currentUtterance: 'I need to reschedule my appointment',
+      toolsAvailable: ['create_booking', 'update_booking', 'create_ticket'],
+      slotTracker: makeSlotTrackerState(makeSlotManifest([
+        { name: 'action', required: true },
+        { name: 'startTime', required: false },
+        { name: 'contactName', required: true },
+      ], { intent: 'reschedule_cancel', vertical: 'salon' }), {
+        action: 'reschedule',
+        contactName: 'Jordan',
+      }),
+    });
+    const result = new DecisionEngine('s', { vertical: 'salon' }).evaluate(ctx);
+    expect(result.action).toBe('ask_clarifying_question');
+    expect(result.toolToExecute).toBeUndefined();
+    expect(result.reasoning).toMatch(/startTime/);
+  });
+
   it('routes salon cancel and reschedule to update_booking, not create_booking', () => {
     const ctx = makeReasoningContext({
       vertical: 'salon',

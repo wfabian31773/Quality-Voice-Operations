@@ -369,6 +369,13 @@ export class DecisionEngine {
         missing.push(name);
       }
     }
+    if (context.currentIntent === 'reschedule_cancel') {
+      const action = String(context.slotTracker.slots.get('action')?.value ?? '').toLowerCase();
+      const startTime = context.slotTracker.slots.get('startTime')?.value;
+      if (action === 'reschedule' && (startTime === null || startTime === undefined || String(startTime).trim() === '')) {
+        if (!missing.includes('startTime')) missing.push('startTime');
+      }
+    }
     return missing;
   }
 

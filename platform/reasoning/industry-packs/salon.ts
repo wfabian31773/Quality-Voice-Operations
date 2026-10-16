@@ -4,6 +4,7 @@ import type {
   SlotManifest,
   ReasoningContext,
 } from '../types';
+import { hasCancelOrRescheduleLanguage } from '../cancelRescheduleLanguage';
 
 const SALON_URGENT_KEYWORDS = [
   'allergic reaction',
@@ -13,6 +14,9 @@ const SALON_URGENT_KEYWORDS = [
 ];
 
 function classifyBookingRequest(context: ReasoningContext) {
+  if (hasCancelOrRescheduleLanguage(context.currentUtterance)) {
+    return { triggered: false };
+  }
   const utterance = context.currentUtterance.toLowerCase();
   const bookingKeywords = [
     'haircut', 'fade', 'trim', 'cut', 'color', 'highlight', 'blowout',
@@ -117,7 +121,7 @@ const slotManifests: Record<string, SlotManifest> = {
     intent: 'reschedule_cancel',
     slots: [
       { name: 'action', label: 'Change type', required: true, prompt: 'Is this a cancellation or a reschedule?' },
-      { name: 'startTime', label: 'New time', required: false, prompt: 'What new day and time works if this is a reschedule?' },
+      { name: 'startTime', label: 'New time', required: false, prompt: 'What new day and time should I move the appointment to? I need that before I can reschedule.' },
       { name: 'contactName', label: 'Name', required: true, prompt: 'What name is the appointment under?' },
       { name: 'notes', label: 'Change details', required: false, prompt: 'What should change about the existing appointment?' },
     ],
@@ -156,7 +160,11 @@ export const salonPack: IndustryReasoningPack = {
     },
     {
       intent: 'reschedule_cancel',
-      keywords: ['reschedule', 'cancel', 'cancellation', 'move my', 'change my appointment'],
+      keywords: [
+        'reschedule', 'cancel', 'cancellation', 'move my', 'change my appointment',
+        'cancelar', 'cancelación', 'reprogramar', 'cambiar la cita', 'mover la cita',
+        'cambiar mi cita', 'mover mi cita',
+      ],
       confidence: 'high',
     },
     {

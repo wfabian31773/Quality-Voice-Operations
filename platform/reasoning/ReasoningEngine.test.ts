@@ -57,6 +57,18 @@ describe('ReasoningEngine.classifyIntent', () => {
       intent: 'reschedule_cancel',
       confidence: 'high',
     });
+    expect(engine.classifyIntent('Cancel my haircut appointment')).toEqual({
+      intent: 'reschedule_cancel',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('Quiero cancelar mi cita de corte')).toEqual({
+      intent: 'reschedule_cancel',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('Necesito mover la cita')).toEqual({
+      intent: 'reschedule_cancel',
+      confidence: 'high',
+    });
   });
 });
 

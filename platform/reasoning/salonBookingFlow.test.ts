@@ -108,9 +108,14 @@ describe('salon booking conversation', () => {
     expect(fourth.action).not.toBe('escalate_to_human');
     expect(fourth.escalation).toBeUndefined();
 
+    engine.processUtterance(
+      'This is Guest. Please tell the shop I could not complete the request.',
+      'leave_message',
+      'high',
+    );
     const ticketArgs = {
-      subject: 'Caller needed a person',
-      description: 'Could not complete the request on the call',
+      subject: 'Could not complete the request',
+      description: 'Please tell the shop I could not complete the request',
       contactName: 'Guest',
       contactPhone: '+15555550199',
     };
@@ -161,6 +166,29 @@ describe('salon booking conversation', () => {
     });
     expect(phoneOverride.allowed).toBe(false);
     expect(phoneOverride.violations.map((v) => v.description).join(' ')).toMatch(/not spoken/);
+  });
+
+  it('classifies cancel-my-haircut as reschedule_cancel, not a new booking', () => {
+    const engine = makeSalonEngine();
+    expect(engine.classifyIntent('Cancel my haircut appointment').intent).toBe('reschedule_cancel');
+    expect(engine.classifyIntent('Quiero cancelar mi cita').intent).toBe('reschedule_cancel');
+    expect(engine.classifyIntent('Puedo cambiar la cita').intent).toBe('reschedule_cancel');
+    expect(engine.classifyIntent('Necesito mover la cita').intent).toBe('reschedule_cancel');
+  });
+
+  it('asks for a new time before calling update_booking on a reschedule', () => {
+    const engine = makeSalonEngine();
+    const decision = engine.processUtterance(
+      'I need to reschedule my appointment, this is Jordan',
+      'reschedule_cancel',
+      'high',
+    );
+    expect(decision.action).toBe('ask_clarifying_question');
+    expect(decision.toolToExecute).toBeUndefined();
+    expect(engine.authorizeToolRequest('update_booking', {
+      action: 'reschedule',
+      contactName: 'Jordan',
+    }).allowed).toBe(false);
   });
 
   it('routes cancel and reschedule to update_booking and never authorizes create_booking', () => {

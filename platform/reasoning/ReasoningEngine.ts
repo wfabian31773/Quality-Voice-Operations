@@ -7,6 +7,7 @@ import { FallbackManager } from './FallbackManager';
 import { SafetyGate } from './SafetyGate';
 import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
+import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction } from './cancelRescheduleLanguage';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -146,6 +147,14 @@ export class ReasoningEngine {
   }
 
   classifyIntent(utterance: string): { intent: string; confidence: ConfidenceLevel } {
+    if (hasCancelOrRescheduleLanguage(utterance)) {
+      const pack = getIndustryPack(this.config.vertical);
+      if (pack?.intentPatterns?.some((pattern) => pattern.intent === 'reschedule_cancel')) {
+        return { intent: 'reschedule_cancel', confidence: 'high' };
+      }
+      return { intent: 'cancel', confidence: 'high' };
+    }
+
     const lower = utterance.toLowerCase();
 
     const patterns: { intent: string; keywords: string[]; confidence: ConfidenceLevel }[] = [
@@ -643,9 +652,7 @@ export class ReasoningEngine {
         return phoneMatch ? phoneMatch[1] : null;
       }
       case 'action': {
-        if (/\bcancel/.test(lowerUtterance)) return 'cancel';
-        if (/\breschedule|\bmove my|\bchange my/.test(lowerUtterance)) return 'reschedule';
-        return null;
+        return inferCancelOrRescheduleAction(originalUtterance);
       }
       case 'reason_for_call':
       case 'title':

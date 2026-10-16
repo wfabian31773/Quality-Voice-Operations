@@ -74,6 +74,65 @@ function slotOrArgValue(
   return undefined;
 }
 
+const SESSION_BOUND_FIELDS = new Set([
+  'contactPhone',
+  'contact_phone',
+  'toNumber',
+  'to_number',
+  'callback_number',
+  'callbackNumber',
+  'callerPhone',
+  'caller_phone',
+  'phoneNumber',
+  'phone',
+]);
+
+function fieldAliases(field: string): string[] {
+  return LIBRARY_FIELD_ALIASES[field] ?? [field];
+}
+
+function callerSourcedSlot(
+  field: string,
+  context: ReasoningContext,
+  toolArgSlots?: Set<string>,
+): boolean {
+  for (const alias of fieldAliases(field)) {
+    const slot = context.slotTracker.slots.get(alias);
+    if (!slot || slot.value === null || slot.value === undefined || String(slot.value).trim().length === 0) {
+      continue;
+    }
+    if (toolArgSlots?.has(alias) || toolArgSlots?.has(field)) continue;
+    return true;
+  }
+  return false;
+}
+
+function transcriptSupportsValue(context: ReasoningContext, field: string, value: unknown): boolean {
+  const transcript = [...context.transcript, context.currentUtterance ?? ''].join(' ').toLowerCase();
+  if (!transcript.trim()) return false;
+  if (SESSION_BOUND_FIELDS.has(field)) return true;
+  if (field === 'startTime' || field === 'preferred_time' || field === 'appointment_time') {
+    return /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|next week|\d{1,2}(?::\d{2})?\s*(?:am|pm)|morning|afternoon|evening|\d{1,2}\/\d{1,2})\b/i.test(transcript);
+  }
+  if (typeof value !== 'string' || value.trim().length === 0) return false;
+  const tokens = value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length >= 3);
+  if (tokens.length === 0) {
+    return transcript.includes(value.toLowerCase().trim());
+  }
+  return tokens.some((token) => transcript.includes(token));
+}
+
+function hasCallerProvenance(
+  field: string,
+  value: unknown,
+  context: ReasoningContext,
+  toolArgSlots?: Set<string>,
+): boolean {
+  if (SESSION_BOUND_FIELDS.has(field) && context.callerNumber) return true;
+  if (callerSourcedSlot(field, context, toolArgSlots)) return true;
+  return transcriptSupportsValue(context, field, value);
+}
+
 export class SafetyGate {
   private readonly vertical?: string;
   private readonly verticalProhibitions: string[];
@@ -224,13 +283,30 @@ export class SafetyGate {
     }
     const libraryEntry = getToolLibraryEntry(toolName);
     if (libraryEntry) {
-      const missingFields = libraryEntry.parameters.required.filter((field) => {
+      const required = [...libraryEntry.parameters.required];
+      if (toolName === 'update_booking' && String(toolArgs.action ?? '').toLowerCase() === 'reschedule') {
+        if (!required.includes('startTime')) required.push('startTime');
+      }
+      const missingFields = required.filter((field) => {
         return !isPresentValue(slotOrArgValue(field, toolArgs, context));
+      });
+      const unprovenanced = required.filter((field) => {
+        if (missingFields.includes(field)) return false;
+        const value = slotOrArgValue(field, toolArgs, context);
+        return !hasCallerProvenance(field, value, context, toolArgSlots);
       });
       if (missingFields.length > 0) {
         violations.push({
           type: 'missing_required_data',
           description: `Tool "${toolName}" requires data that has not been collected: ${missingFields.join(', ')}`,
+          blockedAction: toolName,
+          severity: 'critical',
+        });
+      }
+      if (unprovenanced.length > 0) {
+        violations.push({
+          type: 'missing_required_data',
+          description: `Tool "${toolName}" required fields were supplied only in model tool arguments, not by the caller: ${unprovenanced.join(', ')}`,
           blockedAction: toolName,
           severity: 'critical',
         });

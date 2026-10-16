@@ -135,6 +135,8 @@ describe('SafetyGate.checkPreExecution', () => {
     const ctx = makeReasoningContext({
       vertical: 'salon',
       toolsAvailable: ['create_booking'],
+      currentUtterance: 'Book a haircut Friday at 3pm, I am Ada',
+      transcript: ['Book a haircut Friday at 3pm, I am Ada'],
       slotTracker: makeSlotTrackerState(makeSlotManifest([{ name: 'title', required: true }])),
     });
     const result = new SafetyGate('salon').checkPreExecution(
@@ -151,6 +153,31 @@ describe('SafetyGate.checkPreExecution', () => {
     );
     expect(result.allowed).toBe(true);
     expect(result.violations).toEqual([]);
+  });
+
+  it('blocks a library booking when required fields exist only in model tool_args', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      toolsAvailable: ['create_booking'],
+      currentUtterance: 'hello',
+      transcript: [],
+      slotTracker: makeSlotTrackerState(makeSlotManifest([{ name: 'title', required: true }])),
+    });
+    const result = new SafetyGate('salon').checkPreExecution(
+      ctx,
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Hallucinated Guest',
+        contactPhone: '+15551234567',
+      },
+      makeConfidence('high'),
+      new Set(['title', 'startTime', 'contactName', 'contactPhone']),
+    );
+    expect(result.allowed).toBe(false);
+    expect(types(result)).toContain('missing_required_data');
+    expect(result.violations.map((v) => v.description).join(' ')).toMatch(/tool arguments/);
   });
 
   it('blocks a library booking when name, phone, or time is missing', () => {
@@ -209,6 +236,23 @@ describe('SafetyGate.checkPreExecution', () => {
     expect(callerMismatch.allowed).toBe(false);
     expect(types(callerMismatch)).toContain('policy_violation');
     expect(callerMismatch.violations.map((v) => v.description).join(' ')).toMatch(/not spoken/);
+  });
+
+  it('requires a new time before authorizing a reschedule', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      toolsAvailable: ['update_booking'],
+      currentUtterance: 'I need to reschedule my appointment, this is Ada',
+      transcript: ['I need to reschedule my appointment, this is Ada'],
+    });
+    const result = new SafetyGate('salon').checkPreExecution(
+      ctx,
+      'update_booking',
+      { action: 'reschedule', contactName: 'Ada' },
+      makeConfidence('high'),
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.violations.map((v) => v.description).join(' ')).toMatch(/startTime/);
   });
 
   it('flags a hallucinated confirmation: a boolean-true arg under low confidence and sparse data', () => {
@@ -274,7 +318,12 @@ describe('SafetyGate.checkPreExecution', () => {
       );
       expect(blocked.allowed).toBe(false);
       const allowed = new SafetyGate().checkPreExecution(
-        ctx,
+        makeReasoningContext({
+          toolsAvailable: ['retrieve_knowledge'],
+          slotTracker: optionalOnly,
+          currentUtterance: 'What are Saturday hours?',
+          transcript: ['What are Saturday hours?'],
+        }),
         'retrieve_knowledge',
         { query: 'Saturday hours' },
         makeConfidence('high'),
