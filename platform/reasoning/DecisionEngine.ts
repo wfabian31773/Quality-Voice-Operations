@@ -24,6 +24,7 @@ export interface DecisionEngineConfig {
   vertical?: string;
   fallbackManager?: FallbackManager;
   escalationManager?: EscalationManager;
+  humanTransferAvailable?: boolean;
 }
 
 export class DecisionEngine {
@@ -42,7 +43,9 @@ export class DecisionEngine {
       config.confidenceProceedThreshold,
       config.confidenceClarifyThreshold,
     );
-    this.escalationManager = config.escalationManager ?? new EscalationManager();
+    this.escalationManager = config.escalationManager ?? new EscalationManager({
+      transferAvailable: config.humanTransferAvailable !== false,
+    });
     this.safetyGate = new SafetyGate(config.vertical, config.tenantPolicies);
     this.fallbackManager = config.fallbackManager ?? new FallbackManager();
     this.trace = new ReasoningTrace(callSessionId);
@@ -65,6 +68,18 @@ export class DecisionEngine {
 
     const escalation = this.escalationManager.evaluate(context, confidence);
     if (escalation) {
+      if (escalation.output === 'take_message') {
+        const ticketTool = this.resolveTicketTool(context);
+        if (ticketTool) {
+          return this.buildResult(
+            'execute_tool',
+            confidence,
+            escalation.reason,
+            context,
+            { escalation, fallbackStep: 'create_ticket', toolToExecute: ticketTool },
+          );
+        }
+      }
       if (context.workflowPlan) {
         context.workflowPlan.status = 'escalated';
         context.workflowPlan.completedAt = new Date();
@@ -128,7 +143,7 @@ export class DecisionEngine {
             confidence,
             'Human routing reached — creating fallback ticket for follow-up',
             context,
-            { fallbackStep: 'create_ticket', toolToExecute: 'createServiceTicket' },
+            { fallbackStep: 'create_ticket', toolToExecute: this.resolveTicketTool(context) ?? 'createServiceTicket' },
           );
         }
         return this.buildResult(
@@ -163,7 +178,7 @@ export class DecisionEngine {
           confidence,
           'Human routing reached — creating fallback ticket for follow-up',
           context,
-          { fallbackStep: 'create_ticket', toolToExecute: 'createServiceTicket' },
+          { fallbackStep: 'create_ticket', toolToExecute: this.resolveTicketTool(context) ?? 'createServiceTicket' },
         );
       }
       return this.buildResult(
@@ -363,14 +378,24 @@ export class DecisionEngine {
   }
 
   private inferTool(context: ReasoningContext): string | undefined {
+    const pack = getIndustryPack(context.vertical);
+    const packTool = pack?.intentTools?.[context.currentIntent];
+    if (packTool) return packTool;
+
     const intentToolMap: Record<string, string> = {
-      schedule_appointment: 'createServiceTicket',
+      schedule_appointment: context.toolsAvailable.includes('create_booking')
+        ? 'create_booking'
+        : 'createServiceTicket',
+      book_appointment: 'create_booking',
+      reschedule_cancel: 'create_booking',
+      hours_services: 'retrieve_knowledge',
+      leave_message: 'create_ticket',
       urgent_medical: 'triageEscalate',
       general_inquiry: 'retrieve_knowledge',
-      billing_inquiry: 'createServiceTicket',
+      billing_inquiry: this.resolveTicketTool(context) ?? 'createServiceTicket',
       after_hours_medical: 'createAfterHoursTicket',
-      service_request: 'createServiceTicket',
-      maintenance_request: 'createServiceTicket',
+      service_request: this.resolveTicketTool(context) ?? 'createServiceTicket',
+      maintenance_request: this.resolveTicketTool(context) ?? 'createServiceTicket',
       make_reservation: 'createServiceTicket',
       schedule_viewing: 'createServiceTicket',
       schedule_consultation: 'createServiceTicket',
@@ -378,6 +403,12 @@ export class DecisionEngine {
     };
 
     return intentToolMap[context.currentIntent];
+  }
+
+  private resolveTicketTool(context: ReasoningContext): string | undefined {
+    if (context.toolsAvailable.includes('create_ticket')) return 'create_ticket';
+    if (context.toolsAvailable.includes('createServiceTicket')) return 'createServiceTicket';
+    return undefined;
   }
 
   private buildToolArgs(context: ReasoningContext): Record<string, unknown> {

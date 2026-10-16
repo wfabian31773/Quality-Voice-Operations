@@ -17,6 +17,7 @@ const REGISTERED_TEMPLATES: AgentTemplateEntry[] = [
   { value: 'outbound-sales', label: 'Outbound Sales' },
   { value: 'technical-support', label: 'Technical Support' },
   { value: 'collections', label: 'Collections' },
+  { value: 'salon', label: 'Salon & Barbershop' },
   { value: 'custom', label: 'Custom' },
 ];
 

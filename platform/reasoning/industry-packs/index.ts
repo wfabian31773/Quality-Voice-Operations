@@ -8,6 +8,7 @@ import { legalPack } from './legal';
 import { restaurantPack } from './restaurant';
 import { realEstatePack } from './real-estate';
 import { insurancePack } from './insurance';
+import { salonPack } from './salon';
 
 const INDUSTRY_PACKS: Map<IndustryVertical, IndustryReasoningPack> = new Map([
   ['hvac', hvacPack],
@@ -19,6 +20,7 @@ const INDUSTRY_PACKS: Map<IndustryVertical, IndustryReasoningPack> = new Map([
   ['restaurant', restaurantPack],
   ['real-estate', realEstatePack],
   ['insurance', insurancePack],
+  ['salon', salonPack],
 ]);
 
 export function getIndustryPack(vertical: string): IndustryReasoningPack | undefined {
@@ -43,4 +45,5 @@ export {
   restaurantPack,
   realEstatePack,
   insurancePack,
+  salonPack,
 };

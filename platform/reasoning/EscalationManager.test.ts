@@ -128,6 +128,26 @@ describe('EscalationManager history & counters', () => {
     expect(mgr.getEscalationHistory()).toHaveLength(2); // unaffected by mutation
   });
 
+  it('offers to take a message once when no transfer number is configured', () => {
+    const mgr = new EscalationManager({ transferAvailable: false, maxConfusionTurns: 2 });
+    const ctx = makeReasoningContext({ currentUtterance: 'um, I am not sure' });
+    expect(mgr.evaluate(ctx, LOW)).toBeNull();
+    const first = mgr.evaluate(ctx, LOW);
+    expect(first?.output).toBe('take_message');
+    expect(first?.trigger).toBe('repeated_confusion');
+    expect(mgr.evaluate(ctx, LOW)).toBeNull();
+  });
+
+  it('still warm-transfers emergencies when no on-call number is configured', () => {
+    const mgr = new EscalationManager({ transferAvailable: false });
+    const ev = mgr.evaluate(
+      makeReasoningContext({ currentUtterance: 'I think my dad is having a heart attack' }),
+      HIGH,
+    );
+    expect(ev?.trigger).toBe('emergency_keyword');
+    expect(ev?.output).toBe('warm_transfer');
+  });
+
   it('lets manual confusion counts and resets drive the threshold', () => {
     const mgr = new EscalationManager({ maxConfusionTurns: 3 });
     mgr.recordConfusion();

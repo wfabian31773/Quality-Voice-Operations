@@ -35,6 +35,29 @@ describe('ReasoningEngine.classifyIntent', () => {
   it('falls back to unknown/low when nothing matches', () => {
     expect(makeEngine().classifyIntent('zxcvbnm qwerty')).toEqual({ intent: 'unknown', confidence: 'low' });
   });
+
+  it('classifies salon booking, hours, and message intents from the salon pack', () => {
+    const engine = makeEngine({
+      vertical: 'salon',
+      toolsAvailable: ['create_booking', 'create_ticket', 'send_sms', 'escalate_to_human'],
+    });
+    expect(engine.classifyIntent('I want to book a haircut tomorrow at 2')).toEqual({
+      intent: 'book_appointment',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('what time do you close on Saturday')).toEqual({
+      intent: 'hours_services',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('can I leave a message for the owner')).toEqual({
+      intent: 'leave_message',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('I need to reschedule my appointment')).toEqual({
+      intent: 'reschedule_cancel',
+      confidence: 'high',
+    });
+  });
 });
 
 describe('ReasoningEngine.getSafetyPolicyPrompt', () => {

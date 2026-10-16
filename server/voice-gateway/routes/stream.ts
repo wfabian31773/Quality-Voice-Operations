@@ -574,8 +574,8 @@ export function attachWebSocket(server: HTTPServer): void {
               const agentMeta = agentCfg.metadata as Record<string, unknown>;
               const onCallNumber = (agentMeta.onCallTransferNumber as string) ?? '';
               if (!onCallNumber) {
-                slog.warn('Escalation requested but no on-call number configured');
-                await writeCallEvent(tid, csId, 'escalation_failed', 'ESCALATION_CHECK', 'ESCALATION_FAILED', {
+                slog.info('Escalation requested with no on-call number — degrade to message-taking');
+                await writeCallEvent(tid, csId, 'escalation_message_fallback', 'ESCALATION_CHECK', 'ACTIVE_CONVERSATION', {
                   reason: 'no_on_call_number',
                 });
                 await updateCallState(tid, csId, 'ACTIVE_CONVERSATION');

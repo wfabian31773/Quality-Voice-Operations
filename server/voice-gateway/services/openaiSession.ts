@@ -770,6 +770,9 @@ export async function createRealtimeSession(
       callerNumber,
       toolsAvailable: agentConfig.tools.map((t) => t.name),
       memoryStorage: ctx.callerMemory ?? null,
+      humanTransferAvailable: Boolean(
+        (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+      ),
     };
     reasoningEngine = new ReasoningEngine(reasoningConfig);
   } catch (err) {
@@ -1123,6 +1126,24 @@ export async function createRealtimeSession(
                   ctx.onEscalation(callSessionId, callSid, escalationReason).catch((escErr) => {
                     slog.error('Reasoning-triggered escalation failed', { error: String(escErr) });
                   });
+                }
+
+                if (
+                  reasoningResult.action === 'execute_tool'
+                  && reasoningResult.fallbackStep === 'create_ticket'
+                  && reasoningResult.escalation?.output === 'take_message'
+                ) {
+                  writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                    trigger: reasoningResult.escalation.trigger,
+                    tool: reasoningResult.toolToExecute,
+                  }).catch(() => {});
+                  try {
+                    sendModelInstruction(
+                      'No live transfer is available. Offer to take a message once and call create_ticket with the caller name, phone, and message. Do not keep asking to transfer or repeating that a human is unavailable.',
+                    );
+                  } catch (injectErr) {
+                    slog.error('Failed to inject take-message fallback', { error: String(injectErr) });
+                  }
                 }
 
                 if (reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {

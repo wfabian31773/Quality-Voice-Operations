@@ -1,4 +1,5 @@
 import { createLogger } from '../core/logger';
+import { getToolLibraryEntry } from '../tools/library/catalog';
 import type {
   SafetyCheckResult,
   SafetyViolation,
@@ -34,6 +35,43 @@ const DEFAULT_TOOLS_REQUIRING_COMPLETE_DATA: Record<string, string[]> = {
   triageEscalate: ['urgency_level', 'symptom_description'],
   retrieve_knowledge: [],
 };
+
+const LIBRARY_FIELD_ALIASES: Record<string, string[]> = {
+  contactName: ['contactName', 'caller_name', 'callerName'],
+  contactPhone: ['contactPhone', 'callback_number', 'caller_phone', 'toNumber'],
+  startTime: ['startTime', 'preferred_time', 'appointment_time', 'preferred_date'],
+  title: ['title', 'reason_for_call'],
+  subject: ['subject', 'reason_for_call', 'title'],
+  description: ['description', 'reason_for_call', 'notes'],
+  reason: ['reason', 'reason_for_call'],
+  toNumber: ['toNumber', 'contactPhone', 'callback_number'],
+  body: ['body', 'description', 'notes'],
+  query: ['query', 'reason_for_call'],
+};
+
+function isPresentValue(value: unknown): boolean {
+  if (typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.trim().length > 0;
+  return false;
+}
+
+function slotOrArgValue(
+  field: string,
+  toolArgs: Record<string, unknown>,
+  context: ReasoningContext,
+): unknown {
+  if (isPresentValue(toolArgs[field])) return toolArgs[field];
+  const aliases = LIBRARY_FIELD_ALIASES[field] ?? [field];
+  for (const alias of aliases) {
+    if (isPresentValue(toolArgs[alias])) return toolArgs[alias];
+    const slot = context.slotTracker.slots.get(alias);
+    if (slot && slot.value !== null && slot.value !== undefined && String(slot.value).trim().length > 0) {
+      return slot.value;
+    }
+  }
+  return undefined;
+}
 
 export class SafetyGate {
   private readonly vertical?: string;
@@ -158,6 +196,22 @@ export class SafetyGate {
         return;
       }
     }
+    const libraryEntry = getToolLibraryEntry(toolName);
+    if (libraryEntry) {
+      const missingFields = libraryEntry.parameters.required.filter((field) => {
+        return !isPresentValue(slotOrArgValue(field, toolArgs, context));
+      });
+      if (missingFields.length > 0) {
+        violations.push({
+          type: 'missing_required_data',
+          description: `Tool "${toolName}" requires data that has not been collected: ${missingFields.join(', ')}`,
+          blockedAction: toolName,
+          severity: 'critical',
+        });
+      }
+      return;
+    }
+
     const manifestRequired = context.slotTracker.manifest.slots
       .filter((s) => s.required)
       .map((s) => s.name);
@@ -171,7 +225,9 @@ export class SafetyGate {
     for (const slotName of requiredSlots) {
       const slot = context.slotTracker.slots.get(slotName);
       if (!slot || slot.value === null) {
-        missingSlots.push(slotName);
+        if (!isPresentValue(toolArgs[slotName])) {
+          missingSlots.push(slotName);
+        }
       } else if (toolArgSlots && toolArgSlots.has(slotName)) {
         toolArgOnlySlots.push(slotName);
       }
@@ -186,14 +242,10 @@ export class SafetyGate {
       });
     }
 
+    // Legacy healthcare-era tools still require caller-sourced slots.
+    // Library tools already returned above; their arguments are the caller data.
     if (toolArgOnlySlots.length > 0) {
-      violations.push({
-        type: 'missing_required_data',
-        description: `Tool "${toolName}" has required data only from model-generated tool args (not caller-provided): ${toolArgOnlySlots.join(', ')}. Caller must provide this data directly.`,
-        blockedAction: toolName,
-        severity: 'critical',
-      });
-      logger.warn('Required slots filled only by tool args, not caller — blocking execution', {
+      logger.warn('Required slots filled only by tool args for a legacy tool', {
         callId: context.callSessionId,
         tool: toolName,
         slots: toolArgOnlySlots,

@@ -23,7 +23,8 @@ export type EscalationOutput =
   | 'warm_transfer'
   | 'callback'
   | 'urgent_ticket'
-  | 'sms_followup';
+  | 'sms_followup'
+  | 'take_message';
 
 export type FallbackStep =
   | 'rephrase_request'
@@ -50,7 +51,8 @@ export type IndustryVertical =
   | 'legal'
   | 'restaurant'
   | 'real-estate'
-  | 'insurance';
+  | 'insurance'
+  | 'salon';
 
 export interface SlotManifestEntry {
   name: string;
@@ -172,6 +174,12 @@ export interface IndustryRuleResult {
   modifiedConfidence?: ConfidenceLevel;
 }
 
+export interface IndustryIntentPattern {
+  intent: string;
+  keywords: string[];
+  confidence: ConfidenceLevel;
+}
+
 export interface IndustryReasoningPack {
   vertical: IndustryVertical;
   displayName: string;
@@ -179,6 +187,8 @@ export interface IndustryReasoningPack {
   slotManifests: Record<string, SlotManifest>;
   escalationKeywords: string[];
   prohibitedAdviceCategories: string[];
+  intentPatterns?: IndustryIntentPattern[];
+  intentTools?: Record<string, string>;
 }
 
 export interface CallerContext {
@@ -227,6 +237,7 @@ export interface ReasoningContext {
   toolsAvailable: string[];
   tenantPolicies: TenantPolicy[];
   escalationAttempts: number;
+  humanTransferAvailable?: boolean;
 }
 
 export interface TenantPolicy {

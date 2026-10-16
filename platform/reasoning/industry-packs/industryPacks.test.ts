@@ -4,6 +4,7 @@ import {
   getAllIndustryPacks,
   getIndustryVerticals,
   hvacPack,
+  salonPack,
 } from './index';
 import type { DecisionAction } from '../types';
 import { makeReasoningContext } from '../__fixtures__/reasoningContext';
@@ -18,6 +19,7 @@ const ALL_VERTICALS = [
   'restaurant',
   'real-estate',
   'insurance',
+  'salon',
 ] as const;
 
 const VALID_ACTIONS: DecisionAction[] = [
@@ -124,5 +126,37 @@ describe('hvac pack rule branches', () => {
 
   it('does not trigger maintenance classification for an emergency utterance', () => {
     expect(maintenanceRule.evaluate(ctx('gas leak!')).triggered).toBe(false);
+  });
+});
+
+describe('salon pack rule branches', () => {
+  const [bookingRule, hoursRule, messageRule] = salonPack.rules;
+
+  it('classifies a haircut booking request', () => {
+    const r = bookingRule.evaluate(ctx('I want to book a fade tomorrow afternoon'));
+    expect(r.triggered).toBe(true);
+    expect(r.additionalContext).toContain('create_booking');
+  });
+
+  it('classifies hours questions', () => {
+    const r = hoursRule.evaluate(ctx('are you open on Sunday?'));
+    expect(r.triggered).toBe(true);
+  });
+
+  it('classifies a leave-a-message request', () => {
+    const r = messageRule.evaluate(ctx('can I leave a message for the owner'));
+    expect(r.triggered).toBe(true);
+    expect(r.additionalContext).toContain('create_ticket');
+  });
+
+  it('maps salon intents onto the built-in library tools', () => {
+    expect(salonPack.intentTools).toMatchObject({
+      book_appointment: 'create_booking',
+      leave_message: 'create_ticket',
+      hours_services: 'retrieve_knowledge',
+    });
+    expect(salonPack.slotManifests.book_appointment.slots.map((s) => s.name)).toEqual(
+      expect.arrayContaining(['title', 'startTime', 'contactName', 'contactPhone']),
+    );
   });
 });

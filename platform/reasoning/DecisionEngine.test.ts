@@ -208,6 +208,23 @@ describe('DecisionEngine free-form (no plan) handling', () => {
     expect(result.fallbackStep).toBe('create_ticket');
     expect(result.reasoning).toContain('Human routing reached');
   });
+
+  it('converts a no-transfer escalation into a one-time create_ticket fallback', () => {
+    const ctx = veryLowConfidenceCtx({
+      toolsAvailable: ['create_ticket', 'create_booking', 'escalate_to_human'],
+      currentUtterance: 'um, I am not sure',
+    });
+    const engine = new DecisionEngine('s', { humanTransferAvailable: false });
+    expect(engine.evaluate(ctx).action).not.toBe('escalate_to_human');
+    expect(engine.evaluate(ctx).action).not.toBe('escalate_to_human');
+    const third = engine.evaluate(ctx);
+    expect(third.action).toBe('execute_tool');
+    expect(third.toolToExecute).toBe('create_ticket');
+    expect(third.escalation?.output).toBe('take_message');
+    const fourth = engine.evaluate(ctx);
+    expect(fourth.action).not.toBe('escalate_to_human');
+    expect(fourth.escalation).toBeUndefined();
+  });
 });
 
 describe('DecisionEngine accessors & trace', () => {

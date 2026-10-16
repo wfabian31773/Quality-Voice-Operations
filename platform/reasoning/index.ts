@@ -42,6 +42,7 @@ export type {
   SafetyViolation,
   SafetyViolationType,
   IndustryVertical,
+  IndustryIntentPattern,
   IndustryReasoningPack,
   IndustryReasoningRule,
   IndustryRuleResult,
