@@ -16,7 +16,7 @@
     "sign_in": "Se connecter",
     "sign_out": "Se déconnecter",
     "book_demo": "Réserver une démo",
-    "start_trial": "Démarrer l'essai gratuit",
+    "start_trial": "Créer un compte",
     "open_menu": "Ouvrir le menu",
     "close": "Fermer"
   },
@@ -148,7 +148,7 @@
     "signup_failed": "Échec de l'inscription",
     "checkout_init_failed": "Impossible de démarrer le paiement",
     "signup_eyebrow": "Démarrer",
-    "signup_headline": "Lancez votre essai gratuit dès aujourd'hui.",
+    "signup_headline": "Créez votre compte QVO.",
     "signup_subhead": "Déployez des agents vocaux IA en quelques minutes. Gérez les appels, planifiez les rendez-vous et qualifiez les prospects — en pilote automatique.",
     "signup_help": "Besoin d'aide pour choisir un plan ?",
     "signup_compare": "Comparer les plans",
@@ -163,9 +163,9 @@
     "billing_monthly_note": "Facturation mensuelle · annulez à tout moment.",
     "billing_annual_note": "Facturation annuelle · économisez 20% sur le plan de base.",
     "popular": "Populaire",
-    "start_trial_button": "Démarrer l'essai gratuit",
+    "start_trial_button": "Créer un compte",
     "per_month_short": "/mois",
-    "verification_required": "Vérification par e-mail requise pour activer votre essai.",
+    "verification_required": "Vérification par e-mail requise pour activer votre compte.",
     "captcha_failed": "Veuillez compléter la vérification CAPTCHA.",
     "captcha_unavailable": "L'inscription est temporairement indisponible car CAPTCHA n'est pas configuré. Réessayez plus tard ou contactez le support.",
     "password_too_short": "Le mot de passe doit contenir au moins 8 caractères.",
@@ -517,7 +517,7 @@
       "title": "Vous voulez voir vos chiffres en contexte ?",
       "subtitle": "Réservez une démo et nous vous guiderons à travers un benchmark GIN d'exemple pour votre secteur — et nous vous montrerons exactement ce qui est partagé (et ce qui ne l'est jamais).",
       "cta_primary": "Réserver une démo",
-      "cta_secondary": "Démarrer l'essai gratuit"
+      "cta_secondary": "Créer un compte"
     }
   },
   "vertical_agents_page": {
@@ -682,7 +682,7 @@
     "bottom_cta": {
       "title": "Sautez le prompt vide. Démarrez avec un agent vertical.",
       "subtitle": "Lancez un agent qui connaît déjà votre secteur. Personnalisez ce qui est spécifique à votre cabinet, laissez le reste par défaut et passez en production en jours, pas en mois.",
-      "cta_primary": "Démarrer l'essai gratuit",
+      "cta_primary": "Créer un compte",
       "cta_secondary": "Voir les cas d'usage"
     }
   },

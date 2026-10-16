@@ -3,7 +3,7 @@
     "try_live_demo": "Try Live Demo",
     "see_use_cases": "See Use Cases",
     "explore_agents": "Explore Agents",
-    "start_free_trial": "Start Free Trial",
+    "start_free_trial": "Create an account",
     "book_demo": "Book a Demo",
     "talk_to_us": "Talk to us",
     "book_a_demo": "Book a demo",
@@ -372,9 +372,9 @@
     },
     "bottom_cta": {
       "title": "See it in action.",
-      "subtitle": "Try our live demo agents or start your free trial today.",
+      "subtitle": "Try our live demo agents or book a walkthrough.",
       "try_demo": "Try the demo",
-      "start_trial": "Start free trial"
+      "start_trial": "Create an account"
     }
   },
   "features": {
@@ -479,7 +479,7 @@
       "per_month": "/month",
       "minutes_included": "{{minutes}} AI minutes included",
       "overage_label": "{{overage}} overage",
-      "start_trial": "Start free trial",
+      "start_trial": "Create an account",
       "recommended": "RECOMMENDED",
       "billed_monthly": "Billed monthly · cancel anytime",
       "billed_annually": "Billed annually · save 20%",
@@ -935,7 +935,7 @@
     "custom_cta": {
       "title": "Need a custom integration?",
       "subtitle": "QVO's REST API and webhook system lets you connect to any external service. Our developer documentation covers authentication, event types, and payload formats.",
-      "start_trial": "Start Free Trial",
+      "start_trial": "Create an account",
       "talk_engineering": "Talk to Engineering"
     }
   },
@@ -981,7 +981,7 @@
   },
   "vertical_page": {
     "hero": {
-      "start_trial": "Start Free Trial",
+      "start_trial": "Create an account",
       "try_demo": "Try Live Demo"
     },
     "card": {
@@ -1014,7 +1014,7 @@
     "bottom_cta": {
       "title": "Ready to Transform Your {{vertical}} Practice?",
       "subtitle": "Now onboarding pilot shops.",
-      "start_trial": "Start Your Free Trial",
+      "start_trial": "Create an account",
       "see_demo": "See Live Demo"
     },
     "not_found": {

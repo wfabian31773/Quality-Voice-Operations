@@ -16,7 +16,7 @@
     "sign_in": "Anmelden",
     "sign_out": "Abmelden",
     "book_demo": "Demo buchen",
-    "start_trial": "Kostenlose Testversion starten",
+    "start_trial": "Konto erstellen",
     "open_menu": "Menü öffnen",
     "close": "Schließen"
   },
@@ -148,7 +148,7 @@
     "signup_failed": "Registrierung fehlgeschlagen",
     "checkout_init_failed": "Checkout konnte nicht gestartet werden",
     "signup_eyebrow": "Loslegen",
-    "signup_headline": "Starten Sie heute Ihre kostenlose Testversion.",
+    "signup_headline": "Erstellen Sie Ihr QVO-Konto.",
     "signup_subhead": "Stellen Sie KI-Sprachagenten in Minuten bereit. Nehmen Sie Anrufe entgegen, planen Sie Termine und qualifizieren Sie Leads — alles auf Autopilot.",
     "signup_help": "Brauchen Sie Hilfe bei der Plan-Auswahl?",
     "signup_compare": "Pläne vergleichen",
@@ -163,9 +163,9 @@
     "billing_monthly_note": "Monatliche Abrechnung · jederzeit kündbar.",
     "billing_annual_note": "Jährliche Abrechnung · 20% Rabatt auf den Basisplan.",
     "popular": "Beliebt",
-    "start_trial_button": "Kostenlose Testversion starten",
+    "start_trial_button": "Konto erstellen",
     "per_month_short": "/Mon.",
-    "verification_required": "E-Mail-Verifizierung erforderlich, um Ihre Testversion zu aktivieren.",
+    "verification_required": "E-Mail-Bestätigung erforderlich, um Ihr Konto zu aktivieren.",
     "captcha_failed": "Bitte schließen Sie die CAPTCHA-Verifizierung ab.",
     "captcha_unavailable": "Die Registrierung ist vorübergehend nicht verfügbar, weil CAPTCHA nicht konfiguriert ist. Bitte versuchen Sie es später erneut oder kontaktieren Sie den Support.",
     "password_too_short": "Das Passwort muss mindestens 8 Zeichen lang sein.",
@@ -517,7 +517,7 @@
       "title": "Möchten Sie Ihre Zahlen im Kontext sehen?",
       "subtitle": "Buchen Sie eine Demo, und wir führen Sie durch ein Beispiel-GIN-Benchmark für Ihre Branche — und zeigen Ihnen genau, was geteilt wird (und was nie geteilt wird).",
       "cta_primary": "Demo buchen",
-      "cta_secondary": "Kostenlose Testversion starten"
+      "cta_secondary": "Konto erstellen"
     }
   },
   "vertical_agents_page": {
@@ -682,7 +682,7 @@
     "bottom_cta": {
       "title": "Lassen Sie den leeren Prompt aus. Starten Sie mit einem Branchen-Agenten.",
       "subtitle": "Spinnen Sie einen Agenten hoch, der Ihre Branche bereits kennt. Passen Sie an, was für Ihre Praxis spezifisch ist, lassen Sie den Rest auf den Standardwerten und gehen Sie in Tagen live, nicht in Monaten.",
-      "cta_primary": "Kostenlose Testversion starten",
+      "cta_primary": "Konto erstellen",
       "cta_secondary": "Anwendungsfälle ansehen"
     }
   },
