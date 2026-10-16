@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../../../platform/core/logger';
 import { recordRejection } from './twilioSignatureMetrics';
 import { deriveNonce, isReplay } from './twilioReplayCache';
+import { resolveVoicePublicBaseUrl } from '../../../platform/runtime/processRole';
 
 const logger = createLogger('TWILIO_SIGNATURE');
 
@@ -74,7 +75,13 @@ async function runTwilioSignatureCheck(req: Request, res: Response, next: NextFu
   // signed the public URL (`https://host/vg/twilio/voice`), so we must
   // re-prepend the original prefix before verifying the signature.
   const forwardedPrefix = firstForwarded(req.headers['x-forwarded-prefix']);
-  const fullUrl = `${protocol}://${host}${forwardedPrefix}${req.originalUrl}`;
+  // Direct hosting (Render): Twilio calls `VOICE_PUBLIC_BASE_URL/...`, so
+  // rebuild the signed URL from that configured origin instead of trusting
+  // forwarded headers. Unset (Replit `/vg`): keep the header path above.
+  const publicBase = resolveVoicePublicBaseUrl();
+  const fullUrl = publicBase
+    ? `${publicBase}${req.originalUrl}`
+    : `${protocol}://${host}${forwardedPrefix}${req.originalUrl}`;
 
   const params = req.body && typeof req.body === 'object' ? req.body : {};
   const isValid = validateRequestFn(authToken, signature, fullUrl, params);
@@ -102,7 +109,14 @@ async function runTwilioSignatureCheck(req: Request, res: Response, next: NextFu
   // `SequenceNumber`-based dedupe). `req.originalUrl` preserves the full
   // path-and-query as the client sent it.
   const routePath = req.originalUrl || `${req.baseUrl}${req.path}`;
-  const nonce = deriveNonce(routePath, params as Record<string, unknown>);
+  let nonce = deriveNonce(routePath, params as Record<string, unknown>);
+  // A draining instance answers /twilio/voice with a <Redirect> back to
+  // /twilio/voice?qvoDrainRedirect=1 for the same CallSid. That second hop
+  // is a legitimate, separately signed request, so give it its own nonce;
+  // otherwise the durable replay store would reject it and drop the call.
+  if (nonce && req.query?.qvoDrainRedirect === '1') {
+    nonce = `${nonce}:drain-redirect`;
+  }
   if (nonce) {
     // `isReplay` is now async + atomically claims the nonce in BOTH the
     // in-memory cache and the durable Postgres store, so an attacker can't

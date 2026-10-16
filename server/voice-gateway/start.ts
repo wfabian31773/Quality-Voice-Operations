@@ -16,8 +16,18 @@ import { registerRetrieveKnowledgeTool } from '../../platform/tools/knowledge/re
 import { initOperatorNotificationPipeline } from '../../platform/tools/OperatorNotificationPipeline';
 import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
 import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
+import { resolveProcessRole, resolveVoicePort, isRenderRuntime, scrubReplitFallbacks } from '../../platform/runtime/processRole';
+import { markEnvValidated, markRegistriesLoaded } from '../../platform/runtime/health';
+import { createVoiceShutdown } from './shutdown';
 
 const logger = createLogger('VOICE_GATEWAY');
+
+// `all` (default) = Replit: same process layout as before PR-00.
+const ROLE = resolveProcessRole();
+const removedReplitVars = scrubReplitFallbacks();
+if (removedReplitVars.length > 0) {
+  logger.warn('Ignoring Replit-only env vars on Render', { names: removedReplitVars });
+}
 
 registerCoreTools();
 registerTemplateTools();
@@ -25,12 +35,14 @@ registerToolLibrary();
 registerRetrieveKnowledgeTool();
 initOperatorNotificationPipeline();
 initToolHealthTracking();
+markRegistriesLoaded();
 ensureReliabilityTables().catch((err) => {
   logger.warn('Reliability tables setup deferred', { error: String(err) });
 });
 
 const isProd = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
-const envResult = validateEnvironment({ exitOnFailure: isProd });
+const envResult = validateEnvironment({ exitOnFailure: isProd || isRenderRuntime(), role: ROLE });
+markEnvValidated(envResult.passed);
 if (!envResult.passed && !isProd) {
   logger.warn('Environment validation has warnings — some features may be unavailable');
 }
@@ -41,7 +53,7 @@ if (twilioAdapter) {
   logger.info('Twilio transfer adapter registered');
 }
 
-const PORT = parseInt(process.env.VOICE_GATEWAY_PORT ?? '3001', 10);
+const PORT = resolveVoicePort(ROLE);
 
 const server = http.createServer(app);
 attachWebSocket(server);
@@ -49,6 +61,7 @@ attachWebSocket(server);
 server.listen(PORT, '0.0.0.0', () => {
   logger.info(`Voice Gateway listening on port ${PORT}`, {
     port: PORT,
+    role: ROLE,
     env: process.env.APP_ENV ?? 'development',
     nodeVersion: process.version,
   });
@@ -58,26 +71,16 @@ server.listen(PORT, '0.0.0.0', () => {
   startStreamCanary();
 });
 
-async function gracefulShutdown(signal: string): Promise<void> {
-  logger.info(`Received ${signal}, starting graceful shutdown`);
+const { drainAndExit, fastShutdown } = createVoiceShutdown({
+  server,
+  sessions: sessionManager,
+  closePool: closePlatformPool,
+  stopCanary: stopStreamCanary,
+  exit: (code) => process.exit(code),
+});
 
-  stopStreamCanary();
-
-  server.close(() => {
-    logger.info('HTTP server closed — no new connections');
-  });
-
-  await sessionManager.drainAll(30_000);
-
-  await closePlatformPool();
-  logger.info('DB pool closed');
-
-  logger.info('Shutdown complete');
-  process.exit(0);
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => void drainAndExit('SIGTERM'));
+process.on('SIGINT', () => void drainAndExit('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled promise rejection', { error: String(reason) });
@@ -95,7 +98,7 @@ process.on('uncaughtException', (err) => {
     stackTrace: err.stack,
     extra: { type: 'uncaughtException' },
   });
-  gracefulShutdown('uncaughtException');
+  void fastShutdown('uncaughtException');
 });
 
 export { server };
