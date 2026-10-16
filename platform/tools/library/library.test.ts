@@ -425,6 +425,51 @@ describe('tool library handlers', () => {
     expect(transitionBooking).toHaveBeenCalledTimes(1);
   });
 
+  it('returns a scheduling conflict after confirm without retrying or re-issuing a token', async () => {
+    const challenge = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+    }, ctx);
+    expect(challenge.confirmationToken).toBeTruthy();
+
+    transitionBooking.mockResolvedValueOnce({
+      ok: false,
+      httpStatus: 409,
+      body: { error: 'New time slot has conflicts', conflicts: [{ id: 'bk-other' }] },
+    });
+
+    const conflict = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, confirmCtx);
+
+    expect(conflict.success).toBe(true);
+    expect(conflict.pending).toBe(true);
+    expect(conflict.status).toBe('conflict');
+    expect(conflict.needsConfirmation).toBeUndefined();
+    expect(conflict.confirmationToken).toBeUndefined();
+    expect(isPendingBookingChallenge(conflict)).toBe(true);
+    expect(String(conflict.message)).toMatch(/conflict|blackout/i);
+    expect(transitionBooking).toHaveBeenCalledTimes(1);
+
+    const delivered = assertGatewayDeliversToModel(JSON.stringify(conflict));
+    expect(delivered.status).toBe('conflict');
+    expect(delivered.success).toBe(true);
+  });
+
+  it('returns a not-found result without treating it as a tool error', async () => {
+    upcomingRows.splice(0, upcomingRows.length);
+    const result = await executeUpdateBooking({ action: 'cancel' }, ctx);
+    expect(result.success).toBe(true);
+    expect(result.pending).toBe(true);
+    expect(result.status).toBe('not_found');
+    expect(isPendingBookingChallenge(result)).toBe(true);
+    expect(() => assertGatewayDeliversToModel(JSON.stringify(result))).not.toThrow();
+    expect(transitionBooking).not.toHaveBeenCalled();
+  });
+
   it('interprets an offset-less create_booking time in the tenant timezone', async () => {
     await expect(executeCreateBooking({
       title: 'Haircut',

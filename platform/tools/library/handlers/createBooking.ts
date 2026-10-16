@@ -137,7 +137,7 @@ export interface UpdateBookingResult {
   message: string;
   bookingId?: string;
   action?: string;
-  status?: 'needs_selection' | 'needs_confirmation' | 'updated';
+  status?: 'needs_selection' | 'needs_confirmation' | 'updated' | 'conflict' | 'not_found';
   pending?: boolean;
   needsSelection?: boolean;
   needsConfirmation?: boolean;
@@ -151,7 +151,9 @@ export function isPendingBookingChallenge(result: {
 }): boolean {
   return result.pending === true
     || result.status === 'needs_selection'
-    || result.status === 'needs_confirmation';
+    || result.status === 'needs_confirmation'
+    || result.status === 'conflict'
+    || result.status === 'not_found';
 }
 
 function challengeResult(
@@ -209,11 +211,11 @@ export async function executeUpdateBooking(
       }>).map(toCandidate);
 
       if (candidates.length === 0) {
-        return {
-          success: false,
-          message: 'No upcoming booking was found for this caller. Do not create a new booking. Offer to leave a message for the shop.',
+        return challengeResult({
           action,
-        } satisfies UpdateBookingResult;
+          status: 'not_found',
+          message: 'No upcoming booking was found for this caller. Do not create a new booking. Offer to leave a message for the shop.',
+        });
       }
 
       const requestedId = String(input.bookingId ?? '').trim();
@@ -290,10 +292,28 @@ export async function executeUpdateBooking(
       });
 
       if (!transition.ok) {
-        const conflictMessage = transition.httpStatus === 409
-          ? 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.'
-          : String(transition.body.error ?? 'Failed to update the existing booking.');
-        return { success: false, action, bookingId: selected.bookingId, message: conflictMessage };
+        if (transition.httpStatus === 409) {
+          return challengeResult({
+            action,
+            status: 'conflict',
+            bookingId: selected.bookingId,
+            message: 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.',
+          });
+        }
+        if (transition.httpStatus === 404) {
+          return challengeResult({
+            action,
+            status: 'not_found',
+            bookingId: selected.bookingId,
+            message: String(transition.body.error ?? 'No upcoming booking was found for this caller. Do not create a new booking. Offer to leave a message for the shop.'),
+          });
+        }
+        return {
+          success: false,
+          action,
+          bookingId: selected.bookingId,
+          message: String(transition.body.error ?? 'Failed to update the existing booking.'),
+        };
       }
 
       afterCommit = transition.afterCommit ?? [];

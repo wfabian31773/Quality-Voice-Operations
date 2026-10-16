@@ -262,18 +262,21 @@ export async function transitionBooking(
   );
 
   if (action === 'reschedule') {
+    // Original row is already marked rescheduled; copy its prior status so
+    // pending voice requests are not promoted to confirmed.
+    const replacementStatus = String(booking.status) === 'pending' ? 'pending' : 'confirmed';
     const { rows: newBookingRows } = await pool.query(
       `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
           contact_name, contact_phone, contact_email, agent_id, created_by, notes,
           provider_id, appointment_type_id, resource_id, recurring_series_id,
           intake_data, timezone, location, booking_source)
-         SELECT tenant_id, title, description, $3, $4, 'confirmed',
+         SELECT tenant_id, title, description, $3, $4, $6,
            contact_name, contact_phone, contact_email, agent_id, $5, notes,
            provider_id, appointment_type_id, resource_id, recurring_series_id,
            intake_data, timezone, location, booking_source
          FROM bookings WHERE id = $1 AND tenant_id = $2
          RETURNING *`,
-      [bookingId, tenantId, input.newStartTime, input.newEndTime, input.changedBy ?? null],
+      [bookingId, tenantId, input.newStartTime, input.newEndTime, input.changedBy ?? null, replacementStatus],
     );
 
     await writeSchedulingAuditLog(

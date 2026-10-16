@@ -110,6 +110,63 @@ describe('transitionBooking', () => {
     expect(query.mock.calls.some(([sql]) => String(sql).includes('scheduling_audit_log'))).toBe(true);
   });
 
+  function successfulRescheduleQuery(originalStatus: string) {
+    return vi.fn(async (sql: string) => {
+      if (sql.includes('SELECT * FROM bookings WHERE id')) {
+        return {
+          rows: [{
+            id: 'bk-1',
+            status: originalStatus,
+            provider_id: null,
+            resource_id: null,
+            start_time: '2026-10-20T15:00:00.000Z',
+            end_time: '2026-10-20T15:30:00.000Z',
+          }],
+        };
+      }
+      if (sql.includes('SELECT id, title, start_time, end_time FROM bookings')) {
+        return { rows: [] };
+      }
+      if (sql.includes('UPDATE bookings')) return { rows: [], rowCount: 1 };
+      if (sql.includes('INSERT INTO bookings')) {
+        return { rows: [{ id: 'bk-2', status: originalStatus === 'pending' ? 'pending' : 'confirmed' }] };
+      }
+      if (sql.includes('INSERT INTO scheduling_audit_log')) return { rows: [] };
+      throw new Error(`unexpected query: ${sql}`);
+    });
+  }
+
+  it('keeps a pending request pending when rescheduling', async () => {
+    const query = successfulRescheduleQuery('pending');
+    const result = await transitionBooking({ query }, {
+      tenantId: 'tenant-1',
+      bookingId: 'bk-1',
+      action: 'reschedule',
+      newStartTime: '2026-10-21T16:00:00.000Z',
+      newEndTime: '2026-10-21T16:30:00.000Z',
+    });
+
+    expect(result.ok).toBe(true);
+    const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO bookings'));
+    expect(insert?.[1]?.[5]).toBe('pending');
+    expect(insert?.[0]).not.toMatch(/'confirmed'/);
+  });
+
+  it('keeps a confirmed booking confirmed when rescheduling', async () => {
+    const query = successfulRescheduleQuery('confirmed');
+    const result = await transitionBooking({ query }, {
+      tenantId: 'tenant-1',
+      bookingId: 'bk-1',
+      action: 'reschedule',
+      newStartTime: '2026-10-21T16:00:00.000Z',
+      newEndTime: '2026-10-21T16:30:00.000Z',
+    });
+
+    expect(result.ok).toBe(true);
+    const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO bookings'));
+    expect(insert?.[1]?.[5]).toBe('confirmed');
+  });
+
   it('defers calendar dispatch and staff push until afterCommit when asked', async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('SELECT * FROM bookings WHERE id') && !sql.includes('scheduling_waitlist')) {
