@@ -54,7 +54,7 @@ The app must **not** connect as `postgres`. That role has `rolbypassrls=true`, s
 
 **Rollout, verification and rollback:** follow [`docs/runbooks/qvo-app-rls-rollout.md`](docs/runbooks/qvo-app-rls-rollout.md) step by step (Render first; Replit is legacy/fallback).
 
-Authenticated admin-API requests run inside `runWithTenantScope(tenantId)` (set by `requireTenantContext` / API-key auth), so `getPlatformPool().query()` there is bound to `app.tenant_id` automatically. Explicit transactions must `BEGIN` and `SET LOCAL app.tenant_id` via `withTenantContext` / `withTenantClient`. Cross-tenant work must use `withPrivilegedClient` / `getPrivilegedPool()`.
+Authenticated admin-API requests run inside `runWithTenantScope(tenantId)` (set by `requireTenantContext` / API-key auth), so `getPlatformPool().query()` and checked-out clients there are bound to `app.tenant_id` automatically; schedulers and nightly jobs run inside `runWithPrivilegedScope`, which sends restricted-pool calls to the privileged pool. Explicit transactions must `BEGIN` and `SET LOCAL app.tenant_id` via `withTenantContext` / `withTenantClient`. Cross-tenant work must use `withPrivilegedClient` / `getPrivilegedPool()`.
 
 ## Linting
 
