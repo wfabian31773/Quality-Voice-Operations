@@ -89,12 +89,6 @@ export function defaultStreamUrl(): string {
 /** 20ms of g711_ulaw silence (0xFF), base64-encoded — a benign media frame. */
 const SILENCE_FRAME_B64 = Buffer.alloc(160, 0xff).toString('base64');
 
-function buildUrl(base: string, token: string | undefined): string {
-  if (!token) return base;
-  const sep = base.includes('?') ? '&' : '?';
-  return `${base}${sep}token=${encodeURIComponent(token)}`;
-}
-
 /**
  * Run a realtime-stream diagnostic. Resolves with a structured report and
  * never rejects — failures are captured in the report so callers (HTTP
@@ -119,6 +113,7 @@ export async function runRealtimeStreamDiagnostic(
     callerNumber: '+10000000000',
     calledNumber: '+10000000001',
     ...options.params,
+    ...(token ? { token } : {}),
   };
 
   const startedAtMs = Date.now();
@@ -167,7 +162,7 @@ export async function runRealtimeStreamDiagnostic(
 
   let ws: WebSocket;
   try {
-    ws = new WebSocket(buildUrl(base, token), { handshakeTimeout: connectTimeoutMs });
+    ws = new WebSocket(base, { handshakeTimeout: connectTimeoutMs });
   } catch (err) {
     stages.push({ stage: 'ws_connect', status: 'fail', detail: String(err) });
     return finish(false, 'ws_connect', 'connect_refused', String(err));
@@ -287,7 +282,7 @@ export async function runRealtimeStreamDiagnostic(
       // Closed before we reached our success condition.
       const connected = hasConnected();
       const stage: StreamStage = connected ? 'session_setup' : 'ws_connect';
-      const reason: StreamFailureReason = !connected
+      const reason: StreamFailureReason = !connected || code === 1008
         ? 'auth_rejected'
         : (Date.now() - startSentAt < 500 ? 'closed_early' : 'setup_error');
       stages.push({ stage, status: 'fail', detail: `socket closed (code ${code})` });

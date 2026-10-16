@@ -1,4 +1,5 @@
 import type { Server as HTTPServer, IncomingMessage } from 'http';
+import { timingSafeEqual } from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createLogger } from '../../../platform/core/logger';
 import { redactPHI } from '../../../platform/core/phi/redact';
@@ -34,12 +35,42 @@ const logger = createLogger('WS_STREAM');
 const widgetLogger = createLogger('WS_WIDGET');
 
 const STREAM_AUTH_TOKEN = process.env.VOICE_GATEWAY_STREAM_TOKEN;
+const START_AUTH_TIMEOUT_MS = 10_000;
+
+function streamTokensEqual(provided: unknown, expected: string): boolean {
+  if (typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function queryStreamToken(request: IncomingMessage | undefined): string | null {
+  if (!request) return null;
+  const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
+  return url.searchParams.get('token');
+}
 
 function validateStreamOrigin(request: IncomingMessage): boolean {
   if (!STREAM_AUTH_TOKEN) return true;
-  const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
-  const token = url.searchParams.get('token');
-  return token === STREAM_AUTH_TOKEN;
+  const token = queryStreamToken(request);
+  // Twilio does not forward Stream URL query strings (error 31920). A query
+  // token is optional here; the start-frame customParameters.token is required
+  // unless this upgrade already presented a valid query token (mixed-version
+  // TwiML from an older instance).
+  if (token == null) return true;
+  return streamTokensEqual(token, STREAM_AUTH_TOKEN);
+}
+
+function queryTokenAuthenticated(request: IncomingMessage | undefined): boolean {
+  if (!STREAM_AUTH_TOKEN) return true;
+  const token = queryStreamToken(request);
+  if (token == null) return false;
+  return streamTokensEqual(token, STREAM_AUTH_TOKEN);
 }
 
 function createBudgetGuard(tenantId: string): BudgetGuardService {
@@ -122,7 +153,7 @@ export function attachWebSocket(server: HTTPServer): void {
     }
   });
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
     let streamSid: string | undefined;
     let callSessionId: string | undefined;
     let tenantId: string | undefined;
@@ -147,6 +178,15 @@ export function attachWebSocket(server: HTTPServer): void {
     // state (so the demo live-call UI never ends).
     let streamEnded = false;
     const streamStartedAt = Date.now();
+    const upgradeAuthenticated = queryTokenAuthenticated(request);
+    let startAccepted = !STREAM_AUTH_TOKEN;
+    const startAuthTimeout = STREAM_AUTH_TOKEN
+      ? setTimeout(() => {
+          if (startAccepted) return;
+          logger.warn('WebSocket closed — start frame timeout');
+          ws.close(1008);
+        }, START_AUTH_TIMEOUT_MS)
+      : undefined;
     let slog: SessionLogger = logger;
 
     // Realtime-stream telemetry timing for the live (non-probe) path. Mirrors
@@ -338,7 +378,27 @@ export function attachWebSocket(server: HTTPServer): void {
 
         switch (msg.event) {
           case 'start': {
-            const params = msg.start?.customParameters ?? {};
+            const rawParams = (msg.start?.customParameters ?? {}) as Record<string, unknown>;
+            if (STREAM_AUTH_TOKEN) {
+              const startHasToken = typeof rawParams.token === 'string' && rawParams.token.length > 0;
+              if (startHasToken) {
+                if (!streamTokensEqual(rawParams.token, STREAM_AUTH_TOKEN)) {
+                  logger.warn('Stream start rejected — invalid stream token');
+                  if (startAuthTimeout) clearTimeout(startAuthTimeout);
+                  ws.close(1008);
+                  return;
+                }
+              } else if (!upgradeAuthenticated) {
+                logger.warn('Stream start rejected — invalid stream token');
+                if (startAuthTimeout) clearTimeout(startAuthTimeout);
+                ws.close(1008);
+                return;
+              }
+              startAccepted = true;
+              if (startAuthTimeout) clearTimeout(startAuthTimeout);
+            }
+            const params = { ...rawParams } as Record<string, string>;
+            delete params.token;
             tenantId = params.tenantId;
             const agentId = params.agentId;
             streamAgentId = agentId;
@@ -816,6 +876,7 @@ export function attachWebSocket(server: HTTPServer): void {
     });
 
     ws.on('close', () => {
+      if (startAuthTimeout) clearTimeout(startAuthTimeout);
       finalizeStream().catch((err) => {
         slog.error('Error during WebSocket close finalization', { error: String(err) });
       });

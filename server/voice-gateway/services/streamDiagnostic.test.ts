@@ -6,7 +6,7 @@ import { runRealtimeStreamDiagnostic } from './streamDiagnostic';
 
 // A stub that emulates the gateway's Twilio Media Streams endpoint so the
 // probe's protocol + timing logic is exercised hermetically (no DB/OpenAI).
-type StubBehavior = 'echo_audio' | 'reject_403' | 'close_on_start' | 'silent';
+type StubBehavior = 'echo_audio' | 'reject_403' | 'close_on_start' | 'close_1008' | 'silent';
 
 function startStubGateway(behavior: StubBehavior): Promise<{ server: Server; url: string }> {
   return new Promise((resolve) => {
@@ -28,6 +28,7 @@ function startStubGateway(behavior: StubBehavior): Promise<{ server: Server; url
         try { msg = JSON.parse(data.toString()); } catch { return; }
         if (msg.event !== 'start') return;
         if (behavior === 'close_on_start') { ws.close(); return; }
+        if (behavior === 'close_1008') { ws.close(1008); return; }
         if (behavior === 'echo_audio') {
           ws.send(JSON.stringify({ event: 'media', streamSid: msg.streamSid, media: { payload: 'AAAA' } }));
         }
@@ -96,6 +97,15 @@ describe('runRealtimeStreamDiagnostic — handshake mode', () => {
 });
 
 describe('runRealtimeStreamDiagnostic — connection failures', () => {
+  it('reports auth_rejected when the gateway closes 1008 after start', async () => {
+    stub = await startStubGateway('close_1008');
+    const report = await runRealtimeStreamDiagnostic({ mode: 'handshake', url: stub.url, handshakeGraceMs: 200, connectTimeoutMs: 1000 });
+    expect(report.ok).toBe(false);
+    expect(report.failureReason).toBe('auth_rejected');
+    expect(report.failureStage).toBe('session_setup');
+    expect(report.error).toMatch(/1008/);
+  });
+
   it('reports auth_rejected on a 403 upgrade', async () => {
     stub = await startStubGateway('reject_403');
     const report = await runRealtimeStreamDiagnostic({ mode: 'handshake', url: stub.url, handshakeGraceMs: 200, connectTimeoutMs: 1000 });

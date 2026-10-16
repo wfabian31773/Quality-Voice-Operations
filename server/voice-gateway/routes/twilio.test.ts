@@ -265,10 +265,13 @@ describe('POST /twilio/outbound', () => {
   });
 
   it('connects the stream on the happy path', async () => {
+    process.env.VOICE_GATEWAY_STREAM_TOKEN = 'outbound-tok&x';
     const res = await form(request(app()).post('/twilio/outbound'), base);
     expect(res.text).toContain('<Connect>');
     expect(res.text).toContain('name="agentType" value="outbound"');
     expect(res.text).toContain('name="campaignId" value="camp1"');
+    expect(res.text).toContain('<Parameter name="token" value="outbound-tok&amp;x"');
+    expect(res.text).not.toMatch(/<Stream url="[^"]*\?/);
   });
 
   it('fails closed before streaming an unapproved outbound healthcare call', async () => {
@@ -372,7 +375,9 @@ describe('PR-00 drain + direct voice hosting', () => {
       request(app()).post('/twilio/voice').set('x-forwarded-host', 'evil.example').set('x-forwarded-proto', 'http'),
       base,
     );
-    expect(res.text).toContain('<Stream url="wss://voice.example.com/twilio/stream?token=tok%2Fwith%2Bchars"');
+    expect(res.text).toContain('<Stream url="wss://voice.example.com/twilio/stream"');
+    expect(res.text).not.toContain('?token=');
+    expect(res.text).toContain('<Parameter name="token" value="tok/with+chars"');
     expect(res.text).not.toContain('evil.example');
     expect(res.text).not.toContain('/vg/');
   });
