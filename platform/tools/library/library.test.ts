@@ -7,7 +7,7 @@ import {
 } from './catalog';
 import { executeSendEmail } from './handlers/sendEmail';
 import { executeCreateTicket } from './handlers/createTicket';
-import { executeCreateBooking } from './handlers/createBooking';
+import { executeCreateBooking, executeUpdateBooking } from './handlers/createBooking';
 import { executeCreateDispatchJob } from './handlers/createDispatchJob';
 import { registerToolLibrary, listRegisteredLibraryTools } from './registerToolLibrary';
 import { globalToolRegistry } from '../registry';
@@ -17,13 +17,29 @@ vi.mock('../../email/EmailService', () => ({
   sendEmail: vi.fn(async () => ({ success: true, messageId: 'msg-1' })),
 }));
 
-vi.mock('../../db', () => {
+const { query } = vi.hoisted(() => {
   const query = vi.fn(async (sql: string) => {
     if (sql.includes('INSERT INTO tickets')) return { rows: [{ id: 'tk-1', ticket_number: 42 }] };
     if (sql.includes('INSERT INTO bookings')) return { rows: [{ id: 'bk-1' }] };
     if (sql.includes('INSERT INTO dispatch_jobs')) return { rows: [{ id: 'dj-1' }] };
+    if (sql.includes('SELECT id, start_time, end_time, status, title')) {
+      return {
+        rows: [{
+          id: 'bk-existing',
+          start_time: '2026-10-20T15:00:00.000Z',
+          end_time: '2026-10-20T15:30:00.000Z',
+          status: 'pending',
+          title: 'Haircut',
+        }],
+      };
+    }
+    if (sql.includes('UPDATE bookings')) return { rows: [{ id: 'bk-existing' }] };
     return { rows: [] };
   });
+  return { query };
+});
+
+vi.mock('../../db', () => {
   return {
     getPlatformPool: () => ({
       connect: async () => ({
@@ -42,6 +58,7 @@ describe('tool library catalog', () => {
       'send_email',
       'create_ticket',
       'create_booking',
+      'update_booking',
       'create_dispatch_job',
       'lookup_customer',
       'retrieve_knowledge',
@@ -60,7 +77,11 @@ describe('tool library catalog', () => {
 });
 
 describe('tool library handlers', () => {
-  const ctx = { tenantId: 't-lib', callLogId: 'cs-1', callSid: 'CA1' };
+  const ctx = { tenantId: 't-lib', callLogId: 'cs-1', callSid: 'CA1', callerNumber: '+15551230000' };
+
+  beforeEach(() => {
+    query.mockClear();
+  });
 
   it('sends email through the platform email service', async () => {
     const result = await executeSendEmail({
@@ -104,6 +125,30 @@ describe('tool library handlers', () => {
     }, ctx);
     expect(result.success).toBe(false);
   });
+
+  it('cancels and reschedules the existing booking and never inserts a new row', async () => {
+    await expect(executeUpdateBooking({
+      action: 'cancel',
+      notes: 'Caller cannot make it',
+    }, ctx)).resolves.toMatchObject({
+      success: true,
+      action: 'cancel',
+      bookingId: 'bk-existing',
+    });
+
+    await expect(executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-21T16:00:00.000Z',
+    }, ctx)).resolves.toMatchObject({
+      success: true,
+      action: 'reschedule',
+      bookingId: 'bk-existing',
+    });
+
+    const sql = query.mock.calls.map((call) => String(call[0]));
+    expect(sql.some((statement) => statement.includes('UPDATE bookings'))).toBe(true);
+    expect(sql.some((statement) => statement.includes('INSERT INTO bookings'))).toBe(false);
+  });
 });
 
 describe('registerToolLibrary', () => {
@@ -117,9 +162,11 @@ describe('registerToolLibrary', () => {
       'send_email',
       'create_ticket',
       'create_booking',
+      'update_booking',
       'create_dispatch_job',
     ]));
     expect(globalToolRegistry.get('create_ticket')).toBeDefined();
+    expect(globalToolRegistry.get('update_booking')).toBeDefined();
     expect(unifiedToolRegistry.getEnhanced('send_sms')).toBeDefined();
   });
 });

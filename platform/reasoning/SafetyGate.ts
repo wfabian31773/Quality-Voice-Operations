@@ -1,5 +1,6 @@
 import { createLogger } from '../core/logger';
 import { getToolLibraryEntry } from '../tools/library/catalog';
+import { bindSessionToolArgs, sessionTranscriptFrom } from './sessionBinding';
 import type {
   SafetyCheckResult,
   SafetyViolation,
@@ -96,7 +97,8 @@ export class SafetyGate {
   ): SafetyCheckResult {
     const violations: SafetyViolation[] = [];
 
-    this.checkMissingRequiredData(toolName, toolArgs, context, violations, toolArgSlots);
+    const bound = this.bindSessionArgs(toolName, toolArgs, context, violations);
+    this.checkMissingRequiredData(toolName, bound, context, violations, toolArgSlots);
     this.checkUnauthorizedTool(toolName, context, violations);
     this.checkHallucinatedConfirmation(toolArgs, confidence, violations);
     this.checkTenantPolicies(toolName, context, violations);
@@ -133,6 +135,30 @@ export class SafetyGate {
     }
 
     return { allowed, violations };
+  }
+
+  private bindSessionArgs(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ReasoningContext,
+    violations: SafetyViolation[],
+  ): Record<string, unknown> {
+    const bound = bindSessionToolArgs(toolArgs, {
+      tenantId: context.tenantId,
+      agentId: context.agentSlug,
+      callerNumber: context.callerNumber,
+      transcript: sessionTranscriptFrom(context),
+    });
+    if (!bound.ok) {
+      violations.push({
+        type: 'policy_violation',
+        description: bound.reason ?? 'Tool arguments do not match the call session',
+        blockedAction: toolName,
+        severity: 'critical',
+      });
+      return bound.args;
+    }
+    return bound.args;
   }
 
   private checkMissingRequiredData(

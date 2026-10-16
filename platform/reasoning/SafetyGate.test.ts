@@ -169,6 +169,48 @@ describe('SafetyGate.checkPreExecution', () => {
     expect(result.violations[0].description).toMatch(/startTime|contactName|contactPhone/);
   });
 
+  it('rejects model args that override the session tenant or caller phone', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      tenantId: 'demo',
+      agentSlug: 'salon-agent',
+      callerNumber: '+15555550199',
+      toolsAvailable: ['create_booking'],
+    });
+    const gate = new SafetyGate('salon');
+
+    const tenantMismatch = gate.checkPreExecution(
+      ctx,
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Ada',
+        contactPhone: '+15555550199',
+        tenantId: 'other-tenant',
+      },
+      makeConfidence('high'),
+    );
+    expect(tenantMismatch.allowed).toBe(false);
+    expect(types(tenantMismatch)).toContain('policy_violation');
+    expect(tenantMismatch.violations.map((v) => v.description).join(' ')).toMatch(/tenant/);
+
+    const callerMismatch = gate.checkPreExecution(
+      ctx,
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Ada',
+        contactPhone: '+15559990000',
+      },
+      makeConfidence('high'),
+    );
+    expect(callerMismatch.allowed).toBe(false);
+    expect(types(callerMismatch)).toContain('policy_violation');
+    expect(callerMismatch.violations.map((v) => v.description).join(' ')).toMatch(/not spoken/);
+  });
+
   it('flags a hallucinated confirmation: a boolean-true arg under low confidence and sparse data', () => {
     const ctx = makeReasoningContext({
       toolsAvailable: ['createServiceTicket'],

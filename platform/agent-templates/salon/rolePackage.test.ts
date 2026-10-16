@@ -23,12 +23,14 @@ describe('salon role package', () => {
     );
     expect(compiled.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
       'create_booking',
+      'update_booking',
       'send_sms',
       'create_ticket',
       'escalate_to_human',
       'get_current_tenant_time',
     ]));
     expect(compiled.rolePrompt).toContain('create_booking');
+    expect(compiled.rolePrompt).toContain('update_booking');
     expect(compiled.rolePrompt).not.toMatch(/diagnos|prescription|phi/i);
   });
 

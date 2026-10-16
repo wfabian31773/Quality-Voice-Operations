@@ -352,6 +352,18 @@ export class ReasoningEngine {
   }
 
   authorizeToolRequest(toolName: string, toolArgs: Record<string, unknown>): SafetyCheckResult {
+    if (this.currentIntent === 'reschedule_cancel' && toolName === 'create_booking') {
+      return {
+        allowed: false,
+        violations: [{
+          type: 'policy_violation',
+          description: 'Cancel and reschedule must update the existing booking. Do not create a new booking.',
+          blockedAction: toolName,
+          severity: 'critical',
+        }],
+      };
+    }
+
     const safety = this.checkToolSafety(toolName, toolArgs);
     if (!safety.allowed) return safety;
 
@@ -382,6 +394,10 @@ export class ReasoningEngine {
 
   getLatestDecision(): DecisionResult | null {
     return this.lastDecisionResult;
+  }
+
+  getTranscript(): string[] {
+    return [...this.transcript];
   }
 
   handleToolSuccess(toolName: string): void {
@@ -517,10 +533,14 @@ export class ReasoningEngine {
 
   private usesLibraryBookingTools(): boolean {
     return this.config.toolsAvailable.includes('create_booking')
+      || this.config.toolsAvailable.includes('update_booking')
       || this.config.toolsAvailable.includes('create_ticket');
   }
 
   private getManifestForIntent(intent: string): SlotManifest {
+    const packManifest = getIndustryPack(this.config.vertical)?.slotManifests[intent];
+    if (packManifest) return packManifest;
+
     if (this.usesLibraryBookingTools() && (intent === 'schedule_appointment' || intent === 'book_appointment')) {
       return {
         vertical: this.config.vertical,
@@ -621,6 +641,11 @@ export class ReasoningEngine {
       case 'toNumber': {
         const phoneMatch = originalUtterance.match(/(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
         return phoneMatch ? phoneMatch[1] : null;
+      }
+      case 'action': {
+        if (/\bcancel/.test(lowerUtterance)) return 'cancel';
+        if (/\breschedule|\bmove my|\bchange my/.test(lowerUtterance)) return 'reschedule';
+        return null;
       }
       case 'reason_for_call':
       case 'title':

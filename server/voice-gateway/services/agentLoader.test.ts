@@ -108,6 +108,7 @@ describe('loadAgentConfig', () => {
     expect(cfg.greeting).toContain('Northside Barbers');
     expect(cfg.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
       'create_booking',
+      'update_booking',
       'send_sms',
       'create_ticket',
       'escalate_to_human',

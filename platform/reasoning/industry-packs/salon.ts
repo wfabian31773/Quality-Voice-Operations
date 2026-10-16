@@ -23,7 +23,7 @@ function classifyBookingRequest(context: ReasoningContext) {
     if (utterance.includes(keyword)) {
       return {
         triggered: true,
-        additionalContext: 'Salon booking request. Collect service, preferred time, guest name, and phone, then use create_booking.',
+        additionalContext: 'Salon booking request. Collect service, preferred time, guest name, and phone, then use create_booking. If they asked to cancel or move an existing visit, use update_booking instead.',
       };
     }
   }
@@ -115,11 +115,12 @@ const slotManifests: Record<string, SlotManifest> = {
   reschedule_cancel: {
     vertical: 'salon',
     intent: 'reschedule_cancel',
-    slots: bookingSlots.map((slot) => (
-      slot.name === 'notes'
-        ? { ...slot, required: true, prompt: 'Is this a reschedule or a cancellation, and what should change?' }
-        : slot
-    )),
+    slots: [
+      { name: 'action', label: 'Change type', required: true, prompt: 'Is this a cancellation or a reschedule?' },
+      { name: 'startTime', label: 'New time', required: false, prompt: 'What new day and time works if this is a reschedule?' },
+      { name: 'contactName', label: 'Name', required: true, prompt: 'What name is the appointment under?' },
+      { name: 'notes', label: 'Change details', required: false, prompt: 'What should change about the existing appointment?' },
+    ],
   },
   hours_services: {
     vertical: 'salon',
@@ -178,7 +179,7 @@ export const salonPack: IndustryReasoningPack = {
   ],
   intentTools: {
     book_appointment: 'create_booking',
-    reschedule_cancel: 'create_booking',
+    reschedule_cancel: 'update_booking',
     hours_services: 'retrieve_knowledge',
     leave_message: 'create_ticket',
   },

@@ -125,6 +125,21 @@ export const TOOL_LIBRARY: readonly ToolLibraryEntry[] = [
     },
   },
   {
+    name: 'update_booking',
+    description: 'Cancel or reschedule the caller\'s existing upcoming booking. Looks up the most recent upcoming booking for this tenant and caller phone. Never creates a new booking.',
+    category: 'scheduling',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['cancel', 'reschedule'], description: 'Cancel the existing booking or move it to a new time' },
+        startTime: { type: 'string', description: 'New ISO-8601 start time. Required when action is reschedule.' },
+        notes: { type: 'string', description: 'Cancel reason or reschedule notes' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_dispatch_job',
     description: 'Create a field dispatch job for a technician. Confirm address and timing before creating.',
     category: 'dispatch',

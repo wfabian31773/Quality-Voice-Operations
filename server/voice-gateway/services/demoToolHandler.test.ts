@@ -26,6 +26,7 @@ describe('handleDemoToolCall', () => {
   it('lets built-in library tools run for real on the demo tenant', () => {
     for (const tool of [
       'create_booking',
+      'update_booking',
       'create_ticket',
       'send_sms',
       'get_current_tenant_time',

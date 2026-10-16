@@ -29,6 +29,7 @@ const TEMPLATE_PERMISSIONS: Record<string, TemplateToolPermissions> = {
       'send_sms',
       'create_ticket',
       'create_booking',
+      'update_booking',
       'lookup_customer',
       'retrieve_knowledge',
       'escalate_to_human',

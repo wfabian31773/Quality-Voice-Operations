@@ -152,6 +152,7 @@ describe('salon pack rule branches', () => {
   it('maps salon intents onto the built-in library tools', () => {
     expect(salonPack.intentTools).toMatchObject({
       book_appointment: 'create_booking',
+      reschedule_cancel: 'update_booking',
       leave_message: 'create_ticket',
       hours_services: 'retrieve_knowledge',
     });

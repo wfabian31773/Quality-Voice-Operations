@@ -12,7 +12,7 @@ export async function executeCreateTicket(
   const subject = String(input.subject ?? '').trim();
   const description = String(input.description ?? '').trim();
   const contactName = String(input.contactName ?? '').trim();
-  const contactPhone = String(input.contactPhone ?? '').trim();
+  const contactPhone = String(input.contactPhone ?? context.callerNumber ?? '').trim();
   if (!subject || !description || !contactName || !contactPhone) {
     return { success: false, message: 'subject, description, contactName, and contactPhone are required.' };
   }

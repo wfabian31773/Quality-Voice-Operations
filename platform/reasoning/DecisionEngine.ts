@@ -380,14 +380,16 @@ export class DecisionEngine {
   private inferTool(context: ReasoningContext): string | undefined {
     const pack = getIndustryPack(context.vertical);
     const packTool = pack?.intentTools?.[context.currentIntent];
-    if (packTool) return packTool;
+    if (packTool && context.toolsAvailable.includes(packTool)) return packTool;
 
     const intentToolMap: Record<string, string> = {
       schedule_appointment: context.toolsAvailable.includes('create_booking')
         ? 'create_booking'
         : 'createServiceTicket',
       book_appointment: 'create_booking',
-      reschedule_cancel: 'create_booking',
+      reschedule_cancel: context.toolsAvailable.includes('update_booking')
+        ? 'update_booking'
+        : 'create_ticket',
       hours_services: 'retrieve_knowledge',
       leave_message: 'create_ticket',
       urgent_medical: 'triageEscalate',

@@ -4,6 +4,7 @@ import type { ReasoningEngineConfig } from './ReasoningEngine';
 
 const SALON_TOOLS = [
   'create_booking',
+  'update_booking',
   'create_ticket',
   'send_sms',
   'escalate_to_human',
@@ -131,5 +132,76 @@ describe('salon booking conversation', () => {
     });
     expect(safety.allowed).toBe(true);
     expect(safety.violations.map((v) => v.description).join(' ')).not.toContain('reason_for_call');
+  });
+
+  it('rejects tool args that try to override the session tenant or caller', () => {
+    const engine = makeSalonEngine();
+    engine.processUtterance(
+      'Book me a fade Friday at 3pm, I am Chris',
+      'book_appointment',
+      'high',
+    );
+
+    const tenantOverride = engine.checkToolSafety('create_booking', {
+      title: 'Fade',
+      startTime: '2026-10-17T15:00:00-07:00',
+      contactName: 'Chris',
+      contactPhone: '+15555550199',
+      tenantId: 'other-tenant',
+    });
+    expect(tenantOverride.allowed).toBe(false);
+    expect(tenantOverride.violations.map((v) => v.type)).toContain('policy_violation');
+    expect(tenantOverride.violations.map((v) => v.description).join(' ')).toMatch(/tenant/);
+
+    const phoneOverride = engine.checkToolSafety('create_booking', {
+      title: 'Fade',
+      startTime: '2026-10-17T15:00:00-07:00',
+      contactName: 'Chris',
+      contactPhone: '+15559990000',
+    });
+    expect(phoneOverride.allowed).toBe(false);
+    expect(phoneOverride.violations.map((v) => v.description).join(' ')).toMatch(/not spoken/);
+  });
+
+  it('routes cancel and reschedule to update_booking and never authorizes create_booking', () => {
+    const engine = makeSalonEngine();
+    const classified = engine.classifyIntent('I need to cancel my appointment, this is Jordan');
+    expect(classified.intent).toBe('reschedule_cancel');
+
+    const decision = engine.processUtterance(
+      'I need to cancel my appointment, this is Jordan',
+      classified.intent,
+      classified.confidence,
+    );
+    expect(decision.toolToExecute).toBe('update_booking');
+    expect(decision.toolToExecute).not.toBe('create_booking');
+
+    const cancelArgs = {
+      action: 'cancel',
+      contactName: 'Jordan',
+      notes: 'Caller cannot make it',
+    };
+    expect(engine.checkToolSafety('update_booking', cancelArgs).allowed).toBe(true);
+    expect(engine.authorizeToolRequest('update_booking', cancelArgs).allowed).toBe(true);
+    expect(engine.authorizeToolRequest('create_booking', {
+      title: 'Haircut',
+      startTime: '2026-10-17T14:00:00-07:00',
+      contactName: 'Jordan',
+      contactPhone: '+15555550199',
+    }).allowed).toBe(false);
+
+    const rescheduleEngine = makeSalonEngine();
+    const reschedule = rescheduleEngine.processUtterance(
+      'I need to reschedule my appointment to Friday at 3pm, this is Jordan',
+      'reschedule_cancel',
+      'high',
+    );
+    expect(reschedule.toolToExecute).toBe('update_booking');
+    expect(rescheduleEngine.authorizeToolRequest('create_booking', {
+      title: 'Haircut',
+      startTime: '2026-10-17T15:00:00-07:00',
+      contactName: 'Jordan',
+      contactPhone: '+15555550199',
+    }).allowed).toBe(false);
   });
 });

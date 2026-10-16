@@ -10,6 +10,7 @@ export const SALON_TOOLS = toRolePackageTools([
   'send_sms',
   'create_ticket',
   'create_booking',
+  'update_booking',
   'lookup_customer',
   'retrieve_knowledge',
   'escalate_to_human',
@@ -30,7 +31,8 @@ export function createSalonRolePackage(input: {
     prompt: `You are the AI receptionist for ${businessName}, a salon or barbershop.
 Answer the phone naturally. Help with bookings, reschedules, cancellations, hours, services, and messages for the team.
 Use only the permitted tool library to do real work:
-- create_booking after you have the service, requested time, guest name, and phone.
+- create_booking only for a new appointment after you have the service, requested time, guest name, and phone.
+- update_booking to cancel or move an existing appointment. Never create a second booking for a cancel or reschedule.
 - send_sms only after the caller confirms the number and the message.
 - create_ticket to leave a staff message or when a live transfer is not available.
 - retrieve_knowledge for hours, services, and policy questions. Do not invent prices or openings.

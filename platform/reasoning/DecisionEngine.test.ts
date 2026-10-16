@@ -225,6 +225,49 @@ describe('DecisionEngine free-form (no plan) handling', () => {
     expect(fourth.action).not.toBe('escalate_to_human');
     expect(fourth.escalation).toBeUndefined();
   });
+
+  it('routes salon cancel and reschedule to update_booking, not create_booking', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      currentIntent: 'reschedule_cancel',
+      currentUtterance: 'I need to cancel my appointment',
+      toolsAvailable: ['create_booking', 'update_booking', 'create_ticket'],
+      slotTracker: makeSlotTrackerState(makeSlotManifest([
+        { name: 'action', required: true },
+        { name: 'contactName', required: true },
+      ], { intent: 'reschedule_cancel', vertical: 'salon' }), {
+        action: 'cancel',
+        contactName: 'Jordan',
+      }),
+    });
+    const result = new DecisionEngine('s', { vertical: 'salon' }).evaluate(ctx);
+    expect(result.action).toBe('execute_tool');
+    expect(result.toolToExecute).toBe('update_booking');
+    expect(result.toolToExecute).not.toBe('create_booking');
+  });
+
+  it('falls back to create_ticket for cancel when update_booking is not available', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      currentIntent: 'reschedule_cancel',
+      currentUtterance: 'I need to cancel my appointment',
+      toolsAvailable: ['create_booking', 'create_ticket'],
+      slotTracker: makeSlotTrackerState(makeSlotManifest([
+        { name: 'action', required: true },
+        { name: 'contactName', required: true },
+        { name: 'subject', required: true },
+        { name: 'description', required: true },
+      ], { intent: 'reschedule_cancel', vertical: 'salon' }), {
+        action: 'cancel',
+        contactName: 'Jordan',
+        subject: 'Cancel appointment',
+        description: 'Caller wants the shop to cancel their visit',
+      }),
+    });
+    const result = new DecisionEngine('s', { vertical: 'salon' }).evaluate(ctx);
+    expect(result.toolToExecute).toBe('create_ticket');
+    expect(result.toolToExecute).not.toBe('create_booking');
+  });
 });
 
 describe('DecisionEngine accessors & trace', () => {

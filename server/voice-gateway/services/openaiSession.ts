@@ -20,6 +20,8 @@ import { buildFallbackResponse } from '../../../platform/tools/ConversationFallb
 import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
 import { recordTrace } from '../../../platform/core/observability/traceLogger';
 import { handleDemoToolCall } from './demoToolHandler';
+import { buildMessageFallbackInstruction } from './messageFallbackInstruction';
+import { bindSessionToolArgs } from '../../../platform/reasoning/sessionBinding';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
@@ -133,6 +135,35 @@ function buildToolHandler(
         durationMs: Date.now() - startTime
       });
       return JSON.stringify({ success: false, message: 'Rate limit exceeded for this tool. Please wait a moment before trying again.' });
+    }
+
+    if (!INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
+      const sessionBound = bindSessionToolArgs(args, {
+        tenantId,
+        agentId: agentConfig.agentId,
+        callerNumber: ctx.callerNumber,
+        transcript: ctx.reasoningEngine?.getTranscript().join(' ') ?? '',
+      });
+      if (!sessionBound.ok) {
+        logger.warn('Session binding rejected tool args', {
+          tenantId,
+          callId: callSessionId,
+          tool: toolName,
+          reason: sessionBound.reason,
+        });
+        const bindId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+        await completeToolExecution({
+          tenantId,
+          executionId: bindId,
+          callSessionId,
+          result: { success: false, reason: 'session_mismatch', message: sessionBound.reason },
+          status: 'failed',
+          errorMessage: sessionBound.reason,
+          durationMs: Date.now() - startTime,
+        });
+        return JSON.stringify({ success: false, message: sessionBound.reason });
+      }
+      args = sessionBound.args;
     }
 
     if (ctx.reasoningEngine && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
@@ -521,6 +552,7 @@ function buildToolHandler(
               callLogId: callSessionId,
               callSid,
               agentSlug: agentConfig.agentId,
+              callerNumber: ctx.callerNumber,
             });
             rawResult = JSON.stringify(toolResult);
             return assertToolSuccess(rawResult, toolName);
@@ -1139,7 +1171,7 @@ export async function createRealtimeSession(
                   }).catch(() => {});
                   try {
                     sendModelInstruction(
-                      'No live transfer is available. Offer to take a message once and call create_ticket with the caller name, phone, and message. Do not keep asking to transfer or repeating that a human is unavailable.',
+                      buildMessageFallbackInstruction(reasoningResult.toolToExecute ?? 'create_ticket'),
                     );
                   } catch (injectErr) {
                     slog.error('Failed to inject take-message fallback', { error: String(injectErr) });
