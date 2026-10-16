@@ -25,6 +25,7 @@ const Signup = lazy(() => import('./pages/public/Signup'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Agents = lazy(() => import('./pages/Agents'));
+const VoiceAgentStudio = lazy(() => import('./pages/VoiceAgentStudio'));
 const PhoneNumbers = lazy(() => import('./pages/PhoneNumbers'));
 const TrustedCallers = lazy(() => import('./pages/TrustedCallers'));
 const Calls = lazy(() => import('./pages/Calls'));
@@ -217,6 +218,8 @@ export default function App() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/agents" element={<Agents />} />
+        <Route path="/agents/:id" element={<VoiceAgentStudio />} />
         <Route path="/calls" element={<Calls />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/settings" element={<SettingsRedirect />} />
@@ -227,7 +230,6 @@ export default function App() {
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route element={<PlatformAdminGuard><Outlet /></PlatformAdminGuard>}>
-          <Route path="/agents" element={<Agents />} />
           <Route path="/workflows" element={<Workflows />} />
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/connectors" element={<Connectors />} />

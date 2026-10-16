@@ -17,6 +17,11 @@ import {
   MASTER_VOICE_AGENT_DEFAULT_VOICE,
   MASTER_VOICE_AGENT_MODEL,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
+import { listToolLibrary } from '../../../platform/tools/library/catalog';
+import {
+  runVoiceAgentAssistTurn,
+  type AssistChatMessage,
+} from '../../../platform/agent-runtime/voiceAgentAssist';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -167,6 +172,39 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
   } finally {
     client.release();
   }
+});
+
+router.get('/agents/library', requireAuth, async (_req, res) => {
+  return res.json({
+    tools: listToolLibrary(),
+    model: MASTER_VOICE_AGENT_MODEL,
+    voice: MASTER_VOICE_AGENT_DEFAULT_VOICE,
+  });
+});
+
+router.post('/agents/assist', requireAuth, requireRole('manager'), async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const rawMessages = Array.isArray(body.messages) ? body.messages : [];
+  const messages: AssistChatMessage[] = [];
+  for (const item of rawMessages.slice(0, 20)) {
+    if (!item || typeof item !== 'object') continue;
+    const role = (item as { role?: unknown }).role;
+    const content = (item as { content?: unknown }).content;
+    if ((role !== 'user' && role !== 'assistant') || typeof content !== 'string') {
+      return res.status(400).json({ error: 'messages must be { role: user|assistant, content: string }[]' });
+    }
+    if (content.length > 4000) {
+      return res.status(400).json({ error: 'each message must be 4000 characters or fewer' });
+    }
+    messages.push({ role, content });
+  }
+
+  const result = runVoiceAgentAssistTurn({
+    messages,
+    templateId: typeof body.templateId === 'string' ? body.templateId : null,
+    skip: body.skip === true,
+  });
+  return res.json(result);
 });
 
 // Translate a custom welcome greeting or system prompt between supported agent

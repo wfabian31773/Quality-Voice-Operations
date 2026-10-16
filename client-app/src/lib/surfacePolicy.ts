@@ -1,5 +1,6 @@
 export const CUSTOMER_TENANT_PATHS = [
   '/dashboard',
+  '/agents',
   '/calls',
   '/tickets',
   '/knowledge-base',
@@ -11,7 +12,6 @@ export const CUSTOMER_TENANT_PATHS = [
 
 export const INTERNAL_TENANT_PATHS = [
   '/onboarding',
-  '/agents',
   '/workflows',
   '/campaigns',
   '/connectors',
@@ -66,6 +66,7 @@ export function isQvoStaff(user: StaffIdentity | null | undefined): boolean {
 export function isInternalSurfacePath(pathname: string): boolean {
   const path = pathname.split(/[?#]/, 1)[0].replace(/\/$/, '') || '/';
   if (path === '/settings/api-keys') return true;
+  if (/^\/agents\/[^/]+\/builder$/.test(path)) return true;
   return INTERNAL_TENANT_PATHS.some(
     (internalPath) => path === internalPath || path.startsWith(`${internalPath}/`),
   );

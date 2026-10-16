@@ -75,6 +75,40 @@ describe('GET /agents/:id', () => {
   });
 });
 
+describe('GET /agents/library', () => {
+  it('returns the shared tool library and locked runtime', async () => {
+    const res = await request(app()).get('/agents/library');
+    expect(res.status).toBe(200);
+    expect(res.body.model).toBe('grok-voice-think-fast-2.0');
+    expect(res.body.voice).toBe('eve');
+    expect(res.body.tools.map((tool: { name: string }) => tool.name)).toContain('create_ticket');
+  });
+});
+
+describe('POST /agents/assist', () => {
+  it('rejects a malformed transcript', async () => {
+    const res = await request(app()).post('/agents/assist').send({
+      messages: [{ role: 'system', content: 'nope' }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns an opening turn and a finished draft', async () => {
+    const open = await request(app()).post('/agents/assist').send({ messages: [] });
+    expect(open.status).toBe(200);
+    expect(open.body.done).toBe(false);
+    expect(open.body.messages[0].content).toMatch(/use case/i);
+
+    const done = await request(app()).post('/agents/assist').send({
+      templateId: 'customer_support',
+      messages: [{ role: 'user', content: 'Acme Corp acme.test' }],
+    });
+    expect(done.body.done).toBe(true);
+    expect(done.body.draft.model).toBe('grok-voice-think-fast-2.0');
+    expect(done.body.draft.tools).toContain('create_ticket');
+  });
+});
+
 describe('POST /agents', () => {
   it('requires a name', async () => {
     expect((await request(app()).post('/agents').send({ type: 'general' })).status).toBe(400);

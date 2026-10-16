@@ -97,6 +97,30 @@ describe('loadAgentConfig', () => {
     expect(Array.isArray(cfg.tools)).toBe(true);
   });
 
+  it('lets a GTM studio prompt and tool subset override the core-receptionist defaults', () => {
+    const cfg = loadAgentConfig(ctx({
+      agentType: 'general',
+      dbAgent: {
+        name: 'Harbor',
+        system_prompt: 'CUSTOM STUDIO PROMPT',
+        welcome_greeting: 'Harbor Locksmith, how can I help?',
+        metadata: {
+          businessName: 'Harbor Locksmith',
+          enabledLibraryTools: ['send_sms', 'create_ticket'],
+        },
+      },
+    }));
+    expect(cfg.systemPrompt).toContain('CUSTOM STUDIO PROMPT');
+    expect(cfg.greeting).toBe('Harbor Locksmith, how can I help?');
+    expect(cfg.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+      'send_sms',
+      'create_ticket',
+      'get_current_tenant_time',
+      'record_language_change',
+    ]));
+    expect(cfg.tools.map((tool) => tool.name)).not.toContain('create_dispatch_job');
+  });
+
   it('loads the GTM core-receptionist role for general and core-receptionist types', () => {
     for (const agentType of ['general', 'core-receptionist', 'core_receptionist']) {
       const cfg = loadAgentConfig(ctx({

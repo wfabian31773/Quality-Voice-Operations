@@ -40,6 +40,7 @@ describe('customer surface policy', () => {
   it('keeps the tenant portal focused on receptionist operations', () => {
     expect(CUSTOMER_TENANT_PATHS).toEqual([
       '/dashboard',
+      '/agents',
       '/calls',
       '/tickets',
       '/knowledge-base',
@@ -53,7 +54,6 @@ describe('customer surface policy', () => {
   it('classifies generic platform modules as internal-only', () => {
     expect(INTERNAL_TENANT_PATHS).toEqual(expect.arrayContaining([
       '/onboarding',
-      '/agents',
       '/workflows',
       '/campaigns',
       '/connectors',
@@ -76,6 +76,8 @@ describe('customer surface policy', () => {
   });
 
   it('recognizes nested, query-string, and settings variants of internal routes', () => {
+    expect(isInternalSurfacePath('/agents')).toBe(false);
+    expect(isInternalSurfacePath('/agents/agent-1')).toBe(false);
     expect(isInternalSurfacePath('/agents/agent-1/builder?tab=voice')).toBe(true);
     expect(isInternalSurfacePath('/marketplace/installed')).toBe(true);
     expect(isInternalSurfacePath('/settings/api-keys')).toBe(true);
@@ -113,6 +115,13 @@ describe('customer surface policy', () => {
     expect(internalBlock).toBeTruthy();
     expect(internalBlock).toContain('path="/autopilot"');
     expect(internalBlock).toContain('path="/developer"');
+    expect(internalBlock).not.toContain('path="/agents"');
+  });
+
+  it('keeps the Voice Agents studio on the customer tenant surface', () => {
+    const app = readSource('client-app/src/App.tsx');
+    expect(app).toMatch(/path="\/agents"\s+element=\{<Agents \/>\}/);
+    expect(app).toMatch(/path="\/agents\/:id"\s+element=\{<VoiceAgentStudio \/>\}/);
   });
 
   it('keeps tenant onboarding and the first-agent builder reachable without platform-admin MFA', () => {
