@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Client, Pool } from 'pg';
+import { Client, Pool, type PoolClient } from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -54,10 +54,64 @@ function loadMigrations(filter: (name: string) => boolean): { name: string; sql:
   return files.filter(filter).map((name) => ({ name, sql: fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }));
 }
 
+/**
+ * Role catalogs are shared by every database in the cluster, so role DDL here races the role DDL that
+ * platform/actions/core/postgres.integration.test.ts runs at the same time (migrations 015/120 and its
+ * own ensureRlsTester): "tuple concurrently updated", or a duplicate pg_authid key. Each role-touching
+ * step therefore runs in one transaction that first locks those catalogs in SHARE ROW EXCLUSIVE mode.
+ * That conflicts with the ROW EXCLUSIVE lock every CREATE/ALTER/COMMENT/GRANT ROLE takes, so the other
+ * file's role DDL waits for our commit (and ours waits for its open migration transaction) instead of
+ * updating the same tuple concurrently. The lock protects both files even though the core file takes
+ * no lock of its own; the retry below only backs up this file.
+ */
+const ROLE_DDL = /\b(?:CREATE|ALTER|DROP)\s+ROLE\b|\bCOMMENT\s+ON\s+ROLE\b|\bGRANT\s+\w+\s+TO\b/i;
+const SHARED_ROLE_CATALOGS = 'pg_catalog.pg_authid, pg_catalog.pg_auth_members, pg_catalog.pg_shdescription';
+const ROLE_DDL_ATTEMPTS = 5;
+let lockRoleCatalogs = true;
+
+function isRoleCatalogRace(err: unknown): boolean {
+  const e = err as { code?: string; message?: string; table?: string; constraint?: string };
+  if (e.code === '40001' || e.code === '40P01') return true;
+  if (e.code === 'XX000') return /tuple concurrently (updated|deleted)/.test(e.message ?? '');
+  if (e.code === '23505') return /^pg_auth/.test(e.table ?? e.constraint ?? '');
+  return false;
+}
+
+async function withRoleCatalogLock(pool: Pool, fn: (client: PoolClient) => Promise<unknown>): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const client = await pool.connect();
+    let locking = false;
+    try {
+      await client.query('BEGIN');
+      if (lockRoleCatalogs) {
+        locking = true;
+        await client.query(`LOCK TABLE ${SHARED_ROLE_CATALOGS} IN SHARE ROW EXCLUSIVE MODE`);
+        locking = false;
+      }
+      await fn(client);
+      await client.query('COMMIT');
+      return;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (locking) {
+        // Admin role can't lock shared catalogs (not superuser): fall back to retry-only.
+        lockRoleCatalogs = false;
+        attempt -= 1;
+        continue;
+      }
+      if (attempt >= ROLE_DDL_ATTEMPTS || !isRoleCatalogRace(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt + Math.floor(Math.random() * 100)));
+    } finally {
+      client.release();
+    }
+  }
+}
+
 async function applyMigrations(pool: Pool, migrations: { name: string; sql: string }[]): Promise<void> {
   for (const m of migrations) {
     try {
-      await pool.query(m.sql);
+      if (ROLE_DDL.test(m.sql)) await withRoleCatalogLock(pool, (client) => client.query(m.sql));
+      else await pool.query(m.sql);
     } catch (err) {
       throw new Error(`Migration ${m.name} failed: ${(err as Error).message}`);
     }
@@ -86,16 +140,18 @@ async function dropDatabase(name: string, pool?: Pool): Promise<void> {
 }
 
 async function ensureRlsTester(pool: Pool): Promise<void> {
-  await pool.query(`
-    DO $$ BEGIN
-      CREATE ROLE platform_rls_tester NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE;
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-  `);
-  await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO platform_rls_tester`);
-  await pool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO platform_rls_tester`);
-  await pool.query(`REVOKE UPDATE, DELETE ON action_audit_log FROM platform_rls_tester`);
-  await pool.query(`GRANT platform_rls_tester TO CURRENT_USER`);
+  await withRoleCatalogLock(pool, async (client) => {
+    await client.query(`
+      DO $$ BEGIN
+        CREATE ROLE platform_rls_tester NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO platform_rls_tester`);
+    await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO platform_rls_tester`);
+    await client.query(`REVOKE UPDATE, DELETE ON action_audit_log FROM platform_rls_tester`);
+    await client.query(`GRANT platform_rls_tester TO CURRENT_USER`);
+  });
 }
 
 async function insertTenant(pool: Pool): Promise<string> {
