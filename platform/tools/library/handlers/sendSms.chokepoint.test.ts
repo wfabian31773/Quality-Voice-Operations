@@ -124,7 +124,7 @@ describe('send_sms tool -> sms.send chokepoint', () => {
       from: '+13125550100',
       to: '+13125550142',
       body: "Fade Lab: you are confirmed for a men's cut with Marco, Tue Oct 20 at 3:30 PM.",
-      statusCallback: 'https://voice.example.com/twilio/sms-status',
+      statusCallback: expect.stringMatching(/^https:\/\/voice\.example\.com\/twilio\/sms-status\?mid=[\w-]+$/),
     });
     expect(fake.records).toEqual([
       expect.objectContaining({ to: '+13125550142', status: 'queued', body: expect.stringContaining('Fade Lab') }),

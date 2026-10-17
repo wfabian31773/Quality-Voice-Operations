@@ -1,6 +1,7 @@
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email/EmailService';
+import { sendSystemSms } from '../actions/sms';
 import type { AutopilotNotification, AutopilotRecommendation } from './types';
 
 const logger = createLogger('AUTOPILOT_NOTIFICATIONS');
@@ -131,34 +132,26 @@ export async function sendUrgentSmsAlert(
   const client = await pool.connect();
 
   try {
-    const message = `[QVO Autopilot] ${recommendation.riskTier.toUpperCase()} RISK: ${recommendation.title}. ${recommendation.situationSummary.substring(0, 100)}. Log in to review.`;
+    const vars = {
+      riskTier: recommendation.riskTier.toUpperCase(),
+      title: recommendation.title,
+      summary: recommendation.situationSummary.substring(0, 100),
+    };
+    const message = `[QVO Autopilot] ${vars.riskTier} RISK: ${vars.title}. ${vars.summary}. Log in to review.`;
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromNumber = process.env.TWILIO_SMS_FROM || process.env.TWILIO_PHONE_NUMBER;
-
-    if (accountSid && authToken && fromNumber) {
-      const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-      const body = new URLSearchParams({
-        To: phoneNumber,
-        From: fromNumber,
-        Body: message,
-      });
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-
-      if (!response.ok) {
-        logger.error('SMS send failed', { status: response.status, tenantId });
-      }
-    } else {
-      logger.info('Twilio not configured — SMS alert logged', { tenantId, message });
+    // Through the `sms.send` chokepoint (messaging enabled, opt-out, quiet
+    // hours, rate limit, persistence, StatusCallback).
+    const result = await sendSystemSms({
+      tenantId,
+      to: phoneNumber,
+      templateKey: 'autopilot_alert',
+      vars,
+      purpose: 'transactional',
+      relatedEntity: { type: 'autopilot_recommendation', id: recommendation.id },
+      actorId: 'autopilot-notifier',
+    });
+    if (!result.ok) {
+      logger.error('SMS send failed', { code: result.error.code, tenantId });
     }
 
     await client.query('BEGIN');

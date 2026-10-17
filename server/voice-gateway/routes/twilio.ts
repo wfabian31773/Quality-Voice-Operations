@@ -664,12 +664,18 @@ router.post('/twilio/sms-status', async (req: Request, res: Response) => {
     ));
 
     // Messages sent through the `sms.send` chokepoint (sms_messages) use this
-    // same StatusCallback URL.
+    // same StatusCallback URL, with `?mid=<sms_messages.id>` so a row whose
+    // SID was never saved can still be matched (To/From/account verified).
+    const mid = typeof req.query.mid === 'string' ? req.query.mid : null;
     const messageRows = await applySmsStatusCallback({
       messageSid,
       messageStatus,
       errorCode,
       errorMessage,
+      mid,
+      to: typeof req.body.To === 'string' ? req.body.To : undefined,
+      from: typeof req.body.From === 'string' ? req.body.From : undefined,
+      accountSid: typeof req.body.AccountSid === 'string' ? req.body.AccountSid : undefined,
     });
 
     if ((result.rowCount ?? 0) === 0 && messageRows === 0) {

@@ -255,6 +255,49 @@ describe('POST /twilio/sms-status', () => {
     const res = await form(request(app()).post('/twilio/sms-status'), { MessageSid: 'SM1', MessageStatus: 'delivered' });
     expect(res.status).toBe(500);
   });
+
+  it('passes ?mid= with To/From/AccountSid so a SID-less row of the same tenant gets its SID', async () => {
+    m.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/SELECT id, tenant_id, to_number, from_number FROM sms_messages/.test(sql)) {
+        return { rowCount: 1, rows: [{ id: 'msg-1', tenant_id: 't1', to_number: '+13125550142', from_number: '+13125550100' }] };
+      }
+      if (/FROM connectors WHERE tenant_id/.test(sql)) {
+        return { rowCount: 1, rows: [{ config: { credentials: { account_sid: 'AC_T1', auth_token: 'x' } } }] };
+      }
+      return { rowCount: 1, rows: [] };
+    });
+    const res = await form(request(app()).post('/twilio/sms-status?mid=msg-1'), {
+      MessageSid: 'SM1',
+      MessageStatus: 'sent',
+      To: '+13125550142',
+      From: '+13125550100',
+      AccountSid: 'AC_T1',
+    });
+    expect(res.status).toBe(204);
+    const attach = m.poolQueryMock.mock.calls.find(([sql]) => /SET twilio_sid = \$3/.test(String(sql)));
+    expect(attach?.[1]).toEqual(['msg-1', 't1', 'SM1', 'SEND_OUTCOME_UNKNOWN']);
+  });
+
+  it('does not attach a SID when the callback account belongs to another tenant', async () => {
+    m.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/SELECT id, tenant_id, to_number, from_number FROM sms_messages/.test(sql)) {
+        return { rowCount: 1, rows: [{ id: 'msg-1', tenant_id: 't1', to_number: '+13125550142', from_number: '+13125550100' }] };
+      }
+      if (/FROM connectors WHERE tenant_id/.test(sql)) {
+        return { rowCount: 1, rows: [{ config: { credentials: { account_sid: 'AC_T1', auth_token: 'x' } } }] };
+      }
+      return { rowCount: 0, rows: [] };
+    });
+    const res = await form(request(app()).post('/twilio/sms-status?mid=msg-1'), {
+      MessageSid: 'SM1',
+      MessageStatus: 'sent',
+      To: '+13125550142',
+      From: '+13125550100',
+      AccountSid: 'AC_OTHER',
+    });
+    expect(res.status).toBe(204);
+    expect(m.poolQueryMock.mock.calls.some(([sql]) => /SET twilio_sid = \$3/.test(String(sql)))).toBe(false);
+  });
 });
 
 describe('POST /twilio/outbound', () => {
@@ -364,6 +407,7 @@ describe('POST /twilio/sms', () => {
       store: {
         isTenantMessagingEnabled: async () => true,
         isTenantSender: async () => true,
+        loadStoredOutbound: async () => null,
         latestConsentAction: async (_tx, _t, phone) =>
           (consentLog.filter((c) => c.phone === phone && c.action !== 'help_request').at(-1)?.action ?? null) as
             | 'opt_in'

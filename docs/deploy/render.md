@@ -58,6 +58,12 @@ Notes on the move to a once-a-day cron:
 **Stay in the worker** (interval schedulers, plus daily/weekly ones without an exported run-once function):
 `usage-metering`, `metrics-rollup`, `system-metrics`, `usage-guardrails`, `campaigns`, `insights` (mixed 30 min–24 h timers), `call-view-digest`, `csat-expiration`, `workforce`, `gin` (daily; `runGinCycle` not exported), `milestones` (daily; not exported), `docs-feedback-reply-retry`, `support-reply-retry`, `retry-attempts-cleanup`, `connector-auth-alert`, `verified-caller-health` (weekly), `verified-caller-sync`, `trusthub-status` (weekly), `connector-outbox-drain`, `scheduling-drift-alert`, `oauth-token-refresh`, `crm-caller-identity-revalidation`, `route-export-archive-cleanup` (skipped unless `PRIVATE_OBJECT_DIR` is set), `marketplace-discount-backfill` (daily; only the lock-wrapped tick exists, not exported), `federal-dnc-sync` (weekly).
 
+**Shop-tool schedulers: off on the Render worker until go-to-market.** Both run in the worker every 60 s once enabled:
+- `sms-deferred-release`: sends SMS that the `sms.send` chokepoint deferred for quiet hours once the recipient's window opens, and retries transient Twilio failures with backoff. A message whose send attempt already reached Twilio is never sent twice; if its outcome is unknown it is marked `failed` (`SEND_OUTCOME_UNKNOWN`) for the owner to see. Even when enabled, nothing sends unless `SMS_ENABLED` is on **and** the tenant's `sms_messaging_enabled` flag is set.
+- `scheduling-hold-sweeper` (added by PR-08, #106): releases `held` bookings whose hold has expired, so the slot opens again.
+
+Both stay off on the Render worker (in shadow mode `SCHEDULERS_ENABLED` is unset/`none`, and they must not be in the cutover list). Wayne enables them at go-to-market by adding their names to `SCHEDULERS_ENABLED` on `qvo-worker` (e.g. `…,sms-deferred-release,scheduling-hold-sweeper`). Until then, don't set the worker to `all`, which would start them.
+
 ### Worker leader lock
 
 - `server/worker/start.ts` takes `pg_try_advisory_lock` on a **dedicated session connection** (`WORKER_LEADER_DB_URL`), retrying every 10 s while another worker holds it. The leader re-checks its lock connection every 10 s and stops schedulers if it drops.

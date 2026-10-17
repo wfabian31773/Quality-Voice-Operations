@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createLogger } from '../../core/logger';
@@ -23,7 +24,16 @@ import {
   type SmsRateLimitWindow,
   type SmsSendDeps,
 } from './deps';
-import { bodyStats, renderSmsTemplate, SMS_MAX_BODY_CHARS, type SmsTemplateKey } from './templates';
+import { SMS_SEND_OUTCOME_UNKNOWN } from './statusCallback';
+import {
+  bodyStats,
+  isStaffAlertSmsTemplate,
+  renderSmsTemplate,
+  SMS_MAX_BODY_CHARS,
+  type SmsTemplateKey,
+} from './templates';
+
+export { SMS_SEND_OUTCOME_UNKNOWN };
 
 const logger = createLogger('SMS_SEND');
 
@@ -94,6 +104,13 @@ export const smsSendInput = z
       .object({ callId: z.string().min(1).max(128), endedAt: z.string().datetime({ offset: true }).optional() })
       .strict()
       .optional(),
+    /**
+     * System callers only. Sends an outbound row that is already stored and
+     * was never handed to Twilio (an inbox message a user scheduled). Its
+     * body and sender are used and the row is updated in place; `to` must
+     * match it.
+     */
+    storedMessageId: z.string().min(1).max(64).optional(),
   })
   .strict();
 
@@ -119,6 +136,14 @@ function resolveBody(actor: Actor, input: SmsSendInput): Resolved {
     return { ok: false, result: actionFail('VALIDATION_FAILED', 'Send either templateKey or body, not both', { field: 'body' }) };
   }
   if (input.templateKey) {
+    if (isStaffAlertSmsTemplate(input.templateKey) && actor.type !== 'system') {
+      return {
+        ok: false,
+        result: actionFail('FORBIDDEN', `Template ${input.templateKey} is for platform alerts only`, {
+          field: 'templateKey',
+        }),
+      };
+    }
     const rendered = renderSmsTemplate(input.templateKey, input.vars);
     if (!rendered.ok) {
       return { ok: false, result: actionFail('VALIDATION_FAILED', rendered.message, { field: rendered.field }) };
@@ -161,6 +186,16 @@ type TransmitResult =
   | { ok: true; twilioSid?: string }
   | { ok: false; result: ActionResult<never> };
 
+/** True when the row carries the marker `transmit` writes before calling Twilio. */
+export function hasTransmitMarker(metadata: Record<string, unknown>): boolean {
+  return typeof metadata.transmitAttemptId === 'string' && metadata.transmitAttemptId !== '';
+}
+
+/** The StatusCallback carries the row id so the callback can find a row whose SID was never saved. */
+export function statusCallbackWithMessageId(url: string, messageId: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}mid=${encodeURIComponent(messageId)}`;
+}
+
 function classifyTransportError(err: unknown): ActionResult<never> {
   if (err instanceof TwilioApiError) {
     if (err.twilioCode === TWILIO_UNSUBSCRIBED_CODE) {
@@ -176,10 +211,27 @@ function classifyTransportError(err: unknown): ActionResult<never> {
   return smsFail('UPSTREAM_UNAVAILABLE', err instanceof Error ? err.message : String(err), { retryable: true });
 }
 
+async function markTransmitFailed(
+  deps: SmsSendDeps,
+  msg: Pick<OutboundSmsRecord, 'id' | 'tenantId'>,
+  result: ActionResult<never>,
+): Promise<void> {
+  const errorMessage = result.ok ? undefined : `${result.error.code}: ${result.error.message}`.slice(0, 500);
+  try {
+    await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'failed', errorMessage });
+  } catch (updateErr) {
+    logger.error('Failed to mark SMS as failed', { tenantId: msg.tenantId, messageId: msg.id, error: String(updateErr) });
+  }
+}
+
 /**
  * Steps 6–7: Twilio send with StatusCallback, then the status update. On a
  * send error the row is marked `failed` unless `markFailed` is false (the
  * release path decides between retry and failure itself).
+ *
+ * Before Twilio is called, a transmit marker is committed on the row. If
+ * Twilio accepts but the SID write then fails, the marker tells the release
+ * job not to send the row again (see releaseDueDeferredSms).
  */
 async function transmit(
   deps: SmsSendDeps,
@@ -187,12 +239,26 @@ async function transmit(
   now: Date,
   { markFailed = true }: { markFailed?: boolean } = {},
 ): Promise<TransmitResult> {
-  const statusCallback = deps.config.statusCallbackUrl();
-  if (!statusCallback) {
+  const callbackBase = deps.config.statusCallbackUrl();
+  if (!callbackBase) {
     logger.warn('No public base URL for the SMS StatusCallback; delivery status will not update', {
       tenantId: msg.tenantId,
       messageId: msg.id,
     });
+  }
+  const statusCallback = callbackBase ? statusCallbackWithMessageId(callbackBase, msg.id) : null;
+  try {
+    await deps.store.updateOutbound(msg.tenantId, msg.id, {
+      status: 'sending',
+      metadata: { transmitAttemptId: randomUUID(), transmitStartedAt: now.toISOString() },
+    });
+  } catch (err) {
+    // Never call Twilio without the marker on record.
+    const result = smsFail('UPSTREAM_UNAVAILABLE', `Could not record the send attempt: ${String(err)}`, {
+      retryable: true,
+    });
+    if (markFailed) await markTransmitFailed(deps, msg, result);
+    return { ok: false, result };
   }
   let sent: { sid?: string };
   try {
@@ -205,13 +271,7 @@ async function transmit(
     });
   } catch (err) {
     const result = classifyTransportError(err);
-    if (!markFailed) return { ok: false, result };
-    const errorMessage = result.ok ? undefined : `${result.error.code}: ${result.error.message}`.slice(0, 500);
-    try {
-      await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'failed', errorMessage });
-    } catch (updateErr) {
-      logger.error('Failed to mark SMS as failed', { tenantId: msg.tenantId, messageId: msg.id, error: String(updateErr) });
-    }
+    if (markFailed) await markTransmitFailed(deps, msg, result);
     return { ok: false, result };
   }
   try {
@@ -230,6 +290,29 @@ async function transmit(
 function rateLimitWindow(deps: SmsSendDeps, now: Date): SmsRateLimitWindow | null {
   const { max, windowMs } = deps.config.rateLimit();
   return max > 0 ? { max, since: new Date(now.getTime() - windowMs) } : null;
+}
+
+/**
+ * Human-initiated inbox sends (a signed-in user's reply, a message the owner
+ * scheduled in the inbox) skip the per-recipient rate limit, as before the
+ * chokepoint. Only `sendUserSms` / `sendStoredSms` in this module open the
+ * scope, around the actor they build; it is not part of the action input,
+ * so `runAction('sms.send', …)`, MCP and the agent can't set it.
+ */
+const humanInboxSend = new AsyncLocalStorage<Actor>();
+
+function isHumanInboxSend(actor: Actor): boolean {
+  const scoped = humanInboxSend.getStore();
+  return scoped !== undefined && scoped.type === actor.type && scoped.id === actor.id;
+}
+
+/**
+ * Staff alerts (on-call escalation, autopilot, connector outage) had no
+ * per-recipient limit before the chokepoint; a dropped one is a missed alert.
+ * Decided here from the actor and template, never from caller input.
+ */
+function isSystemStaffAlert(actor: Actor, input: SmsSendInput): boolean {
+  return actor.type === 'system' && !!input.templateKey && isStaffAlertSmsTemplate(input.templateKey);
 }
 
 export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): ActionDefinition<SmsSendInput, SmsSendOutput> {
@@ -253,7 +336,25 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
       if (input.purpose === 'marketing') {
         return actionFail('OUTSIDE_POLICY', 'Marketing SMS is not supported', { field: 'purpose' });
       }
-      const resolved = resolveBody(ctx.actor, input);
+      let stored: OutboundSmsRecord | null = null;
+      if (input.storedMessageId !== undefined) {
+        if (ctx.actor.type !== 'system') {
+          return actionFail('FORBIDDEN', 'Only platform senders can send a stored message', { field: 'storedMessageId' });
+        }
+        if (input.templateKey || input.body !== undefined || input.vars) {
+          return actionFail('VALIDATION_FAILED', 'A stored message is sent with its own body', { field: 'body' });
+        }
+        stored = await deps.store.loadStoredOutbound(tx, ctx.tenantId, input.storedMessageId);
+        if (!stored || normalizeE164(stored.to) !== to) {
+          return actionFail('NOT_FOUND', 'No sendable stored message with that id for this recipient', {
+            field: 'storedMessageId',
+          });
+        }
+        if (stored.body.length > SMS_MAX_BODY_CHARS) {
+          return actionFail('VALIDATION_FAILED', `Stored SMS exceeds ${SMS_MAX_BODY_CHARS} characters`, { field: 'body' });
+        }
+      }
+      const resolved: Resolved = stored ? { ok: true, body: stored.body } : resolveBody(ctx.actor, input);
       if (!resolved.ok) return resolved.result;
       const body = resolved.body;
       const stats = bodyStats(body);
@@ -267,8 +368,9 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
       }
       const defaultFrom = await deps.transport.defaultFromNumber(ctx.tenantId);
       let from = defaultFrom ? normalizeE164(defaultFrom) : null;
-      if (input.from) {
-        const requested = normalizeE164(input.from);
+      const requestedFrom = stored ? stored.from : input.from;
+      if (requestedFrom) {
+        const requested = normalizeE164(requestedFrom);
         if (!requested) return actionFail('VALIDATION_FAILED', 'from is not a valid E.164 number', { field: 'from' });
         if (requested !== from && !(await deps.store.isTenantSender(tx, ctx.tenantId, requested))) {
           return actionFail('VALIDATION_FAILED', 'from is not a sender number for this tenant', { field: 'from' });
@@ -282,6 +384,7 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         return smsFail('RECIPIENT_OPTED_OUT', 'Recipient has opted out of SMS');
       }
 
+      const rateLimitExempt = isHumanInboxSend(ctx.actor) || isSystemStaffAlert(ctx.actor, input);
       const metadata: Record<string, unknown> = {
         source: SMS_SEND_ACTION,
         purpose: input.purpose,
@@ -292,8 +395,11 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         idempotencyKey: ctx.idempotencyKey ?? null,
         segments: stats.segments,
         encoding: stats.encoding,
+        // Always written, so a stored row can't carry its own value in.
+        rateLimitExempt,
       };
-      const id = newId();
+      const id = stored ? stored.id : newId();
+      const existing = stored !== null;
 
       // 3. Quiet hours: defer to the window start, never drop.
       if (!liveCallExempt(ctx, input, deps.config.liveCallExemptSeconds())) {
@@ -309,6 +415,7 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
             status: 'deferred_quiet_hours',
             scheduledAt: deferredUntil,
             metadata: { ...metadata, deferredReason: 'QUIET_HOURS' },
+            existing,
           });
           return actionOk({
             messageId: id,
@@ -324,8 +431,8 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
       // 4–5. Per-recipient rate limit and persist, atomically (one lock per
       // tenant + recipient), before calling Twilio.
       const reserved = await deps.store.reserveOutbound(
-        { id, tenantId: ctx.tenantId, from, to, body, status: 'sending', scheduledAt: null, metadata },
-        rateLimitWindow(deps, ctx.now),
+        { id, tenantId: ctx.tenantId, from, to, body, status: 'sending', scheduledAt: null, metadata, existing },
+        rateLimitExempt ? null : rateLimitWindow(deps, ctx.now),
       );
       if (!reserved.reserved) {
         return actionFail('RATE_LIMITED', `Recipient already received ${reserved.recent} SMS in the rate-limit window`);
@@ -440,6 +547,69 @@ export async function sendSystemSmsOrThrow(
   return { sid: result.data.twilioSid, status: result.data.status };
 }
 
+export interface UserSmsRequest {
+  tenantId: string;
+  userId: string;
+  role?: string;
+  to: string;
+  from?: string;
+  /** Free text (≤ SMS_MAX_BODY_CHARS); allowed for UI replies. */
+  body: string;
+  purpose: 'transactional' | 'conversational';
+  idempotencyKey?: string;
+  now?: Date;
+}
+
+/** Entry point for UI sends by a signed-in user (inbox replies). */
+export async function sendUserSms(
+  req: UserSmsRequest,
+  opts: SystemSmsOptions = {},
+): Promise<ActionResult<SmsSendOutput>> {
+  const input: SmsSendInput = {
+    to: req.to,
+    ...(req.from ? { from: req.from } : {}),
+    body: req.body,
+    purpose: req.purpose,
+  };
+  const ctx: ActionContext = {
+    tenantId: req.tenantId,
+    actor: { type: 'user', id: req.userId, ...(req.role ? { role: req.role } : {}) },
+    now: req.now ?? new Date(),
+    idempotencyKey: req.idempotencyKey ?? `sms:user:${randomUUID()}`,
+    tenantTimezone: 'UTC',
+  };
+  // A person typing in the inbox: no per-recipient rate limit (see humanInboxSend).
+  return humanInboxSend.run(ctx.actor, () => runActionDefinition(opts.action ?? smsSendAction, ctx, input, opts.runtime));
+}
+
+export interface StoredSmsRequest {
+  tenantId: string;
+  /** Id of the stored `sms_messages` row (it is updated in place). */
+  messageId: string;
+  to: string;
+  purpose: 'transactional' | 'conversational';
+  idempotencyKey?: string;
+  actorId?: string;
+  now?: Date;
+}
+
+/** Sends a stored message a user already wrote (inbox scheduled sends). No new row is created. */
+export async function sendStoredSms(
+  req: StoredSmsRequest,
+  opts: SystemSmsOptions = {},
+): Promise<ActionResult<SmsSendOutput>> {
+  const input: SmsSendInput = { to: req.to, storedMessageId: req.messageId, purpose: req.purpose };
+  const ctx: ActionContext = {
+    tenantId: req.tenantId,
+    actor: { type: 'system', id: req.actorId ?? SMS_SEND_ACTION },
+    now: req.now ?? new Date(),
+    idempotencyKey: req.idempotencyKey ?? `sms:stored:${req.messageId}`,
+    tenantTimezone: 'UTC',
+  };
+  // The owner scheduled it in the inbox: no per-recipient rate limit (see humanInboxSend).
+  return humanInboxSend.run(ctx.actor, () => runActionDefinition(opts.action ?? smsSendAction, ctx, input, opts.runtime));
+}
+
 export interface DeferredReleaseSummary {
   claimed: number;
   /** Claimed rows a previous release left stuck in `sending` without a Twilio SID. */
@@ -504,8 +674,10 @@ async function releaseOne(
     if (!(await deps.quietHours.isAllowed(msg.tenantId, msg.to, now))) {
       return { kind: 'quiet_hours', next: await deps.quietHours.nextWindowStart(msg.tenantId, msg.to, now) };
     }
-    // Same per-recipient limit as live sends, atomically reserved.
-    const reserved = await deps.store.reserveDeferredSend(msg, rateLimitWindow(deps, now), now);
+    // Same per-recipient limit as live sends, atomically reserved. A deferred
+    // human inbox send stays exempt (the chokepoint wrote the flag).
+    const limit = msg.metadata.rateLimitExempt === true ? null : rateLimitWindow(deps, now);
+    const reserved = await deps.store.reserveDeferredSend(msg, limit, now);
     if (!reserved.reserved) {
       const { windowMs } = deps.config.rateLimit();
       const delay = Math.min(Math.max(windowMs, RATE_LIMIT_REDEFER_MIN_MS), RATE_LIMIT_REDEFER_MAX_MS);
@@ -527,7 +699,9 @@ async function releaseOne(
  * are re-checked at release, so an opt-out or a disabled tenant after the
  * deferral still wins, and the per-recipient limit still applies (over it,
  * the row is re-deferred). Transient Twilio/DB errors re-defer with backoff
- * up to SMS_RELEASE_MAX_ATTEMPTS; non-retryable errors fail at once. Runs on
+ * up to SMS_RELEASE_MAX_ATTEMPTS; non-retryable errors fail at once. A stuck
+ * row whose attempt already reached Twilio (transmit marker set) is never
+ * resent: it fails with SEND_OUTCOME_UNKNOWN. Runs on
  * the `sms-deferred-release` scheduler.
  */
 export async function releaseDueDeferredSms(
@@ -563,7 +737,17 @@ export async function releaseDueDeferredSms(
       summary.reclaimed += 1;
       attempts += 1;
     }
-    if (msg.reclaimed && attempts >= SMS_RELEASE_MAX_ATTEMPTS) {
+    if (msg.reclaimed && hasTransmitMarker(msg.metadata)) {
+      // The stuck attempt got as far as calling Twilio, which may have
+      // accepted it. Never resend: the owner sees the failure, and the
+      // StatusCallback (?mid=) can still attach the SID if Twilio sent it.
+      summary.failed += 1;
+      patch = { status: 'failed', errorMessage: SMS_SEND_OUTCOME_UNKNOWN, metadata: { releaseAttempts: attempts } };
+      logger.warn('Deferred SMS stuck after reaching Twilio; not resending', {
+        tenantId: msg.tenantId,
+        messageId: msg.id,
+      });
+    } else if (msg.reclaimed && attempts >= SMS_RELEASE_MAX_ATTEMPTS) {
       summary.failed += 1;
       patch = { status: 'failed', errorMessage: 'STUCK_SENDING', metadata: { releaseAttempts: attempts } };
     } else {

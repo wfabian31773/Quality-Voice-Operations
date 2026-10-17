@@ -19,68 +19,31 @@ import {
   SMS_CANNED_RESPONSE_TOKENS,
   findUnknownSmsCannedResponseTokens,
 } from '../../../shared/sms/cannedResponseTokens';
+import { SMS_MAX_BODY_CHARS, sendStoredSms, sendUserSms } from '../../../platform/actions/sms';
 
 const router = Router();
 const logger = createLogger('ADMIN_SMS_INBOX');
 
-interface TwilioCredentials {
-  accountSid: string;
-  apiKey: string;
-  apiKeySecret: string;
-  phoneNumber: string;
-}
-
-async function getTwilioCredentials(tenantId: string): Promise<TwilioCredentials | null> {
-  const pool = getPlatformPool();
-  try {
-    const { rows } = await pool.query(
-      `SELECT config FROM connectors WHERE tenant_id = $1 AND connector_type = 'sms' AND enabled = true LIMIT 1`,
-      [tenantId],
-    );
-    if (rows.length > 0) {
-      const config = rows[0].config as Record<string, unknown>;
-      const creds = (config.credentials || config) as Record<string, string>;
-      if (creds.account_sid && (creds.auth_token || creds.api_key_secret)) {
-        return {
-          accountSid: creds.account_sid,
-          apiKey: creds.api_key || creds.account_sid,
-          apiKeySecret: creds.api_key_secret || creds.auth_token,
-          phoneNumber: creds.from_number || creds.phone_number || '',
-        };
-      }
-    }
-  } catch (err) {
-    logger.warn('Failed to load tenant Twilio credentials from connectors', { tenantId, error: String(err) });
+/** HTTP response for an `sms.send` failure on an inbox reply. */
+function smsSendFailureResponse(error: { code: string; message: string }): {
+  status: number;
+  payload: Record<string, unknown>;
+} {
+  switch (error.code) {
+    case 'RECIPIENT_OPTED_OUT':
+      return { status: 403, payload: { error: 'This number has opted out of SMS', reason: 'recipient_opted_out' } };
+    case 'MESSAGING_NOT_ENABLED':
+      return { status: 503, payload: { error: 'SMS service not configured', reason: 'messaging_not_enabled' } };
+    case 'RATE_LIMITED':
+      return { status: 429, payload: { error: 'Too many messages to this number; try again later' } };
+    case 'INVALID_NUMBER':
+    case 'VALIDATION_FAILED':
+      return { status: 400, payload: { error: error.message } };
+    case 'FORBIDDEN':
+      return { status: 403, payload: { error: error.message } };
+    default:
+      return { status: 500, payload: { error: `Failed to send message: ${error.message}` } };
   }
-
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const phoneNumber = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_OUTBOUND_NUMBER || '';
-
-  if (accountSid && authToken) {
-    return { accountSid, apiKey: accountSid, apiKeySecret: authToken, phoneNumber };
-  }
-
-  return null;
-}
-
-async function twilioPost(creds: TwilioCredentials, path: string, body: Record<string, string>): Promise<Record<string, unknown>> {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}${path}`;
-  const auth = Buffer.from(`${creds.apiKey}:${creds.apiKeySecret}`).toString('base64');
-  const formBody = new URLSearchParams(body);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: formBody.toString(),
-  });
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(`Twilio API error: ${response.status} ${errData.message || response.statusText}`);
-  }
-  return response.json() as Promise<Record<string, unknown>>;
 }
 
 function paginate(req: { query: Record<string, unknown> }): { limit: number; offset: number } {
@@ -230,6 +193,9 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
   const { body, scheduledAt } = req.body as { body?: string; scheduledAt?: string };
 
   if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
+  if (body.length > SMS_MAX_BODY_CHARS) {
+    return res.status(400).json({ error: `body must be at most ${SMS_MAX_BODY_CHARS} characters` });
+  }
 
   try {
     const conv = await SmsService.getConversation(tenantId, id);
@@ -289,27 +255,25 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
     }
 
     if (!schedDate) {
-      const creds = await getTwilioCredentials(tenantId);
-      if (!creds) return res.status(503).json({ error: 'SMS service not configured' });
-
-      const twilioResponse = await twilioPost(creds, '/Messages.json', {
-        To: conv.remoteNumber,
-        From: fromNumber,
-        Body: body,
-      });
-
-      const message = await SmsService.saveMessage(tenantId, id, {
-        direction: 'outbound',
-        fromNumber,
-        toNumber: conv.remoteNumber,
+      // Through the `sms.send` chokepoint (messaging enabled, opt-out, quiet
+      // hours, rate limit, StatusCallback). It stores the outbound row in
+      // this thread, so no second row is saved here.
+      const sent = await sendUserSms({
+        tenantId,
+        userId,
+        role: req.user!.role,
+        to: conv.remoteNumber,
+        from: fromNumber,
         body,
-        status: (twilioResponse.status as string) || 'queued',
-        twilioSid: twilioResponse.sid as string,
-        // Reuse the pre-check instant so the chokepoint guard cannot throw
-        // a false positive at the 21:00:00 boundary after Twilio already
-        // accepted the send.
-        quietHoursEvaluatedAt: quietHoursAt,
+        purpose: 'conversational',
       });
+      if (!sent.ok) {
+        const { status, payload } = smsSendFailureResponse(sent.error);
+        logger.warn('Inbox SMS not sent', { tenantId, conversationId: id, code: sent.error.code });
+        return res.status(status).json(payload);
+      }
+      const message = await SmsService.getMessage(tenantId, sent.data.messageId);
+      if (!message) throw new Error('Sent SMS row not found');
 
       await SmsService.logActivity(tenantId, id, 'message_sent', userId, req.user!.email, { messageId: message.id });
 
@@ -1016,20 +980,40 @@ export async function processScheduledMessages(): Promise<void> {
           continue;
         }
 
-        const creds = await getTwilioCredentials(msg.tenantId);
-        if (!creds) {
+        // Through the `sms.send` chokepoint, which sends this stored row in
+        // place (no second row). The key includes scheduled_at so a message
+        // rescheduled later is a new send, while a retry of this run is not.
+        const sent = await sendStoredSms({
+          tenantId: msg.tenantId,
+          messageId: msg.id,
+          to: msg.toNumber,
+          purpose: 'conversational',
+          actorId: 'sms-inbox-scheduler',
+          idempotencyKey: `sms:inbox-scheduled:${msg.id}:${msg.scheduledAt?.toISOString() ?? ''}`,
+        });
+        if (!sent.ok) {
           await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
-          logger.warn('No Twilio credentials for scheduled message', { tenantId: msg.tenantId, messageId: msg.id });
+          if (sent.error.code === 'RECIPIENT_OPTED_OUT') {
+            await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_sent', null, null, {
+              messageId: msg.id,
+              suppressed: true,
+              reason: 'recipient_opted_out_after_schedule',
+            });
+          }
+          logger.warn('Scheduled SMS not sent', { tenantId: msg.tenantId, messageId: msg.id, code: sent.error.code });
+          continue;
+        }
+        if (sent.data.status === 'deferred_quiet_hours') {
+          // The chokepoint stored the deferral on the row; its release job sends it.
+          await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_deferred', null, null, {
+            messageId: msg.id,
+            reason: 'sms_quiet_hours',
+            deferredUntil: sent.data.deferredUntil,
+          });
           continue;
         }
 
-        const twilioResponse = await twilioPost(creds, '/Messages.json', {
-          To: msg.toNumber,
-          From: msg.fromNumber,
-          Body: msg.body,
-        });
-
-        await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'sent', twilioResponse.sid as string);
+        await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'sent', sent.data.twilioSid);
         await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_sent', null, null, {
           messageId: msg.id,
           scheduled: true,
