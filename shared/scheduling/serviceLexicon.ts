@@ -226,8 +226,8 @@ interface Word {
   rawIndex: number;
 }
 
-function tokenize(text: string): { raw: string[]; words: Word[] } {
-  const raw = text
+function rawTokens(text: string): string[] {
+  return text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
@@ -236,20 +236,47 @@ function tokenize(text: string): { raw: string[]; words: Word[] } {
     .replace(/[^a-z0-9]+/g, ' ')
     .split(' ')
     .filter((w) => w);
+}
+
+/** Every word used in a lexicon term ("fade", "haircut", "edges", "corte"). */
+const TERM_WORDS = new Set(
+  Object.values(LEXICON).flatMap((entry) =>
+    [entry.terms, entry.contextual ?? {}, entry.weak ?? {}].flatMap((lists) =>
+      [...(lists.en ?? []), ...(lists.es ?? [])].flatMap((term) =>
+        rawTokens(term).filter((w) => !DROPPED_WORDS.has(w)).map((w) => CONJUNCTIONS[w] ?? w)))),
+);
+
+/**
+ * A plural folded onto its singular, only when the singular is a known word
+ * (a lexicon word, or one of `singulars`): "fades" → "fade", "cortes" →
+ * "corte". A word that is itself a lexicon word stays ("highlights", "edges").
+ */
+function singular(word: string, singulars?: ReadonlySet<string>): string {
+  if (TERM_WORDS.has(word)) return word;
+  const known = (w: string) => w.length >= 2 && (TERM_WORDS.has(w) || singulars?.has(w) === true);
+  if (word.endsWith('s') && known(word.slice(0, -1))) return word.slice(0, -1);
+  if (word.endsWith('es') && known(word.slice(0, -2))) return word.slice(0, -2);
+  return word;
+}
+
+function tokenize(text: string, singulars?: ReadonlySet<string>): { raw: string[]; words: Word[] } {
+  const raw = rawTokens(text);
   const words: Word[] = [];
   raw.forEach((w, rawIndex) => {
-    if (!DROPPED_WORDS.has(w)) words.push({ text: CONJUNCTIONS[w] ?? w, rawIndex });
+    if (!DROPPED_WORDS.has(w)) words.push({ text: singular(CONJUNCTIONS[w] ?? w, singulars), rawIndex });
   });
   return { raw, words };
 }
 
 /**
  * Lowercase, strip accents and apostrophes, turn "+"/"&"/"y"/"plus" into
- * "and", drop articles (a, an, un, una), and collapse everything else to
- * single spaces. "Kid's line-up" → "kids line up"; "Niño" → "nino".
+ * "and", drop articles (a, an, un, una), fold plurals onto a known singular,
+ * and collapse everything else to single spaces. "Kid's line-up" → "kids line
+ * up"; "Niño" → "nino"; "fades" → "fade". `singulars` adds words a plural may
+ * fold onto besides the lexicon's (e.g. the tenant's catalog words).
  */
-export function normalizeServiceText(text: string): string {
-  return tokenize(text).words.map((w) => w.text).join(' ');
+export function normalizeServiceText(text: string, singulars?: ReadonlySet<string>): string {
+  return tokenize(text, singulars).words.map((w) => w.text).join(' ');
 }
 
 type TermKind = 'strong' | 'contextual' | 'weak';
@@ -337,7 +364,8 @@ function findHits(raw: string[], words: Word[]): Hit[] {
 /**
  * Best service term in an utterance: longest match first, accent- and
  * case-insensitive, whole words only ("cut" never matches inside "cute";
- * "hot towel shave" beats "shave"). When the caller names several services:
+ * "hot towel shave" beats "shave"; "fades", "cortes" fold onto "fade",
+ * "corte"). When the caller names several services:
  * a generic haircut next to a fade/taper/kids cut yields the specific one;
  * a haircut plus a beard trim ("a haircut and my beard trimmed") yields
  * `cut_and_beard`; anything else yields the first one mentioned.

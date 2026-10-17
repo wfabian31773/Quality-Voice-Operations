@@ -206,4 +206,34 @@ describe('serviceLexicon', () => {
     expect(normalizeServiceText('cut + beard')).toBe('cut and beard');
     expect(normalizeServiceText('Un corte para niños')).toBe('corte para ninos');
   });
+
+  it('folds plurals onto a known singular only (gate re-review P2)', () => {
+    expect(normalizeServiceText('fades')).toBe('fade');
+    expect(normalizeServiceText('kids haircuts')).toBe('kids haircut');
+    expect(normalizeServiceText('tapers lineups beards shape ups')).toBe('taper lineup beard shape up');
+    expect(normalizeServiceText('cortes degradados colores')).toBe('corte degradado color');
+    // Words that are already terms, or have no known singular, stay.
+    expect(normalizeServiceText('highlights edges foils nails braids')).toBe('highlights edges foils nails braids');
+    expect(normalizeServiceText('guys days')).toBe('guys days');
+    // Extra singulars (a tenant's catalog words).
+    expect(normalizeServiceText('braids', new Set(['braid']))).toBe('braid');
+
+    expect(matchServiceTerm('fades')).toEqual({ key: 'fade', matchedText: 'fade', confidence: 1 });
+    expect(keyOf('do you guys do fades?')).toBe('fade');
+    expect(keyOf('kids haircuts')).toBe('kids_cut');
+    expect(keyOf('tapers')).toBe('taper');
+    expect(keyOf('lineups')).toBe('lineup');
+    expect(keyOf('shape ups')).toBe('lineup');
+    expect(keyOf('beards')).toBe('beard_trim');
+    expect(keyOf('cortes')).toBe('haircut');
+    expect(keyOf('degradados')).toBe('fade');
+    expect(keyOf('highlights')).toBe('highlights');
+    expect(keyOf('gel nails')).toBe('gel_manicure');
+    // The contextual and multi-service rules are unchanged.
+    expect(matchServiceTerm('edges')).toMatchObject({ key: 'lineup', confidence: 1 });
+    expect(matchServiceTerm('line up an appointment')).toMatchObject({ key: 'lineup', confidence: 0.6 });
+    expect(keyOf('haircuts and beards')).toBe('cut_and_beard');
+    expect(matchServiceTerm('a haircut, also my beards trimmed')).toMatchObject({ key: 'cut_and_beard', confidence: 0.8 });
+    expect(keyOf('fades and beards')).toBe('fade');
+  });
 });

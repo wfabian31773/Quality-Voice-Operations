@@ -11,7 +11,8 @@
 //                        aliases mean fade (shared/scheduling/serviceLexicon)
 // The first tier with any candidate decides. Several candidates (a tie, or
 // several services named) come back as ambiguous (service: null) so the
-// agent asks instead of guessing. Pure: no I/O.
+// agent asks instead of guessing. Plurals fold onto a known singular on both
+// sides ("fades" = "Fade"). Pure: no I/O.
 
 import {
   isContextualServiceTerm,
@@ -38,9 +39,24 @@ export interface ServiceMatchResult {
 
 type MatchableService = Pick<CatalogService, 'id' | 'name' | 'aliases'>;
 
-function phrases(service: MatchableService, source: 'name' | 'alias'): string[] {
+function phrases(service: MatchableService, source: 'name' | 'alias', singulars: ReadonlySet<string>): string[] {
   const list = source === 'name' ? [service.name] : service.aliases ?? [];
-  return list.map(normalizeServiceText).filter((p) => p.length > 0);
+  return list.map((p) => normalizeServiceText(p, singulars)).filter((p) => p.length > 0);
+}
+
+/**
+ * Every word in the catalog's names and aliases. A plural in the text or the
+ * catalog folds onto one of these as well as onto a lexicon word ("braids"
+ * → "braid" when the menu lists "Braid").
+ */
+function catalogWords(services: MatchableService[]): Set<string> {
+  const words = new Set<string>();
+  for (const service of services) {
+    for (const phrase of [service.name, ...(service.aliases ?? [])]) {
+      for (const word of normalizeServiceText(phrase).split(' ')) if (word) words.add(word);
+    }
+  }
+  return words;
 }
 
 interface InTextHit<S> {
@@ -59,13 +75,14 @@ interface InTextHit<S> {
 function inTextHits<S extends MatchableService>(
   services: S[],
   text: string,
+  singulars: ReadonlySet<string>,
   counts: (phrase: string) => boolean,
 ): InTextHit<S>[] {
   const tokens = text.split(' ');
   const all: InTextHit<S>[] = [];
   for (const service of services) {
     for (const source of ['name', 'alias'] as const) {
-      for (const phrase of phrases(service, source)) {
+      for (const phrase of phrases(service, source, singulars)) {
         if (!counts(phrase)) continue;
         const words = phrase.split(' ');
         for (let i = 0; i + words.length <= tokens.length; i += 1) {
@@ -138,7 +155,10 @@ export function resolveServiceByName<S extends MatchableService>(
   spokenText: string,
   lang?: ServiceLang,
 ): ServiceMatchResult {
-  const text = normalizeServiceText(spokenText);
+  // The same plural folding on both sides: "fades" = "Fade", "kids haircuts"
+  // = "kids haircut", "cortes" = "corte".
+  const singulars = catalogWords(catalog.services);
+  const text = normalizeServiceText(spokenText, singulars);
   const lexicon = text ? matchServiceTerm(spokenText, lang) : null;
   const lexiconKey = lexicon && lexicon.confidence >= 0.8 ? lexicon.key : null;
   const none: ServiceMatchResult = { service: null, candidates: [], ambiguous: false, matchedBy: null, lexiconKey };
@@ -146,7 +166,7 @@ export function resolveServiceByName<S extends MatchableService>(
   const services = catalog.services;
 
   for (const source of ['name', 'alias'] as const) {
-    const exact = services.filter((s) => phrases(s, source).includes(text));
+    const exact = services.filter((s) => phrases(s, source, singulars).includes(text));
     if (exact.length > 0) return result(exact, source, lexiconKey);
   }
 
@@ -158,7 +178,7 @@ export function resolveServiceByName<S extends MatchableService>(
   let inTextFallback: ServiceMatchResult | null = null;
   const counts = (p: string) =>
     !isContextualServiceTerm(p) || (lexiconKey !== null && lexicon!.matchedText === p);
-  const hits = inTextHits(services, text, counts);
+  const hits = inTextHits(services, text, singulars, counts);
   if (hits.length > 0) {
     let named = [...new Set(hits.map((h) => h.service))];
     const keys = new Map(named.map((s) => [s, serviceKeyOf(s)?.key ?? null]));

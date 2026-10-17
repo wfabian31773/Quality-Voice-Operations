@@ -155,6 +155,25 @@ describe('resolveServiceByName', () => {
     expect(resolveServiceByName(noCombo, 'a haircut, also my beard').candidates.map((c) => c.id).sort()).toEqual(['beard', 'cut']);
   });
 
+  it('folds plurals onto a known singular on both sides', () => {
+    expect(resolveServiceByName(SHARP_LINE, 'fades')).toMatchObject({ service: { id: 'fade' }, matchedBy: 'name' });
+    expect(idOf('do you guys do fades?')).toBe('fade');
+    expect(idOf('tapers')).toBe('taper');
+    expect(idOf('lineups')).toBe('lineup');
+    expect(idOf('shape ups')).toBe('lineup');
+    expect(idOf('kids haircuts')).toBe('kids');
+    expect(idOf('degradados')).toBe('fade');
+    // Catalog side: a plural name matches the singular, and a catalog word
+    // (not in the lexicon) is a singular the text's plural folds onto.
+    const plural = { services: [svc('kids', 'Kids Haircuts'), svc('braid', 'Braid'), svc('nails', 'Gel nails')] };
+    expect(resolveServiceByName(plural, 'kids haircut')).toMatchObject({ service: { id: 'kids' }, matchedBy: 'name' });
+    expect(resolveServiceByName(plural, 'box braids')).toMatchObject({ service: { id: 'braid' }, matchedBy: 'name_in_text' });
+    expect(idOf('gel nails', plural)).toBe('nails');
+    // Contextual and multi-service rules hold.
+    expect(idOf('line ups for the team')).toBeNull();
+    expect(resolveServiceByName({ services: [svc('lineup', 'Lineup', ['edges'])] }, 'edges')).toMatchObject({ service: { id: 'lineup' } });
+  });
+
   it('works on fixture catalogs without aliases', () => {
     expect(idOf('a fade', { services: [svc('fade', 'Fade')] })).toBe('fade');
   });

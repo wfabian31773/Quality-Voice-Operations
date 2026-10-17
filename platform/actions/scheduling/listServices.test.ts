@@ -139,6 +139,23 @@ describe('scheduling.list_services query (alias lookup)', () => {
     expect(await namesFor('a skin fade please')).toEqual(['Fade']);
   });
 
+  it('matches plurals ("Do you guys do fades?") instead of returning an empty list', async () => {
+    expect(await namesFor('fades')).toEqual(['Fade']);
+    expect(await namesFor('do you guys do fades?')).toEqual(['Fade']);
+    expect(await namesFor('kids haircuts')).toEqual(['Kids cut']);
+    expect(await namesFor('beards')).toEqual(['Beard trim']);
+    expect(await namesFor('tapers')).toEqual(['Taper']);
+    expect(await namesFor('lineups')).toEqual(['Lineup']);
+    expect(await namesFor('shape ups')).toEqual(['Lineup']);
+    expect(await namesFor('cortes')).toEqual(['Haircut']);
+    expect(await namesFor('degradados')).toEqual(['Fade']);
+    // The contextual lineup and multi-service rules are unchanged.
+    expect(await namesFor('edges')).toEqual(['Lineup']);
+    expect(await namesFor('line up an appointment')).toEqual([]);
+    expect((await namesFor('fade and beard')).sort()).toEqual(['Beard trim', 'Fade']);
+    expect((await namesFor('fades and beards')).sort()).toEqual(['Beard trim', 'Fade']);
+  });
+
   it('returns ties together so the agent asks which one', async () => {
     const data = sharpLine([
       { ...seededService('skin', 'fade', 'Skin Fade', 3500), aliases: [] },
