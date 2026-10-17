@@ -62,6 +62,7 @@ import {
   stopSmsDeferredReleaseScheduler,
   smsDeferredReleaseInFlight,
 } from '../actions/sms/deferredReleaseScheduler';
+import { startHoldSweeper, stopHoldSweeper, holdSweepInFlight } from '../actions/scheduling/holdSweeper';
 import type { ProcessRole } from './processRole';
 import { runWithPrivilegedScope } from '../db/tenantScope';
 
@@ -253,6 +254,8 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     stop: stopSmsDeferredReleaseScheduler,
     inFlight: smsDeferredReleaseInFlight,
   },
+  // Added after PR-00: releases expired scheduling holds every ~60 s.
+  { name: 'scheduling-hold-sweeper', start: () => startHoldSweeper(), stop: stopHoldSweeper, inFlight: holdSweepInFlight },
 ];
 
 export const SCHEDULER_NAMES: readonly string[] = SCHEDULERS.map((s) => s.name);

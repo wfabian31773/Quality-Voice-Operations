@@ -9,7 +9,8 @@ const h = vi.hoisted(() => {
     Object.fromEntries(names.map((n) => [n, (...args: unknown[]) => { calls.push({ fn: n, args }); }]));
   // Stand-in for the CampaignScheduler instance (its private `running` flag).
   const campaign = { running: false };
-  return { calls, mod, campaign };
+  const holdSweep = { running: false };
+  return { calls, mod, campaign, holdSweep };
 });
 
 vi.mock('../billing/stripe/usage', () => h.mod('startUsageMeteringWorker', 'stopUsageMeteringWorker'));
@@ -51,6 +52,10 @@ vi.mock('../actions/sms/deferredReleaseScheduler', () => ({
   ...h.mod('startSmsDeferredReleaseScheduler', 'stopSmsDeferredReleaseScheduler'),
   smsDeferredReleaseInFlight: () => false,
 }));
+vi.mock('../actions/scheduling/holdSweeper', () => ({
+  ...h.mod('startHoldSweeper', 'stopHoldSweeper'),
+  holdSweepInFlight: () => h.holdSweep.running,
+}));
 
 import {
   SCHEDULERS,
@@ -79,8 +84,10 @@ const PRE_PR00_START_ORDER = [
   'startBillingReconciliationScheduler', 'startFederalDncSyncScheduler',
 ];
 
-/** Added after PR-00, appended so the pre-PR-00 order is unchanged. */
-const START_ORDER = [...PRE_PR00_START_ORDER, 'startSmsDeferredReleaseScheduler'];
+/** Schedulers registered after PR-00, appended in this order. */
+const POST_PR00_START_ORDER = ['startSmsDeferredReleaseScheduler', 'startHoldSweeper'];
+
+const START_ORDER = [...PRE_PR00_START_ORDER, ...POST_PR00_START_ORDER];
 
 const NIGHTLY = [
   'docs-feedback-alert', 'docs-feedback-reply-digest', 'connector-stale-alert', 'outbox-archive-sweep',
@@ -242,5 +249,34 @@ describe('scheduler registry', () => {
     expect(campaigns.inFlight!()).toBe(true);
     h.campaign.running = false;
     expect(campaigns.inFlight!()).toBe(false);
+  });
+
+  describe('scheduling-hold-sweeper', () => {
+    const sweeper = () => SCHEDULERS.find((s) => s.name === 'scheduling-hold-sweeper')!;
+
+    it('is registered as an interval scheduler (not nightly) wired to the hold sweeper', () => {
+      expect(sweeper()).toBeDefined();
+      expect(sweeper().nightly).toBeUndefined();
+      sweeper().start({ voiceGatewayBaseUrl: 'https://voice.example.com' });
+      sweeper().stop();
+      expect(h.calls.map((c) => c.fn)).toEqual(['startHoldSweeper', 'stopHoldSweeper']);
+      expect(h.calls[0].args).toEqual([]);
+    });
+
+    it('is off on the Render worker until named in SCHEDULERS_ENABLED', () => {
+      expect(selectSchedulers('worker', {}).enabled.map((s) => s.name)).not.toContain('scheduling-hold-sweeper');
+      const named = selectSchedulers('worker', { SCHEDULERS_ENABLED: 'scheduling-hold-sweeper' });
+      expect(named.enabled.map((s) => s.name)).toEqual(['scheduling-hold-sweeper']);
+      expect(named.unknown).toEqual([]);
+      expect(selectSchedulers('all', { SCHEDULERS_ENABLED: 'none' }).enabled).toEqual([]);
+      expect(selectSchedulers('api', { SCHEDULERS_ENABLED: 'scheduling-hold-sweeper' }).enabled).toEqual([]);
+    });
+
+    it('reports inFlight while a sweep is running', () => {
+      expect(sweeper().inFlight!()).toBe(false);
+      h.holdSweep.running = true;
+      expect(sweeper().inFlight!()).toBe(true);
+      h.holdSweep.running = false;
+    });
   });
 });
