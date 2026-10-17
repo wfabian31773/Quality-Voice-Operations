@@ -22,8 +22,21 @@ export type TenantState = {
   waitlist: WaitlistRow[];
   holds: Record<
     string,
-    { kind: 'booking' | 'ticket' | 'transfer'; payload: Record<string, unknown>; readback: string; callId?: string }
+    {
+      kind: 'booking' | 'reschedule' | 'cancel' | 'ticket' | 'transfer';
+      payload: Record<string, unknown>;
+      readback: string;
+      callId?: string;
+    }
   >;
+  /**
+   * Trusted caller ID of the call under test, standing in for
+   * call_sessions.caller_number (E.164; null or absent = blocked). Set from
+   * the seed, or from the scenario's `callerId` by the runner.
+   */
+  callerNumber?: string | null;
+  /** scheduling_booking_rules.cancellation_window_hours; defaults to 24 like the column. */
+  cancellationWindowHours?: number;
 };
 
 export interface TenantStore {
@@ -111,9 +124,17 @@ export function isReleasedHold(row: BookingRow): boolean {
   return row.status === 'cancelled' && RELEASED_HOLD_REASONS.has(row.cancellationReason ?? '');
 }
 
+/**
+ * Rows the end state leaves out: released holds, and an original a
+ * reschedule replaced (status 'rescheduled'; its replacement is the booking).
+ */
+export function isSupersededRow(row: BookingRow): boolean {
+  return isReleasedHold(row) || row.status === 'rescheduled';
+}
+
 export function snapshotOf(state: TenantState): EndSnapshot {
   return {
-    bookings: state.bookings.filter((row) => !isReleasedHold(row)).map((row) => ({ ...row })),
+    bookings: state.bookings.filter((row) => !isSupersededRow(row)).map((row) => ({ ...row })),
     tickets: state.tickets.map((row) => ({ ...row })),
     transfers: state.transfers.map((row) => ({ ...row })),
     waitlist: state.waitlist.map((row) => ({ ...row })),

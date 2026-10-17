@@ -90,6 +90,8 @@ export function firstSuccessfulCommitIndex(trace: TraceEvent[]): number {
 export function unlockCommitForBannedPhrase(phrase: string): string | undefined {
   const normalized = phrase.toLowerCase();
   if (/\bbooked\b/.test(normalized)) return 'scheduling.book.commit';
+  if (/\bmoved\b/.test(normalized)) return 'scheduling.reschedule.commit';
+  if (/\bcancell?ed\b/.test(normalized)) return 'scheduling.cancel.commit';
   if (
     /i['’]ve let them know/.test(normalized) ||
     /let them know/.test(normalized) ||

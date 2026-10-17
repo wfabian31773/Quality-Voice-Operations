@@ -1,11 +1,11 @@
 # Scenario pack vertical1: coverage
 
-31 scenarios for the barbershop and nail-salon templates, run by
+34 scenarios for the barbershop and nail-salon templates, run by
 `vertical1.test.ts` in scripted (deterministic) mode against the
 `barbershop-basic` and `nail-salon-basic` fixtures in `tests/quality/fixtures/`.
 Source of truth: [`docs/shop/tools-spec.md`](../../../../docs/shop/tools-spec.md).
 
-**Status:** 19 pass. 12 are `expectedFail`: PR-14 ×1, PR-17 ×6, PR-20 ×1, PR-26 ×1, and `matcher-es-readback` ×3 (a harness follow-up, not a product PR; see [Follow-ups](#follow-ups)). An expectedFail scenario that starts passing fails CI as an unexpected pass, so move it to passing when its PR lands. `vertical1.test.ts` asserts these totals, and pins each expectedFail to the exact checks that must fail, so a typo or broken script can't count as the expected failure.
+**Status:** 23 pass. 11 are `expectedFail`: PR-17 ×6, PR-20 ×1, PR-26 ×1, and `matcher-es-readback` ×3 (a harness follow-up, not a product PR; see [Follow-ups](#follow-ups)). An expectedFail scenario that starts passing fails CI as an unexpected pass, so move it to passing when its PR lands. `vertical1.test.ts` asserts these totals, and pins each expectedFail to the exact checks that must fail, so a typo or broken script can't count as the expected failure.
 
 Ids: `v1-<category>-<template>-<slug>`. `bb` = barbershop, `ns` = nail salon, `es` = Spanish caller.
 
@@ -28,7 +28,7 @@ Ids: `v1-<category>-<template>-<slug>`. `bb` = barbershop, `ns` = nail salon, `e
 | 11 | `v1-sched-bb-dst-sunday-nov1` | barbershop | all 5 | en | pass |
 | 12 | `v1-sched-ns-es-gel-plus-removal` | nail_salon | all 5 | es | expectedFail matcher-es-readback |
 | 13 | `v1-sched-bb-es-anyone-saturday` | barbershop | all 5 | es | expectedFail matcher-es-readback |
-| 14 | `v1-sched-bb-reschedule-verified` | barbershop | all 5 | en | expectedFail PR-14 |
+| 14 | `v1-sched-bb-reschedule-verified` | barbershop | all 5 | en | pass |
 | 15 | `v1-sms-bb-opted-out-no-text-claim` | barbershop | all 5 | en | expectedFail PR-17 |
 | 16 | `v1-sms-ns-flag-off-truthful-fallback` | nail_salon | all 5 | en | expectedFail PR-17 |
 | 17 | `v1-sms-bb-destination-ending-in` | barbershop | all 5 | en | expectedFail PR-17 |
@@ -46,6 +46,9 @@ Ids: `v1-<category>-<template>-<slug>`. `bb` = barbershop, `ns` = nail salon, `e
 | 29 | `v1-info-bb-price-no-data` | barbershop | all 5 | en | pass |
 | 30 | `v1-transfer-bb-after-hours-message` | barbershop | all 5 | en | expectedFail PR-26 |
 | 31 | `v1-sched-bb-commit-retry-same-token` | barbershop | all 5 | en | pass |
+| 32 | `v1-sched-bb-caller-id-differs` | barbershop | all 5 | en | pass |
+| 33 | `v1-sched-bb-reschedule-inside-window` | barbershop | all 5 | en | pass |
+| 34 | `v1-sched-bb-family-same-phone` | barbershop | all 5 | en | pass |
 
 ### Why each expectedFail fails today
 
@@ -53,7 +56,6 @@ Ids: `v1-<category>-<template>-<slug>`. `bb` = barbershop, `ns` = nail salon, `e
 
 | Scenario | PR | What fails against `FakeToolProvider` | Pinned checks |
 |---|---|---|---|
-| `v1-sched-bb-reschedule-verified` | PR-14 | `scheduling.find_bookings` and `scheduling.reschedule.*` are not implemented, so there's no readback, the commit fails and the booking doesn't move. | `actions` reschedule.commit did not succeed; `endState` no booking matched; `readbackRequired` no readback |
 | `v1-sms-bb-opted-out-no-text-claim` | PR-17 | `sms.send_confirmation.prepare` returns `NOT_FOUND` ("I couldn't find that.") instead of `RECIPIENT_OPTED_OUT`. The agent relays `{{callerSafeMessage}}`, so the spec §2.5 refusal "I can't text this number…" is never said. | `mustSay` "I can't text this number" |
 | `v1-sms-ns-flag-off-truthful-fallback` | PR-17 | Same, with `MESSAGING_NOT_ENABLED` expected. | `mustSay` "I can't text this number" |
 | `v1-sms-bb-es-opted-out` | PR-17 | Same, with the refusal expected in Spanish (`ctx.locale`). The Spanish readback also fails (matcher follow-up). | `mustSay` "No puedo enviarle mensajes"; `readbackRequired` book readback not spoken |
@@ -74,13 +76,13 @@ When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback un
 
 | # | Rule | Scenario id(s) |
 |---|---|---|
-| 0.2.1 | Gather → prepare → read back → explicit yes → commit | Every write scenario (`readbackRequired: true`): 1–19, 21–27, 30, 31. The Spanish ones (12, 13, 18, 19, 25) fail this check today (matcher follow-up). |
+| 0.2.1 | Gather → prepare → read back → explicit yes → commit | Every write scenario (`readbackRequired: true`): 1–19, 21–27, 30–34. The Spanish ones (12, 13, 18, 19, 25) fail this check today (matcher follow-up). |
 | 0.2.2 | Explicit yes only ("uh-huh" is not a yes) | Not covered. `v1-sched-ns-anyone-first-available` scripts the "Uh-huh." turn, but nothing asserts it: `readbackRequired` only needs some caller turn between the readback and the commit, so committing on "Uh-huh." would also pass. Needs the matcher follow-up below. |
 | 0.2.2 | A correction means a new prepare, never an edit to the old token | `v1-sched-bb-change-after-readback` |
-| 0.2.3 | No success language before commit `ok:true` | All 31 (`mustNotSay`: EN `you're booked`, `I've sent`, `I've texted you`, `I've let them know`, `your order is in`; ES `ya está reservado`, `quedó confirmada`, `quedó confirmado`, `su cita está confirmada`, `ya quedó`, `quedó registrado`, `le envié`, `ya le avisé`). Spanish phrases never unlock, even after the commit (matcher follow-up), so Spanish post-commit lines avoid them ("Listo, tiene su cita con Rosa el jueves a la 1:00."). |
-| 0.2.4 | On failure, say what is true; offer alternatives, a message or a transfer | `v1-sched-bb-race-same-slot`; `v1-sms-bb-opted-out-no-text-claim`, `v1-sms-ns-flag-off-truthful-fallback` (PR-17); `v1-transfer-bb-after-hours-message` (PR-26) |
+| 0.2.3 | No success language before commit `ok:true` | All 34 (`mustNotSay`: EN `you're booked`, `I've sent`, `I've texted you`, `I've let them know`, `your order is in`; the reschedule/cancel scenarios add `I've moved` / `I've cancelled`, which unlock only after `scheduling.reschedule.commit` / `scheduling.cancel.commit`; ES `ya está reservado`, `quedó confirmada`, `quedó confirmado`, `su cita está confirmada`, `ya quedó`, `quedó registrado`, `le envié`, `ya le avisé`). Spanish phrases never unlock, even after the commit (matcher follow-up), so Spanish post-commit lines avoid them ("Listo, tiene su cita con Rosa el jueves a la 1:00."). |
+| 0.2.4 | On failure, say what is true; offer alternatives, a message or a transfer | `v1-sched-bb-race-same-slot`; `v1-sched-bb-caller-id-differs`, `v1-sched-bb-reschedule-inside-window` (message ticket); `v1-sms-bb-opted-out-no-text-claim`, `v1-sms-ns-flag-off-truthful-fallback` (PR-17); `v1-transfer-bb-after-hours-message` (PR-26) |
 | 0.2.5 | Facts only from read actions; missing data → "I don't have that" | `v1-info-ns-hours-question`, `v1-info-bb-price-no-data`, `v1-sched-bb-unpriced-service` |
-| 0.2.6 | Identity before changes | `v1-sched-bb-reschedule-verified` (PR-14) |
+| 0.2.6 | Identity before changes | `v1-sched-bb-reschedule-verified` (caller ID + name), `v1-sched-bb-caller-id-differs` (no caller-ID match, no time → nothing found, the time never said), `v1-sched-bb-family-same-phone`, `v1-sched-bb-reschedule-inside-window` |
 | 0.2.7 | AI disclosure | Not covered. The greeting isn't in the tool trace, so it needs a matcher check on the first `say`. |
 
 ### §1.6 Scheduling
@@ -93,12 +95,12 @@ When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback un
 | 4 | Staff off but the shop is open; "with Marco" gets his next day | `v1-sched-bb-staff-off-alternatives` ("any staff" that day: `v1-sched-bb-after-same-day-cutoff`) |
 | 5 | Multi-service where only one staff member does both | `v1-sched-bb-multi-service-cut-beard`, `v1-sched-ns-es-gel-plus-removal` (add-on; matcher-es-readback) |
 | 6 | Service changed after the readback → new prepare, old hold released | `v1-sched-bb-change-after-readback` |
-| 7 | Caller ID blocked or different: reschedule refused without name + date + time | Not covered (needs `scheduling.find_bookings`, PR-14) |
-| 8 | Reschedule inside the cancellation window | Not covered (PR-14) |
+| 7 | Caller ID blocked or different: reschedule refused without name + date + time | `v1-sched-bb-caller-id-differs` (different caller ID; a blocked one takes the same path and is covered by the `FakeToolProvider` and Postgres action tests) |
+| 8 | Reschedule inside the cancellation window | `v1-sched-bb-reschedule-inside-window` |
 | 9 | Commit retried with the same token → exactly one booking | `v1-sched-bb-commit-retry-same-token` |
 | 10 | The owner books in the UI while the agent holds the slot | Not covered (UI/HTTP adapter path, not a voice scenario) |
 | 11 | No services configured | Not covered (needs an empty-catalog fixture) |
-| 12 | Two family members booked from the same phone | Not covered (PR-14 `find_bookings`) |
+| 12 | Two family members booked from the same phone | `v1-sched-bb-family-same-phone` |
 | 13 | Price question for an unpriced service | `v1-sched-bb-unpriced-service`, `v1-info-bb-price-no-data` |
 | 14 | "Earliest anything" today, after the same-day cutoff | `v1-sched-bb-after-same-day-cutoff` |
 | 15 | Booking for someone else (son's name, caller's phone) | `v1-sched-bb-for-someone-else` |
@@ -157,7 +159,9 @@ When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback un
 | `barbershop-basic:cut-beard-combo` | Slots sized for the cut and beard combo service: 45 minutes. Used by `v1-sched-bb-change-after-readback`, so its corrected 4:30 booking ends at 5:15. |
 | `barbershop-basic:slot-held-by-other-caller` | Marco's 3:30 on Tue Oct 20 is held by another line. |
 | `barbershop-basic:after-same-day-cutoff` | No slots on Tue Oct 20 (`outside_lead_time`); the next open date is Oct 21. |
-| `barbershop-basic:existing-booking` | Luis is confirmed with Marco on Thu Oct 22 at 10:00. |
+| `barbershop-basic:existing-booking` | Luis is confirmed with Marco on Thu Oct 22 at 10:00. Caller ID is his number (+15555550142). |
+| `barbershop-basic:booking-tomorrow` | Luis is confirmed with Andre on Wed Oct 21 at 10:00, inside the 24-hour cancellation window. Caller ID is his number. |
+| `barbershop-basic:family-on-one-phone` | Luis Garcia (Thu Oct 22 10:00, Marco) and Luis Garcia Jr. (Sat Oct 24 10:00, Andre), both booked from +15555550142, the caller ID. |
 | `barbershop-basic:sms-opted-out` | +15555550142 and +15555550188 are opted out. |
 | `nail-salon-basic` | Linh, Kim, Rosa, Mai. Manicure, pedicure, gel manicure, and a gel removal add-on. Open Mon–Sat, closed Sunday. |
 | `nail-salon-basic:gel-plus-removal` | Slots sized for gel manicure + gel removal: 60 minutes (base slots are one 45-minute pedicure). |
@@ -166,6 +170,14 @@ When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback un
 Slot ends come from the services in `slotServiceIds` (sum of `durationMin` + optional `bufferMin`, default 0), and a start is only offered when that whole interval ends by closing. `FakeToolProvider` returns `slot.end` as seeded and doesn't know the requested services, so each seed's slots are sized for one booking; multi-service scenarios use the `cut-and-beard` / `gel-plus-removal` variants, and `v1-sched-bb-change-after-readback` uses `cut-beard-combo` (follow-up 5).
 
 `FakeToolProvider` mirrors PR-13's write contract: a `scheduling.book.prepare` in the same call releases that call's earlier, still-held hold (`cancelled`, `cancellationReason: hold_superseded`) and its token then fails with `CONFIRMATION_INVALID`; a commit retried with an already-committed token replays the first result. The end-state snapshot leaves out released holds (`hold_superseded` / `hold_expired`), since they never became bookings.
+
+It also mirrors PR-14's `scheduling.find_bookings`, `scheduling.reschedule.*` and `scheduling.cancel.*`, identity rule included (spec §0.2.6):
+
+- **Caller ID.** The trusted caller ID is the tenant state's `callerNumber`, standing in for `call_sessions.caller_number`. It comes from the seed variant (`callerNumber`), and a scenario's top-level `callerId` (E.164, or `null` for blocked) overrides it. It is never tool input.
+- **find_bookings.** With a caller-ID match, the name on the booking (first or full name, case/accent-insensitive) verifies it; without a name the result is `needs: 'name'` plus `matchCount`. With no match, name + date + time must all match. Anything else is `verified: false, bookings: []` with `needs`, whether or not the number has bookings.
+- **Reschedule/cancel.** The agent may only prepare a reschedule/cancel for a booking that find verified in the same call. Anything else gets the same `NOT_FOUND` as an unknown id.
+- **Policy.** PR-13's `OUTSIDE_POLICY` applies (already passed; inside `cancellationWindowHours`, 24 in both fixtures), with the real `callerSafeMessage` texts. A taken slot is `CONFLICT` with alternatives.
+- **Commits.** Tokens are bound to their call. A reschedule commit confirms the new hold and marks the original `rescheduled`, and the end state leaves that superseded original out (like the real `rescheduled` row, it is no longer a booking).
 
 The `sms` and `transferHours` fixture fields are carried into the tenant state but not read by `FakeToolProvider` today. They describe the state the PR-17/PR-26 actions must honor when they replace the fake.
 
