@@ -128,6 +128,33 @@ describe('resolveServiceByName', () => {
     expect(idOf('line up an appointment')).toBeNull();
   });
 
+  it('only lets overlapping phrases compete on length', () => {
+    expect(resolveServiceByName(SHARP_LINE, 'kids cut')).toMatchObject({ service: { id: 'kids' }, candidates: [{ id: 'kids' }] });
+    expect(resolveServiceByName(SHARP_LINE, 'can I get a kids cut on Friday').candidates.map((c) => c.id)).toEqual(['kids']);
+    expect(resolveServiceByName(SHARP_LINE, 'a skin fade please').candidates.map((c) => c.id)).toEqual(['fade']);
+  });
+
+  it('returns every service named when the menu has no combo for them', () => {
+    const catalog = { services: SHARP_LINE.services.map((s) => (s.id === 'beard' ? svc('beard', 'Beard trim', ['beard', 'beard line-up']) : s)) };
+    for (const text of ['fade and beard', 'skin fade and beard trim', 'a fade and a beard trim on Saturday']) {
+      const r = resolveServiceByName(catalog, text);
+      expect(r.service).toBeNull();
+      expect(r.ambiguous).toBe(true);
+      expect(r.candidates.map((c) => c.id).sort()).toEqual(['beard', 'fade']);
+    }
+  });
+
+  it('returns the combo service when the menu sells the pair together', () => {
+    const catalog = { services: SHARP_LINE.services.map((s) => (s.id === 'beard' ? svc('beard', 'Beard trim', ['beard']) : s)) };
+    expect(idOf('haircut and beard', catalog)).toBe('combo');
+    expect(idOf('corte y barba', catalog)).toBe('combo');
+    // "a haircut and a beard trim" drops its articles and contains the combo's name.
+    expect(resolveServiceByName(catalog, 'a haircut and a beard trim')).toMatchObject({ service: { id: 'combo' }, matchedBy: 'name_in_text' });
+    expect(resolveServiceByName(catalog, 'a haircut, also my beard')).toMatchObject({ service: { id: 'combo' }, matchedBy: 'lexicon' });
+    const noCombo = { services: catalog.services.filter((s) => s.id !== 'combo') };
+    expect(resolveServiceByName(noCombo, 'a haircut, also my beard').candidates.map((c) => c.id).sort()).toEqual(['beard', 'cut']);
+  });
+
   it('works on fixture catalogs without aliases', () => {
     expect(idOf('a fade', { services: [svc('fade', 'Fade')] })).toBe('fade');
   });

@@ -3,13 +3,15 @@
 // Order of evidence, strongest first:
 //   1. exact name        "Skin Fade" said as "skin fade"
 //   2. exact alias       "bald fade" listed in the service's aliases
-//   3. name or alias     "can I get a bald fade on Saturday" (longest
-//      inside text       phrase wins across names and aliases)
+//   3. name or alias     "can I get a bald fade on Saturday" (of two
+//      inside text       overlapping phrases the longer wins; separate
+//                        phrases for different services → their combo
+//                        service if the menu has one, else all of them)
 //   4. lexicon key       "degradado" → fade → the service whose name or
 //                        aliases mean fade (shared/scheduling/serviceLexicon)
-// The first tier with any candidate decides. Inside a tier, the longest
-// phrase wins; candidates that tie are returned as ambiguous (service: null)
-// so the agent asks which one instead of guessing. Pure: no I/O.
+// The first tier with any candidate decides. Several candidates (a tie, or
+// several services named) come back as ambiguous (service: null) so the
+// agent asks instead of guessing. Pure: no I/O.
 
 import {
   isContextualServiceTerm,
@@ -41,14 +43,66 @@ function phrases(service: MatchableService, source: 'name' | 'alias'): string[] 
   return list.map(normalizeServiceText).filter((p) => p.length > 0);
 }
 
-function containsPhrase(text: string, phrase: string): boolean {
-  return ` ${text} `.includes(` ${phrase} `);
+interface InTextHit<S> {
+  service: S;
+  source: 'name' | 'alias';
+  phrase: string;
+  start: number;
+  end: number;
 }
 
-/** Services whose best phrase is longest; all of them when tied. */
-function longest<S>(scored: { service: S; length: number }[]): { services: S[]; length: number } {
-  const length = Math.max(0, ...scored.map((s) => s.length));
-  return { services: length === 0 ? [] : scored.filter((s) => s.length === length).map((s) => s.service), length };
+/**
+ * Every name/alias occurrence in the text (token positions), keeping a hit
+ * unless it overlaps a longer kept one. Equal-length overlaps all stay, so
+ * two services sharing a phrase come back tied.
+ */
+function inTextHits<S extends MatchableService>(
+  services: S[],
+  text: string,
+  counts: (phrase: string) => boolean,
+): InTextHit<S>[] {
+  const tokens = text.split(' ');
+  const all: InTextHit<S>[] = [];
+  for (const service of services) {
+    for (const source of ['name', 'alias'] as const) {
+      for (const phrase of phrases(service, source)) {
+        if (!counts(phrase)) continue;
+        const words = phrase.split(' ');
+        for (let i = 0; i + words.length <= tokens.length; i += 1) {
+          if (words.every((w, j) => tokens[i + j] === w)) {
+            all.push({ service, source, phrase, start: i, end: i + words.length });
+          }
+        }
+      }
+    }
+  }
+  all.sort((a, b) => b.phrase.length - a.phrase.length);
+  const kept: InTextHit<S>[] = [];
+  for (const hit of all) {
+    const beaten = kept.some((k) => k.phrase.length > hit.phrase.length && hit.start < k.end && k.start < hit.end);
+    if (!beaten) kept.push(hit);
+  }
+  return kept;
+}
+
+/** Specific haircut styles; a generic haircut named next to one is dropped. */
+const STYLED = new Set<string>(['fade', 'taper', 'kids_cut']);
+
+/** Lexicon combos: services a shop also sells as one (same rule as matchServiceTerm). */
+const COMBOS: Partial<Record<ServiceKey, ServiceKey[]>> = { cut_and_beard: ['haircut', 'beard_trim'] };
+
+/** The catalog's combo service for exactly these service keys, plain one preferred. */
+function comboFor<S extends MatchableService>(services: S[], keys: (ServiceKey | null)[]): S[] {
+  const named = new Set(keys);
+  for (const [combo, parts] of Object.entries(COMBOS) as [ServiceKey, ServiceKey[]][]) {
+    if (named.size !== parts.length || !parts.every((p) => named.has(p))) continue;
+    const sameKey = services
+      .map((s) => ({ service: s, meaning: serviceKeyOf(s) }))
+      .filter((s) => s.meaning?.key === combo);
+    const generic = sameKey.filter((s) => s.meaning!.generic);
+    return (generic.length > 0 ? generic : sameKey).map((s) => s.service);
+  }
+  return [];
 }
 
 function result<S extends MatchableService>(
@@ -96,24 +150,36 @@ export function resolveServiceByName<S extends MatchableService>(
     if (exact.length > 0) return result(exact, source, lexiconKey);
   }
 
-  // A phrase inside the text decides, unless the lexicon recognized a longer
-  // phrase that means a different service: "kids haircut" contains the name
-  // "Haircut", but the caller asked for a kids cut.
-  // Names and aliases compete on phrase length; a name wins a tie.
+  // Phrases inside the text. Only overlapping phrases compete on length
+  // ("skin fade" beats "fade", "kids cut" beats "cut"); separate phrases each
+  // name a service ("fade and beard" names two).
   // A contextual phrase ("line up", "edges") only counts when the lexicon
   // read it as a service here: "line up an appointment" is not a lineup.
   let inTextFallback: ServiceMatchResult | null = null;
   const counts = (p: string) =>
-    containsPhrase(text, p) && (!isContextualServiceTerm(p) || (lexiconKey !== null && lexicon!.matchedText === p));
-  const inTextLength = (s: S, source: 'name' | 'alias') =>
-    Math.max(0, ...phrases(s, source).filter(counts).map((p) => p.length));
-  const inText = longest(services.map((s) => ({ service: s, length: Math.max(inTextLength(s, 'name'), inTextLength(s, 'alias')) })));
-  if (inText.services.length > 0) {
-    const byName = inText.services.some((s) => inTextLength(s, 'name') === inText.length);
-    const found = result(inText.services, byName ? 'name_in_text' : 'alias_in_text', lexiconKey);
+    !isContextualServiceTerm(p) || (lexiconKey !== null && lexicon!.matchedText === p);
+  const hits = inTextHits(services, text, counts);
+  if (hits.length > 0) {
+    let named = [...new Set(hits.map((h) => h.service))];
+    const keys = new Map(named.map((s) => [s, serviceKeyOf(s)?.key ?? null]));
+    // "A haircut, like a low fade": the specific style wins over the generic cut.
+    if (named.some((s) => STYLED.has(keys.get(s) ?? ''))) named = named.filter((s) => keys.get(s) !== 'haircut');
+    const byName = hits.some((h) => named.includes(h.service) && h.source === 'name');
+    if (named.length > 1) {
+      // Two services the menu also sells together → the combo service.
+      // Otherwise all of them, so the agent asks (or books each one).
+      const combo = comboFor(services, named.map((s) => keys.get(s) ?? null));
+      if (combo.length > 0) return result(combo, 'lexicon', lexiconKey);
+      return result(named, byName ? 'name_in_text' : 'alias_in_text', lexiconKey);
+    }
+    // One service, unless the lexicon recognized a longer phrase that means a
+    // different service: "kids haircut" contains the name "Haircut", but the
+    // caller asked for a kids cut.
+    const found = result(named, byName ? 'name_in_text' : 'alias_in_text', lexiconKey);
+    const length = Math.max(...hits.filter((h) => h.service === named[0]).map((h) => h.phrase.length));
     const lexiconOverrides = lexiconKey !== null
-      && lexicon!.matchedText.length > inText.length
-      && inText.services.every((s) => serviceKeyOf(s)?.key !== lexiconKey);
+      && lexicon!.matchedText.length > length
+      && keys.get(named[0]) !== lexiconKey;
     if (!lexiconOverrides) return found;
     inTextFallback = found;
   }

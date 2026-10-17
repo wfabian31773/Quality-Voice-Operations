@@ -68,7 +68,8 @@ export const listServicesAction = defineAction({
     "List the shop's bookable services with duration, spoken price text and who performs each. "
     + 'Pass staffId to list only what that staff member does. '
     + "Pass query with the caller's words for a service (\"skin fade\", \"degradado\") to get only the matching services: "
-    + 'one result is the service; several mean ask which one; none means the shop does not list it. '
+    + 'one result is the service; several mean either a tie or that the caller named several services, '
+    + 'so ask which one (or whether they want each of them); none means the shop does not list it. '
     + 'Never offer a service that is not in this list.',
   async run(ctx, args, tx) {
     const catalog = await loadCatalog(tx, ctx.tenantId);
@@ -80,7 +81,8 @@ export const listServicesAction = defineAction({
       });
     }
     // Spoken name → catalog services (name, then aliases, then the EN/ES
-    // lexicon). Ties come back together so the agent asks which one.
+    // lexicon). Ties, and several services named at once, come back together
+    // so the agent asks.
     const services = args.query
       ? resolveServiceByName(catalog, args.query, args.lang).candidates
       : catalog.services;

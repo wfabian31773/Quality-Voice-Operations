@@ -120,6 +120,25 @@ describe('scheduling.list_services query (alias lookup)', () => {
     expect(await namesFor('get a line up', {}, data)).toEqual(['Lineup']);
   });
 
+  it('returns every service named when the menu has no combo for them', async () => {
+    expect((await namesFor('fade and beard')).sort()).toEqual(['Beard trim', 'Fade']);
+    expect((await namesFor('skin fade and beard trim')).sort()).toEqual(['Beard trim', 'Fade']);
+    expect((await namesFor('can I get a fade and a beard trim Saturday')).sort()).toEqual(['Beard trim', 'Fade']);
+  });
+
+  it('returns the combo service for a pair the menu sells together', async () => {
+    expect(await namesFor('haircut and beard')).toEqual(['Haircut and beard']);
+    expect(await namesFor('corte y barba')).toEqual(['Haircut and beard']);
+    expect(await namesFor('a haircut and a beard trim')).toEqual(['Haircut and beard']);
+    expect(await namesFor('a haircut, also my beard')).toEqual(['Haircut and beard']);
+  });
+
+  it('lets the longer of two overlapping phrases win', async () => {
+    expect(await namesFor('kids cut')).toEqual(['Kids cut']);
+    expect(await namesFor('can I get a kids cut on Friday')).toEqual(['Kids cut']);
+    expect(await namesFor('a skin fade please')).toEqual(['Fade']);
+  });
+
   it('returns ties together so the agent asks which one', async () => {
     const data = sharpLine([
       { ...seededService('skin', 'fade', 'Skin Fade', 3500), aliases: [] },
