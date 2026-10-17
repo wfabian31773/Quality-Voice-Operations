@@ -49,6 +49,16 @@ function asStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string');
 }
 
+function staffPerforms(state: TenantState, staffId: string, serviceIds: string[]): boolean {
+  if (serviceIds.length === 0) return true;
+  const staff = state.staff.find((member) => member.id === staffId);
+  return Boolean(staff && serviceIds.every((id) => staff.serviceIds.includes(id)));
+}
+
+function unknownServiceIds(state: TenantState, serviceIds: string[]): string[] {
+  return serviceIds.filter((id) => !state.services.some((service) => service.id === id));
+}
+
 export function formatLocalHm(iso: string, timeZone: string): string {
   const date = new Date(iso);
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -164,12 +174,16 @@ export class FakeToolProvider implements ToolProvider {
 
   private checkAvailability(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const staffId = asString(input.staffId) ?? 'any';
+    const serviceIds = asStringArray(input.serviceIds);
+    const unknown = unknownServiceIds(this.state, serviceIds);
+    if (unknown.length > 0) return fail('NOT_FOUND', `unknown service ${unknown.join(', ')}`, { field: 'serviceIds' });
     const date = asString(input.date) ?? localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const today = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slots = this.state.slots
       .filter((slot) => {
         if (localDate(slot.start, ctx.tenantTimezone) !== date) return false;
         if (staffId !== 'any' && slot.staffId !== staffId) return false;
+        if (!staffPerforms(this.state, slot.staffId, serviceIds)) return false;
         const held = this.state.bookings.some(
           (row) => row.staffId === slot.staffId && row.start === slot.start && (row.status === 'held' || row.status === 'confirmed'),
         );
@@ -209,11 +223,14 @@ export class FakeToolProvider implements ToolProvider {
         field: !start ? 'start' : !name ? 'customer.name' : 'customer.phone',
       });
     }
+    const unknown = unknownServiceIds(this.state, serviceIds);
+    if (unknown.length > 0) return fail('NOT_FOUND', `unknown service ${unknown.join(', ')}`, { field: 'serviceIds' });
     const slot = this.state.slots.find((candidate) => {
       if (candidate.start !== start && !candidate.start.includes(start) && formatLocalHm(candidate.start, ctx.tenantTimezone) !== start) {
         return false;
       }
-      return staffPref === 'any' || candidate.staffId === staffPref;
+      if (staffPref !== 'any' && candidate.staffId !== staffPref) return false;
+      return staffPerforms(this.state, candidate.staffId, serviceIds);
     });
     if (!slot) {
       return fail('CONFLICT', 'that time is not available', {

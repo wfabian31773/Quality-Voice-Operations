@@ -64,4 +64,31 @@ describe('FakeToolProvider', () => {
     if (result.ok) return;
     expect(result.error.code).toBe('TOOL_NOT_ENABLED');
   });
+
+  it('does not offer or book a service the staff member does not perform', async () => {
+    const state = buildFixture('barbershop-marco');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const availability = await tools.invoke(
+      'scheduling.check_availability',
+      { serviceIds: ['beard'], staffId: 'dana', date: '2026-10-20' },
+      ctx(),
+    );
+    expect(availability.ok).toBe(true);
+    if (!availability.ok) return;
+    expect(availability.data).toMatchObject({ slots: [] });
+    const prepare = await tools.invoke(
+      'scheduling.book.prepare',
+      {
+        serviceIds: ['beard'],
+        staffId: 'dana',
+        start: '2026-10-20T16:00:00-04:00',
+        customer: { name: 'Luis', phone: '+15555550142' },
+      },
+      ctx(),
+    );
+    expect(prepare.ok).toBe(false);
+    if (prepare.ok) return;
+    expect(prepare.error.code).toBe('CONFLICT');
+    expect(state.bookings).toHaveLength(0);
+  });
 });

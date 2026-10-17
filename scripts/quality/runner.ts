@@ -83,9 +83,19 @@ export function loadScenarioDir(dir: string): Scenario[] {
   });
 }
 
+export function selectScenarios(scenarios: Scenario[], only?: string[]): Scenario[] {
+  if (!only || only.length === 0) return scenarios;
+  const byId = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+  const missing = only.filter((id) => !byId.has(id));
+  if (missing.length > 0) {
+    throw new Error(`unknown scenario id(s): ${missing.join(', ')}`);
+  }
+  return only.map((id) => byId.get(id)!);
+}
+
 export async function runScenarios(scenarios: Scenario[], opts: RunOptions = {}): Promise<RunReport> {
   const startedAt = new Date().toISOString();
-  const selected = opts.only ? scenarios.filter((scenario) => opts.only!.includes(scenario.id)) : scenarios;
+  const selected = selectScenarios(scenarios, opts.only);
   const results: ScenarioRunResult[] = [];
   for (const scenario of selected) {
     results.push(await runScenario(scenario, opts));
@@ -99,7 +109,7 @@ export async function runScenarios(scenarios: Scenario[], opts: RunOptions = {})
     .filter((result) => result.status === 'unexpected_pass')
     .map((result) => ({ id: result.id, expectedFail: result.expectedFail ?? '' }));
   return {
-    ok: failed.length === 0,
+    ok: failed.length === 0 && unexpectedPassed.length === 0,
     mode: opts.mode ?? 'scripted',
     startedAt,
     finishedAt: new Date().toISOString(),

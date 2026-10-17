@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { loadScenarioYaml } from '../../scripts/quality/loadScenario';
 import { createLlmAgent } from '../../scripts/quality/llmAgent';
 import { DEFAULT_SCENARIO_DIR, main, parseArgs, runSelfCheck } from '../../scripts/quality/run-scenarios';
-import { loadScenarioDir, runScenario, runScenarios } from '../../scripts/quality/runner';
+import { loadScenarioDir, runScenario, runScenarios, selectScenarios } from '../../scripts/quality/runner';
 import { createTenantStore, MemoryTenantStore } from '../../scripts/quality/seed';
 
 const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
@@ -47,6 +47,15 @@ describe('sample scenarios (scripted, no LLM)', () => {
     expect(waitlist?.status).toBe('expected_fail');
     expect(waitlist?.diff).toMatch(/endState|NOT_FOUND|waitlist/i);
   });
+
+  it('fails the run when an expectedFail scenario starts passing', async () => {
+    const scenarios = loadScenarioDir(DEFAULT_SCENARIO_DIR).filter((scenario) => scenario.id === 'book-named-barber');
+    scenarios[0] = { ...scenarios[0], expectedFail: 'PR-99' };
+    const report = await runScenarios(scenarios, { mode: 'scripted' });
+    expect(report.ok).toBe(false);
+    expect(report.unexpectedPassed).toEqual([{ id: 'book-named-barber', expectedFail: 'PR-99' }]);
+    expect(report.failed).toEqual([]);
+  });
 });
 
 describe('broken scenario', () => {
@@ -80,6 +89,13 @@ describe('CLI flags', () => {
     expect(parseArgs(['--self-check', '--mode=scripted', '--only=book-named-barber']).only).toEqual([
       'book-named-barber',
     ]);
+  });
+
+  it('rejects --only ids that do not match a loaded scenario', () => {
+    const scenarios = loadScenarioDir(DEFAULT_SCENARIO_DIR);
+    expect(() => selectScenarios(scenarios, ['book-named-barber', 'does-not-exist'])).toThrow(
+      /unknown scenario id\(s\): does-not-exist/,
+    );
   });
 
   it('refuses LLM mode without QUALITY_SIM_LLM=1 and never constructs a live client', async () => {
