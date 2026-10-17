@@ -1,0 +1,40 @@
+name: MCP server
+
+# QVO MCP server package (PR-11). Typecheck + in-memory tests only:
+# no secrets, no database, no live Twilio/Stripe/xAI, no deploy.
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: mcp-server-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcp-server:
+    name: mcp/qvo-server typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # The package has no lockfile or node_modules of its own; it resolves
+      # @modelcontextprotocol/sdk and zod from the root install.
+      - name: Install dependencies (root)
+        run: bash scripts/ci-npm-ci.sh
+
+      - name: Typecheck
+        run: npm --prefix mcp/qvo-server run typecheck
+
+      - name: Tests
+        run: npx vitest run mcp/qvo-server

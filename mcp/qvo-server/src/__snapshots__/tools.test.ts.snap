@@ -1,0 +1,225 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generated MCP tool schemas > match the snapshot (fixture registry + qvo.* helpers) 1`] = `
+[
+  {
+    "action": "core.echo.commit",
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Commit an echo confirmation. Fixture used only in tests.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmationToken": {
+          "format": "uuid",
+          "type": "string",
+        },
+        "dryRun": {
+          "default": true,
+          "description": "Defaults to true: validate and audit only. Pass false to actually run the write.",
+          "type": "boolean",
+        },
+        "idempotencyKey": {
+          "description": "Required when dryRun is false. Same key + same input replays the stored result.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "payloadHash": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "confirmationToken",
+        "payloadHash",
+      ],
+      "type": "object",
+    },
+    "name": "core_echo_commit",
+    "scope": "qvo:admin",
+    "source": "action",
+  },
+  {
+    "action": "core.echo.prepare",
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Prepare an echo confirmation. Fixture used only in tests.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "default": true,
+          "description": "Defaults to true: validate and audit only. Pass false to actually run the write.",
+          "type": "boolean",
+        },
+        "idempotencyKey": {
+          "description": "Required when dryRun is false. Same key + same input replays the stored result.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "message",
+      ],
+      "type": "object",
+    },
+    "name": "core_echo_prepare",
+    "scope": "qvo:admin",
+    "source": "action",
+  },
+  {
+    "action": "core.echo.read",
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Echo a message. Fixture used only in tests.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "message",
+      ],
+      "type": "object",
+    },
+    "name": "core_echo_read",
+    "scope": "qvo:read",
+    "source": "action",
+  },
+  {
+    "action": "core.echo.write",
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Echo a message as a write. Fixture used only in tests.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "default": true,
+          "description": "Defaults to true: validate and audit only. Pass false to actually run the write.",
+          "type": "boolean",
+        },
+        "idempotencyKey": {
+          "description": "Required when dryRun is false. Same key + same input replays the stored result.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "message",
+      ],
+      "type": "object",
+    },
+    "name": "core_echo_write",
+    "scope": "qvo:admin",
+    "source": "action",
+  },
+  {
+    "action": "qvo.get_tenant",
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Get the bound tenant's name, timezone and enabled tools.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "tenantId": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "qvo_get_tenant",
+    "scope": "qvo:read",
+    "source": "helper",
+  },
+  {
+    "action": "qvo.list_actions",
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List the QVO actions this key can call over MCP, with kind and required scope.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "qvo_list_actions",
+    "scope": "qvo:read",
+    "source": "helper",
+  },
+  {
+    "action": "qvo.list_templates",
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List use-case templates (barbershop, nail salon, …). Returns [] until templates ship.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "qvo_list_templates",
+    "scope": "qvo:read",
+    "source": "helper",
+  },
+  {
+    "action": "test.notes.list",
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List notes for the bound tenant. Fixture used only in tests.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "test_notes_list",
+    "scope": "qvo:read",
+    "source": "action",
+  },
+]
+`;
