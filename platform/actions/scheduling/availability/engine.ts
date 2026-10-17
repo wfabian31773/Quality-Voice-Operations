@@ -327,6 +327,7 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
         for (let t = Math.ceil((a + off) / gridMs) * gridMs - off; t + durationMs <= b; t += gridMs) {
           if (t < dayStart) continue;
           if (t >= dayEnd) break;
+          if (input.at !== undefined && t !== input.at) continue;
           if (input.partOfDay && partOfDayOf(localMinuteOf(t, tz)) !== input.partOfDay) continue;
           raw += 1;
           if (t < nowMs || t < earliestMs || date > lastBookable || (date === today && sameDayClosed)) continue;
@@ -356,7 +357,15 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
       }
     }
     const unique = [...best.values()].sort((x, y) => x.ms - y.ms);
-    return spreadPick(unique, limit).map((c) => ({
+    const near = input.near;
+    const picked = near === undefined
+      ? spreadPick(unique, limit)
+      : unique
+        .slice()
+        .sort((x, y) => Math.abs(x.ms - near) - Math.abs(y.ms - near) || x.ms - y.ms)
+        .slice(0, limit)
+        .sort((x, y) => x.ms - y.ms);
+    return picked.map((c) => ({
       start: new Date(c.ms).toISOString(),
       end: new Date(c.ms + durationMs).toISOString(),
       staffId: c.staff.id,
@@ -373,7 +382,8 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
   }
 
   const result: AvailabilityResult = { slots: [], reasonIfNone: reason ?? 'closed' };
-  for (const date of plan.nextOpenDays) {
+  // An exact-start check has no "next open date": the caller asks for alternatives separately.
+  for (const date of input.at === undefined ? plan.nextOpenDays : []) {
     if (evaluateDay(date).candidates.length > 0) {
       result.nextOpenDate = date;
       break;

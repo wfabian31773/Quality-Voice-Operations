@@ -484,3 +484,42 @@ describe('searchPlan and spreadPick', () => {
     expect(spreadPick([1, 2], 5)).toEqual([1, 2]);
   });
 });
+
+describe('computeAvailability: exact start (at) and nearest slots (near), used by the write actions', () => {
+  const TUE_1000 = Date.parse('2026-10-20T14:00:00Z');
+
+  it('offers exactly the requested start, with the engine-assigned staff member for any', () => {
+    const r = computeAvailability(input({ date: '2026-10-20', at: TUE_1000, limit: 1 }));
+    expect(r.slots).toEqual([
+      { start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:30:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 10 AM' },
+    ]);
+    // Marco busier that day → Dana gets it.
+    const busy = computeAvailability(input({
+      date: '2026-10-20',
+      at: TUE_1000,
+      bookings: [booking('marco', '2026-10-20T13:00:00Z', '2026-10-20T13:30:00Z')],
+    }));
+    expect(busy.slots.map((s) => s.staffId)).toEqual(['dana']);
+  });
+
+  it('gives the reason for a start it does not offer, and no nextOpenDate', () => {
+    const taken = computeAvailability(input({
+      date: '2026-10-20',
+      staffId: 'marco',
+      at: TUE_1000,
+      bookings: [booking('marco', '2026-10-20T13:45:00Z', '2026-10-20T14:15:00Z')],
+    }));
+    expect(taken).toEqual({ slots: [], reasonIfNone: 'fully_booked' });
+    const lead = computeAvailability(input({ date: '2026-10-19', at: Date.parse('2026-10-19T13:00:00Z'), rules: { ...DEFAULT_BOOKING_RULES, minLeadMinutes: 120 } }));
+    expect(lead).toEqual({ slots: [], reasonIfNone: 'outside_lead_time' });
+    const closed = computeAvailability(input({ date: '2026-10-25', at: Date.parse('2026-10-25T14:00:00Z') }));
+    expect(closed).toEqual({ slots: [], reasonIfNone: 'closed' });
+    // Off the 15-minute grid: never offered.
+    expect(computeAvailability(input({ date: '2026-10-20', at: TUE_1000 + 7 * 60_000 })).slots).toEqual([]);
+  });
+
+  it('picks the slots closest to `near`, returned in time order', () => {
+    const r = computeAvailability(input({ date: '2026-10-20', staffId: 'marco', near: TUE_1000, limit: 3 }));
+    expect(starts(r)).toEqual(['2026-10-20T13:45:00.000Z', '2026-10-20T14:00:00.000Z', '2026-10-20T14:15:00.000Z']);
+  });
+});

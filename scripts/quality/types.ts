@@ -158,6 +158,8 @@ export type BookingRow = {
   startLocal: string;
   customerName: string;
   customerPhone: string;
+  /** Set when a hold is released (bookings.cancellation_reason: 'hold_superseded' | 'hold_expired'). */
+  cancellationReason?: string;
 };
 
 export type TicketRow = {

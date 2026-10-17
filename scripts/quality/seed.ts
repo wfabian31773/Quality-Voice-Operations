@@ -20,7 +20,10 @@ export type TenantState = {
   tickets: TicketRow[];
   transfers: TransferRow[];
   waitlist: WaitlistRow[];
-  holds: Record<string, { kind: 'booking' | 'ticket' | 'transfer'; payload: Record<string, unknown>; readback: string }>;
+  holds: Record<
+    string,
+    { kind: 'booking' | 'ticket' | 'transfer'; payload: Record<string, unknown>; readback: string; callId?: string }
+  >;
 };
 
 export interface TenantStore {
@@ -98,9 +101,19 @@ export function buildFixture(name: string): TenantState {
   return factory();
 }
 
+/**
+ * Holds that were released before ever becoming a booking (superseded by a
+ * correction, or expired) are not bookings; the end state leaves them out.
+ */
+const RELEASED_HOLD_REASONS = new Set(['hold_superseded', 'hold_expired']);
+
+export function isReleasedHold(row: BookingRow): boolean {
+  return row.status === 'cancelled' && RELEASED_HOLD_REASONS.has(row.cancellationReason ?? '');
+}
+
 export function snapshotOf(state: TenantState): EndSnapshot {
   return {
-    bookings: state.bookings.map((row) => ({ ...row })),
+    bookings: state.bookings.filter((row) => !isReleasedHold(row)).map((row) => ({ ...row })),
     tickets: state.tickets.map((row) => ({ ...row })),
     transfers: state.transfers.map((row) => ({ ...row })),
     waitlist: state.waitlist.map((row) => ({ ...row })),

@@ -16,8 +16,8 @@ import {
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
-/** The only PRs a vertical1 scenario may wait on (task brief). */
-const ALLOWED_EXPECTED_FAIL = ['PR-13', 'PR-14', 'PR-17', 'PR-20', 'PR-26'];
+/** The only PRs a vertical1 scenario may wait on (task brief). PR-13 landed. */
+const ALLOWED_EXPECTED_FAIL = ['PR-14', 'PR-17', 'PR-20', 'PR-26'];
 
 /**
  * Harness follow-ups no product PR fixes. `matcher-es-readback`: readbackRequired
@@ -38,7 +38,6 @@ const BOOK_READBACK_NOT_SPOKEN: PinnedFailure = [
  * or broken script can't pass as the expected failure.
  */
 const EXPECTED_FAIL: Record<string, { pr: string; failures: PinnedFailure[] }> = {
-  'v1-sched-bb-change-after-readback': { pr: 'PR-13', failures: [['endState', 'bookings count']] },
   'v1-sched-bb-reschedule-verified': {
     pr: 'PR-14',
     failures: [
@@ -203,17 +202,17 @@ describe('vertical1 shop fixtures', () => {
 });
 
 describe('vertical1 scenario pack: shape', () => {
-  it('loads all 30 scenarios with unique ids matching file names', () => {
+  it('loads all 31 scenarios with unique ids matching file names', () => {
     const files = readdirSync(DIR).filter((name) => name.endsWith('.yaml')).sort();
-    expect(files).toHaveLength(30);
-    expect(scenarios).toHaveLength(30);
+    expect(files).toHaveLength(31);
+    expect(scenarios).toHaveLength(31);
     expect(scenarios.map((scenario) => `${scenario.id}.yaml`)).toEqual(files);
   });
 
   it('spreads across scheduling, SMS, tickets and transfer/knowledge', () => {
     const counts: Record<string, number> = {};
     for (const scenario of scenarios) counts[category(scenario.id)] = (counts[category(scenario.id)] ?? 0) + 1;
-    expect(counts).toEqual({ sched: 14, sms: 6, tickets: 6, transfer: 2, info: 2 });
+    expect(counts).toEqual({ sched: 15, sms: 6, tickets: 6, transfer: 2, info: 2 });
   });
 
   it('includes Spanish callers in scheduling, SMS and tickets', () => {
@@ -255,10 +254,10 @@ describe('vertical1 scenario pack: deterministic run', () => {
       Object.fromEntries(Object.entries(EXPECTED_FAIL).map(([id, entry]) => [id, entry.pr])),
     );
     // Totals quoted in COVERAGE.md.
-    expect(report.passed).toHaveLength(17);
+    expect(report.passed).toHaveLength(19);
     const byPr: Record<string, number> = {};
     for (const row of report.expectedFailed) byPr[row.expectedFail] = (byPr[row.expectedFail] ?? 0) + 1;
-    expect(byPr).toEqual({ 'PR-13': 1, 'PR-14': 1, 'PR-17': 6, 'PR-20': 1, 'PR-26': 1, 'matcher-es-readback': 3 });
+    expect(byPr).toEqual({ 'PR-14': 1, 'PR-17': 6, 'PR-20': 1, 'PR-26': 1, 'matcher-es-readback': 3 });
     console.log(formatHumanSummary(report));
   }, ALL_SCENARIOS_TIMEOUT_MS);
 
