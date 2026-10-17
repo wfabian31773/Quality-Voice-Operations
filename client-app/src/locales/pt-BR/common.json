@@ -16,7 +16,7 @@
     "sign_in": "Entrar",
     "sign_out": "Sair",
     "book_demo": "Agendar demonstração",
-    "start_trial": "Iniciar teste grátis",
+    "start_trial": "Criar uma conta",
     "open_menu": "Abrir menu",
     "close": "Fechar"
   },
@@ -148,7 +148,7 @@
     "signup_failed": "Falha no cadastro",
     "checkout_init_failed": "Não foi possível iniciar o checkout",
     "signup_eyebrow": "Comece agora",
-    "signup_headline": "Comece seu teste grátis hoje.",
+    "signup_headline": "Crie sua conta QVO.",
     "signup_subhead": "Implante agentes de voz com IA em minutos. Atenda chamadas, agende reuniões e qualifique leads — tudo no piloto automático.",
     "signup_help": "Precisa de ajuda para escolher um plano?",
     "signup_compare": "Comparar planos",
@@ -163,9 +163,9 @@
     "billing_monthly_note": "Cobrança mensal · cancele quando quiser.",
     "billing_annual_note": "Cobrança anual · economize 20% no plano base.",
     "popular": "Popular",
-    "start_trial_button": "Iniciar teste grátis",
+    "start_trial_button": "Criar uma conta",
     "per_month_short": "/mês",
-    "verification_required": "Verificação por e-mail necessária para ativar seu teste.",
+    "verification_required": "Verificação por e-mail necessária para ativar sua conta.",
     "captcha_failed": "Por favor, complete a verificação CAPTCHA.",
     "captcha_unavailable": "O cadastro está temporariamente indisponível porque o CAPTCHA não está configurado. Tente novamente mais tarde ou entre em contato com o suporte.",
     "password_too_short": "A senha deve ter pelo menos 8 caracteres.",
@@ -517,7 +517,7 @@
       "title": "Quer ver seus números no contexto?",
       "subtitle": "Agende uma demo e nós o guiaremos por um benchmark de exemplo da GIN para o seu vertical — e mostraremos exatamente o que é compartilhado (e o que nunca é compartilhado).",
       "cta_primary": "Agendar uma demo",
-      "cta_secondary": "Iniciar teste gratuito"
+      "cta_secondary": "Criar uma conta"
     }
   },
   "vertical_agents_page": {
@@ -682,7 +682,7 @@
     "bottom_cta": {
       "title": "Pule o prompt em branco. Comece com um agente vertical.",
       "subtitle": "Suba um agente que já conhece o seu vertical. Personalize o que é específico da sua prática, deixe o restante nos padrões e entre no ar em dias, não em meses.",
-      "cta_primary": "Iniciar teste gratuito",
+      "cta_primary": "Criar uma conta",
       "cta_secondary": "Ver casos de uso"
     }
   },

@@ -3,7 +3,7 @@
     "try_live_demo": "Testar demo ao vivo",
     "see_use_cases": "Ver casos de uso",
     "explore_agents": "Explorar agentes",
-    "start_free_trial": "Começar teste gratuito",
+    "start_free_trial": "Criar uma conta",
     "book_demo": "Agendar uma demo",
     "talk_to_us": "Fale com a gente",
     "book_a_demo": "Agendar uma demo",
@@ -372,9 +372,9 @@
     },
     "bottom_cta": {
       "title": "Veja em ação.",
-      "subtitle": "Teste nossos agentes de demo ao vivo ou comece o seu teste gratuito hoje.",
+      "subtitle": "Teste nossos agentes de demo ao vivo ou agende uma demonstração.",
       "try_demo": "Testar a demo",
-      "start_trial": "Começar teste gratuito"
+      "start_trial": "Criar uma conta"
     }
   },
   "features": {
@@ -479,7 +479,7 @@
       "per_month": "/mês",
       "minutes_included": "{{minutes}} minutos de IA inclusos",
       "overage_label": "{{overage}} por excedente",
-      "start_trial": "Iniciar teste gratuito",
+      "start_trial": "Criar uma conta",
       "recommended": "RECOMENDADO",
       "billed_monthly": "Cobrança mensal · cancele quando quiser",
       "billed_annually": "Cobrança anual · economize 20%",
@@ -935,7 +935,7 @@
     "custom_cta": {
       "title": "Precisa de uma integração sob medida?",
       "subtitle": "A API REST e o sistema de webhooks do QVO permitem conectar-se a qualquer serviço externo. Nossa documentação cobre autenticação, tipos de eventos e formatos de payload.",
-      "start_trial": "Iniciar teste gratuito",
+      "start_trial": "Criar uma conta",
       "talk_engineering": "Falar com engenharia"
     }
   },
@@ -981,7 +981,7 @@
   },
   "vertical_page": {
     "hero": {
-      "start_trial": "Comece o teste grátis",
+      "start_trial": "Criar uma conta",
       "try_demo": "Experimente a demo ao vivo"
     },
     "card": {
@@ -1014,7 +1014,7 @@
     "bottom_cta": {
       "title": "Pronto para transformar seu negócio de {{vertical}}?",
       "subtitle": "Agora estamos fazendo o onboarding de oficinas piloto.",
-      "start_trial": "Comece seu teste grátis",
+      "start_trial": "Criar uma conta",
       "see_demo": "Ver demo ao vivo"
     },
     "not_found": {

@@ -3,7 +3,7 @@
     "try_live_demo": "Live-Demo testen",
     "see_use_cases": "Anwendungsfälle ansehen",
     "explore_agents": "Agenten entdecken",
-    "start_free_trial": "Kostenlose Testphase starten",
+    "start_free_trial": "Konto erstellen",
     "book_demo": "Demo buchen",
     "talk_to_us": "Sprechen Sie uns an",
     "book_a_demo": "Demo buchen",
@@ -372,9 +372,9 @@
     },
     "bottom_cta": {
       "title": "Sehen Sie es in Aktion.",
-      "subtitle": "Testen Sie unsere Live-Demo-Agenten oder starten Sie heute Ihre kostenlose Testphase.",
+      "subtitle": "Testen Sie unsere Live-Demo-Agenten oder buchen Sie eine Demo.",
       "try_demo": "Demo testen",
-      "start_trial": "Kostenlose Testphase starten"
+      "start_trial": "Konto erstellen"
     }
   },
   "features": {
@@ -479,7 +479,7 @@
       "per_month": "/Monat",
       "minutes_included": "{{minutes}} KI-Minuten enthalten",
       "overage_label": "{{overage}} Übernutzung",
-      "start_trial": "Kostenlose Testphase starten",
+      "start_trial": "Konto erstellen",
       "recommended": "EMPFOHLEN",
       "billed_monthly": "Monatliche Abrechnung · jederzeit kündbar",
       "billed_annually": "Jährliche Abrechnung · 20% sparen",
@@ -935,7 +935,7 @@
     "custom_cta": {
       "title": "Brauchen Sie eine maßgeschneiderte Integration?",
       "subtitle": "Die REST-API und das Webhook-System von QVO verbinden Sie mit jedem externen Service. Unsere Entwickler-Dokumentation deckt Authentifizierung, Event-Typen und Payload-Formate ab.",
-      "start_trial": "Kostenlose Testphase starten",
+      "start_trial": "Konto erstellen",
       "talk_engineering": "Mit der Technik sprechen"
     }
   },
@@ -981,7 +981,7 @@
   },
   "vertical_page": {
     "hero": {
-      "start_trial": "Kostenlose Testphase starten",
+      "start_trial": "Konto erstellen",
       "try_demo": "Live-Demo testen"
     },
     "card": {
@@ -1014,7 +1014,7 @@
     "bottom_cta": {
       "title": "Bereit, Ihr {{vertical}}-Geschäft zu transformieren?",
       "subtitle": "Wir nehmen gerade Pilotbetriebe auf.",
-      "start_trial": "Kostenlose Testphase starten",
+      "start_trial": "Konto erstellen",
       "see_demo": "Live-Demo ansehen"
     },
     "not_found": {
