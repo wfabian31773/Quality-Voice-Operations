@@ -6,6 +6,7 @@ import {
   sendSystemSms,
   type SmsTemplateKey,
 } from '../../../actions/sms';
+import { resolveCallerPhone } from '../../../reasoning/sessionBinding';
 import type { ToolContext, ToolDefinition } from '../../registry/types';
 import { getToolLibraryEntry } from '../catalog';
 
@@ -18,15 +19,16 @@ const logger = createLogger('TOOL_SEND_SMS');
 export async function executeSendSms(
   input: Record<string, unknown>,
   context: ToolContext,
-): Promise<{ success: boolean; message: string; sid?: string; status?: string; code?: string }> {
-  const toNumber = String(input.toNumber ?? context.callerNumber ?? '').trim();
+): Promise<{ success: boolean; message: string; sid?: string; status?: string; code?: string; retryable?: boolean }> {
+  const toNumber = resolveCallerPhone(input.toNumber, context.callerNumber);
   if (!toNumber) {
-    return { success: false, message: 'toNumber is required.' };
+    return { success: false, retryable: false, message: 'toNumber is required.' };
   }
   const templateKey = typeof input.templateKey === 'string' ? input.templateKey : '';
   if (!templateKey || !isAgentSmsTemplate(templateKey)) {
     return {
       success: false,
+      retryable: false,
       code: 'TEMPLATE_REQUIRED',
       message: "I can't send a custom text. I can take a message so the shop follows up.",
     };
@@ -59,7 +61,12 @@ export async function executeSendSms(
         : {}),
     });
     if (!result.ok) {
-      return { success: false, code: result.error.code, message: result.error.callerSafeMessage };
+      return {
+        success: false,
+        code: result.error.code,
+        retryable: result.error.retryable,
+        message: result.error.callerSafeMessage,
+      };
     }
     if (result.data.status === 'deferred_quiet_hours') {
       return { success: true, status: result.data.status, message: "You'll get the text in the morning." };

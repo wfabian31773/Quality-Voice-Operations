@@ -32,7 +32,7 @@ export function registerToolLibrary(): void {
       description: entry.description,
       category: entry.category,
       inputSchema: entry.parameters,
-      recoveryInstructions: 'If this tool fails, tell the caller plainly and offer to retry or escalate to a human.',
+      recoveryInstructions: 'If this tool fails, tell the caller plainly that it did not go through. Offer once to leave a message for the team, and call create_ticket only after the caller says yes. Do not promise when anyone will call back.',
       handler: executable?.handler ?? (async () => ({
         success: false,
         message: 'This library tool is handled by the voice runtime context.',

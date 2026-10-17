@@ -58,6 +58,53 @@ export function removeToolFailureListener(handler: (event: ToolFailureEvent) => 
   emitter.removeListener('tool-failure', handler);
 }
 
+/**
+ * A tool failure that will fail the same way on every attempt (bad SQL,
+ * constraint or validation failure, a policy block). executeWithRetry
+ * stops after the first attempt instead of adding seconds of dead air.
+ */
+export class NonRetryableToolError extends Error {
+  readonly retryable = false;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableToolError';
+  }
+}
+
+// Transient SQLSTATEs: serialization failure, deadlock, admin shutdown,
+// crash shutdown, cannot connect now. Classes 08 (connection) and 53
+// (insufficient resources) are transient as a whole.
+const TRANSIENT_SQLSTATES = new Set(['40001', '40P01', '57P01', '57P02', '57P03']);
+const TRANSIENT_SQLSTATE_CLASSES = new Set(['08', '53']);
+// Deterministic classes: 22 data exception, 23 integrity constraint
+// violation, 42 syntax error or access rule (e.g. 42P18, 42804).
+const DETERMINISTIC_SQLSTATE_CLASSES = new Set(['22', '23', '42']);
+
+/** true / false for a known SQLSTATE class, undefined when it says nothing. */
+export function isRetryableSqlState(code: unknown): boolean | undefined {
+  if (typeof code !== 'string' || !/^[0-9A-Z]{5}$/.test(code)) return undefined;
+  if (TRANSIENT_SQLSTATES.has(code) || TRANSIENT_SQLSTATE_CLASSES.has(code.slice(0, 2))) return true;
+  if (DETERMINISTIC_SQLSTATE_CLASSES.has(code.slice(0, 2))) return false;
+  return undefined;
+}
+
+/**
+ * Whether a tool failure is worth another attempt. Takes a thrown error or
+ * a `{ success: false, retryable?, code? }` tool result. An explicit
+ * `retryable` flag wins, then a Postgres SQLSTATE `code`. Anything else
+ * (timeouts, connection resets, unknown errors) keeps the retry.
+ */
+export function isRetryableToolError(err: unknown): boolean {
+  if (err && typeof err === 'object') {
+    const { retryable, code } = err as { retryable?: unknown; code?: unknown };
+    if (typeof retryable === 'boolean') return retryable;
+    const bySqlState = isRetryableSqlState(code);
+    if (bySqlState !== undefined) return bySqlState;
+  }
+  return true;
+}
+
 function computeDelay(attempt: number, config: RetryConfig): number {
   const delay = config.baseDelayMs * Math.pow(config.backoffMultiplier, attempt);
   const jitter = Math.random() * config.baseDelayMs * 0.5;
@@ -92,8 +139,10 @@ export async function executeWithRetry<T>(
   const config: RetryConfig = { ...DEFAULT_RETRY_CONFIG, ...context.retryConfig };
   const startTime = Date.now();
   let lastError = '';
+  let attemptsMade = 0;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    attemptsMade = attempt + 1;
     try {
       const result = await withTimeout(executor(), config.timeoutMs);
       return {
@@ -113,6 +162,16 @@ export async function executeWithRetry<T>(
         maxRetries: config.maxRetries,
         error: lastError,
       });
+
+      if (!isRetryableToolError(err)) {
+        logger.info('Tool failure is not retryable; failing fast', {
+          tenantId: context.tenantId,
+          tool: context.toolName,
+          callId: context.callSessionId,
+          attempt: attempt + 1,
+        });
+        break;
+      }
 
       if (attempt < config.maxRetries) {
         emitter.emit('tool-failure', {
@@ -155,7 +214,7 @@ export async function executeWithRetry<T>(
         callSessionId: context.callSessionId,
         agentSlug: context.agentSlug,
         error: lastError,
-        retryCount: config.maxRetries + 1,
+        retryCount: attemptsMade,
         maxRetries: config.maxRetries,
         timestamp: new Date(),
         finalFailure: false,
@@ -166,7 +225,7 @@ export async function executeWithRetry<T>(
       return {
         success: true,
         result: fallbackResult,
-        attempts: config.maxRetries + 2,
+        attempts: attemptsMade + 1,
         totalDurationMs: Date.now() - startTime,
         usedFallback: true,
       };
@@ -187,7 +246,7 @@ export async function executeWithRetry<T>(
     callSessionId: context.callSessionId,
     agentSlug: context.agentSlug,
     error: lastError,
-    retryCount: config.maxRetries + 1,
+    retryCount: attemptsMade,
     maxRetries: config.maxRetries,
     timestamp: new Date(),
     finalFailure: true,
@@ -199,7 +258,7 @@ export async function executeWithRetry<T>(
   return {
     success: false,
     error: lastError,
-    attempts: config.maxRetries + 1 + (fallbackAttempted ? 1 : 0),
+    attempts: attemptsMade + (fallbackAttempted ? 1 : 0),
     totalDurationMs: Date.now() - startTime,
     usedFallback: fallbackAttempted,
   };

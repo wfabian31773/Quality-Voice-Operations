@@ -117,6 +117,57 @@ describe('loadAgentConfig', () => {
     expect(cfg.tools.map((tool) => tool.name)).not.toContain('createServiceTicket');
   });
 
+  describe('salon branch (Oct 17 live call)', () => {
+    const CALLER = '+15555550100';
+    const BARBER_PROMPT = 'You are the front desk at Sharp Line Barbers. Services: Haircut 30 min, Fade 45 min, Beard trim 15 min. Hours Tue–Sat 9–7.';
+
+    it('uses the tenant DB prompt as the role prompt and keeps the package tools and guardrails', () => {
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: BARBER_PROMPT, metadata: { businessName: 'Sharp Line Barbers' } },
+      }));
+      expect(cfg.rolePackageId).toBe('salon');
+      expect(cfg.rolePrompt).toContain('Fade 45 min');
+      expect(cfg.systemPrompt).toContain('Fade 45 min');
+      expect(cfg.rolePrompt).not.toContain('a salon or barbershop');
+      expect(cfg.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['create_booking', 'lookup_customer', 'record_call_outcome']));
+      expect(cfg.guardrails).toContain('Do not invent availability, prices, or stylist schedules.');
+    });
+
+    it.each(['', '   \n '])('falls back to the package prompt when the DB prompt is empty (%j)', (systemPrompt) => {
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: systemPrompt, metadata: { businessName: 'Sharp Line Barbers' } },
+      }));
+      expect(cfg.rolePrompt).toContain('You are the AI receptionist for Sharp Line Barbers, a salon or barbershop.');
+    });
+
+    it.each([
+      ['DB prompt', BARBER_PROMPT],
+      ['fallback prompt', ''],
+    ])('appends the caller-ID line with only the last 4 digits (%s)', (_label, systemPrompt) => {
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: systemPrompt },
+      }));
+      expect(cfg.systemPrompt).toContain('calling from a number ending in 0100');
+      expect(cfg.systemPrompt).toContain('offer to use the number they\'re calling from');
+      expect(cfg.systemPrompt).toContain('Call create_ticket only after the caller says yes');
+      expect(cfg.systemPrompt).not.toContain(CALLER);
+      expect(cfg.systemPrompt).not.toContain('5555550100');
+      expect(cfg.systemPrompt).not.toContain('555-0100');
+    });
+
+    it('leaves the caller-ID line out when there is no caller ID', () => {
+      const cfg = loadAgentConfig(ctx({ agentType: 'salon', dbAgent: { name: 'Front Desk', system_prompt: BARBER_PROMPT } }));
+      expect(cfg.systemPrompt).not.toContain('number ending in');
+      expect(cfg.systemPrompt).toContain('Call create_ticket only after the caller says yes');
+    });
+  });
+
   it('loads the GTM core-receptionist role for general and core-receptionist types', () => {
     for (const agentType of ['general', 'core-receptionist', 'core_receptionist']) {
       const cfg = loadAgentConfig(ctx({

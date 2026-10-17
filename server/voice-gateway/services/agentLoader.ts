@@ -72,7 +72,7 @@ import {
   normalizeTimeZone,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
 import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
-import { createSalonRolePackage } from '../../../platform/agent-templates/salon';
+import { appendSalonCallRules, createSalonRolePackage } from '../../../platform/agent-templates/salon';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -508,11 +508,16 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         preferredLanguage: language,
         timeZone,
         voice: dbAgent?.voice,
+        callerPhone,
       });
+      // The tenant's own prompt (services, durations, hours, bilingual
+      // rules) is the role prompt when set; the package prompt is the
+      // fallback. Both get the caller-ID and message-consent rules.
+      const dbPrompt = dbAgent?.system_prompt?.trim();
       return finalize({
         agentId,
         tenantId,
-        systemPrompt: role.prompt,
+        systemPrompt: dbPrompt ? appendSalonCallRules(dbPrompt, callerPhone) : role.prompt,
         greeting: (meta.greeting as string) ?? role.greeting,
         voice: role.voice ?? dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: MASTER_VOICE_AGENT_MODEL,

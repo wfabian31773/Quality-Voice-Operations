@@ -1,4 +1,5 @@
 import { createLogger } from '../core/logger';
+import { isLikelyIntroducedName } from '../core/phi/redact';
 import type { TenantId } from '../core/types';
 import { SlotTracker } from './SlotTracker';
 import { DecisionEngine } from './DecisionEngine';
@@ -9,6 +10,7 @@ import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
 import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction, isPolicyOrNegatedCancel } from './cancelRescheduleLanguage';
 import { isAdditionalTransactionRequest } from './additionalTransactionLanguage';
+import { CALLER_ID_TOKEN } from './sessionBinding';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -27,6 +29,45 @@ const logger = createLogger('REASONING_ENGINE');
 function isBookingIntent(intent: string): boolean {
   return intent === 'book_appointment' || intent === 'schedule_appointment';
 }
+
+/**
+ * Read-only / observational tools. The tool catalog has no read flag, so
+ * this list is explicit. A conflict with the active reasoning decision never
+ * blocks these (the safety gate still runs): on the Oct 17 call a
+ * create_ticket decision blocked lookup_customer and the agent made the
+ * caller read out his whole number.
+ */
+const DECISION_EXEMPT_TOOLS = new Set([
+  'lookup_customer',
+  'get_current_tenant_time',
+  'retrieve_knowledge',
+  'record_language_change',
+  'record_call_outcome',
+  'check_availability',
+  'scheduling.check_availability',
+  'list_services',
+  'scheduling.list_services',
+  'list_staff',
+  'scheduling.list_staff',
+]);
+
+// The caller agreeing to use their caller ID as the callback number.
+const USE_CALLER_ID_UTTERANCE = /\b(?:(?:number|one|phone) (?:i'?m|i am) calling (?:from|on)|this number|(?:the )?same number|caller id|el (?:número|numero) (?:del que|de donde) (?:llamo|estoy llamando)|este (?:número|numero))\b/i;
+
+/** "a fade." → "fade", "un corte?" → "corte": leading articles and edge punctuation off. */
+function trimServiceValue(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[\s.,!?¿¡]+$/u, '')
+    .replace(/^(?:a|an|the|some|un|una|unos|unas|el|la|los|las)\s+/i, '')
+    .trim();
+}
+
+// Generic intents strong enough to beat an industry-pack match on score.
+const GENERIC_OVERRIDE_INTENTS = new Set(['urgent_medical', 'transfer_human']);
+
+// Availability words that mean "the time I'm booking", not a new topic.
+const BOOKING_AVAILABILITY_WORDS = /\b(?:available|availability|opening|openings|open slot|slot|slots|come in|free)\b/i;
 
 export interface ReasoningEngineConfig {
   tenantId: TenantId;
@@ -215,14 +256,34 @@ export class ReasoningEngine {
     );
     const genericMatch = dropNonAffirmativeChange(scorePatterns(patterns));
 
-    if (packMatch && (!genericMatch || packMatch.score >= genericMatch.score)) {
+    // The industry pack's intents win over the generic list. Only a
+    // stronger generic safety intent (emergency, asking for a person) can
+    // override a pack match.
+    if (packMatch && (
+      !genericMatch
+      || packMatch.score >= genericMatch.score
+      || !GENERIC_OVERRIDE_INTENTS.has(genericMatch.intent)
+    )) {
       return { intent: packMatch.intent, confidence: packMatch.confidence };
     }
     if (genericMatch) {
-      return { intent: genericMatch.intent, confidence: genericMatch.confidence };
+      return { intent: this.toPackIntent(genericMatch.intent), confidence: genericMatch.confidence };
     }
 
     return { intent: 'unknown', confidence: 'low' };
+  }
+
+  /**
+   * book_appointment and schedule_appointment are one booking intent. When
+   * the pack has a slot manifest for one of them, a generic match maps to
+   * it, so a word like "available" can't swap the pack's booking flow for
+   * the generic one.
+   */
+  private toPackIntent(intent: string): string {
+    const pack = getIndustryPack(this.config.vertical);
+    if (!pack || !isBookingIntent(intent) || pack.slotManifests[intent]) return intent;
+    const packBookingIntent = Object.keys(pack.slotManifests).find(isBookingIntent);
+    return packBookingIntent ?? intent;
   }
 
   getSafetyPolicyPrompt(): string {
@@ -286,6 +347,20 @@ export class ReasoningEngine {
       intentConfidence = 'high';
     }
 
+    // Inside an active booking, the other booking alias or an availability
+    // phrase ("if nine is available, I'll take it") is the same booking,
+    // not a topic switch: no slot reset, no new plan.
+    if (
+      isBookingIntent(previousIntent)
+      && intent !== previousIntent
+      && intent !== 'unknown'
+      && !additionalRequest
+      && (isBookingIntent(intent)
+        || (BOOKING_AVAILABILITY_WORDS.test(utterance) && !hasCancelOrRescheduleLanguage(utterance)))
+    ) {
+      intent = previousIntent;
+    }
+
     if (previousIntent !== 'unknown' && intent !== previousIntent && intent !== 'unknown') {
       const priorContext = this.buildContext(utterance);
       priorContext.currentIntent = previousIntent;
@@ -303,7 +378,14 @@ export class ReasoningEngine {
 
     const freshAdditionalBooking = additionalRequest && isBookingIntent(intent);
     if (intent !== 'unknown' && intent !== previousIntent) {
+      // What the caller said before any intent was known ("Hi, this is
+      // Wayne") carries into the intent's manifest instead of being dropped.
+      const carried = previousIntent === 'unknown' ? this.slotTracker.getFilledSlots() : {};
       this.updateSlotManifest(intent);
+      const manifestSlotNames = new Set(this.slotTracker.getState().manifest.slots.map((s) => s.name));
+      for (const [name, value] of Object.entries(carried)) {
+        if (manifestSlotNames.has(name)) this.slotTracker.fillSlot(name, value);
+      }
 
       if (!freshAdditionalBooking) {
         const restoredSlots = this.preservedSlots.get(intent);
@@ -319,8 +401,7 @@ export class ReasoningEngine {
       if (this.workflowPlan?.status === 'active') {
         this.workflowPlanner.markAbandoned(this.workflowPlan);
       }
-      const context = this.buildContext(utterance);
-      this.workflowPlan = this.workflowPlanner.createPlan(context);
+      this.workflowPlan = this.createFillablePlan(utterance);
     } else if (
       intent !== 'unknown'
       && this.workflowPlan
@@ -331,7 +412,7 @@ export class ReasoningEngine {
       // asks for another transaction (e.g. "book one for my son too").
       this.updateSlotManifest(intent);
       this.preservedSlots.delete(intent);
-      this.workflowPlan = this.workflowPlanner.createPlan(this.buildContext(utterance));
+      this.workflowPlan = this.createFillablePlan(utterance);
     }
 
     this.extractSlotsFromUtterance(utterance);
@@ -429,6 +510,7 @@ export class ReasoningEngine {
 
     const safety = this.checkToolSafety(toolName, toolArgs);
     if (!safety.allowed) return safety;
+    if (DECISION_EXEMPT_TOOLS.has(toolName)) return safety;
 
     const latest = this.lastDecisionResult;
     const workflowTool = this.getCurrentWorkflowStepTool();
@@ -548,6 +630,28 @@ export class ReasoningEngine {
       escalationAttempts: this.escalationAttempts,
       humanTransferAvailable: this.config.humanTransferAvailable,
     };
+  }
+
+  /**
+   * A plan for the current intent, unless its steps wait on slots the
+   * active manifest never fills. The generic templates wait on
+   * caller_name / callback_number; with a pack or library-tool manifest
+   * (contactName / contactPhone) such a plan stalls on "Identify Caller",
+   * blocks other tools and drags confidence down until repeated_confusion
+   * fires. Without a plan, the manifest drives the clarifying questions.
+   */
+  private createFillablePlan(utterance: string): WorkflowPlan | null {
+    const plan = this.workflowPlanner.createPlan(this.buildContext(utterance));
+    if (!plan) return null;
+    const fillable = new Set(this.slotTracker.getState().manifest.slots.map((s) => s.name));
+    const unfillable = plan.steps.flatMap((s) => s.requiredSlots).filter((name) => !fillable.has(name));
+    if (unfillable.length === 0) return plan;
+    logger.debug('Skipping workflow plan the slot manifest cannot fill', {
+      callId: this.config.callSessionId,
+      intent: plan.intent,
+      unfillable,
+    });
+    return null;
   }
 
   private updateSlotManifest(intent: string): void {
@@ -707,15 +811,17 @@ export class ReasoningEngine {
     switch (slotName) {
       case 'caller_name':
       case 'contactName': {
+        // Lead-ins match in any case; the name must start with a capital
+        // (no `i` flag), so "I'm looking for a fade" is not a name.
         const namePatterns = [
-          /my name is ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
-          /this is ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
-          /i'm ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
-          /it's ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
+          /[Mm]y [Nn]ame [Ii]s (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
+          /[Tt]his [Ii]s (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
+          /[Ii]['’]m (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
+          /[Ii]t['’]s (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
         ];
         for (const pattern of namePatterns) {
           const match = originalUtterance.match(pattern);
-          if (match && match[1]) return match[1].trim();
+          if (match && match[1] && isLikelyIntroducedName(match[1])) return match[1].trim();
         }
         return null;
       }
@@ -723,7 +829,12 @@ export class ReasoningEngine {
       case 'contactPhone':
       case 'toNumber': {
         const phoneMatch = originalUtterance.match(/(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
-        return phoneMatch ? phoneMatch[1] : null;
+        if (phoneMatch) return phoneMatch[1];
+        // "You can use the one I'm calling from": the slot holds the
+        // caller-ID token (never the number); tools get the real caller ID
+        // from the session.
+        if (this.config.callerNumber && USE_CALLER_ID_UTTERANCE.test(originalUtterance)) return CALLER_ID_TOKEN;
+        return null;
       }
       case 'action': {
         return inferCancelOrRescheduleAction(originalUtterance);
@@ -734,12 +845,17 @@ export class ReasoningEngine {
       case 'description':
       case 'query':
       case 'reason': {
+        // Longer lead-ins come first so "I want to get a fade" yields "fade",
+        // not "to get a fade".
         const reasonPatterns = [
-          /(?:i need|i want|i'd like|i would like|calling about|calling for|calling to|i'm calling about|i'm calling for|need help with)\s+(.+)/i,
+          /\b(?:i want to get|i'd like to get|i would like to get|i need to get|i'm trying to get|i am trying to get|i'm looking for|i am looking for|looking for|can i get|could i get|gimme|give me|book me in for|book me for|book me|do you do|i need|i want|i'd like|i would like|calling about|calling for|calling to|i'm calling about|i'm calling for|need help with)\s+(.+)/i,
+          /(?:¿\s*)?\b(?:me puede hacer|me puedes hacer|me gustaría|me gustaria|quisiera|necesito|quiero|busco)\s+(.+)/i,
         ];
         for (const pattern of reasonPatterns) {
           const match = originalUtterance.match(pattern);
-          if (match && match[1] && match[1].length > 3) return match[1].trim();
+          if (!match?.[1] || match[1].trim().length <= 3) continue;
+          const value = trimServiceValue(match[1]);
+          if (value) return value;
         }
         return null;
       }

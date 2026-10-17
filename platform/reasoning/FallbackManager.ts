@@ -21,7 +21,8 @@ const FALLBACK_PROMPTS: Record<FallbackStep, string> = {
   narrow_question: "Let me try to narrow this down. Can you tell me the most important thing you need help with right now?",
   collect_callback: "I'd like to make sure we get this resolved for you. Can I take down a callback number so someone can follow up?",
   route_to_human: "Let me connect you with someone who can help you directly.",
-  create_ticket: "I'll create a ticket so our team can follow up with you as soon as possible.",
+  // An offer, not an announcement: the ticket is created only after a yes.
+  create_ticket: 'I can leave a message for the team so they can follow up. Would you like me to do that?',
 };
 
 export class FallbackManager {

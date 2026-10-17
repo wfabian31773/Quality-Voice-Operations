@@ -15,7 +15,12 @@ import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeConte
 import { isToolDenied, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { createToolExecution, completeToolExecution } from '../../../platform/tools/ToolExecutionService';
-import { executeWithRetry, getToolRetryConfig } from '../../../platform/tools/RetryOrchestrator';
+import {
+  executeWithRetry,
+  getToolRetryConfig,
+  isRetryableToolError,
+  NonRetryableToolError,
+} from '../../../platform/tools/RetryOrchestrator';
 import { buildFallbackResponse } from '../../../platform/tools/ConversationFallbackService';
 import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
 import { recordTrace } from '../../../platform/core/observability/traceLogger';
@@ -370,16 +375,7 @@ function buildToolHandler(
 
     const assertToolSuccess = (jsonResult: string, tool: string): string => {
       if (NON_RETRYABLE_TOOLS.includes(tool)) return jsonResult;
-      try {
-        const parsed = JSON.parse(jsonResult);
-        if (parsed && typeof parsed === 'object' && parsed.success === false) {
-          const msg = parsed.message || parsed.confirmationMessage || parsed.error || 'Tool returned success: false';
-          throw new Error(`ToolExecutionFailed: ${msg}`);
-        }
-      } catch (parseErr) {
-        if (parseErr instanceof Error && parseErr.message.startsWith('ToolExecutionFailed:')) throw parseErr;
-      }
-      return jsonResult;
+      return assertToolResultSucceeded(jsonResult);
     };
 
     const dispatchToolExecution = async (): Promise<string> => {
@@ -702,6 +698,26 @@ function buildToolHandler(
 
     return result;
   };
+}
+
+/**
+ * Throw for a `success: false` tool result so executeWithRetry sees the
+ * failure. A result the handler marked `retryable: false` (or with a
+ * deterministic SQLSTATE `code`) throws NonRetryableToolError, so it fails
+ * after one attempt instead of three.
+ */
+export function assertToolResultSucceeded(jsonResult: string): string {
+  try {
+    const parsed = JSON.parse(jsonResult);
+    if (parsed && typeof parsed === 'object' && parsed.success === false) {
+      const msg = parsed.message || parsed.confirmationMessage || parsed.error || 'Tool returned success: false';
+      if (!isRetryableToolError(parsed)) throw new NonRetryableToolError(`ToolExecutionFailed: ${msg}`);
+      throw new Error(`ToolExecutionFailed: ${msg}`);
+    }
+  } catch (parseErr) {
+    if (parseErr instanceof Error && parseErr.message.startsWith('ToolExecutionFailed:')) throw parseErr;
+  }
+  return jsonResult;
 }
 
 function buildRealtimeTools(defs: AgentToolDef[]) {

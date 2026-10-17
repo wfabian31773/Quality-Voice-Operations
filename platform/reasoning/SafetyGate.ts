@@ -37,6 +37,13 @@ const DEFAULT_TOOLS_REQUIRING_COMPLETE_DATA: Record<string, string[]> = {
   retrieve_knowledge: [],
 };
 
+// Required fields the agent fills itself (a classification, not caller
+// data), so they need no caller provenance.
+const AGENT_CLASSIFIED_FIELDS: Record<string, string[]> = {
+  record_call_outcome: ['outcome'],
+  record_language_change: ['language'],
+};
+
 const LIBRARY_FIELD_ALIASES: Record<string, string[]> = {
   contactName: ['contactName', 'caller_name', 'callerName'],
   contactPhone: ['contactPhone', 'callback_number', 'caller_phone', 'toNumber'],
@@ -292,6 +299,7 @@ export class SafetyGate {
       });
       const unprovenanced = required.filter((field) => {
         if (missingFields.includes(field)) return false;
+        if (AGENT_CLASSIFIED_FIELDS[toolName]?.includes(field)) return false;
         const value = slotOrArgValue(field, toolArgs, context);
         return !hasCallerProvenance(field, value, context, toolArgSlots);
       });

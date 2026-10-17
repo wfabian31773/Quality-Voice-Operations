@@ -6,8 +6,29 @@ const DOB_REGEX =
 
 const SSN_REGEX = /\b\d{3}-\d{2}-\d{4}\b/g;
 
+/**
+ * Words that follow "I'm" / "this is" without being a name ("I'm looking
+ * for a fade", "I'm calling from", "I'm Good"). Compared lower-case against
+ * the first word of a candidate name.
+ */
+export const NAME_STOP_WORDS: ReadonlySet<string> = new Set([
+  'looking', 'calling', 'trying', 'just', 'here', 'wondering', 'interested',
+  'good', 'fine', 'ok', 'okay', 'sorry', 'not', 'so', 'really', 'gonna',
+  'going', 'about', 'from', 'on', 'in', 'with', 'available', 'free', 'ready',
+  'done', 'new', 'back', 'the', 'a',
+]);
+
+/** True when a capitalized candidate after "I'm" / "this is" can be a name. */
+export function isLikelyIntroducedName(candidate: string): boolean {
+  const first = candidate.trim().split(/\s+/)[0] ?? '';
+  return /^\p{Lu}/u.test(first) && !NAME_STOP_WORDS.has(first.toLowerCase());
+}
+
+// The lead-in is case-insensitive by spelling; the name itself must start
+// with a capital letter (no `i` flag), so "I'm looking for a fade" is not a
+// name. \p{Lu}\p{Ll} keeps accented names such as "Maria José".
 const NAME_AFTER_PATTERNS: RegExp[] = [
-  /\b(?:my name is|this is|i'm|i am|patient|caller|name:\s*)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/gi,
+  /\b(?:[Mm]y\s+[Nn]ame\s+[Ii]s|[Tt]his\s+[Ii]s|[Ii]['’]m|[Ii]\s+[Aa]m|[Pp]atient|[Cc]aller|[Nn]ame:\s*)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+){0,2})/gu,
   /\b(?:Mrs?\.|Ms\.|Dr\.)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/g,
 ];
 
@@ -25,7 +46,9 @@ export function redactPHI(text: string): string {
   redacted = redacted.replace(DOB_REGEX, '[DOB_REDACTED]');
 
   for (const pattern of NAME_AFTER_PATTERNS) {
-    redacted = redacted.replace(pattern, (match, name) => match.replace(name, '[NAME_REDACTED]'));
+    redacted = redacted.replace(pattern, (match, name: string) => (
+      isLikelyIntroducedName(name) ? match.replace(name, '[NAME_REDACTED]') : match
+    ));
   }
 
   return redacted;

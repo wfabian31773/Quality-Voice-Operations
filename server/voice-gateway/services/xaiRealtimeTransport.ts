@@ -33,6 +33,7 @@ export class XaiRealtimeTransport extends EventEmitter {
   private closed = false;
   private pendingCalls = new Map<string, FunctionCallState>();
   private connectPromise: Promise<void> | null = null;
+  private droppedAudioFrames = 0;
   private readonly model: string;
   private sessionUpdate: XaiSessionUpdate;
   private onFunctionCall: XaiRealtimeTransportOptions['onFunctionCall'];
@@ -76,15 +77,30 @@ export class XaiRealtimeTransport extends EventEmitter {
   }
 
   sendAudio(audio: ArrayBuffer): void {
+    // Twilio starts streaming caller audio before the xAI socket is open,
+    // and keeps going for a moment after it closes. Those frames predate the
+    // greeting or follow the hangup, so drop them quietly instead of
+    // throwing (which logged "Failed to send audio to xAI" at every call start).
+    if (!this.isOpen()) {
+      if (this.droppedAudioFrames === 0) {
+        logger.debug('Dropping caller audio while the xAI socket is not open', { closed: this.closed });
+      }
+      this.droppedAudioFrames += 1;
+      return;
+    }
     const audioB64 = Buffer.from(audio).toString('base64');
     this.sendEvent({ type: 'input_audio_buffer.append', audio: audioB64 });
   }
 
   sendEvent(event: Record<string, unknown>): void {
-    if (this.closed || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.isOpen()) {
       throw new Error('WebSocket is not connected');
     }
-    this.ws.send(JSON.stringify(event));
+    this.ws!.send(JSON.stringify(event));
+  }
+
+  private isOpen(): boolean {
+    return !this.closed && this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
   updateSession(session: XaiSessionUpdate): void {
@@ -164,7 +180,9 @@ export class XaiRealtimeTransport extends EventEmitter {
       const name = String(event.name ?? this.pendingCalls.get(callId)?.name ?? '');
       const argumentText = String(event.arguments ?? this.pendingCalls.get(callId)?.arguments ?? '{}');
       this.pendingCalls.delete(callId);
-      void this.completeFunctionCall(callId, name, argumentText);
+      this.completeFunctionCall(callId, name, argumentText).catch((err) => {
+        logger.error('xAI function call failed', { tool: name, error: String(err) });
+      });
     }
   }
 
@@ -176,6 +194,13 @@ export class XaiRealtimeTransport extends EventEmitter {
       args = {};
     }
     const output = await this.onFunctionCall(name, args);
+    // The caller can hang up while a tool runs (Oct 17: record_call_outcome
+    // finished after hangup and the send became a critical unhandled
+    // rejection). Nobody is left to hear the result, so drop it.
+    if (!this.isOpen()) {
+      logger.info('Dropping tool result: xAI socket closed before it was sent', { tool: name });
+      return;
+    }
     this.sendEvent({
       type: 'conversation.item.create',
       item: {

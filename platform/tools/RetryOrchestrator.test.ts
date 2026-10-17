@@ -7,6 +7,9 @@ import {
   getToolRetryConfig,
   clearToolRetryConfig,
   DEFAULT_RETRY_CONFIG,
+  isRetryableSqlState,
+  isRetryableToolError,
+  NonRetryableToolError,
   type ToolFailureEvent,
 } from './RetryOrchestrator';
 
@@ -101,6 +104,60 @@ describe('executeWithRetry', () => {
       fallbackExecutor: async () => 'ok',
     }));
     expect(events.some((e) => e.fallbackAttempted && e.fallbackSuccess)).toBe(true);
+  });
+});
+
+describe('non-retryable failures', () => {
+  const pgError = (code: string, message: string) => Object.assign(new Error(message), { code });
+
+  it.each([
+    ['42P18', 'inconsistent types deduced for parameter $1'],
+    ['42804', 'column "tenant_id" is of type uuid but expression is of type text'],
+    ['23505', 'duplicate key value violates unique constraint'],
+    ['23P01', 'conflicting key value violates exclusion constraint'],
+    ['22P02', 'invalid input syntax for type uuid'],
+  ])('fails fast after one attempt on SQLSTATE %s', async (code, message) => {
+    const events = capture();
+    let calls = 0;
+    const res = await executeWithRetry(async () => { calls += 1; throw pgError(code, message); }, ctx());
+    expect(calls).toBe(1);
+    expect(res).toMatchObject({ success: false, attempts: 1 });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ finalFailure: true, retryCount: 1 });
+  });
+
+  it.each(['40001', '40P01', '53300', '57P01', '08006'])('keeps retrying transient SQLSTATE %s', async (code) => {
+    let calls = 0;
+    const res = await executeWithRetry(async () => { calls += 1; throw pgError(code, 'transient'); }, ctx());
+    expect(calls).toBe(3);
+    expect(res.attempts).toBe(3);
+  });
+
+  it('keeps retrying connection resets and timeouts', async () => {
+    let calls = 0;
+    await executeWithRetry(async () => { calls += 1; throw Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }); }, ctx());
+    expect(calls).toBe(3);
+    const timedOut = await executeWithRetry(
+      () => new Promise<string>(() => {}),
+      ctx({ retryConfig: { ...fast, timeoutMs: 5, maxRetries: 1 } }),
+    );
+    expect(timedOut.attempts).toBe(2);
+  });
+
+  it('honors an explicit retryable flag and NonRetryableToolError', async () => {
+    let calls = 0;
+    await executeWithRetry(async () => { calls += 1; throw new NonRetryableToolError('ToolExecutionFailed: title is required'); }, ctx());
+    expect(calls).toBe(1);
+    calls = 0;
+    await executeWithRetry(async () => { calls += 1; throw Object.assign(new Error('x'), { code: '42P18', retryable: true }); }, ctx());
+    expect(calls).toBe(3);
+  });
+
+  it('classifies tool results the same way', () => {
+    expect(isRetryableToolError({ success: false, retryable: false, message: 'startTime must be a valid ISO-8601 timestamp.' })).toBe(false);
+    expect(isRetryableToolError({ success: false, code: '23505' })).toBe(false);
+    expect(isRetryableToolError({ success: false, message: 'Failed to store the booking request.' })).toBe(true);
+    expect(isRetryableSqlState('VALIDATION_FAILED')).toBeUndefined();
   });
 });
 

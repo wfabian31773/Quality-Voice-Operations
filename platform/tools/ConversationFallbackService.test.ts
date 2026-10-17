@@ -11,7 +11,16 @@ describe('getFallbackMessage', () => {
   });
 
   it('falls back to the generic default for an unknown tool', () => {
-    expect(getFallbackMessage('tenant-1', 'mysteryTool')).toContain('follow up with you within the hour');
+    expect(getFallbackMessage('tenant-1', 'mysteryTool')).toBe(
+      "I wasn't able to finish that right now. I can leave a message for the team so they can follow up.",
+    );
+  });
+
+  it('makes no callback-time promise for the salon library tools (Oct 17 call)', () => {
+    for (const tool of ['create_booking', 'create_ticket', 'send_sms', 'update_booking', 'mysteryTool']) {
+      const message = getFallbackMessage('tenant-1', tool);
+      expect(message).not.toMatch(/within the hour|shortly|as soon as possible|within \d+/i);
+    }
   });
 
   it('prefers a tenant-specific tool message when configured', () => {

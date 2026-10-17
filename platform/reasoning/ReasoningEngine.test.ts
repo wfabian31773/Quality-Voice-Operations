@@ -87,6 +87,51 @@ describe('ReasoningEngine.classifyIntent', () => {
   });
 });
 
+describe('ReasoningEngine booking intent under an industry pack', () => {
+  const salon = () => makeEngine({
+    vertical: 'salon',
+    toolsAvailable: ['create_booking', 'update_booking', 'create_ticket', 'lookup_customer'],
+  });
+
+  it('maps the generic schedule_appointment match onto the pack\'s book_appointment', () => {
+    expect(salon().classifyIntent('anything available Saturday?')).toEqual({ intent: 'book_appointment', confidence: 'high' });
+    // Without a pack the generic intent is unchanged.
+    expect(makeEngine({ vertical: 'generic' }).classifyIntent('anything available Saturday?').intent).toBe('schedule_appointment');
+  });
+
+  it('lets a pack match win over a higher-scoring generic match, except emergencies and asking for a person', () => {
+    // generic billing_inquiry scores 2 (bill, payment); the pack's haircut booking scores 1.
+    expect(salon().classifyIntent('my haircut bill payment').intent).toBe('book_appointment');
+    expect(salon().classifyIntent('chemical burn, can\'t breathe, emergency, my haircut').intent).toBe('urgent_medical');
+  });
+
+  it('keeps an active booking through availability words and the other booking alias', () => {
+    const engine = salon();
+    engine.processUtterance('I want a haircut', 'book_appointment', 'high');
+    const plan = engine.getWorkflowPlan();
+    for (const [utterance, intent] of [
+      ['Do you have an opening Saturday?', 'hours_services'],
+      ['Can I come in at nine if it is available', 'schedule_appointment'],
+    ] as const) {
+      engine.processUtterance(utterance, intent, 'high');
+      expect(engine.getWorkflowPlan()).toBe(plan);
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+    }
+    expect(engine.handlePartialAnswer('').topicSwitchCount).toBe(0);
+    // A real topic change still switches.
+    engine.processUtterance('can I leave a message for the owner', 'leave_message', 'high');
+    expect(engine.getWorkflowPlan()?.intent).toBe('leave_message');
+  });
+
+  it('runs without a generic plan whose slots the library-tool manifest never fills', () => {
+    const engine = makeEngine({ vertical: 'generic', toolsAvailable: ['create_booking', 'create_ticket'] });
+    engine.processUtterance('I would like to schedule an appointment', 'schedule_appointment', 'high');
+    // The generic plan would wait on caller_name / callback_number forever.
+    expect(engine.getWorkflowPlan()).toBeNull();
+    expect(engine.getCurrentWorkflowStepTool()).toBeNull();
+  });
+});
+
 describe('ReasoningEngine.getSafetyPolicyPrompt', () => {
   it('adds medical prohibitions for medical-after-hours and dental', () => {
     for (const vertical of ['medical-after-hours', 'dental']) {
