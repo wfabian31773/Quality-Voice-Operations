@@ -272,11 +272,20 @@ export class ReasoningEngine {
     }
     if (
       intent === 'unknown'
-      && this.workflowPlan?.status === 'completed'
+      && this.workflowPlan
       && isBookingIntent(this.workflowPlan.intent)
-      && isAdditionalTransactionRequest(utterance)
+      && (
+        (
+          this.workflowPlan.status === 'completed'
+          && isAdditionalTransactionRequest(utterance)
+        )
+        || this.workflowPlan.status === 'active'
+      )
     ) {
+      // Detector or an in-progress second booking supplied the intent; do not
+      // keep the classifier's "unknown/low" so this turn is not counted as confusion.
       intent = this.workflowPlan.intent;
+      intentConfidence = 'high';
     }
 
     if (previousIntent !== 'unknown' && intent !== previousIntent && intent !== 'unknown') {

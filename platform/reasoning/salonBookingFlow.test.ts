@@ -242,6 +242,52 @@ describe('salon booking conversation', () => {
     }
   });
 
+  it('collects a time after shorthand EN/ES follow-ups without confusion fallback', () => {
+    const phrases = [
+      'one more for my son',
+      'una más para mi hijo',
+    ];
+
+    for (const phrase of phrases) {
+      const engine = makeSalonEngine();
+      completeFirstHaircut(engine);
+
+      const shorthand = engine.classifyIntent(phrase);
+      expect(shorthand.intent).toBe('unknown');
+      expect(shorthand.confidence).toBe('low');
+
+      const started = engine.processUtterance(phrase, shorthand.intent, shorthand.confidence);
+      expect(started.action).not.toBe('complete_interaction');
+      expect(started.action).not.toBe('escalate_to_human');
+      expect(started.toolToExecute).not.toBe('create_ticket');
+      expect(started.fallbackStep).not.toBe('create_ticket');
+      expect(started.reasoning).not.toMatch(/low confidence/i);
+      expect(started.escalation).toBeUndefined();
+      expect(engine.getWorkflowPlan()?.status).toBe('active');
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+
+      const timeUtterance = 'Saturday at 3pm';
+      const timeClassified = engine.classifyIntent(timeUtterance);
+      expect(timeClassified.intent).toBe('unknown');
+
+      const next = engine.processUtterance(
+        timeUtterance,
+        timeClassified.intent,
+        timeClassified.confidence,
+      );
+      expect(engine.getWorkflowPlan()?.status).toBe('active');
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+      expect(next.action).not.toBe('escalate_to_human');
+      expect(next.toolToExecute).not.toBe('create_ticket');
+      expect(next.fallbackStep).not.toBe('create_ticket');
+      expect(next.reasoning).not.toMatch(/low confidence|repeated confusion/i);
+      expect(next.escalation).toBeUndefined();
+
+      const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+      expect(slots.startTime?.value?.toLowerCase()).toMatch(/saturday|3\s*pm/);
+    }
+  });
+
   it('starts a second booking from shorthand EN/ES follow-ups after a completed one', () => {
     const phrases = [
       'one more for my son',
