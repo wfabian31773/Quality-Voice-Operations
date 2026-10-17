@@ -8,7 +8,6 @@ import {
   runActionDefinition,
   type ActionContext,
   type ActionDefinition,
-  type ActionErrorCode,
   type ActionResult,
   type ActionRuntime,
   type Actor,
@@ -22,7 +21,7 @@ const logger = createLogger('SMS_SEND');
 
 export const SMS_SEND_ACTION = 'sms.send';
 
-/** Send-policy error codes returned by `sms.send` (on top of the core codes). */
+/** Send-policy error codes returned by `sms.send` (all core `ActionErrorCode`s). */
 export const SMS_SEND_ERROR_CODES = [
   'RECIPIENT_OPTED_OUT',
   'MESSAGING_NOT_ENABLED',
@@ -47,17 +46,12 @@ const TWILIO_INVALID_NUMBER_CODES = new Set([21211, 21614]);
 // "Attempt to send to unsubscribed recipient" (carrier-level STOP).
 const TWILIO_UNSUBSCRIBED_CODE = 21610;
 
-/**
- * The SMS-specific codes are not in the core `ACTION_ERROR_CODES` union yet
- * (core is owned by PR-01); the cast keeps the wire contract exact until the
- * union is extended. The HTTP adapter maps unknown codes to 500.
- */
 function smsFail(
   code: SmsSendErrorCode,
   message: string,
   opts: { retryable?: boolean; field?: string } = {},
 ): ActionResult<never> {
-  return actionFail(code as string as ActionErrorCode, message, {
+  return actionFail(code, message, {
     callerSafeMessage: SAFE_MESSAGE[code],
     retryable: opts.retryable ?? false,
     ...(opts.field ? { field: opts.field } : {}),
