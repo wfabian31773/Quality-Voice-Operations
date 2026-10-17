@@ -108,6 +108,14 @@ describe('matchActions (order + partial input)', () => {
     const failures = matchActions([{ name: 'scheduling.book.prepare', input: { staffId: 'marco' } }], trace);
     expect(failures[0].message).toMatch(/input did not match/);
   });
+
+  it('requires expected *.commit actions to succeed', () => {
+    const trace: TraceEvent[] = [tool('calls.transfer_to_human.commit', { confirmationToken: 'tok_1' }, false)];
+    const failures = matchActions([{ name: 'calls.transfer_to_human.commit' }], trace);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].check).toBe('actions');
+    expect(failures[0].message).toMatch(/did not succeed/);
+  });
 });
 
 describe('mustNotSay before the matching commit', () => {
@@ -313,8 +321,17 @@ describe('matchEndState', () => {
       ],
       waitlist: [],
     };
-    const leftover = matchEndState({ transfers: { count: 1, to: 'Dana' } }, snapshot);
+    const leftover = matchEndState({ transfers: { count: 1, to: 'Dana', status: 'committed' } }, snapshot);
     expect(leftover.some((row) => row.message === 'transfers count')).toBe(true);
+    expect(leftover.some((row) => row.message === 'transfers status')).toBe(true);
+
+    const heldOnly: EndSnapshot = {
+      ...snapshot,
+      transfers: [{ to: 'Dana', status: 'held' }],
+    };
+    const heldFailures = matchEndState({ transfers: { count: 1, to: 'Dana', status: 'committed' } }, heldOnly);
+    expect(heldFailures.some((row) => row.message === 'transfers status')).toBe(true);
+    expect(heldFailures.some((row) => row.message === 'transfers count')).toBe(false);
 
     const wrongTarget: EndSnapshot = {
       ...snapshot,
@@ -349,5 +366,39 @@ describe('evaluateExpect + formatDiff', () => {
     expect(diff).toMatch(/actions/);
     expect(diff).toMatch(/endState/);
     expect(firstSuccessfulCommitIndex(trace)).toBe(-1);
+  });
+
+  it('fails when a transfer commit fails and the agent still says connecting you', () => {
+    const readback = "I'll connect you to Dana now";
+    const trace: TraceEvent[] = [
+      tool('calls.transfer_to_human.prepare', { target: 'Dana' }, true, { readback }),
+      { type: 'say', text: readback },
+      { type: 'caller', turn: { text: 'yes' } },
+      tool('calls.transfer_to_human.commit', { confirmationToken: 'tok_1' }, false),
+      { type: 'say', text: 'Connecting you to Dana now.' },
+    ];
+    const snapshot: EndSnapshot = {
+      bookings: [],
+      tickets: [],
+      transfers: [{ to: 'Dana', status: 'held' }],
+      waitlist: [],
+    };
+    const failures = evaluateExpect(
+      {
+        actions: [
+          { name: 'calls.transfer_to_human.prepare', input: { target: 'Dana' } },
+          { name: 'calls.transfer_to_human.commit' },
+        ],
+        endState: { transfers: { count: 1, to: 'Dana', status: 'committed' } },
+        mustSay: ['Dana'],
+        mustNotSay: ['connecting you'],
+        readbackRequired: true,
+      },
+      trace,
+      snapshot,
+    );
+    expect(failures.some((row) => row.check === 'actions' && /did not succeed/.test(row.message))).toBe(true);
+    expect(failures.some((row) => row.check === 'endState' && row.message === 'transfers status')).toBe(true);
+    expect(failures.some((row) => row.check === 'mustNotSay' && /connecting you/i.test(String(row.actual)))).toBe(true);
   });
 });

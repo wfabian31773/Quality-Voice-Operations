@@ -114,20 +114,28 @@ export function matchActions(
   const failures: CheckFailure[] = [];
   let cursor = 0;
   for (const exp of expected) {
+    const commitMustSucceed = exp.name.endsWith('.commit');
     let found = -1;
     for (let i = cursor; i < actual.length; i += 1) {
-      if (actual[i].name === exp.name && partialMatch(exp.input ?? {}, actual[i].input, ctx)) {
-        found = i;
-        break;
-      }
+      if (actual[i].name !== exp.name || !partialMatch(exp.input ?? {}, actual[i].input, ctx)) continue;
+      if (commitMustSucceed && !actual[i].result.ok) continue;
+      found = i;
+      break;
     }
     if (found < 0) {
       const sameName = actual.slice(cursor).find((call) => call.name === exp.name);
+      const failedCommit =
+        commitMustSucceed &&
+        sameName &&
+        !sameName.result.ok &&
+        partialMatch(exp.input ?? {}, sameName.input, ctx);
       failures.push({
         check: 'actions',
-        message: sameName
-          ? `${exp.name} ran but input did not match`
-          : `${exp.name} not found in order after prior expected calls`,
+        message: failedCommit
+          ? `${exp.name} ran but did not succeed`
+          : sameName
+            ? `${exp.name} ran but input did not match`
+            : `${exp.name} not found in order after prior expected calls`,
         expected: exp,
         actual: sameName ?? actual.slice(cursor).map((call) => ({ name: call.name, input: call.input })),
       });
@@ -357,6 +365,14 @@ export function matchEndState(
         check: 'endState',
         message: 'transfers to',
         expected: expected.transfers.to,
+        actual: snapshot.transfers,
+      });
+    }
+    if (expected.transfers.status && snapshot.transfers.some((row) => row.status !== expected.transfers?.status)) {
+      failures.push({
+        check: 'endState',
+        message: 'transfers status',
+        expected: expected.transfers.status,
         actual: snapshot.transfers,
       });
     }

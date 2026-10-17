@@ -27,6 +27,29 @@ const scriptStepSchema = z.union([
   z.object({ say: z.string() }).strict(),
 ]);
 
+function hasRealAssertion(value: {
+  actions?: unknown[];
+  endState?: {
+    bookings?: { count?: number; items?: unknown[] };
+    tickets?: { count?: number; kind?: string; status?: string };
+    transfers?: { count?: number; to?: string; status?: string };
+    waitlist?: { count?: number };
+  };
+}): boolean {
+  if (Array.isArray(value.actions) && value.actions.length > 0) return true;
+  const end = value.endState;
+  if (!end) return false;
+  if (end.bookings && (end.bookings.count !== undefined || (end.bookings.items?.length ?? 0) > 0)) return true;
+  if (end.tickets && (end.tickets.count !== undefined || Boolean(end.tickets.kind) || Boolean(end.tickets.status))) {
+    return true;
+  }
+  if (end.transfers && (end.transfers.count !== undefined || Boolean(end.transfers.to) || Boolean(end.transfers.status))) {
+    return true;
+  }
+  if (end.waitlist && end.waitlist.count !== undefined) return true;
+  return false;
+}
+
 const expectedBookingSchema = z
   .object({
     status: z.string().optional(),
@@ -76,6 +99,10 @@ const scenarioSchema = z
                 items: z.array(expectedBookingSchema).optional(),
               })
               .strict()
+              .refine(
+                (value) => value.count !== undefined || (Array.isArray(value.items) && value.items.length > 0),
+                { message: 'bookings requires count and/or items' },
+              )
               .optional(),
             tickets: z
               .object({
@@ -84,19 +111,29 @@ const scenarioSchema = z
                 status: z.string().optional(),
               })
               .strict()
+              .refine(
+                (value) => value.count !== undefined || Boolean(value.kind) || Boolean(value.status),
+                { message: 'tickets requires count, kind, and/or status' },
+              )
               .optional(),
             transfers: z
               .object({
                 count: z.number().int().nonnegative().optional(),
                 to: z.string().optional(),
+                status: z.string().optional(),
               })
               .strict()
+              .refine(
+                (value) => value.count !== undefined || Boolean(value.to) || Boolean(value.status),
+                { message: 'transfers requires count, to, and/or status' },
+              )
               .optional(),
             waitlist: z
               .object({
                 count: z.number().int().nonnegative().optional(),
               })
               .strict()
+              .refine((value) => value.count !== undefined, { message: 'waitlist requires count' })
               .optional(),
           })
           .strict()
@@ -106,10 +143,9 @@ const scenarioSchema = z
         readbackRequired: z.boolean().optional(),
       })
       .strict()
-      .refine((value) => {
-        const hasActions = Array.isArray(value.actions) && value.actions.length > 0;
-        return hasActions || value.endState !== undefined;
-      }, { message: 'expect requires actions and/or endState' }),
+      .refine((value) => hasRealAssertion(value), {
+        message: 'expect requires at least one assertion in actions and/or endState',
+      }),
     expectedFail: z.string().optional(),
   })
   .strict();

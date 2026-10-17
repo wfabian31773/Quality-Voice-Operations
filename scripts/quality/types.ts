@@ -69,6 +69,7 @@ export type EndStateExpect = {
   transfers?: {
     count?: number;
     to?: string;
+    status?: string;
   };
   waitlist?: {
     count?: number;

@@ -42,6 +42,7 @@ expect:
     transfers:
       count: 1
       to: Dana
+      status: committed
   mustSay:
     - "Dana"
   mustNotSay:

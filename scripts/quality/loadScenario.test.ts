@@ -34,6 +34,10 @@ describe('parseScenario', () => {
     expect(() =>
       parseScenario({ ...minimal, expect: { mustSay: ['hi'], readbackRequired: true } }),
     ).toThrow(/actions and\/or endState/i);
+    expect(() => parseScenario({ ...minimal, expect: { endState: {} } })).toThrow(/actions and\/or endState/i);
+    expect(() => parseScenario({ ...minimal, expect: { endState: { bookings: {} } } })).toThrow(
+      /count and\/or items|bookings requires/i,
+    );
   });
 
   it('rejects unknown expectation keys so typos cannot silently drop checks', () => {
