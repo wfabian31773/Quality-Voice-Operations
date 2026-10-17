@@ -57,6 +57,11 @@ import { startStripePriceVerificationScheduler, stopStripePriceVerificationSched
 import { startMarketplaceDiscountBackfillScheduler, stopMarketplaceDiscountBackfillScheduler } from '../billing/MarketplaceDiscountBackfillScheduler';
 import { startPortalConfigCleanupScheduler, stopPortalConfigCleanupScheduler, runPortalConfigCleanupCycle, type PortalConfigCleanupSnapshot } from '../billing/PortalConfigCleanupScheduler';
 import { startBillingReconciliationScheduler, stopBillingReconciliationScheduler, runReconciliationCycle, type ReconciliationCycleSummary } from '../billing/BillingReconciliationScheduler';
+import {
+  startSmsDeferredReleaseScheduler,
+  stopSmsDeferredReleaseScheduler,
+  smsDeferredReleaseInFlight,
+} from '../actions/sms/deferredReleaseScheduler';
 import type { ProcessRole } from './processRole';
 import { runWithPrivilegedScope } from '../db/tenantScope';
 
@@ -240,6 +245,14 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     nightlyFailed: (r) => ((r as ReconciliationCycleSummary).errors > 0 ? 'reconciliation errors' : null),
   },
   { name: 'federal-dnc-sync', start: () => startFederalDncSyncScheduler(), stop: stopFederalDncSyncScheduler },
+  // PR-09: sends quiet-hours-deferred SMS once the window opens (every 60 s).
+  // sms.send's SMS_ENABLED + tenant flag are re-checked per message.
+  {
+    name: 'sms-deferred-release',
+    start: () => startSmsDeferredReleaseScheduler(),
+    stop: stopSmsDeferredReleaseScheduler,
+    inFlight: smsDeferredReleaseInFlight,
+  },
 ];
 
 export const SCHEDULER_NAMES: readonly string[] = SCHEDULERS.map((s) => s.name);

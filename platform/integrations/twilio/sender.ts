@@ -44,6 +44,19 @@ export async function getTwilioCredentials(tenantId: string): Promise<TwilioCred
   return null;
 }
 
+/** Non-2xx Twilio REST response. `twilioCode` is Twilio's numeric error code when the body had one. */
+export class TwilioApiError extends Error {
+  readonly httpStatus: number;
+  readonly twilioCode: number | null;
+
+  constructor(message: string, httpStatus: number, twilioCode: number | null) {
+    super(message);
+    this.name = 'TwilioApiError';
+    this.httpStatus = httpStatus;
+    this.twilioCode = twilioCode;
+  }
+}
+
 export async function twilioPost(
   creds: TwilioCredentials,
   path: string,
@@ -62,25 +75,41 @@ export async function twilioPost(
   });
   if (!response.ok) {
     const errData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-    throw new Error(`Twilio API error: ${response.status} ${errData.message || response.statusText}`);
+    throw new TwilioApiError(
+      `Twilio API error: ${response.status} ${errData.message || response.statusText}`,
+      response.status,
+      typeof errData.code === 'number' ? errData.code : null,
+    );
   }
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+/**
+ * Raw Twilio Messages transport. Internal to the SMS chokepoint
+ * (`platform/actions/sms/send.ts`, action `sms.send`): every other caller
+ * must go through the chokepoint so opt-out, quiet hours, rate limits,
+ * persistence and StatusCallback are applied.
+ */
 export async function sendTwilioSms(
   tenantId: string,
   toNumber: string,
   fromNumber: string,
   body: string,
-): Promise<{ sid?: string }> {
+  opts: { statusCallback?: string | null } = {},
+): Promise<{ sid?: string; status?: string }> {
   const creds = await getTwilioCredentials(tenantId);
   if (!creds) {
     throw new Error('No Twilio credentials configured for tenant');
   }
-  const result = await twilioPost(creds, '/Messages.json', {
+  const form: Record<string, string> = {
     To: toNumber,
     From: fromNumber,
     Body: body,
-  });
-  return { sid: typeof result.sid === 'string' ? result.sid : undefined };
+  };
+  if (opts.statusCallback) form.StatusCallback = opts.statusCallback;
+  const result = await twilioPost(creds, '/Messages.json', form);
+  return {
+    sid: typeof result.sid === 'string' ? result.sid : undefined,
+    status: typeof result.status === 'string' ? result.status : undefined,
+  };
 }

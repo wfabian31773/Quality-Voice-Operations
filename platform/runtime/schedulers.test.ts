@@ -47,6 +47,10 @@ vi.mock('../billing/StripePriceVerificationScheduler', () => h.mod('startStripeP
 vi.mock('../billing/MarketplaceDiscountBackfillScheduler', () => h.mod('startMarketplaceDiscountBackfillScheduler', 'stopMarketplaceDiscountBackfillScheduler'));
 vi.mock('../billing/PortalConfigCleanupScheduler', () => h.mod('startPortalConfigCleanupScheduler', 'stopPortalConfigCleanupScheduler', 'runPortalConfigCleanupCycle'));
 vi.mock('../billing/BillingReconciliationScheduler', () => h.mod('startBillingReconciliationScheduler', 'stopBillingReconciliationScheduler', 'runReconciliationCycle'));
+vi.mock('../actions/sms/deferredReleaseScheduler', () => ({
+  ...h.mod('startSmsDeferredReleaseScheduler', 'stopSmsDeferredReleaseScheduler'),
+  smsDeferredReleaseInFlight: () => false,
+}));
 
 import {
   SCHEDULERS,
@@ -75,6 +79,9 @@ const PRE_PR00_START_ORDER = [
   'startBillingReconciliationScheduler', 'startFederalDncSyncScheduler',
 ];
 
+/** Added after PR-00, appended so the pre-PR-00 order is unchanged. */
+const START_ORDER = [...PRE_PR00_START_ORDER, 'startSmsDeferredReleaseScheduler'];
+
 const NIGHTLY = [
   'docs-feedback-alert', 'docs-feedback-reply-digest', 'connector-stale-alert', 'outbox-archive-sweep',
   'crm-stale-cache-retention', 'call-events-retention', 'tenant-isolation', 'encryption-reminder',
@@ -92,15 +99,15 @@ describe('scheduler registry', () => {
   it('has unique, stable kebab-case names', () => {
     expect(new Set(SCHEDULER_NAMES).size).toBe(SCHEDULER_NAMES.length);
     for (const n of SCHEDULER_NAMES) expect(n).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
-    expect(SCHEDULERS).toHaveLength(PRE_PR00_START_ORDER.length);
+    expect(SCHEDULERS).toHaveLength(START_ORDER.length);
   });
 
-  it('role all (Replit, no new env) starts exactly the pre-PR-00 list in the same order', () => {
+  it('role all (Replit, no new env) starts the pre-PR-00 list in the same order, then later additions', () => {
     const sel = selectSchedulers('all', REPLIT_ENV);
     expect(sel.setting).toBe('all');
     expect(sel.skipped).toEqual([]);
     startSchedulers(sel.enabled, { voiceGatewayBaseUrl: 'https://qvo.replit.app/vg' });
-    expect(h.calls.map((c) => c.fn)).toEqual(PRE_PR00_START_ORDER);
+    expect(h.calls.map((c) => c.fn)).toEqual(START_ORDER);
     const campaign = h.calls.find((c) => c.fn === 'startCampaignScheduler');
     expect(campaign?.args).toEqual([
       {
@@ -192,6 +199,38 @@ describe('scheduler registry', () => {
       'runPortalConfigCleanupCycle', 'runReconciliationCycle',
     ]);
     expect(h.calls.find((c) => c.fn === 'runReconciliationCycle')?.args).toEqual(['cron']);
+  });
+
+  describe('sms-deferred-release (PR-09)', () => {
+    const NAME = 'sms-deferred-release';
+    const enabledNames = (role: Parameters<typeof selectSchedulers>[0], env: Record<string, string | undefined>) =>
+      selectSchedulers(role, env).enabled.map((s) => s.name);
+
+    it('is registered as an interval scheduler with an inFlight probe', () => {
+      const entry = SCHEDULERS.find((s) => s.name === NAME)!;
+      expect(entry).toBeDefined();
+      expect(entry.nightly).toBeUndefined();
+      expect(entry.inFlight!()).toBe(false);
+      entry.start({ voiceGatewayBaseUrl: 'https://voice.example.com' });
+      entry.stop();
+      expect(h.calls.map((c) => c.fn)).toEqual(['startSmsDeferredReleaseScheduler', 'stopSmsDeferredReleaseScheduler']);
+    });
+
+    it('is gated by SCHEDULERS_ENABLED and the role, like its neighbors', () => {
+      // Render worker default (schedulers off) and explicit none: not started.
+      expect(enabledNames('worker', {})).not.toContain(NAME);
+      expect(enabledNames('worker', { SCHEDULERS_ENABLED: 'none' })).not.toContain(NAME);
+      expect(enabledNames('all', { SCHEDULERS_ENABLED: 'none' })).not.toContain(NAME);
+      expect(enabledNames('worker', { SCHEDULERS_ENABLED: 'campaigns' })).not.toContain(NAME);
+      // Opted in: by name or via all.
+      expect(enabledNames('worker', { SCHEDULERS_ENABLED: `campaigns,${NAME}` })).toEqual(['campaigns', NAME]);
+      expect(enabledNames('worker', { SCHEDULERS_ENABLED: 'all' })).toContain(NAME);
+      expect(enabledNames('all', REPLIT_ENV)).toContain(NAME);
+      // Non-scheduler roles never run it.
+      for (const role of ['api', 'voice', 'cron'] as const) {
+        expect(enabledNames(role, { SCHEDULERS_ENABLED: 'all' })).not.toContain(NAME);
+      }
+    });
   });
 
   it('campaigns reports inFlight while its tick is running, also after stop()', () => {

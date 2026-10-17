@@ -9,16 +9,17 @@ import { smsActions } from './sms';
 import { ticketsActions } from './tickets';
 
 describe('action registry', () => {
-  it('imports each tool folder and starts empty', () => {
+  it('imports each tool folder; only sms.send is registered so far', () => {
     expect(schedulingActions).toEqual([]);
-    expect(smsActions).toEqual([]);
+    expect(smsActions.map((def) => def.name)).toEqual(['sms.send']);
     expect(ticketsActions).toEqual([]);
     expect(businessActions).toEqual([]);
     expect(callsActions).toEqual([]);
     expect(dispatchActions).toEqual([]);
     expect(ordersActions).toEqual([]);
-    expect(ACTION_REGISTRY).toEqual([]);
-    expect(listActions()).toEqual([]);
+    expect(ACTION_REGISTRY.map((def) => def.name)).toEqual(['sms.send']);
+    expect(listActions().map((def) => def.name)).toEqual(['sms.send']);
+    expect(getAction('sms.send')?.permissions.agent).toBe(false);
     expect(getAction('scheduling.book.commit')).toBeUndefined();
   });
 

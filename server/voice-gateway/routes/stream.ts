@@ -8,7 +8,7 @@ import { getAgentConfig, getAgentToolOverrides } from '../services/numberLookup'
 import { createRealtimeSession, type RealtimeSessionResult } from '../services/openaiSession';
 import { writeCallEvent, updateCallState, finalizeCallSession } from '../services/callPersistence';
 import { dispatchSmsCsatSurvey, getTenantCsatSettings } from '../../../platform/analytics/CsatSurveyService';
-import { sendTwilioSms } from '../../../platform/integrations/twilio/sender';
+import { sendSystemSmsOrThrow } from '../../../platform/actions/sms';
 import { sessionManager } from '../services/sessionManager';
 import { EscalationController } from '../services/escalation';
 import { getCoordinator, getTwilioAdapter } from './twilio';
@@ -252,7 +252,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 fromNumber: streamCalledNumber!,
                 scale: settings.scale,
                 template: settings.smsTemplate,
-                send: (to, from, body) => sendTwilioSms(tenantId!, to, from, body),
+                send: (to, from, body) => sendSystemSmsOrThrow({ tenantId: tenantId!, to, from, templateKey: 'csat_survey', vars: { message: body }, purpose: 'transactional', relatedEntity: { type: 'call_session', id: callSessionId! } }),
               });
             } catch (err) {
               slog.error('CSAT SMS dispatch failed (fire-and-forget)', { error: String(err) });

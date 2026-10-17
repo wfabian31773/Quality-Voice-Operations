@@ -18,6 +18,10 @@ const GENERIC_SAFE: Record<ActionErrorCode, string> = {
   IDEMPOTENCY_KEY_REUSED: 'This request does not match the original. I can start over.',
   RATE_LIMITED: 'Please wait a moment and try again.',
   UPSTREAM_UNAVAILABLE: 'A downstream service is unavailable. Please try again shortly.',
+  RECIPIENT_OPTED_OUT: "I can't text this number.",
+  MESSAGING_NOT_ENABLED: "Texting isn't set up for this business yet.",
+  QUIET_HOURS: "You'll get the text in the morning.",
+  INVALID_NUMBER: "That number can't receive texts.",
   INTERNAL: 'Something went wrong on our side. Please try again.',
 };
 
