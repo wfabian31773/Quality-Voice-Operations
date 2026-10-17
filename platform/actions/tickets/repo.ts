@@ -363,15 +363,16 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
   },
 
   async notes(ticketId, limit) {
+    // Newest `limit` notes, returned oldest first.
     const { rows } = await tx.query(
       `SELECT content, created_at
          FROM ticket_activity_log
         WHERE tenant_id = $1 AND ticket_id = $2 AND activity_type = 'note'
-        ORDER BY created_at ASC
+        ORDER BY created_at DESC, id DESC
         LIMIT $3`,
       [tenantId, ticketId, limit],
     );
-    return rows.map((row) => ({ content: String(row.content ?? ''), createdAt: asDate(row.created_at) }));
+    return rows.reverse().map((row) => ({ content: String(row.content ?? ''), createdAt: asDate(row.created_at) }));
   },
 
   async isTenantMember(userId) {

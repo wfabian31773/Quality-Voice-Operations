@@ -369,6 +369,16 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
     expect(detail).toMatchObject({ callId, sourceCallRef: callId });
     expect(detail.notes).toHaveLength(1);
 
+    // More than 50 notes: get returns the newest 50, oldest first.
+    for (let i = 0; i < 55; i++) {
+      await copyPool.query(
+        `INSERT INTO ticket_activity_log (tenant_id, ticket_id, activity_type, content, created_at) VALUES ($1, $2, 'note', $3, $4)`,
+        [tenantId, firstData.ticketId, `note ${i}`, new Date(now.getTime() + (i + 1) * 1000)],
+      );
+    }
+    const many = ok<{ notes: Array<{ content: string }> }>(await run('tickets.get', owner, { ticketId: firstData.ticketId }));
+    expect(many.notes.map((n) => n.content)).toEqual(Array.from({ length: 50 }, (_, i) => `note ${i + 5}`));
+
     const listed = ok<{ tickets: Array<{ id: string }> }>(await run('tickets.list', owner, { status: 'open', kind: 'callback' }));
     expect(listed.tickets.map((t) => t.id)).toEqual([firstData.ticketId]);
 

@@ -233,7 +233,8 @@ describe('sqlTicketsRepo on pg-mem', () => {
   });
 
   it('adds notes, updates with transitions and reads back with notes', async () => {
-    ok(await run('tickets.add_note', owner({ idempotencyKey: 'n1' }), { ticketId, note: 'Left a voicemail' }));
+    const later = new Date(NOW.getTime() + 60_000);
+    ok(await run('tickets.add_note', owner({ idempotencyKey: 'n1', now: later }), { ticketId, note: 'Left a voicemail' }));
     const assigned = ok<{ assigneeId: string; status: string }>(
       await run('tickets.update', owner({ idempotencyKey: 'u1' }), {
         ticketId,
@@ -266,6 +267,18 @@ describe('sqlTicketsRepo on pg-mem', () => {
     );
     expect(activity.map((a) => a.activity_type)).toContain('status_change');
     expect(activity.find((a) => a.activity_type === 'assigned')?.user_id).toBe('owner-1');
+  });
+
+  it('reads back the newest 50 notes in chronological order', async () => {
+    await tx.query(`DELETE FROM ticket_activity_log WHERE ticket_id = $1 AND activity_type = 'note'`, [ticketId]);
+    for (let i = 0; i < 55; i++) {
+      await tx.query(
+        `INSERT INTO ticket_activity_log (tenant_id, ticket_id, activity_type, content, created_at) VALUES ($1, $2, 'note', $3, $4)`,
+        [TENANT, ticketId, `note ${i}`, new Date(NOW.getTime() + i * 1000)],
+      );
+    }
+    const detail = ok<{ notes: Array<{ content: string }> }>(await run('tickets.get', owner(), { ticketId }));
+    expect(detail.notes.map((n) => n.content)).toEqual(Array.from({ length: 50 }, (_, i) => `note ${i + 5}`));
   });
 
   it('lists open, overdue and kind filters scoped to the tenant', async () => {

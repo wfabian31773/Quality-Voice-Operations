@@ -118,7 +118,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
       async notes(ticketId, limit) {
         return state.activities
           .filter((activity) => activity.tenantId === tenantId && activity.ticketId === ticketId && activity.type === 'note')
-          .slice(0, limit)
+          .slice(-limit)
           .map((activity) => ({ content: activity.content ?? '', createdAt: activity.now }));
       },
       async isTenantMember(userId) {

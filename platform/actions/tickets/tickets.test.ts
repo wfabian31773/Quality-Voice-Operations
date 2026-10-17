@@ -238,6 +238,64 @@ describe('tickets.open.prepare', () => {
       expect(tickets.state.tickets).toHaveLength(0);
     });
 
+    describe('extra fields when the tenant schema allows additionalProperties', () => {
+      function withOpenSchema() {
+        const env = setup();
+        env.tickets.state.settings.set(
+          TENANT,
+          parseTicketSettings('Law Office', {
+            tickets: { intakeSchemas: { intake: { ...LAW_INTAKE_SCHEMA, additionalProperties: true } } },
+          }),
+        );
+        return env;
+      }
+      const open = (run: ReturnType<typeof setup>['run'], extra: Record<string, unknown>) =>
+        run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'intake', intake: { matterType: 'estate', ...extra } }));
+
+      it('keeps plain JSON extras in the ticket intake, trimmed', async () => {
+        const { tickets, run } = withOpenSchema();
+        const extra = { courtName: '  County Probate  ', hearing_count: 2, urgent: false, note: null, tags: ['a', 1], who: { name: 'R' } };
+        const { committed } = await prepareAndCommit(run, baseInput({ kind: 'intake', intake: { matterType: 'estate', ...extra } }));
+        const { ticketId } = data<Committed>(committed);
+        expect(tickets.state.tickets.find((t) => t.id === ticketId)?.intake).toEqual({
+          matterType: 'estate',
+          courtName: 'County Probate',
+          hearing_count: 2,
+          urgent: false,
+          note: null,
+          tags: ['a', 1],
+          who: { name: 'R' },
+        });
+      });
+
+      it('still rejects extras when additionalProperties is not true', async () => {
+        const { run } = withLawSchema();
+        expectFail(await open(run, { courtName: 'County Probate' }), 'VALIDATION_FAILED', 'intake.courtName');
+      });
+
+      it('rejects extras over the caps instead of dropping them', async () => {
+        const { tickets, run } = withOpenSchema();
+        const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`extra${i}`, 'x']));
+        for (const [extra, field] of [
+          [{ courtName: 'x'.repeat(2001) }, 'intake.courtName'],
+          [{ nested: { deep: { deeper: 1 } } }, 'intake.nested'],
+          [{ list: [['a']] }, 'intake.list'],
+          [{ list: Array.from({ length: 21 }, () => 'a') }, 'intake.list'],
+          [{ obj: { 'bad key': 1 } }, 'intake.obj'],
+          [{ 'bad-key': 'x' }, 'intake'],
+          [{ _private: 'x' }, 'intake'],
+          [many, 'intake'],
+          [{ a: 'x'.repeat(2000), b: 'x'.repeat(2000), c: 'x'.repeat(2000), d: 'x'.repeat(2000), e: 'x'.repeat(2000) }, 'intake'],
+        ] as const) {
+          expectFail(await open(run, extra), 'VALIDATION_FAILED', field);
+        }
+        expect(tickets.state.tickets).toHaveLength(0);
+        // Exactly at the key cap is fine.
+        const twenty = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`extra${i}`, 'x']));
+        expect((await open(run, twenty)).ok).toBe(true);
+      });
+    });
+
     it('uses the built-in default schema per kind when the tenant has none', async () => {
       const { tickets, run } = setup();
       const { committed } = await prepareAndCommit(
