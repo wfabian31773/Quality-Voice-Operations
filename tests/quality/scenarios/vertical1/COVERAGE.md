@@ -66,7 +66,7 @@ Ids: `v1-<category>-<template>-<slug>`. `bb` = barbershop, `ns` = nail salon, `e
 | `v1-sched-bb-es-anyone-saturday` | matcher-es-readback | Same. | `readbackRequired` book readback not spoken |
 | `v1-tickets-ns-es-callback` | matcher-es-readback | Same, for the ticket readback. | `readbackRequired` ticket readback not spoken |
 
-When PR-17 lands, `v1-sms-bb-es-opted-out` and `v1-sms-ns-es-different-mobile` still fail on the readback until the matcher follow-up ships; re-pin them to `matcher-es-readback` then.
+When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback until follow-up 1 ships; re-pin it to `matcher-es-readback` then. `v1-sms-bb-es-opted-out` stays blocked on both the readback check and the Spanish refusal check (`mustSay` "No puedo enviarle mensajes"): the runner never passes the caller's locale to `ctx.locale`, the scenario format has no locale field, and the spec defines only the English §2.5 refusal. It needs all of follow-up 1, not just PR-17.
 
 ## Spec edge case → scenario
 
@@ -166,7 +166,7 @@ The `sms` and `transferHours` fixture fields are not read by `FakeToolProvider` 
 
 These need changes in `scripts/quality/` (matcher, runner or fake), outside this pack.
 
-1. **Matcher accepts Spanish readback** (`matcher-es-readback`). `readbackRequired` only passes when the fake's English readback is spoken verbatim, so an all-Spanish agent fails. Either have the provider return readbacks in `ctx.locale` (the runner also needs to pass a locale), or match readback facts (staff, date, time, name, number) instead of the exact string. Then move `v1-sched-ns-es-gel-plus-removal`, `v1-sched-bb-es-anyone-saturday` and `v1-tickets-ns-es-callback` to passing.
+1. **Matcher accepts Spanish readback** (`matcher-es-readback`). `readbackRequired` only passes when the fake's English readback is spoken verbatim, so an all-Spanish agent fails. Either have the provider return readbacks in `ctx.locale` (the runner also needs to pass a locale), or match readback facts (staff, date, time, name, number) instead of the exact string. The runner and scenario format must also pass the caller's locale through to `ctx.locale` for error messages (`callerSafeMessage`), not just readbacks, and `docs/shop/tools-spec.md` §2.5 needs a Spanish refusal message (e.g. for `RECIPIENT_OPTED_OUT` / `MESSAGING_NOT_ENABLED`). Then move `v1-sched-ns-es-gel-plus-removal`, `v1-sched-bb-es-anyone-saturday` and `v1-tickets-ns-es-callback` to passing; `v1-sms-bb-es-opted-out` additionally needs PR-17.
 2. **Map Spanish success phrases to their commit.** `unlockCommitForBannedPhrase` only maps English phrases, so `quedó confirmada`, `su cita está confirmada`, `quedó registrado` and the rest never unlock, even after the commit. Map the booking phrases to `scheduling.book.commit` and `quedó registrado` to `tickets.open.commit`.
 3. **Turn-order checks for commits.** Add "commit must come after caller turn N" and "must not happen" (e.g. no `sms.send_confirmation.commit`) assertions. That covers 0.2.2 ("uh-huh" is not a yes) and lets the opt-out scenarios prove no SMS was sent.
 4. **Error-code assertions.** Let an expected action require a failure with a given code (e.g. `RECIPIENT_OPTED_OUT`, `MESSAGING_NOT_ENABLED`). Today the opt-out and flag-off scenarios can only see the refusal through the relayed `callerSafeMessage`.
