@@ -30,7 +30,15 @@ type FixtureVariant = {
   reasonIfNoneToday?: TenantState['reasonIfNoneToday'];
   nextOpenDate?: string;
   sms?: SmsSettings;
+  transferHours?: TransferHours;
+  /** Services this variant's slots are sized for; overrides `slotServiceIds`. */
+  slotServiceIds?: string[];
 };
+
+export type TransferHours = { days: Weekday[] };
+
+/** `bufferMin`: minutes blocked after the service (tools-spec §1 catalog); defaults to 0. */
+export type FixtureService = Service & { bufferMin?: number };
 
 export type ShopFixture = {
   name: string;
@@ -40,17 +48,18 @@ export type ShopFixture = {
   address: string;
   hoursText: string;
   hours: Partial<Record<Weekday, [string, string]>>;
-  slotMinutes: number;
+  /** The booking each slot is sized for: end = start + its durations and buffers. */
+  slotServiceIds: string[];
   openTimes: string[];
   dateRange: { from: string; to: string };
   staff: Array<StaffMember & { daysOff?: Weekday[] }>;
-  services: Service[];
+  services: FixtureService[];
   sms: SmsSettings;
-  transferHours: { days: Weekday[] };
+  transferHours: TransferHours;
   variants?: Record<string, FixtureVariant>;
 };
 
-export type ShopTenantState = TenantState & { sms: SmsSettings };
+export type ShopTenantState = TenantState & { sms: SmsSettings; transferHours: TransferHours };
 
 const cache = new Map<string, ShopFixture>();
 
@@ -116,7 +125,29 @@ function eachDate(from: string, to: string): string[] {
   return out;
 }
 
-export function buildSlots(fixture: ShopFixture, dropOn: string[] = []): Slot[] {
+/** Minutes a booking of `serviceIds` blocks: each service's duration plus its buffer. */
+export function bookingMinutes(fixture: ShopFixture, serviceIds: string[]): number {
+  if (serviceIds.length === 0) throw new Error(`${fixture.name}: slots need at least one service`);
+  return serviceIds.reduce((total, id) => {
+    const service = fixture.services.find((row) => row.id === id);
+    if (!service) throw new Error(`${fixture.name}: unknown service ${id}`);
+    return total + service.durationMin + (service.bufferMin ?? 0);
+  }, 0);
+}
+
+/** Local end time (HH:MM) of a booking of `serviceIds` that starts at `start`. */
+export function slotEnd(fixture: ShopFixture, start: string, serviceIds: string[]): string {
+  return fromMinutes(toMinutes(start) + bookingMinutes(fixture, serviceIds));
+}
+
+/**
+ * Slots sized for `serviceIds` (default: the fixture's `slotServiceIds`).
+ * `FakeToolProvider` returns `slot.end` verbatim, so a scenario that books other
+ * services needs a variant whose `slotServiceIds` match them. Starts whose whole
+ * interval would run past closing are dropped.
+ */
+export function buildSlots(fixture: ShopFixture, dropOn: string[] = [], serviceIds = fixture.slotServiceIds): Slot[] {
+  const minutes = bookingMinutes(fixture, serviceIds);
   const slots: Slot[] = [];
   for (const date of eachDate(fixture.dateRange.from, fixture.dateRange.to)) {
     if (dropOn.includes(date)) continue;
@@ -126,7 +157,7 @@ export function buildSlots(fixture: ShopFixture, dropOn: string[] = []): Slot[] 
     const [open, close] = hours.map(toMinutes);
     for (const hm of fixture.openTimes) {
       const start = toMinutes(hm);
-      const end = start + fixture.slotMinutes;
+      const end = start + minutes;
       if (start < open || end > close) continue;
       for (const member of fixture.staff) {
         if (member.daysOff?.includes(weekday)) continue;
@@ -173,8 +204,8 @@ export function buildShopFixture(seedName: string): ShopTenantState {
     address: fixture.address,
     hoursText: fixture.hoursText,
     staff,
-    services: fixture.services.map((service) => ({ ...service })),
-    slots: buildSlots(fixture, variant.dropSlotsOn),
+    services: fixture.services.map(({ bufferMin: _bufferMin, ...service }) => service),
+    slots: buildSlots(fixture, variant.dropSlotsOn, variant.slotServiceIds),
     nextOpenDate: variant.nextOpenDate,
     reasonIfNoneToday: variant.reasonIfNoneToday,
     bookings,
@@ -183,6 +214,7 @@ export function buildShopFixture(seedName: string): ShopTenantState {
     waitlist: [],
     holds: {},
     sms: { ...(variant.sms ?? fixture.sms) },
+    transferHours: { ...(variant.transferHours ?? fixture.transferHours) },
   };
 }
 

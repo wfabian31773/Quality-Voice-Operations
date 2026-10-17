@@ -2,7 +2,7 @@ id: v1-sched-bb-multi-service-cut-beard
 template: barbershop
 tools: [scheduling, sms, tickets, business, calls]
 tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.book, spec:1.6-5, multi-service]
-seed: barbershop-basic
+seed: barbershop-basic:cut-and-beard
 now: "2026-10-20T14:00:00-04:00"
 caller:
   - text: "I want a cut and a beard trim Thursday morning, whoever's free."

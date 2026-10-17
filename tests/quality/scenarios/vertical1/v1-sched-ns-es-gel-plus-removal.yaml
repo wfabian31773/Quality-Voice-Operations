@@ -2,7 +2,7 @@ id: v1-sched-ns-es-gel-plus-removal
 template: nail_salon
 tools: [scheduling, sms, tickets, business, calls]
 tags: [vertical1, tool:scheduling, template:nail_salon, lang:es, action:scheduling.book, spec:1.6-5, multi-service, add-on, expected-fail]
-seed: nail-salon-basic
+seed: nail-salon-basic:gel-plus-removal
 now: "2026-10-20T14:00:00-04:00"
 # Spanish readback blocked on matcher follow-up: matcher accepts Spanish
 # readback. The agent reads the booking back in Spanish, and readbackRequired

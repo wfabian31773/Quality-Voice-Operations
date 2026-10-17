@@ -8,7 +8,9 @@ import type { CheckName, Scenario } from '../../../../scripts/quality/types';
 import {
   buildShopFixture,
   listShopFixtureNames,
+  loadShopFixture,
   ShopFixtureStore,
+  slotEnd,
   weekdayOf,
 } from '../../fixtures/shopFixtures';
 
@@ -163,6 +165,26 @@ describe('vertical1 shop fixtures', () => {
     expect(buildShopFixture('nail-salon-basic:sms-disabled').sms.messagingEnabled).toBe(false);
     expect(() => buildShopFixture('barbershop-marco')).toThrow(/unknown shop fixture/);
     expect(() => buildShopFixture('barbershop-basic:nope')).toThrow(/unknown shop fixture/);
+  });
+
+  it('carries transferHours into the tenant state', () => {
+    const { transferHours } = buildShopFixture('barbershop-basic');
+    expect(transferHours.days).toEqual(['tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+    expect(transferHours.days).not.toContain('mon');
+  });
+
+  it('sizes slots from the booked services, not a shop-wide length', () => {
+    const slotAt = (seed: string, staffId: string, start: string) =>
+      buildShopFixture(seed).slots.find((slot) => slot.staffId === staffId && slot.start === start);
+    // Cut + beard trim = 30 + 15; gel manicure + gel removal = 45 + 15.
+    expect(slotEnd(loadShopFixture('barbershop-basic'), '10:00', ['mens-cut', 'beard-trim'])).toBe('10:45');
+    expect(slotEnd(loadShopFixture('nail-salon-basic'), '13:00', ['gel-manicure', 'gel-removal'])).toBe('14:00');
+    expect(slotAt('barbershop-basic:cut-and-beard', 'marco', '2026-10-22T10:00:00-04:00')?.end).toBe('2026-10-22T10:45:00-04:00');
+    expect(slotAt('nail-salon-basic:gel-plus-removal', 'rosa', '2026-10-22T13:00:00-04:00')?.end).toBe('2026-10-22T14:00:00-04:00');
+    expect(slotAt('barbershop-basic', 'marco', '2026-10-22T10:00:00-04:00')?.end).toBe('2026-10-22T10:30:00-04:00');
+    // Sunday closes at 4: a 3:30 cut fits, a 3:30 cut + beard (until 4:15) doesn't.
+    expect(slotAt('barbershop-basic', 'marco', '2026-10-25T15:30:00-04:00')?.end).toBe('2026-10-25T16:00:00-04:00');
+    expect(slotAt('barbershop-basic:cut-and-beard', 'marco', '2026-10-25T15:30:00-04:00')).toBeUndefined();
   });
 });
 

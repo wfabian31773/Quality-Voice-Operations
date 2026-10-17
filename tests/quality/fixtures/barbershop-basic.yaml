@@ -15,9 +15,11 @@ hours:
   fri: ["09:00", "19:00"]
   sat: ["08:00", "17:00"]
   sun: ["10:00", "16:00"]
-slotMinutes: 30
+# Slots are sized for this booking: end = start + the services' durationMin +
+# bufferMin (default 0). Variants that book other services set their own.
+slotServiceIds: [mens-cut]
 # Free start times each working barber has on each open day, after existing
-# bookings. Times that would run past closing are dropped.
+# bookings. Times whose whole booking would run past closing are dropped.
 openTimes: ["10:00", "13:00", "15:30", "16:30"]
 dateRange:
   from: "2026-10-19"
@@ -59,6 +61,9 @@ sms:
 transferHours:
   days: [tue, wed, thu, fri, sat, sun]
 variants:
+  # Cut + beard trim in one booking: slots are 45 minutes (30 + 15).
+  cut-and-beard:
+    slotServiceIds: [mens-cut, beard-trim]
   # Another caller (a different line) holds Marco's 3:30 today.
   slot-held-by-other-caller:
     bookings:
