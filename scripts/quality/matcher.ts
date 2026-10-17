@@ -181,14 +181,12 @@ export function matchEndState(expected: EndStateExpect | undefined, snapshot: En
   if (!expected) return [];
   const failures: CheckFailure[] = [];
   if (expected.bookings) {
-    const wantedStatus = expected.bookings.items?.[0]?.status;
-    const rows = wantedStatus ? snapshot.bookings.filter((row) => row.status === wantedStatus) : snapshot.bookings;
-    if (expected.bookings.count !== undefined && rows.length !== expected.bookings.count) {
+    if (expected.bookings.count !== undefined && snapshot.bookings.length !== expected.bookings.count) {
       failures.push({
         check: 'endState',
         message: `bookings count`,
         expected: expected.bookings.count,
-        actual: rows.map((row) => ({
+        actual: snapshot.bookings.map((row) => ({
           status: row.status,
           startLocal: row.startLocal,
           staffId: row.staffId,

@@ -29,6 +29,16 @@ describe('parseScenario', () => {
     expect(() => parseScenario({ ...minimal, caller: [] })).toThrow(/caller/i);
   });
 
+  it('rejects unknown expectation keys so typos cannot silently drop checks', () => {
+    expect(() => parseScenario({ ...minimal, expect: { mustNotSya: ["you're booked"] } })).toThrow(/unrecognized_keys|mustNotSya/i);
+    expect(() => parseScenario({ ...minimal, expect: { endstate: { bookings: { count: 1 } } } })).toThrow(
+      /unrecognized_keys|endstate/i,
+    );
+    expect(() =>
+      parseScenario({ ...minimal, expect: { endState: { bookings: { count: 1, cnt: 1 } } } }),
+    ).toThrow(/unrecognized_keys|cnt/i);
+  });
+
   it('loads YAML text', () => {
     const scenario = loadScenarioYaml(
       `

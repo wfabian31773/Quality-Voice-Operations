@@ -4,6 +4,7 @@ import {
   formatDiff,
   firstSuccessfulCommitIndex,
   matchActions,
+  matchEndState,
   matchMustNotSayBeforeCommit,
   matchMustSay,
   matchReadback,
@@ -156,6 +157,48 @@ describe('mustSay and readback', () => {
       tool('tickets.open.commit', {}),
     ];
     expect(matchReadback(true, trace)[0].message).toMatch(/tickets\.open\.prepare/);
+  });
+});
+
+describe('matchEndState', () => {
+  it('counts every leftover booking, including held rows, so count: 1 fails when a held slot remains', () => {
+    const snapshot: EndSnapshot = {
+      bookings: [
+        {
+          id: 'bk_held',
+          staffId: 'marco',
+          staffName: 'Marco',
+          status: 'held',
+          start: '2026-10-20T15:30:00-04:00',
+          startLocal: '15:30',
+          serviceIds: ['svc_cut'],
+          customerName: 'Luis',
+          customerPhone: '+15555550142',
+        },
+        {
+          id: 'bk_ok',
+          staffId: 'marco',
+          staffName: 'Marco',
+          status: 'confirmed',
+          start: '2026-10-20T16:00:00-04:00',
+          startLocal: '16:00',
+          serviceIds: ['svc_cut'],
+          customerName: 'Luis',
+          customerPhone: '+15555550142',
+        },
+      ],
+      tickets: [],
+      transfers: [],
+      waitlist: [],
+    };
+    const failures = matchEndState({ bookings: { count: 1, items: [{ status: 'confirmed', startLocal: '16:00' }] } }, snapshot);
+    expect(failures.some((row) => row.message === 'bookings count')).toBe(true);
+    expect(failures.find((row) => row.message === 'bookings count')?.actual).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: 'held' }),
+        expect.objectContaining({ status: 'confirmed' }),
+      ]),
+    );
   });
 });
 
