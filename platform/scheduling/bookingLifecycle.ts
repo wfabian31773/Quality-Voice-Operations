@@ -226,6 +226,10 @@ export async function transitionBooking(
       booking.resource_id ? String(booking.resource_id) : undefined,
       bookingId,
     );
+    // overrideReason skips these app-level checks only. QVO does not allow
+    // double-booking: the 122 exclusion constraints still reject a
+    // held/confirmed overlap (23P01), so callers must run this in one
+    // transaction and map that error to a 409.
     if (conflicts.length > 0 && !input.overrideReason) {
       return { ok: false, httpStatus: 409, body: { error: 'New time slot has conflicts', conflicts } };
     }

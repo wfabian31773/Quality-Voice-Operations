@@ -34,7 +34,15 @@ const { queryMock, fireDispatchPushMock, dispatchEventMock, enqueueGeocodeMock }
   }));
 
 vi.mock('../../platform/db', () => ({
-  getPlatformPool: () => ({ query: queryMock }),
+  getPlatformPool: () => ({
+    query: queryMock,
+    // Booking transitions run on a checked-out client; BEGIN/COMMIT/ROLLBACK are not queued.
+    connect: async () => ({
+      query: (sql: string, values?: unknown[]) =>
+        (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) ? Promise.resolve({ rows: [] }) : queryMock(sql, values)),
+      release: () => {},
+    }),
+  }),
   getPrivilegedPool: () => ({ query: queryMock }),
   withTenantContext: vi.fn(async () => {}),
   withPrivilegedClient: vi.fn(),

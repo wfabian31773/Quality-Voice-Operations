@@ -1,3 +1,4 @@
+import { bookingOverlapKind } from '../../../actions/scheduling/holds';
 import { createLogger } from '../../../core/logger';
 import { getPlatformPool, withTenantContext } from '../../../db';
 import { phoneDigits } from '../../../reasoning/sessionBinding';
@@ -332,6 +333,15 @@ export async function executeUpdateBooking(
     return result;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
+    // The reschedule's replacement row hit the 122 no-double-booking
+    // constraints (23P01): same answer as an app-level conflict.
+    if (bookingOverlapKind(err) !== null) {
+      return challengeResult({
+        action,
+        status: 'conflict',
+        message: 'That new time conflicts with another booking or a shop blackout. Offer a different time. Do not claim the appointment was moved.',
+      });
+    }
     logger.error('update_booking failed', { tenantId: context.tenantId, error: String(err) });
     return { success: false, message: 'Failed to update the existing booking. Offer to leave a message for the shop.' };
   } finally {

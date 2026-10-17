@@ -24,8 +24,17 @@ import request from 'supertest';
 const queryMock = vi.fn();
 
 vi.mock('../../platform/db', () => ({
-  getPlatformPool: () => ({ query: queryMock }),
+  getPlatformPool: () => ({
+    query: queryMock,
+    // Booking transitions run on a checked-out client; BEGIN/COMMIT/ROLLBACK are not mocked rows.
+    connect: async () => ({
+      query: (sql: string, values?: unknown[]) =>
+        (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) ? Promise.resolve({ rows: [] }) : queryMock(sql, values)),
+      release: () => {},
+    }),
+  }),
   getPrivilegedPool: () => ({ query: queryMock }),
+  withTenantContext: vi.fn(async () => {}),
   withPrivilegedClient: vi.fn(),
 }));
 
