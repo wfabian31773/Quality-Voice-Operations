@@ -58,6 +58,8 @@ sms:
   optedOut: []
 transferHours:
   days: [mon, tue, wed, thu, fri, sat]
+# Reschedule/cancel need this much notice (scheduling_booking_rules default).
+cancellationWindowHours: 24
 variants:
   # Gel manicure + gel removal in one booking: slots are 60 minutes (45 + 15).
   gel-plus-removal:

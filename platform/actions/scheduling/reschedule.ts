@@ -20,7 +20,15 @@ import {
   setHoldOwner,
   writeBookingAudit,
 } from './bookingRows';
-import { catchOverlap, consumeToken, policyBlock, SCHEDULING_WRITE_ROLES, takeHold } from './commitShared';
+import {
+  agentBookingBlock,
+  agentCommitBlock,
+  catchOverlap,
+  consumeToken,
+  policyBlock,
+  SCHEDULING_WRITE_ROLES,
+  takeHold,
+} from './commitShared';
 import { expireStaleHolds } from './holds';
 import {
   callerMessage,
@@ -45,21 +53,26 @@ function isReschedulable(status: string): boolean {
   return (RESCHEDULABLE_STATUSES as readonly string[]).includes(status);
 }
 
-// Agent use waits for PR-14: the agent has no verified way to get a
-// bookingId until scheduling.find_bookings checks the caller (spec §0.2.6).
+// The agent may only move a booking scheduling.find_bookings verified in the
+// same call (agentBookingBlock, spec §0.2.6).
 export const reschedulePrepareAction = defineAction({
   name: RESCHEDULE_PREPARE,
   tool: 'scheduling',
   kind: 'prepare',
   input: reschedulePrepareInput,
   output: reschedulePrepareOutput,
-  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: false, mcpScope: 'qvo:admin' },
+  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
     'Hold a new time for an existing appointment without changing it yet, and get the readback. '
-    + 'Inside the shop\'s cancellation window this returns OUTSIDE_POLICY with the policy to state. '
-    + 'Commit with scheduling.reschedule.commit after an explicit yes.',
+    + 'Call scheduling.find_bookings first: bookingId must be one it returned verified in this call, '
+    + 'and newStart a time from check_availability. Never offer a time to a caller find_bookings did not verify. '
+    + 'Read the readback word for word and commit with scheduling.reschedule.commit only after an explicit yes. '
+    + 'On OUTSIDE_POLICY (inside the cancellation window, or already passed) say the callerSafeMessage and offer '
+    + 'to take a message for the owner. On CONFLICT, offer the alternatives.',
   async run(ctx, input, tx) {
     const lang = readbackLang(ctx.locale);
+    const unverified = await agentBookingBlock(tx, ctx, input.bookingId);
+    if (unverified) return unverified;
     const booking = await loadBooking(tx, ctx.tenantId, input.bookingId);
     if (!booking || booking.status === 'held') {
       return actionFail('NOT_FOUND', 'Booking not found', { field: 'bookingId', callerSafeMessage: callerMessage('unknownBooking', lang) });
@@ -168,12 +181,14 @@ export const rescheduleCommitAction = defineAction({
   kind: 'commit',
   input: confirmationTokenInput,
   output: rescheduleCommitOutput,
-  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: false, mcpScope: 'qvo:admin' },
+  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
     'Move the appointment to the held time after the caller explicitly said yes to the readback. '
-    + 'Only say it was moved once this returns ok.',
+    + 'Only say it was moved once this returns ok. Retrying with the same token is safe.',
   async run(ctx, input, tx) {
     const lang = readbackLang(ctx.locale);
+    const noCall = agentCommitBlock(ctx);
+    if (noCall) return noCall;
     const consumed = await consumeToken(tx, ctx, input.confirmationToken, RESCHEDULE_PREPARE);
     if (isActionFailure(consumed)) return consumed;
     const payload = rescheduleProposalPayload.safeParse(consumed.payload);

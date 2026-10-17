@@ -147,6 +147,7 @@ const scenarioSchema = z
         message: 'expect requires at least one assertion in actions and/or endState',
       }),
     expectedFail: z.string().optional(),
+    callerId: z.string().regex(/^\+[1-9]\d{7,14}$/, 'callerId must be E.164 or null').nullable().optional(),
   })
   .strict();
 

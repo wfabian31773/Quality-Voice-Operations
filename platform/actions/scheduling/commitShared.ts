@@ -23,6 +23,7 @@ import {
   type BookingRecord,
 } from './bookingRows';
 import { bookingOverlapKind, expireStaleHolds } from './holds';
+import { verifiedInCall } from './identity';
 import {
   callerMessage,
   cancellationPolicyText,
@@ -143,6 +144,36 @@ export async function takeHold(
     return slotConflict(tx, ctx, scope, hold.startTime.getTime(), `Hold lost: slot taken (${flipped.overlap} overlap)`, 'holdLost');
   }
   return { retaken: true };
+}
+
+/**
+ * Agent reschedule/cancel only touch a booking that scheduling.find_bookings
+ * verified in this same call and tenant (spec §0.2.6). A guessed id, one
+ * verified in another call, another tenant's, or any id without a callId gets
+ * exactly the NOT_FOUND an unknown id gets (same message too), so the agent
+ * can't probe which ids exist. It runs before the booking is even loaded.
+ * Staff, UI and MCP callers are not gated here.
+ */
+export async function agentBookingBlock(
+  tx: TenantTx,
+  ctx: ActionContext,
+  bookingId: string,
+): Promise<ActionResult<never> | null> {
+  if (ctx.actor.type !== 'agent') return null;
+  if (await verifiedInCall(tx, ctx, bookingId)) return null;
+  return actionFail('NOT_FOUND', 'Booking not found', {
+    field: 'bookingId',
+    callerSafeMessage: callerMessage('unknownBooking', readbackLang(ctx.locale)),
+  });
+}
+
+/**
+ * An agent commit needs its call: the core consume matches call_id, and a
+ * missing callId would otherwise match a UI/MCP proposal (call_id NULL).
+ */
+export function agentCommitBlock(ctx: ActionContext): ActionResult<never> | null {
+  if (ctx.actor.type !== 'agent' || ctx.callId) return null;
+  return actionFail('CONFIRMATION_INVALID', 'Unknown or expired confirmation token');
 }
 
 /**

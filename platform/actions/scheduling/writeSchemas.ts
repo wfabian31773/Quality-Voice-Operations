@@ -6,7 +6,8 @@ const id = z.string().min(1).max(255);
 /** ISO 8601 instant with an offset or Z ("2026-10-20T15:30:00-04:00"). */
 const instant = z.string().datetime({ offset: true, message: 'Use an ISO date-time with offset, e.g. 2026-10-20T15:30:00-04:00' });
 
-const phone = z
+/** A phone number, normalized to E.164 (10-digit numbers are US). */
+export const phone = z
   .string()
   .min(7)
   .max(32)

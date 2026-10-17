@@ -60,6 +60,11 @@ sms:
   optedOut: []
 transferHours:
   days: [tue, wed, thu, fri, sat, sun]
+# Reschedule/cancel need this much notice (scheduling_booking_rules default).
+cancellationWindowHours: 24
+# `callerNumber` on a variant is the call's trusted caller ID, standing in for
+# call_sessions.caller_number (null/absent = blocked); a scenario's `callerId`
+# overrides it. scheduling.find_bookings reads it, never the agent's input.
 variants:
   # Cut + beard trim in one booking: slots are 45 minutes (30 + 15).
   cut-and-beard:
@@ -82,8 +87,9 @@ variants:
     dropSlotsOn: ["2026-10-20"]
     reasonIfNoneToday: outside_lead_time
     nextOpenDate: "2026-10-21"
-  # Luis already has Thursday 10:00 with Marco.
+  # Luis already has Thursday 10:00 with Marco, and is calling from that phone.
   existing-booking:
+    callerNumber: "+15555550142"
     bookings:
       - id: bk_luis_thu
         status: confirmed
@@ -91,6 +97,35 @@ variants:
         serviceIds: [mens-cut]
         start: "2026-10-22T10:00:00-04:00"
         customerName: Luis
+        customerPhone: "+15555550142"
+  # Luis has tomorrow (Wed) 10:00 with Andre: inside the 24-hour window.
+  booking-tomorrow:
+    callerNumber: "+15555550142"
+    bookings:
+      - id: bk_luis_wed
+        status: confirmed
+        staffId: andre
+        serviceIds: [mens-cut]
+        start: "2026-10-21T10:00:00-04:00"
+        customerName: Luis
+        customerPhone: "+15555550142"
+  # Father and son, both Luis, booked from the same phone (spec §1.6 #12).
+  family-on-one-phone:
+    callerNumber: "+15555550142"
+    bookings:
+      - id: bk_luis_thu
+        status: confirmed
+        staffId: marco
+        serviceIds: [mens-cut]
+        start: "2026-10-22T10:00:00-04:00"
+        customerName: Luis Garcia
+        customerPhone: "+15555550142"
+      - id: bk_luis_jr_sat
+        status: confirmed
+        staffId: andre
+        serviceIds: [mens-cut]
+        start: "2026-10-24T10:00:00-04:00"
+        customerName: Luis Garcia Jr.
         customerPhone: "+15555550142"
   # These callers texted STOP last month.
   sms-opted-out:

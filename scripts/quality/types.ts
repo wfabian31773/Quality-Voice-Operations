@@ -95,6 +95,11 @@ export type Scenario = {
   script?: ScriptTurn[];
   expect: ScenarioExpect;
   expectedFail?: string;
+  /**
+   * The call's trusted caller ID (call_sessions.caller_number), E.164; null =
+   * blocked. Omitted = the seed's `callerNumber`. Never sent as tool input.
+   */
+  callerId?: string | null;
 };
 
 export type Actor = {
@@ -150,7 +155,8 @@ export type TraceEvent =
 
 export type BookingRow = {
   id: string;
-  status: 'held' | 'confirmed' | 'cancelled';
+  /** 'rescheduled' = superseded by the booking a reschedule commit confirmed. */
+  status: 'held' | 'confirmed' | 'cancelled' | 'rescheduled';
   staffId: string;
   staffName: string;
   serviceIds: string[];

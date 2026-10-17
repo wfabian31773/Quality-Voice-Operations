@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`scheduling.find_bookings > is an agent read with qvo:read, and its tool schema is stable 1`] = `
+{
+  "actionName": "scheduling.find_bookings",
+  "agentDescription": "Find the caller's upcoming appointments before any reschedule or cancel. Send the phone the caller gives (or their caller ID number) and the name on the booking. Caller ID is checked on the server. If needs is "name", ask whose name the appointment is under. If needs is "name_date_time", ask for the name, date (YYYY-MM-DD) and time (HH:MM) of the appointment and never suggest a date or time yourself; if the caller doesn't know them, offer to take a message. Only a verified result lists bookings: read their spoken text, and if there is more than one, ask which. Never say whether an unverified number has appointments.",
+  "description": "Find the caller's upcoming appointments before any reschedule or cancel. Send the phone the caller gives (or their caller ID number) and the name on the booking. Caller ID is checked on the server. If needs is "name", ask whose name the appointment is under. If needs is "name_date_time", ask for the name, date (YYYY-MM-DD) and time (HH:MM) of the appointment and never suggest a date or time yourself; if the caller doesn't know them, offer to take a message. Only a verified result lists bookings: read their spoken text, and if there is more than one, ask which. Never say whether an unverified number has appointments.",
+  "name": "scheduling_find_bookings",
+  "parameters": {
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "type": "string",
+      },
+      "name": {
+        "maxLength": 80,
+        "minLength": 1,
+        "type": "string",
+      },
+      "phone": {
+        "maxLength": 32,
+        "minLength": 7,
+        "type": "string",
+      },
+      "time": {
+        "type": "string",
+      },
+    },
+    "required": [
+      "phone",
+    ],
+    "type": "object",
+  },
+}
+`;

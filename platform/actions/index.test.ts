@@ -12,6 +12,7 @@ const SCHEDULING_READS = [
   'scheduling.list_services',
   'scheduling.list_staff',
   'scheduling.check_availability',
+  'scheduling.find_bookings',
 ];
 
 const SCHEDULING_WRITES = [
@@ -40,18 +41,18 @@ describe('action registry', () => {
     expect(listActions().map((a) => a.name)).toEqual(ACTION_REGISTRY.map((a) => a.name));
     expect(getAction('scheduling.check_availability')?.kind).toBe('read');
     expect(getAction('sms.send')?.permissions.agent).toBe(false);
-    expect(getAction('scheduling.find_bookings')).toBeUndefined();
+    expect(getAction('scheduling.find_bookings')?.permissions).toEqual({ agent: true, mcpScope: 'qvo:read' });
   });
 
-  it('registers the scheduling writes as two-phase qvo:admin actions; only book is open to the agent', () => {
+  it('registers the scheduling writes as two-phase qvo:admin actions open to the agent', () => {
     for (const name of SCHEDULING_WRITES) {
       const def = getAction(name)!;
       expect(def.tool).toBe('scheduling');
       expect(def.kind).toBe(name.endsWith('.prepare') ? 'prepare' : 'commit');
       expect(def.permissions.mcpScope).toBe('qvo:admin');
       expect(def.permissions.roles).toEqual(['tenant_owner', 'operations_manager']);
-      // reschedule/cancel wait for PR-14's verified find_bookings.
-      expect(def.permissions.agent).toBe(name.startsWith('scheduling.book.'));
+      // Agent reschedule/cancel are bound to a verified find_bookings in the same call (PR-14).
+      expect(def.permissions.agent).toBe(true);
       expect(def.agentDescription).toBeTruthy();
     }
   });
@@ -79,7 +80,7 @@ describe('action registry', () => {
   it('runAction returns NOT_FOUND for an action that is not registered', async () => {
     const store = createMemoryStore();
     const result = await runAction(
-      'scheduling.find_bookings',
+      'scheduling.block_time',
       {
         tenantId: 't1',
         actor: { type: 'system', id: 'sys' },

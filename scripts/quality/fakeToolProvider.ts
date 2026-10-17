@@ -19,7 +19,11 @@ const GENERIC_SAFE: Record<string, string> = {
   INTERNAL: 'Something went wrong on our side. Please try again.',
 };
 
-function fail(code: string, message: string, extra?: { field?: string; alternatives?: unknown[] }): ToolResult {
+function fail(
+  code: string,
+  message: string,
+  extra?: { field?: string; alternatives?: unknown[]; callerSafeMessage?: string },
+): ToolResult {
   return {
     ok: false,
     error: {
@@ -30,6 +34,46 @@ function fail(code: string, message: string, extra?: { field?: string; alternati
       ...extra,
     },
   };
+}
+
+// The real scheduling actions' caller-safe texts (platform/actions/scheduling/readback.ts).
+const UNKNOWN_BOOKING = "I couldn't find that appointment.";
+const SLOT_UNAVAILABLE = "That time isn't available. I can offer the closest open times.";
+const PAST_APPOINTMENT = "That appointment has already started or passed, so I can't change it. I can take a message for the shop.";
+
+function cancellationPolicyText(hours: number): string {
+  return `The shop's policy needs at least ${hours} ${hours === 1 ? "hour's" : "hours'"} notice to change or cancel an appointment. I can take a message for the shop.`;
+}
+
+/** E.164 like the real phone schema (10 digits = US), or null. */
+export function toE164(raw: string): string | null {
+  const trimmed = raw.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (trimmed.startsWith('+')) return digits.length >= 8 && digits.length <= 15 && !digits.startsWith('0') ? `+${digits}` : null;
+  if (digits.length === 10 && !/^[01]/.test(digits)) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return null;
+}
+
+function nameTokens(name: string): string[] {
+  return name
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+}
+
+/** Mirrors namesMatch in platform/actions/scheduling/identity.ts: first name or full name, case/accent-insensitive. */
+export function namesMatch(given: string, onBooking: string): boolean {
+  const g = nameTokens(given);
+  const b = nameTokens(onBooking);
+  if (g.length === 0 || b.length === 0) return false;
+  if (g.length === 1 || b.length === 1) return g[0] === b[0];
+  return g.join(' ') === b.join(' ');
 }
 
 function ok(data: unknown, readback?: string): ToolResult {
@@ -135,8 +179,13 @@ const HANDLED = new Set([
   'scheduling.list_services',
   'scheduling.list_staff',
   'scheduling.check_availability',
+  'scheduling.find_bookings',
   'scheduling.book.prepare',
   'scheduling.book.commit',
+  'scheduling.reschedule.prepare',
+  'scheduling.reschedule.commit',
+  'scheduling.cancel.prepare',
+  'scheduling.cancel.commit',
   'tickets.open.prepare',
   'tickets.open.commit',
   'calls.transfer_to_human.prepare',
@@ -147,9 +196,13 @@ const HANDLED = new Set([
 /** cancellation_reason the real scheduling.book.prepare writes on a hold a newer prepare in the call replaced. */
 export const HOLD_SUPERSEDED_REASON = 'hold_superseded';
 
+type CommitKind = 'booking' | 'reschedule' | 'cancel' | 'ticket' | 'transfer';
+
 export class FakeToolProvider implements ToolProvider {
   /** Successful commit results by token: a retry with the same token replays it (core idempotency). */
   private readonly commits = new Map<string, ToolResult>();
+  /** Booking ids find_bookings verified, per call (the real action records them per tenant + call). */
+  private readonly verified = new Map<string, Set<string>>();
 
   constructor(
     private readonly state: TenantState,
@@ -176,15 +229,25 @@ export class FakeToolProvider implements ToolProvider {
       case 'scheduling.book.prepare':
         return this.bookPrepare(asRecord(input), ctx);
       case 'scheduling.book.commit':
-        return this.commit('booking', asRecord(input));
+        return this.commit('booking', asRecord(input), ctx);
+      case 'scheduling.find_bookings':
+        return this.findBookings(asRecord(input), ctx);
+      case 'scheduling.reschedule.prepare':
+        return this.reschedulePrepare(asRecord(input), ctx);
+      case 'scheduling.reschedule.commit':
+        return this.commit('reschedule', asRecord(input), ctx);
+      case 'scheduling.cancel.prepare':
+        return this.cancelPrepare(asRecord(input), ctx);
+      case 'scheduling.cancel.commit':
+        return this.commit('cancel', asRecord(input), ctx);
       case 'tickets.open.prepare':
         return this.ticketPrepare(asRecord(input));
       case 'tickets.open.commit':
-        return this.commit('ticket', asRecord(input));
+        return this.commit('ticket', asRecord(input), ctx);
       case 'calls.transfer_to_human.prepare':
         return this.transferPrepare(asRecord(input));
       case 'calls.transfer_to_human.commit':
-        return this.commit('transfer', asRecord(input));
+        return this.commit('transfer', asRecord(input), ctx);
       case 'business.get_info':
         return ok({
           hours: this.state.hoursText,
@@ -242,7 +305,7 @@ export class FakeToolProvider implements ToolProvider {
    */
   private releaseCallHolds(callId: string): void {
     for (const [token, hold] of Object.entries(this.state.holds)) {
-      if (hold.kind !== 'booking' || hold.callId !== callId) continue;
+      if ((hold.kind !== 'booking' && hold.kind !== 'reschedule') || hold.callId !== callId) continue;
       const booking = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
       if (booking?.status !== 'held') continue;
       booking.status = 'cancelled';
@@ -314,6 +377,182 @@ export class FakeToolProvider implements ToolProvider {
     );
   }
 
+  private serviceNamesOf(serviceIds: string[]): string[] {
+    return serviceIds.map((id) => this.state.services.find((service) => service.id === id)?.name ?? id);
+  }
+
+  private endOf(booking: BookingRow): string {
+    const minutes = booking.serviceIds.reduce(
+      (total, id) => total + (this.state.services.find((service) => service.id === id)?.durationMin ?? 0),
+      0,
+    );
+    return new Date(Date.parse(booking.start) + minutes * 60_000).toISOString();
+  }
+
+  /**
+   * Like scheduling.find_bookings (spec §0.2.6). The trusted caller ID is
+   * `state.callerNumber` (call_sessions in the real action), never input.
+   * Caller-ID match: the name on the booking is enough. No match: name, date
+   * and time must all match. Anything else returns the same empty refusal,
+   * whether or not the number has bookings.
+   */
+  private findBookings(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
+    const phone = toE164(asString(input.phone) ?? '');
+    if (!phone) return fail('VALIDATION_FAILED', 'Use a valid phone number, e.g. +15555550142', { field: 'phone' });
+    const name = asString(input.name)?.trim() || undefined;
+    const date = asString(input.date);
+    const time = asString(input.time);
+    const tz = ctx.tenantTimezone;
+    const upcoming = this.state.bookings
+      .filter((row) => row.status === 'confirmed' && Date.parse(row.start) > ctx.now.getTime() && toE164(row.customerPhone) === phone)
+      .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+    const matches = (row: BookingRow) =>
+      (!name || namesMatch(name, row.customerName)) &&
+      (!date || localDate(row.start, tz) === date) &&
+      (!time || formatLocalHm(row.start, tz) === time);
+    const present = (rows: BookingRow[]) =>
+      rows.map((row) => {
+        const services = this.serviceNamesOf(row.serviceIds);
+        const when = spokenSlot(row.start, tz);
+        return {
+          bookingId: row.id,
+          customerName: row.customerName,
+          serviceNames: services,
+          staffId: row.staffId,
+          staffName: row.staffName,
+          start: new Date(row.start).toISOString(),
+          end: this.endOf(row),
+          spoken: `${services.join(' and ')} with ${row.staffName}, ${when}, for ${row.customerName}.`,
+        };
+      });
+    const verify = (rows: BookingRow[]) => {
+      const set = this.verified.get(ctx.callId) ?? new Set<string>();
+      for (const row of rows) set.add(row.id);
+      this.verified.set(ctx.callId, set);
+      return ok({ verified: true, bookings: present(rows) });
+    };
+
+    if (ctx.actor.type !== 'agent') return ok({ verified: true, bookings: present(upcoming.filter(matches)) });
+    const callerId = this.state.callerNumber ? toE164(this.state.callerNumber) : null;
+    if (callerId === phone) {
+      if (!name) return ok({ verified: false, bookings: [], needs: 'name', matchCount: upcoming.length });
+      const found = upcoming.filter(matches);
+      return found.length > 0 ? verify(found) : ok({ verified: false, bookings: [], needs: 'name' });
+    }
+    if (!name || !date || !time) return ok({ verified: false, bookings: [], needs: 'name_date_time' });
+    const found = upcoming.filter(matches);
+    return found.length > 0 ? verify(found) : ok({ verified: false, bookings: [], needs: 'name_date_time' });
+  }
+
+  /**
+   * The agent may only change a booking find_bookings verified in this call;
+   * anything else gets the NOT_FOUND an unknown id gets. Then the PR-13
+   * policy: nothing already started, nothing inside the cancellation window.
+   */
+  private changeable(bookingId: string | undefined, ctx: ToolCallContext): BookingRow | ToolResult {
+    const notFound = fail('NOT_FOUND', 'Booking not found', { field: 'bookingId', callerSafeMessage: UNKNOWN_BOOKING });
+    if (!bookingId) return fail('VALIDATION_FAILED', 'bookingId is required', { field: 'bookingId' });
+    if (ctx.actor.type === 'agent' && !this.verified.get(ctx.callId)?.has(bookingId)) return notFound;
+    const booking = this.state.bookings.find((row) => row.id === bookingId);
+    if (!booking || booking.status === 'held') return notFound;
+    if (booking.status !== 'confirmed') {
+      return fail('VALIDATION_FAILED', `Cannot change a ${booking.status} booking`, {
+        field: 'bookingId',
+        callerSafeMessage: "I can't change that appointment. I can take a message for the shop.",
+      });
+    }
+    const leadMs = Date.parse(booking.start) - ctx.now.getTime();
+    if (leadMs <= 0) {
+      return fail('OUTSIDE_POLICY', 'The appointment has already started or passed', { callerSafeMessage: PAST_APPOINTMENT });
+    }
+    const hours = this.state.cancellationWindowHours ?? 24;
+    if (hours > 0 && leadMs < hours * 3_600_000) {
+      return fail('OUTSIDE_POLICY', `Inside the ${hours}-hour cancellation window`, { callerSafeMessage: cancellationPolicyText(hours) });
+    }
+    return booking;
+  }
+
+  private isFree(staffId: string, start: string): boolean {
+    return !this.state.bookings.some(
+      (row) => row.staffId === staffId && Date.parse(row.start) === Date.parse(start) && (row.status === 'held' || row.status === 'confirmed'),
+    );
+  }
+
+  private reschedulePrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
+    const original = this.changeable(asString(input.bookingId), ctx);
+    if ('ok' in original) return original;
+    const newStart = asString(input.newStart);
+    if (!newStart || Number.isNaN(Date.parse(newStart))) {
+      return fail('VALIDATION_FAILED', 'newStart must be an ISO date-time with offset', { field: 'newStart' });
+    }
+    const staffPref = asString(input.staffId) ?? original.staffId;
+    this.releaseCallHolds(ctx.callId);
+    const tz = ctx.tenantTimezone;
+    const fits = (slot: { staffId: string }) =>
+      (staffPref === 'any' || slot.staffId === staffPref) && staffPerforms(this.state, slot.staffId, original.serviceIds);
+    const slot = this.state.slots.find((candidate) => fits(candidate) && Date.parse(candidate.start) === Date.parse(newStart));
+    if (!slot || !this.isFree(slot.staffId, slot.start)) {
+      const day = localDate(newStart, tz);
+      const alternatives = this.state.slots
+        .filter((candidate) => fits(candidate) && localDate(candidate.start, tz) === day && this.isFree(candidate.staffId, candidate.start))
+        .slice(0, 3)
+        .map((candidate) => ({ start: candidate.start, staffId: candidate.staffId, spoken: spokenSlot(candidate.start, tz) }));
+      return fail('CONFLICT', 'that time is not available', { alternatives, callerSafeMessage: SLOT_UNAVAILABLE });
+    }
+    const staff = this.state.staff.find((member) => member.id === slot.staffId);
+    const services = this.serviceNamesOf(original.serviceIds).join(' and ');
+    const readback =
+      `Moving ${original.customerName}'s ${services} from ${spokenSlot(original.start, tz)} with ${original.staffName} ` +
+      `to ${spokenSlot(slot.start, tz)} with ${staff?.displayName ?? slot.staffId}.`;
+    const token = nextToken();
+    const hold: BookingRow = {
+      id: `hold_${token}`,
+      status: 'held',
+      staffId: slot.staffId,
+      staffName: staff?.displayName ?? slot.staffId,
+      serviceIds: [...original.serviceIds],
+      start: slot.start,
+      startLocal: formatLocalHm(slot.start, tz),
+      customerName: original.customerName,
+      customerPhone: original.customerPhone,
+    };
+    this.state.bookings.push(hold);
+    this.state.holds[token] = {
+      kind: 'reschedule',
+      payload: { bookingId: hold.id, originalId: original.id },
+      readback,
+      callId: ctx.callId,
+    };
+    return ok(
+      {
+        confirmationToken: token,
+        holdId: hold.id,
+        expiresAt: new Date(ctx.now.getTime() + 5 * 60 * 1000).toISOString(),
+        readback,
+        staffId: hold.staffId,
+        staffName: hold.staffName,
+        start: slot.start,
+        end: this.endOf(hold),
+      },
+      readback,
+    );
+  }
+
+  private cancelPrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
+    const booking = this.changeable(asString(input.bookingId), ctx);
+    if ('ok' in booking) return booking;
+    const services = this.serviceNamesOf(booking.serviceIds).join(' and ');
+    const readback = `Cancelling ${booking.customerName}'s ${services} with ${booking.staffName}, ${spokenSlot(booking.start, ctx.tenantTimezone)}.`;
+    const token = nextToken();
+    this.state.holds[token] = {
+      kind: 'cancel',
+      payload: { bookingId: booking.id, reason: asString(input.reason) ?? '' },
+      readback,
+      callId: ctx.callId,
+    };
+    return ok({ confirmationToken: token, expiresAt: new Date(ctx.now.getTime() + 5 * 60 * 1000).toISOString(), readback }, readback);
+  }
+
   private ticketPrepare(input: Record<string, unknown>): ToolResult {
     const kind = asString(input.kind) ?? 'message';
     const subject = asString(input.subject) ?? 'Message';
@@ -343,20 +582,43 @@ export class FakeToolProvider implements ToolProvider {
   }
 
   /** A retry with an already-committed token replays the stored result (runAction idempotency). */
-  private commit(kind: 'booking' | 'ticket' | 'transfer', input: Record<string, unknown>): ToolResult {
+  private commit(kind: CommitKind, input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const token = asString(input.confirmationToken);
     if (!token) return fail('VALIDATION_FAILED', 'confirmationToken is required', { field: 'confirmationToken' });
     const replay = this.commits.get(`${kind}\0${token}`);
     if (replay) return structuredClone(replay);
-    const result = this.commitOnce(kind, token);
+    const result = this.commitOnce(kind, token, ctx);
     if (result.ok) this.commits.set(`${kind}\0${token}`, structuredClone(result));
     return result;
   }
 
-  private commitOnce(kind: 'booking' | 'ticket' | 'transfer', token: string): ToolResult {
+  private commitOnce(kind: CommitKind, token: string, ctx: ToolCallContext): ToolResult {
     const hold = this.state.holds[token];
     if (!hold || hold.kind !== kind) return fail('CONFIRMATION_INVALID', 'confirmation token is invalid or expired');
+    // Tokens are bound to the call that prepared them (core consumeProposal).
+    if (hold.callId !== undefined && hold.callId !== ctx.callId) {
+      return fail('CONFIRMATION_INVALID', 'Confirmation token belongs to a different call');
+    }
     delete this.state.holds[token];
+    if (kind === 'reschedule') {
+      const moved = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
+      const original = this.state.bookings.find((row) => row.id === hold.payload.originalId);
+      if (!moved || moved.status !== 'held') return fail('CONFIRMATION_INVALID', 'hold was lost');
+      if (!original || original.status !== 'confirmed') {
+        return fail('CONFLICT', 'The original booking changed since the prepare');
+      }
+      moved.status = 'confirmed';
+      original.status = 'rescheduled';
+      const readback = `Done: ${moved.customerName}'s ${this.serviceNamesOf(moved.serviceIds).join(' and ')} is now ${spokenSlot(moved.start, ctx.tenantTimezone)} with ${moved.staffName}.`;
+      return ok({ bookingId: moved.id, previousBookingId: original.id, status: 'confirmed', readback });
+    }
+    if (kind === 'cancel') {
+      const booking = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
+      if (!booking || booking.status !== 'confirmed') return fail('CONFLICT', 'The booking changed since the prepare');
+      booking.status = 'cancelled';
+      booking.cancellationReason = String(hold.payload.reason ?? '');
+      return ok({ bookingId: booking.id, status: 'cancelled', readback: hold.readback.replace(/^Cancelling /, 'Cancelled: ') });
+    }
     if (kind === 'booking') {
       const booking = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
       if (!booking) return fail('CONFIRMATION_INVALID', 'hold was lost');

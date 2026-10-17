@@ -127,6 +127,30 @@ export async function loadBooking(
   return rows[0] ? mapBooking(rows[0]) : null;
 }
 
+/** Most bookings one phone lookup returns. */
+export const FIND_LIMIT = 20;
+
+/**
+ * Upcoming confirmed bookings whose contact phone is `phone` (E.164), soonest
+ * first. Matched on digits so a legacy "(555) 555-0142" row is found too;
+ * held, cancelled, rescheduled (superseded) and past rows never are.
+ */
+export async function upcomingByPhone(tx: TenantTx, tenantId: string, phone: string, now: Date): Promise<BookingRecord[]> {
+  const digits = phone.replace(/\D/g, '');
+  const variants = phone.startsWith('+1') && digits.length === 11 ? [digits, digits.slice(1)] : [digits];
+  const { rows } = await tx.query(
+    `${SELECT_BOOKING}
+      WHERE b.tenant_id = $1
+        AND b.status = 'confirmed'
+        AND b.start_time > $2
+        AND regexp_replace(b.contact_phone, '[^0-9]', '', 'g') = ANY($3::text[])
+      ORDER BY b.start_time, b.id
+      LIMIT ${FIND_LIMIT}`,
+    [tenantId, now.toISOString(), variants],
+  );
+  return rows.map(mapBooking);
+}
+
 /** The hold owned by a confirmation token (bookings.idempotency_key), locked for the commit. */
 export async function lockHoldByToken(tx: TenantTx, tenantId: string, token: string): Promise<BookingRecord | null> {
   const { rows } = await tx.query(
