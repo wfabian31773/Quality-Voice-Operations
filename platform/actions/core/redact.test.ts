@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyProposalRejection } from './proposals';
+import { classifyProposalRejection, consumeProposal, isConfirmationToken } from './proposals';
 import { canonicalize, requestHash } from './hash';
 import { auditActor, maskPhoneLast4, redactInput } from './redact';
 import type { ProposalRecord } from './store';
@@ -91,5 +91,30 @@ describe('classifyProposalRejection', () => {
     expect(classifyProposalRejection({ ...base, callId: 'other' }, expected)).toMatch(/different call/i);
     expect(classifyProposalRejection({ ...base, payloadHash: 'z'.repeat(64) }, expected)).toMatch(/payload has changed/i);
     expect(classifyProposalRejection(base, expected)).toMatch(/not valid/i);
+  });
+
+  it('rejects a non-UUID confirmation token as CONFIRMATION_INVALID', async () => {
+    expect(isConfirmationToken('not-a-uuid')).toBe(false);
+    const store = {
+      consumeProposal: async () => {
+        throw new Error('store should not be called');
+      },
+      inspectProposal: async () => {
+        throw new Error('store should not be called');
+      },
+    } as never;
+    const result = await consumeProposal(
+      { query: async () => ({ rows: [], rowCount: 0 }) },
+      {
+        tenantId: 't1',
+        actor: { type: 'user', id: 'u' },
+        now: expected.now,
+        tenantTimezone: 'UTC',
+        callId: 'call-1',
+      },
+      { confirmationToken: 'not-a-uuid', action: 'core.echo.prepare', payloadHash: expected.payloadHash },
+      store,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'CONFIRMATION_INVALID', retryable: false } });
   });
 });

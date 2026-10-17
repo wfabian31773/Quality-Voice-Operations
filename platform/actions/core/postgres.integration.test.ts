@@ -12,7 +12,8 @@ import {
   createEchoWriteAction,
 } from './__fixtures__/echo';
 import { defineAction } from './defineAction';
-import { actionOk } from './errors';
+import { actionFail, actionOk, isActionFailure } from './errors';
+import { consumeProposal } from './proposals';
 import { postgresActionStore } from './postgresStore';
 import { runActionDefinition } from './runAction';
 import type { ActionContext, TenantTx } from './types';
@@ -520,6 +521,68 @@ describe.skipIf(skipReason !== null)('action layer postgres integration', () => 
       [tenantId, 'core.echo.read'],
     );
     expect(rows[0]?.input_redacted).toEqual({});
+  });
+
+  it('retries a commit after a retryable ok:false without consuming the proposal', async () => {
+    const tenantId = randomUUID();
+    await currentPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'Retry', `r-${tenantId.slice(0, 8)}`],
+    );
+    let attempts = 0;
+    const prepare = createEchoPrepareAction();
+    const commit = defineAction({
+      name: 'core.echo.commit',
+      tool: 'business',
+      kind: 'commit',
+      input: z.object({
+        confirmationToken: z.string().uuid(),
+        payloadHash: z.string().length(64),
+      }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async (actionCtx, input, tx) => {
+        attempts += 1;
+        const consumed = await consumeProposal(tx, actionCtx, {
+          confirmationToken: input.confirmationToken,
+          action: 'core.echo.prepare',
+          payloadHash: input.payloadHash,
+          callId: actionCtx.callId,
+        });
+        if (isActionFailure(consumed)) return consumed;
+        if (attempts === 1) return actionFail('RATE_LIMITED', 'slow down');
+        return actionOk({ echoed: (consumed.payload as { message: string }).message });
+      },
+    });
+    const runtime = {
+      store: postgresActionStore,
+      withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withTenantTx(currentPool, id, fn),
+    };
+    const prepared = await runActionDefinition(
+      prepare,
+      { ...makeCtx(tenantId), idempotencyKey: 'prep-retry' },
+      { message: 'again' },
+      runtime,
+    );
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    const first = await runActionDefinition(
+      commit,
+      makeCtx(tenantId),
+      { confirmationToken: prepared.data.confirmationToken, payloadHash: prepared.data.payloadHash },
+      runtime,
+    );
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+    expect(first.error.code).toBe('RATE_LIMITED');
+    const second = await runActionDefinition(
+      commit,
+      makeCtx(tenantId),
+      { confirmationToken: prepared.data.confirmationToken, payloadHash: prepared.data.payloadHash },
+      runtime,
+    );
+    expect(second).toEqual({ ok: true, data: { echoed: 'again' } });
+    expect(attempts).toBe(2);
   });
 
   it('runs two parallel commits with the same token as exactly one side effect', async () => {

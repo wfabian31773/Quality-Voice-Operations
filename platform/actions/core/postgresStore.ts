@@ -32,6 +32,13 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 /** JSONB NOT NULL columns must never receive SQL NULL (`JSON.stringify(undefined)`). */
 function jsonbNotNull(value: unknown): string {
   if (value === undefined || value === null) return '{}';
@@ -173,6 +180,7 @@ export const postgresActionStore: ActionStore = {
   },
 
   async consumeProposal(tx, ctx, input) {
+    if (!isUuid(input.confirmationToken)) return null;
     const updated = await tx.query(
       `UPDATE action_proposals
           SET consumed_at = $6
@@ -199,6 +207,7 @@ export const postgresActionStore: ActionStore = {
   },
 
   async inspectProposal(tx, ctx, id) {
+    if (!isUuid(id)) return null;
     const result = await tx.query(
       `SELECT id, tenant_id, action, call_id, payload_hash, payload, readback, expires_at, consumed_at
          FROM action_proposals

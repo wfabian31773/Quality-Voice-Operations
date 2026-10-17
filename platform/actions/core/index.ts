@@ -6,7 +6,7 @@ export { redactInput, maskPhoneLast4, auditActor } from './redact';
 export { zodToJsonSchema } from './jsonSchema';
 export { createMemoryStore, type MemoryActionStore } from './memoryStore';
 export { postgresActionStore } from './postgresStore';
-export { createProposal, consumeProposal, classifyProposalRejection } from './proposals';
+export { createProposal, consumeProposal, classifyProposalRejection, isConfirmationToken } from './proposals';
 export { runAction, runActionDefinition, clipCallId, CALL_ID_MAX_LENGTH, type ActionRuntime } from './runAction';
 export { runWithActionStore } from './runtime';
 export {

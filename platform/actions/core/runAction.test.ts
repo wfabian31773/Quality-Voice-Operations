@@ -340,6 +340,57 @@ describe('runAction', () => {
     expect([...store.idempotency.values()].every((row) => row.status !== 'completed')).toBe(true);
   });
 
+  it('does not store CONFIRMATION_INVALID so a later correct-hash commit can succeed', async () => {
+    const side = { count: 0 };
+    const { store, deps } = runtime([createEchoPrepareAction(), createEchoCommitAction(side)]);
+    const prepared = await runAction(
+      'core.echo.prepare',
+      ctx({ idempotencyKey: 'prep-wrong' }),
+      { message: 'hello' },
+      deps,
+    );
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    const token = (prepared.data as { confirmationToken: string; payloadHash: string }).confirmationToken;
+    const hash = (prepared.data as { confirmationToken: string; payloadHash: string }).payloadHash;
+    const wrong = await runAction(
+      'core.echo.commit',
+      ctx(),
+      { confirmationToken: token, payloadHash: 'a'.repeat(64) },
+      deps,
+    );
+    expectFail(wrong, 'CONFIRMATION_INVALID');
+    expect(
+      [...store.idempotency.values()].filter((row) => row.key === token).every((row) => row.status !== 'completed'),
+    ).toBe(true);
+    const ok = await runAction(
+      'core.echo.commit',
+      ctx(),
+      { confirmationToken: token, payloadHash: hash },
+      deps,
+    );
+    expect(ok).toEqual({ ok: true, data: { echoed: 'hello' } });
+    expect(side.count).toBe(1);
+  });
+
+  it('treats the same idempotency key from a different call as a reused key', async () => {
+    const { deps } = runtime([createEchoWriteAction({ count: 0 })]);
+    const first = await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'call-bound', callId: 'call-1' }),
+      { message: 'hi' },
+      deps,
+    );
+    expect(first.ok).toBe(true);
+    const reused = await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'call-bound', callId: 'call-2' }),
+      { message: 'hi' },
+      deps,
+    );
+    expectFail(reused, 'IDEMPOTENCY_KEY_REUSED');
+  });
+
   it('does not finalize idempotency for retryable failures so a retry re-runs', async () => {
     const side = { count: 0 };
     const def = defineAction({
@@ -372,6 +423,26 @@ describe('runAction', () => {
     );
     expect(second).toEqual({ ok: true, data: { echoed: 'hi' } });
     expect(side.count).toBe(2);
+  });
+
+  it('still runs the action when SAVEPOINT is unavailable', async () => {
+    const { deps } = runtime([createEchoWriteAction({ count: 0 })]);
+    const result = await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'no-sp' }),
+      { message: 'ok' },
+      {
+        ...deps,
+        withTenantTx: async (_tenantId, fn) =>
+          fn({
+            query: async (sql: string) => {
+              if (sql.startsWith('SAVEPOINT')) throw new Error('savepoints disabled');
+              return { rows: [], rowCount: 0 };
+            },
+          }),
+      },
+    );
+    expect(result).toEqual({ ok: true, data: { echoed: 'ok' } });
   });
 
   it('returns VALIDATION_FAILED even when the audit transaction cannot start', async () => {

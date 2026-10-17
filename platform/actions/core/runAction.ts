@@ -47,7 +47,37 @@ function resultCode(result: ActionResult): string {
 }
 
 function shouldFinalizeIdempotency(result: ActionResult): boolean {
-  return result.ok || result.error.retryable !== true;
+  if (result.ok) return true;
+  if (result.error.retryable) return false;
+  if (result.error.code === 'CONFIRMATION_INVALID') return false;
+  return true;
+}
+
+async function openSavepoint(tx: TenantTx, name: string): Promise<boolean> {
+  try {
+    await tx.query(`SAVEPOINT ${name}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function rollbackSavepoint(tx: TenantTx, opened: boolean, name: string): Promise<void> {
+  if (!opened) return;
+  try {
+    await tx.query(`ROLLBACK TO SAVEPOINT ${name}`);
+  } catch {
+    // Best-effort: the caller still owns the action result or error.
+  }
+}
+
+async function releaseSavepoint(tx: TenantTx, opened: boolean, name: string): Promise<void> {
+  if (!opened) return;
+  try {
+    await tx.query(`RELEASE SAVEPOINT ${name}`);
+  } catch {
+    // Ignore fake/memory clients.
+  }
 }
 
 async function withAuditSavepoint(tx: TenantTx, fn: () => Promise<void>): Promise<void> {
@@ -167,7 +197,7 @@ async function execute<I, O>(
   }
 
   const boundCtx: ActionContext = { ...ctx, idempotencyKey };
-  const hash = requestHash(parsed.data);
+  const hash = requestHash({ input: parsed.data, callId: ctx.callId ?? null });
 
   try {
     return await withTenantTx(ctx.tenantId, async (tx) => {
@@ -195,14 +225,25 @@ async function execute<I, O>(
         }
       }
 
-      let result: ActionResult<O> = await def.run(boundCtx, parsed.data, tx);
-
-      if (result.ok) {
-        const out = def.output.safeParse(result.data);
-        if (!out.success) {
-          throw new Error(`Action ${def.name} returned data that did not match its output schema`);
+      const runSavepoint = await openSavepoint(tx, 'action_run');
+      let result: ActionResult<O>;
+      try {
+        result = await def.run(boundCtx, parsed.data, tx);
+        if (result.ok) {
+          const out = def.output.safeParse(result.data);
+          if (!out.success) {
+            throw new Error(`Action ${def.name} returned data that did not match its output schema`);
+          }
+          result = { ...result, data: out.data };
         }
-        result = { ...result, data: out.data };
+        if (!result.ok) {
+          await rollbackSavepoint(tx, runSavepoint, 'action_run');
+        } else {
+          await releaseSavepoint(tx, runSavepoint, 'action_run');
+        }
+      } catch (err) {
+        await rollbackSavepoint(tx, runSavepoint, 'action_run');
+        throw err;
       }
 
       if (isWriteKind(def.kind) && idempotencyKey) {

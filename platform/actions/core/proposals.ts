@@ -44,12 +44,22 @@ export async function createProposal(
   };
 }
 
+const CONFIRMATION_TOKEN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isConfirmationToken(value: string): boolean {
+  return CONFIRMATION_TOKEN.test(value);
+}
+
 export async function consumeProposal(
   tx: TenantTx,
   ctx: ActionContext,
   args: ConsumeProposalArgs,
   store: ActionStore = getActionStore(),
 ): Promise<ProposalRecord | ActionResult<never>> {
+  if (!isConfirmationToken(args.confirmationToken)) {
+    return actionFail('CONFIRMATION_INVALID', 'Unknown or expired confirmation token');
+  }
   const payloadHash = args.payloadHash ?? requestHash(args.payload ?? {});
   const consumed = await store.consumeProposal(tx, ctx, {
     confirmationToken: args.confirmationToken,

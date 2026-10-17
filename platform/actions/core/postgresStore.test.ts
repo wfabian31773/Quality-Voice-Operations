@@ -177,7 +177,7 @@ describe('postgresActionStore', () => {
       if (sql.includes('UPDATE action_proposals')) {
         return {
           rows: [{
-            id: 'tok',
+            id: '11111111-1111-4111-8111-111111111111',
             tenant_id: 't1',
             action: 'core.echo.prepare',
             call_id: 'call-1',
@@ -206,23 +206,29 @@ describe('postgresActionStore', () => {
     });
     expect(created.id).toBeTruthy();
 
+    const token = '11111111-1111-4111-8111-111111111111';
     const consumed = await postgresActionStore.consumeProposal(client, ctx, {
-      confirmationToken: 'tok',
+      confirmationToken: token,
       action: 'core.echo.prepare',
       callId: 'call-1',
       payloadHash: 'h'.repeat(64),
     });
-    expect(consumed?.id).toBe('tok');
+    expect(consumed?.id).toBe(token);
 
     const missing = await postgresActionStore.consumeProposal(client, ctx, {
-      confirmationToken: 'tok',
+      confirmationToken: token,
       action: 'core.echo.prepare',
       payloadHash: 'h'.repeat(64),
     });
-    // second consume in this fake still returns a row because the stub always matches UPDATE
-    expect(missing === null || missing.id === 'tok').toBe(true);
+    expect(missing === null || missing.id === token).toBe(true);
 
-    await postgresActionStore.inspectProposal(client, ctx, 'tok');
+    await postgresActionStore.inspectProposal(client, ctx, token);
+    expect(await postgresActionStore.consumeProposal(client, ctx, {
+      confirmationToken: 'not-a-uuid',
+      action: 'core.echo.prepare',
+      payloadHash: 'h'.repeat(64),
+    })).toBeNull();
+    expect(await postgresActionStore.inspectProposal(client, ctx, 'not-a-uuid')).toBeNull();
     await postgresActionStore.completeIdempotency(client, {
       tenantId: 't1',
       action: 'core.echo.write',
@@ -330,16 +336,17 @@ describe('postgresActionStore inspect empty', () => {
     const row = await postgresActionStore.inspectProposal(
       tx(() => ({ rows: [], rowCount: 0 })),
       ctx,
-      'missing',
+      '00000000-0000-4000-8000-000000000000',
     );
     expect(row).toBeNull();
   });
 
   it('parses date strings from postgres rows', async () => {
+    const id = '22222222-2222-4222-8222-222222222222';
     const row = await postgresActionStore.inspectProposal(
       tx(() => ({
         rows: [{
-          id: 'tok',
+          id,
           tenant_id: 't1',
           action: 'core.echo.prepare',
           call_id: null,
@@ -352,7 +359,7 @@ describe('postgresActionStore inspect empty', () => {
         rowCount: 1,
       })),
       ctx,
-      'tok',
+      id,
     );
     expect(row?.expiresAt.toISOString()).toBe('2026-10-17T15:05:00.000Z');
     expect(row?.consumedAt?.toISOString()).toBe('2026-10-17T15:01:00.000Z');
