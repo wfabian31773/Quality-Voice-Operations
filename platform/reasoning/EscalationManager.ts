@@ -36,6 +36,7 @@ interface EscalationConfig {
   emergencyKeywords: string[];
   billingDisputeKeywords: string[];
   humanRequestKeywords: string[];
+  transferAvailable: boolean;
 }
 
 const DEFAULT_CONFIG: EscalationConfig = {
@@ -44,6 +45,7 @@ const DEFAULT_CONFIG: EscalationConfig = {
   emergencyKeywords: EMERGENCY_KEYWORDS,
   billingDisputeKeywords: BILLING_DISPUTE_KEYWORDS,
   humanRequestKeywords: HUMAN_REQUEST_KEYWORDS,
+  transferAvailable: true,
 };
 
 export class EscalationManager {
@@ -51,6 +53,7 @@ export class EscalationManager {
   private confusionCount = 0;
   private lowConfidenceRetries = 0;
   private escalationHistory: EscalationEvent[] = [];
+  private messageFallbackOffered = false;
 
   constructor(config: Partial<EscalationConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -63,16 +66,16 @@ export class EscalationManager {
     if (emergencyCheck) return this.recordEscalation(emergencyCheck);
 
     const humanCheck = this.checkHumanRequest(utterance, context);
-    if (humanCheck) return this.recordEscalation(humanCheck);
+    if (humanCheck) return this.maybeDegradeWithoutTransfer(humanCheck);
 
     const billingCheck = this.checkBillingDispute(utterance, context);
-    if (billingCheck) return this.recordEscalation(billingCheck);
+    if (billingCheck) return this.maybeDegradeWithoutTransfer(billingCheck);
 
     const confusionCheck = this.checkRepeatedConfusion(context, confidence);
-    if (confusionCheck) return this.recordEscalation(confusionCheck);
+    if (confusionCheck) return this.maybeDegradeWithoutTransfer(confusionCheck);
 
     const retryCheck = this.checkLowConfidenceRetries(confidence);
-    if (retryCheck) return this.recordEscalation(retryCheck);
+    if (retryCheck) return this.maybeDegradeWithoutTransfer(retryCheck);
 
     return null;
   }
@@ -188,6 +191,24 @@ export class EscalationManager {
       };
     }
     return null;
+  }
+
+  private maybeDegradeWithoutTransfer(event: EscalationEvent): EscalationEvent | null {
+    if (this.config.transferAvailable) {
+      return this.recordEscalation(event);
+    }
+    if (this.messageFallbackOffered) {
+      logger.info('Skipping repeat escalation; message fallback already offered', {
+        trigger: event.trigger,
+      });
+      return null;
+    }
+    this.messageFallbackOffered = true;
+    return this.recordEscalation({
+      ...event,
+      output: 'take_message',
+      reason: `${event.reason} No on-call number is configured, so offer to take a message once.`,
+    });
   }
 
   private recordEscalation(event: EscalationEvent): EscalationEvent {

@@ -125,6 +125,24 @@ export const TOOL_LIBRARY: readonly ToolLibraryEntry[] = [
     },
   },
   {
+    name: 'update_booking',
+    description: 'Cancel or reschedule one of the caller\'s upcoming bookings. If more than one matches, list them and ask which. If exactly one matches, confirm it with the caller before applying. Never change a booking until the caller confirms and you pass back the confirmationToken from the previous challenge. Reschedule requires startTime. Uses the shop scheduling lifecycle (conflicts, blackouts, waitlist, calendar, audit).',
+    category: 'scheduling',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['cancel', 'reschedule'], description: 'Cancel the existing booking or move it to a new time' },
+        startTime: { type: 'string', description: 'New ISO-8601 start time. Required when action is reschedule.' },
+        bookingId: { type: 'string', description: 'Existing booking id after the caller chose one of several upcoming visits' },
+        confirmationToken: { type: 'string', description: 'Server-issued token from the previous update_booking challenge. Required to apply the change.' },
+        confirmed: { type: 'boolean', description: 'Ignored unless paired with a valid confirmationToken from a prior challenge' },
+        notes: { type: 'string', description: 'Cancel reason or reschedule notes' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_dispatch_job',
     description: 'Create a field dispatch job for a technician. Confirm address and timing before creating.',
     category: 'dispatch',

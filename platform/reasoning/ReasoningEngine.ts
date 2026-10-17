@@ -7,6 +7,7 @@ import { FallbackManager } from './FallbackManager';
 import { SafetyGate } from './SafetyGate';
 import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
+import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction, isPolicyOrNegatedCancel } from './cancelRescheduleLanguage';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -34,6 +35,7 @@ export interface ReasoningEngineConfig {
   memoryStorage?: MemoryStorage | null;
   confidenceProceedThreshold?: number;
   confidenceClarifyThreshold?: number;
+  humanTransferAvailable?: boolean;
 }
 
 export class ReasoningEngine {
@@ -62,6 +64,8 @@ export class ReasoningEngine {
       tenantPolicies: this.config.tenantPolicies,
       vertical: this.config.vertical,
       fallbackManager: this.fallbackManager,
+      escalationManager: this.decisionEngine.getEscalationManager(),
+      humanTransferAvailable: this.config.humanTransferAvailable,
     });
   }
 
@@ -76,22 +80,36 @@ export class ReasoningEngine {
       tenantPolicies: config.tenantPolicies,
       vertical: config.vertical,
       fallbackManager: this.fallbackManager,
+      humanTransferAvailable: config.humanTransferAvailable,
     });
 
     const pack = getIndustryPack(config.vertical);
     const additionalTemplates = pack
-      ? Object.entries(pack.slotManifests).map(([intent, manifest]) => ({
-          vertical: config.vertical,
-          intent,
-          steps: manifest.slots
-            .filter((s) => s.required)
-            .map((s, i) => ({
-              id: `collect_${s.name}`,
-              name: `Collect ${s.label}`,
-              description: s.prompt,
-              requiredSlots: [s.name],
-            })),
-        }))
+      ? Object.entries(pack.slotManifests).map(([intent, manifest]) => {
+          const requiredSlots = manifest.slots.filter((s) => s.required);
+          const toolToExecute = pack.intentTools?.[intent];
+          return {
+            vertical: config.vertical,
+            intent,
+            steps: [
+              ...requiredSlots.map((s) => ({
+                id: `collect_${s.name}`,
+                name: `Collect ${s.label}`,
+                description: s.prompt,
+                requiredSlots: [s.name],
+              })),
+              ...(toolToExecute
+                ? [{
+                    id: `execute_${toolToExecute}`,
+                    name: `Complete ${intent.replace(/_/g, ' ')}`,
+                    description: `Execute ${toolToExecute} after required details are collected`,
+                    requiredSlots: requiredSlots.map((s) => s.name),
+                    toolToExecute,
+                  }]
+                : []),
+            ],
+          };
+        })
       : [];
 
     this.workflowPlanner = new WorkflowPlanner(additionalTemplates);
@@ -129,6 +147,14 @@ export class ReasoningEngine {
   }
 
   classifyIntent(utterance: string): { intent: string; confidence: ConfidenceLevel } {
+    if (hasCancelOrRescheduleLanguage(utterance)) {
+      const pack = getIndustryPack(this.config.vertical);
+      if (pack?.intentPatterns?.some((pattern) => pattern.intent === 'reschedule_cancel')) {
+        return { intent: 'reschedule_cancel', confidence: 'high' };
+      }
+      return { intent: 'cancel', confidence: 'high' };
+    }
+
     const lower = utterance.toLowerCase();
 
     const patterns: { intent: string; keywords: string[]; confidence: ConfidenceLevel }[] = [
@@ -147,20 +173,48 @@ export class ReasoningEngine {
       { intent: 'file_claim', keywords: ['claim', 'file a claim', 'accident', 'damage', 'insurance', 'policy', 'coverage', 'deductible'], confidence: 'high' },
     ];
 
-    let bestMatch: { intent: string; confidence: ConfidenceLevel; score: number } | null = null;
+    const scorePatterns = (
+      candidates: { intent: string; keywords: string[]; confidence: ConfidenceLevel }[],
+    ): { intent: string; confidence: ConfidenceLevel; score: number } | null => {
+      let best: { intent: string; confidence: ConfidenceLevel; score: number; ratio: number } | null = null;
+      for (const pattern of candidates) {
+        let matchCount = 0;
+        for (const keyword of pattern.keywords) {
+          const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          if (new RegExp(`\\b${escaped}\\b`, 'i').test(lower)) matchCount++;
+        }
+        if (matchCount === 0) continue;
+        const ratio = matchCount / pattern.keywords.length;
+        if (!best || matchCount > best.score || (matchCount === best.score && ratio > best.ratio)) {
+          best = { intent: pattern.intent, confidence: pattern.confidence, score: matchCount, ratio };
+        }
+      }
+      return best;
+    };
 
-    for (const pattern of patterns) {
-      let matchCount = 0;
-      for (const keyword of pattern.keywords) {
-        if (lower.includes(keyword)) matchCount++;
+    const pack = getIndustryPack(this.config.vertical);
+    const dropNonAffirmativeChange = (
+      match: { intent: string; confidence: ConfidenceLevel; score: number } | null,
+    ) => {
+      if (!match) return null;
+      if (
+        (match.intent === 'cancel' || match.intent === 'reschedule_cancel')
+        && !hasCancelOrRescheduleLanguage(utterance)
+      ) {
+        return null;
       }
-      if (matchCount > 0 && (!bestMatch || matchCount > bestMatch.score)) {
-        bestMatch = { intent: pattern.intent, confidence: pattern.confidence, score: matchCount };
-      }
+      return match;
+    };
+    const packMatch = dropNonAffirmativeChange(
+      pack?.intentPatterns ? scorePatterns(pack.intentPatterns) : null,
+    );
+    const genericMatch = dropNonAffirmativeChange(scorePatterns(patterns));
+
+    if (packMatch && (!genericMatch || packMatch.score >= genericMatch.score)) {
+      return { intent: packMatch.intent, confidence: packMatch.confidence };
     }
-
-    if (bestMatch) {
-      return { intent: bestMatch.intent, confidence: bestMatch.confidence };
+    if (genericMatch) {
+      return { intent: genericMatch.intent, confidence: genericMatch.confidence };
     }
 
     return { intent: 'unknown', confidence: 'low' };
@@ -208,6 +262,9 @@ export class ReasoningEngine {
     this.slotTracker.advanceTurn();
 
     const previousIntent = this.currentIntent;
+    if (previousIntent !== 'unknown' && isPolicyOrNegatedCancel(utterance)) {
+      intent = previousIntent;
+    }
 
     if (previousIntent !== 'unknown' && intent !== previousIntent && intent !== 'unknown') {
       const priorContext = this.buildContext(utterance);
@@ -234,10 +291,11 @@ export class ReasoningEngine {
         }
       }
 
-      if (!this.workflowPlan || this.workflowPlan.status !== 'active') {
-        const context = this.buildContext(utterance);
-        this.workflowPlan = this.workflowPlanner.createPlan(context);
+      if (this.workflowPlan?.status === 'active') {
+        this.workflowPlanner.markAbandoned(this.workflowPlan);
       }
+      const context = this.buildContext(utterance);
+      this.workflowPlan = this.workflowPlanner.createPlan(context);
     }
 
     this.extractSlotsFromUtterance(utterance);
@@ -321,15 +379,29 @@ export class ReasoningEngine {
   }
 
   authorizeToolRequest(toolName: string, toolArgs: Record<string, unknown>): SafetyCheckResult {
+    if (this.currentIntent === 'reschedule_cancel' && toolName === 'create_booking') {
+      return {
+        allowed: false,
+        violations: [{
+          type: 'policy_violation',
+          description: 'Cancel and reschedule must update the existing booking. Do not create a new booking.',
+          blockedAction: toolName,
+          severity: 'critical',
+        }],
+      };
+    }
+
     const safety = this.checkToolSafety(toolName, toolArgs);
     if (!safety.allowed) return safety;
 
     const latest = this.lastDecisionResult;
     const workflowTool = this.getCurrentWorkflowStepTool();
+    const messageFallbackTool = latest?.fallbackStep === 'create_ticket'
+      && (toolName === 'create_ticket' || toolName === 'createServiceTicket');
     const conflictsWithDecision = latest?.action === 'complete_interaction'
-      || (latest?.action === 'escalate_to_human' && toolName !== 'escalate_to_human')
-      || (latest?.action === 'execute_tool' && Boolean(latest.toolToExecute) && latest.toolToExecute !== toolName)
-      || (workflowTool !== null && workflowTool !== toolName);
+      || (latest?.action === 'escalate_to_human' && toolName !== 'escalate_to_human' && !messageFallbackTool)
+      || (latest?.action === 'execute_tool' && Boolean(latest.toolToExecute) && latest.toolToExecute !== toolName && !messageFallbackTool)
+      || (workflowTool !== null && workflowTool !== toolName && !messageFallbackTool);
     if (!conflictsWithDecision) return safety;
 
     return {
@@ -349,6 +421,10 @@ export class ReasoningEngine {
 
   getLatestDecision(): DecisionResult | null {
     return this.lastDecisionResult;
+  }
+
+  getTranscript(): string[] {
+    return [...this.transcript];
   }
 
   handleToolSuccess(toolName: string): void {
@@ -434,6 +510,7 @@ export class ReasoningEngine {
       toolsAvailable: this.config.toolsAvailable,
       tenantPolicies: this.config.tenantPolicies ?? [],
       escalationAttempts: this.escalationAttempts,
+      humanTransferAvailable: this.config.humanTransferAvailable,
     };
   }
 
@@ -458,6 +535,18 @@ export class ReasoningEngine {
       if (firstManifest) return firstManifest;
     }
 
+    if (this.usesLibraryBookingTools()) {
+      return {
+        vertical: this.config.vertical,
+        intent: 'default',
+        slots: [
+          { name: 'contactName', label: 'Name', required: true, prompt: 'May I have your name?' },
+          { name: 'contactPhone', label: 'Phone', required: true, prompt: 'What is the best number to reach you?' },
+          { name: 'title', label: 'Request', required: false, prompt: 'How can I help you today?' },
+        ],
+      };
+    }
+
     return {
       vertical: this.config.vertical,
       intent: 'default',
@@ -469,7 +558,42 @@ export class ReasoningEngine {
     };
   }
 
+  private usesLibraryBookingTools(): boolean {
+    return this.config.toolsAvailable.includes('create_booking')
+      || this.config.toolsAvailable.includes('update_booking')
+      || this.config.toolsAvailable.includes('create_ticket');
+  }
+
   private getManifestForIntent(intent: string): SlotManifest {
+    const packManifest = getIndustryPack(this.config.vertical)?.slotManifests[intent];
+    if (packManifest) return packManifest;
+
+    if (this.usesLibraryBookingTools() && (intent === 'schedule_appointment' || intent === 'book_appointment')) {
+      return {
+        vertical: this.config.vertical,
+        intent,
+        slots: [
+          { name: 'title', label: 'Service', required: true, prompt: 'What should I book?' },
+          { name: 'startTime', label: 'Requested time', required: true, prompt: 'What day and time works?' },
+          { name: 'contactName', label: 'Name', required: true, prompt: 'May I have your name?' },
+          { name: 'contactPhone', label: 'Phone', required: true, prompt: 'What is the best number to reach you?' },
+          { name: 'notes', label: 'Notes', required: false, prompt: 'Any other details?' },
+        ],
+      };
+    }
+    if (this.usesLibraryBookingTools() && (intent === 'leave_message' || intent === 'billing_inquiry')) {
+      return {
+        vertical: this.config.vertical,
+        intent,
+        slots: [
+          { name: 'subject', label: 'Subject', required: true, prompt: 'What is this about?' },
+          { name: 'description', label: 'Message', required: true, prompt: 'What should the team know?' },
+          { name: 'contactName', label: 'Name', required: true, prompt: 'May I have your name?' },
+          { name: 'contactPhone', label: 'Phone', required: true, prompt: 'What number should they use?' },
+        ],
+      };
+    }
+
     const intentManifests: Record<string, SlotManifest> = {
       schedule_appointment: {
         vertical: this.config.vertical,
@@ -525,7 +649,8 @@ export class ReasoningEngine {
 
   private tryExtractSlotValue(slotName: string, lowerUtterance: string, originalUtterance: string): string | null {
     switch (slotName) {
-      case 'caller_name': {
+      case 'caller_name':
+      case 'contactName': {
         const namePatterns = [
           /my name is ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
           /this is ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
@@ -538,11 +663,21 @@ export class ReasoningEngine {
         }
         return null;
       }
-      case 'callback_number': {
+      case 'callback_number':
+      case 'contactPhone':
+      case 'toNumber': {
         const phoneMatch = originalUtterance.match(/(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
         return phoneMatch ? phoneMatch[1] : null;
       }
-      case 'reason_for_call': {
+      case 'action': {
+        return inferCancelOrRescheduleAction(originalUtterance);
+      }
+      case 'reason_for_call':
+      case 'title':
+      case 'subject':
+      case 'description':
+      case 'query':
+      case 'reason': {
         const reasonPatterns = [
           /(?:i need|i want|i'd like|i would like|calling about|calling for|calling to|i'm calling about|i'm calling for|need help with)\s+(.+)/i,
         ];
@@ -553,17 +688,28 @@ export class ReasoningEngine {
         return null;
       }
       case 'preferred_date':
-      case 'appointment_date': {
+      case 'appointment_date':
+      case 'startTime': {
         const datePatterns = [
           /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
           /\b(tomorrow|today|next week)\b/i,
           /\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/,
           /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}/i,
         ];
+        let datePart: string | null = null;
         for (const pattern of datePatterns) {
           const match = originalUtterance.match(pattern);
-          if (match) return match[0].trim();
+          if (match) {
+            datePart = match[0].trim();
+            break;
+          }
         }
+        const timeMatch = originalUtterance.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.))\b/i);
+        if (slotName === 'startTime' && datePart && timeMatch?.[1]) {
+          return `${datePart} ${timeMatch[1].trim()}`;
+        }
+        if (datePart) return datePart;
+        if (slotName === 'startTime' && timeMatch?.[1]) return timeMatch[1].trim();
         return null;
       }
       case 'preferred_time':

@@ -11,7 +11,7 @@ export async function executeSendSms(
   input: Record<string, unknown>,
   context: ToolContext,
 ): Promise<{ success: boolean; message: string; sid?: string }> {
-  const toNumber = String(input.toNumber ?? '').trim();
+  const toNumber = String(input.toNumber ?? context.callerNumber ?? '').trim();
   const body = String(input.body ?? '').trim();
   if (!toNumber || !body) {
     return { success: false, message: 'toNumber and body are required.' };

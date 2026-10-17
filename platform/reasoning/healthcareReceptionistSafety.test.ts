@@ -70,8 +70,8 @@ describe('healthcare receptionist reasoning safety', () => {
     const result = engine().authorizeToolRequest('createServiceTicket', {
       callerFirstName: 'Morgan',
       callerLastName: 'Lee',
-      callerPhone: '+15555550120',
-      callbackNumber: '+15555550120',
+      callerPhone: '+15555550100',
+      callbackNumber: '+15555550100',
       callerType: 'pharmacy',
       organizationName: 'Central Pharmacy',
       reasonForCall: 'Refill clarification requested by the pharmacy',

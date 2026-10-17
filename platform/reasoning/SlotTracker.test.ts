@@ -22,10 +22,11 @@ describe('SlotTracker.fillSlot', () => {
     expect(t.getSlotAttempts('caller_name')).toBe(1);
   });
 
-  it('rejects an unknown slot without throwing', () => {
+  it('registers an unknown slot as optional so tool args can be tracked', () => {
     const t = new SlotTracker(TWO_REQUIRED);
-    expect(t.fillSlot('nonexistent', 'x')).toBe(false);
-    expect(t.getSlotValue('nonexistent')).toBeNull();
+    expect(t.fillSlot('contactName', 'Ada')).toBe(true);
+    expect(t.getSlotValue('contactName')).toBe('Ada');
+    expect(t.getMissingRequired()).not.toContain('contactName');
   });
 
   it('rejects a value that fails the slot validation and counts the attempt', () => {

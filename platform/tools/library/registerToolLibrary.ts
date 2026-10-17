@@ -6,7 +6,7 @@ import { TOOL_LIBRARY } from './catalog';
 import { sendSmsTool } from './handlers/sendSms';
 import { sendEmailTool } from './handlers/sendEmail';
 import { createTicketTool } from './handlers/createTicket';
-import { createBookingTool } from './handlers/createBooking';
+import { createBookingTool, updateBookingTool } from './handlers/createBooking';
 import { createDispatchJobTool } from './handlers/createDispatchJob';
 
 const EXECUTABLE_LIBRARY_TOOLS = [
@@ -14,6 +14,7 @@ const EXECUTABLE_LIBRARY_TOOLS = [
   sendEmailTool,
   createTicketTool,
   createBookingTool,
+  updateBookingTool,
   createDispatchJobTool,
   lookupCustomerTool,
   recordCallOutcomeTool,

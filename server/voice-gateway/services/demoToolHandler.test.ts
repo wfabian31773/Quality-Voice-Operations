@@ -19,10 +19,21 @@ describe('handleDemoToolCall', () => {
     expect(handleDemoToolCall('tenant-1', 'createServiceTicket', {})).toBeNull();
   });
 
-  it('returns a generic simulated response for an unknown tool', () => {
-    const res = parse(handleDemoToolCall('demo', 'someNewTool', {}));
-    expect(res).toMatchObject({ success: true, demo: true });
-    expect(res.message).toContain('someNewTool');
+  it('lets unknown tools fall through to the real handler', () => {
+    expect(handleDemoToolCall('demo', 'someNewTool', {})).toBeNull();
+  });
+
+  it('lets built-in library tools run for real on the demo tenant', () => {
+    for (const tool of [
+      'create_booking',
+      'update_booking',
+      'create_ticket',
+      'send_sms',
+      'get_current_tenant_time',
+      'escalate_to_human',
+    ]) {
+      expect(handleDemoToolCall('demo', tool, {}), tool).toBeNull();
+    }
   });
 
   it('renders the createServiceTicket script with caller-supplied fields', () => {

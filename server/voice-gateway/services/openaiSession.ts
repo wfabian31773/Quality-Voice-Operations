@@ -20,6 +20,9 @@ import { buildFallbackResponse } from '../../../platform/tools/ConversationFallb
 import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
 import { recordTrace } from '../../../platform/core/observability/traceLogger';
 import { handleDemoToolCall } from './demoToolHandler';
+import { buildMessageFallbackInstruction } from './messageFallbackInstruction';
+import { bindSessionToolArgs } from '../../../platform/reasoning/sessionBinding';
+import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
@@ -133,6 +136,35 @@ function buildToolHandler(
         durationMs: Date.now() - startTime
       });
       return JSON.stringify({ success: false, message: 'Rate limit exceeded for this tool. Please wait a moment before trying again.' });
+    }
+
+    if (!INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
+      const sessionBound = bindSessionToolArgs(args, {
+        tenantId,
+        agentId: agentConfig.agentId,
+        callerNumber: ctx.callerNumber,
+        transcript: ctx.reasoningEngine?.getTranscript().join(' ') ?? '',
+      });
+      if (!sessionBound.ok) {
+        logger.warn('Session binding rejected tool args', {
+          tenantId,
+          callId: callSessionId,
+          tool: toolName,
+          reason: sessionBound.reason,
+        });
+        const bindId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+        await completeToolExecution({
+          tenantId,
+          executionId: bindId,
+          callSessionId,
+          result: { success: false, reason: 'session_mismatch', message: sessionBound.reason },
+          status: 'failed',
+          errorMessage: sessionBound.reason,
+          durationMs: Date.now() - startTime,
+        });
+        return JSON.stringify({ success: false, message: sessionBound.reason });
+      }
+      args = sessionBound.args;
     }
 
     if (ctx.reasoningEngine && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
@@ -521,6 +553,8 @@ function buildToolHandler(
               callLogId: callSessionId,
               callSid,
               agentSlug: agentConfig.agentId,
+              callerNumber: ctx.callerNumber,
+              transcriptTurnIndex: ctx.reasoningEngine?.getTranscript().length ?? 0,
             });
             rawResult = JSON.stringify(toolResult);
             return assertToolSuccess(rawResult, toolName);
@@ -611,7 +645,9 @@ function buildToolHandler(
 
     if (ctx.reasoningEngine) {
       try {
-        if (executionStatus === 'success') {
+        const pendingChallenge = parsedResult && typeof parsedResult === 'object'
+          && isPendingBookingChallenge(parsedResult as Record<string, unknown>);
+        if (executionStatus === 'success' && !pendingChallenge) {
           ctx.reasoningEngine.handleToolSuccess(toolName);
           const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
           if (stepTool === toolName) {
@@ -734,6 +770,34 @@ export interface RealtimeSessionResult {
   routedTier: string;
 }
 
+export async function resolveHumanEscalationRoute(input: {
+  hasOnCallNumber: boolean;
+  onEscalation?: SessionContext['onEscalation'];
+  onHandoff?: SessionContext['onHandoff'];
+  callSessionId: string;
+  callSid: string;
+  reason: string;
+}): Promise<{
+  route: 'phone' | 'handoff' | 'ticket';
+  handoff?: Awaited<ReturnType<NonNullable<SessionContext['onHandoff']>>>;
+}> {
+  if (input.hasOnCallNumber && input.onEscalation) {
+    await input.onEscalation(input.callSessionId, input.callSid, input.reason);
+    return { route: 'phone' };
+  }
+  if (input.onHandoff) {
+    try {
+      const handoff = await input.onHandoff(input.callSessionId, 'human_request', input.reason);
+      if (handoff.success) {
+        return { route: 'handoff', handoff };
+      }
+    } catch {
+      // Fall through to a message so the caller is never left in silence.
+    }
+  }
+  return { route: 'ticket' };
+}
+
 export async function createRealtimeSession(
   ctx: SessionContext,
 ): Promise<RealtimeSessionResult> {
@@ -770,6 +834,10 @@ export async function createRealtimeSession(
       callerNumber,
       toolsAvailable: agentConfig.tools.map((t) => t.name),
       memoryStorage: ctx.callerMemory ?? null,
+      humanTransferAvailable: Boolean(
+        ctx.onHandoff
+        || (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+      ),
     };
     reasoningEngine = new ReasoningEngine(reasoningConfig);
   } catch (err) {
@@ -1112,17 +1180,88 @@ export async function createRealtimeSession(
                   escalation: reasoningResult.escalation?.trigger,
                 }).catch(() => {});
 
-                if (reasoningResult.action === 'escalate_to_human' && ctx.onEscalation) {
+                if (reasoningResult.action === 'escalate_to_human') {
                   const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
-                  updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
-                  writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
-                    trigger: reasoningResult.escalation?.trigger,
-                    output: reasoningResult.escalation?.output,
+                  const hasOnCallNumber = Boolean(
+                    (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+                  );
+                  void resolveHumanEscalationRoute({
+                    hasOnCallNumber,
+                    onEscalation: ctx.onEscalation,
+                    onHandoff: ctx.onHandoff,
+                    callSessionId,
+                    callSid,
                     reason: escalationReason,
-                  }).catch(() => {});
-                  ctx.onEscalation(callSessionId, callSid, escalationReason).catch((escErr) => {
-                    slog.error('Reasoning-triggered escalation failed', { error: String(escErr) });
+                  }).then((resolved) => {
+                    if (resolved.route === 'phone') {
+                      updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
+                      writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
+                        trigger: reasoningResult.escalation?.trigger,
+                        output: reasoningResult.escalation?.output,
+                        reason: escalationReason,
+                      }).catch(() => {});
+                      return;
+                    }
+                    if (resolved.route === 'handoff') {
+                      updateCallState(tenantId, callSessionId, 'HANDOFF', { escalationReason }).catch(() => {});
+                      writeCallEvent(tenantId, callSessionId, 'reasoning_handoff', 'ACTIVE_CONVERSATION', 'HANDOFF', {
+                        trigger: reasoningResult.escalation?.trigger,
+                        reason: escalationReason,
+                      }).catch(() => {});
+                      if (resolved.handoff?.targetAgentConfig && ctx.onSessionSwapRequired) {
+                        void ctx.onSessionSwapRequired(
+                          resolved.handoff.targetAgentConfig,
+                          resolved.handoff.message,
+                        ).catch((swapErr) => {
+                          slog.error('Workforce session swap failed after reasoning handoff', { error: String(swapErr) });
+                        });
+                      }
+                      try {
+                        sendModelInstruction(
+                          resolved.handoff?.message
+                            ? `A teammate is taking this call. Tell the caller: ${resolved.handoff.message}`
+                            : 'A teammate is taking this call. Tell the caller you are transferring them now.',
+                        );
+                      } catch (injectErr) {
+                        slog.error('Failed to inject workforce handoff instruction', { error: String(injectErr) });
+                      }
+                      return;
+                    }
+                    writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                      trigger: reasoningResult.escalation?.trigger,
+                      reason: 'no_live_transfer',
+                    }).catch(() => {});
+                    try {
+                      sendModelInstruction(
+                        buildMessageFallbackInstruction('create_ticket'),
+                      );
+                    } catch (injectErr) {
+                      slog.error('Failed to inject take-message fallback', { error: String(injectErr) });
+                    }
+                  }).catch((escErr) => {
+                    slog.error('Reasoning-triggered escalation routing failed', { error: String(escErr) });
+                    try {
+                      sendModelInstruction(buildMessageFallbackInstruction('create_ticket'));
+                    } catch { /* never leave the caller without a spoken next step */ }
                   });
+                }
+
+                if (
+                  reasoningResult.action === 'execute_tool'
+                  && reasoningResult.fallbackStep === 'create_ticket'
+                  && reasoningResult.escalation?.output === 'take_message'
+                ) {
+                  writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                    trigger: reasoningResult.escalation.trigger,
+                    tool: reasoningResult.toolToExecute,
+                  }).catch(() => {});
+                  try {
+                    sendModelInstruction(
+                      buildMessageFallbackInstruction(reasoningResult.toolToExecute ?? 'create_ticket'),
+                    );
+                  } catch (injectErr) {
+                    slog.error('Failed to inject take-message fallback', { error: String(injectErr) });
+                  }
                 }
 
                 if (reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {

@@ -72,6 +72,7 @@ import {
   normalizeTimeZone,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
 import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
+import { createSalonRolePackage } from '../../../platform/agent-templates/salon';
 
 const logger = createLogger('AGENT_LOADER');
 
@@ -248,6 +249,8 @@ function resolveTemplateKey(agentType: string, agentId: string): string {
     'technical_support': 'technical-support',
     'technical-support': 'technical-support',
     'collections': 'collections',
+    'salon': 'salon',
+    'barbershop': 'salon',
   };
 
   const fromType = typeMap[agentType];
@@ -494,6 +497,28 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tools: filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides),
         guardrails: role.guardrails,
         metadata: { ...meta, businessName, role: 'core-receptionist' },
+      }, { id: role.id, version: role.version });
+    }
+
+    case 'salon': {
+      const businessName = (meta.businessName as string) ?? (meta.practiceName as string) ?? (meta.companyName as string) ?? 'the salon';
+      const role = createSalonRolePackage({
+        businessName,
+        greeting: meta.greeting as string | undefined,
+        preferredLanguage: language,
+        timeZone,
+        voice: dbAgent?.voice,
+      });
+      return finalize({
+        agentId,
+        tenantId,
+        systemPrompt: role.prompt,
+        greeting: (meta.greeting as string) ?? role.greeting,
+        voice: role.voice ?? dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
+        model: MASTER_VOICE_AGENT_MODEL,
+        tools: filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides),
+        guardrails: role.guardrails,
+        metadata: { ...meta, businessName, role: 'salon' },
       }, { id: role.id, version: role.version });
     }
 

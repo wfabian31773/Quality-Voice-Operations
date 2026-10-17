@@ -97,6 +97,26 @@ describe('loadAgentConfig', () => {
     expect(Array.isArray(cfg.tools)).toBe(true);
   });
 
+  it('loads the salon role package with library booking tools', () => {
+    const cfg = loadAgentConfig(ctx({
+      agentType: 'salon',
+      dbAgent: { name: 'Clip', metadata: { businessName: 'Northside Barbers' } },
+    }));
+    expect(cfg.rolePackageId).toBe('salon');
+    expect(cfg.model).toBe('grok-voice-think-fast-2.0');
+    expect(cfg.coreVersion).toBe('2.0.0');
+    expect(cfg.greeting).toContain('Northside Barbers');
+    expect(cfg.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+      'create_booking',
+      'update_booking',
+      'send_sms',
+      'create_ticket',
+      'escalate_to_human',
+      'get_current_tenant_time',
+    ]));
+    expect(cfg.tools.map((tool) => tool.name)).not.toContain('createServiceTicket');
+  });
+
   it('loads the GTM core-receptionist role for general and core-receptionist types', () => {
     for (const agentType of ['general', 'core-receptionist', 'core_receptionist']) {
       const cfg = loadAgentConfig(ctx({

@@ -131,21 +131,128 @@ describe('SafetyGate.checkPreExecution', () => {
     expect(types(result)).toContain('unauthorized_tool');
   });
 
-  it('blocks when required data was filled only from model tool args, not the caller', () => {
+  it('allows a library booking when required fields are present in tool args', () => {
     const ctx = makeReasoningContext({
-      toolsAvailable: ['createServiceTicket'],
-      slotTracker: makeSlotTrackerState(makeSlotManifest(), { caller_name: 'Ada' }),
+      vertical: 'salon',
+      toolsAvailable: ['create_booking'],
+      currentUtterance: 'Book a haircut Friday at 3pm, I am Ada',
+      transcript: ['Book a haircut Friday at 3pm, I am Ada'],
+      slotTracker: makeSlotTrackerState(makeSlotManifest([{ name: 'title', required: true }])),
     });
-    const result = new SafetyGate('hvac').checkPreExecution(
+    const result = new SafetyGate('salon').checkPreExecution(
       ctx,
-      'createServiceTicket',
-      {},
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Ada',
+        contactPhone: '+15551234567',
+      },
       makeConfidence('high'),
-      new Set(['caller_name']),
+      new Set(['title', 'startTime', 'contactName', 'contactPhone']),
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('blocks a library booking when required fields exist only in model tool_args', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      toolsAvailable: ['create_booking'],
+      currentUtterance: 'hello',
+      transcript: [],
+      slotTracker: makeSlotTrackerState(makeSlotManifest([{ name: 'title', required: true }])),
+    });
+    const result = new SafetyGate('salon').checkPreExecution(
+      ctx,
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Hallucinated Guest',
+        contactPhone: '+15551234567',
+      },
+      makeConfidence('high'),
+      new Set(['title', 'startTime', 'contactName', 'contactPhone']),
     );
     expect(result.allowed).toBe(false);
     expect(types(result)).toContain('missing_required_data');
-    expect(result.violations[0].description).toContain('caller-provided');
+    expect(result.violations.map((v) => v.description).join(' ')).toMatch(/tool arguments/);
+  });
+
+  it('blocks a library booking when name, phone, or time is missing', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      toolsAvailable: ['create_booking'],
+    });
+    const result = new SafetyGate('salon').checkPreExecution(
+      ctx,
+      'create_booking',
+      { title: 'Haircut' },
+      makeConfidence('high'),
+    );
+    expect(result.allowed).toBe(false);
+    expect(types(result)).toContain('missing_required_data');
+    expect(result.violations[0].description).toMatch(/startTime|contactName|contactPhone/);
+  });
+
+  it('rejects model args that override the session tenant or caller phone', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      tenantId: 'demo',
+      agentSlug: 'salon-agent',
+      callerNumber: '+15555550199',
+      toolsAvailable: ['create_booking'],
+    });
+    const gate = new SafetyGate('salon');
+
+    const tenantMismatch = gate.checkPreExecution(
+      ctx,
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Ada',
+        contactPhone: '+15555550199',
+        tenantId: 'other-tenant',
+      },
+      makeConfidence('high'),
+    );
+    expect(tenantMismatch.allowed).toBe(false);
+    expect(types(tenantMismatch)).toContain('policy_violation');
+    expect(tenantMismatch.violations.map((v) => v.description).join(' ')).toMatch(/tenant/);
+
+    const callerMismatch = gate.checkPreExecution(
+      ctx,
+      'create_booking',
+      {
+        title: 'Haircut',
+        startTime: '2026-10-17T15:00:00-07:00',
+        contactName: 'Ada',
+        contactPhone: '+15559990000',
+      },
+      makeConfidence('high'),
+    );
+    expect(callerMismatch.allowed).toBe(false);
+    expect(types(callerMismatch)).toContain('policy_violation');
+    expect(callerMismatch.violations.map((v) => v.description).join(' ')).toMatch(/not spoken/);
+  });
+
+  it('requires a new time before authorizing a reschedule', () => {
+    const ctx = makeReasoningContext({
+      vertical: 'salon',
+      toolsAvailable: ['update_booking'],
+      currentUtterance: 'I need to reschedule my appointment, this is Ada',
+      transcript: ['I need to reschedule my appointment, this is Ada'],
+    });
+    const result = new SafetyGate('salon').checkPreExecution(
+      ctx,
+      'update_booking',
+      { action: 'reschedule', contactName: 'Ada' },
+      makeConfidence('high'),
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.violations.map((v) => v.description).join(' ')).toMatch(/startTime/);
   });
 
   it('flags a hallucinated confirmation: a boolean-true arg under low confidence and sparse data', () => {
@@ -198,18 +305,30 @@ describe('SafetyGate.checkPreExecution', () => {
       expect(result.violations[0].description).toContain('reason_for_call');
     });
 
-    it('allows a tool whose default required list is empty (retrieve_knowledge)', () => {
+    it('requires a query for retrieve_knowledge from the library schema', () => {
       const ctx = makeReasoningContext({
         toolsAvailable: ['retrieve_knowledge'],
         slotTracker: optionalOnly,
       });
-      const result = new SafetyGate().checkPreExecution(
+      const blocked = new SafetyGate().checkPreExecution(
         ctx,
         'retrieve_knowledge',
         {},
         makeConfidence('high'),
       );
-      expect(result.allowed).toBe(true);
+      expect(blocked.allowed).toBe(false);
+      const allowed = new SafetyGate().checkPreExecution(
+        makeReasoningContext({
+          toolsAvailable: ['retrieve_knowledge'],
+          slotTracker: optionalOnly,
+          currentUtterance: 'What are Saturday hours?',
+          transcript: ['What are Saturday hours?'],
+        }),
+        'retrieve_knowledge',
+        { query: 'Saturday hours' },
+        makeConfidence('high'),
+      );
+      expect(allowed.allowed).toBe(true);
     });
 
     it('allows a tool with no manifest-required slots and no default entry', () => {

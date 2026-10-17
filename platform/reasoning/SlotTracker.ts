@@ -31,10 +31,19 @@ export class SlotTracker {
   }
 
   fillSlot(name: string, value: string): boolean {
-    const slot = this.state.slots.get(name);
+    let slot = this.state.slots.get(name);
     if (!slot) {
-      logger.warn('Attempted to fill unknown slot', { slot: name });
-      return false;
+      // Tool arguments often arrive before the intent manifest lists them.
+      // Accept them as optional so the safety gate can see caller-provided data.
+      slot = {
+        name,
+        value: null,
+        required: false,
+        filledAtTurn: null,
+        attempts: 0,
+      };
+      this.state.slots.set(name, slot);
+      logger.debug('Registered unknown slot from tool or conversation', { slot: name });
     }
 
     const entry = this.getManifestEntry(name);

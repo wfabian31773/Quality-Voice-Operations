@@ -1,4 +1,5 @@
 import { createLogger } from '../../../platform/core/logger';
+import { TOOL_LIBRARY_NAMES } from '../../../platform/tools/library/catalog';
 
 const logger = createLogger('DEMO_TOOL_HANDLER');
 
@@ -196,6 +197,12 @@ export function handleDemoToolCall(
     return null;
   }
 
+  // Built-in library tools (booking, tickets, SMS, tenant time) run for real on
+  // the demo tenant. Rate limits in the shared tool pipeline remain the abuse guard.
+  if ((TOOL_LIBRARY_NAMES as readonly string[]).includes(toolName)) {
+    return null;
+  }
+
   const handler = DEMO_TOOL_RESPONSES[toolName];
   if (handler) {
     logger.info('Demo tool call intercepted — returning synthetic response', {
@@ -205,13 +212,5 @@ export function handleDemoToolCall(
     return JSON.stringify(handler(args));
   }
 
-  logger.info('Demo tool call intercepted — no handler, returning generic demo response', {
-    tenantId,
-    tool: toolName,
-  });
-  return JSON.stringify({
-    success: true,
-    message: `Demo mode: ${toolName} executed successfully (simulated).`,
-    demo: true,
-  });
+  return null;
 }

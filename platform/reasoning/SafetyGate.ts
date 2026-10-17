@@ -1,4 +1,6 @@
 import { createLogger } from '../core/logger';
+import { getToolLibraryEntry } from '../tools/library/catalog';
+import { bindSessionToolArgs, sessionTranscriptFrom } from './sessionBinding';
 import type {
   SafetyCheckResult,
   SafetyViolation,
@@ -35,6 +37,102 @@ const DEFAULT_TOOLS_REQUIRING_COMPLETE_DATA: Record<string, string[]> = {
   retrieve_knowledge: [],
 };
 
+const LIBRARY_FIELD_ALIASES: Record<string, string[]> = {
+  contactName: ['contactName', 'caller_name', 'callerName'],
+  contactPhone: ['contactPhone', 'callback_number', 'caller_phone', 'toNumber'],
+  startTime: ['startTime', 'preferred_time', 'appointment_time', 'preferred_date'],
+  title: ['title', 'reason_for_call'],
+  subject: ['subject', 'reason_for_call', 'title'],
+  description: ['description', 'reason_for_call', 'notes'],
+  reason: ['reason', 'reason_for_call'],
+  toNumber: ['toNumber', 'contactPhone', 'callback_number'],
+  body: ['body', 'description', 'notes'],
+  query: ['query', 'reason_for_call'],
+};
+
+function isPresentValue(value: unknown): boolean {
+  if (typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.trim().length > 0;
+  return false;
+}
+
+function slotOrArgValue(
+  field: string,
+  toolArgs: Record<string, unknown>,
+  context: ReasoningContext,
+): unknown {
+  if (isPresentValue(toolArgs[field])) return toolArgs[field];
+  const aliases = LIBRARY_FIELD_ALIASES[field] ?? [field];
+  for (const alias of aliases) {
+    if (isPresentValue(toolArgs[alias])) return toolArgs[alias];
+    const slot = context.slotTracker.slots.get(alias);
+    if (slot && slot.value !== null && slot.value !== undefined && String(slot.value).trim().length > 0) {
+      return slot.value;
+    }
+  }
+  return undefined;
+}
+
+const SESSION_BOUND_FIELDS = new Set([
+  'contactPhone',
+  'contact_phone',
+  'toNumber',
+  'to_number',
+  'callback_number',
+  'callbackNumber',
+  'callerPhone',
+  'caller_phone',
+  'phoneNumber',
+  'phone',
+]);
+
+function fieldAliases(field: string): string[] {
+  return LIBRARY_FIELD_ALIASES[field] ?? [field];
+}
+
+function callerSourcedSlot(
+  field: string,
+  context: ReasoningContext,
+  toolArgSlots?: Set<string>,
+): boolean {
+  for (const alias of fieldAliases(field)) {
+    const slot = context.slotTracker.slots.get(alias);
+    if (!slot || slot.value === null || slot.value === undefined || String(slot.value).trim().length === 0) {
+      continue;
+    }
+    if (toolArgSlots?.has(alias) || toolArgSlots?.has(field)) continue;
+    return true;
+  }
+  return false;
+}
+
+function transcriptSupportsValue(context: ReasoningContext, field: string, value: unknown): boolean {
+  const transcript = [...context.transcript, context.currentUtterance ?? ''].join(' ').toLowerCase();
+  if (!transcript.trim()) return false;
+  if (SESSION_BOUND_FIELDS.has(field)) return true;
+  if (field === 'startTime' || field === 'preferred_time' || field === 'appointment_time') {
+    return /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|next week|\d{1,2}(?::\d{2})?\s*(?:am|pm)|morning|afternoon|evening|\d{1,2}\/\d{1,2})\b/i.test(transcript);
+  }
+  if (typeof value !== 'string' || value.trim().length === 0) return false;
+  const tokens = value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length >= 3);
+  if (tokens.length === 0) {
+    return transcript.includes(value.toLowerCase().trim());
+  }
+  return tokens.some((token) => transcript.includes(token));
+}
+
+function hasCallerProvenance(
+  field: string,
+  value: unknown,
+  context: ReasoningContext,
+  toolArgSlots?: Set<string>,
+): boolean {
+  if (SESSION_BOUND_FIELDS.has(field) && context.callerNumber) return true;
+  if (callerSourcedSlot(field, context, toolArgSlots)) return true;
+  return transcriptSupportsValue(context, field, value);
+}
+
 export class SafetyGate {
   private readonly vertical?: string;
   private readonly verticalProhibitions: string[];
@@ -58,7 +156,8 @@ export class SafetyGate {
   ): SafetyCheckResult {
     const violations: SafetyViolation[] = [];
 
-    this.checkMissingRequiredData(toolName, toolArgs, context, violations, toolArgSlots);
+    const bound = this.bindSessionArgs(toolName, toolArgs, context, violations);
+    this.checkMissingRequiredData(toolName, bound, context, violations, toolArgSlots);
     this.checkUnauthorizedTool(toolName, context, violations);
     this.checkHallucinatedConfirmation(toolArgs, confidence, violations);
     this.checkTenantPolicies(toolName, context, violations);
@@ -95,6 +194,30 @@ export class SafetyGate {
     }
 
     return { allowed, violations };
+  }
+
+  private bindSessionArgs(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ReasoningContext,
+    violations: SafetyViolation[],
+  ): Record<string, unknown> {
+    const bound = bindSessionToolArgs(toolArgs, {
+      tenantId: context.tenantId,
+      agentId: context.agentSlug,
+      callerNumber: context.callerNumber,
+      transcript: sessionTranscriptFrom(context),
+    });
+    if (!bound.ok) {
+      violations.push({
+        type: 'policy_violation',
+        description: bound.reason ?? 'Tool arguments do not match the call session',
+        blockedAction: toolName,
+        severity: 'critical',
+      });
+      return bound.args;
+    }
+    return bound.args;
   }
 
   private checkMissingRequiredData(
@@ -158,6 +281,39 @@ export class SafetyGate {
         return;
       }
     }
+    const libraryEntry = getToolLibraryEntry(toolName);
+    if (libraryEntry) {
+      const required = [...libraryEntry.parameters.required];
+      if (toolName === 'update_booking' && String(toolArgs.action ?? '').toLowerCase() === 'reschedule') {
+        if (!required.includes('startTime')) required.push('startTime');
+      }
+      const missingFields = required.filter((field) => {
+        return !isPresentValue(slotOrArgValue(field, toolArgs, context));
+      });
+      const unprovenanced = required.filter((field) => {
+        if (missingFields.includes(field)) return false;
+        const value = slotOrArgValue(field, toolArgs, context);
+        return !hasCallerProvenance(field, value, context, toolArgSlots);
+      });
+      if (missingFields.length > 0) {
+        violations.push({
+          type: 'missing_required_data',
+          description: `Tool "${toolName}" requires data that has not been collected: ${missingFields.join(', ')}`,
+          blockedAction: toolName,
+          severity: 'critical',
+        });
+      }
+      if (unprovenanced.length > 0) {
+        violations.push({
+          type: 'missing_required_data',
+          description: `Tool "${toolName}" required fields were supplied only in model tool arguments, not by the caller: ${unprovenanced.join(', ')}`,
+          blockedAction: toolName,
+          severity: 'critical',
+        });
+      }
+      return;
+    }
+
     const manifestRequired = context.slotTracker.manifest.slots
       .filter((s) => s.required)
       .map((s) => s.name);
@@ -171,7 +327,9 @@ export class SafetyGate {
     for (const slotName of requiredSlots) {
       const slot = context.slotTracker.slots.get(slotName);
       if (!slot || slot.value === null) {
-        missingSlots.push(slotName);
+        if (!isPresentValue(toolArgs[slotName])) {
+          missingSlots.push(slotName);
+        }
       } else if (toolArgSlots && toolArgSlots.has(slotName)) {
         toolArgOnlySlots.push(slotName);
       }
@@ -186,14 +344,10 @@ export class SafetyGate {
       });
     }
 
+    // Legacy healthcare-era tools still require caller-sourced slots.
+    // Library tools already returned above; their arguments are the caller data.
     if (toolArgOnlySlots.length > 0) {
-      violations.push({
-        type: 'missing_required_data',
-        description: `Tool "${toolName}" has required data only from model-generated tool args (not caller-provided): ${toolArgOnlySlots.join(', ')}. Caller must provide this data directly.`,
-        blockedAction: toolName,
-        severity: 'critical',
-      });
-      logger.warn('Required slots filled only by tool args, not caller — blocking execution', {
+      logger.warn('Required slots filled only by tool args for a legacy tool', {
         callId: context.callSessionId,
         tool: toolName,
         slots: toolArgOnlySlots,
