@@ -201,7 +201,11 @@ export function createQvoMcpServerFromCatalog(options: QvoMcpServerOptions, cata
     const startedAt = performance.now();
     const args = asArgs(rawArgs);
     const entry = catalog.byExternal.get(external);
-    if (!entry) return refuse(external, args, actionFail('NOT_FOUND', `Unknown tool: ${external}`), startedAt);
+    if (!entry) {
+      // action_audit_log.action is VARCHAR(128); a longer caller-supplied name would fail the audit insert.
+      const action = external.length > 128 ? `${external.slice(0, 125)}...` : external;
+      return refuse(action, args, actionFail('NOT_FOUND', `Unknown tool: ${external}`), startedAt);
+    }
 
     if (args.tenantId !== undefined && args.tenantId !== principal.tenantId) {
       return refuse(entry.name, args, actionFail('FORBIDDEN', 'This key is bound to a different tenant', { field: 'tenantId' }), startedAt);

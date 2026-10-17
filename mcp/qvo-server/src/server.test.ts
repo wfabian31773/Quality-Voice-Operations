@@ -180,4 +180,15 @@ describe('audit', () => {
     }
     expect(JSON.stringify(audits[1].inputRedacted)).not.toContain('555-123-4567');
   });
+
+  it('bounds the audited action of an unknown tool name longer than 128 chars', async () => {
+    harness = await connectInMemory(PRINCIPALS.adminA);
+    const { body } = await call('x'.repeat(300));
+    expect((body.error as { code: string }).code).toBe('NOT_FOUND');
+
+    const audits = harness.store.audits;
+    expect(audits).toHaveLength(1);
+    expect(audits[0].resultCode).toBe('NOT_FOUND');
+    expect(audits[0].action.length).toBeLessThanOrEqual(128);
+  });
 });
