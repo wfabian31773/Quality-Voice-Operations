@@ -270,20 +270,18 @@ export class ReasoningEngine {
     if (previousIntent !== 'unknown' && isPolicyOrNegatedCancel(utterance)) {
       intent = previousIntent;
     }
-    if (
+
+    const additionalRequest = isAdditionalTransactionRequest(utterance);
+    const bookingIntentToResume = this.findBookingIntent(previousIntent);
+    if (intent === 'unknown' && additionalRequest && bookingIntentToResume) {
+      intent = bookingIntentToResume;
+      intentConfidence = 'high';
+    } else if (
       intent === 'unknown'
-      && this.workflowPlan
+      && this.workflowPlan?.status === 'active'
       && isBookingIntent(this.workflowPlan.intent)
-      && (
-        (
-          this.workflowPlan.status === 'completed'
-          && isAdditionalTransactionRequest(utterance)
-        )
-        || this.workflowPlan.status === 'active'
-      )
+      && this.utteranceFillsASlot(utterance)
     ) {
-      // Detector or an in-progress second booking supplied the intent; do not
-      // keep the classifier's "unknown/low" so this turn is not counted as confusion.
       intent = this.workflowPlan.intent;
       intentConfidence = 'high';
     }
@@ -303,14 +301,19 @@ export class ReasoningEngine {
     this.currentIntent = intent;
     this.intentConfidence = intentConfidence;
 
+    const freshAdditionalBooking = additionalRequest && isBookingIntent(intent);
     if (intent !== 'unknown' && intent !== previousIntent) {
       this.updateSlotManifest(intent);
 
-      const restoredSlots = this.preservedSlots.get(intent);
-      if (restoredSlots) {
-        for (const [name, value] of Object.entries(restoredSlots)) {
-          this.slotTracker.fillSlot(name, value);
+      if (!freshAdditionalBooking) {
+        const restoredSlots = this.preservedSlots.get(intent);
+        if (restoredSlots) {
+          for (const [name, value] of Object.entries(restoredSlots)) {
+            this.slotTracker.fillSlot(name, value);
+          }
         }
+      } else {
+        this.preservedSlots.delete(intent);
       }
 
       if (this.workflowPlan?.status === 'active') {
@@ -322,11 +325,12 @@ export class ReasoningEngine {
       intent !== 'unknown'
       && this.workflowPlan
       && this.workflowPlan.status !== 'active'
-      && isAdditionalTransactionRequest(utterance)
+      && additionalRequest
     ) {
       // Same intent after a finished plan, but only when the caller clearly
       // asks for another transaction (e.g. "book one for my son too").
       this.updateSlotManifest(intent);
+      this.preservedSlots.delete(intent);
       this.workflowPlan = this.workflowPlanner.createPlan(this.buildContext(utterance));
     }
 
@@ -658,6 +662,26 @@ export class ReasoningEngine {
     };
 
     return intentManifests[intent] ?? this.getDefaultSlotManifest();
+  }
+
+  private findBookingIntent(previousIntent: string): string | null {
+    if (this.workflowPlan && isBookingIntent(this.workflowPlan.intent)) {
+      return this.workflowPlan.intent;
+    }
+    if (isBookingIntent(previousIntent)) return previousIntent;
+    if (this.preservedSlots.has('book_appointment')) return 'book_appointment';
+    if (this.preservedSlots.has('schedule_appointment')) return 'schedule_appointment';
+    return null;
+  }
+
+  private utteranceFillsASlot(utterance: string): boolean {
+    const lower = utterance.toLowerCase();
+    const manifest = this.slotTracker.getState().manifest;
+    for (const slotDef of manifest.slots) {
+      if (this.slotTracker.isSlotFilled(slotDef.name)) continue;
+      if (this.tryExtractSlotValue(slotDef.name, lower, utterance)) return true;
+    }
+    return false;
   }
 
   private extractSlotsFromUtterance(utterance: string): void {

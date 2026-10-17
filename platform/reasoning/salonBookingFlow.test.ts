@@ -242,6 +242,61 @@ describe('salon booking conversation', () => {
     }
   });
 
+  it('starts a fresh booking after an hours question without reusing the first slots', () => {
+    const seconds = [
+      'I want to book another appointment for a pedicure Saturday at 3pm, this is Alex, you can reach me at 555-201-4400',
+      'puedo reservar otra cita Saturday at 3pm, this is Alex, you can reach me at 555-201-4400',
+    ];
+
+    for (const secondUtterance of seconds) {
+      const engine = makeSalonEngine();
+      const firstArgs = completeFirstHaircut(engine);
+
+      const hours = 'what time do you close on Saturday';
+      const hoursClassified = engine.classifyIntent(hours);
+      expect(hoursClassified.intent).toBe('hours_services');
+      engine.processUtterance(hours, hoursClassified.intent, hoursClassified.confidence);
+
+      const classified = engine.classifyIntent(secondUtterance);
+      const decision = engine.processUtterance(
+        secondUtterance,
+        classified.intent,
+        classified.confidence,
+      );
+      expect(decision.action).not.toBe('complete_interaction');
+      expect(engine.getWorkflowPlan()?.status).toBe('active');
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+
+      const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+      expect(slots.contactName?.value).toBe('Alex');
+      expect(slots.contactName?.value).not.toBe(firstArgs.contactName);
+      expect(slots.contactPhone?.value).toBe('555-201-4400');
+      expect(slots.startTime?.value?.toLowerCase()).toMatch(/saturday|3\s*pm/);
+      expect(slots.title?.value).not.toBe(firstArgs.title);
+    }
+  });
+
+  it('still falls back after repeated gibberish during an active booking', () => {
+    const engine = makeSalonEngine({ humanTransferAvailable: false });
+    engine.processUtterance(
+      'I want to book a haircut',
+      'book_appointment',
+      'high',
+    );
+    expect(engine.getWorkflowPlan()?.status).toBe('active');
+    expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+
+    const gibberish = 'blargh zxcv qwerty';
+    const turns = [1, 2, 3, 4].map(() => {
+      const classified = engine.classifyIntent(gibberish);
+      expect(classified.intent).toBe('unknown');
+      return engine.processUtterance(gibberish, classified.intent, classified.confidence);
+    });
+
+    expect(turns[0].toolToExecute).not.toBe('create_ticket');
+    expect(turns.some((turn) => turn.toolToExecute === 'create_ticket' || turn.fallbackStep === 'create_ticket')).toBe(true);
+  });
+
   it('collects a time after shorthand EN/ES follow-ups without confusion fallback', () => {
     const phrases = [
       'one more for my son',
