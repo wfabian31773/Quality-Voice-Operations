@@ -5,7 +5,8 @@
  *   tools, and drives escalations.
  * - `shadow`: the engine still processes every turn and logs what it would
  *   have done (`reasoning_shadow`), but nothing it decides reaches the model
- *   or the tool layer. Only salon / barbershop agents can run in shadow.
+ *   or the tool layer. Only agents running the salon template can run in
+ *   shadow.
  *
  * Resolution for salon / barbershop agents, first valid value wins:
  *   1. agent config: `agents.metadata.reasoningMode`
@@ -29,7 +30,7 @@ export interface ResolvedReasoningMode {
 export interface ReasoningModeInput {
   /** agents.type, or the resolved template key (salon / barbershop map to `salon`). */
   agentType?: string | null;
-  /** agents.metadata JSON (may carry `vertical` and `reasoningMode`). */
+  /** agents.metadata JSON (may carry `reasoningMode`). */
   agentMetadata?: Record<string, unknown> | null;
   /** tenants.settings JSON (may carry `reasoningMode`). */
   tenantSettings?: Record<string, unknown> | null;
@@ -48,10 +49,13 @@ export function parseReasoningMode(value: unknown): ReasoningMode | null {
   return (REASONING_MODES as readonly string[]).includes(normalized) ? (normalized as ReasoningMode) : null;
 }
 
-/** Agent type salon / barbershop, or metadata.vertical salon / barbershop. */
-export function isSalonVerticalAgent(input: Pick<ReasoningModeInput, 'agentType' | 'agentMetadata'>): boolean {
-  return SHADOW_DEFAULT_VERTICALS.has(normalize(input.agentType))
-    || SHADOW_DEFAULT_VERTICALS.has(normalize(input.agentMetadata?.vertical));
+/**
+ * Agent type salon / barbershop, or resolved template key `salon`. Agent
+ * metadata (e.g. `vertical`) is never consulted: only the template that
+ * actually runs decides.
+ */
+export function isSalonVerticalAgent(input: Pick<ReasoningModeInput, 'agentType'>): boolean {
+  return SHADOW_DEFAULT_VERTICALS.has(normalize(input.agentType));
 }
 
 export function resolveReasoningMode(input: ReasoningModeInput): ResolvedReasoningMode {

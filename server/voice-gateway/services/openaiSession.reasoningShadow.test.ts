@@ -257,6 +257,44 @@ describe('non-salon agent (enforce by default, unchanged)', () => {
     expect(shadowLines()).toEqual([]);
     await result.session.close();
   });
+
+  it('a caller-supplied shadow mode is ignored for a non-salon template', async () => {
+    for (const templateKey of ['healthcare-receptionist', 'core-receptionist']) {
+      const { ctx, result } = await start({
+        templateKey,
+        reasoningMode: 'shadow',
+        agentConfig: { ...makeCtx().agentConfig, rolePackageId: templateKey, metadata: { businessName: 'Acme', vertical: 'salon', reasoningMode: 'shadow' } },
+      });
+      expect(ctx.reasoningMode, templateKey).toBe('enforce');
+      expect(ctx.reasoningGate?.mode, templateKey).toBe('enforce');
+      await result.session.close();
+    }
+  });
+});
+
+describe('handoff from a salon shadow call', () => {
+  it('a target whose template is not salon runs in enforce', async () => {
+    const createBooking = vi.fn(async () => ({ success: true }));
+    h.toolHandlers.set('create_booking', createBooking);
+    const { ctx, result, say } = await start();
+    expect(ctx.reasoningMode).toBe('shadow');
+
+    await result.rebuildForHandoff(
+      { ...makeCtx().agentConfig, agentId: 'a-clinic', rolePackageId: 'healthcare-receptionist', metadata: { businessName: 'Acme Clinic', vertical: 'salon' } },
+      'Connecting you now.',
+    );
+    expect(ctx.reasoningMode).toBe('enforce');
+    expect(ctx.reasoningGate?.mode).toBe('enforce');
+
+    // The target's tool handler applies the enforce gate (shadow would let this run).
+    const setHandler = (result.session as unknown as { setFunctionHandler: ReturnType<typeof vi.fn> }).setFunctionHandler;
+    const handoffHandler = setHandler.mock.calls[setHandler.mock.calls.length - 1][0] as (name: string, args: Record<string, unknown>) => Promise<string>;
+    say('I need to cancel my appointment.');
+    const out = JSON.parse(await handoffHandler('create_booking', { title: 'Fade', startTime: '2026-10-24T09:00:00-04:00', contactName: 'Wayne' }));
+    expect(out.message).toMatch(/blocked by policy/);
+    expect(createBooking).not.toHaveBeenCalled();
+    await result.session.close();
+  });
 });
 
 describe('create_booking readback gate on the voice tool path', () => {
@@ -330,11 +368,8 @@ describe('enforce-mode call whose engine failed to start (unchanged)', () => {
     h.failEngine = true;
     const extra = vi.fn(async () => ({ success: true }));
     h.toolHandlers.set('partner_crm_sync', extra);
-    // No template key (template permissions don't apply); shadow via metadata.vertical.
-    const { ctx, result, callTool } = await start({
-      templateKey: undefined,
-      agentConfig: { ...makeCtx().agentConfig, metadata: { businessName: 'Sharp Line Barbers', vertical: 'barbershop' } },
-    });
+    // Shadow by the salon template's default.
+    const { ctx, result, callTool } = await start({ templateKey: 'salon' });
     expect(ctx.reasoningMode).toBe('shadow');
     expect(ctx.reasoningGate).toBeUndefined();
 
@@ -377,4 +412,41 @@ describe('repeated-tool stop on the voice tool path (every mode)', () => {
       expect(toolStopGuard.failureCount('cs-shadow-voice', 'lookup_customer')).toBe(0);
     });
   }
+
+  it('transfer_to_agent: 3 failed handoffs stop the tool and the 4th does not call onHandoff', async () => {
+    const onHandoff = vi.fn(async () => ({ success: false, message: 'No agent available for that intent.' }));
+    const { result, callTool } = await start({ onHandoff });
+    const transfer = () => callTool('transfer_to_agent', { intent: 'billing', conversation_summary: 'Caller asked about a refund.' });
+
+    const first = JSON.parse(await transfer());
+    expect(first).toEqual({ success: false, message: 'No agent available for that intent.' });
+    expect(toolStopGuard.failureCount('cs-shadow-voice', 'transfer_to_agent')).toBe(1);
+
+    // A thrown handoff counts the same as a failed one.
+    onHandoff.mockRejectedValueOnce(new Error('routing down'));
+    const second = JSON.parse(await transfer());
+    expect(second).toEqual({ success: false, message: 'Handoff failed. Continuing with current agent.' });
+
+    const third = JSON.parse(await transfer());
+    expect(third).toMatchObject({ success: false, code: 'TOOL_STOPPED', retryable: false, tool: 'transfer_to_agent', failedAttempts: 3 });
+    expect(onHandoff).toHaveBeenCalledTimes(3);
+
+    const fourth = JSON.parse(await transfer());
+    expect(fourth).toMatchObject({ code: 'TOOL_STOPPED', failedAttempts: 3 });
+    expect(onHandoff).toHaveBeenCalledTimes(3);
+
+    await result.session.close();
+    expect(toolStopGuard.failureCount('cs-shadow-voice', 'transfer_to_agent')).toBe(0);
+  });
+
+  it('transfer_to_agent: a successful handoff is not counted', async () => {
+    const onHandoff = vi.fn(async () => ({ success: true, message: 'Connecting you to billing.' }));
+    const { result, callTool } = await start({ onHandoff });
+
+    const out = JSON.parse(await callTool('transfer_to_agent', { intent: 'billing' }));
+    expect(out).toEqual({ success: true, message: 'Connecting you to billing.' });
+    expect(onHandoff).toHaveBeenCalledTimes(1);
+    expect(toolStopGuard.failureCount('cs-shadow-voice', 'transfer_to_agent')).toBe(0);
+    await result.session.close();
+  });
 });

@@ -52,12 +52,13 @@ export interface CreateBookingResult {
   confirmationToken?: string;
 }
 
-/** Stable key of what the caller confirms: service, start time, duration, phone. */
-function newBookingDetailsKey(title: string, startTime: string, duration: number, contactPhone: string): string {
+/** Stable key of what the caller confirms: service, start time, duration, name, phone. */
+function newBookingDetailsKey(title: string, startTime: string, duration: number, contactName: string, contactPhone: string): string {
   return [
     title.toLowerCase().replace(/\s+/g, ' '),
     startTime,
     String(duration),
+    contactName.trim().toLowerCase(),
     phoneDigits(contactPhone).slice(-10),
   ].join('|');
 }
@@ -83,7 +84,7 @@ export async function executeCreateBooking(
     const requested = {
       bookingId: 'new',
       action: 'create',
-      detailsKey: newBookingDetailsKey(title, startTime, duration, contactPhone),
+      detailsKey: newBookingDetailsKey(title, startTime, duration, contactName, contactPhone),
     };
     const presentedToken = String(input.confirmationToken ?? '').trim();
     if (!consumeBookingConfirmation(context, requested, presentedToken)) {

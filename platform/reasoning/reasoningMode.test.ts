@@ -2,12 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { isSalonVerticalAgent, parseReasoningMode, resolveReasoningMode } from './reasoningMode';
 
 describe('resolveReasoningMode', () => {
-  it('defaults salon / barbershop agents to shadow (agent type or metadata.vertical)', () => {
+  it('defaults salon / barbershop agents to shadow (agent type or template key)', () => {
     expect(resolveReasoningMode({ agentType: 'salon' })).toEqual({ mode: 'shadow', source: 'vertical_default' });
     expect(resolveReasoningMode({ agentType: 'barbershop' })).toEqual({ mode: 'shadow', source: 'vertical_default' });
     expect(resolveReasoningMode({ agentType: 'Salon' }).mode).toBe('shadow');
-    expect(resolveReasoningMode({ agentType: 'general', agentMetadata: { vertical: 'barbershop' } }).mode).toBe('shadow');
-    expect(resolveReasoningMode({ agentType: 'core-receptionist', agentMetadata: { vertical: 'salon' } }).mode).toBe('shadow');
+  });
+
+  it('metadata.vertical cannot put a non-salon agent into shadow', () => {
+    for (const agentType of ['healthcare-receptionist', 'core-receptionist', 'general']) {
+      for (const vertical of ['salon', 'barbershop']) {
+        expect(resolveReasoningMode({ agentType, agentMetadata: { vertical, reasoningMode: 'shadow' } }), `${agentType} ${vertical}`)
+          .toEqual({ mode: 'enforce', source: 'vertical_default' });
+        expect(resolveReasoningMode({
+          agentType,
+          agentMetadata: { vertical },
+          tenantSettings: { reasoningMode: 'shadow' },
+        }).mode).toBe('enforce');
+        expect(isSalonVerticalAgent({ agentType })).toBe(false);
+      }
+    }
   });
 
   it('defaults every other agent type to enforce (today\'s behavior)', () => {

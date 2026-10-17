@@ -630,6 +630,7 @@ describe('tool library handlers', () => {
         { title: 'Beard trim' },
         { contactPhone: '+15559998888' },
         { durationMinutes: 30 },
+        { contactName: 'Marcus' },
       ]) {
         const challenge = await executeCreateBooking(fade, shadowCtx);
         const result = await executeCreateBooking({ ...fade, ...changed, confirmationToken: challenge.confirmationToken }, later);

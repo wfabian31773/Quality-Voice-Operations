@@ -30,7 +30,7 @@ import { bindSessionToolArgs } from '../../../platform/reasoning/sessionBinding'
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
-import { resolveReasoningMode, type ReasoningMode } from '../../../platform/reasoning/reasoningMode';
+import { isSalonVerticalAgent, resolveReasoningMode, type ReasoningMode } from '../../../platform/reasoning/reasoningMode';
 import { ReasoningCallGate } from '../../../platform/reasoning/reasoningShadow';
 import { toolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { checkAgentToolAllowlist } from '../../../platform/tools/agentToolAllowlist';
@@ -85,6 +85,7 @@ export interface SessionContext {
   /**
    * Resolved reasoning mode (agent config → tenant settings → vertical
    * default). When omitted it is resolved from templateKey + agent metadata;
+   * ignored (enforce) unless templateKey is the salon template.
    * createRealtimeSession sets it to the resolved mode either way.
    */
   reasoningMode?: ReasoningMode;
@@ -244,6 +245,18 @@ function buildToolHandler(
     }
 
     if (toolName === 'transfer_to_agent' && ctx.onHandoff) {
+      // This branch bypasses executeWithRetry, so it applies the repeated-tool
+      // stop itself: no handoff once stopped, one failure per failed call.
+      if (toolStopGuard.isStopped(callSessionId, toolName)) {
+        logger.warn('Stopped tool not executed', { tenantId, callId: callSessionId, tool: toolName });
+        return JSON.stringify(toolStopGuard.result(callSessionId, toolName));
+      }
+      const handoffFailed = (message: string): string => {
+        const failures = toolStopGuard.recordFailure(callSessionId, toolName);
+        return failures >= toolStopGuard.threshold
+          ? JSON.stringify(toolStopGuard.result(callSessionId, toolName))
+          : JSON.stringify({ success: false, message });
+      };
       const intent = (args.intent as string) ?? 'general';
       const context = (args.conversation_summary as string) ?? '';
       logger.info('Workforce handoff tool invoked', { tenantId, callId: callSessionId, intent });
@@ -288,7 +301,7 @@ function buildToolHandler(
             });
             await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(swapErr) });
             await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-            return JSON.stringify({ success: false, message: 'Transfer failed. Continuing with current agent.' });
+            return handoffFailed('Transfer failed. Continuing with current agent.');
           }
         } else if (handoffResult.success) {
           await completeToolExecution({
@@ -312,7 +325,7 @@ function buildToolHandler(
           });
           await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, reason: handoffResult.message });
           await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-          return JSON.stringify({ success: false, message: handoffResult.message });
+          return handoffFailed(handoffResult.message);
         }
       } catch (handoffErr) {
         await completeToolExecution({
@@ -326,7 +339,7 @@ function buildToolHandler(
         });
         await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(handoffErr) });
         await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-        return JSON.stringify({ success: false, message: 'Handoff failed. Continuing with current agent.' });
+        return handoffFailed('Handoff failed. Continuing with current agent.');
       }
     }
 
@@ -880,10 +893,14 @@ export async function createRealtimeSession(
   // is run concurrently with the caller-memory lookup and the call-session
   // insert below (all three are independent DB round-trips). Running them
   // sequentially was a big contributor to time-to-first-audio.
-  const reasoningMode: ReasoningMode = ctx.reasoningMode ?? resolveReasoningMode({
-    agentType: ctx.templateKey,
-    agentMetadata: agentConfig.metadata,
-  }).mode;
+  // A caller-supplied mode is trusted only for the salon template; every
+  // other template enforces.
+  const reasoningMode: ReasoningMode = !isSalonVerticalAgent({ agentType: ctx.templateKey })
+    ? 'enforce'
+    : ctx.reasoningMode ?? resolveReasoningMode({
+      agentType: ctx.templateKey,
+      agentMetadata: agentConfig.metadata,
+    }).mode;
   // The tool handler reads the resolved mode (allowlist, booking readback).
   ctx.reasoningMode = reasoningMode;
   let reasoningEngine: ReasoningEngine | undefined;
@@ -987,7 +1004,7 @@ export async function createRealtimeSession(
 
   ctx.reasoningEngine = reasoningEngine;
   toolStopGuard.openCall(callSessionId);
-  const reasoningGate = reasoningEngine
+  let reasoningGate = reasoningEngine
     ? new ReasoningCallGate({
       engine: reasoningEngine,
       mode: reasoningMode,
@@ -998,7 +1015,7 @@ export async function createRealtimeSession(
     : undefined;
   ctx.reasoningGate = reasoningGate;
   // Engine decisions reach the model only in enforce mode.
-  const enforceEffects = reasoningGate?.enforcing ?? false;
+  let enforceEffects = reasoningGate?.enforcing ?? false;
   slog.info('Reasoning mode', { reasoningMode, engine: Boolean(reasoningEngine) });
 
   const toolHandler = buildToolHandler(ctx, callSessionId);
@@ -1757,6 +1774,24 @@ export async function createRealtimeSession(
       rolePackageId: newAgentConfig.rolePackageId,
       rolePackageVersion: newAgentConfig.rolePackageVersion,
     });
+
+    // Shadow does not follow the call to a non-salon template: the target
+    // runs in enforce (tool gate, allowlist, booking commit, turn effects).
+    if (ctx.reasoningMode === 'shadow' && !isSalonVerticalAgent({ agentType: newAgentConfig.rolePackageId })) {
+      ctx.reasoningMode = 'enforce';
+      reasoningGate = reasoningEngine
+        ? new ReasoningCallGate({
+          engine: reasoningEngine,
+          mode: 'enforce',
+          callId: callSessionId,
+          toolsAvailable: newAgentConfig.tools.map((t) => t.name),
+          exemptTools: INTERNAL_ORCHESTRATION_TOOLS,
+        })
+        : undefined;
+      ctx.reasoningGate = reasoningGate;
+      enforceEffects = reasoningGate?.enforcing ?? false;
+      slog.info('Reasoning mode', { reasoningMode: ctx.reasoningMode, engine: Boolean(reasoningEngine), reason: 'handoff_to_non_salon' });
+    }
 
     const newToolHandler = buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId);
     const newAgentTools = buildRealtimeTools(newAgentConfig.tools);

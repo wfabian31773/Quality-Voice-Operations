@@ -673,8 +673,9 @@ export function attachWebSocket(server: HTTPServer): void {
                 callSid: twilioCallSid,
                 direction: callDirection,
                 templateKey: agentCfg.rolePackageId,
+                // Keyed on the template that actually loads, never on metadata.
                 reasoningMode: resolveReasoningMode({
-                  agentType: trustedAgentType,
+                  agentType: agentCfg.rolePackageId,
                   agentMetadata: dbAgent.metadata,
                   tenantSettings: dbAgent.tenant_settings,
                 }).mode,
@@ -1094,8 +1095,9 @@ export function attachWebSocket(server: HTTPServer): void {
                 callSid: widgetCallSid,
                 direction: 'inbound',
                 templateKey: agentCfg.rolePackageId,
+                // Keyed on the template that actually loads, never on metadata.
                 reasoningMode: resolveReasoningMode({
-                  agentType: dbAgent.type || 'general',
+                  agentType: agentCfg.rolePackageId,
                   agentMetadata: dbAgent.metadata,
                   tenantSettings: dbAgent.tenant_settings,
                 }).mode,
