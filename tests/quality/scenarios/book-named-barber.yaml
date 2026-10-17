@@ -1,0 +1,74 @@
+id: book-named-barber
+template: barbershop
+tools:
+  - scheduling
+  - sms
+  - tickets
+  - business
+  - calls
+tags:
+  - scheduling
+  - book
+  - sample
+seed: barbershop-marco
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Hi, I'd like a men's cut with Marco today at 3:30."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            date: "2026-10-20"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            start: "2026-10-20T15:30:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked with Marco today at 3:30 PM. I'll text the confirmation to the number ending 0142."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: marco
+    - name: scheduling.book.prepare
+      input:
+        staffId: marco
+        start: "15:30"
+        customer:
+          name: Luis
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          startLocal: "15:30"
+          date: "2026-10-20"
+          staffId: marco
+          staffName: Marco
+  mustSay:
+    - "Marco"
+    - "3:30"
+    - "Luis"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've let them know"
+    - "your order is in"
+  readbackRequired: true

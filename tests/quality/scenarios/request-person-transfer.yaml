@@ -1,0 +1,51 @@
+id: request-person-transfer
+template: nail_salon
+tools:
+  - scheduling
+  - tickets
+  - business
+  - calls
+tags:
+  - transfer
+  - sample
+seed: nail-salon-front-desk
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Can I talk to Dana?"
+    silence: 4
+  - text: "Yes"
+    interrupt: true
+script:
+  - on: 0
+    steps:
+      - call:
+          name: calls.transfer_to_human.prepare
+          input:
+            target: Dana
+      - say: "{{readback}}"
+  - on: 1
+    steps:
+      - call:
+          name: calls.transfer_to_human.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Connecting you to Dana now."
+expect:
+  actions:
+    - name: calls.transfer_to_human.prepare
+      input:
+        target: Dana
+    - name: calls.transfer_to_human.commit
+  endState:
+    bookings:
+      count: 0
+    transfers:
+      count: 1
+      to: Dana
+      status: committed
+  mustSay:
+    - "Dana"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+  readbackRequired: true

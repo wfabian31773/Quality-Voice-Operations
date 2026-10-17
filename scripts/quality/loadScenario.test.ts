@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import { loadScenarioYaml, parseScenario } from './loadScenario';
+
+const minimal = {
+  id: 'x',
+  template: 'barbershop',
+  tools: ['scheduling'],
+  seed: 'barbershop-marco',
+  caller: [{ text: 'hi' }],
+  expect: { endState: { bookings: { count: 0 } } },
+};
+
+describe('parseScenario', () => {
+  it('accepts the sample shape including silence and interrupt markers', () => {
+    const scenario = parseScenario({
+      ...minimal,
+      tags: ['sample'],
+      caller: [{ text: 'hi', silence: 4 }, { text: 'yes', interrupt: true }],
+      script: [{ on: 0, steps: [{ say: 'hello' }] }],
+      expect: { readbackRequired: true, mustNotSay: ["you're booked"], endState: { bookings: { count: 0 } } },
+    });
+    expect(scenario.caller[0].silence).toBe(4);
+    expect(scenario.caller[1].interrupt).toBe(true);
+    expect(scenario.expect.readbackRequired).toBe(true);
+  });
+
+  it('rejects an unknown template and an empty caller list', () => {
+    expect(() => parseScenario({ ...minimal, template: 'law_office' })).toThrow(/template/i);
+    expect(() => parseScenario({ ...minimal, caller: [] })).toThrow(/caller/i);
+  });
+
+  it('rejects an empty expect so a scenario cannot pass with no assertions', () => {
+    expect(() => parseScenario({ ...minimal, expect: {} })).toThrow(/actions and\/or endState/i);
+    expect(() =>
+      parseScenario({ ...minimal, expect: { mustSay: ['hi'], readbackRequired: true } }),
+    ).toThrow(/actions and\/or endState/i);
+    expect(() => parseScenario({ ...minimal, expect: { endState: {} } })).toThrow(/actions and\/or endState/i);
+    expect(() => parseScenario({ ...minimal, expect: { endState: { bookings: {} } } })).toThrow(
+      /count and\/or items|bookings requires/i,
+    );
+  });
+
+  it('rejects unknown expectation keys so typos cannot silently drop checks', () => {
+    expect(() => parseScenario({ ...minimal, expect: { mustNotSya: ["you're booked"] } })).toThrow(/unrecognized_keys|mustNotSya/i);
+    expect(() => parseScenario({ ...minimal, expect: { endstate: { bookings: { count: 1 } } } })).toThrow(
+      /unrecognized_keys|endstate/i,
+    );
+    expect(() =>
+      parseScenario({ ...minimal, expect: { endState: { bookings: { count: 1, cnt: 1 } } } }),
+    ).toThrow(/unrecognized_keys|cnt/i);
+  });
+
+  it('loads YAML text', () => {
+    const scenario = loadScenarioYaml(
+      `
+id: y
+template: nail_salon
+tools: [calls]
+seed: nail-salon-front-desk
+caller:
+  - text: "Can I talk to Dana?"
+expect:
+  actions:
+    - name: calls.transfer_to_human.prepare
+`,
+      'inline.yaml',
+    );
+    expect(scenario.id).toBe('y');
+    expect(scenario.template).toBe('nail_salon');
+  });
+});

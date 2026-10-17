@@ -1,0 +1,69 @@
+id: anyone-no-availability
+template: barbershop
+tools:
+  - scheduling
+  - tickets
+  - business
+  - calls
+tags:
+  - scheduling
+  - availability
+  - sample
+seed: barbershop-fully-booked-today
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Can I get a haircut with anyone today?"
+  - text: "Yes, please take a message."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            date: "2026-10-20"
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: callback
+            subject: same-day haircut
+            details: Caller asked for any barber today; shop is fully booked.
+            customer:
+              name: Luis
+              phone: "+15555550142"
+            urgency: normal
+      - say: "We're fully booked today. The next opening is tomorrow. I can have the shop call you back."
+      - say: "{{readback}}"
+  - on: 1
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "I've let them know. Someone from the shop will call you back."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: any
+        date: "2026-10-20"
+    - name: tickets.open.prepare
+      input:
+        kind: callback
+    - name: tickets.open.commit
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 1
+      kind: callback
+      status: open
+  mustSay:
+    - "fully booked"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've let them know"
+    - "your order is in"
+  readbackRequired: true
