@@ -2,8 +2,9 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
-import { getPlatformPool } from '../../../platform/db';
+import { getPlatformPool, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
+import { bookingOverlapKind } from '../../../platform/actions/scheduling/holds';
 import {
   bookingTimeToISO,
   buildAppointmentLifecyclePayload,
@@ -902,6 +903,9 @@ export const getBookingHandler: RequestHandler = async (req, res) => {
   }
 };
 
+// 409 body when a write hits the 122 no-double-booking constraints (23P01).
+const SLOT_UNAVAILABLE_BODY = { error: 'That time slot is no longer available', reason: 'slot_unavailable' };
+
 async function checkConflicts(pool: ReturnType<typeof getPlatformPool>, tenantId: string, startTime: string, endTime: string, providerId?: string, resourceId?: string, excludeBookingId?: string) {
   return checkBookingConflicts(pool, tenantId, startTime, endTime, providerId, resourceId, excludeBookingId);
 }
@@ -959,6 +963,9 @@ const createBookingHandler: RequestHandler = async (req, res) => {
         }
       }
 
+      // QVO does not allow double-booking held/confirmed slots:
+      // allow_double_book (and override_reason) only skip this app-level
+      // check; the 122 exclusion constraints still reject the overlap (409).
       const allowDoubleBook = rules?.allow_double_book ?? false;
       if (!allowDoubleBook && (provider_id || resource_id)) {
         const conflicts = await checkConflicts(pool, tenantId, start_time, end_time, provider_id, resource_id);
@@ -1012,6 +1019,7 @@ const createBookingHandler: RequestHandler = async (req, res) => {
 
     return res.status(201).json({ booking: rows[0] });
   } catch (err) {
+    if (bookingOverlapKind(err) !== null) return res.status(409).json(SLOT_UNAVAILABLE_BODY);
     logger.error('Failed to create booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to create booking' });
   }
@@ -1049,6 +1057,8 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
         return res.status(409).json({ error: 'Time slot conflict detected', conflicts });
       }
 
+      // override_reason only skips the blackout check; held/confirmed
+      // overlaps are still rejected by the 122 constraints (409 below).
       if (!override_reason) {
         const tenantTz = await getTenantTimezone(pool, tenantId);
         const overrideConflict = await buildOverrideConflictResponse(
@@ -1138,6 +1148,7 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
 
     return res.json({ booking: rows[0] });
   } catch (err) {
+    if (bookingOverlapKind(err) !== null) return res.status(409).json(SLOT_UNAVAILABLE_BODY);
     logger.error('Failed to update booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update booking' });
   }
@@ -1150,9 +1161,15 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
   const { id } = req.params;
   const { action, cancellation_reason, override_reason, new_start_time, new_end_time } = req.body;
   const pool = getPlatformPool();
+  // One transaction, so a reschedule's UPDATE (original -> 'rescheduled')
+  // and its replacement INSERT commit or roll back together.
+  const client = await pool.connect();
+  const tx = client as unknown as ReturnType<typeof getPlatformPool>;
 
   try {
-    const result = await transitionBooking(pool, {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
+    const result = await transitionBooking(client, {
       tenantId,
       bookingId: id,
       action,
@@ -1162,15 +1179,24 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
       newEndTime: new_end_time,
       changedBy: req.user!.userId,
     }, {
+      deferSideEffects: true,
       checkBlackout: async ({ startTime, endTime, providerId }) => {
-        const tenantTz = await getTenantTimezone(pool, tenantId);
-        return buildOverrideConflictResponse(pool, tenantId, startTime, endTime, providerId, tenantTz);
+        const tenantTz = await getTenantTimezone(tx, tenantId);
+        return buildOverrideConflictResponse(tx, tenantId, startTime, endTime, providerId, tenantTz);
       },
     });
+    await client.query(result.ok ? 'COMMIT' : 'ROLLBACK');
+    if (result.ok) for (const effect of result.afterCommit ?? []) effect();
     return res.status(result.httpStatus).json(result.body);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // reschedule and confirm write held/confirmed rows; the 122 constraints
+    // reject overlaps even with override_reason.
+    if (bookingOverlapKind(err) !== null) return res.status(409).json(SLOT_UNAVAILABLE_BODY);
     logger.error('Failed to transition booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to transition booking' });
+  } finally {
+    client.release();
   }
 };
 

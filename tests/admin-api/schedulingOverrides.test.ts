@@ -20,6 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: vi.fn(),
+  withTenantContext: vi.fn(async () => {}),
   withPrivilegedClient: vi.fn(),
 }));
 
@@ -58,6 +59,15 @@ import schedulingRouter from '../../server/admin-api/routes/scheduling';
 import { getPlatformPool } from '../../platform/db';
 import express from 'express';
 import request from 'supertest';
+
+// Transitions run on a checked-out client; BEGIN/COMMIT/ROLLBACK are not queued.
+function txClient(query: (sql: string, values?: unknown[]) => Promise<unknown>) {
+  return {
+    query: (sql: string, values?: unknown[]) =>
+      (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) ? Promise.resolve({ rows: [] }) : query(sql, values)),
+    release: () => {},
+  };
+}
 
 const PROVIDER_A = 'prov-a';
 const TENANT = 'tenant-1';
@@ -371,7 +381,7 @@ describe('booking endpoints honour schedule overrides', () => {
     queryMock.mockClear();
     queryQueue.length = 0;
     vi.mocked(getPlatformPool).mockReturnValue(
-      { query: queryMock } as unknown as ReturnType<typeof getPlatformPool>,
+      { query: queryMock, connect: async () => txClient(queryMock) } as unknown as ReturnType<typeof getPlatformPool>,
     );
     app = express();
     app.use(express.json());
@@ -1155,7 +1165,7 @@ describe('POST /scheduling/overrides cascades to existing bookings', () => {
     queryMock.mockClear();
     queryQueue.length = 0;
     vi.mocked(getPlatformPool).mockReturnValue(
-      { query: queryMock } as unknown as ReturnType<typeof getPlatformPool>,
+      { query: queryMock, connect: async () => txClient(queryMock) } as unknown as ReturnType<typeof getPlatformPool>,
     );
     app = express();
     app.use(express.json());

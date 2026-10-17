@@ -14,7 +14,10 @@ vi.mock('../middleware/auth', () => ({
   },
 }));
 // requireMiniSystemWrite from ../middleware/rbac stays real.
-vi.mock('../../../platform/db', () => ({ getPlatformPool: () => ({ query: a.poolQueryMock, connect: async () => ({ query: a.poolQueryMock, release: vi.fn() }) }) }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: () => ({ query: a.poolQueryMock, connect: async () => ({ query: a.poolQueryMock, release: vi.fn() }) }),
+  withTenantContext: vi.fn(async () => {}),
+}));
 vi.mock('../../../platform/notifications/dispatchPush', () => ({ fireDispatchPush: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../../../platform/integrations/connectors', () => ({
   connectorService: { dispatchEvent: vi.fn().mockResolvedValue(undefined), emit: vi.fn().mockResolvedValue(undefined) },
@@ -84,6 +87,82 @@ describe('POST /scheduling/bookings', () => {
   it('rejects a viewer via the mini-system-write gate', async () => {
     a.user.role = 'support_reviewer';
     expect((await request(app()).post('/scheduling/bookings').send({ title: 'X' })).status).toBe(403);
+  });
+});
+
+describe('booking overlap (122 exclusion constraint, 23P01) → 409', () => {
+  const overlapErr = Object.assign(new Error('conflicting key value violates exclusion constraint'), {
+    code: '23P01', constraint: 'bookings_no_provider_overlap',
+  });
+  const SLOT_UNAVAILABLE = { error: 'That time slot is no longer available', reason: 'slot_unavailable' };
+
+  it('create with allow_double_book = true returns 409 instead of 500', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/scheduling_booking_rules/.test(sql)) return { rows: [{ allow_double_book: true, allow_same_day: true }] };
+      if (/INSERT INTO bookings/.test(sql)) throw overlapErr;
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings').send({
+      title: 'X', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z', provider_id: 'p1',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual(SLOT_UNAVAILABLE);
+  });
+
+  it('create still returns 500 for other database errors', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/INSERT INTO bookings/.test(sql)) throw Object.assign(new Error('boom'), { code: '23P01', constraint: 'other_constraint' });
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings').send({
+      title: 'X', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z', override_reason: 'ok',
+    });
+    expect(res.status).toBe(500);
+  });
+
+  it('update into an overlapping held/confirmed slot returns 409', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/^SELECT \* FROM bookings/.test(sql)) return { rows: [{ id: 'b1', status: 'pending', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z', provider_id: 'p1' }] };
+      if (/UPDATE bookings SET/.test(sql)) throw overlapErr;
+      return { rows: [] };
+    });
+    const res = await request(app()).put('/scheduling/bookings/b1').send({
+      start_time: '2030-01-02T10:00:00Z', end_time: '2030-01-02T10:30:00Z', status: 'confirmed', override_reason: 'double book',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual(SLOT_UNAVAILABLE);
+  });
+
+  it('confirm into an occupied slot returns 409 and rolls back', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/^SELECT \* FROM bookings/.test(sql)) return { rows: [{ id: 'b1', status: 'pending', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z', provider_id: 'p1' }] };
+      if (/UPDATE bookings SET/.test(sql)) throw overlapErr;
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings/b1/transition').send({ action: 'confirm', override_reason: 'double book' });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual(SLOT_UNAVAILABLE);
+    const sqls = a.poolQueryMock.mock.calls.map(([sql]) => sql);
+    expect(sqls).toContain('BEGIN');
+    expect(sqls).toContain('ROLLBACK');
+    expect(sqls).not.toContain('COMMIT');
+  });
+
+  it('override reschedule whose replacement INSERT overlaps returns 409 and rolls back the original UPDATE', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/^SELECT \* FROM bookings/.test(sql)) return { rows: [{ id: 'b1', status: 'confirmed', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z', provider_id: 'p1' }] };
+      if (/UPDATE bookings SET/.test(sql)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO bookings/.test(sql)) throw overlapErr;
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings/b1/transition').send({
+      action: 'reschedule', new_start_time: '2030-01-02T10:00:00Z', new_end_time: '2030-01-02T10:30:00Z', override_reason: 'double book',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual(SLOT_UNAVAILABLE);
+    const sqls = a.poolQueryMock.mock.calls.map(([sql]) => String(sql));
+    expect(sqls.indexOf('ROLLBACK')).toBeGreaterThan(sqls.findIndex((s) => /UPDATE bookings SET/.test(s)));
+    expect(sqls).not.toContain('COMMIT');
   });
 });
 
