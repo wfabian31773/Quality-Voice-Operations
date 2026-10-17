@@ -42,7 +42,8 @@ callers) and §7 (MCP surface for templates).
 | `qvo_list_templates` (`qvo.list_templates`) | helper | `qvo:read` | no | Stub returning `[]` until PR-19 |
 | any action with `permissions.mcpScope` | generated | the action's `mcpScope` | yes | Writes take `dryRun` (default `true`) and `idempotencyKey` |
 
-No app action sets `mcpScope` yet, so today the live server lists only the three helpers. See
+The only app action with `mcpScope` so far is `sms.send` (`sms_send`, `qvo:admin`: it texts real
+people, so a `qvo:read` key never sees it). A read key sees only the three helpers. See
 [`TRANSCRIPT.md`](TRANSCRIPT.md) for a session against the PR-01 fixture actions.
 
 ## API keys

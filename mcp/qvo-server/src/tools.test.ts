@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { actionOk, defineAction, OPENAI_TOOL_NAME } from '../../../platform/actions/core';
 import { listActions } from '../../../platform/actions';
-import { buildToolCatalog } from './tools';
+import { buildToolCatalog, isVisibleTo } from './tools';
 import { fixtureRegistry } from './testing';
 
 describe('generated MCP tool schemas', () => {
@@ -76,6 +76,28 @@ describe('generated MCP tool schemas', () => {
       run: async () => actionOk({}),
     });
     expect(() => buildToolCatalog([badScope])).toThrow(/unknown mcpScope/);
+
+    const smsScoped = defineAction({
+      name: 'sms.other_send',
+      tool: 'sms',
+      kind: 'write',
+      input: z.object({}),
+      output: z.object({}),
+      permissions: { mcpScope: 'sms:send' },
+      run: async () => actionOk({}),
+    });
+    expect(() => buildToolCatalog([smsScoped])).toThrow(/unknown mcpScope "sms:send"/);
+  });
+
+  it('exposes the app sms.send to qvo:admin keys only, as a dry-run-by-default write', () => {
+    const catalog = buildToolCatalog(listActions());
+    const entry = catalog.entries.find((e) => e.name === 'sms.send');
+    expect(entry).toMatchObject({ source: 'action', external: 'sms_send', scope: 'qvo:admin', kind: 'write' });
+    expect(isVisibleTo(entry!, ['qvo:read'], 'tenant-a')).toBe(false);
+    expect(isVisibleTo(entry!, ['qvo:read', 'qvo:admin'], 'tenant-a')).toBe(true);
+    const props = entry!.schema.inputSchema.properties as Record<string, { default?: unknown }>;
+    expect(props.dryRun.default).toBe(true);
+    expect(props).toHaveProperty('idempotencyKey');
   });
 
   it('requires qvo:admin for write, prepare and commit actions', () => {

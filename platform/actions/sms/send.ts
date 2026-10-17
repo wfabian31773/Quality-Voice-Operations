@@ -241,10 +241,11 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
     input: smsSendInput,
     output: smsSendOutput,
     // System, UI and MCP. The agent reaches it only through the send_sms wrapper.
+    // It texts real people, so MCP keys need qvo:admin (a qvo:read key never sees it).
     permissions: {
       roles: ['tenant_owner', 'operations_manager', 'owner', 'manager'],
       agent: false,
-      mcpScope: 'sms:send',
+      mcpScope: 'qvo:admin',
     },
     async run(ctx, input, tx: TenantTx) {
       const to = normalizeE164(input.to);

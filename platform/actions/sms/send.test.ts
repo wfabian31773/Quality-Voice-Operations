@@ -558,13 +558,23 @@ describe('sms.send chokepoint', () => {
       expect(ui).toMatchObject({ ok: true, data: { status: 'queued', encoding: 'UCS-2', segments: 2 } });
 
       const mcp = await t.asActor(
-        { type: 'mcp', id: 'bot', scopes: ['sms:send'] },
+        { type: 'mcp', id: 'bot', scopes: ['qvo:read', 'qvo:admin'] },
         { to: '+13125550160', body: 'x'.repeat(640), purpose: 'conversational' },
       );
       expect(mcp).toMatchObject({ ok: true, data: { segments: 5 } });
 
       const tooLong = await t.asActor(owner, { to: TO, body: 'x'.repeat(641), purpose: 'conversational' });
       expect(tooLong.ok ? null : tooLong.error.code).toBe('VALIDATION_FAILED');
+    });
+
+    it('refuses MCP callers without qvo:admin before calling Twilio', async () => {
+      const t = setup();
+      for (const scopes of [['qvo:read'], ['sms:send'], []]) {
+        const result = await t.asActor({ type: 'mcp', id: 'bot', scopes }, { to: TO, body: 'hi', purpose: 'conversational' });
+        expect(result.ok ? null : result.error.code).toBe('FORBIDDEN');
+      }
+      expect(t.transport.send).not.toHaveBeenCalled();
+      expect(t.records.size).toBe(0);
     });
 
     it('rejects agent actors, marketing, unknown templates, missing vars and non-https links', async () => {

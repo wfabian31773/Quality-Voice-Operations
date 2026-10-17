@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { listActions } from '../../../platform/actions';
 import { connectInMemory, parseResult, PRINCIPALS, TENANT_A, TENANT_B, type Harness } from './testing';
 
 let harness: Harness | undefined;
@@ -87,6 +88,24 @@ describe('scope enforcement', () => {
     harness = await connectInMemory(PRINCIPALS.adminA);
     const { body } = await call('test_hidden_write', { value: 'x' });
     expect((body.error as { code: string }).code).toBe('NOT_FOUND');
+  });
+
+  it('keeps the app sms.send away from a qvo:read key (not listed, call refused)', async () => {
+    harness = await connectInMemory(PRINCIPALS.readerA, listActions());
+    expect((await harness.client.listTools()).tools.map((t) => t.name)).not.toContain('sms_send');
+    const { isError, body } = await call('sms_send', {
+      to: '+13125550142',
+      body: 'hi',
+      purpose: 'conversational',
+      dryRun: false,
+      idempotencyKey: 'k1',
+    });
+    expect(isError).toBe(true);
+    expect(body.error).toMatchObject({ code: 'FORBIDDEN', message: 'Missing scope qvo:admin' });
+
+    await harness.close();
+    harness = await connectInMemory(PRINCIPALS.adminA, listActions());
+    expect((await harness.client.listTools()).tools.map((t) => t.name)).toContain('sms_send');
   });
 });
 

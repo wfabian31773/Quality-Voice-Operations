@@ -94,12 +94,13 @@ export interface Harness {
   close: () => Promise<void>;
 }
 
-export async function connectInMemory(principal: McpPrincipal): Promise<Harness> {
+/** `registry` overrides the fixture registry, e.g. with the app registry from `listActions()`. */
+export async function connectInMemory(principal: McpPrincipal, registry?: AnyActionDefinition[]): Promise<Harness> {
   const store = createMemoryStore();
   const sideEffect: EchoSideEffect = { count: 0 };
   const server = await createQvoMcpServer({
     principal,
-    registry: fixtureRegistry(sideEffect),
+    registry: registry ?? fixtureRegistry(sideEffect),
     runtime: { store, withTenantTx: store.withTenantTx },
     tenants: memoryTenantDirectory([TENANT_A, TENANT_B]),
     now: () => new Date('2026-10-20T15:00:00.000Z'),
