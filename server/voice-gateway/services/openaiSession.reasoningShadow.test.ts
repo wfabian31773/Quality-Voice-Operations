@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   transports: [] as Array<{ opts: { onFunctionCall: (name: string, args: Record<string, unknown>) => Promise<string> }; sendEvent: ReturnType<typeof vi.fn> }>,
   toolHandlers: new Map<string, ReturnType<typeof vi.fn>>(),
   failEngine: false,
+  failEngineInit: false,
   bookingInserts: [] as unknown[][],
 }));
 
@@ -19,6 +20,11 @@ vi.mock('../../../platform/reasoning', async (importOriginal) => {
     constructor(config: ConstructorParameters<typeof actual.ReasoningEngine>[0]) {
       if (h.failEngine) throw new Error('engine construction failed');
       super(config);
+    }
+
+    override async initialize(): ReturnType<InstanceType<typeof actual.ReasoningEngine>['initialize']> {
+      if (h.failEngineInit) throw new Error('engine initialize failed');
+      return super.initialize();
     }
   }
   return { ...actual, ReasoningEngine: MaybeFailingEngine };
@@ -162,6 +168,7 @@ beforeEach(() => {
   h.transports.length = 0;
   h.toolHandlers.clear();
   h.failEngine = false;
+  h.failEngineInit = false;
   h.bookingInserts.length = 0;
   resetBookingConfirmations();
   vi.mocked(createEscalationTask).mockClear();
@@ -328,6 +335,35 @@ describe('create_booking readback gate on the voice tool path', () => {
     expect(h.bookingInserts).toHaveLength(1);
     await result.session.close();
   });
+
+  for (const failure of ['construction', 'initialize'] as const) {
+    it(`shadow, engine ${failure} failed: caller turns still come from the session, so yes commits`, async () => {
+      const handler = vi.fn((input: Record<string, unknown>, context: ToolContext) => executeCreateBooking(input, context));
+      h.toolHandlers.set('create_booking', handler);
+      if (failure === 'construction') h.failEngine = true;
+      else h.failEngineInit = true;
+      const { ctx, result, say, callTool } = await start();
+      expect(ctx.reasoningMode).toBe('shadow');
+      expect(ctx.reasoningEngine).toBeUndefined();
+
+      say("Hi, this is Wayne. I'd like a fade Saturday at nine.");
+      const challenge = JSON.parse(await callTool('create_booking', fade));
+      expect(challenge).toMatchObject({ success: true, pending: true, status: 'needs_confirmation' });
+      expect(typeof challenge.confirmationToken).toBe('string');
+      expect(h.bookingInserts).toHaveLength(0);
+
+      // No caller turn in between: still rejected.
+      const sameTurn = JSON.parse(await callTool('create_booking', { ...fade, confirmationToken: challenge.confirmationToken }));
+      expect(sameTurn).toMatchObject({ pending: true, status: 'needs_confirmation' });
+      expect(h.bookingInserts).toHaveLength(0);
+
+      say('Yes.');
+      const committed = JSON.parse(await callTool('create_booking', { ...fade, confirmationToken: sameTurn.confirmationToken }));
+      expect(committed).toMatchObject({ success: true, bookingId: 'bk-voice' });
+      expect(h.bookingInserts).toHaveLength(1);
+      await result.session.close();
+    });
+  }
 
   it('enforce: create_booking stores directly as before (no confirmation required)', async () => {
     const handler = vi.fn((input: Record<string, unknown>, context: ToolContext) => executeCreateBooking(input, context));

@@ -92,6 +92,12 @@ export interface SessionContext {
   reasoningEngine?: ReasoningEngine;
   /** Applies (enforce) or only logs (shadow) the engine's decisions. */
   reasoningGate?: ReasoningCallGate;
+  /**
+   * Completed caller utterances this call, counted by the session itself so
+   * the create_booking readback gate works even if the reasoning engine
+   * never started. An object so handoff copies of ctx share the count.
+   */
+  callerTurns?: { count: number };
 }
 
 const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
@@ -589,7 +595,7 @@ function buildToolHandler(
               callSid,
               agentSlug: agentConfig.agentId,
               callerNumber: ctx.callerNumber,
-              transcriptTurnIndex: ctx.reasoningEngine?.getTranscript().length ?? 0,
+              transcriptTurnIndex: ctx.callerTurns?.count ?? 0,
               // Shadow mode no longer enforces the engine's slot checks, so
               // create_booking needs a readback + later-turn confirmation.
               requireBookingConfirmation: ctx.reasoningMode === 'shadow',
@@ -903,6 +909,7 @@ export async function createRealtimeSession(
     }).mode;
   // The tool handler reads the resolved mode (allowlist, booking readback).
   ctx.reasoningMode = reasoningMode;
+  ctx.callerTurns = { count: 0 };
   let reasoningEngine: ReasoningEngine | undefined;
   try {
     const reasoningConfig: ReasoningEngineConfig = {
@@ -1207,6 +1214,7 @@ export async function createRealtimeSession(
           const text = c.text || c.transcript;
           if (text) {
             line = `CALLER: ${text}`;
+            if (ctx.callerTurns) ctx.callerTurns.count++;
             costTracker.addUtterance('user', text);
 
             recordTrace({
