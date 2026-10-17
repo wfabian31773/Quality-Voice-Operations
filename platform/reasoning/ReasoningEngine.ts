@@ -8,6 +8,7 @@ import { SafetyGate } from './SafetyGate';
 import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
 import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction, isPolicyOrNegatedCancel } from './cancelRescheduleLanguage';
+import { isAdditionalTransactionRequest } from './additionalTransactionLanguage';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -300,9 +301,10 @@ export class ReasoningEngine {
       intent !== 'unknown'
       && this.workflowPlan
       && this.workflowPlan.status !== 'active'
+      && isAdditionalTransactionRequest(utterance)
     ) {
-      // Same intent after a finished plan (e.g. a second booking in one call):
-      // start a fresh slot set and plan so authorization can allow the new tool.
+      // Same intent after a finished plan, but only when the caller clearly
+      // asks for another transaction (e.g. "book one for my son too").
       this.updateSlotManifest(intent);
       this.workflowPlan = this.workflowPlanner.createPlan(this.buildContext(utterance));
     }

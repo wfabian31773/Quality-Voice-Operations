@@ -27,6 +27,26 @@ function makeSalonEngine(overrides: Partial<ReasoningEngineConfig> = {}): Reason
   });
 }
 
+function completeFirstHaircut(engine: ReasoningEngine): Record<string, string> {
+  const firstUtterance =
+    'Hi, I want to book a haircut tomorrow at 2pm. My name is Jordan Lee, you can reach me at 555-201-3344.';
+  engine.processUtterance(firstUtterance, 'book_appointment', 'high');
+  const firstArgs = {
+    title: 'Haircut',
+    startTime: '2026-10-17T14:00:00-07:00',
+    contactName: 'Jordan Lee',
+    contactPhone: '555-201-3344',
+  };
+  engine.fillSlot('title', firstArgs.title, 'tool_args');
+  engine.fillSlot('startTime', firstArgs.startTime, 'tool_args');
+  engine.fillSlot('contactName', firstArgs.contactName, 'tool_args');
+  engine.fillSlot('contactPhone', firstArgs.contactPhone, 'tool_args');
+  expect(engine.authorizeToolRequest('create_booking', firstArgs).allowed).toBe(true);
+  engine.handleToolSuccess('create_booking');
+  expect(engine.getWorkflowPlan()?.status).toBe('completed');
+  return firstArgs;
+}
+
 describe('salon booking conversation', () => {
   it('classifies a booking, fills library slots, and lets create_booking through the safety gate', () => {
     const engine = makeSalonEngine();
@@ -128,6 +148,58 @@ describe('salon booking conversation', () => {
     engine.fillSlot('contactName', secondArgs.contactName, 'tool_args');
     engine.fillSlot('contactPhone', secondArgs.contactPhone, 'tool_args');
     expect(engine.authorizeToolRequest('create_booking', secondArgs).allowed).toBe(true);
+  });
+
+  it('ends the interaction after thanks for a completed booking without clearing slots', () => {
+    const engine = makeSalonEngine();
+    const firstArgs = completeFirstHaircut(engine);
+
+    const thanks = 'thanks for booking my appointment';
+    const classified = engine.classifyIntent(thanks);
+    expect(classified.intent).toBe('book_appointment');
+
+    const decision = engine.processUtterance(thanks, classified.intent, classified.confidence);
+    expect(decision.action).toBe('complete_interaction');
+    expect(engine.getWorkflowPlan()?.status).toBe('completed');
+    expect(engine.getCurrentWorkflowStepTool()).toBeNull();
+
+    const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+    expect(slots.contactName?.value).toBe(firstArgs.contactName);
+    expect(slots.contactPhone?.value).toBe(firstArgs.contactPhone);
+    expect(slots.title?.value).toBe(firstArgs.title);
+  });
+
+  it('starts a fresh plan for an explicit additional booking after a completed one', () => {
+    const phrases = [
+      'can I book another appointment, this is Alex, you can reach me at 555-201-4400, Saturday at 3pm',
+      'puedo reservar otra cita, this is Alex, you can reach me at 555-201-4400, Saturday at 3pm',
+    ];
+
+    for (const secondUtterance of phrases) {
+      const engine = makeSalonEngine();
+      completeFirstHaircut(engine);
+
+      const secondDecision = engine.processUtterance(secondUtterance, 'book_appointment', 'high');
+      expect(secondDecision.action).not.toBe('complete_interaction');
+      expect(engine.getWorkflowPlan()?.status).toBe('active');
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+
+      const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+      expect(slots.contactName?.value).toBe('Alex');
+      expect(slots.contactName?.value).not.toBe('Jordan Lee');
+
+      const secondArgs = {
+        title: 'Haircut',
+        startTime: '2026-10-18T15:00:00-07:00',
+        contactName: 'Alex',
+        contactPhone: '555-201-4400',
+      };
+      engine.fillSlot('title', secondArgs.title, 'tool_args');
+      engine.fillSlot('startTime', secondArgs.startTime, 'tool_args');
+      engine.fillSlot('contactName', secondArgs.contactName, 'tool_args');
+      engine.fillSlot('contactPhone', secondArgs.contactPhone, 'tool_args');
+      expect(engine.authorizeToolRequest('create_booking', secondArgs).allowed).toBe(true);
+    }
   });
 
   it('lets create_ticket through the gate when the caller leaves a message', () => {
