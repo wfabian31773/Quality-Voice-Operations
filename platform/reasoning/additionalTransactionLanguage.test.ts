@@ -14,6 +14,10 @@ describe('additional transaction language', () => {
     expect(isAdditionalTransactionRequest('book a color as well')).toBe(true);
     expect(isAdditionalTransactionRequest('one more for my son')).toBe(true);
     expect(isAdditionalTransactionRequest('one for my daughter too')).toBe(true);
+    expect(isAdditionalTransactionRequest('I also want to book a manicure')).toBe(true);
+    expect(isAdditionalTransactionRequest('Can you also please book a manicure?')).toBe(true);
+    expect(isAdditionalTransactionRequest("I'd also like to book a pedicure")).toBe(true);
+    expect(isAdditionalTransactionRequest('I also need to schedule one for my daughter')).toBe(true);
   });
 
   it('detects an explicit extra booking in Spanish', () => {
@@ -24,6 +28,8 @@ describe('additional transaction language', () => {
     expect(isAdditionalTransactionRequest('para mi hijo')).toBe(true);
     expect(isAdditionalTransactionRequest('para mi hija')).toBe(true);
     expect(isAdditionalTransactionRequest('otra para mi hija')).toBe(true);
+    expect(isAdditionalTransactionRequest('también quiero reservar')).toBe(true);
+    expect(isAdditionalTransactionRequest('también quisiera hacer una cita')).toBe(true);
   });
 
   it('does not treat thanks, confirmations, or polite closings as a new booking', () => {
@@ -48,5 +54,8 @@ describe('additional transaction language', () => {
     expect(isAdditionalTransactionRequest('no necesito otra')).toBe(false);
     expect(isAdditionalTransactionRequest('no me reserve otra cita')).toBe(false);
     expect(isAdditionalTransactionRequest('no quiero reservar otra')).toBe(false);
+    expect(isAdditionalTransactionRequest("Don't also book a manicure")).toBe(false);
+    expect(isAdditionalTransactionRequest("I don't also want to book a manicure")).toBe(false);
+    expect(isAdditionalTransactionRequest('no quiero también reservar')).toBe(false);
   });
 });
