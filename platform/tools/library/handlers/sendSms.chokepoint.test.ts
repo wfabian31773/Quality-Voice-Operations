@@ -20,7 +20,8 @@ const fake = vi.hoisted(() => {
       throw new Error('Twilio must not be called in tests');
     }),
   };
-  return { records, transport, twilio };
+  const quiet = { allowed: true };
+  return { records, transport, twilio, quiet };
 });
 
 vi.mock('../../../db', () => ({
@@ -60,7 +61,11 @@ vi.mock('../../../actions/sms/deps', async (importOriginal) => {
         isTenantMessagingEnabled: async () => true,
         isTenantSender: async () => true,
         latestConsentAction: async () => null,
-        countRecentOutbound: async () => 0,
+        reserveOutbound: async (record: { id: string; to: string; body: string; status: string }) => {
+          fake.records.push({ id: record.id, to: record.to, body: record.body, status: record.status });
+          return { reserved: true };
+        },
+        reserveDeferredSend: async () => ({ reserved: true }),
         insertOutbound: async (record: { id: string; to: string; body: string; status: string }) => {
           fake.records.push({ id: record.id, to: record.to, body: record.body, status: record.status });
         },
@@ -71,7 +76,10 @@ vi.mock('../../../actions/sms/deps', async (importOriginal) => {
         claimDueDeferred: async () => [],
       },
       transport: fake.transport,
-      quietHours: { isAllowed: async () => true, nextWindowStart: async (_t: string, _to: string, now: Date) => now },
+      quietHours: {
+        isAllowed: async () => fake.quiet.allowed,
+        nextWindowStart: async () => new Date('2026-10-15T13:00:00.000Z'),
+      },
       config: {
         smsEnabled: () => true,
         liveCallExemptSeconds: () => 60,
@@ -93,6 +101,7 @@ const ctx = { tenantId: 'tenant-1', callSid: 'CA-e2e', callerNumber: '+131255501
 
 beforeEach(() => {
   fake.records.length = 0;
+  fake.quiet.allowed = true;
   fake.transport.send.mockClear();
   fake.twilio.sendTwilioSms.mockClear();
   fetchSpy.mockClear();
@@ -153,12 +162,73 @@ describe('send_sms tool -> sms.send chokepoint', () => {
     expect(fake.twilio.sendTwilioSms).not.toHaveBeenCalled();
   });
 
-  it('rejects vars that do not fit the template in the chokepoint, without sending', async () => {
-    const result = await sendSmsTool.handler(
+  it('rejects bad vars without sending, then sends the corrected retry on the same call', async () => {
+    const call = { ...ctx, callSid: 'CA-e2e-retry' } as never;
+    const bad = await sendSmsTool.handler(
       { templateKey: 'link', vars: { businessName: 'Fade Lab', url: 'http://not-https.example' } },
-      { ...ctx, callSid: 'CA-e2e-bad-vars' } as never,
+      call,
     );
-    expect(result).toMatchObject({ success: false, code: 'VALIDATION_FAILED' });
+    expect(bad).toMatchObject({ success: false, code: 'VALIDATION_FAILED' });
     expect(fake.transport.send).not.toHaveBeenCalled();
+
+    const corrected = await sendSmsTool.handler(
+      { templateKey: 'link', vars: { businessName: 'Fade Lab', url: 'https://fadelab.example/book' } },
+      call,
+    );
+    expect(corrected).toMatchObject({ success: true, status: 'queued' });
+    expect(fake.transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends two different confirmations in the same call', async () => {
+    const call = { ...ctx, callSid: 'CA-e2e-two' } as never;
+    const first = await sendSmsTool.handler(
+      { templateKey: 'confirmation', vars: { businessName: 'Fade Lab', summary: 'a cut with Marco, Tue 3:30 PM' } },
+      call,
+    );
+    const second = await sendSmsTool.handler(
+      { templateKey: 'confirmation', vars: { businessName: 'Fade Lab', summary: 'a beard trim with Marco, Tue 4:00 PM' } },
+      call,
+    );
+    expect(first).toMatchObject({ success: true, status: 'queued' });
+    expect(second).toMatchObject({ success: true, status: 'queued' });
+    expect(fake.transport.send).toHaveBeenCalledTimes(2);
+    expect(fake.records).toHaveLength(2);
+  });
+
+  it('dedupes an exact duplicate in the same call (Twilio called once)', async () => {
+    const call = { ...ctx, callSid: 'CA-e2e-dup' } as never;
+    const input = { templateKey: 'directions', vars: { businessName: 'Fade Lab', address: '12 Main St' } };
+    const first = await sendSmsTool.handler(input, call);
+    // Same message; the number is spelled differently but normalizes to the caller.
+    const repeat = await sendSmsTool.handler({ ...input, toNumber: '+1 312-555-0142' }, call);
+    expect(first).toMatchObject({ success: true, status: 'queued' });
+    expect(repeat).toEqual(first);
+    expect(fake.transport.send).toHaveBeenCalledTimes(1);
+    expect(fake.records).toHaveLength(1);
+  });
+
+  describe('quiet hours during a live call', () => {
+    const vars = { businessName: 'Fade Lab', address: '12 Main St' };
+
+    it('sends to the caller on the active call (exempt)', async () => {
+      fake.quiet.allowed = false;
+      const result = await sendSmsTool.handler(
+        { templateKey: 'directions', vars },
+        { ...ctx, callSid: 'CA-e2e-quiet-caller' } as never,
+      );
+      expect(result).toMatchObject({ success: true, status: 'queued' });
+      expect(fake.transport.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers a send to any other number', async () => {
+      fake.quiet.allowed = false;
+      const result = await sendSmsTool.handler(
+        { toNumber: '+13125550199', templateKey: 'directions', vars },
+        { ...ctx, callSid: 'CA-e2e-quiet-other' } as never,
+      );
+      expect(result).toMatchObject({ success: true, status: 'deferred_quiet_hours' });
+      expect(fake.transport.send).not.toHaveBeenCalled();
+      expect(fake.records).toEqual([expect.objectContaining({ to: '+13125550199', status: 'deferred_quiet_hours' })]);
+    });
   });
 });

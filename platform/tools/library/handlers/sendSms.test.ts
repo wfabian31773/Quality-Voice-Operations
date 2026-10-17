@@ -7,6 +7,7 @@ vi.mock('../../../actions/sms', async (importOriginal) => ({
   sendSystemSms,
 }));
 
+import { agentSmsIdempotencyKey } from '../../../actions/sms';
 import { executeSendSms } from './sendSms';
 
 const ctx = { tenantId: 't1', callSid: 'CA1', callerNumber: '+13125550142', agentSlug: 'barber' };
@@ -41,10 +42,32 @@ describe('send_sms tool (thin wrapper over sms.send)', () => {
         to: '+13125550142',
         templateKey: 'directions',
         purpose: 'transactional',
+        callId: 'CA1',
         liveCall: { callId: 'CA1' },
-        idempotencyKey: 'sms:agent:CA1:directions:+13125550142',
+        idempotencyKey: agentSmsIdempotencyKey({
+          callId: 'CA1',
+          templateKey: 'directions',
+          vars: { businessName: 'Fade Lab', address: '12 Main St' },
+          to: '+13125550142',
+        }),
       }),
     );
+  });
+
+  it('claims the live-call exemption only for the caller on the active call', async () => {
+    sendSystemSms.mockResolvedValue({ ok: true, data: { messageId: 'm1', status: 'queued', twilioSid: 'SM1' } });
+    const vars = { businessName: 'Fade Lab', address: '12 Main St' };
+    // Same number, different formatting: still the caller.
+    await executeSendSms({ toNumber: '+1 (312) 555-0142', templateKey: 'directions', vars }, ctx);
+    expect(sendSystemSms.mock.calls[0][0]).toMatchObject({ to: '+13125550142', liveCall: { callId: 'CA1' } });
+
+    await executeSendSms({ toNumber: '+13125550199', templateKey: 'directions', vars }, ctx);
+    const other = sendSystemSms.mock.calls[1][0];
+    expect(other).toMatchObject({ to: '+13125550199', callId: 'CA1' });
+    expect(other).not.toHaveProperty('liveCall');
+
+    await executeSendSms({ toNumber: '+13125550142', templateKey: 'directions', vars }, { ...ctx, callerNumber: undefined });
+    expect(sendSystemSms.mock.calls[2][0]).not.toHaveProperty('liveCall');
   });
 
   it('returns the caller-safe message on a chokepoint error and the morning line when deferred', async () => {

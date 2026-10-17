@@ -1,5 +1,11 @@
 import { createLogger } from '../../../core/logger';
-import { isAgentSmsTemplate, sendSystemSms, type SmsTemplateKey } from '../../../actions/sms';
+import {
+  agentSmsIdempotencyKey,
+  isAgentSmsTemplate,
+  normalizeE164,
+  sendSystemSms,
+  type SmsTemplateKey,
+} from '../../../actions/sms';
 import type { ToolContext, ToolDefinition } from '../../registry/types';
 import { getToolLibraryEntry } from '../catalog';
 
@@ -30,17 +36,26 @@ export async function executeSendSms(
       ? Object.fromEntries(Object.entries(input.vars as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')]))
       : {};
   const callId = context.callSid ?? context.callLogId;
+  // Normalized so "+1 312…" and "+1312…" are the same send (same key, same input).
+  const to = normalizeE164(toNumber) ?? toNumber;
+  // The live-call quiet-hours exemption covers only the person on the call.
+  const callerNumber = normalizeE164(context.callerNumber);
+  const toCaller = callerNumber !== null && callerNumber === to;
 
   try {
     const result = await sendSystemSms({
       tenantId: context.tenantId,
-      to: toNumber,
+      to,
       templateKey: templateKey as SmsTemplateKey,
       vars,
       purpose: 'transactional',
       actorId: `agent:${context.agentSlug ?? 'voice'}`,
       ...(callId
-        ? { liveCall: { callId }, idempotencyKey: `sms:agent:${callId}:${templateKey}:${toNumber}` }
+        ? {
+            callId,
+            ...(toCaller ? { liveCall: { callId } } : {}),
+            idempotencyKey: agentSmsIdempotencyKey({ callId, templateKey, vars, to }),
+          }
         : {}),
     });
     if (!result.ok) {

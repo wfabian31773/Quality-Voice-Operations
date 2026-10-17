@@ -5,6 +5,7 @@ import { TwilioApiError } from '../../integrations/twilio/sender';
 import {
   actionFail,
   actionOk,
+  requestHash,
   runActionDefinition,
   type ActionContext,
   type ActionDefinition,
@@ -14,7 +15,14 @@ import {
   type TenantTx,
 } from '../core';
 import { defaultWithTenantTx } from '../core/runtime';
-import { defaultSmsSendDeps, type OutboundSmsRecord, type SmsSendDeps } from './deps';
+import {
+  defaultSmsSendDeps,
+  type ClaimedSmsRecord,
+  type OutboundSmsPatch,
+  type OutboundSmsRecord,
+  type SmsRateLimitWindow,
+  type SmsSendDeps,
+} from './deps';
 import { bodyStats, renderSmsTemplate, SMS_MAX_BODY_CHARS, type SmsTemplateKey } from './templates';
 
 const logger = createLogger('SMS_SEND');
@@ -168,11 +176,16 @@ function classifyTransportError(err: unknown): ActionResult<never> {
   return smsFail('UPSTREAM_UNAVAILABLE', err instanceof Error ? err.message : String(err), { retryable: true });
 }
 
-/** Steps 6–7: Twilio send with StatusCallback, then the status update. */
+/**
+ * Steps 6–7: Twilio send with StatusCallback, then the status update. On a
+ * send error the row is marked `failed` unless `markFailed` is false (the
+ * release path decides between retry and failure itself).
+ */
 async function transmit(
   deps: SmsSendDeps,
   msg: Pick<OutboundSmsRecord, 'id' | 'tenantId' | 'from' | 'to' | 'body'>,
   now: Date,
+  { markFailed = true }: { markFailed?: boolean } = {},
 ): Promise<TransmitResult> {
   const statusCallback = deps.config.statusCallbackUrl();
   if (!statusCallback) {
@@ -192,6 +205,7 @@ async function transmit(
     });
   } catch (err) {
     const result = classifyTransportError(err);
+    if (!markFailed) return { ok: false, result };
     const errorMessage = result.ok ? undefined : `${result.error.code}: ${result.error.message}`.slice(0, 500);
     try {
       await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'failed', errorMessage });
@@ -211,6 +225,11 @@ async function transmit(
     });
   }
   return { ok: true, twilioSid: sent.sid };
+}
+
+function rateLimitWindow(deps: SmsSendDeps, now: Date): SmsRateLimitWindow | null {
+  const { max, windowMs } = deps.config.rateLimit();
+  return max > 0 ? { max, since: new Date(now.getTime() - windowMs) } : null;
 }
 
 export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): ActionDefinition<SmsSendInput, SmsSendOutput> {
@@ -301,27 +320,15 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         }
       }
 
-      // 4. Per-recipient rate limit.
-      const { max, windowMs } = deps.config.rateLimit();
-      if (max > 0) {
-        const since = new Date(ctx.now.getTime() - windowMs);
-        const recent = await deps.store.countRecentOutbound(tx, ctx.tenantId, to, since);
-        if (recent >= max) {
-          return actionFail('RATE_LIMITED', `Recipient already received ${recent} SMS in the rate-limit window`);
-        }
+      // 4–5. Per-recipient rate limit and persist, atomically (one lock per
+      // tenant + recipient), before calling Twilio.
+      const reserved = await deps.store.reserveOutbound(
+        { id, tenantId: ctx.tenantId, from, to, body, status: 'sending', scheduledAt: null, metadata },
+        rateLimitWindow(deps, ctx.now),
+      );
+      if (!reserved.reserved) {
+        return actionFail('RATE_LIMITED', `Recipient already received ${reserved.recent} SMS in the rate-limit window`);
       }
-
-      // 5. Persist the outbound message before calling Twilio.
-      await deps.store.insertOutbound({
-        id,
-        tenantId: ctx.tenantId,
-        from,
-        to,
-        body,
-        status: 'sending',
-        scheduledAt: null,
-        metadata,
-      });
 
       // 6–7. Twilio send with StatusCallback, then the status update.
       const sent = await transmit(deps, { id, tenantId: ctx.tenantId, from, to, body }, ctx.now);
@@ -351,6 +358,23 @@ export function automatedSmsIdempotencyKey(input: {
 }): string {
   const to = normalizeE164(input.to) ?? input.to;
   return `sms:auto:${input.relatedEntity.type}:${input.relatedEntity.id}:${input.templateKey}:${to}`;
+}
+
+/**
+ * Idempotency key for agent sends: the call plus a stable hash of templateKey
+ * + canonicalized vars + normalized recipient. An exact repeat dedupes; a
+ * corrected retry or a second, different message in the same call does not
+ * collide with the first (no IDEMPOTENCY_KEY_REUSED).
+ */
+export function agentSmsIdempotencyKey(input: {
+  callId: string;
+  templateKey: string;
+  vars: Record<string, string>;
+  to: string;
+}): string {
+  const to = normalizeE164(input.to) ?? input.to;
+  const digest = requestHash({ templateKey: input.templateKey, vars: input.vars, to }).slice(0, 32);
+  return `sms:agent:${input.callId}:${digest}`;
 }
 
 export interface SystemSmsRequest {
@@ -417,69 +441,202 @@ export async function sendSystemSmsOrThrow(
 
 export interface DeferredReleaseSummary {
   claimed: number;
+  /** Claimed rows a previous release left stuck in `sending` without a Twilio SID. */
+  reclaimed: number;
   sent: number;
+  /** Still in quiet hours: re-deferred to the next window. */
   deferred: number;
+  /** Over the per-recipient limit: re-deferred, not dropped. */
+  rateLimited: number;
+  /** Transient failure: re-deferred with backoff. */
+  retried: number;
   suppressed: number;
   failed: number;
 }
 
+/** Release attempts (transient failures, stuck reclaims) before a row is marked `failed`. */
+export const SMS_RELEASE_MAX_ATTEMPTS = 5;
+/** A released row still `sending` with no Twilio SID after this long is reclaimed. */
+export const SMS_RELEASE_STUCK_MS = 10 * 60_000;
+const RELEASE_BACKOFF_BASE_MS = 60_000;
+const RELEASE_BACKOFF_MAX_MS = 30 * 60_000;
+const RATE_LIMIT_REDEFER_MIN_MS = 60_000;
+const RATE_LIMIT_REDEFER_MAX_MS = 10 * 60_000;
+
+/** 1 min, 2 min, 4 min, … capped at 30 min. */
+export function releaseBackoffMs(attempt: number): number {
+  return Math.min(RELEASE_BACKOFF_BASE_MS * 2 ** Math.max(0, attempt - 1), RELEASE_BACKOFF_MAX_MS);
+}
+
+function priorReleaseAttempts(msg: OutboundSmsRecord): number {
+  const n = Number(msg.metadata.releaseAttempts);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+type ReleaseOutcome =
+  | { kind: 'sent' }
+  | { kind: 'suppressed'; reason: 'MESSAGING_NOT_ENABLED' | 'RECIPIENT_OPTED_OUT' }
+  | { kind: 'quiet_hours'; next: Date }
+  | { kind: 'rate_limited'; next: Date }
+  | { kind: 'transient'; error: string }
+  | { kind: 'permanent'; error: string };
+
+type WithTenantTx = <T>(tenantId: string, fn: (tx: TenantTx) => Promise<T>) => Promise<T>;
+
+async function releaseOne(
+  deps: SmsSendDeps,
+  withTenantTx: WithTenantTx,
+  msg: ClaimedSmsRecord,
+  now: Date,
+): Promise<ReleaseOutcome> {
+  try {
+    const gate = await withTenantTx(msg.tenantId, async (tx) => {
+      if (!deps.config.smsEnabled() || !(await deps.store.isTenantMessagingEnabled(tx, msg.tenantId))) {
+        return 'MESSAGING_NOT_ENABLED' as const;
+      }
+      if ((await deps.store.latestConsentAction(tx, msg.tenantId, msg.to)) === 'opt_out') {
+        return 'RECIPIENT_OPTED_OUT' as const;
+      }
+      return null;
+    });
+    if (gate) return { kind: 'suppressed', reason: gate };
+    if (!(await deps.quietHours.isAllowed(msg.tenantId, msg.to, now))) {
+      return { kind: 'quiet_hours', next: await deps.quietHours.nextWindowStart(msg.tenantId, msg.to, now) };
+    }
+    // Same per-recipient limit as live sends, atomically reserved.
+    const reserved = await deps.store.reserveDeferredSend(msg, rateLimitWindow(deps, now), now);
+    if (!reserved.reserved) {
+      const { windowMs } = deps.config.rateLimit();
+      const delay = Math.min(Math.max(windowMs, RATE_LIMIT_REDEFER_MIN_MS), RATE_LIMIT_REDEFER_MAX_MS);
+      return { kind: 'rate_limited', next: new Date(now.getTime() + delay) };
+    }
+  } catch (err) {
+    // DB or quiet-hours lookup error during the gate checks: retry later.
+    return { kind: 'transient', error: String(err) };
+  }
+  const sent = await transmit(deps, msg, now, { markFailed: false });
+  if (sent.ok) return { kind: 'sent' };
+  const { error } = sent.result as Extract<ActionResult<never>, { ok: false }>;
+  const message = `${error.code}: ${error.message}`;
+  return error.retryable ? { kind: 'transient', error: message } : { kind: 'permanent', error: message };
+}
+
 /**
- * Sends deferred (quiet-hours) messages whose window has opened. Gates 1–3
+ * Sends deferred (quiet-hours) messages whose window has opened. Gates 1–4
  * are re-checked at release, so an opt-out or a disabled tenant after the
- * deferral still wins. Intended to run on a scheduler.
+ * deferral still wins, and the per-recipient limit still applies (over it,
+ * the row is re-deferred). Transient Twilio/DB errors re-defer with backoff
+ * up to SMS_RELEASE_MAX_ATTEMPTS; non-retryable errors fail at once. Runs on
+ * the `sms-deferred-release` scheduler.
  */
 export async function releaseDueDeferredSms(
   opts: {
     deps?: SmsSendDeps;
     now?: Date;
     limit?: number;
-    withTenantTx?: <T>(tenantId: string, fn: (tx: TenantTx) => Promise<T>) => Promise<T>;
+    withTenantTx?: WithTenantTx;
   } = {},
 ): Promise<DeferredReleaseSummary> {
   const deps = opts.deps ?? defaultSmsSendDeps;
   const withTenantTx = opts.withTenantTx ?? defaultWithTenantTx;
   const now = opts.now ?? new Date();
-  const summary: DeferredReleaseSummary = { claimed: 0, sent: 0, deferred: 0, suppressed: 0, failed: 0 };
-  const due = await deps.store.claimDueDeferred(now, opts.limit ?? 100);
+  const summary: DeferredReleaseSummary = {
+    claimed: 0,
+    reclaimed: 0,
+    sent: 0,
+    deferred: 0,
+    rateLimited: 0,
+    retried: 0,
+    suppressed: 0,
+    failed: 0,
+  };
+  const stuckBefore = new Date(now.getTime() - SMS_RELEASE_STUCK_MS);
+  const due = await deps.store.claimDueDeferred(now, opts.limit ?? 100, stuckBefore);
   summary.claimed = due.length;
 
   for (const msg of due) {
-    try {
-      const gate = await withTenantTx(msg.tenantId, async (tx) => {
-        if (!deps.config.smsEnabled() || !(await deps.store.isTenantMessagingEnabled(tx, msg.tenantId))) {
-          return 'MESSAGING_NOT_ENABLED' as const;
-        }
-        if ((await deps.store.latestConsentAction(tx, msg.tenantId, msg.to)) === 'opt_out') {
-          return 'RECIPIENT_OPTED_OUT' as const;
-        }
-        return null;
-      });
-      if (gate) {
-        await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'suppressed', errorMessage: gate });
-        summary.suppressed += 1;
-        continue;
-      }
-      if (!(await deps.quietHours.isAllowed(msg.tenantId, msg.to, now))) {
-        const next = await deps.quietHours.nextWindowStart(msg.tenantId, msg.to, now);
-        await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'deferred_quiet_hours', scheduledAt: next });
-        summary.deferred += 1;
-        continue;
-      }
-      const sent = await transmit(deps, msg, now);
-      if (sent.ok) summary.sent += 1;
-      else summary.failed += 1;
-    } catch (err) {
+    let attempts = priorReleaseAttempts(msg);
+    let patch: OutboundSmsPatch | null;
+    if (msg.reclaimed) {
+      // A previous release died mid-send before Twilio returned a SID.
+      summary.reclaimed += 1;
+      attempts += 1;
+    }
+    if (msg.reclaimed && attempts >= SMS_RELEASE_MAX_ATTEMPTS) {
       summary.failed += 1;
-      logger.error('Deferred SMS release failed', { tenantId: msg.tenantId, messageId: msg.id, error: String(err) });
-      try {
-        await deps.store.updateOutbound(msg.tenantId, msg.id, {
-          status: 'failed',
-          errorMessage: String(err).slice(0, 500),
+      patch = { status: 'failed', errorMessage: 'STUCK_SENDING', metadata: { releaseAttempts: attempts } };
+    } else {
+      const outcome = await releaseOne(deps, withTenantTx, msg, now);
+      patch = applyOutcome(outcome, attempts, now, summary);
+      if (outcome.kind === 'transient' || outcome.kind === 'permanent') {
+        logger.warn('Deferred SMS release attempt failed', {
+          tenantId: msg.tenantId,
+          messageId: msg.id,
+          attempt: attempts + 1,
+          retrying: patch?.status === 'deferred_quiet_hours',
+          error: outcome.error,
         });
-      } catch {
-        // Row stays `sending`; logged above.
       }
+    }
+    if (!patch) continue;
+    try {
+      await deps.store.updateOutbound(msg.tenantId, msg.id, patch);
+    } catch (err) {
+      // Row stays `sending` without a SID; the next run reclaims it after SMS_RELEASE_STUCK_MS.
+      logger.error('Deferred SMS release status update failed', {
+        tenantId: msg.tenantId,
+        messageId: msg.id,
+        error: String(err),
+      });
     }
   }
   return summary;
+}
+
+/** Maps a release outcome to the row update (null when `transmit` already wrote it). */
+function applyOutcome(
+  outcome: ReleaseOutcome,
+  attempts: number,
+  now: Date,
+  summary: DeferredReleaseSummary,
+): OutboundSmsPatch | null {
+  switch (outcome.kind) {
+    case 'sent':
+      summary.sent += 1;
+      return null;
+    case 'suppressed':
+      summary.suppressed += 1;
+      return { status: 'suppressed', errorMessage: outcome.reason, metadata: { releaseAttempts: attempts } };
+    case 'quiet_hours':
+      summary.deferred += 1;
+      return {
+        status: 'deferred_quiet_hours',
+        scheduledAt: outcome.next,
+        metadata: { deferredReason: 'QUIET_HOURS', releaseAttempts: attempts },
+      };
+    case 'rate_limited':
+      summary.rateLimited += 1;
+      return {
+        status: 'deferred_quiet_hours',
+        scheduledAt: outcome.next,
+        metadata: { deferredReason: 'RATE_LIMITED', releaseAttempts: attempts },
+      };
+    case 'transient': {
+      const next = attempts + 1;
+      const error = outcome.error.slice(0, 500);
+      if (next >= SMS_RELEASE_MAX_ATTEMPTS) {
+        summary.failed += 1;
+        return { status: 'failed', errorMessage: error, metadata: { releaseAttempts: next } };
+      }
+      summary.retried += 1;
+      return {
+        status: 'deferred_quiet_hours',
+        scheduledAt: new Date(now.getTime() + releaseBackoffMs(next)),
+        metadata: { deferredReason: 'RETRY', releaseAttempts: next, lastReleaseError: error },
+      };
+    }
+    case 'permanent':
+      summary.failed += 1;
+      return { status: 'failed', errorMessage: outcome.error.slice(0, 500), metadata: { releaseAttempts: attempts + 1 } };
+  }
 }

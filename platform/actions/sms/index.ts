@@ -6,6 +6,7 @@ export const smsActions: AnyActionDefinition[] = [smsSendAction];
 export {
   SMS_SEND_ACTION,
   SMS_SEND_ERROR_CODES,
+  agentSmsIdempotencyKey,
   automatedSmsIdempotencyKey,
   createSmsSendAction,
   normalizeE164,
@@ -19,6 +20,7 @@ export {
   type SystemSmsRequest,
 } from './send';
 export { applySmsStatusCallback, type SmsStatusCallback } from './statusCallback';
+export { isSmsOptIn, liftSmsOptOutDnc } from './consent';
 export {
   SMS_MAX_BODY_CHARS,
   getSmsTemplate,

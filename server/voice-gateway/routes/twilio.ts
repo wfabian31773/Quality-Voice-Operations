@@ -36,6 +36,7 @@ import {
 } from '../../../platform/billing/guardrails';
 import { authorizeHealthcareDeployment } from '../../../platform/compliance/HealthcareDeploymentApprovalService';
 import { applySmsStatusCallback } from '../../../platform/actions/sms/statusCallback';
+import { isSmsOptIn, liftSmsOptOutDnc } from '../../../platform/actions/sms/consent';
 
 const logger = createLogger('TWILIO_WEBHOOK');
 
@@ -938,6 +939,7 @@ router.post('/twilio/sms', async (req: Request, res: Response) => {
 
     const trimmedBody = body.trim().toLowerCase();
     const isOptOut = isSmsOptOut(body);
+    const isOptIn = !isOptOut && isSmsOptIn(body);
     const isHelp = trimmedBody === 'help' || trimmedBody === 'info';
 
     // CSAT response capture — runs BEFORE auto-reply / agent routing so a
@@ -975,6 +977,14 @@ router.post('/twilio/sms', async (req: Request, res: Response) => {
         logger.warn('Failed to mark CSAT opt-out', { tenantId, error: String(csatErr) });
       }
       logger.info('SMS opt-out processed — added to DNC', { tenantId, phone: redactPHI(from) });
+    }
+
+    if (isOptIn) {
+      // START/UNSTOP: the latest consent event becomes opt_in, which is what
+      // the sms.send chokepoint reads, and the SMS-sourced DNC entry is lifted.
+      await SmsService.logConsent(tenantId, from, 'opt_in', body.trim(), 'inbound_sms', messageSid || undefined);
+      const lifted = await liftSmsOptOutDnc(tenantId, from);
+      logger.info('SMS opt-in processed', { tenantId, phone: redactPHI(from), dncLifted: lifted });
     }
 
     if (isHelp) {

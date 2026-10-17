@@ -16,15 +16,18 @@ import {
   tenantSmsQuietHours,
   type OutboundSmsPatch,
   type OutboundSmsRecord,
+  type SmsRateLimitWindow,
   type SmsSendConfig,
   type SmsSendDeps,
   type SmsSendStore,
 } from './deps';
 import {
+  agentSmsIdempotencyKey,
   automatedSmsIdempotencyKey,
   createSmsSendAction,
   releaseDueDeferredSms,
   sendSystemSms,
+  SMS_RELEASE_MAX_ATTEMPTS,
   type SystemSmsRequest,
 } from './send';
 
@@ -49,26 +52,61 @@ function setup(overrides: Partial<SmsSendConfig> = {}) {
   const records = new Map<string, StoredRecord>();
   let seq = 0;
 
+  // Mirrors the Postgres store: deferred/suppressed/failed rows were never sent and don't count.
+  // Like COALESCE(sent_at, created_at): a live row with no sentAt yet was just
+  // created and counts; a released deferred row was created hours ago and
+  // counts only once reserveDeferredSend stamps sentAt.
+  const recentSends = (to: string, since: Date, excludeId?: string) =>
+    [...records.values()].filter(
+      (r) =>
+        r.to === to &&
+        r.id !== excludeId &&
+        !['failed', 'deferred_quiet_hours', 'suppressed'].includes(r.status) &&
+        (r.sentAt ? r.sentAt >= since : !r.metadata.releaseClaimedAt),
+    ).length;
+
   const store: SmsSendStore = {
     isTenantMessagingEnabled: vi.fn(async () => state.tenantEnabled),
     isTenantSender: vi.fn(async (_tx: unknown, _tenant: string, from: string) => state.senders.includes(from)),
     latestConsentAction: vi.fn(async (_tx: unknown, _tenant: string, phone: string) => state.consent.get(phone) ?? null),
-    countRecentOutbound: vi.fn(async (_tx: unknown, _tenant: string, to: string) =>
-      [...records.values()].filter((r) => r.to === to && r.status !== 'failed').length,
-    ),
+    reserveOutbound: vi.fn(async (record: OutboundSmsRecord, limit: SmsRateLimitWindow | null) => {
+      const recent = limit ? recentSends(record.to, limit.since) : 0;
+      if (limit && recent >= limit.max) return { reserved: false as const, recent };
+      records.set(record.id, { ...record });
+      return { reserved: true as const };
+    }),
+    reserveDeferredSend: vi.fn(async (msg: { id: string; to: string }, limit: SmsRateLimitWindow | null, now: Date) => {
+      const recent = limit ? recentSends(msg.to, limit.since, msg.id) : 0;
+      if (limit && recent >= limit.max) return { reserved: false as const, recent };
+      const row = records.get(msg.id);
+      if (row) row.sentAt = now;
+      return { reserved: true as const };
+    }),
     insertOutbound: vi.fn(async (record: OutboundSmsRecord) => {
       records.set(record.id, { ...record });
     }),
     updateOutbound: vi.fn(async (_tenant: string, id: string, patch: OutboundSmsPatch) => {
       const row = records.get(id);
-      if (row) Object.assign(row, patch);
+      if (!row) return;
+      const { metadata, ...rest } = patch;
+      Object.assign(row, rest);
+      if (metadata) row.metadata = { ...row.metadata, ...metadata };
     }),
-    claimDueDeferred: vi.fn(async (now: Date) => {
+    claimDueDeferred: vi.fn(async (now: Date, _limit: number, stuckBefore: Date) => {
       const due = [...records.values()].filter(
-        (r) => r.status === 'deferred_quiet_hours' && r.scheduledAt && r.scheduledAt <= now,
+        (r) =>
+          (r.status === 'deferred_quiet_hours' && r.scheduledAt && r.scheduledAt <= now) ||
+          (r.status === 'sending' &&
+            !r.twilioSid &&
+            typeof r.metadata.releaseClaimedAt === 'string' &&
+            new Date(r.metadata.releaseClaimedAt) <= stuckBefore),
       );
-      for (const r of due) r.status = 'sending';
-      return due.map((r) => ({ ...r }));
+      return due.map((r) => {
+        const reclaimed = r.status === 'sending';
+        r.status = 'sending';
+        r.metadata = { ...r.metadata, releaseClaimedAt: now.toISOString() };
+        return { ...r, reclaimed };
+      });
     }),
   };
   const transport = {
@@ -139,7 +177,7 @@ describe('sms.send chokepoint', () => {
     expect(row).toMatchObject({ status: 'queued', twilioSid: 'SM1', from: FROM, to: TO });
     expect(row.metadata).toMatchObject({ source: 'sms.send', templateKey: 'confirmation', purpose: 'transactional' });
     // Persisted before Twilio was called.
-    const insertOrder = (t.store.insertOutbound as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+    const insertOrder = (t.store.reserveOutbound as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     expect(insertOrder).toBeLessThan(t.transport.send.mock.invocationCallOrder[0]);
   });
 
@@ -225,6 +263,134 @@ describe('sms.send chokepoint', () => {
     ]);
   });
 
+  describe('deferred release', () => {
+    const release = (t: ReturnType<typeof setup>, at: Date | string) =>
+      releaseDueDeferredSms({ deps: t.deps, now: new Date(at), withTenantTx: t.runtime.withTenantTx });
+    const defer = (t: ReturnType<typeof setup>, id: string, to = TO) =>
+      t.system({ now: NINE_OH_FIVE_PM, to, relatedEntity: { type: 'booking', id } });
+    const row = (t: ReturnType<typeof setup>, id: string) => t.records.get(id)!;
+    const plusMs = (iso: string, ms: number) => new Date(Date.parse(iso) + ms).toISOString();
+
+    it('applies the per-recipient rate limit at release and re-defers instead of dropping', async () => {
+      const t = setup({ rateLimit: () => ({ max: 1, windowMs: 3_600_000 }) });
+      await defer(t, 'b1');
+      await defer(t, 'b2');
+
+      const first = await release(t, WINDOW_START);
+      expect(first).toMatchObject({ claimed: 2, sent: 1, rateLimited: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+      expect(row(t, 'msg-2')).toMatchObject({ status: 'deferred_quiet_hours' });
+      expect(row(t, 'msg-2').scheduledAt?.toISOString()).toBe(plusMs(WINDOW_START, 10 * 60_000));
+      expect(row(t, 'msg-2').metadata).toMatchObject({ deferredReason: 'RATE_LIMITED' });
+
+      // Still inside the window 10 minutes later: pushed out again, still not sent.
+      const again = await release(t, plusMs(WINDOW_START, 10 * 60_000));
+      expect(again).toMatchObject({ claimed: 1, sent: 0, rateLimited: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+
+      // The first send (at WINDOW_START) has left the 1 h window: the held message goes out.
+      expect(row(t, 'msg-1').sentAt?.toISOString()).toBe(WINDOW_START);
+      const later = await release(t, plusMs(WINDOW_START, 70 * 60_000));
+      expect(later).toMatchObject({ claimed: 1, sent: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(2);
+      expect(row(t, 'msg-2').status).toBe('queued');
+    });
+
+    it('re-defers a transient Twilio failure with attempt+1 and a later scheduled_at', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      t.transport.send.mockRejectedValueOnce(new TwilioApiError('Twilio API error: 503 Service Unavailable', 503, null));
+
+      const summary = await release(t, WINDOW_START);
+      expect(summary).toMatchObject({ claimed: 1, retried: 1, failed: 0 });
+      const r = row(t, 'msg-1');
+      expect(r.status).toBe('deferred_quiet_hours');
+      expect(r.metadata).toMatchObject({ releaseAttempts: 1, deferredReason: 'RETRY' });
+      expect(r.metadata.lastReleaseError).toContain('UPSTREAM_UNAVAILABLE');
+      expect(r.scheduledAt?.toISOString()).toBe(plusMs(WINDOW_START, 60_000));
+
+      const retry = await release(t, plusMs(WINDOW_START, 60_000));
+      expect(retry).toMatchObject({ sent: 1 });
+      expect(row(t, 'msg-1').status).toBe('queued');
+    });
+
+    it('treats a DB error in the gate checks as transient', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      (t.store.latestConsentAction as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('connection reset'));
+      const summary = await release(t, WINDOW_START);
+      expect(summary).toMatchObject({ retried: 1, failed: 0 });
+      expect(row(t, 'msg-1')).toMatchObject({ status: 'deferred_quiet_hours', metadata: expect.objectContaining({ releaseAttempts: 1 }) });
+      expect(t.transport.send).not.toHaveBeenCalled();
+    });
+
+    it('marks the row failed on the 5th transient failure, with growing backoff before that', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      t.transport.send.mockRejectedValue(new Error('fetch failed'));
+      let at = WINDOW_START;
+      const delays: number[] = [];
+      for (let attempt = 1; attempt < SMS_RELEASE_MAX_ATTEMPTS; attempt++) {
+        expect(await release(t, at)).toMatchObject({ retried: 1 });
+        const next = row(t, 'msg-1').scheduledAt!.toISOString();
+        delays.push(Date.parse(next) - Date.parse(at));
+        expect(row(t, 'msg-1').metadata.releaseAttempts).toBe(attempt);
+        at = next;
+      }
+      expect(delays).toEqual([60_000, 120_000, 240_000, 480_000]);
+
+      expect(await release(t, at)).toMatchObject({ failed: 1, retried: 0 });
+      expect(row(t, 'msg-1')).toMatchObject({ status: 'failed', metadata: expect.objectContaining({ releaseAttempts: 5 }) });
+      expect(t.transport.send).toHaveBeenCalledTimes(5);
+      expect(await release(t, plusMs(at, 3_600_000))).toMatchObject({ claimed: 0 });
+    });
+
+    it('fails a non-retryable Twilio error at once', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      t.transport.send.mockRejectedValueOnce(new TwilioApiError('Twilio API error: 400 invalid To', 400, 21211));
+      expect(await release(t, WINDOW_START)).toMatchObject({ failed: 1, retried: 0 });
+      expect(row(t, 'msg-1')).toMatchObject({ status: 'failed', metadata: expect.objectContaining({ releaseAttempts: 1 }) });
+      expect(row(t, 'msg-1').errorMessage).toContain('INVALID_NUMBER');
+      expect(await release(t, plusMs(WINDOW_START, 3_600_000))).toMatchObject({ claimed: 0 });
+    });
+
+    it('reclaims a row stuck in sending without a Twilio SID after 10 minutes', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      // A release claimed it and the process died before Twilio answered.
+      await t.store.claimDueDeferred(new Date(WINDOW_START), 100, new Date(0));
+      expect(row(t, 'msg-1').status).toBe('sending');
+
+      expect(await release(t, plusMs(WINDOW_START, 5 * 60_000))).toMatchObject({ claimed: 0 });
+      const summary = await release(t, plusMs(WINDOW_START, 11 * 60_000));
+      expect(summary).toMatchObject({ claimed: 1, reclaimed: 1, sent: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+      expect(row(t, 'msg-1').status).toBe('queued');
+    });
+
+    it('never reclaims a sending row that has a Twilio SID', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      await t.store.claimDueDeferred(new Date(WINDOW_START), 100, new Date(0));
+      row(t, 'msg-1').twilioSid = 'SM-already-sent';
+
+      expect(await release(t, plusMs(WINDOW_START, 60 * 60_000))).toMatchObject({ claimed: 0, reclaimed: 0 });
+      expect(t.transport.send).not.toHaveBeenCalled();
+      expect(row(t, 'msg-1').status).toBe('sending');
+    });
+
+    it('fails a row that keeps getting stuck once it reaches the attempt cap', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      await t.store.claimDueDeferred(new Date(WINDOW_START), 100, new Date(0));
+      row(t, 'msg-1').metadata.releaseAttempts = SMS_RELEASE_MAX_ATTEMPTS - 1;
+      expect(await release(t, plusMs(WINDOW_START, 11 * 60_000))).toMatchObject({ reclaimed: 1, failed: 1 });
+      expect(row(t, 'msg-1')).toMatchObject({ status: 'failed', errorMessage: 'STUCK_SENDING' });
+      expect(t.transport.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('live-call exemption', () => {
     it('sends a transactional message during a live call at 9:05 PM', async () => {
       const t = setup();
@@ -297,6 +463,21 @@ describe('sms.send chokepoint', () => {
       expect(second.data.messageId).toBe(first.data.messageId);
       expect(t.transport.send).toHaveBeenCalledTimes(1);
       expect(t.records.size).toBe(1);
+    });
+
+    it('agent key = call + stable hash of templateKey, canonical vars and normalized recipient', () => {
+      const base = { callId: 'CA1', templateKey: 'link', vars: { businessName: 'Fade Lab', url: 'https://a.example' }, to: TO };
+      const key = agentSmsIdempotencyKey(base);
+      expect(key).toMatch(/^sms:agent:CA1:[0-9a-f]{32}$/);
+      // Same content, different var order / number formatting: same key.
+      expect(
+        agentSmsIdempotencyKey({ ...base, vars: { url: 'https://a.example', businessName: 'Fade Lab' }, to: '+1 (312) 555-0142' }),
+      ).toBe(key);
+      // Corrected vars, another template, another number or another call: different key.
+      expect(agentSmsIdempotencyKey({ ...base, vars: { ...base.vars, url: 'https://b.example' } })).not.toBe(key);
+      expect(agentSmsIdempotencyKey({ ...base, templateKey: 'directions' })).not.toBe(key);
+      expect(agentSmsIdempotencyKey({ ...base, to: '+13125550199' })).not.toBe(key);
+      expect(agentSmsIdempotencyKey({ ...base, callId: 'CA2' })).not.toBe(key);
     });
 
     it('keys on the reminder kind so 24h and 2h reminders both send', async () => {

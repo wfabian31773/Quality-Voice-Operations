@@ -10,6 +10,7 @@ vi.mock('../../db', () => ({
   withPrivilegedClient: async (fn: (c: unknown) => Promise<unknown>) => fn(holder.client),
 }));
 
+import { liftSmsOptOutDnc } from './consent';
 import { postgresSmsSendStore as store, smsStatusCallbackUrl } from './deps';
 import type { TenantTx } from '../core';
 
@@ -94,32 +95,82 @@ describe.skipIf(!dbUp)('postgresSmsSendStore (local Postgres)', () => {
     expect(await store.isTenantSender(tx, 't2', '+13125550100')).toBe(false);
   });
 
-  it('inserts, updates, counts and claims outbound messages', async () => {
-    const base = { tenantId: T, from: '+13125550100', to: '+13125550142', body: 'hi', metadata: { source: 'sms.send' } };
-    await store.insertOutbound({ ...base, id: 'm1', status: 'sending', scheduledAt: null });
+  it('reserves, updates and claims outbound messages', async () => {
+    const TO = '+13125550142';
+    const base = { tenantId: T, from: '+13125550100', to: TO, body: 'hi', metadata: { source: 'sms.send' } };
+    const limit = (max: number) => ({ max, since: new Date(Date.now() - 3_600_000) });
+    expect(await store.reserveOutbound({ ...base, id: 'm1', status: 'sending', scheduledAt: null }, limit(5))).toEqual({
+      reserved: true,
+    });
     await store.updateOutbound(T, 'm1', { status: 'queued', twilioSid: 'SM1', sentAt: new Date() });
-    await store.insertOutbound({ ...base, id: 'm2', status: 'sending', scheduledAt: null });
-    await store.updateOutbound(T, 'm2', { status: 'failed', errorMessage: 'UPSTREAM_UNAVAILABLE: 503' });
+    await store.reserveOutbound({ ...base, id: 'm2', status: 'sending', scheduledAt: null }, null);
+    await store.updateOutbound(T, 'm2', {
+      status: 'failed',
+      errorMessage: 'UPSTREAM_UNAVAILABLE: 503',
+      metadata: { releaseAttempts: 2 },
+    });
     const due = new Date(Date.now() - 60_000);
     await store.insertOutbound({ ...base, id: 'm3', status: 'deferred_quiet_hours', scheduledAt: due });
 
     const { rows } = await client.query(
-      `SELECT m.id, m.status, m.twilio_sid, m.error_message, c.phone_number_id
+      `SELECT m.id, m.status, m.twilio_sid, m.error_message, m.metadata, c.phone_number_id
          FROM sms_messages m JOIN sms_conversations c ON c.id = m.conversation_id ORDER BY m.id`,
     );
     expect(rows).toEqual([
-      { id: 'm1', status: 'queued', twilio_sid: 'SM1', error_message: null, phone_number_id: 'pn1' },
-      { id: 'm2', status: 'failed', twilio_sid: null, error_message: 'UPSTREAM_UNAVAILABLE: 503', phone_number_id: 'pn1' },
-      { id: 'm3', status: 'deferred_quiet_hours', twilio_sid: null, error_message: null, phone_number_id: 'pn1' },
+      { id: 'm1', status: 'queued', twilio_sid: 'SM1', error_message: null, metadata: { source: 'sms.send' }, phone_number_id: 'pn1' },
+      {
+        id: 'm2',
+        status: 'failed',
+        twilio_sid: null,
+        error_message: 'UPSTREAM_UNAVAILABLE: 503',
+        metadata: { source: 'sms.send', releaseAttempts: 2 },
+        phone_number_id: 'pn1',
+      },
+      { id: 'm3', status: 'deferred_quiet_hours', twilio_sid: null, error_message: null, metadata: { source: 'sms.send' }, phone_number_id: 'pn1' },
     ]);
     const { rows: convs } = await client.query('SELECT COUNT(*)::int AS n FROM sms_conversations');
     expect(convs[0].n).toBe(1);
 
-    // Failed sends don't count toward the per-recipient limit.
-    expect(await store.countRecentOutbound(tx, T, '+13125550142', new Date(Date.now() - 3_600_000))).toBe(2);
+    // Only m1 was sent: failed and deferred rows don't count toward the limit,
+    // and a refused reservation inserts nothing.
+    expect(await store.reserveOutbound({ ...base, id: 'm4', status: 'sending', scheduledAt: null }, limit(1))).toEqual({
+      reserved: false,
+      recent: 1,
+    });
+    const { rows: m4 } = await client.query(`SELECT 1 FROM sms_messages WHERE id = 'm4'`);
+    expect(m4).toEqual([]);
 
-    const claimed = await store.claimDueDeferred(new Date(), 10);
-    expect(claimed.map((r) => [r.id, r.status, r.to])).toEqual([['m3', 'sending', '+13125550142']]);
-    expect(await store.claimDueDeferred(new Date(), 10)).toEqual([]);
+    const stuckBefore = () => new Date(Date.now() - 10 * 60_000);
+    const claimed = await store.claimDueDeferred(new Date(), 10, stuckBefore());
+    expect(claimed.map((r) => [r.id, r.status, r.to, r.reclaimed])).toEqual([['m3', 'sending', TO, false]]);
+    expect(claimed[0].metadata).toMatchObject({ source: 'sms.send', releaseClaimedAt: expect.any(String) });
+    // Just claimed: not stuck yet.
+    expect(await store.claimDueDeferred(new Date(), 10, stuckBefore())).toEqual([]);
+
+    // Release reservation: m1 counts, m3 itself doesn't; reserving stamps sent_at.
+    const now = new Date();
+    expect(await store.reserveDeferredSend({ id: 'm3', tenantId: T, to: TO }, limit(1), now)).toEqual({
+      reserved: false,
+      recent: 1,
+    });
+    expect(await store.reserveDeferredSend({ id: 'm3', tenantId: T, to: TO }, limit(2), now)).toEqual({ reserved: true });
+    const { rows: m3 } = await client.query(`SELECT sent_at FROM sms_messages WHERE id = 'm3'`);
+    expect(m3[0].sent_at).not.toBeNull();
+
+    // Past the timeout a `sending` row with no SID is reclaimed; with a SID it never is.
+    const later = new Date(Date.now() + 60_000);
+    expect((await store.claimDueDeferred(later, 10, later)).map((r) => [r.id, r.reclaimed])).toEqual([['m3', true]]);
+    await client.query(`UPDATE sms_messages SET twilio_sid = 'SM3' WHERE id = 'm3'`);
+    const muchLater = new Date(Date.now() + 3_600_000);
+    expect(await store.claimDueDeferred(muchLater, 10, muchLater)).toEqual([]);
+  });
+
+  it('START lifts only the SMS-sourced DNC entry', async () => {
+    await client.query(`CREATE TEMP TABLE dnc_list (id VARCHAR PRIMARY KEY, tenant_id VARCHAR, phone_number VARCHAR, source VARCHAR)`);
+    await client.query(`INSERT INTO dnc_list VALUES ('d1', 't1', '+13125550142', 'sms'), ('d2', 't1', '+13125550177', 'manual')`);
+    expect(await liftSmsOptOutDnc(T, '+13125550142')).toBe(true);
+    expect(await liftSmsOptOutDnc(T, '+13125550177')).toBe(false);
+    const { rows } = await client.query(`SELECT id FROM dnc_list ORDER BY id`);
+    expect(rows).toEqual([{ id: 'd2' }]);
   });
 });
