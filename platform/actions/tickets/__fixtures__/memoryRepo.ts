@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { NewActivity, NewOutboxEvent, TicketRecord, TicketSettings, TicketsRepoFactory } from '../repo';
+import type { NewActivity, NewOutboxEvent, SlaInstance, TicketRecord, TicketSettings, TicketsRepoFactory } from '../repo';
 import { ACTIVE_STATUSES, type TicketPriority } from '../schemas';
 
 export interface MemoryTicketsState {
@@ -7,7 +7,9 @@ export interface MemoryTicketsState {
   activities: Array<NewActivity & { tenantId: string }>;
   outbox: Array<NewOutboxEvent & { id: string; tenantId: string; status: 'pending' }>;
   settings: Map<string, TicketSettings>;
+  /** First-response minutes per priority; each entry acts as policy `${tenantId}:${priority}` with the default 2880 resolution minutes. */
   slaMinutes: Map<string, Partial<Record<TicketPriority, number>>>;
+  slaInstances: Array<SlaInstance & { tenantId: string }>;
   members: Map<string, Set<string>>;
   locks: string[];
 }
@@ -28,6 +30,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
     outbox: [],
     settings: new Map(),
     slaMinutes: new Map(),
+    slaInstances: [],
     members: new Map(),
     locks: [],
   };
@@ -44,8 +47,18 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
       async getSettings() {
         return state.settings.get(tenantId) ?? EMPTY_SETTINGS;
       },
-      async slaPolicyMinutes(priority) {
-        return state.slaMinutes.get(tenantId)?.[priority] ?? null;
+      async slaPolicy(priority) {
+        const minutes = state.slaMinutes.get(tenantId)?.[priority];
+        return minutes ? { id: `${tenantId}:${priority}`, firstResponseMinutes: minutes, resolutionMinutes: 2880 } : null;
+      },
+      async applySlaInstance(instance) {
+        const current = state.slaInstances.filter((row) => row.tenantId === tenantId && row.ticketId === instance.ticketId).pop();
+        if (!current) {
+          state.slaInstances.push({ ...instance, tenantId });
+          return;
+        }
+        if (instance.responseDueAt < current.responseDueAt) current.responseDueAt = instance.responseDueAt;
+        if (instance.resolutionDueAt < current.resolutionDueAt) current.resolutionDueAt = instance.resolutionDueAt;
       },
       async lockCallDedupe(key) {
         state.locks.push(`${tenantId}\0${key}`);

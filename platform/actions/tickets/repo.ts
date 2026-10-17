@@ -99,10 +99,27 @@ export interface NewOutboxEvent {
   payload: Record<string, unknown>;
 }
 
+/** An active `ticket_sla_policies` row. */
+export interface SlaPolicy {
+  id: string;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+}
+
+/** A `ticket_sla_instances` row, read by the breach worker and the overdue/at-risk queues. */
+export interface SlaInstance {
+  ticketId: string;
+  policyId: string;
+  responseDueAt: Date;
+  resolutionDueAt: Date;
+}
+
 export interface TicketsRepo {
   getSettings(): Promise<TicketSettings>;
-  /** First-response minutes from an active `ticket_sla_policies` row for this priority. */
-  slaPolicyMinutes(priority: TicketPriority): Promise<number | null>;
+  /** The oldest active `ticket_sla_policies` row for this priority, as the admin create route picks it. */
+  slaPolicy(priority: TicketPriority): Promise<SlaPolicy | null>;
+  /** Inserts the ticket's SLA instance, or moves an existing one's due times earlier (never later). */
+  applySlaInstance(instance: SlaInstance): Promise<void>;
   /** Serializes same-call dedupe for (callRef, kind, phone) until the transaction ends. */
   lockCallDedupe(key: string): Promise<void>;
   findByCallRef(callRef: string, kind: TicketKind): Promise<TicketRecord[]>;
@@ -218,17 +235,53 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
     return parseTicketSettings(row?.name, row?.settings);
   },
 
-  async slaPolicyMinutes(priority) {
+  async slaPolicy(priority) {
     const { rows } = await tx.query(
-      `SELECT first_response_minutes
+      `SELECT id, first_response_minutes, resolution_minutes
          FROM ticket_sla_policies
         WHERE tenant_id = $1 AND priority = $2 AND is_active = true AND category_id IS NULL
         ORDER BY created_at ASC
         LIMIT 1`,
       [tenantId, priority],
     );
-    const minutes = rows[0]?.first_response_minutes;
-    return typeof minutes === 'number' && minutes > 0 ? minutes : null;
+    const row = rows[0];
+    const minutes = row?.first_response_minutes;
+    if (typeof minutes !== 'number' || minutes <= 0) return null;
+    return { id: String(row.id), firstResponseMinutes: minutes, resolutionMinutes: Number(row.resolution_minutes) };
+  },
+
+  async applySlaInstance(instance) {
+    const { rows } = await tx.query(
+      `SELECT id, response_due_at, resolution_due_at
+         FROM ticket_sla_instances
+        WHERE tenant_id = $1 AND ticket_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [tenantId, instance.ticketId],
+    );
+    const current = rows[0];
+    if (!current) {
+      await tx.query(
+        `INSERT INTO ticket_sla_instances (tenant_id, ticket_id, policy_id, response_due_at, resolution_due_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [tenantId, instance.ticketId, instance.policyId, instance.responseDueAt, instance.resolutionDueAt],
+      );
+      return;
+    }
+    const earlier = (existing: unknown, next: Date) => !existing || next.getTime() < asDate(existing).getTime();
+    const response = earlier(current.response_due_at, instance.responseDueAt);
+    const resolution = earlier(current.resolution_due_at, instance.resolutionDueAt);
+    if (!response && !resolution) return;
+    await tx.query(
+      `UPDATE ticket_sla_instances SET response_due_at = $3, resolution_due_at = $4, updated_at = NOW()
+        WHERE tenant_id = $1 AND id = $2`,
+      [
+        tenantId,
+        current.id,
+        response ? instance.responseDueAt : current.response_due_at,
+        resolution ? instance.resolutionDueAt : current.resolution_due_at,
+      ],
+    );
   },
 
   async lockCallDedupe(key) {

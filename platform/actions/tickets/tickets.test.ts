@@ -391,6 +391,30 @@ describe('tickets.open.commit', () => {
     expect(c.dueAt).toBeNull();
   });
 
+  it('writes one SLA instance only when a policy supplied the due time, and none for a dedupe', async () => {
+    const withPolicy = setup();
+    withPolicy.tickets.state.slaMinutes.set(TENANT, { medium: 90 });
+    const a = data<Committed>((await prepareAndCommit(withPolicy.run)).committed);
+    await prepareAndCommit(withPolicy.run, baseInput({ subject: 'the sink again' }));
+    expect(withPolicy.tickets.state.slaInstances).toEqual([
+      {
+        tenantId: TENANT,
+        ticketId: a.ticketId,
+        policyId: `${TENANT}:medium`,
+        responseDueAt: new Date(a.dueAt!),
+        resolutionDueAt: new Date(NOW.getTime() + 2880 * 60_000),
+      },
+    ]);
+    expect(a.dueAt).toBe('2026-10-17T16:30:00.000Z');
+
+    const withSettings = setup();
+    withSettings.tickets.state.settings.set(TENANT, parseTicketSettings('Shop', { tickets: { callbackSlaMinutes: 120 } }));
+    withSettings.tickets.state.slaMinutes.set(TENANT, { medium: 90 });
+    const b = data<Committed>((await prepareAndCommit(withSettings.run)).committed);
+    expect(b.dueAt).toBe('2026-10-17T17:00:00.000Z');
+    expect(withSettings.tickets.state.slaInstances).toEqual([]);
+  });
+
   it('ignores invalid SLA minutes in settings', () => {
     expect(parseTicketSettings('x', { tickets: { callbackSlaMinutes: -5 } }).callbackSlaMinutes).toBeNull();
     expect(parseTicketSettings('x', { tickets: { callbackSlaMinutes: '120' } }).callbackSlaMinutes).toBeNull();
@@ -426,6 +450,45 @@ describe('tickets.open.commit', () => {
       expect(tickets.state.tickets).toHaveLength(1);
       expect(tickets.state.tickets[0]).toMatchObject({ urgency: 'urgent', priority: 'urgent' });
       expect(tickets.state.activities.map((a) => a.type)).toEqual(['created', 'note', 'priority_change']);
+    });
+
+    it('gives an urgent repeat the urgent policy deadline and SLA instance', async () => {
+      const { tickets, run } = setup();
+      tickets.state.slaMinutes.set(TENANT, { urgent: 30 });
+      const first = data<Committed>((await prepareAndCommit(run)).committed);
+      expect(first.dueAt).toBeNull();
+      const later = agentCtx({ now: new Date(NOW.getTime() + 10 * 60_000) });
+      const repeat = data<Committed>(
+        (await prepareAndCommit(run, baseInput({ urgency: 'urgent', subject: 'now it is flooding' }), later)).committed,
+      );
+      expect(repeat).toMatchObject({ ticketId: first.ticketId, deduped: true, dueAt: '2026-10-17T15:40:00.000Z' });
+      expect(tickets.state.slaInstances).toEqual([
+        expect.objectContaining({
+          ticketId: first.ticketId,
+          policyId: `${TENANT}:urgent`,
+          responseDueAt: new Date('2026-10-17T15:40:00.000Z'),
+        }),
+      ]);
+      expect(tickets.state.activities.find((a) => a.type === 'field_change')).toMatchObject({
+        fieldName: 'callback_due_at',
+        oldValue: '',
+        newValue: '2026-10-17T15:40:00.000Z',
+      });
+    });
+
+    it('never pushes an earlier deadline or SLA instance later on an urgent repeat', async () => {
+      const { tickets, run } = setup();
+      tickets.state.slaMinutes.set(TENANT, { medium: 30, urgent: 60 });
+      const first = data<Committed>((await prepareAndCommit(run)).committed);
+      expect(first.dueAt).toBe('2026-10-17T15:30:00.000Z');
+      const before = structuredClone(tickets.state.slaInstances);
+      const repeat = data<Committed>(
+        (await prepareAndCommit(run, baseInput({ urgency: 'urgent', subject: 'now it is flooding' }))).committed,
+      );
+      expect(repeat.dueAt).toBe('2026-10-17T15:30:00.000Z');
+      expect(tickets.state.tickets[0].priority).toBe('urgent');
+      expect(tickets.state.slaInstances).toEqual(before);
+      expect(tickets.state.activities.some((a) => a.type === 'field_change')).toBe(false);
     });
 
     it('keeps separate tickets for a different kind, a different phone, or a different call', async () => {

@@ -86,10 +86,23 @@ function toSummary(ticket: TicketRecord, now: Date): TicketSummary {
   };
 }
 
-/** callback_due_at comes only from tenant config: settings first, then an active SLA policy. Never invented. */
-async function resolveDueAt(repo: TicketsRepo, minutesFromSettings: number | null, priority: TicketPriority, now: Date) {
-  const minutes = minutesFromSettings ?? (await repo.slaPolicyMinutes(priority));
-  return minutes ? new Date(now.getTime() + minutes * 60_000) : null;
+function addMinutes(now: Date, minutes: number): Date {
+  return new Date(now.getTime() + minutes * 60_000);
+}
+
+/**
+ * callback_due_at comes only from tenant config: settings first, then an active SLA policy. Never invented.
+ * When a policy supplies it, the matching SLA instance uses the same clock, so response_due_at equals it.
+ */
+async function resolveSla(repo: TicketsRepo, minutesFromSettings: number | null, priority: TicketPriority, now: Date) {
+  if (minutesFromSettings) return { dueAt: addMinutes(now, minutesFromSettings), instance: null };
+  const policy = await repo.slaPolicy(priority);
+  if (!policy) return { dueAt: null, instance: null };
+  const dueAt = addMinutes(now, policy.firstResponseMinutes);
+  return {
+    dueAt,
+    instance: { policyId: policy.id, responseDueAt: dueAt, resolutionDueAt: addMinutes(now, policy.resolutionMinutes) },
+  };
 }
 
 function ticketDescription(details: string, callbackWindow: string | undefined): string {
@@ -192,6 +205,22 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
                 now: ctx.now,
               });
             }
+            // Same rules as a new urgent ticket, but the deadline only ever moves earlier.
+            const settings = await repo.getSettings();
+            const sla = await resolveSla(repo, settings.callbackSlaMinutes, 'urgent', ctx.now);
+            if (sla.dueAt && (!first.callbackDueAt || sla.dueAt < first.callbackDueAt)) {
+              patch.callbackDueAt = sla.dueAt;
+              await repo.addActivity({
+                ticketId: first.id,
+                actorUserId: userId,
+                type: 'field_change',
+                fieldName: 'callback_due_at',
+                oldValue: first.callbackDueAt?.toISOString() ?? '',
+                newValue: sla.dueAt.toISOString(),
+                now: ctx.now,
+              });
+            }
+            if (sla.instance) await repo.applySlaInstance({ ...sla.instance, ticketId: first.id });
           }
           const updated = await repo.update(first.id, patch, ctx.now);
           return actionOk({
@@ -205,7 +234,7 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
 
       const settings = await repo.getSettings();
       const priority = priorityFor(payload.urgency);
-      const dueAt = await resolveDueAt(repo, settings.callbackSlaMinutes, priority, ctx.now);
+      const { dueAt, instance } = await resolveSla(repo, settings.callbackSlaMinutes, priority, ctx.now);
       const ticket = await repo.insert({
         kind: payload.kind,
         subject: payload.subject,
@@ -221,6 +250,8 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
         createdByUserId: userId,
         now: ctx.now,
       });
+      // Like the admin create route: the breach worker and SLA queues read only ticket_sla_instances.
+      if (instance) await repo.applySlaInstance({ ...instance, ticketId: ticket.id });
       await repo.addActivity({
         ticketId: ticket.id,
         actorUserId: userId,

@@ -330,6 +330,18 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
     expect(new Date(firstData.dueAt!).getTime()).toBe(now.getTime() + 90 * 60_000);
     expect(first.ok && first.effects?.[0]?.type).toBe('ticket.opened');
 
+    // The policy-backed ticket gets one SLA instance whose response_due_at is the callback due time.
+    const slaRows = async () =>
+      (
+        await copyPool.query<{ response_due_at: Date }>(
+          `SELECT response_due_at FROM ticket_sla_instances WHERE tenant_id = $1 AND ticket_id = $2`,
+          [tenantId, firstData.ticketId],
+        )
+      ).rows;
+    const sla = await slaRows();
+    expect(sla).toHaveLength(1);
+    expect(sla[0].response_due_at.toISOString()).toBe(firstData.dueAt);
+
     // ticket.opened is a ticket_outbox row written under RLS in the commit transaction.
     const opened = await outboxRows();
     expect(opened).toHaveLength(1);
@@ -348,8 +360,9 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
 
     const again = ok<{ ticketId: string; deduped: boolean }>(await open('the sink, again'));
     expect(again).toMatchObject({ ticketId: firstData.ticketId, deduped: true });
-    // Deduped repeat: no outbox row.
+    // Deduped repeat: no outbox row and no second SLA instance.
     expect(await outboxRows()).toHaveLength(1);
+    expect(await slaRows()).toHaveLength(1);
 
     const { rows } = await copyPool.query(`SELECT count(*)::int AS n FROM tickets WHERE tenant_id = $1`, [tenantId]);
     expect(rows[0].n).toBe(1);

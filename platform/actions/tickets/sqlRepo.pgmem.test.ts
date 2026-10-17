@@ -19,8 +19,19 @@ const SCHEMA = `
   CREATE TABLE ticket_sla_policies (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     tenant_id TEXT NOT NULL, name TEXT NOT NULL, priority TEXT NOT NULL, category_id TEXT,
-    first_response_minutes INT NOT NULL DEFAULT 480, is_active BOOLEAN DEFAULT true,
+    first_response_minutes INT NOT NULL DEFAULT 480, resolution_minutes INT NOT NULL DEFAULT 2880,
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE ticket_sla_instances (
+    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id VARCHAR NOT NULL,
+    ticket_id VARCHAR NOT NULL,
+    policy_id VARCHAR NOT NULL REFERENCES ticket_sla_policies(id),
+    response_due_at TIMESTAMPTZ,
+    resolution_due_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   CREATE TABLE tickets (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -196,15 +207,58 @@ describe('sqlTicketsRepo on pg-mem', () => {
     expect(outbox).toHaveLength(1);
     expect(outbox[0]).toMatchObject({ tenant_id: TENANT, event_type: 'ticket.opened', status: 'pending' });
     expect(outbox[0].payload).toMatchObject({ ticketId, kind: 'callback', callId: 'call-1' });
+
+    // The policy that set the due time also gets an SLA instance on the same clock.
+    const { rows: sla } = await tx.query(
+      `SELECT i.tenant_id, i.response_due_at, i.resolution_due_at, p.name
+         FROM ticket_sla_instances i JOIN ticket_sla_policies p ON p.id = i.policy_id
+        WHERE i.ticket_id = $1`,
+      [ticketId],
+    );
+    expect(sla).toHaveLength(1);
+    expect(sla[0]).toMatchObject({ tenant_id: TENANT, name: 'Callbacks' });
+    expect(new Date(sla[0].response_due_at as string).toISOString()).toBe(data.dueAt);
+    expect(new Date(sla[0].resolution_due_at as string).getTime()).toBe(NOW.getTime() + 2880 * 60_000);
+  });
+
+  it('writes no SLA instance when the due time comes from tenant settings', async () => {
+    await tx.query(`UPDATE tenants SET settings = $2::jsonb WHERE id = $1`, [OTHER, JSON.stringify({ tickets: { callbackSlaMinutes: 120 } })]);
+    await tx.query(
+      `INSERT INTO ticket_sla_policies (tenant_id, name, priority, first_response_minutes) VALUES ($1, 'Unused', 'medium', 15)`,
+      [OTHER],
+    );
+    const { committed } = await open(
+      { kind: 'callback', subject: 'settings deadline', customer: { phone: '555-010-3333' } },
+      agent({ tenantId: OTHER, callId: undefined }),
+    );
+    const { ticketId: otherId, dueAt } = ok<{ ticketId: string; dueAt: string }>(committed);
+    expect(dueAt).toBe('2026-10-17T17:00:00.000Z');
+    const { rows } = await tx.query(`SELECT count(*)::int AS n FROM ticket_sla_instances WHERE tenant_id = $1`, [OTHER]);
+    expect(Number(rows[0].n)).toBe(0);
+    // Keep the other tenant empty for the list checks below.
+    await tx.query(`DELETE FROM ticket_outbox WHERE tenant_id = $1`, [OTHER]);
+    await tx.query(`DELETE FROM ticket_activity_log WHERE ticket_id = $1`, [otherId]);
+    await tx.query(`DELETE FROM tickets WHERE id = $1`, [otherId]);
   });
 
   it('dedupes a repeat within the call into a note and leaves call_id null for unknown calls', async () => {
+    await tx.query(
+      `INSERT INTO ticket_sla_policies (tenant_id, name, priority, first_response_minutes, resolution_minutes)
+       VALUES ($1, 'Urgent', 'urgent', 30, 240)`,
+      [TENANT],
+    );
     const again = await open({ kind: 'callback', subject: 'sink again', customer: { phone: '555-010-0142' }, urgency: 'urgent' });
-    expect(ok(again.committed)).toMatchObject({ ticketId, deduped: true });
+    // The urgent policy moves the deadline earlier (16:30 -> 15:30).
+    expect(ok(again.committed)).toMatchObject({ ticketId, deduped: true, dueAt: '2026-10-17T15:30:00.000Z' });
     const { rows } = await tx.query(`SELECT count(*)::int AS n FROM tickets WHERE tenant_id = $1`, [TENANT]);
     expect(Number(rows[0].n)).toBe(1);
     const { rows: urgent } = await tx.query(`SELECT urgency, priority FROM tickets WHERE id = $1`, [ticketId]);
     expect(urgent[0]).toMatchObject({ urgency: 'urgent', priority: 'urgent' });
+    // The dedupe tightened the existing SLA instance instead of adding one.
+    const { rows: sla } = await tx.query(`SELECT response_due_at, resolution_due_at FROM ticket_sla_instances WHERE ticket_id = $1`, [ticketId]);
+    expect(sla).toHaveLength(1);
+    expect(new Date(sla[0].response_due_at as string).toISOString()).toBe('2026-10-17T15:30:00.000Z');
+    expect(new Date(sla[0].resolution_due_at as string).toISOString()).toBe('2026-10-17T19:00:00.000Z');
 
     const unknownCall = await open(
       { kind: 'message', subject: 'hours', customer: { phone: '555-010-7777' } },
