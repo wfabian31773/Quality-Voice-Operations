@@ -217,7 +217,12 @@ describe('zodToJsonSchema', () => {
     expect(properties.id).toEqual({ type: 'string', format: 'uuid' });
     expect(properties.url).toEqual({ type: 'string', format: 'uri' });
     expect(properties.pair.type).toBe('array');
-    expect(properties.kind.enum).toEqual(expect.arrayContaining(['a', 'b']));
+    expect(properties.kind.enum).toEqual(['a', 'b']);
+    enum Level {
+      Off = 0,
+      On = 1,
+    }
+    expect(zodToJsonSchema(z.nativeEnum(Level))).toEqual({ enum: [0, 1] });
     expect(properties.none).toEqual({ type: 'null' });
     const extras = z.object({
       n: z.literal(1),

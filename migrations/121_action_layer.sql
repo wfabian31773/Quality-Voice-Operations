@@ -92,6 +92,13 @@ CREATE POLICY tenant_isolation_action_audit_log ON action_audit_log
 -- Append-only, matching audit_logs in 046_enterprise_security.sql.
 CREATE OR REPLACE FUNCTION prevent_action_audit_log_mutation() RETURNS TRIGGER AS $$
 BEGIN
+  -- Same narrow exception as prevent_audit_log_mutation in 114: a verified
+  -- tenant deletion may set app.verified_tenant_deletion_id so ON DELETE
+  -- CASCADE from tenants can remove this tenant's rows.
+  IF TG_OP = 'DELETE'
+     AND current_setting('app.verified_tenant_deletion_id', TRUE) = OLD.tenant_id THEN
+    RETURN OLD;
+  END IF;
   RAISE EXCEPTION 'action_audit_log is immutable: % operations are not permitted', TG_OP;
   RETURN NULL;
 END;

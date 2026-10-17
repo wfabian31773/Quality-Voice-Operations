@@ -4,11 +4,14 @@ import { Client, Pool } from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import {
   createEchoCommitAction,
   createEchoPrepareAction,
   createEchoReadAction,
+  createEchoWriteAction,
 } from './__fixtures__/echo';
+import { defineAction } from './defineAction';
 import { postgresActionStore } from './postgresStore';
 import { runActionDefinition } from './runAction';
 import type { ActionContext, TenantTx } from './types';
@@ -342,6 +345,108 @@ describe.skipIf(skipReason !== null)('action layer postgres integration', () => 
     await expect(
       currentPool.query(`DELETE FROM action_audit_log WHERE id = $1`, [id]),
     ).rejects.toThrow(/immutable/);
+  });
+
+  it('lets a verified tenant deletion cascade through action_audit_log', async () => {
+    const tenantId = randomUUID();
+    await cleanPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'DeleteMe', `del-${tenantId.slice(0, 8)}`],
+    );
+    await cleanPool.query(
+      `INSERT INTO action_audit_log (tenant_id, action, actor, input_redacted, result_code, latency_ms)
+       VALUES ($1, 'core.echo.write', '{}'::jsonb, '{}'::jsonb, 'ok', 1)`,
+      [tenantId],
+    );
+    await expect(cleanPool.query(`DELETE FROM tenants WHERE id = $1`, [tenantId])).rejects.toThrow(/immutable/);
+
+    const client = await cleanPool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.verified_tenant_deletion_id', $1, true)`, [tenantId]);
+      await client.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    const { rows } = await cleanPool.query(
+      `SELECT 1 FROM action_audit_log WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('rolls back a thrown write and does not store an INTERNAL idempotent replay', async () => {
+    const tenantId = randomUUID();
+    await currentPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'Throw', `th-${tenantId.slice(0, 8)}`],
+    );
+    const def = defineAction({
+      name: 'core.pg_throw',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ message: z.string() }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async (actionCtx, _input, tx) => {
+        await tx.query(
+          `INSERT INTO action_proposals (tenant_id, action, payload_hash, payload, readback, expires_at)
+           VALUES ($1, 'core.pg_throw', $2, '{}'::jsonb, 'x', NOW() + interval '5 minutes')`,
+          [actionCtx.tenantId, 'b'.repeat(64)],
+        );
+        throw new Error('after write');
+      },
+    });
+    const runtime = {
+      store: postgresActionStore,
+      withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withTenantTx(currentPool, id, fn),
+    };
+    const result = await runActionDefinition(
+      def,
+      { ...makeCtx(tenantId), idempotencyKey: 'throw-pg' },
+      { message: 'x' },
+      runtime,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('INTERNAL');
+    const proposals = await currentPool.query(
+      `SELECT 1 FROM action_proposals WHERE tenant_id = $1 AND action = 'core.pg_throw'`,
+      [tenantId],
+    );
+    expect(proposals.rows).toHaveLength(0);
+    const idem = await currentPool.query(
+      `SELECT status, response FROM action_idempotency WHERE tenant_id = $1 AND key = 'throw-pg'`,
+      [tenantId],
+    );
+    expect(idem.rows).toHaveLength(0);
+  });
+
+  it('truncates oversized callId and still commits the action when audit would overflow', async () => {
+    const tenantId = randomUUID();
+    await currentPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'CallId', `cid-${tenantId.slice(0, 8)}`],
+    );
+    const result = await runActionDefinition(
+      createEchoWriteAction({ count: 0 }),
+      { ...makeCtx(tenantId), idempotencyKey: 'long-call', callId: 'c'.repeat(200) },
+      { message: 'ok' },
+      {
+        store: postgresActionStore,
+        withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withTenantTx(currentPool, id, fn),
+      },
+    );
+    expect(result).toEqual({ ok: true, data: { echoed: 'ok' } });
+    const { rows } = await currentPool.query<{ call_id: string }>(
+      `SELECT call_id FROM action_audit_log WHERE tenant_id = $1 AND action = 'core.echo.write'`,
+      [tenantId],
+    );
+    expect(rows[0]?.call_id).toHaveLength(128);
   });
 
   it('stores {} for a missing body instead of SQL NULL', async () => {

@@ -56,5 +56,6 @@ describe('121_action_layer.sql', () => {
     expect(migration).toMatch(/CREATE TRIGGER action_audit_log_no_update BEFORE UPDATE ON action_audit_log/);
     expect(migration).toMatch(/CREATE TRIGGER action_audit_log_no_delete BEFORE DELETE ON action_audit_log/);
     expect(migration).toMatch(/action_audit_log is immutable/);
+    expect(migration).toMatch(/app\.verified_tenant_deletion_id/);
   });
 });

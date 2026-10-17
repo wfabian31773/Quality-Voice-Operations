@@ -7,7 +7,7 @@ export { zodToJsonSchema } from './jsonSchema';
 export { createMemoryStore, type MemoryActionStore } from './memoryStore';
 export { postgresActionStore } from './postgresStore';
 export { createProposal, consumeProposal, classifyProposalRejection } from './proposals';
-export { runAction, runActionDefinition, type ActionRuntime } from './runAction';
+export { runAction, runActionDefinition, clipCallId, CALL_ID_MAX_LENGTH, type ActionRuntime } from './runAction';
 export { runWithActionStore } from './runtime';
 export {
   toAgentToolSchema,

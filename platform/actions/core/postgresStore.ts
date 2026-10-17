@@ -213,7 +213,9 @@ export const postgresActionStore: ActionStore = {
         jsonbNotNull(record.inputRedacted),
         record.resultCode,
         record.latencyMs,
-        record.callId ?? null,
+        typeof record.callId === 'string' && record.callId.length > 128
+          ? record.callId.slice(0, 128)
+          : record.callId ?? null,
       ],
     );
   },

@@ -4,16 +4,26 @@ export function canonicalize(value: unknown): string {
   return JSON.stringify(sortValue(value));
 }
 
+function tagOf(value: unknown): string {
+  return Object.prototype.toString.call(value);
+}
+
 function isPlainObject(value: object): boolean {
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
 }
 
+function isDateValue(value: unknown): value is Date {
+  return tagOf(value) === '[object Date]';
+}
+
+function serializeDate(value: Date): string {
+  const time = value.getTime();
+  return Number.isFinite(time) ? value.toISOString() : 'Invalid Date';
+}
+
 function sortValue(value: unknown): unknown {
-  if (value instanceof Date) {
-    const time = value.getTime();
-    return Number.isFinite(time) ? value.toISOString() : 'Invalid Date';
-  }
+  if (isDateValue(value) || value instanceof Date) return serializeDate(value as Date);
   if (typeof value === 'bigint') return `${value.toString()}n`;
   if (typeof value === 'symbol') return value.toString();
   if (typeof value === 'function') return `[Function ${value.name || 'anonymous'}]`;
@@ -38,13 +48,15 @@ function sortValue(value: unknown): unknown {
   }
   if (Array.isArray(value)) return value.map(sortValue);
   if (value && typeof value === 'object') {
+    if (isDateValue(value) || value instanceof Date) return serializeDate(value as Date);
     if (!isPlainObject(value) && typeof (value as { toJSON?: unknown }).toJSON === 'function') {
       return sortValue((value as { toJSON: () => unknown }).toJSON());
     }
     const obj = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(obj).sort()) {
-      out[key] = sortValue(obj[key]);
+      const child = obj[key];
+      out[key] = isDateValue(child) || child instanceof Date ? serializeDate(child as Date) : sortValue(child);
     }
     return out;
   }

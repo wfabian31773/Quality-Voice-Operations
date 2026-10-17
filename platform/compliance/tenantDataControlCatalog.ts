@@ -29,6 +29,9 @@ export interface TenantDataControlEntry {
 // The equality regression test intentionally makes every future tenant table
 // an explicit change-control decision instead of silently trusting a new FK.
 const TENANT_TABLE_NAMES = [
+  'action_audit_log',
+  'action_idempotency',
+  'action_proposals',
   'activation_events',
   'active_call_sessions',
   'agent_prompt_versions',
@@ -231,6 +234,7 @@ const HIGH_RISK_CLASSIFICATIONS: Readonly<Record<string, readonly TenantDataClas
   knowledge_articles: ['knowledge', 'phi'],
   error_logs: ['log', 'phi'],
   audit_logs: ['log', 'evidence', 'phi'],
+  action_audit_log: ['log'],
   tenant_deletion_requests: ['evidence'],
   healthcare_control_evidence: ['evidence'],
   healthcare_activation_readiness: ['evidence'],
@@ -239,7 +243,7 @@ const HIGH_RISK_CLASSIFICATIONS: Readonly<Record<string, readonly TenantDataClas
 
 function dispositionFor(table: string): TenantDeletionDisposition {
   if (table === 'tenant_deletion_requests') return 'preserve_evidence';
-  if (table === 'audit_logs') return 'controlled_audit_delete';
+  if (table === 'audit_logs' || table === 'action_audit_log') return 'controlled_audit_delete';
   return 'cascade';
 }
 

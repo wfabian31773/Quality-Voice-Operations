@@ -233,6 +233,40 @@ describe('runAction', () => {
     expect(store.audits[0]?.resultCode).toBe('NOT_FOUND');
   });
 
+  it('rolls back a throw after a write and does not persist an INTERNAL replay', async () => {
+    const side = { count: 0 };
+    const def = defineAction({
+      name: 'core.write_then_throw',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ message: z.string() }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async () => {
+        side.count += 1;
+        throw new Error('constraint after write');
+      },
+    });
+    const { store, deps } = runtime([def]);
+    const first = await runAction(
+      'core.write_then_throw',
+      ctx({ idempotencyKey: 'throw-1' }),
+      { message: 'x' },
+      deps,
+    );
+    expectFail(first, 'INTERNAL');
+    const records = [...store.idempotency.values()];
+    expect(records.every((row) => row.status !== 'completed')).toBe(true);
+    const second = await runAction(
+      'core.write_then_throw',
+      ctx({ idempotencyKey: 'throw-1' }),
+      { message: 'x' },
+      deps,
+    );
+    expectFail(second, 'INTERNAL');
+    expect(side.count).toBe(2);
+  });
+
   it('maps thrown errors to INTERNAL without leaking a stack', async () => {
     const def = defineAction({
       name: 'core.boom',
@@ -455,6 +489,59 @@ describe('audit', () => {
       },
     );
     expectFail(result, 'VALIDATION_FAILED');
+  });
+
+  it('keeps a successful write when audit insert would abort the transaction', async () => {
+    const side = { count: 0 };
+    const store = createMemoryStore();
+    let aborted = false;
+    const tx = {
+      query: async (sql: string) => {
+        if (sql.startsWith('SAVEPOINT')) return { rows: [], rowCount: 0 };
+        if (sql.startsWith('ROLLBACK TO')) {
+          aborted = false;
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.startsWith('RELEASE')) return { rows: [], rowCount: 0 };
+        if (aborted) throw new Error('current transaction is aborted');
+        if (sql.includes('INSERT INTO action_audit_log')) {
+          aborted = true;
+          throw new Error('value too long for type character varying(128)');
+        }
+        return { rows: [], rowCount: 1 };
+      },
+    };
+    store.insertAudit = async (client) => {
+      await client.query('INSERT INTO action_audit_log');
+    };
+    const result = await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'audit-tx', callId: 'c'.repeat(200) }),
+      { message: 'kept' },
+      {
+        store,
+        registry: [createEchoWriteAction(side)],
+        withTenantTx: async (_tenantId, fn) => {
+          const value = await fn(tx);
+          if (aborted) throw new Error('COMMIT failed: transaction aborted');
+          return value;
+        },
+      },
+    );
+    expect(result).toEqual({ ok: true, data: { echoed: 'kept' } });
+    expect(side.count).toBe(1);
+    expect(aborted).toBe(false);
+  });
+
+  it('truncates oversized callId before audit insert', async () => {
+    const { store, deps } = runtime([createEchoWriteAction({ count: 0 })]);
+    await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'long-call', callId: 'c'.repeat(200) }),
+      { message: 'hi' },
+      deps,
+    );
+    expect(store.audits[0]?.callId).toHaveLength(128);
   });
 
   it('writes a redacted row per run including phones masked to last 4', async () => {

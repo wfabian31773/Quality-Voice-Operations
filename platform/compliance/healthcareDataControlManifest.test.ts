@@ -20,6 +20,18 @@ describe('healthcare data control manifest', () => {
     expect(validateHealthcareDataControlManifest()).toEqual([]);
   });
 
+  it('classifies action-layer tables so verified tenant deletion is not blocked', () => {
+    const plan = buildTenantDeletionPlan([
+      { table: 'action_idempotency', deleteRule: 'CASCADE' },
+      { table: 'action_proposals', deleteRule: 'CASCADE' },
+      { table: 'action_audit_log', deleteRule: 'CASCADE' },
+    ]);
+    expect(plan.ready).toBe(true);
+    expect(plan.unclassifiedTables).toEqual([]);
+    expect(plan.cascadeTables.sort()).toEqual(['action_idempotency', 'action_proposals']);
+    expect(plan.controlledAuditTables).toEqual(['action_audit_log']);
+  });
+
   it('classifies non-healthcare tenant stores so verified deletion can cover the whole tenant', () => {
     const plan = buildTenantDeletionPlan([
       { table: 'billing_events', deleteRule: 'CASCADE' },

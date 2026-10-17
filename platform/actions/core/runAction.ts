@@ -23,6 +23,13 @@ import {
 
 export type { ActionRuntime } from './runtime';
 
+export const CALL_ID_MAX_LENGTH = 128;
+
+export function clipCallId(callId: string | undefined): string | undefined {
+  if (typeof callId !== 'string') return undefined;
+  return callId.length > CALL_ID_MAX_LENGTH ? callId.slice(0, CALL_ID_MAX_LENGTH) : callId;
+}
+
 function validationError(err: ZodError): ActionResult<never> {
   const issue = err.issues[0];
   const field = issue?.path?.length ? issue.path.map(String).join('.') : undefined;
@@ -39,6 +46,29 @@ function resultCode(result: ActionResult): string {
   return result.ok ? 'ok' : result.error.code;
 }
 
+async function withAuditSavepoint(tx: TenantTx, fn: () => Promise<void>): Promise<void> {
+  let opened = false;
+  try {
+    await tx.query('SAVEPOINT action_audit');
+    opened = true;
+  } catch {
+    // Memory/fake clients have no savepoints; insertAudit still runs.
+  }
+  try {
+    await fn();
+    if (opened) await tx.query('RELEASE SAVEPOINT action_audit');
+  } catch (err) {
+    if (opened) {
+      try {
+        await tx.query('ROLLBACK TO SAVEPOINT action_audit');
+      } catch {
+        // The original insert error is the one callers should see.
+      }
+    }
+    throw err;
+  }
+}
+
 async function writeAudit(
   store: ActionStore,
   tx: TenantTx,
@@ -49,18 +79,20 @@ async function writeAudit(
   startedAt: number,
 ): Promise<void> {
   try {
-    await store.insertAudit(tx, {
-      tenantId: ctx.tenantId,
-      action,
-      actor: auditActor(ctx.actor),
-      inputRedacted: redactInput(input) ?? {},
-      resultCode: resultCode(result),
-      latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
-      callId: ctx.callId,
-    });
+    await withAuditSavepoint(tx, () =>
+      store.insertAudit(tx, {
+        tenantId: ctx.tenantId,
+        action,
+        actor: auditActor(ctx.actor),
+        inputRedacted: redactInput(input) ?? {},
+        resultCode: resultCode(result),
+        latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        callId: clipCallId(ctx.callId),
+      }),
+    );
   } catch {
     // Audit is best-effort. A failed insert must not replace the action result
-    // (e.g. VALIDATION_FAILED becoming an unhandled rejection).
+    // or abort the tenant transaction (savepoint rolls the insert back).
   }
 }
 
@@ -87,6 +119,7 @@ async function execute<I, O>(
   withTenantTx: <T>(tenantId: string, fn: (tx: TenantTx) => Promise<T>) => Promise<T>,
   startedAt: number,
 ): Promise<ActionResult<O>> {
+  ctx = { ...ctx, callId: clipCallId(ctx.callId) };
   const parsed = def.input.safeParse(rawInput);
   if (!parsed.success) {
     const failed = validationError(parsed.error);
@@ -142,12 +175,7 @@ async function execute<I, O>(
         }
       }
 
-      let result: ActionResult<O>;
-      try {
-        result = await def.run(boundCtx, parsed.data, tx);
-      } catch (err) {
-        result = internalError(err) as ActionResult<O>;
-      }
+      let result: ActionResult<O> = await def.run(boundCtx, parsed.data, tx);
 
       if (result.ok) {
         const out = def.output.safeParse(result.data);

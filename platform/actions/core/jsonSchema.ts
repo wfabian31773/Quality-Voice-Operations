@@ -28,10 +28,7 @@ function convert(schema: ZodTypeAny): JsonSchema {
       json = { type: 'string', enum: [...(inner._def.values as string[])] };
       break;
     case 'ZodNativeEnum': {
-      const values = Object.values(inner._def.values as Record<string, string | number>).filter(
-        (v) => typeof v === 'string' || typeof v === 'number',
-      );
-      json = { enum: values };
+      json = { enum: nativeEnumValues(inner._def.values as Record<string, string | number>) };
       break;
     }
     case 'ZodArray':
@@ -167,6 +164,14 @@ function numberSchema(schema: ZodTypeAny): JsonSchema {
     if (check.kind === 'max' && typeof check.value === 'number') json.maximum = check.value;
   }
   return json;
+}
+
+function nativeEnumValues(enumObject: Record<string, string | number>): Array<string | number> {
+  // Numeric TypeScript enums include reverse mappings (`1: "A"`). Keep only the
+  // named members, which are the values Zod actually accepts.
+  return Object.keys(enumObject)
+    .filter((key) => Number.isNaN(Number(key)))
+    .map((key) => enumObject[key]);
 }
 
 function literalType(value: unknown): string {

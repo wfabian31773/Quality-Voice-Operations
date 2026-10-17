@@ -71,6 +71,10 @@ describe('tenant data-control catalog', () => {
     expect(byTable.get('tickets')?.dataClasses).toContain('phi');
     expect(byTable.get('audit_logs')?.deletionDisposition).toBe('controlled_audit_delete');
     expect(byTable.get('tenant_deletion_requests')?.deletionDisposition).toBe('preserve_evidence');
+    expect(byTable.get('action_idempotency')?.deletionDisposition).toBe('cascade');
+    expect(byTable.get('action_proposals')?.deletionDisposition).toBe('cascade');
+    expect(byTable.get('action_audit_log')?.deletionDisposition).toBe('controlled_audit_delete');
+    expect(byTable.get('action_audit_log')?.dataClasses).toContain('log');
   });
 
   it('reports unsafe, duplicate, and unclassified catalog entries for change control', () => {
