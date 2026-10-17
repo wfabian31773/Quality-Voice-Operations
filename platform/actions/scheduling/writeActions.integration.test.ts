@@ -727,6 +727,31 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       expect(await find(c, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 3 });
     });
 
+    it('filters by name, date and time before the result cap: the 25th upcoming booking on one phone is found', async () => {
+      const shop = await seedShop('find-many');
+      const created: string[] = [];
+      for (const day of [20, 21, 22, 23, 24]) {
+        for (const at of ['09:00', '09:30', '10:00', '10:30', '11:00']) created.push(await booking(shop, edt(day, at)));
+      }
+      const last = created[created.length - 1];
+      await pool.query(`UPDATE bookings SET contact_name = 'Mateo Ruiz' WHERE id = $1`, [last]);
+      const exact = { phone: PHONE, name: 'Mateo', date: '2026-10-24', time: '11:00' };
+
+      const staff = ctx(shop.tenantId, { actor: STAFF, callId: undefined });
+      expect(ids(await find(staff, { phone: PHONE }))).toEqual(created.slice(0, 20));
+      expect(ids(await find(staff, exact))).toEqual([last]);
+      expect(ids(await find(staff, { phone: PHONE, name: 'Mateo' }))).toEqual([last]);
+
+      // Agent, caller ID differs: name + date + time of the last one verifies it, and it can be acted on.
+      const c = agentIn(shop, await call(shop.tenantId, '+15555550199'));
+      expect(ids(await find(c, exact))).toEqual([last]);
+      expect(data(await act('scheduling.cancel.prepare', c, { bookingId: last }))).toMatchObject({ confirmationToken: expect.any(String) });
+      // Agent, caller ID matches: the name alone finds it; the count covers every upcoming booking.
+      const mine = agentIn(shop, await call(shop.tenantId, PHONE));
+      expect(ids(await find(mine, { phone: PHONE, name: 'Mateo Ruiz' }))).toEqual([last]);
+      expect(await find(mine, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 25 });
+    });
+
     it("tenant A never sees tenant B's bookings on the same phone, nor acts on them", async () => {
       const a = await seedShop('find-iso-a');
       const b = await seedShop('find-iso-b');
@@ -830,6 +855,32 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
         expect(await bookingRows(shop.tenantId)).toMatchObject([{ id: thu, status: 'confirmed' }]);
         // Call 1 itself still can.
         expect(data(await act('scheduling.cancel.commit', call1, { confirmationToken: p.confirmationToken }))).toMatchObject({ status: 'cancelled' });
+      });
+
+      it('refuses a verified booking once staff change its contact name or phone; an unchanged one still works', async () => {
+        const shop = await seedShop('agent-reassigned');
+        const named = await booking(shop, edt(22, '10:00'));
+        const phoned = await booking(shop, edt(23, '10:00'));
+        const kept = await booking(shop, edt(24, '10:00'));
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([named, phoned, kept]);
+        // The verification row carries no raw name or phone.
+        const { rows: proofs } = await pool.query(`SELECT payload::text AS p FROM action_proposals WHERE tenant_id = $1 AND action = 'scheduling.find_bookings'`, [shop.tenantId]);
+        expect(proofs).toHaveLength(1);
+        expect(proofs[0].p).not.toMatch(/Luis|5555550142/);
+
+        // Staff edit the bookings the way the admin update route does: same id, new contact.
+        await pool.query(`UPDATE bookings SET contact_name = 'Ana Ruiz' WHERE id = $1`, [named]);
+        await pool.query(`UPDATE bookings SET contact_phone = '+15555550188' WHERE id = $1`, [phoned]);
+        const unknown = errorOf(await act('scheduling.cancel.prepare', c, { bookingId: 'nope' }));
+        for (const id of [named, phoned]) {
+          expect(errorOf(await act('scheduling.cancel.prepare', c, { bookingId: id }))).toEqual(unknown);
+          expect(errorOf(await act('scheduling.reschedule.prepare', c, { bookingId: id, newStart: edt(26, '14:00') }))).toEqual(unknown);
+        }
+        // A cosmetic edit that keeps the same phone digits and name still counts.
+        await pool.query(`UPDATE bookings SET contact_phone = '(555) 555-0142', contact_name = 'LUIS' WHERE id = $1`, [kept]);
+        expect(data(await act('scheduling.cancel.prepare', c, { bookingId: kept }))).toMatchObject({ confirmationToken: expect.any(String) });
+        expect((await bookingRows(shop.tenantId)).map((r) => r.status)).toEqual(['confirmed', 'confirmed', 'confirmed']);
       });
 
       it('keeps the policy: OUTSIDE_POLICY inside the cancellation window and once the time has passed', async () => {

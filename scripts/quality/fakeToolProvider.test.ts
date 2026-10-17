@@ -222,6 +222,15 @@ describe('FakeToolProvider', () => {
       expect(state.bookings.find((row) => row.id === 'bk_thu')?.status).toBe('rescheduled');
     });
 
+    it('a booking staff re-assigned after the find (name or phone) is NOT_FOUND', async () => {
+      for (const change of [{ customerName: 'Ana' }, { customerPhone: '+15555550188' }]) {
+        const { state, tools } = shop(PHONE);
+        await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+        Object.assign(state.bookings.find((row) => row.id === 'bk_thu')!, change);
+        expect(codeOf(await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx()))).toBe('NOT_FOUND');
+      }
+    });
+
     it('keeps the policy (window, already passed) and offers alternatives for a taken slot', async () => {
       const { state, tools } = shop(PHONE);
       state.bookings.push({
@@ -248,5 +257,18 @@ describe('FakeToolProvider', () => {
     expect(first.ok).toBe(true);
     expect(retry).toEqual(first);
     expect(state.bookings.filter((row) => row.status === 'confirmed')).toHaveLength(1);
+  });
+
+  it('refuses a committed token replayed from another call (runAction hashes the callId): IDEMPOTENCY_KEY_REUSED', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const prepare = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    const first = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx());
+    expect(first.ok).toBe(true);
+    const other = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, { ...ctx(), callId: 'c2' });
+    expect(other.ok ? null : other.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    // The original call still replays its result.
+    expect(await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx())).toEqual(first);
   });
 });

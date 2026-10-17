@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { actionOk, defineAction, type ActionContext, type TenantTx } from '../core';
 import { isRealIsoDate, localDateOf, localMinuteOf } from './availability';
-import { serviceNames, upcomingByPhone, type BookingRecord } from './bookingRows';
+import { FIND_LIMIT, serviceNames, upcomingByPhone, type BookingRecord } from './bookingRows';
 import { callerIdMatches, FIND_BOOKINGS, namesMatch, recordVerified } from './identity';
 import { foundBookingLine, readbackLang, spokenWhen } from './readback';
 import { phone } from './writeSchemas';
@@ -102,28 +102,36 @@ export const findBookingsAction = defineAction({
     + 'if the caller doesn\'t know them, offer to take a message. Only a verified result lists bookings: read '
     + 'their spoken text, and if there is more than one, ask which. Never say whether an unverified number has appointments.',
   async run(ctx, args, tx) {
-    const upcoming = await upcomingByPhone(tx, ctx.tenantId, args.phone, ctx.now);
+    // Date and time filter in SQL; the name matcher (authoritative, and the
+    // JS date/time check alongside it) runs over every scanned row before the
+    // result is capped at FIND_LIMIT.
+    const upcoming = await upcomingByPhone(tx, ctx.tenantId, args.phone, ctx.now, {
+      timeZone: ctx.tenantTimezone,
+      date: args.date,
+      time: args.time,
+    });
+    const matching = () => upcoming.filter((b) => matches(ctx, b, args)).slice(0, FIND_LIMIT);
 
     // Staff, UI and MCP callers are trusted: a plain lookup by phone, with
     // optional name/date/time filters.
     if (ctx.actor.type !== 'agent') {
-      return actionOk({ verified: true, bookings: await present(tx, ctx, upcoming.filter((b) => matches(ctx, b, args))) });
+      return actionOk({ verified: true, bookings: await present(tx, ctx, matching()) });
     }
 
     // The agent (spec §0.2.6). Caller ID comes from call_sessions, never from input.
     if (await callerIdMatches(tx, ctx, args.phone)) {
       if (!args.name) return actionOk(refused('name', upcoming.length));
-      const found = upcoming.filter((b) => matches(ctx, b, args));
+      const found = matching();
       if (found.length === 0) return actionOk(refused('name'));
-      await recordVerified(tx, ctx, found.map((b) => b.id));
+      await recordVerified(tx, ctx, found);
       return actionOk({ verified: true, bookings: await present(tx, ctx, found) });
     }
 
     // Blocked or different caller ID: name, date and time must all match.
     if (!args.name || !args.date || !args.time) return actionOk(refused('name_date_time'));
-    const found = upcoming.filter((b) => matches(ctx, b, args));
+    const found = matching();
     if (found.length === 0) return actionOk(refused('name_date_time'));
-    await recordVerified(tx, ctx, found.map((b) => b.id));
+    await recordVerified(tx, ctx, found);
     return actionOk({ verified: true, bookings: await present(tx, ctx, found) });
   },
 });

@@ -148,10 +148,12 @@ export async function takeHold(
 
 /**
  * Agent reschedule/cancel only touch a booking that scheduling.find_bookings
- * verified in this same call and tenant (spec §0.2.6). A guessed id, one
- * verified in another call, another tenant's, or any id without a callId gets
- * exactly the NOT_FOUND an unknown id gets (same message too), so the agent
- * can't probe which ids exist. It runs before the booking is even loaded.
+ * verified in this same call and tenant (spec §0.2.6), and that still has the
+ * contact phone and name it was verified against. A guessed id, one verified
+ * in another call, another tenant's, one staff re-assigned since the find, or
+ * any id without a callId gets exactly the NOT_FOUND an unknown id gets (same
+ * message too), so the agent can't probe which ids exist. It runs before the
+ * action loads the booking for status or policy checks.
  * Staff, UI and MCP callers are not gated here.
  */
 export async function agentBookingBlock(

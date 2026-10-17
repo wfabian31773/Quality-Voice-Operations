@@ -16,6 +16,7 @@ const GENERIC_SAFE: Record<string, string> = {
   CONFLICT: 'That time or record is no longer available.',
   OUTSIDE_POLICY: "That isn't allowed by the shop's policy.",
   CONFIRMATION_INVALID: 'That confirmation is no longer valid. I can start over.',
+  IDEMPOTENCY_KEY_REUSED: 'This request does not match the original. I can start over.',
   INTERNAL: 'Something went wrong on our side. Please try again.',
 };
 
@@ -74,6 +75,14 @@ export function namesMatch(given: string, onBooking: string): boolean {
   if (g.length === 0 || b.length === 0) return false;
   if (g.length === 1 || b.length === 1) return g[0] === b[0];
   return g.join(' ') === b.join(' ');
+}
+
+/**
+ * The phone + name a booking was verified against (the real action stores a
+ * sha256 of tenant, phone digits and normalized name; the fake keeps it plain).
+ */
+function identityOf(row: BookingRow): string {
+  return `${toE164(row.customerPhone) ?? row.customerPhone}\0${nameTokens(row.customerName).join(' ')}`;
 }
 
 function ok(data: unknown, readback?: string): ToolResult {
@@ -199,10 +208,16 @@ export const HOLD_SUPERSEDED_REASON = 'hold_superseded';
 type CommitKind = 'booking' | 'reschedule' | 'cancel' | 'ticket' | 'transfer';
 
 export class FakeToolProvider implements ToolProvider {
-  /** Successful commit results by token: a retry with the same token replays it (core idempotency). */
-  private readonly commits = new Map<string, ToolResult>();
-  /** Booking ids find_bookings verified, per call (the real action records them per tenant + call). */
-  private readonly verified = new Map<string, Set<string>>();
+  /**
+   * Successful commit results by token, with the call that committed: a retry
+   * with the same token from the same call replays it (core idempotency).
+   */
+  private readonly commits = new Map<string, { callId: string; result: ToolResult }>();
+  /**
+   * Booking ids find_bookings verified, per call, with the phone + name they
+   * were verified against (the real action records them per tenant + call).
+   */
+  private readonly verified = new Map<string, Map<string, string>>();
 
   constructor(
     private readonly state: TenantState,
@@ -426,9 +441,9 @@ export class FakeToolProvider implements ToolProvider {
         };
       });
     const verify = (rows: BookingRow[]) => {
-      const set = this.verified.get(ctx.callId) ?? new Set<string>();
-      for (const row of rows) set.add(row.id);
-      this.verified.set(ctx.callId, set);
+      const verified = this.verified.get(ctx.callId) ?? new Map<string, string>();
+      for (const row of rows) verified.set(row.id, identityOf(row));
+      this.verified.set(ctx.callId, verified);
       return ok({ verified: true, bookings: present(rows) });
     };
 
@@ -445,15 +460,18 @@ export class FakeToolProvider implements ToolProvider {
   }
 
   /**
-   * The agent may only change a booking find_bookings verified in this call;
-   * anything else gets the NOT_FOUND an unknown id gets. Then the PR-13
-   * policy: nothing already started, nothing inside the cancellation window.
+   * The agent may only change a booking find_bookings verified in this call
+   * that still has the phone and name it was verified against; anything else
+   * gets the NOT_FOUND an unknown id gets. Then the PR-13 policy: nothing
+   * already started, nothing inside the cancellation window.
    */
   private changeable(bookingId: string | undefined, ctx: ToolCallContext): BookingRow | ToolResult {
     const notFound = fail('NOT_FOUND', 'Booking not found', { field: 'bookingId', callerSafeMessage: UNKNOWN_BOOKING });
     if (!bookingId) return fail('VALIDATION_FAILED', 'bookingId is required', { field: 'bookingId' });
-    if (ctx.actor.type === 'agent' && !this.verified.get(ctx.callId)?.has(bookingId)) return notFound;
     const booking = this.state.bookings.find((row) => row.id === bookingId);
+    if (ctx.actor.type === 'agent' && (!booking || this.verified.get(ctx.callId)?.get(bookingId) !== identityOf(booking))) {
+      return notFound;
+    }
     if (!booking || booking.status === 'held') return notFound;
     if (booking.status !== 'confirmed') {
       return fail('VALIDATION_FAILED', `Cannot change a ${booking.status} booking`, {
@@ -581,14 +599,23 @@ export class FakeToolProvider implements ToolProvider {
     return ok({ confirmationToken: token, target, readback }, readback);
   }
 
-  /** A retry with an already-committed token replays the stored result (runAction idempotency). */
+  /**
+   * A retry with an already-committed token replays the stored result
+   * (runAction idempotency). runAction hashes the callId into the request, so
+   * the same token from another call is IDEMPOTENCY_KEY_REUSED, not a replay.
+   */
   private commit(kind: CommitKind, input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const token = asString(input.confirmationToken);
     if (!token) return fail('VALIDATION_FAILED', 'confirmationToken is required', { field: 'confirmationToken' });
     const replay = this.commits.get(`${kind}\0${token}`);
-    if (replay) return structuredClone(replay);
+    if (replay) {
+      if (replay.callId !== ctx.callId) {
+        return fail('IDEMPOTENCY_KEY_REUSED', 'Idempotency key was reused with a different payload');
+      }
+      return structuredClone(replay.result);
+    }
     const result = this.commitOnce(kind, token, ctx);
-    if (result.ok) this.commits.set(`${kind}\0${token}`, structuredClone(result));
+    if (result.ok) this.commits.set(`${kind}\0${token}`, { callId: ctx.callId, result: structuredClone(result) });
     return result;
   }
 

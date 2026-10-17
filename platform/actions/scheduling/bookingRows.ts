@@ -127,15 +127,29 @@ export async function loadBooking(
   return rows[0] ? mapBooking(rows[0]) : null;
 }
 
-/** Most bookings one phone lookup returns. */
+/** Most bookings one find_bookings result lists (applied after every filter). */
 export const FIND_LIMIT = 20;
+/**
+ * Most upcoming rows one phone lookup scans. The name matcher runs in JS over
+ * these, so this is a backstop for a runaway phone, well above any real
+ * customer's upcoming bookings.
+ */
+export const FIND_SCAN_LIMIT = 500;
 
 /**
  * Upcoming confirmed bookings whose contact phone is `phone` (E.164), soonest
  * first. Matched on digits so a legacy "(555) 555-0142" row is found too;
- * held, cancelled, rescheduled (superseded) and past rows never are.
+ * held, cancelled, rescheduled (superseded) and past rows never are. `date`
+ * (YYYY-MM-DD) and `time` (HH:MM) filter on the start in `timeZone` before
+ * the scan limit, so an exact lookup finds a booking however many the phone has.
  */
-export async function upcomingByPhone(tx: TenantTx, tenantId: string, phone: string, now: Date): Promise<BookingRecord[]> {
+export async function upcomingByPhone(
+  tx: TenantTx,
+  tenantId: string,
+  phone: string,
+  now: Date,
+  filter: { timeZone: string; date?: string; time?: string },
+): Promise<BookingRecord[]> {
   const digits = phone.replace(/\D/g, '');
   const variants = phone.startsWith('+1') && digits.length === 11 ? [digits, digits.slice(1)] : [digits];
   const { rows } = await tx.query(
@@ -144,9 +158,11 @@ export async function upcomingByPhone(tx: TenantTx, tenantId: string, phone: str
         AND b.status = 'confirmed'
         AND b.start_time > $2
         AND regexp_replace(b.contact_phone, '[^0-9]', '', 'g') = ANY($3::text[])
+        AND ($5::text IS NULL OR to_char(b.start_time AT TIME ZONE $4, 'YYYY-MM-DD') = $5)
+        AND ($6::text IS NULL OR to_char(b.start_time AT TIME ZONE $4, 'HH24:MI') = $6)
       ORDER BY b.start_time, b.id
-      LIMIT ${FIND_LIMIT}`,
-    [tenantId, now.toISOString(), variants],
+      LIMIT ${FIND_SCAN_LIMIT}`,
+    [tenantId, now.toISOString(), variants, filter.timeZone, filter.date ?? null, filter.time ?? null],
   );
   return rows.map(mapBooking);
 }
