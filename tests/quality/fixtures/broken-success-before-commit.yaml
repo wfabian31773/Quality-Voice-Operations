@@ -1,0 +1,45 @@
+id: broken-success-before-commit
+template: barbershop
+tools:
+  - scheduling
+tags:
+  - fixture
+  - broken
+seed: barbershop-marco
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Book me with Marco at 3:30."
+  - text: "Yes"
+script:
+  - on: 0
+    steps:
+      - say: "You're booked with Marco at 3:30."
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            date: "2026-10-20"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            start: "2026-10-20T15:30:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "All set."
+expect:
+  actions:
+    - name: scheduling.book.prepare
+    - name: scheduling.book.commit
+  mustNotSay:
+    - "you're booked"
+  readbackRequired: true

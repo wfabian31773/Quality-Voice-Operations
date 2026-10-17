@@ -1,0 +1,50 @@
+name: Quality sim
+
+# Text-simulation harness for shop-agent scenarios (PR-06).
+# Deterministic scripted agent only — no secrets, no live LLM, no Twilio/Stripe/xAI.
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: quality-sim-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-sim:
+    name: quality:sim (scripted, no LLM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies (root)
+        run: bash scripts/ci-npm-ci.sh
+
+      - name: Unit tests (matcher + harness)
+        run: npx vitest run tests/quality scripts/quality
+
+      - name: Sample scenarios (deterministic)
+        run: npm run quality:sim -- --out=.ci-out/quality-sim-report.json
+
+      - name: Broken scenario produces a readable diff
+        run: npm run quality:sim -- --self-check
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-sim-report
+          path: .ci-out/quality-sim-report.json
+          if-no-files-found: ignore
+          retention-days: 14

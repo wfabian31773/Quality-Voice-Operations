@@ -1,0 +1,34 @@
+id: waitlist-same-slot
+template: barbershop
+tools:
+  - scheduling
+tags:
+  - waitlist
+  - expected-fail
+seed: barbershop-fully-booked-today
+now: "2026-10-20T14:00:00-04:00"
+expectedFail: PR-08
+caller:
+  - text: "Put me on the waitlist for a cut today."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.waitlist.add
+          input:
+            serviceIds: [mens-cut]
+            date: "2026-10-20"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "You're on the waitlist for today."
+expect:
+  actions:
+    - name: scheduling.waitlist.add
+      input:
+        serviceIds: [mens-cut]
+  endState:
+    waitlist:
+      count: 1
+  mustSay:
+    - "waitlist"
