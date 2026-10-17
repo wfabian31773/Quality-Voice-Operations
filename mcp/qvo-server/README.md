@@ -70,6 +70,8 @@ The server accepts two kinds of key, checked in this order:
 Both transports use the app database (same env as the Admin API: `DATABASE_URL` in development,
 `PLATFORM_DB_POOL_URL` + `DATABASE_URL_PRIVILEGED` elsewhere) for tenant reads, API-key lookups and
 the audit log. Run from the repo root; the package uses the root `node_modules`.
+For now the root install provides `@modelcontextprotocol/sdk` only as an optional transitive
+dependency, not a declared one (see [`NEEDS.md`](NEEDS.md) item 1).
 
 **stdio** (one key per process, checked at startup):
 
