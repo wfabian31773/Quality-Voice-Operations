@@ -76,12 +76,44 @@ export type EndStateExpect = {
   };
 };
 
+/** What the ReasoningEngine gate did during the scenario (see ReasoningSetup). */
+export type ReasoningExpect = {
+  mode?: 'enforce' | 'shadow' | 'off';
+  /** Guidance injected into the agent (enforce only; shadow must be 0). */
+  injections?: number;
+  /** Tool calls the gate blocked. */
+  blockedTools?: number;
+  /** At least this many reasoning_shadow log lines. */
+  minShadowLines?: number;
+};
+
 export type ScenarioExpect = {
   actions?: ExpectedAction[];
   endState?: EndStateExpect;
   mustSay?: string[];
   mustNotSay?: string[];
   readbackRequired?: boolean;
+  reasoning?: ReasoningExpect;
+  /** Executed attempts per tool (a TOOL_STOPPED call is not an attempt). */
+  toolAttempts?: Record<string, number>;
+};
+
+/**
+ * Run the call's caller turns and tool calls through the real
+ * ReasoningEngine + ReasoningCallGate, with the mode resolved like a live
+ * call (agent metadata → tenant settings → vertical default).
+ */
+export type ReasoningSetup = {
+  agentType: string;
+  agentMetadata?: Record<string, unknown>;
+  tenantSettings?: Record<string, unknown>;
+};
+
+/** Make a tool fail before it runs, for its first `failTimes` attempts. */
+export type ToolFault = {
+  failTimes: number;
+  code?: string;
+  retryable?: boolean;
 };
 
 export type Scenario = {
@@ -100,6 +132,8 @@ export type Scenario = {
    * blocked. Omitted = the seed's `callerNumber`. Never sent as tool input.
    */
   callerId?: string | null;
+  reasoning?: ReasoningSetup;
+  toolFaults?: Record<string, ToolFault>;
 };
 
 export type Actor = {
@@ -193,7 +227,7 @@ export type EndSnapshot = {
   waitlist: WaitlistRow[];
 };
 
-export type CheckName = 'actions' | 'endState' | 'mustSay' | 'mustNotSay' | 'readbackRequired';
+export type CheckName = 'actions' | 'endState' | 'mustSay' | 'mustNotSay' | 'readbackRequired' | 'reasoning' | 'toolAttempts';
 
 export type CheckFailure = {
   check: CheckName;
@@ -212,6 +246,17 @@ export type ScenarioRunResult = {
   diff: string;
   trace: TraceEvent[];
   snapshot: EndSnapshot;
+  reasoning?: ReasoningObservation;
+  toolAttempts?: Record<string, number>;
+};
+
+export type ReasoningObservation = {
+  mode: 'enforce' | 'shadow' | 'off';
+  /** reasoning_shadow lines, as logged. */
+  shadowLines: Array<Record<string, unknown>>;
+  /** Template ids the gate handed back to apply (enforce only). */
+  injections: string[];
+  blocked: Array<{ tool: string; reason: string }>;
 };
 
 export type RunReport = {

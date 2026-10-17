@@ -21,7 +21,16 @@ function turnPlan(script: ScriptTurn[] | undefined, turnIndex: number): ScriptTu
 export class ScriptedAgent implements SimAgent {
   private vars: Record<string, string> = {};
 
-  constructor(private readonly scenario: Scenario) {}
+  /**
+   * `initialVars` stands in for call facts the live prompt carries, e.g.
+   * `callerId` (the caller-ID line), so a script can say "{{callerId}}".
+   */
+  constructor(
+    private readonly scenario: Scenario,
+    initialVars: Record<string, string> = {},
+  ) {
+    this.vars = { ...initialVars };
+  }
 
   async handleTurn(turnIndex: number, tools: ToolProvider, ctx: ToolCallContext): Promise<AgentHandleResult> {
     const plan = turnPlan(this.scenario.script, turnIndex);

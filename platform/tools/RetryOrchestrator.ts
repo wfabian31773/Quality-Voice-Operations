@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../core/logger';
 import type { TenantId } from '../core/types';
+import type { ToolStopGuard } from './ToolStopGuard';
 
 const logger = createLogger('RETRY_ORCHESTRATOR');
 
@@ -41,6 +42,11 @@ export interface RetryResult<T> {
   attempts: number;
   totalDurationMs: number;
   usedFallback: boolean;
+  /**
+   * The stop guard stopped this tool for the call (TOOL_STOP_THRESHOLD failed
+   * attempts). `attempts` counts only the attempts this call executed.
+   */
+  stopped?: boolean;
 }
 
 type ToolExecutor<T> = () => Promise<T>;
@@ -134,14 +140,25 @@ export async function executeWithRetry<T>(
     agentSlug?: string;
     retryConfig?: Partial<RetryConfig>;
     fallbackExecutor?: FallbackExecutor<T>;
+    /**
+     * Repeated-tool stop: every executed attempt that fails counts toward
+     * the call's limit for this tool; once stopped, no further attempt runs.
+     */
+    stopGuard?: ToolStopGuard;
   },
 ): Promise<RetryResult<T>> {
   const config: RetryConfig = { ...DEFAULT_RETRY_CONFIG, ...context.retryConfig };
   const startTime = Date.now();
+  const guard = context.stopGuard;
   let lastError = '';
   let attemptsMade = 0;
+  let stopped = false;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    if (guard?.isStopped(context.callSessionId, context.toolName)) {
+      stopped = true;
+      break;
+    }
     attemptsMade = attempt + 1;
     try {
       const result = await withTimeout(executor(), config.timeoutMs);
@@ -154,6 +171,7 @@ export async function executeWithRetry<T>(
       };
     } catch (err) {
       lastError = String(err);
+      guard?.recordFailure(context.callSessionId, context.toolName);
       logger.warn('Tool execution attempt failed', {
         tenantId: context.tenantId,
         tool: context.toolName,
@@ -162,6 +180,17 @@ export async function executeWithRetry<T>(
         maxRetries: config.maxRetries,
         error: lastError,
       });
+
+      if (guard?.isStopped(context.callSessionId, context.toolName)) {
+        stopped = true;
+        logger.warn('Tool stopped for this call after repeated failures', {
+          tenantId: context.tenantId,
+          tool: context.toolName,
+          callId: context.callSessionId,
+          failedAttempts: guard.failureCount(context.callSessionId, context.toolName),
+        });
+        break;
+      }
 
       if (!isRetryableToolError(err)) {
         logger.info('Tool failure is not retryable; failing fast', {
@@ -194,10 +223,22 @@ export async function executeWithRetry<T>(
     }
   }
 
+  if (stopped && attemptsMade === 0) {
+    // Nothing ran on this call: no tool-failure event, no fallback.
+    return {
+      success: false,
+      error: `TOOL_STOPPED: ${context.toolName} is stopped for this call`,
+      attempts: 0,
+      totalDurationMs: Date.now() - startTime,
+      usedFallback: false,
+      stopped: true,
+    };
+  }
+
   let fallbackAttempted = false;
   let fallbackSuccess = false;
 
-  if (context.fallbackExecutor) {
+  if (context.fallbackExecutor && !stopped) {
     fallbackAttempted = true;
     try {
       logger.info('Attempting fallback executor', {
@@ -261,6 +302,7 @@ export async function executeWithRetry<T>(
     attempts: attemptsMade + (fallbackAttempted ? 1 : 0),
     totalDurationMs: Date.now() - startTime,
     usedFallback: fallbackAttempted,
+    ...(stopped ? { stopped: true } : {}),
   };
 }
 

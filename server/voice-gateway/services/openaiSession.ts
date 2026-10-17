@@ -30,6 +30,10 @@ import { bindSessionToolArgs } from '../../../platform/reasoning/sessionBinding'
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
+import { resolveReasoningMode, type ReasoningMode } from '../../../platform/reasoning/reasoningMode';
+import { ReasoningCallGate } from '../../../platform/reasoning/reasoningShadow';
+import { toolStopGuard } from '../../../platform/tools/ToolStopGuard';
+import { checkAgentToolAllowlist } from '../../../platform/tools/agentToolAllowlist';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
 import { checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
 import {
@@ -78,8 +82,17 @@ export interface SessionContext {
   onSessionSwapRequired?: (targetAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
   onToolCall?: (name: string, args: unknown, callSessionId: string) => Promise<string>;
   isTrial?: boolean;
+  /**
+   * Resolved reasoning mode (agent config → tenant settings → vertical
+   * default). When omitted it is resolved from templateKey + agent metadata.
+   */
+  reasoningMode?: ReasoningMode;
   reasoningEngine?: ReasoningEngine;
+  /** Applies (enforce) or only logs (shadow) the engine's decisions. */
+  reasoningGate?: ReasoningCallGate;
 }
+
+const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
 
 interface RealtimeMessageItem {
   type: string;
@@ -95,7 +108,6 @@ function buildToolHandler(
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
     const startTime = Date.now();
 
-    const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
     if (ctx.templateKey && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName) && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
       const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
@@ -109,6 +121,26 @@ function buildToolHandler(
         durationMs: Date.now() - startTime
       });
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+    }
+
+    // Agent tool allowlist, in every reasoning mode. In enforce mode the
+    // engine's safety gate keeps doing this check (unchanged behavior).
+    if (!ctx.reasoningGate?.enforcing) {
+      const allowlist = checkAgentToolAllowlist(toolName, agentConfig.tools.map((tool) => tool.name), INTERNAL_ORCHESTRATION_TOOLS);
+      if (!allowlist.allowed) {
+        logger.warn('Tool not in agent allowlist blocked', { tenantId, callId: callSessionId, tool: toolName });
+        const alId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+        await completeToolExecution({
+          tenantId,
+          executionId: alId,
+          callSessionId,
+          result: { success: false, reason: 'unauthorized_tool' },
+          status: 'failed',
+          errorMessage: 'Tool not in agent allowlist',
+          durationMs: Date.now() - startTime,
+        });
+        return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+      }
     }
 
     const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
@@ -172,19 +204,11 @@ function buildToolHandler(
       args = sessionBound.args;
     }
 
-    if (ctx.reasoningEngine && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
+    if (ctx.reasoningGate && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
       try {
-        for (const [key, value] of Object.entries(args)) {
-          if (typeof value === 'string' && value.length > 0) {
-            ctx.reasoningEngine.fillSlot(key, value, 'tool_args');
-          }
-        }
-      } catch (slotErr) {
-        logger.warn('Failed to fill slots from tool args (pre-safety)', { tenantId, callId: callSessionId, tool: toolName, error: String(slotErr) });
-      }
-
-      try {
-        const authorization = ctx.reasoningEngine.authorizeToolRequest(toolName, args);
+        // Enforce: the engine's verdict. Shadow: logged only; just the
+        // allowlist can block, and an engine error never does.
+        const authorization = ctx.reasoningGate.authorizeTool(toolName, args, agentConfig.tools.map((tool) => tool.name));
         if (!authorization.allowed) {
           const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
           logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
@@ -572,11 +596,19 @@ function buildToolHandler(
         callSessionId,
         agentSlug: agentConfig.agentId,
         retryConfig,
+        stopGuard: toolStopGuard,
       },
     );
 
     if (retryResult.success && retryResult.result !== undefined) {
       result = retryResult.result;
+    } else if (retryResult.stopped && retryResult.attempts === 0) {
+      // Stopped earlier in this call: nothing ran, so no new escalation
+      // task. The model gets the structured stop and the caller-safe hint.
+      executionStatus = 'failed';
+      executionError = retryResult.error ?? 'TOOL_STOPPED';
+      logger.warn('Stopped tool not executed', { tenantId, callId: callSessionId, tool: toolName });
+      result = JSON.stringify(toolStopGuard.result(callSessionId, toolName));
     } else {
       executionStatus = 'failed';
       executionError = retryResult.error ?? 'Unknown tool failure';
@@ -587,12 +619,16 @@ function buildToolHandler(
         usedFallback: retryResult.usedFallback,
       });
 
-      result = JSON.stringify({
-        success: false,
-        message: fallback.message,
-        recovery: unifiedToolRegistry.getRecoveryInstructions(toolName),
-        flaggedForFollowUp: true,
-      });
+      // This call's attempts reached the stop threshold: tell the model to
+      // stop now rather than hand it a retry-able fallback.
+      result = retryResult.stopped
+        ? JSON.stringify(toolStopGuard.result(callSessionId, toolName))
+        : JSON.stringify({
+          success: false,
+          message: fallback.message,
+          recovery: unifiedToolRegistry.getRecoveryInstructions(toolName),
+          flaggedForFollowUp: true,
+        });
 
       createEscalationTask({
         tenantId,
@@ -839,29 +875,35 @@ export async function createRealtimeSession(
   // is run concurrently with the caller-memory lookup and the call-session
   // insert below (all three are independent DB round-trips). Running them
   // sequentially was a big contributor to time-to-first-audio.
+  const reasoningMode: ReasoningMode = ctx.reasoningMode ?? resolveReasoningMode({
+    agentType: ctx.templateKey,
+    agentMetadata: agentConfig.metadata,
+  }).mode;
   let reasoningEngine: ReasoningEngine | undefined;
-  try {
-    const reasoningConfig: ReasoningEngineConfig = {
-      tenantId,
-      callSessionId: '', // will be set after callSession creation
-      callSid,
-      agentSlug: agentConfig.agentId,
-      vertical: ctx.templateKey ?? 'general',
-      callerNumber,
-      toolsAvailable: agentConfig.tools.map((t) => t.name),
-      memoryStorage: ctx.callerMemory ?? null,
-      humanTransferAvailable: Boolean(
-        ctx.onHandoff
-        || (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
-      ),
-    };
-    reasoningEngine = new ReasoningEngine(reasoningConfig);
-  } catch (err) {
-    logger.error('Reasoning engine construction failed, continuing without it', {
-      tenantId,
-      error: String(err),
-    });
-    reasoningEngine = undefined;
+  if (reasoningMode !== 'off') {
+    try {
+      const reasoningConfig: ReasoningEngineConfig = {
+        tenantId,
+        callSessionId: '', // will be set after callSession creation
+        callSid,
+        agentSlug: agentConfig.agentId,
+        vertical: ctx.templateKey ?? 'general',
+        callerNumber,
+        toolsAvailable: agentConfig.tools.map((t) => t.name),
+        memoryStorage: ctx.callerMemory ?? null,
+        humanTransferAvailable: Boolean(
+          ctx.onHandoff
+          || (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+        ),
+      };
+      reasoningEngine = new ReasoningEngine(reasoningConfig);
+    } catch (err) {
+      logger.error('Reasoning engine construction failed, continuing without it', {
+        tenantId,
+        error: String(err),
+      });
+      reasoningEngine = undefined;
+    }
   }
 
   const [callerMemoryResult, reasoningContextPrompt, callSessionId] = await Promise.all([
@@ -939,6 +981,19 @@ export async function createRealtimeSession(
   }).catch((err) => logger.error('Failed to write call_received event', { tenantId, error: String(err) }));
 
   ctx.reasoningEngine = reasoningEngine;
+  const reasoningGate = reasoningEngine && reasoningMode !== 'off'
+    ? new ReasoningCallGate({
+      engine: reasoningEngine,
+      mode: reasoningMode,
+      callId: callSessionId,
+      toolsAvailable: agentConfig.tools.map((t) => t.name),
+      exemptTools: INTERNAL_ORCHESTRATION_TOOLS,
+    })
+    : undefined;
+  ctx.reasoningGate = reasoningGate;
+  // Engine decisions reach the model only in enforce mode.
+  const enforceEffects = reasoningGate?.enforcing ?? false;
+  slog.info('Reasoning mode', { reasoningMode, engine: Boolean(reasoningEngine) });
 
   const toolHandler = buildToolHandler(ctx, callSessionId);
   const agentTools = buildRealtimeTools(agentConfig.tools);
@@ -1097,13 +1152,14 @@ export async function createRealtimeSession(
   const resetSilenceTimer = (): void => {
     if (silenceTimer) clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
-      if (reasoningEngine) {
+      if (reasoningGate) {
         try {
-          const recovery = reasoningEngine.handleSilence();
-          if (recovery.recoveryPrompt) {
-            sendModelInstruction(recovery.recoveryPrompt);
+          // null in shadow mode (logged as would_inject silence_recovery).
+          const recoveryPrompt = reasoningGate.handleSilence();
+          if (recoveryPrompt) {
+            sendModelInstruction(recoveryPrompt);
             writeCallEvent(tenantId, callSessionId, 'silence_recovery', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-              prompt: recovery.recoveryPrompt,
+              prompt: recoveryPrompt,
             }).catch(() => {});
           }
         } catch (silenceErr) {
@@ -1178,9 +1234,11 @@ export async function createRealtimeSession(
               }
             }
 
-            if (reasoningEngine) {
+            if (reasoningGate) {
               try {
-                const reasoningResult = reasoningEngine.processUtterance(
+                // Shadow mode: the gate logs the decision as reasoning_shadow
+                // and every effect branch below is skipped (enforceEffects).
+                const { result: reasoningResult, partialRecoveryPrompt } = reasoningGate.processTurn(
                   text,
                   classifiedIntent,
                   classifiedConfidence,
@@ -1196,7 +1254,7 @@ export async function createRealtimeSession(
                   escalation: reasoningResult.escalation?.trigger,
                 }).catch(() => {});
 
-                if (reasoningResult.action === 'escalate_to_human') {
+                if (enforceEffects && reasoningResult.action === 'escalate_to_human') {
                   const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
                   const hasOnCallNumber = Boolean(
                     (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
@@ -1263,7 +1321,8 @@ export async function createRealtimeSession(
                 }
 
                 if (
-                  reasoningResult.action === 'execute_tool'
+                  enforceEffects
+                  && reasoningResult.action === 'execute_tool'
                   && reasoningResult.fallbackStep === 'create_ticket'
                   && reasoningResult.escalation?.output === 'take_message'
                 ) {
@@ -1280,7 +1339,7 @@ export async function createRealtimeSession(
                   }
                 }
 
-                if (reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
+                if (enforceEffects && reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
                   writeCallEvent(tenantId, callSessionId, 'reasoning_clarification', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
                     question: reasoningResult.clarifyingQuestion,
                     missingSlots: reasoningResult.traceEntry.missingSlots,
@@ -1296,7 +1355,7 @@ export async function createRealtimeSession(
                   }
                 }
 
-                if (reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
+                if (enforceEffects && reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
                   try {
                     sendModelInstruction(
                       `Continue the conversation. Current step guidance: ${reasoningResult.reasoning}`,
@@ -1312,18 +1371,13 @@ export async function createRealtimeSession(
                   }).catch(() => {});
                 }
 
-                if (
-                  classifiedIntent === 'unknown' &&
-                  classifiedConfidence === 'low' &&
-                  reasoningResult.action !== 'escalate_to_human'
-                ) {
+                // The gate ran handlePartialAnswer for an unclear turn
+                // (unknown intent, low confidence, no escalation).
+                if (enforceEffects && partialRecoveryPrompt) {
                   try {
-                    const recovery = reasoningEngine.handlePartialAnswer(text);
-                    if (recovery.recoveryPrompt) {
-                      sendModelInstruction(
-                        `The caller's response was unclear. ${recovery.recoveryPrompt}`,
-                      );
-                    }
+                    sendModelInstruction(
+                      `The caller's response was unclear. ${partialRecoveryPrompt}`,
+                    );
                   } catch (recoveryErr) {
                     slog.warn('Partial answer recovery failed', { error: String(recoveryErr) });
                   }
@@ -1361,9 +1415,10 @@ export async function createRealtimeSession(
               metadata: { model: agentConfig.model, agentId: agentConfig.agentId },
             }).catch(() => {});
 
-            if (reasoningEngine) {
+            if (reasoningGate) {
               try {
-                const responseSafety = reasoningEngine.checkResponseSafety(c.text);
+                // Always allowed in shadow mode (logged if it would cancel).
+                const responseSafety = reasoningGate.checkResponse(c.text);
                 if (!responseSafety.allowed) {
                   const criticalViolations = responseSafety.violations
                     .filter((v) => v.severity === 'critical')
@@ -1444,6 +1499,7 @@ export async function createRealtimeSession(
     startedAt: new Date(),
     cleanup: async () => {
       if (silenceTimer) clearTimeout(silenceTimer);
+      toolStopGuard.clearCall(callSessionId);
       try {
         await activeSession.close();
       } catch {}
@@ -1466,6 +1522,7 @@ export async function createRealtimeSession(
       slog.info('Realtime session closed');
 
       if (silenceTimer) clearTimeout(silenceTimer);
+      toolStopGuard.clearCall(callSessionId);
       // Clear the per-call budget-check interval here too. Without this, the
       // hangup teardown path (finalizeStream -> session.close() ->
       // sessionManager.unregister) never runs the sessionManager `cleanup`

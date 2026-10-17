@@ -125,7 +125,69 @@ describe('createRealtimeSession workforce handoff transfer', () => {
     await result.session.close();
   });
 
-  it('routes a workforce-only ask-for-a-person through onHandoff, not the dead-end onEscalation path', async () => {
+  function salonCtx(overrides: Partial<SessionContext>): SessionContext {
+    return {
+      tenantId: 't-handoff' as never,
+      agentConfig: {
+        agentId: 'a-salon',
+        tenantId: 't-handoff',
+        systemPrompt: 'You are the receptionist.',
+        rolePrompt: 'Answer the phone.',
+        greeting: 'Hello',
+        voice: 'eve',
+        model: 'grok-voice-think-fast-2.0',
+        language: 'en',
+        preferredLanguage: 'en',
+        timeZone: 'America/New_York',
+        tools: [
+          { name: 'transfer_to_agent', description: 'Transfer to a teammate', parameters: { type: 'object', properties: {} } },
+          { name: 'create_ticket', description: 'Create a ticket', parameters: { type: 'object', properties: {} } },
+          { name: 'escalate_to_human', description: 'Escalate', parameters: { type: 'object', properties: {} } },
+        ],
+        guardrails: [],
+        metadata: { practiceName: 'Demo Cuts' },
+        coreVersion: '2.0.0',
+        rolePackageId: 'salon',
+        rolePackageVersion: '1.0.0',
+      } as never,
+      callerNumber: '+15551112222',
+      calledNumber: '+15553334444',
+      callSid: 'CA-handoff-live',
+      direction: 'inbound',
+      templateKey: 'salon',
+      lifecycleCoordinator: makeCoordinator() as never,
+      ...overrides,
+    } as SessionContext;
+  }
+
+  it('shadow (salon default): an ask-for-a-person is logged as would_escalate, with no reasoning-driven transfer', async () => {
+    const onHandoff = vi.fn(async () => ({ success: true, message: 'Transferring you now.' }));
+    const onEscalation = vi.fn(async () => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const ctx = salonCtx({ onHandoff, onEscalation });
+
+    const result = await createRealtimeSession(ctx);
+    expect(ctx.reasoningGate?.mode).toBe('shadow');
+    const session = result.session as unknown as { emit: (event: string, payload: unknown) => boolean };
+    session.emit('history_added', {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: 'I want to talk to a person' }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onHandoff).not.toHaveBeenCalled();
+    expect(onEscalation).not.toHaveBeenCalled();
+    const shadowLines = info.mock.calls.map((call) => String(call[0])).filter((line) => line.includes('reasoning_shadow'));
+    expect(shadowLines).toHaveLength(1);
+    expect(shadowLines[0]).toContain('"would_escalate":true');
+    expect(shadowLines[0]).not.toContain('talk to a person');
+    info.mockRestore();
+
+    await result.session.close();
+  });
+
+  it('enforce: routes a workforce-only ask-for-a-person through onHandoff, not the dead-end onEscalation path', async () => {
     const onHandoff = vi.fn(async () => ({ success: true, message: 'Transferring you now.' }));
     const onEscalation = vi.fn(async () => {});
     const ctx = {
@@ -157,6 +219,7 @@ describe('createRealtimeSession workforce handoff transfer', () => {
       callSid: 'CA-handoff-live',
       direction: 'inbound',
       templateKey: 'salon',
+      reasoningMode: 'enforce',
       lifecycleCoordinator: makeCoordinator() as never,
       onHandoff,
       onEscalation,

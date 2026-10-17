@@ -1,0 +1,138 @@
+id: oct17-booking-tool-stops-after-3-failures
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [oct17, reasoning:shadow, tool-stop, scheduling, tickets, template:barbershop, lang:en]
+# Oct 17: create_booking failed 6 times (2 calls x 3 retries, ~9.5 s of dead
+# air) before the agent gave up and promised a follow-up "within the hour".
+# Here the booking tool fails 3 times; the repeated-tool stop answers the 4th
+# call with TOOL_STOPPED without running it, and the agent tells the caller
+# plainly and offers a callback, with no time promise. The salon agent's
+# ReasoningEngine is in shadow the whole call.
+seed: sharp-line-oct17
+callerId: "+15555550100"
+now: "2026-10-17T14:16:00-04:00"
+reasoning:
+  agentType: salon
+  agentMetadata:
+    vertical: barbershop
+toolFaults:
+  scheduling.book.prepare:
+    failTimes: 3
+    code: INTERNAL
+caller:
+  - text: "Hi, this is Wayne. I'm looking for a fade, Saturday morning."
+  - text: "Yeah, if nine is available, I'll take it."
+  - text: "You can use the one I'm calling from."
+  - text: "Sure, have them call me."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [fade]
+            staffId: any
+            date: "2026-10-24"
+      - say: "Hi Wayne. The next Saturday is October 24th. I have 9, 10 or 11 that morning."
+  - on: 1
+    steps:
+      - say: "9 AM it is. Should I use the number you're calling from, ending in 0100?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [fade]
+            staffId: any
+            start: "2026-10-24T09:00:00-04:00"
+            customer:
+              name: Wayne
+              phone: "{{callerId}}"
+      - say: "One moment while I set that up."
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [fade]
+            staffId: any
+            start: "2026-10-24T09:00:00-04:00"
+            customer:
+              name: Wayne
+              phone: "{{callerId}}"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [fade]
+            staffId: any
+            start: "2026-10-24T09:00:00-04:00"
+            customer:
+              name: Wayne
+              phone: "{{callerId}}"
+      # Stopped: this call returns TOOL_STOPPED and does not run.
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [fade]
+            staffId: any
+            start: "2026-10-24T09:00:00-04:00"
+            customer:
+              name: Wayne
+              phone: "{{callerId}}"
+      - say: "{{callerSafeMessage}} Would you like a callback from the shop?"
+  - on: 3
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: callback
+            subject: "Booking request for Saturday morning"
+            customer:
+              name: Wayne
+              phone: "{{callerId}}"
+      - say: "{{readback}}. Is that right?"
+  - on: 4
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Thanks, Wayne. The shop will reach out to you on this number."
+expect:
+  actions:
+    - name: scheduling.check_availability
+    - name: scheduling.book.prepare
+    - name: scheduling.book.prepare
+    - name: scheduling.book.prepare
+    - name: scheduling.book.prepare
+    - name: tickets.open.prepare
+      input:
+        kind: callback
+        customer:
+          phone: "+15555550100"
+    - name: tickets.open.commit
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 1
+      kind: callback
+      status: open
+  # Three executed attempts; the fourth call was stopped before it ran.
+  toolAttempts:
+    scheduling.book.prepare: 3
+  mustSay:
+    - "wasn't able to complete that"
+    - "have the shop follow up"
+    - "callback"
+  mustNotSay:
+    - "you're booked"
+    - "within the hour"
+    - "as soon as possible"
+    - "what's the best number"
+    - "I'll go ahead and create a ticket"
+  readbackRequired: true
+  reasoning:
+    mode: shadow
+    injections: 0
+    blockedTools: 0
+    minShadowLines: 5

@@ -1,6 +1,11 @@
 export { ReasoningEngine } from './ReasoningEngine';
 export type { ReasoningEngineConfig } from './ReasoningEngine';
 
+export { resolveReasoningMode, parseReasoningMode, isSalonVerticalAgent, REASONING_MODES } from './reasoningMode';
+export type { ReasoningMode, ReasoningModeInput, ResolvedReasoningMode } from './reasoningMode';
+export { ReasoningCallGate, describeTurnEffects, toolBlockReason, REASONING_SHADOW_EVENT } from './reasoningShadow';
+export type { ReasoningShadowLine, TurnEffects } from './reasoningShadow';
+
 export { DecisionEngine } from './DecisionEngine';
 export type { DecisionEngineConfig } from './DecisionEngine';
 

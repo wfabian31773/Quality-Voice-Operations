@@ -6,6 +6,7 @@ import { redactPHI } from '../../../platform/core/phi/redact';
 import { loadAgentConfig } from '../services/agentLoader';
 import { getAgentConfig, getAgentToolOverrides } from '../services/numberLookup';
 import { createRealtimeSession, type RealtimeSessionResult } from '../services/openaiSession';
+import { resolveReasoningMode } from '../../../platform/reasoning/reasoningMode';
 import { writeCallEvent, updateCallState, finalizeCallSession } from '../services/callPersistence';
 import { dispatchSmsCsatSurvey, getTenantCsatSettings } from '../../../platform/analytics/CsatSurveyService';
 import { sendSystemSmsOrThrow } from '../../../platform/actions/sms';
@@ -672,6 +673,11 @@ export function attachWebSocket(server: HTTPServer): void {
                 callSid: twilioCallSid,
                 direction: callDirection,
                 templateKey: agentCfg.rolePackageId,
+                reasoningMode: resolveReasoningMode({
+                  agentType: trustedAgentType,
+                  agentMetadata: dbAgent.metadata,
+                  tenantSettings: dbAgent.tenant_settings,
+                }).mode,
                 toolOverrides,
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
@@ -1088,6 +1094,11 @@ export function attachWebSocket(server: HTTPServer): void {
                 callSid: widgetCallSid,
                 direction: 'inbound',
                 templateKey: agentCfg.rolePackageId,
+                reasoningMode: resolveReasoningMode({
+                  agentType: dbAgent.type || 'general',
+                  agentMetadata: dbAgent.metadata,
+                  tenantSettings: dbAgent.tenant_settings,
+                }).mode,
                 lifecycleCoordinator: coordinator,
                 workflowEngine,
                 budgetGuard,
