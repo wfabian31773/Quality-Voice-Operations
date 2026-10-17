@@ -31,6 +31,7 @@ export {
   SMS_MAX_BODY_CHARS,
   getSmsTemplate,
   isAgentSmsTemplate,
+  isStaffAlertSmsTemplate,
   listSmsTemplates,
   renderSmsTemplate,
   type SmsTemplateKey,

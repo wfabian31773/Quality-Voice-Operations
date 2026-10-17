@@ -25,7 +25,13 @@ import {
   type SmsSendDeps,
 } from './deps';
 import { SMS_SEND_OUTCOME_UNKNOWN } from './statusCallback';
-import { bodyStats, renderSmsTemplate, SMS_MAX_BODY_CHARS, type SmsTemplateKey } from './templates';
+import {
+  bodyStats,
+  isStaffAlertSmsTemplate,
+  renderSmsTemplate,
+  SMS_MAX_BODY_CHARS,
+  type SmsTemplateKey,
+} from './templates';
 
 export { SMS_SEND_OUTCOME_UNKNOWN };
 
@@ -130,6 +136,14 @@ function resolveBody(actor: Actor, input: SmsSendInput): Resolved {
     return { ok: false, result: actionFail('VALIDATION_FAILED', 'Send either templateKey or body, not both', { field: 'body' }) };
   }
   if (input.templateKey) {
+    if (isStaffAlertSmsTemplate(input.templateKey) && actor.type !== 'system') {
+      return {
+        ok: false,
+        result: actionFail('FORBIDDEN', `Template ${input.templateKey} is for platform alerts only`, {
+          field: 'templateKey',
+        }),
+      };
+    }
     const rendered = renderSmsTemplate(input.templateKey, input.vars);
     if (!rendered.ok) {
       return { ok: false, result: actionFail('VALIDATION_FAILED', rendered.message, { field: rendered.field }) };
@@ -292,6 +306,15 @@ function isHumanInboxSend(actor: Actor): boolean {
   return scoped !== undefined && scoped.type === actor.type && scoped.id === actor.id;
 }
 
+/**
+ * Staff alerts (on-call escalation, autopilot, connector outage) had no
+ * per-recipient limit before the chokepoint; a dropped one is a missed alert.
+ * Decided here from the actor and template, never from caller input.
+ */
+function isSystemStaffAlert(actor: Actor, input: SmsSendInput): boolean {
+  return actor.type === 'system' && !!input.templateKey && isStaffAlertSmsTemplate(input.templateKey);
+}
+
 export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): ActionDefinition<SmsSendInput, SmsSendOutput> {
   const newId = deps.newId ?? randomUUID;
   return {
@@ -361,7 +384,7 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         return smsFail('RECIPIENT_OPTED_OUT', 'Recipient has opted out of SMS');
       }
 
-      const rateLimitExempt = isHumanInboxSend(ctx.actor);
+      const rateLimitExempt = isHumanInboxSend(ctx.actor) || isSystemStaffAlert(ctx.actor, input);
       const metadata: Record<string, unknown> = {
         source: SMS_SEND_ACTION,
         purpose: input.purpose,

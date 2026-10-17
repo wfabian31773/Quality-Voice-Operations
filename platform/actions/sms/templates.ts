@@ -15,6 +15,11 @@ export interface SmsTemplate {
   agent: boolean;
   /** Per-variable length cap (default 200). */
   maxVarChars?: number;
+  /**
+   * Platform alerts to staff (on-call / owner / admin numbers). Only the
+   * `system` actor may send them, and they skip the per-recipient rate limit.
+   */
+  staffAlert?: boolean;
 }
 
 // `csat_survey` and `ops_alert` are system-only templates whose single variable
@@ -24,6 +29,9 @@ export interface SmsTemplate {
 // `escalation_alert` and `autopilot_alert` keep the exact wording of the
 // staff alerts sent by the SMS connector (call escalation) and the autopilot
 // high-risk notifier; their variables are filled by platform code.
+// `ops_alert`, `escalation_alert` and `autopilot_alert` are staff alerts
+// (`staffAlert`): system-only and not rate limited per recipient, as before
+// the chokepoint, so a busy on-call number still gets every alert.
 
 const TEMPLATES: readonly SmsTemplate[] = [
   {
@@ -70,6 +78,7 @@ const TEMPLATES: readonly SmsTemplate[] = [
     vars: ['message'],
     agent: false,
     maxVarChars: SMS_MAX_BODY_CHARS,
+    staffAlert: true,
   },
   {
     key: 'escalation_alert',
@@ -77,6 +86,7 @@ const TEMPLATES: readonly SmsTemplate[] = [
     vars: ['session', 'reason', 'time'],
     agent: false,
     maxVarChars: SMS_MAX_BODY_CHARS,
+    staffAlert: true,
   },
   {
     key: 'autopilot_alert',
@@ -84,6 +94,7 @@ const TEMPLATES: readonly SmsTemplate[] = [
     vars: ['riskTier', 'title', 'summary'],
     agent: false,
     maxVarChars: SMS_MAX_BODY_CHARS,
+    staffAlert: true,
   },
 ];
 
@@ -110,6 +121,10 @@ export function listSmsTemplates(): SmsTemplate[] {
 
 export function isAgentSmsTemplate(key: string): boolean {
   return BY_KEY.get(key)?.agent === true;
+}
+
+export function isStaffAlertSmsTemplate(key: string): boolean {
+  return BY_KEY.get(key)?.staffAlert === true;
 }
 
 export type RenderResult =

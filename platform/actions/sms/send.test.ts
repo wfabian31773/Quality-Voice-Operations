@@ -675,6 +675,85 @@ describe('sms.send chokepoint', () => {
     });
   });
 
+  describe('per-recipient rate limit on staff alerts', () => {
+    const ON_CALL = '+13125550199';
+    const staffAlerts: Array<Pick<SystemSmsRequest, 'templateKey' | 'vars'>> = [
+      {
+        templateKey: 'escalation_alert',
+        vars: { session: 'cs-1', reason: 'caller upset', time: '2026-10-14T15:00:00.000Z' },
+      },
+      { templateKey: 'autopilot_alert', vars: { riskTier: 'HIGH', title: 'Missed calls spiking', summary: '12 missed today' } },
+      { templateKey: 'ops_alert', vars: { message: 'QVO: your Square connection needs attention.' } },
+    ];
+
+    it.each(staffAlerts)('sends a 6th $templateKey to the same number within the hour', async (alert) => {
+      const t = setup();
+      for (let n = 1; n <= 6; n++) {
+        expect(await t.system({ to: ON_CALL, ...alert })).toMatchObject({ ok: true, data: { status: 'queued' } });
+      }
+      expect(t.transport.send).toHaveBeenCalledTimes(6);
+      expect(t.records.get('msg-6')!.metadata).toMatchObject({ templateKey: alert.templateKey, rateLimitExempt: true });
+    });
+
+    it('non-system actors cannot send staff-alert templates', async () => {
+      const t = setup();
+      const mcp: Actor = { type: 'mcp', id: 'key-1', scopes: ['qvo:admin'] };
+      const agent: Actor = { type: 'agent', id: 'agent-1' };
+      for (const alert of staffAlerts) {
+        for (const actor of [owner, mcp, agent]) {
+          const input = { to: ON_CALL, purpose: 'transactional', ...alert };
+          expect(await t.asActor(actor, input)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+        }
+      }
+      expect(t.transport.send).not.toHaveBeenCalled();
+      expect(t.records.size).toBe(0);
+    });
+
+    it('still rate-limits a 6th reminder_24h or agent-template send', async () => {
+      const reminder = {
+        templateKey: 'reminder_24h' as const,
+        vars: { businessName: 'Fade Lab', summary: 'your cut with Marco', time: '3:30 PM' },
+      };
+      const t = setup();
+      for (let n = 1; n <= 5; n++) expect((await t.system(reminder)).ok).toBe(true);
+      expect(await t.system(reminder)).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+      // The agent wrapper's templates (confirmation) too.
+      expect(await t.system()).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+      expect(t.transport.send).toHaveBeenCalledTimes(5);
+      expect(t.records.get('msg-1')!.metadata).toMatchObject({ rateLimitExempt: false });
+    });
+
+    it('still refuses an opted-out on-call number', async () => {
+      const t = setup();
+      t.state.consent.set(ON_CALL, 'opt_out');
+      for (const alert of staffAlerts) {
+        expect(await t.system({ to: ON_CALL, ...alert })).toMatchObject({
+          ok: false,
+          error: { code: 'RECIPIENT_OPTED_OUT' },
+        });
+      }
+      expect(t.transport.send).not.toHaveBeenCalled();
+    });
+
+    it('a quiet-hours-deferred staff alert stays exempt when the window opens', async () => {
+      const t = setup();
+      // 7:00 AM CDT, before the window: deferred to 8:00.
+      const deferred = await t.system({ to: ON_CALL, ...staffAlerts[1], now: new Date('2026-10-15T12:00:00.000Z') });
+      expect(deferred).toMatchObject({ ok: true, data: { status: 'deferred_quiet_hours' } });
+      // Five other alerts go out at 8:00, so the deferred one is the 6th in the hour.
+      for (let n = 1; n <= 5; n++) {
+        expect((await t.system({ to: ON_CALL, ...staffAlerts[0], now: new Date(WINDOW_START) })).ok).toBe(true);
+      }
+      const summary = await releaseDueDeferredSms({
+        deps: t.deps,
+        now: new Date(Date.parse(WINDOW_START) + 60_000),
+        withTenantTx: t.runtime.withTenantTx,
+      });
+      expect(summary).toMatchObject({ claimed: 1, sent: 1, rateLimited: 0 });
+      expect(t.transport.send).toHaveBeenCalledTimes(6);
+    });
+  });
+
   describe('live-call exemption', () => {
     it('sends a transactional message during a live call at 9:05 PM', async () => {
       const t = setup();
