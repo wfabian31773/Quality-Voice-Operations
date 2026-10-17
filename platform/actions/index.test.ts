@@ -15,17 +15,18 @@ const SCHEDULING_READS = [
 ];
 
 describe('action registry', () => {
-  it('imports each tool folder; scheduling registers its read actions', () => {
+  it('imports each tool folder; scheduling reads and sms.send are registered', () => {
     expect(schedulingActions.map((a) => a.name)).toEqual(SCHEDULING_READS);
-    expect(smsActions).toEqual([]);
+    expect(smsActions.map((def) => def.name)).toEqual(['sms.send']);
     expect(ticketsActions).toEqual([]);
     expect(businessActions).toEqual([]);
     expect(callsActions).toEqual([]);
     expect(dispatchActions).toEqual([]);
     expect(ordersActions).toEqual([]);
-    expect(ACTION_REGISTRY.map((a) => a.name)).toEqual(SCHEDULING_READS);
-    expect(listActions().map((a) => a.name)).toEqual(SCHEDULING_READS);
+    expect(ACTION_REGISTRY.map((a) => a.name)).toEqual([...SCHEDULING_READS, 'sms.send']);
+    expect(listActions().map((a) => a.name)).toEqual([...SCHEDULING_READS, 'sms.send']);
     expect(getAction('scheduling.check_availability')?.kind).toBe('read');
+    expect(getAction('sms.send')?.permissions.agent).toBe(false);
     expect(getAction('scheduling.book.commit')).toBeUndefined();
   });
 

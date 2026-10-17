@@ -1,0 +1,83 @@
+id: v1-sched-bb-named-staff
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.book, spec:1.5-named-staff, spec:1.5-price-text]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Hi, can I get a men's cut with Andre this Friday afternoon?"
+  - text: "3:30 works. It's Luis, this number is fine."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: andre
+            date: "2026-10-23"
+            partOfDay: afternoon
+      - say: "Andre has Friday at 1:00, 3:30 or 4:30. Which works for you?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: andre
+            start: "2026-10-23T15:30:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "Let me read that back: {{readback}}. The price is {{priceText}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked with Andre on Friday at 3:30."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        serviceIds: [mens-cut]
+        staffId: andre
+        date: "2026-10-23"
+    - name: scheduling.book.prepare
+      input:
+        staffId: andre
+        start: "2026-10-23T15:30:00-04:00"
+        customer:
+          name: Luis
+          phone: "+15555550142"
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: andre
+          date: "2026-10-23"
+          startLocal: "15:30"
+    tickets:
+      count: 0
+  mustSay:
+    - "Andre"
+    - "from $35"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

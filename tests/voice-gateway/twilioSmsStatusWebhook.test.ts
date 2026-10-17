@@ -88,7 +88,8 @@ describe('POST /twilio/sms-status', () => {
       });
 
     expect(res.status).toBe(204);
-    expect(queryMock).toHaveBeenCalledTimes(1);
+    // Second query is the sms.send chokepoint's sms_messages update.
+    expect(queryMock).toHaveBeenCalledTimes(2);
     const [sql, params] = queryMock.mock.calls[0];
     const text = String(sql);
     // Lookup is by twilio_message_sid (matches the unique partial
@@ -199,6 +200,25 @@ describe('POST /twilio/sms-status', () => {
     // 2xx tells Twilio to stop retrying; we don't want our queue
     // amplified by SMS sent through unrelated product surfaces.
     expect(res.status).toBe(204);
+  });
+
+  it('updates the sms_messages row for messages sent through the sms.send chokepoint', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/twilio/sms-status')
+      .type('form')
+      .send({ MessageSid: 'SM_chokepoint_1', MessageStatus: 'undelivered', ErrorCode: '30003' });
+
+    expect(res.status).toBe(204);
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    const [sql, params] = queryMock.mock.calls[1];
+    expect(String(sql)).toContain('UPDATE sms_messages');
+    expect(String(sql)).toContain('WHERE twilio_sid = $1');
+    expect((params as unknown[]).slice(0, 4)).toEqual(['SM_chokepoint_1', 'undelivered', 30003, true]);
   });
 
   it('returns 400 when MessageSid or MessageStatus is missing (so monitoring surfaces malformed callbacks)', async () => {

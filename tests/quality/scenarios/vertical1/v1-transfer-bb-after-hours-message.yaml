@@ -1,0 +1,74 @@
+id: v1-transfer-bb-after-hours-message
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:calls, tool:tickets, template:barbershop, lang:en, action:calls.transfer_to_human, action:tickets.open, spec:6-transfer-after-hours, spec:0.2-failure-truth, expected-fail]
+seed: barbershop-basic
+# Monday: the shop is closed and outside transfer hours.
+now: "2026-10-19T11:00:00-04:00"
+# FakeToolProvider has no transfer hours, so the transfer is held instead of
+# refused (OUTSIDE_POLICY) and a transfer row remains.
+expectedFail: PR-26
+caller:
+  - text: "Can I talk to Marco?"
+  - text: "Okay. Tell him Luis called about moving my standing appointment."
+  - text: "Yes."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: calls.transfer_to_human.prepare
+          input:
+            target: Marco
+      - say: "We're closed today, so I can't connect you to Marco. I can take a message for him."
+  - on: 1
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: message
+            subject: standing appointment
+            details: Luis called about moving his standing appointment.
+            customer:
+              name: Luis
+              phone: "+15555550142"
+            urgency: normal
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "I've let them know. Marco will get your message."
+expect:
+  actions:
+    - name: calls.transfer_to_human.prepare
+      input:
+        target: Marco
+    - name: tickets.open.prepare
+      input:
+        kind: message
+    - name: tickets.open.commit
+  endState:
+    transfers:
+      count: 0
+    tickets:
+      count: 1
+      kind: message
+      status: open
+  mustNotSay:
+    - "connecting you"
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

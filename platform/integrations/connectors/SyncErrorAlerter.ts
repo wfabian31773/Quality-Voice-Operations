@@ -16,6 +16,7 @@ import {
   getTenantAlertPhoneRecipients,
 } from './ConnectorAlertRecipients';
 import type { ConnectorType } from './types';
+import { sendSystemSms } from '../../actions/sms';
 import type { TenantId } from '../../core/types';
 
 const logger = createLogger('CONNECTOR_SYNC_ALERT');
@@ -455,53 +456,33 @@ export function getOutageSmsStatusCallbackUrl(): string | null {
   return `${base.replace(/\/$/, '')}/twilio/sms-status`;
 }
 
-async function sendTwilioSms(
-  config: TwilioConfig,
+/**
+ * Outage SMS through the `sms.send` chokepoint (opt-out, quiet hours, rate
+ * limit, persistence, StatusCallback to /twilio/sms-status). A quiet-hours
+ * deferral counts as accepted so the 24h throttle still applies.
+ */
+async function sendOutageSms(
+  tenantId: TenantId,
   to: string,
   body: string,
-  statusCallback: string | null,
+  dispatchId: string,
+  idempotencyKey?: string,
 ): Promise<{ ok: boolean; status?: number; error?: string; messageSid?: string | null }> {
   try {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`;
-    const formParams: Record<string, string> = {
-      To: to,
-      From: config.fromNumber,
-      Body: body,
-    };
-    if (statusCallback) {
-      formParams.StatusCallback = statusCallback;
-    }
-    const formBody = new URLSearchParams(formParams);
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization:
-          'Basic ' + Buffer.from(`${config.accountSid}:${config.authToken}`).toString('base64'),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formBody.toString(),
+    const result = await sendSystemSms({
+      tenantId,
+      to,
+      templateKey: 'ops_alert',
+      vars: { message: body },
+      purpose: 'transactional',
+      relatedEntity: { type: 'connector_alert_dispatch', id: dispatchId },
+      actorId: 'connector-sync-alerter',
+      ...(idempotencyKey ? { idempotencyKey } : {}),
     });
-    if (!response.ok) {
-      return { ok: false, status: response.status };
+    if (!result.ok) {
+      return { ok: false, error: `${result.error.code}: ${result.error.message}` };
     }
-    // Best-effort SID extraction. Twilio returns JSON like { sid: "SMxxxx", ... }.
-    // We swallow parse errors and treat them as "no SID known" so the send is
-    // still considered successful (the in-flight 24h throttle, in-app fan-out,
-    // and audit row all proceed) — we just won't be able to correlate the
-    // statusCallback webhook back to this row for that one recipient.
-    let messageSid: string | null = null;
-    try {
-      const text = await response.text();
-      if (text) {
-        const parsed = JSON.parse(text) as { sid?: string };
-        if (typeof parsed.sid === 'string' && parsed.sid.length > 0) {
-          messageSid = parsed.sid;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return { ok: true, status: response.status, messageSid };
+    return { ok: true, messageSid: result.data.twilioSid ?? null };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -685,20 +666,10 @@ export async function notifySustainedConnectorFailure(
     twilioMessageSid: string | null;
   }
   const outcomes: SmsOutcome[] = [];
-  // Resolve the statusCallback URL once. If we don't have a public base
-  // URL configured we still send (Twilio acceptance + HTTP status are
-  // captured), we just won't get the live `delivered`/`failed` follow-ups
-  // — the panel falls back to showing the dispatch-time status only.
-  const statusCallbackUrl = getOutageSmsStatusCallbackUrl();
   if (twilio) {
     for (const recipient of optedIn) {
       attempted += 1;
-      const result = await sendTwilioSms(
-        twilio,
-        recipient.phone,
-        smsBody,
-        statusCallbackUrl,
-      );
+      const result = await sendOutageSms(tenantId, recipient.phone, smsBody, dispatchId);
       if (result.ok) {
         succeeded += 1;
         outcomes.push({
@@ -1301,11 +1272,6 @@ export async function resendConnectorAlertToFailedRecipients(
     `${minutesForBody} min. Latest error: ${errorMessage.slice(0, 100)}. ` +
     `Reconnect at ${appBaseUrl().replace(/\/$/, '')}${reconnectPath}`;
 
-  // Recreate the same statusCallback URL the original SMS dispatch used so
-  // resent messages also flow through the /twilio/sms-status webhook and
-  // the per-recipient row gets promoted to delivered/undelivered.
-  const resendStatusCallback = getOutageSmsStatusCallbackUrl();
-
   for (const row of candidateRows) {
     const to = row.recipient_phone;
     if (!to) {
@@ -1351,7 +1317,9 @@ export async function resendConnectorAlertToFailedRecipients(
     }
 
     outcome.attempted += 1;
-    const result = await sendTwilioSms(twilio, to, smsBody, resendStatusCallback);
+    // A resend reuses the dispatchId, so give it its own key rather than
+    // replaying the original attempt's stored result.
+    const result = await sendOutageSms(tenantId, to, smsBody, dispatchId, `sms:resend:${dispatchId}:${randomUUID()}`);
     if (result.ok) {
       outcome.succeeded += 1;
       await recordRecipientAudit({

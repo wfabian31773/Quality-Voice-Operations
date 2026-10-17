@@ -1,0 +1,112 @@
+id: v1-tickets-bb-repeat-dedupe
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:tickets, template:barbershop, lang:en, action:tickets.open, spec:3.6-3, dedupe, expected-fail]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+# Within one call, a second open of the same kind for the same phone must
+# become add_note on the first ticket (server-side). FakeToolProvider opens a
+# new ticket every time, so three tickets remain.
+expectedFail: PR-20
+caller:
+  - text: "Can Marco call me back about a group booking for my wedding party? Luis."
+  - text: "Yes."
+  - text: "So he'll call me about the wedding party, right? Please have him call me."
+  - text: "Yes."
+  - text: "Just make sure he calls me back about the wedding, okay?"
+  - text: "Yes."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: callback
+            subject: wedding party group booking
+            details: Wants a group booking for a wedding party.
+            customer:
+              name: Luis
+              phone: "+15555550142"
+            urgency: normal
+      - say: "{{readback}}. Is that right?"
+  - on: 1
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "I've let them know. Marco will call you back."
+  - on: 2
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: callback
+            subject: wedding party group booking
+            details: Caller repeated the callback request.
+            customer:
+              name: Luis
+              phone: "+15555550142"
+            urgency: normal
+      - say: "{{readback}}. Is that right?"
+  - on: 3
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Yes, Marco has your request."
+  - on: 4
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: callback
+            subject: wedding party group booking
+            details: Caller repeated the callback request again.
+            customer:
+              name: Luis
+              phone: "+15555550142"
+            urgency: normal
+      - say: "{{readback}}. Is that right?"
+  - on: 5
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "It's all on one request for Marco. He'll call you back."
+expect:
+  actions:
+    - name: tickets.open.prepare
+      input:
+        kind: callback
+    - name: tickets.open.commit
+    - name: tickets.open.prepare
+      input:
+        kind: callback
+    - name: tickets.open.commit
+    - name: tickets.open.prepare
+      input:
+        kind: callback
+    - name: tickets.open.commit
+  endState:
+    tickets:
+      count: 1
+      kind: callback
+      status: open
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

@@ -57,16 +57,24 @@ export const TOOL_LIBRARY: readonly ToolLibraryEntry[] = [
   },
   {
     name: 'send_sms',
-    description: 'Send an SMS to a phone number and persist it in the tenant SMS inbox. Confirm the destination and message with the caller before sending.',
+    description: 'Text the caller one of the shop\'s fixed SMS templates. You cannot write the message: pick templateKey and fill vars. confirmation (after a booking is stored): vars businessName, summary, e.g. "a men\'s cut with Marco, Tue Oct 20 at 3:30 PM". directions: vars businessName, address. link: vars businessName, url (an https link from the business info). Read the number back as "the number ending in 0142" and get a yes first. Say it was sent only when status is queued; deferred_quiet_hours means they get it in the morning.',
     category: 'sms',
     parameters: {
       type: 'object',
       properties: {
-        toNumber: { type: 'string', description: 'Destination phone number in E.164 format' },
-        body: { type: 'string', description: 'SMS body. Keep it short and factual.' },
-        fromNumber: { type: 'string', description: 'Optional from number. Defaults to the tenant Twilio number.' },
+        toNumber: { type: 'string', description: 'Destination phone number in E.164 format. Defaults to the caller number.' },
+        templateKey: {
+          type: 'string',
+          enum: ['confirmation', 'directions', 'link'],
+          description: 'confirmation = booking confirmed; directions = shop address; link = a shop link the caller asked for',
+        },
+        vars: {
+          type: 'object',
+          description: 'Template variables, only the ones the template uses. confirmation: { businessName, summary }. directions: { businessName, address }. link: { businessName, url }.',
+          additionalProperties: { type: 'string' },
+        },
       },
-      required: ['toNumber', 'body'],
+      required: ['templateKey', 'vars'],
       additionalProperties: false,
     },
   },
