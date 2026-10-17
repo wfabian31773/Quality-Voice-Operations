@@ -20,7 +20,7 @@ This is the single source of truth for all work required to reach GTM readiness.
 - Preserve unrelated user work and pre-existing workspace files.
 - Do not delete retained features, APIs, database objects, migrations, or schemas without an explicit cleanup work package and dependency proof.
 - QVO is a Replit project whose deployable source of truth is GitHub `origin/main`. Repository work is not delivery-complete while it exists only in a local worktree or feature branch.
-- After a work package passes its required checks, commit it on a `codex/*` branch, push it, merge it into an up-to-date `main`, and push `main` so Replit can receive the change. Preserve review evidence and never force-push or overwrite unrelated remote work.
+- After a work package passes its required checks, commit it on a feature branch, push it, and open a **draft** pull request requesting a Codex review (`@codex review`). Wayne merges PRs once they have green CI and a clean latest Codex review on the head commit. PRs touching migrations, auth/RLS, billing, or infra always need Wayne's own review. Agents never merge into `main` and never push `main`. Preserve review evidence and never force-push or overwrite unrelated remote work.
 - A merge to `main` delivers code but does not by itself authorize a Replit production deployment, secret change, PHI activation, paid-plan purchase, live call, or other externally consequential operation. Those actions retain their explicit readiness and owner gates.
 
 ### Replit delivery workflow
@@ -29,7 +29,7 @@ This is the single source of truth for all work required to reach GTM readiness.
 2. Review and classify the complete diff. Exclude unrelated local artifacts such as `.claude/`, secrets, generated coverage, and machine-specific files.
 3. Run the work package's focused tests, typecheck, lint, production builds, migration checks, security review, and full-suite baseline comparison. Record all pre-existing failures separately and permit no introduced failure.
 4. Commit the verified package on its `codex/*` branch with a scoped message and push that branch to `origin`.
-5. Merge through a reviewed pull request when repository protections or review requirements exist. If direct integration is permitted, update local `main` from `origin/main`, merge the verified branch without rewriting history, rerun the deployment-critical checks, and push `main`.
+5. Open a draft pull request against `main` and request a Codex review. Do not merge the PR and do not push `main`. Wayne merges once CI is green on the head commit and the latest Codex review on that commit is clean. PRs touching migrations, auth/RLS, billing, or infra always need Wayne's own review in addition to Codex.
 6. Verify the resulting `origin/main` commit contains the work and record the commit, checks, merge method, and Replit deployment status in the execution log.
 7. Deploy or promote in Replit only after the applicable environment, migration, vendor, compliance, and activation gates pass. A failed deploy must not be represented as completed delivery.
 
