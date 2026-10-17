@@ -98,3 +98,63 @@ The geocoder provider is selected from `DISPATCH_GEOCODE_PROVIDER`
 (`nominatim` | `mapbox` | `google` | `none`). With `none` the script
 exits without touching the database.
 
+# Demo data
+
+## Seed the demo barbershop (Sharp Line Barbers)
+
+`scripts/seed-demo-barbershop.ts` turns the `demo` tenant (the number used
+for live test calls) into a small bilingual barbershop, so
+`scheduling.list_services` and `scheduling.check_availability` return real
+services and slots. It is a seed, not a migration: nothing runs it
+automatically. Wayne or a bot runs it by hand **after** the PR is merged and
+migration `125_service_aliases.sql` is applied to the target database (the
+seed writes the `aliases` column).
+
+```
+# 1. See what it will write (reads the tenant, writes nothing)
+npx tsx scripts/seed-demo-barbershop.ts --tenant demo --dry-run
+
+# 2. Write it
+npx tsx scripts/seed-demo-barbershop.ts --tenant demo
+```
+
+Connection: `DATABASE_URL_PRIVILEGED`, else `DATABASE_URL`
+(`APP_ENV=development`) or `PLATFORM_DB_POOL_URL` (other `APP_ENV`), the
+same as `scripts/seed-demo.ts`. The writes run in one transaction bound to
+the tenant with `withTenantContext`.
+
+What it seeds (QVO tables only):
+
+- 8 services in `scheduling_appointment_types` with durations, "from" or
+  fixed prices, and EN/ES spoken aliases from
+  `shared/scheduling/serviceLexicon.ts`: Haircut 30 min, Fade 45, Taper 45,
+  Lineup 15, Beard trim 15, Haircut and beard 45, Hot towel shave 30 (no
+  price: the agent says the shop will confirm), Kids cut 30 (12 and under).
+- 3 barbers: Marcus (all services), Luis (English/Spanish; everything but
+  the hot towel shave), Dee (haircut, fade, taper, lineup, kids cut), with
+  `scheduling_provider_services` links.
+- Weekly schedules Tue–Sat 9:00–19:00; Dee is off Wednesday.
+- Business hours Tue–Sat 9–7, closed Sunday and Monday (replaces the
+  tenant's existing business-hours rows).
+- One tenant-wide booking rule: 1 h lead time, up to 30 days ahead,
+  same-day allowed, 24 h cancellation window. The 15-minute slot grid is
+  the availability engine's default; buffers are per service (5 min after
+  the 30/45-minute services).
+
+Safe to re-run: ids are derived from (tenant, kind, key) and every write is
+an upsert, so a second run changes nothing. For the three seeded barbers,
+service links and weekly blocks not in the plan are removed. Nothing else in
+the tenant is touched.
+
+Flags:
+
+- `--tenant <id>` (or `--tenant=<id>`): default `demo`. The script refuses
+  to run if the tenant doesn't exist.
+- `--dry-run`: print the planned upserts and roll back.
+- `--allow-non-demo`: seed a tenant whose `tenants.is_demo` is not true
+  (refused by default so a typo can't reshape a real shop).
+
+Test: `scripts/seed-demo-barbershop.test.ts` runs the seed twice against a
+scratch local Postgres and checks the counts, then checks that a "low fade"
+resolved through the aliases gets Saturday-morning slots.
+

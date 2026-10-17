@@ -17,6 +17,8 @@ export interface CatalogService {
   priceKind: PriceKind;
   priceCents: number | null;
   priceMaxCents: number | null;
+  /** Spoken alternatives for the name (migration 125). Absent when the column is missing or empty. */
+  aliases?: string[];
 }
 
 export interface CatalogStaff {
@@ -47,9 +49,17 @@ function toDate(value: unknown): Date {
   return value instanceof Date ? value : new Date(String(value));
 }
 
+function aliasList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((a): a is string => typeof a === 'string' && a.trim() !== '').map((a) => a.trim());
+}
+
 export async function loadCatalog(tx: TenantTx, tenantId: string): Promise<Catalog> {
+  // aliases is read through to_jsonb(row) so the query also works on a
+  // database where migration 125 has not run yet (the key is just absent).
   const services = await tx.query(
-    `SELECT id, name, duration_minutes, buffer_minutes, price_kind, price_cents, price_max_cents
+    `SELECT id, name, duration_minutes, buffer_minutes, price_kind, price_cents, price_max_cents,
+            to_jsonb(scheduling_appointment_types) -> 'aliases' AS aliases
        FROM scheduling_appointment_types
       WHERE tenant_id = $1 AND is_active = true
       ORDER BY name, id`,
@@ -70,15 +80,19 @@ export async function loadCatalog(tx: TenantTx, tenantId: string): Promise<Catal
   );
 
   const catalog: Catalog = {
-    services: services.rows.map((r) => ({
-      id: str(r.id),
-      name: str(r.name),
-      durationMin: intOrNull(r.duration_minutes) ?? 0,
-      bufferMin: intOrNull(r.buffer_minutes) ?? 0,
-      priceKind: (str(r.price_kind) || 'hidden') as PriceKind,
-      priceCents: intOrNull(r.price_cents),
-      priceMaxCents: intOrNull(r.price_max_cents),
-    })),
+    services: services.rows.map((r) => {
+      const aliases = aliasList(r.aliases);
+      return {
+        id: str(r.id),
+        name: str(r.name),
+        durationMin: intOrNull(r.duration_minutes) ?? 0,
+        bufferMin: intOrNull(r.buffer_minutes) ?? 0,
+        priceKind: (str(r.price_kind) || 'hidden') as PriceKind,
+        priceCents: intOrNull(r.price_cents),
+        priceMaxCents: intOrNull(r.price_max_cents),
+        ...(aliases.length > 0 ? { aliases } : {}),
+      };
+    }),
     staff: staff.rows.map((r) => ({ id: str(r.id), name: str(r.name) })),
     staffByService: new Map(),
   };

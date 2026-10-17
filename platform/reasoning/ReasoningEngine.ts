@@ -9,6 +9,7 @@ import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
 import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction, isPolicyOrNegatedCancel } from './cancelRescheduleLanguage';
 import { isAdditionalTransactionRequest } from './additionalTransactionLanguage';
+import { serviceTitleFromUtterance } from '../../shared/scheduling/serviceLexicon';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -704,6 +705,10 @@ export class ReasoningEngine {
   }
 
   private tryExtractSlotValue(slotName: string, lowerUtterance: string, originalUtterance: string): string | null {
+    if (slotName === 'title') {
+      const service = serviceTitleFromUtterance(originalUtterance);
+      if (service) return service;
+    }
     switch (slotName) {
       case 'caller_name':
       case 'contactName': {

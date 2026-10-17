@@ -5,6 +5,7 @@ import type {
   ReasoningContext,
 } from '../types';
 import { hasCancelOrRescheduleLanguage } from '../cancelRescheduleLanguage';
+import { serviceIntentKeywords, serviceTitleFromUtterance } from '../../../shared/scheduling/serviceLexicon';
 
 const SALON_URGENT_KEYWORDS = [
   'allergic reaction',
@@ -24,8 +25,10 @@ function classifyBookingRequest(context: ReasoningContext) {
     'barber', 'appointment', 'book', 'booking', 'schedule', 'slot',
     'reservar', 'reserva', 'cita', 'agendar', 'hacer una cita',
   ];
+  // The lexicon catches spoken service names the keywords miss ("shape-up", "degradado").
+  const namesService = serviceTitleFromUtterance(context.currentUtterance) !== null;
   for (const keyword of bookingKeywords) {
-    if (utterance.includes(keyword)) {
+    if (namesService || utterance.includes(keyword)) {
       return {
         triggered: true,
         additionalContext: 'Salon booking request. Collect service, preferred time, guest name, and phone, then use create_booking. If they asked to cancel or move an existing visit, use update_booking instead.',
@@ -151,13 +154,14 @@ export const salonPack: IndustryReasoningPack = {
   intentPatterns: [
     {
       intent: 'book_appointment',
-      keywords: [
+      keywords: [...new Set([
         'haircut', 'fade', 'trim', 'color', 'highlight', 'blowout',
         'manicure', 'pedicure', 'nails', 'beard', 'shave', 'stylist',
         'barber', 'appointment', 'book', 'booking', 'schedule', 'slot',
         'come in', 'cut my hair',
         'reservar', 'reserva', 'cita', 'agendar', 'hacer una cita',
-      ],
+        ...serviceIntentKeywords(),
+      ])],
       confidence: 'high',
     },
     {
