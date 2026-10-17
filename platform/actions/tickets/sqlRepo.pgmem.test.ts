@@ -6,6 +6,7 @@ import { DataType, newDb } from 'pg-mem';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createMemoryStore, runAction, type ActionContext, type ActionResult, type TenantTx } from '../core';
 import { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE } from './actions';
+import { sqlTicketsRepo } from './repo';
 
 const TENANT = 'tenant-a';
 const OTHER = 'tenant-b';
@@ -30,6 +31,10 @@ const SCHEMA = `
     policy_id VARCHAR NOT NULL REFERENCES ticket_sla_policies(id),
     response_due_at TIMESTAMPTZ,
     resolution_due_at TIMESTAMPTZ,
+    response_met BOOLEAN DEFAULT NULL,
+    resolution_met BOOLEAN DEFAULT NULL,
+    paused_at TIMESTAMPTZ,
+    total_paused_minutes INT DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -56,6 +61,7 @@ const SCHEMA = `
     intake JSONB NOT NULL DEFAULT '{}',
     urgency TEXT NOT NULL DEFAULT 'normal',
     source_call_ref VARCHAR(128),
+    first_response_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -344,5 +350,67 @@ describe('sqlTicketsRepo on pg-mem', () => {
     expect(await ids({ status: 'all' }, owner({ tenantId: OTHER }))).toEqual([]);
     const foreign = await run('tickets.get', owner({ tenantId: OTHER }), { ticketId });
     expect(!foreign.ok && foreign.error.code).toBe('NOT_FOUND');
+  });
+
+  it('keeps SLA instances in sync on pending, first assignment and resolve, tenant-scoped', async () => {
+    const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
+    const iso = (value: unknown) => (value ? new Date(value as string).toISOString() : null);
+    const { committed } = await open({ kind: 'message', subject: 'sla sync', customer: { phone: '555-010-4444' } }, owner());
+    const { ticketId: slaId } = ok<{ ticketId: string }>(committed);
+
+    // Another tenant's ticket and instance that nothing below may touch.
+    const { rows: otherPolicy } = await tx.query(`SELECT id FROM ticket_sla_policies WHERE tenant_id = $1 LIMIT 1`, [OTHER]);
+    await tx.query(`INSERT INTO tickets (id, tenant_id, subject) VALUES ('other-sla', $1, 'other')`, [OTHER]);
+    await tx.query(
+      `INSERT INTO ticket_sla_instances (tenant_id, ticket_id, policy_id, response_due_at, resolution_due_at)
+       VALUES ($1, 'other-sla', $2, $3, $4)`,
+      [OTHER, otherPolicy[0].id, at(90), at(2880)],
+    );
+    const instance = async (id: string) => {
+      const { rows } = await tx.query(
+        `SELECT response_due_at, resolution_due_at, response_met, resolution_met, paused_at, total_paused_minutes
+           FROM ticket_sla_instances WHERE ticket_id = $1`,
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+      const row = rows[0];
+      return {
+        response: iso(row.response_due_at),
+        resolution: iso(row.resolution_due_at),
+        responseMet: row.response_met,
+        resolutionMet: row.resolution_met,
+        pausedAt: iso(row.paused_at),
+        pausedMinutes: Number(row.total_paused_minutes),
+      };
+    };
+    const otherBefore = await instance('other-sla');
+    let key = 0;
+    const update = (input: Record<string, unknown>, now: Date) =>
+      run('tickets.update', owner({ idempotencyKey: `sla${(key += 1)}`, now }), { ticketId: slaId, ...input });
+
+    ok(await update({ status: 'pending' }, at(10)));
+    expect(await instance(slaId)).toMatchObject({ pausedAt: at(10).toISOString(), response: at(90).toISOString() });
+
+    // Out of pending 30 min later, assigned for the first time and resolved in one update.
+    ok(await update({ status: 'resolved', assigneeId: 'staff-1' }, at(40)));
+    expect(await instance(slaId)).toEqual({
+      response: at(120).toISOString(),
+      resolution: at(2910).toISOString(),
+      responseMet: true,
+      resolutionMet: true,
+      pausedAt: null,
+      pausedMinutes: 30,
+    });
+    const { rows: ticketRows } = await tx.query(`SELECT first_response_at FROM tickets WHERE id = $1`, [slaId]);
+    expect(iso(ticketRows[0].first_response_at)).toBe(at(40).toISOString());
+
+    // A foreign tenant scope cannot reach this tenant's instance, even with its ticket id.
+    const foreign = sqlTicketsRepo(tx, OTHER);
+    await foreign.pauseSla(slaId, at(50));
+    await foreign.recordFirstResponse(slaId, true, at(50));
+    expect((await instance(slaId)).pausedAt).toBeNull();
+    expect(await instance('other-sla')).toEqual(otherBefore);
+    const { rows: otherTicket } = await tx.query(`SELECT first_response_at FROM tickets WHERE id = 'other-sla'`);
+    expect(otherTicket[0].first_response_at).toBeNull();
   });
 });

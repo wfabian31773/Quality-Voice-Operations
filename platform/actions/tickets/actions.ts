@@ -373,6 +373,12 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
       for (const activity of activities) {
         await repo.addActivity({ ...activity, ticketId: ticket.id, actorUserId: userId, now: ctx.now });
       }
+      // Keep ticket_sla_instances in step like the admin PATCH. Un-pausing runs first so a
+      // ticket resolved or assigned straight out of pending is judged on its shifted due times.
+      if (patch.status !== undefined && ticket.status === 'pending') await repo.resumeSla(ticket.id, ctx.now);
+      if (patch.assigneeId) await repo.recordFirstResponse(ticket.id, ticket.assigneeId === null, ctx.now);
+      if (patch.status === 'resolved') await repo.recordSlaResolved(ticket.id, ctx.now);
+      if (patch.status === 'pending') await repo.pauseSla(ticket.id, ctx.now);
       const updated = await repo.update(ticket.id, patch, ctx.now);
       return actionOk(toSummary(updated, ctx.now));
     },

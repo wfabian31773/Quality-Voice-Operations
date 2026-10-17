@@ -6,6 +6,7 @@ import { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE } from './actions';
 import { ticketsActions } from './index';
 import { buildOpenReadback, normalizePhone, phoneDigitGroups } from './readback';
 import { advisoryLockKey, parseTicketSettings } from './repo';
+import { validateIntake } from './intake';
 import { DEFAULT_INTAKE_SCHEMAS, intakeSchemaFor } from './intakeSchemas';
 import { canTransition, STATUS_TRANSITIONS, TICKET_KINDS, TICKET_STATUSES } from './schemas';
 
@@ -316,6 +317,42 @@ describe('tickets.open.prepare', () => {
       expect(Object.keys(DEFAULT_INTAKE_SCHEMAS).sort()).toEqual([...TICKET_KINDS].sort());
     });
 
+    it('never treats inherited Object.prototype members as declared fields', async () => {
+      const { tickets, run } = setup();
+      for (const key of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+        expectFail(
+          await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'message', intake: { [key]: { nested: 'unchecked' } } })),
+          'VALIDATION_FAILED',
+          `intake.${key}`,
+        );
+      }
+      expect(tickets.state.tickets).toHaveLength(0);
+      const noFields = DEFAULT_INTAKE_SCHEMAS.message;
+      // JSON.parse makes __proto__ an own key, as a raw request body would.
+      const proto = validateIntake(JSON.parse('{"__proto__": {"polluted": true}}'), noFields);
+      expect(proto).toMatchObject({ ok: false, field: 'intake.__proto__' });
+      // A required key is only satisfied by the caller's own value, never an inherited one.
+      expect(validateIntake({}, { ...noFields, required: ['toString'] })).toMatchObject({ ok: false, field: 'intake.toString' });
+    });
+
+    it('rejects prototype keys as extras even when additionalProperties is true', () => {
+      const open = { type: 'object' as const, properties: {}, additionalProperties: true };
+      for (const body of [
+        '{"constructor": "x"}',
+        '{"prototype": "x"}',
+        '{"__proto__": {"polluted": true}}',
+        '{"toString": {"deep": {"deeper": 1}}}',
+      ]) {
+        const result = validateIntake(JSON.parse(body), open);
+        expect(result.ok).toBe(false);
+      }
+      expect(validateIntake(JSON.parse('{"who": {"constructor": 1}}'), open)).toMatchObject({ ok: false, field: 'intake.who' });
+      // An inherited name that is a plain identifier is just a capped scalar extra, stored as an own key.
+      const kept = validateIntake({ toString: '  hi  ' }, open);
+      expect(kept).toEqual({ ok: true, value: { toString: 'hi' } });
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    });
+
     it('fails closed to "no intake fields" when the configured schema is malformed', async () => {
       const { tickets, run } = setup();
       tickets.state.settings.set(
@@ -403,6 +440,10 @@ describe('tickets.open.commit', () => {
         policyId: `${TENANT}:medium`,
         responseDueAt: new Date(a.dueAt!),
         resolutionDueAt: new Date(NOW.getTime() + 2880 * 60_000),
+        responseMet: null,
+        resolutionMet: null,
+        pausedAt: null,
+        totalPausedMinutes: 0,
       },
     ]);
     expect(a.dueAt).toBe('2026-10-17T16:30:00.000Z');
@@ -655,6 +696,74 @@ describe('tickets.update', () => {
     expect(data<{ assigneeId: null }>(await update({ assigneeId: null })).assigneeId).toBeNull();
     expectFail(await update({}), 'VALIDATION_FAILED');
     expectFail(await update({ dueAt: 'tomorrow' }), 'VALIDATION_FAILED', 'dueAt');
+  });
+
+  describe('keeps ticket_sla_instances in sync like the admin PATCH', () => {
+    const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
+
+    // Medium policy: response due NOW + 90 min, resolution NOW + 2880 min.
+    async function withPolicy() {
+      const env = setup();
+      env.tickets.state.slaMinutes.set(TENANT, { medium: 90 });
+      env.tickets.state.slaMinutes.set(OTHER, { medium: 90 });
+      env.tickets.state.members.set(TENANT, new Set(['staff-1', 'staff-2']));
+      const { ticketId } = data<Committed>((await prepareAndCommit(env.run)).committed);
+      const other = data<Committed>((await prepareAndCommit(env.run, baseInput(), agentCtx({ tenantId: OTHER }))).committed);
+      let key = 0;
+      const update = (input: Record<string, unknown>, now: Date) =>
+        env.run('tickets.update', ownerCtx({ idempotencyKey: `s${(key += 1)}`, now }), { ticketId, ...input });
+      const instance = (id = ticketId) => env.tickets.state.slaInstances.find((row) => row.ticketId === id)!;
+      return { ...env, ticketId, otherId: other.ticketId, update, instance };
+    }
+
+    it('pauses on pending and shifts the due times by the paused interval on the way out', async () => {
+      const { update, instance } = await withPolicy();
+      data(await update({ status: 'pending' }, at(10)));
+      expect(instance()).toMatchObject({ pausedAt: at(10), responseDueAt: at(90), resolutionDueAt: at(2880) });
+      // Leaving pending at +40.5 min: paused 30.5 min, counted as 30 whole minutes.
+      const resumedAt = new Date(at(40).getTime() + 30_000);
+      data(await update({ status: 'in_progress' }, resumedAt));
+      expect(instance()).toMatchObject({
+        pausedAt: null,
+        totalPausedMinutes: 30,
+        responseDueAt: new Date(at(120).getTime() + 30_000),
+        resolutionDueAt: new Date(at(2910).getTime() + 30_000),
+      });
+    });
+
+    it('sets resolution_met when the ticket is resolved', async () => {
+      const { update, instance } = await withPolicy();
+      data(await update({ status: 'resolved' }, at(60)));
+      expect(instance()).toMatchObject({ resolutionMet: true, responseMet: null });
+      // Re-resolving later never rewrites the settled value.
+      data(await update({ status: 'reopened' }, at(3000)));
+      data(await update({ status: 'resolved' }, at(3000)));
+      expect(instance().resolutionMet).toBe(true);
+    });
+
+    it('sets response_met and first_response_at on the first assignment only', async () => {
+      const { tickets, ticketId, update, instance } = await withPolicy();
+      data(await update({ assigneeId: 'staff-1' }, at(120)));
+      expect(tickets.state.firstResponseAt.get(ticketId)).toEqual(at(120));
+      expect(instance().responseMet).toBe(false);
+      data(await update({ assigneeId: 'staff-2' }, at(200)));
+      expect(tickets.state.firstResponseAt.get(ticketId)).toEqual(at(120));
+      expect(instance().responseMet).toBe(false);
+    });
+
+    it("never touches another tenant's instance", async () => {
+      const { tickets, ticketId, otherId, update, instance } = await withPolicy();
+      const before = structuredClone(instance(otherId));
+      data(await update({ status: 'pending' }, at(10)));
+      data(await update({ assigneeId: 'staff-1', status: 'resolved' }, at(20)));
+      // Even given this tenant's ticket id, another tenant's repo scope changes nothing.
+      const foreign = tickets.repo(null as never, OTHER);
+      await foreign.pauseSla(ticketId, at(30));
+      await foreign.recordFirstResponse(ticketId, true, at(30));
+      expect(instance(otherId)).toEqual(before);
+      expect(instance()).toMatchObject({ pausedAt: null, responseMet: true, resolutionMet: true });
+      expect(tickets.state.firstResponseAt.has(otherId)).toBe(false);
+    });
   });
 
   it('is UI/MCP only and returns NOT_FOUND across tenants', async () => {

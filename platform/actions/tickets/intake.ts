@@ -7,6 +7,13 @@ const MAX_EXTRA_KEYS = 20;
 const MAX_EXTRA_STRING = 2000;
 const MAX_EXTRA_ITEMS = 20;
 const EXTRA_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+/** Never valid as intake keys, declared or extra: they name prototype machinery, not data. */
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Own-property lookup, so caller keys never resolve to inherited Object.prototype members. */
+function own<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
 
 /**
  * Validates `intake` against the server-resolved intake schema for the ticket
@@ -16,7 +23,7 @@ const EXTRA_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 export function validateIntake(intake: Record<string, unknown> | undefined, schema: IntakeSchema): IntakeCheck {
   const value = intake ?? {};
   for (const key of schema.required ?? []) {
-    const entry = value[key];
+    const entry = own(value, key);
     if (entry === undefined || entry === null || (typeof entry === 'string' && entry.trim() === '')) {
       return { ok: false, field: `intake.${key}`, message: `Intake field ${key} is required` };
     }
@@ -25,7 +32,10 @@ export function validateIntake(intake: Record<string, unknown> | undefined, sche
   const out: Record<string, unknown> = {};
   let extras = 0;
   for (const [key, entry] of Object.entries(value)) {
-    const field = schema.properties[key];
+    if (RESERVED_KEYS.has(key)) {
+      return { ok: false, field: `intake.${key}`, message: `Intake field ${key} is not allowed` };
+    }
+    const field = own(schema.properties, key);
     if (!field) {
       if (schema.additionalProperties !== true) {
         return { ok: false, field: `intake.${key}`, message: `Intake field ${key} is not in the template schema` };
@@ -77,7 +87,7 @@ function plainExtra(entry: unknown, depth: number): Extra {
   if (pairs.length > MAX_EXTRA_ITEMS) return { ok: false, problem: 'has too many entries' };
   const obj: Record<string, unknown> = {};
   for (const [key, item] of pairs) {
-    if (!EXTRA_KEY.test(key)) return { ok: false, problem: 'has an invalid key' };
+    if (!EXTRA_KEY.test(key) || RESERVED_KEYS.has(key)) return { ok: false, problem: 'has an invalid key' };
     const checked = plainExtra(item, depth + 1);
     if (!checked.ok) return checked;
     obj[key] = checked.value;

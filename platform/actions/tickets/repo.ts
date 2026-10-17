@@ -120,6 +120,17 @@ export interface TicketsRepo {
   slaPolicy(priority: TicketPriority): Promise<SlaPolicy | null>;
   /** Inserts the ticket's SLA instance, or moves an existing one's due times earlier (never later). */
   applySlaInstance(instance: SlaInstance): Promise<void>;
+  /**
+   * First assignment, as the admin PATCH records it: sets tickets.first_response_at if null and,
+   * when it was null or the ticket had no assignee, settles response_met on open instances.
+   */
+  recordFirstResponse(ticketId: string, wasUnassigned: boolean, now: Date): Promise<void>;
+  /** Status became resolved: settles resolution_met on open instances. */
+  recordSlaResolved(ticketId: string, now: Date): Promise<void>;
+  /** Status became pending: pauses running instances. */
+  pauseSla(ticketId: string, now: Date): Promise<void>;
+  /** Status left pending: pushes due times out by the paused interval and clears paused_at. */
+  resumeSla(ticketId: string, now: Date): Promise<void>;
   /** Serializes same-call dedupe for (callRef, kind, phone) until the transaction ends. */
   lockCallDedupe(key: string): Promise<void>;
   findByCallRef(callRef: string, kind: TicketKind): Promise<TicketRecord[]>;
@@ -282,6 +293,64 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
         resolution ? instance.resolutionDueAt : current.resolution_due_at,
       ],
     );
+  },
+
+  async recordFirstResponse(ticketId, wasUnassigned, now) {
+    const { rows } = await tx.query(
+      `UPDATE tickets SET first_response_at = $3
+        WHERE tenant_id = $1 AND id = $2 AND first_response_at IS NULL
+        RETURNING id`,
+      [tenantId, ticketId, now],
+    );
+    if (rows.length === 0 && !wasUnassigned) return;
+    await tx.query(
+      `UPDATE ticket_sla_instances SET response_met = (response_due_at >= $3), updated_at = $3
+        WHERE tenant_id = $1 AND ticket_id = $2 AND response_met IS NULL`,
+      [tenantId, ticketId, now],
+    );
+  },
+
+  async recordSlaResolved(ticketId, now) {
+    await tx.query(
+      `UPDATE ticket_sla_instances SET resolution_met = (resolution_due_at >= $3), updated_at = $3
+        WHERE tenant_id = $1 AND ticket_id = $2 AND resolution_met IS NULL`,
+      [tenantId, ticketId, now],
+    );
+  },
+
+  async pauseSla(ticketId, now) {
+    await tx.query(
+      `UPDATE ticket_sla_instances SET paused_at = $3, updated_at = $3
+        WHERE tenant_id = $1 AND ticket_id = $2 AND paused_at IS NULL`,
+      [tenantId, ticketId, now],
+    );
+  },
+
+  async resumeSla(ticketId, now) {
+    // The shift is computed here from ctx.now, not the database clock.
+    const { rows } = await tx.query(
+      `SELECT id, paused_at, response_due_at, resolution_due_at, total_paused_minutes
+         FROM ticket_sla_instances
+        WHERE tenant_id = $1 AND ticket_id = $2 AND paused_at IS NOT NULL`,
+      [tenantId, ticketId],
+    );
+    const shift = (value: unknown, ms: number) => (value ? new Date(asDate(value).getTime() + ms) : null);
+    for (const row of rows) {
+      const pausedMs = Math.max(0, now.getTime() - asDate(row.paused_at).getTime());
+      await tx.query(
+        `UPDATE ticket_sla_instances
+            SET response_due_at = $3, resolution_due_at = $4, total_paused_minutes = $5, paused_at = NULL, updated_at = $6
+          WHERE tenant_id = $1 AND id = $2`,
+        [
+          tenantId,
+          row.id,
+          shift(row.response_due_at, pausedMs),
+          shift(row.resolution_due_at, pausedMs),
+          Number(row.total_paused_minutes ?? 0) + Math.floor(pausedMs / 60_000),
+          now,
+        ],
+      );
+    }
   },
 
   async lockCallDedupe(key) {
