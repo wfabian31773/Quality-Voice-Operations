@@ -5,6 +5,27 @@ const queryMock = vi.fn();
 const fetchMock = vi.fn();
 const { mockScenario, callsMatching } = createScenarioDispatcher(queryMock);
 
+// Outage SMS goes through the sms.send chokepoint (PR-09); its policy and
+// Twilio transport are covered in platform/actions/sms/send.test.ts.
+const sendSystemSmsMock = vi.hoisted(() => vi.fn());
+vi.mock('../../platform/actions/sms', () => ({ sendSystemSms: sendSystemSmsMock }));
+
+function chokepointQueued(twilioSid?: string) {
+  return { ok: true, data: { messageId: 'msg-1', status: 'queued', twilioSid, segments: 2, encoding: 'GSM-7' } };
+}
+
+function chokepointCall(i: number) {
+  return sendSystemSmsMock.mock.calls[i][0] as {
+    tenantId: string;
+    to: string;
+    templateKey: string;
+    vars: { message: string };
+    purpose: string;
+    relatedEntity: { type: string; id: string };
+    idempotencyKey?: string;
+  };
+}
+
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
   getPrivilegedPool: () => ({ query: queryMock }),
@@ -35,6 +56,8 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   queryMock.mockReset();
   fetchMock.mockReset();
+  sendSystemSmsMock.mockReset();
+  sendSystemSmsMock.mockResolvedValue(chokepointQueued());
   sendEmailMock.mockReset();
   sendEmailMock.mockResolvedValue({ success: true });
   // Default fallback: any query a test did not explicitly script returns
@@ -206,12 +229,6 @@ describe('notifySustainedConnectorFailure', () => {
       ],
       tenantUsers: ['user-a', 'user-b'],
     });
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      text: async () => '',
-    } as unknown as Response);
-
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
     );
@@ -220,22 +237,25 @@ describe('notifySustainedConnectorFailure', () => {
       firstFailedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const firstCall = fetchMock.mock.calls[0];
-    const url = firstCall[0] as string;
-    const init = firstCall[1] as RequestInit;
-    expect(url).toContain('api.twilio.com');
-    expect(url).toContain('AC_test');
-    const body = String(init.body);
-    expect(body).toContain('To=%2B15551234567');
-    expect(body).toContain('From=%2B15555550100');
+    // Every page goes through the sms.send chokepoint, never straight to Twilio.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(2);
+    const first = chokepointCall(0);
+    expect(first).toMatchObject({
+      tenantId: 'tenant-1',
+      to: '+15551234567',
+      templateKey: 'ops_alert',
+      purpose: 'transactional',
+      relatedEntity: { type: 'connector_alert_dispatch' },
+    });
+    expect(chokepointCall(1).relatedEntity.id).toBe(first.relatedEntity.id);
+    const body = first.vars.message;
     expect(body).toContain('Salesforce');
-    // Regression: SMS body must include the provider-keyed reconnect link
-    // (URL-encoded inside the form-urlencoded body), so admins can jump
-    // straight to the right connector card from their phone whether or
-    // not the integration row still exists.
-    expect(body).toContain('%2Fconnectors%3Fprovider%3Dsalesforce');
-    expect(body).not.toContain('%2Fconnectors%3Fintegration%3D');
+    // Regression: SMS body must include the provider-keyed reconnect link,
+    // so admins can jump straight to the right connector card from their
+    // phone whether or not the integration row still exists.
+    expect(body).toContain('/connectors?provider=salesforce');
+    expect(body).not.toContain('/connectors?integration=');
 
     // Per-recipient fanned-out SMS notification rows: one per active user
     // (none of them opted out of the 'sms' in_app pref).
@@ -252,26 +272,18 @@ describe('notifySustainedConnectorFailure', () => {
     }
   });
 
-  it('passes Twilio statusCallback URL and records the returned message SID for live tracking', async () => {
-    // This is the wiring the /twilio/sms-status webhook depends on:
-    //   1. We must include a StatusCallback in the form body so Twilio
-    //      posts back delivery progress (queued -> sent -> delivered/failed).
-    //   2. We must persist the returned Message SID into
-    //      connector_alert_recipients.twilio_message_sid so the webhook can
-    //      find this row when those callbacks land.
-    // Regressing either side silently kills the live-tracking UI.
-    process.env.VOICE_GATEWAY_BASE_URL = 'https://voice.example.test';
-
+  it('records the Message SID returned by the chokepoint for live tracking', async () => {
+    // This is the wiring the /twilio/sms-status webhook depends on: the
+    // chokepoint sends with a StatusCallback to /twilio/sms-status (pinned in
+    // platform/actions/sms/send.test.ts), and we must persist the returned
+    // Message SID into connector_alert_recipients.twilio_message_sid so the
+    // webhook can find this row when those callbacks land.
     mockScenario({
       tenant: { name: 'Acme' },
       phoneRecipients: [{ id: 'user-a', phone: '+15551234567' }],
       tenantUsers: ['user-a'],
     });
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      text: async () => JSON.stringify({ sid: 'SM_live_tracking_sid_123' }),
-    } as unknown as Response);
+    sendSystemSmsMock.mockResolvedValue(chokepointQueued('SM_live_tracking_sid_123'));
 
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -281,14 +293,9 @@ describe('notifySustainedConnectorFailure', () => {
       firstFailedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
     });
 
-    // 1. StatusCallback URL must be included in the Twilio request body.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
-    expect(body).toContain(
-      'StatusCallback=https%3A%2F%2Fvoice.example.test%2Ftwilio%2Fsms-status',
-    );
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(1);
 
-    // 2. The returned SID must land in the recipient audit row, in the
+    // The returned SID must land in the recipient audit row, in the
     //    13th positional slot (matches the INSERT column order in
     //    `recordRecipientAudit`).
     const auditCall = callsMatching('INSERT INTO connector_alert_recipients')[0];
@@ -309,11 +316,6 @@ describe('notifySustainedConnectorFailure', () => {
       // SMS-recipient gating preference.
       inAppOptOuts: ['user-a'],
     });
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      text: async () => '',
-    } as unknown as Response);
 
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -324,10 +326,8 @@ describe('notifySustainedConnectorFailure', () => {
     });
 
     // Only user-b's phone got an SMS.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
-    expect(body).toContain('To=%2B15557654321');
-    expect(body).not.toContain('To=%2B15551234567');
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(1);
+    expect(chokepointCall(0).to).toBe('+15557654321');
 
     // And only one in-app row was inserted (for user-b).
     const insertCalls = callsMatching('INSERT INTO tenant_notifications');
@@ -344,11 +344,15 @@ describe('notifySustainedConnectorFailure', () => {
       ],
       tenantUsers: ['user-a', 'user-b'],
     });
-    fetchMock.mockResolvedValue({
+    sendSystemSmsMock.mockResolvedValue({
       ok: false,
-      status: 500,
-      text: async () => 'twilio down',
-    } as unknown as Response);
+      error: {
+        code: 'UPSTREAM_UNAVAILABLE',
+        message: 'Twilio API error: 500 twilio down',
+        callerSafeMessage: "I couldn't send the text right now.",
+        retryable: true,
+      },
+    });
 
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -358,7 +362,7 @@ describe('notifySustainedConnectorFailure', () => {
       firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(2);
     // Neither the in-app fan-out nor the per-recipient audit rows should
     // be written when every Twilio send fails — that lets the next sync
     // error retry instead of being suppressed for 24h.
@@ -386,7 +390,7 @@ describe('notifySustainedConnectorFailure', () => {
       firstFailedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendSystemSmsMock).not.toHaveBeenCalled();
     const insertCalls = callsMatching('INSERT INTO tenant_notifications');
     expect(insertCalls.length).toBe(1);
     const metadata = JSON.parse((insertCalls[0][1] as unknown[])[5] as string);
@@ -408,11 +412,6 @@ describe('notifySustainedConnectorFailure', () => {
       phoneRecipients: [{ id: 'user-owner', phone: '+15551234567' }],
       tenantUsers: ['user-owner'],
     });
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      text: async () => '',
-    } as unknown as Response);
 
     const { notifySustainedConnectorFailure } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -444,11 +443,9 @@ describe('notifySustainedConnectorFailure', () => {
     const recipientArgs = recipientQuery![1] as unknown[];
     expect(recipientArgs[0]).toBe('tenant-1');
 
-    // The Twilio SMS actually went out to the user_roles-only owner.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
-    expect(body).toContain('To=%2B15551234567');
-    expect(body).toContain('From=%2B15555550100');
+    // The SMS actually went out (through the chokepoint) to the user_roles-only owner.
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(1);
+    expect(chokepointCall(0).to).toBe('+15551234567');
   });
 });
 
@@ -1189,7 +1186,7 @@ describe('resendConnectorAlertToFailedRecipients', () => {
     expect(outcome.twilioConfigured).toBe(false);
     expect(outcome.skipped).toBe(1);
     expect(outcome.attempted).toBe(0);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendSystemSmsMock).not.toHaveBeenCalled();
 
     // The audit row records why we couldn't send.
     const insert = callsMatching('INSERT INTO connector_alert_recipients')[0];
@@ -1219,9 +1216,12 @@ describe('resendConnectorAlertToFailedRecipients', () => {
         },
       ],
     });
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, status: 201 })
-      .mockResolvedValueOnce({ ok: false, status: 400 });
+    sendSystemSmsMock
+      .mockResolvedValueOnce(chokepointQueued('SM_resend_1'))
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'INVALID_NUMBER', message: 'invalid To', callerSafeMessage: 'x', retryable: false },
+      });
 
     const { resendConnectorAlertToFailedRecipients } = await import(
       '../../platform/integrations/connectors/SyncErrorAlerter'
@@ -1243,7 +1243,13 @@ describe('resendConnectorAlertToFailedRecipients', () => {
     expect(outcome.attempted).toBe(2);
     expect(outcome.succeeded).toBe(1);
     expect(outcome.failed).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(2);
+    // A resend gets its own idempotency key so it is not replayed from the
+    // original dispatch's stored result.
+    expect(chokepointCall(0).relatedEntity).toEqual({ type: 'connector_alert_dispatch', id: 'disp-3' });
+    expect(chokepointCall(0).idempotencyKey).toMatch(/^sms:resend:disp-3:/);
+    expect(chokepointCall(1).idempotencyKey).not.toBe(chokepointCall(0).idempotencyKey);
 
     // Both SMS attempts produced a new audit row under the original
     // dispatch_id with channel='sms'.

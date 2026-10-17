@@ -1,55 +1,58 @@
 import { createLogger } from '../../../core/logger';
-import { getPlatformPool } from '../../../db';
-import { getTwilioCredentials, sendTwilioSms } from '../../../integrations/twilio/sender';
-import { getOrCreateConversation, saveMessage } from '../../../sms/SmsConversationService';
+import { isAgentSmsTemplate, sendSystemSms, type SmsTemplateKey } from '../../../actions/sms';
 import type { ToolContext, ToolDefinition } from '../../registry/types';
 import { getToolLibraryEntry } from '../catalog';
 
 const logger = createLogger('TOOL_SEND_SMS');
 
+/**
+ * Thin wrapper over the `sms.send` chokepoint. Agent sends are template-only
+ * (`confirmation`, `directions`, `link`); free-text bodies are refused.
+ */
 export async function executeSendSms(
   input: Record<string, unknown>,
   context: ToolContext,
-): Promise<{ success: boolean; message: string; sid?: string }> {
+): Promise<{ success: boolean; message: string; sid?: string; status?: string; code?: string }> {
   const toNumber = String(input.toNumber ?? context.callerNumber ?? '').trim();
-  const body = String(input.body ?? '').trim();
-  if (!toNumber || !body) {
-    return { success: false, message: 'toNumber and body are required.' };
+  if (!toNumber) {
+    return { success: false, message: 'toNumber is required.' };
   }
-
-  const creds = await getTwilioCredentials(context.tenantId);
-  if (!creds) {
-    return { success: false, message: 'SMS is not configured for this tenant.' };
+  const templateKey = typeof input.templateKey === 'string' ? input.templateKey : '';
+  if (!templateKey || !isAgentSmsTemplate(templateKey)) {
+    return {
+      success: false,
+      code: 'TEMPLATE_REQUIRED',
+      message: "I can't send a custom text. I can take a message so the shop follows up.",
+    };
   }
-
-  const fromNumber = String(input.fromNumber ?? creds.phoneNumber ?? '').trim();
-  if (!fromNumber) {
-    return { success: false, message: 'No from-number is configured for SMS.' };
-  }
+  const vars =
+    input.vars && typeof input.vars === 'object' && !Array.isArray(input.vars)
+      ? Object.fromEntries(Object.entries(input.vars as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')]))
+      : {};
+  const callId = context.callSid ?? context.callLogId;
 
   try {
-    const result = await sendTwilioSms(context.tenantId, toNumber, fromNumber, body);
-    const pool = getPlatformPool();
-    const { rows } = await pool.query(
-      `SELECT id FROM phone_numbers WHERE tenant_id = $1 AND phone_number IN ($2, $3) LIMIT 1`,
-      [context.tenantId, fromNumber, toNumber],
-    );
-    const phoneNumberId = rows[0]?.id as string | undefined;
-    if (phoneNumberId) {
-      const conversation = await getOrCreateConversation(context.tenantId, phoneNumberId, toNumber);
-      await saveMessage(context.tenantId, conversation.id, {
-        direction: 'outbound',
-        fromNumber,
-        toNumber,
-        body,
-        status: 'sent',
-        twilioSid: result.sid,
-      });
+    const result = await sendSystemSms({
+      tenantId: context.tenantId,
+      to: toNumber,
+      templateKey: templateKey as SmsTemplateKey,
+      vars,
+      purpose: 'transactional',
+      actorId: `agent:${context.agentSlug ?? 'voice'}`,
+      ...(callId
+        ? { liveCall: { callId }, idempotencyKey: `sms:agent:${callId}:${templateKey}:${toNumber}` }
+        : {}),
+    });
+    if (!result.ok) {
+      return { success: false, code: result.error.code, message: result.error.callerSafeMessage };
     }
-    return { success: true, message: 'SMS sent.', sid: result.sid };
+    if (result.data.status === 'deferred_quiet_hours') {
+      return { success: true, status: result.data.status, message: "You'll get the text in the morning." };
+    }
+    return { success: true, status: result.data.status, sid: result.data.twilioSid, message: 'SMS queued.' };
   } catch (err) {
     logger.error('send_sms failed', { tenantId: context.tenantId, error: String(err) });
-    return { success: false, message: 'Failed to send the SMS. Offer to try again or escalate.' };
+    return { success: false, message: "I couldn't send the text right now." };
   }
 }
 

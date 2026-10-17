@@ -35,6 +35,7 @@ import {
   checkDailyMinuteCap,
 } from '../../../platform/billing/guardrails';
 import { authorizeHealthcareDeployment } from '../../../platform/compliance/HealthcareDeploymentApprovalService';
+import { applySmsStatusCallback } from '../../../platform/actions/sms/statusCallback';
 
 const logger = createLogger('TWILIO_WEBHOOK');
 
@@ -604,6 +605,10 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
  * ErrorMessage) is captured separately so the panel can show the carrier
  * rejection reason without clobbering the original Twilio HTTP status
  * captured at send time.
+ *
+ * It is also the StatusCallback for every message sent through the
+ * `sms.send` chokepoint: `applySmsStatusCallback` moves the matching
+ * `sms_messages` row forward (owner-visible delivery status).
  */
 router.post('/twilio/sms-status', async (req: Request, res: Response) => {
   const messageSid = (req.body.MessageSid ?? req.body.SmsSid ?? '') as string;
@@ -657,12 +662,24 @@ router.post('/twilio/sms-status', async (req: Request, res: Response) => {
       ],
     ));
 
-    if ((result.rowCount ?? 0) === 0) {
+    // Messages sent through the `sms.send` chokepoint (sms_messages) use this
+    // same StatusCallback URL.
+    const messageRows = await applySmsStatusCallback({
+      messageSid,
+      messageStatus,
+      errorCode,
+      errorMessage,
+    });
+
+    if ((result.rowCount ?? 0) === 0 && messageRows === 0) {
       logger.debug('Twilio SMS status callback for unknown SID', {
         messageSid,
         messageStatus,
       });
-    } else {
+    } else if (messageRows > 0) {
+      logger.info('SMS message delivery status updated', { messageSid, messageStatus, errorCode });
+    }
+    if ((result.rowCount ?? 0) > 0) {
       logger.info('Connector outage SMS status updated', {
         messageSid,
         messageStatus,
