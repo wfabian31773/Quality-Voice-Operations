@@ -242,4 +242,32 @@ describe.skipIf(!dbReachable)('admin booking routes vs 122 no-double-booking con
     const { rows } = await pool.query(`SELECT status FROM bookings WHERE id = $1`, [pending]);
     expect(rows[0].status).toBe('pending');
   });
+
+  it('recurring series skips the occurrence that collides and creates the ones before and after it', async () => {
+    // Daily series 2027-03-01..03 at 10:00 UTC; 03-02 is already taken.
+    const taken = await insertBooking('2027-03-02T10:00:00.000Z', '2027-03-02T10:30:00.000Z');
+
+    const res = await request(app()).post('/scheduling/recurring').send({
+      title: 'Daily trim', provider_id: providerId, recurrence_pattern: 'daily', recurrence_time: '10:00',
+      duration_minutes: 30, series_start: '2027-03-01', series_end: '2027-03-03', timezone: 'UTC',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.occurrences.error).toBeUndefined();
+    expect(res.body.occurrences.skipped).toEqual([{ date: '2027-03-02', reason: 'slot_unavailable' }]);
+    expect(res.body.occurrences.created).toHaveLength(2);
+    const { rows } = await pool.query(
+      `SELECT id, start_time, recurring_series_id FROM bookings
+        WHERE tenant_id = $1 AND start_time >= '2027-03-01' AND start_time < '2027-03-04'
+        ORDER BY start_time`,
+      [tenantId],
+    );
+    expect(rows.map((r) => [new Date(r.start_time).toISOString(), r.recurring_series_id])).toEqual([
+      ['2027-03-01T10:00:00.000Z', res.body.series.id],
+      ['2027-03-02T10:00:00.000Z', null],
+      ['2027-03-03T10:00:00.000Z', res.body.series.id],
+    ]);
+    expect(rows[1].id).toBe(taken);
+    expect(res.body.occurrences.created).toEqual([rows[0].id, rows[2].id]);
+  });
 });

@@ -23,7 +23,7 @@ vi.mock('../../../platform/integrations/connectors', () => ({
   connectorService: { dispatchEvent: vi.fn().mockResolvedValue(undefined), emit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-import router from './scheduling';
+import router, { materializeRecurringSeries, type RecurringSeriesRow } from './scheduling';
 
 function app() {
   const app = express();
@@ -163,6 +163,39 @@ describe('booking overlap (122 exclusion constraint, 23P01) → 409', () => {
     const sqls = a.poolQueryMock.mock.calls.map(([sql]) => String(sql));
     expect(sqls.indexOf('ROLLBACK')).toBeGreaterThan(sqls.findIndex((s) => /UPDATE bookings SET/.test(s)));
     expect(sqls).not.toContain('COMMIT');
+  });
+
+  describe('materializeRecurringSeries', () => {
+    const series: RecurringSeriesRow = {
+      id: 's1', tenant_id: 't1', title: 'Trim', provider_id: 'p1', appointment_type_id: null, resource_id: null,
+      recurrence_pattern: 'daily', recurrence_day_of_week: null, recurrence_time: '10:00', duration_minutes: 30,
+      series_start: '2030-01-01', series_end: '2030-01-03',
+    };
+    const pool = () => ({ query: a.poolQueryMock }) as unknown as Parameters<typeof materializeRecurringSeries>[0];
+
+    it('skips an overlapping occurrence as slot_unavailable and keeps going', async () => {
+      let n = 0;
+      a.poolQueryMock.mockImplementation(async (sql: string) => {
+        if (/INSERT INTO bookings/.test(sql)) {
+          n += 1;
+          if (n === 2) throw overlapErr;
+          return { rows: [{ id: `b${n}` }] };
+        }
+        return { rows: [] };
+      });
+      await expect(materializeRecurringSeries(pool(), series, 'u1', 'UTC')).resolves.toEqual({
+        created: ['b1', 'b3'],
+        skipped: [{ date: '2030-01-02', reason: 'slot_unavailable' }],
+      });
+    });
+
+    it('re-throws any other insert error', async () => {
+      a.poolQueryMock.mockImplementation(async (sql: string) => {
+        if (/INSERT INTO bookings/.test(sql)) throw Object.assign(new Error('boom'), { code: '23P01', constraint: 'other_constraint' });
+        return { rows: [] };
+      });
+      await expect(materializeRecurringSeries(pool(), series, 'u1', 'UTC')).rejects.toThrow('boom');
+    });
   });
 });
 

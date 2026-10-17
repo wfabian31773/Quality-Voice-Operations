@@ -734,7 +734,8 @@ export type SkippedOccurrence = {
 /**
  * Materialize a recurring series into individual `bookings` rows, skipping
  * any occurrence that lands on a `scheduling_overrides` blackout for the
- * matching scope. Returns the IDs that were created and a `skipped` array
+ * matching scope or that overlaps a held/confirmed booking for the same
+ * provider/resource ('slot_unavailable'). Returns the IDs that were created and a `skipped` array
  * (per-date reasons) so callers can surface "needs manual decision" rows.
  */
 export async function materializeRecurringSeries(
@@ -782,32 +783,42 @@ export async function materializeRecurringSeries(
       continue;
     }
 
-    const { rows } = await pool.query(
-      `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
-          contact_name, contact_phone, contact_email, agent_id, created_by, notes,
-          provider_id, appointment_type_id, resource_id, recurring_series_id,
-          intake_data, timezone, location, booking_source)
-       VALUES ($1, $2, '', $3::timestamptz, $4::timestamptz, 'confirmed',
-          $5, $6, $7, NULL, $8, '',
-          $9, $10, $11, $12,
-          '{}'::jsonb, $13, '', 'manual')
-       RETURNING id`,
-      [
-        series.tenant_id,
-        series.title,
-        startISO,
-        endISO,
-        series.contact_name || '',
-        series.contact_phone || '',
-        series.contact_email || '',
-        createdBy,
-        series.provider_id,
-        series.appointment_type_id,
-        series.resource_id,
-        series.id,
-        timezone,
-      ],
-    );
+    // Each insert runs on its own (pool.query auto-commits), so an occurrence
+    // that hits the 122 no-double-booking constraints (23P01) is skipped
+    // without affecting the ones already created or still to come.
+    let rows: Array<Record<string, unknown>>;
+    try {
+      ({ rows } = await pool.query(
+        `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
+            contact_name, contact_phone, contact_email, agent_id, created_by, notes,
+            provider_id, appointment_type_id, resource_id, recurring_series_id,
+            intake_data, timezone, location, booking_source)
+         VALUES ($1, $2, '', $3::timestamptz, $4::timestamptz, 'confirmed',
+            $5, $6, $7, NULL, $8, '',
+            $9, $10, $11, $12,
+            '{}'::jsonb, $13, '', 'manual')
+         RETURNING id`,
+        [
+          series.tenant_id,
+          series.title,
+          startISO,
+          endISO,
+          series.contact_name || '',
+          series.contact_phone || '',
+          series.contact_email || '',
+          createdBy,
+          series.provider_id,
+          series.appointment_type_id,
+          series.resource_id,
+          series.id,
+          timezone,
+        ],
+      ));
+    } catch (err) {
+      if (bookingOverlapKind(err) === null) throw err;
+      skipped.push({ date, reason: 'slot_unavailable' });
+      continue;
+    }
     created.push(rows[0].id as string);
   }
 

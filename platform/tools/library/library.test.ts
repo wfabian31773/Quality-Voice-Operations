@@ -489,6 +489,31 @@ describe('tool library handlers', () => {
     expect(delivered.success).toBe(true);
   });
 
+  it('turns a 122 overlap (23P01) on reschedule into a conflict and rolls back', async () => {
+    const challenge = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+    }, ctx);
+    query.mockClear();
+    transitionBooking.mockRejectedValueOnce(Object.assign(new Error('exclusion violation'), {
+      code: '23P01', constraint: 'bookings_no_provider_overlap',
+    }));
+
+    const conflict = await executeUpdateBooking({
+      action: 'reschedule',
+      startTime: '2026-10-20T14:00:00',
+      bookingId: challenge.bookingId,
+      confirmationToken: challenge.confirmationToken,
+    }, confirmCtx);
+
+    expect(conflict.success).toBe(true);
+    expect(conflict.status).toBe('conflict');
+    expect(isPendingBookingChallenge(conflict)).toBe(true);
+    const sqls = query.mock.calls.map(([sql]) => String(sql));
+    expect(sqls).toContain('ROLLBACK');
+    expect(sqls).not.toContain('COMMIT');
+  });
+
   it('returns a stale-status conflict after confirm without retrying', async () => {
     const challenge = await executeUpdateBooking({ action: 'cancel' }, ctx);
     transitionBooking.mockResolvedValueOnce({
