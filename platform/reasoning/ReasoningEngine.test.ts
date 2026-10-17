@@ -45,6 +45,18 @@ describe('ReasoningEngine.classifyIntent', () => {
       intent: 'book_appointment',
       confidence: 'high',
     });
+    expect(engine.classifyIntent('puedo reservar otra cita')).toEqual({
+      intent: 'book_appointment',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('quiero agendar una cita')).toEqual({
+      intent: 'book_appointment',
+      confidence: 'high',
+    });
+    expect(engine.classifyIntent('quiero hacer una cita')).toEqual({
+      intent: 'book_appointment',
+      confidence: 'high',
+    });
     expect(engine.classifyIntent('what time do you close on Saturday')).toEqual({
       intent: 'hours_services',
       confidence: 'high',

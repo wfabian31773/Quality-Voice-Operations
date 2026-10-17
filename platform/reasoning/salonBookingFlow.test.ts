@@ -179,7 +179,14 @@ describe('salon booking conversation', () => {
       const engine = makeSalonEngine();
       completeFirstHaircut(engine);
 
-      const secondDecision = engine.processUtterance(secondUtterance, 'book_appointment', 'high');
+      const classified = engine.classifyIntent(secondUtterance);
+      expect(classified.intent).toBe('book_appointment');
+
+      const secondDecision = engine.processUtterance(
+        secondUtterance,
+        classified.intent,
+        classified.confidence,
+      );
       expect(secondDecision.action).not.toBe('complete_interaction');
       expect(engine.getWorkflowPlan()?.status).toBe('active');
       expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
@@ -200,6 +207,53 @@ describe('salon booking conversation', () => {
       engine.fillSlot('contactPhone', secondArgs.contactPhone, 'tool_args');
       expect(engine.authorizeToolRequest('create_booking', secondArgs).allowed).toBe(true);
     }
+  });
+
+  it('does not restart a completed booking after a negated additional request', () => {
+    const phrases = [
+      "I don't need another appointment",
+      'no other',
+      'no quiero otra cita',
+      'no necesito otra',
+    ];
+
+    for (const phrase of phrases) {
+      const engine = makeSalonEngine();
+      const firstArgs = completeFirstHaircut(engine);
+      const classified = engine.classifyIntent(phrase);
+      const decision = engine.processUtterance(phrase, classified.intent, classified.confidence);
+      expect(decision.action).toBe('complete_interaction');
+      expect(engine.getWorkflowPlan()?.status).toBe('completed');
+
+      const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+      expect(slots.contactName?.value).toBe(firstArgs.contactName);
+      expect(slots.title?.value).toBe(firstArgs.title);
+    }
+  });
+
+  it('rebuilds a fresh plan when the caller asks to book another service too', () => {
+    const engine = makeSalonEngine();
+    completeFirstHaircut(engine);
+
+    const utterance = 'Can you book a pedicure too?';
+    const classified = engine.classifyIntent(utterance);
+    expect(classified.intent).toBe('book_appointment');
+
+    const decision = engine.processUtterance(utterance, classified.intent, classified.confidence);
+    expect(decision.action).not.toBe('complete_interaction');
+    expect(engine.getWorkflowPlan()?.status).toBe('active');
+    expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+
+    engine.fillSlot('title', 'Pedicure', 'tool_args');
+    engine.fillSlot('startTime', '2026-10-18T15:00:00-07:00', 'tool_args');
+    engine.fillSlot('contactName', 'Jordan Lee', 'tool_args');
+    engine.fillSlot('contactPhone', '555-201-3344', 'tool_args');
+    expect(engine.authorizeToolRequest('create_booking', {
+      title: 'Pedicure',
+      startTime: '2026-10-18T15:00:00-07:00',
+      contactName: 'Jordan Lee',
+      contactPhone: '555-201-3344',
+    }).allowed).toBe(true);
   });
 
   it('lets create_ticket through the gate when the caller leaves a message', () => {

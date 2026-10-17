@@ -10,6 +10,8 @@ describe('additional transaction language', () => {
     expect(isAdditionalTransactionRequest('book one for my son too')).toBe(true);
     expect(isAdditionalTransactionRequest('book for my daughter')).toBe(true);
     expect(isAdditionalTransactionRequest('book for my friend')).toBe(true);
+    expect(isAdditionalTransactionRequest('Can you book a pedicure too?')).toBe(true);
+    expect(isAdditionalTransactionRequest('book a color as well')).toBe(true);
   });
 
   it('detects an explicit extra booking in Spanish', () => {
@@ -26,5 +28,13 @@ describe('additional transaction language', () => {
     expect(isAdditionalTransactionRequest('yes, cancel that haircut')).toBe(false);
     expect(isAdditionalTransactionRequest('yes that is all, goodbye')).toBe(false);
     expect(isAdditionalTransactionRequest('ok thanks')).toBe(false);
+  });
+
+  it('does not treat negated declines as an extra booking', () => {
+    expect(isAdditionalTransactionRequest("I don't need another appointment")).toBe(false);
+    expect(isAdditionalTransactionRequest('I do not want another appointment')).toBe(false);
+    expect(isAdditionalTransactionRequest('no other')).toBe(false);
+    expect(isAdditionalTransactionRequest('no quiero otra cita')).toBe(false);
+    expect(isAdditionalTransactionRequest('no necesito otra')).toBe(false);
   });
 });
