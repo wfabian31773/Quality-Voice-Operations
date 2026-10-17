@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FakeToolProvider, formatLocalHm, resetFakeTokens } from './fakeToolProvider';
+import { FakeToolProvider, formatLocalHm, resetFakeTokens, slotStartMatches } from './fakeToolProvider';
 import { buildFixture } from './seed';
 import type { ToolCallContext } from './types';
 
@@ -90,5 +90,25 @@ describe('FakeToolProvider', () => {
     if (prepare.ok) return;
     expect(prepare.error.code).toBe('CONFLICT');
     expect(state.bookings).toHaveLength(0);
+  });
+
+  it('accepts only a full timestamp or exact local HH:MM, not a partial string', async () => {
+    expect(slotStartMatches('2026-10-20T15:30:00-04:00', '2026-10-20T15:30:00-04:00', 'America/New_York')).toBe(true);
+    expect(slotStartMatches('2026-10-20T15:30:00-04:00', '15:30', 'America/New_York')).toBe(true);
+    expect(slotStartMatches('2026-10-20T15:30:00-04:00', '15', 'America/New_York')).toBe(false);
+    expect(slotStartMatches('2026-10-20T15:30:00-04:00', '2026-10-20', 'America/New_York')).toBe(false);
+    expect(slotStartMatches('2026-10-20T15:30:00-04:00', '-04:00', 'America/New_York')).toBe(false);
+    const tools = new FakeToolProvider(buildFixture('barbershop-marco'), ['scheduling']);
+    const prepare = await tools.invoke(
+      'scheduling.book.prepare',
+      {
+        serviceIds: ['mens-cut'],
+        staffId: 'marco',
+        start: '15',
+        customer: { name: 'Luis', phone: '+15555550142' },
+      },
+      ctx(),
+    );
+    expect(prepare.ok).toBe(false);
   });
 });

@@ -134,6 +134,29 @@ describe('mustSay and readback', () => {
     ];
     expect(matchReadback(true, missing)[0].check).toBe('readbackRequired');
   });
+
+  it('rejects a readback spoken only after its matching commit', () => {
+    const readback = 'a cut with Marco, Tuesday at 3:30 PM, for Luis';
+    const late: TraceEvent[] = [
+      tool('scheduling.book.prepare', {}, true, { readback }),
+      tool('scheduling.book.commit', {}),
+      { type: 'say', text: readback },
+    ];
+    expect(matchReadback(true, late)[0].message).toMatch(/before scheduling\.book\.commit/);
+  });
+
+  it('requires every prepare readback, not just one', () => {
+    const book = 'a cut with Marco at 3:30';
+    const ticket = "I'll pass this to Dana: callback about a haircut";
+    const trace: TraceEvent[] = [
+      tool('scheduling.book.prepare', {}, true, { readback: book }),
+      { type: 'say', text: book },
+      tool('scheduling.book.commit', {}),
+      tool('tickets.open.prepare', {}, true, { readback: ticket }),
+      tool('tickets.open.commit', {}),
+    ];
+    expect(matchReadback(true, trace)[0].message).toMatch(/tickets\.open\.prepare/);
+  });
 });
 
 describe('evaluateExpect + formatDiff', () => {

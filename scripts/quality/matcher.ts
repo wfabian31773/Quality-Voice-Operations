@@ -150,20 +150,27 @@ export function matchReadback(required: boolean | undefined, trace: TraceEvent[]
       },
     ];
   }
-  const spoken = sayEvents(trace).map((event) => normalizeSpeech(event.text));
+  const failures: CheckFailure[] = [];
   for (const prepare of prepares) {
-    const readback = normalizeSpeech(prepare.readback);
-    const said = spoken.some((text) => text.includes(readback));
-    if (said) return [];
+    const prepareIndex = trace.indexOf(prepare.event);
+    const commitName = prepare.event.name.replace(/\.prepare$/, '.commit');
+    const window: TraceEvent[] = [];
+    for (let i = prepareIndex + 1; i < trace.length; i += 1) {
+      const later = trace[i];
+      if (later.type === 'tool' && later.name === commitName) break;
+      window.push(later);
+    }
+    const spoken = window.filter((event): event is Extract<TraceEvent, { type: 'say' }> => event.type === 'say');
+    if (!spoken.some((event) => normalizeSpeech(event.text).includes(normalizeSpeech(prepare.readback)))) {
+      failures.push({
+        check: 'readbackRequired',
+        message: `${prepare.event.name} readback was not spoken before ${commitName}`,
+        expected: prepare.readback,
+        actual: spoken.map((event) => event.text),
+      });
+    }
   }
-  return [
-    {
-      check: 'readbackRequired',
-      message: 'agent did not read back the prepare readback string',
-      expected: prepares.map((row) => row.readback),
-      actual: sayEvents(trace).map((event) => event.text),
-    },
-  ];
+  return failures;
 }
 
 function localMatches(expected: string, booking: EndSnapshot['bookings'][number]): boolean {

@@ -59,6 +59,15 @@ function unknownServiceIds(state: TenantState, serviceIds: string[]): string[] {
   return serviceIds.filter((id) => !state.services.some((service) => service.id === id));
 }
 
+export function slotStartMatches(slotStart: string, requested: string, timeZone: string): boolean {
+  if (requested === slotStart) return true;
+  if (/^\d{1,2}:\d{2}$/.test(requested)) {
+    const [hour, minute] = requested.split(':');
+    return formatLocalHm(slotStart, timeZone) === `${hour.padStart(2, '0')}:${minute}`;
+  }
+  return false;
+}
+
 export function formatLocalHm(iso: string, timeZone: string): string {
   const date = new Date(iso);
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -226,9 +235,7 @@ export class FakeToolProvider implements ToolProvider {
     const unknown = unknownServiceIds(this.state, serviceIds);
     if (unknown.length > 0) return fail('NOT_FOUND', `unknown service ${unknown.join(', ')}`, { field: 'serviceIds' });
     const slot = this.state.slots.find((candidate) => {
-      if (candidate.start !== start && !candidate.start.includes(start) && formatLocalHm(candidate.start, ctx.tenantTimezone) !== start) {
-        return false;
-      }
+      if (!slotStartMatches(candidate.start, start, ctx.tenantTimezone)) return false;
       if (staffPref !== 'any' && candidate.staffId !== staffPref) return false;
       return staffPerforms(this.state, candidate.staffId, serviceIds);
     });
