@@ -21,6 +21,7 @@ const withPrivilegedClientMock = withPrivilegedClient as unknown as ReturnType<t
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
   withTenantContext: vi.fn(async () => {}),
   withPrivilegedClient: vi.fn(),
 }));

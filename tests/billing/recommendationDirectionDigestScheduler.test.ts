@@ -14,6 +14,9 @@ vi.mock('../../platform/db', async () => {
     getPlatformPool: () => ({
       query: poolQueryMock,
     }),
+    getPrivilegedPool: () => ({
+      query: poolQueryMock,
+    }),
   };
 });
 

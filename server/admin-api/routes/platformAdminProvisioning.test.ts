@@ -18,6 +18,7 @@ vi.mock('../middleware/auth', () => ({
 }));
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ connect: async () => ({ query: a.query, release: a.release }) }),
+  getPrivilegedPool: () => ({ connect: async () => ({ query: a.query, release: a.release }) }),
 }));
 vi.mock('../../../platform/email/EmailService', () => ({ sendEmail: a.sendEmail }));
 vi.mock('../../../platform/email/templates', () => ({

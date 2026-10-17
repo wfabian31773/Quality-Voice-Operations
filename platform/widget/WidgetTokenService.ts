@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getPlatformPool } from '../db';
+import { withPrivilegedClient, withTenantClient } from '../db';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('WIDGET_TOKEN');
@@ -38,76 +38,78 @@ export async function generateWidgetToken(
 ): Promise<{ token: WidgetToken; plaintextToken: string }> {
   const plaintext = `wt_${crypto.randomBytes(32).toString('hex')}`;
   const hash = hashToken(plaintext);
-  const pool = getPlatformPool();
 
-  const { rows } = await pool.query(
-    `INSERT INTO widget_tokens (tenant_id, token_hash, label)
-     VALUES ($1, $2, $3)
-     RETURNING *`,
-    [tenantId, hash, label],
-  );
+  const token = await withTenantClient(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO widget_tokens (tenant_id, token_hash, label)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [tenantId, hash, label],
+    );
+    return rows[0] as unknown as WidgetToken;
+  });
 
-  logger.info('Widget token generated', { tenantId, tokenId: rows[0].id });
-  return { token: rows[0] as WidgetToken, plaintextToken: plaintext };
+  logger.info('Widget token generated', { tenantId, tokenId: token.id });
+  return { token, plaintextToken: plaintext };
 }
 
 export async function validateWidgetToken(
   plaintext: string,
 ): Promise<{ tenantId: string; tokenId: string } | null> {
   const hash = hashToken(plaintext);
-  const pool = getPlatformPool();
-
-  const { rows } = await pool.query(
-    `SELECT id, tenant_id FROM widget_tokens
-     WHERE token_hash = $1 AND revoked_at IS NULL`,
-    [hash],
-  );
-
-  if (rows.length === 0) return null;
-  return { tenantId: rows[0].tenant_id as string, tokenId: rows[0].id as string };
+  return withPrivilegedClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, tenant_id FROM widget_tokens
+       WHERE token_hash = $1 AND revoked_at IS NULL`,
+      [hash],
+    );
+    if (rows.length === 0) return null;
+    return { tenantId: rows[0].tenant_id as string, tokenId: rows[0].id as string };
+  });
 }
 
 export async function listWidgetTokens(tenantId: string): Promise<WidgetToken[]> {
-  const pool = getPlatformPool();
-  const { rows } = await pool.query(
-    `SELECT id, tenant_id, label, revoked_at, created_at
-     FROM widget_tokens
-     WHERE tenant_id = $1
-     ORDER BY created_at DESC`,
-    [tenantId],
-  );
-  return rows as WidgetToken[];
+  return withTenantClient(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, tenant_id, label, revoked_at, created_at
+       FROM widget_tokens
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC`,
+      [tenantId],
+    );
+    return rows as unknown as WidgetToken[];
+  });
 }
 
 export async function revokeWidgetToken(tenantId: string, tokenId: string): Promise<boolean> {
-  const pool = getPlatformPool();
-  const { rowCount } = await pool.query(
-    `UPDATE widget_tokens SET revoked_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
-    [tokenId, tenantId],
-  );
-  if (rowCount && rowCount > 0) {
+  const updated = await withTenantClient(tenantId, async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE widget_tokens SET revoked_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
+      [tokenId, tenantId],
+    );
+    return Boolean(rowCount && rowCount > 0);
+  });
+  if (updated) {
     logger.info('Widget token revoked', { tenantId, tokenId });
-    return true;
   }
-  return false;
+  return updated;
 }
 
 export async function getWidgetConfig(tenantId: string): Promise<WidgetConfig | null> {
-  const pool = getPlatformPool();
-  const { rows } = await pool.query(
-    `SELECT * FROM widget_configs WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  return rows.length > 0 ? (rows[0] as WidgetConfig) : null;
+  return withTenantClient(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM widget_configs WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    return rows.length > 0 ? (rows[0] as unknown as WidgetConfig) : null;
+  });
 }
 
 export async function upsertWidgetConfig(
   tenantId: string,
   config: Partial<Omit<WidgetConfig, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>>,
 ): Promise<WidgetConfig> {
-  const pool = getPlatformPool();
-
   const fields: string[] = [];
   const values: unknown[] = [tenantId];
   const updateParts: string[] = ['updated_at = NOW()'];
@@ -157,15 +159,16 @@ export async function upsertWidgetConfig(
   const insertVals = values.map((_, i) => `$${i + 1}`);
   const conflictUpdate = updateParts.join(', ');
 
-  const { rows } = await pool.query(
-    `INSERT INTO widget_configs (${insertCols.join(', ')})
-     VALUES (${insertVals.join(', ')})
-     ON CONFLICT (tenant_id) DO UPDATE SET ${conflictUpdate}
-     RETURNING *`,
-    values,
-  );
-
-  return rows[0] as WidgetConfig;
+  return withTenantClient(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO widget_configs (${insertCols.join(', ')})
+       VALUES (${insertVals.join(', ')})
+       ON CONFLICT (tenant_id) DO UPDATE SET ${conflictUpdate}
+       RETURNING *`,
+      values,
+    );
+    return rows[0] as unknown as WidgetConfig;
+  });
 }
 
 export async function getPublicWidgetConfig(tenantId: string): Promise<{
@@ -178,19 +181,18 @@ export async function getPublicWidgetConfig(tenantId: string): Promise<{
   tenantName: string;
   agentId: string | null;
 } | null> {
-  const pool = getPlatformPool();
+  const row = await withTenantClient(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT wc.*, t.name as tenant_name
+       FROM widget_configs wc
+       JOIN tenants t ON t.id = wc.tenant_id
+       WHERE wc.tenant_id = $1 AND wc.enabled = true`,
+      [tenantId],
+    );
+    return rows.length > 0 ? (rows[0] as unknown as WidgetConfig & { tenant_name: string }) : null;
+  });
 
-  const { rows } = await pool.query(
-    `SELECT wc.*, t.name as tenant_name
-     FROM widget_configs wc
-     JOIN tenants t ON t.id = wc.tenant_id
-     WHERE wc.tenant_id = $1 AND wc.enabled = true`,
-    [tenantId],
-  );
-
-  if (rows.length === 0) return null;
-
-  const row = rows[0] as WidgetConfig & { tenant_name: string };
+  if (!row) return null;
   return {
     enabled: row.enabled,
     greeting: row.greeting,

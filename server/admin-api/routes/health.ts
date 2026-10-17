@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPlatformPool } from '../../../platform/db';
+import { pingDatabasePools } from '../../../platform/db';
 import { createProbeRouter } from '../../../platform/runtime/health';
 import { resolveProcessRole } from '../../../platform/runtime/processRole';
 
@@ -11,15 +11,14 @@ router.use(
   createProbeRouter({
     service: 'admin-api',
     role: () => resolveProcessRole(),
-    dbPing: () => getPlatformPool().query('SELECT 1'),
+    dbPing: () => pingDatabasePools(),
   }),
 );
 
 router.get('/health', async (_req, res) => {
   let db: 'connected' | 'error' = 'error';
   try {
-    const pool = getPlatformPool();
-    await pool.query('SELECT 1');
+    await pingDatabasePools();
     db = 'connected';
   } catch {
     db = 'error';

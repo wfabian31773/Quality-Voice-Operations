@@ -25,7 +25,7 @@
  * is just one day late instead of getting two pings inside a week.
  */
 import { createLogger } from '../core/logger';
-import { getPlatformPool, withPrivilegedClient } from '../db';
+import { getPrivilegedPool, withPrivilegedClient } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { recommendationDirectionDigestEmail } from '../email/templates';
 import { filterUserIdsByPreference } from '../notifications/NotificationPreferences';
@@ -191,7 +191,7 @@ export interface PlatformAdminRecipient {
  * an admin who muted billing across the product also mutes this digest.
  */
 export async function loadOptedInPlatformAdminRecipients(): Promise<PlatformAdminRecipient[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   let rows: Array<{ id: string; email: string | null }> = [];
   try {
     const r = await pool.query<{ id: string; email: string | null }>(
@@ -239,7 +239,7 @@ export async function loadOptedInPlatformAdminRecipients(): Promise<PlatformAdmi
 }
 
 async function loadLastSentAt(): Promise<Date | null> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query<{ value: { sent_at?: string } | null }>(
       `SELECT value FROM platform_settings WHERE key = $1`,
@@ -258,7 +258,7 @@ async function loadLastSentAt(): Promise<Date | null> {
 }
 
 async function recordLastSentAt(now: Date): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     await pool.query(
       `INSERT INTO platform_settings (key, value, updated_at)

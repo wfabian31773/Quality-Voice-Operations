@@ -62,6 +62,7 @@ vi.mock('../../platform/db', () => {
   };
   return {
     getPlatformPool: () => ({ query }),
+    getPrivilegedPool: () => ({ query }),
   };
 });
 

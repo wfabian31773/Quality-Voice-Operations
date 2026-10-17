@@ -4,7 +4,7 @@
  * delegated to `recommendCheapestPlan` so the email matches the in-app
  * /billing recommendation card.
  */
-import { withPrivilegedClient, withTenantContext, getPlatformPool } from '../db';
+import { withPrivilegedClient, withTenantContext, getPrivilegedPool } from '../db';
 import { createLogger } from '../core/logger';
 import { sendEmail } from '../email/EmailService';
 import { planRecommendationEmail } from '../email/templates';
@@ -439,7 +439,7 @@ export async function computeTrailingAverageMinutes(
   tenantId: string,
   months: number = getLookbackMonths(),
 ): Promise<{ averageMinutes: number; monthsConsidered: number }> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

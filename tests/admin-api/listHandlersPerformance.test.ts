@@ -185,6 +185,7 @@ describe('empty-page fallback path stays bounded', () => {
     vi.resetModules();
     vi.doMock('../../platform/db', () => ({
       getPlatformPool: () => ({ query: queryFn }),
+      getPrivilegedPool: () => ({ query: queryFn }),
       withTenantContext: vi.fn(async () => {}),
       withPrivilegedClient: vi.fn(),
     }));

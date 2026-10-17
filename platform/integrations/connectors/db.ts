@@ -1,4 +1,4 @@
-import { getPlatformPool, withTenantContext } from '../../db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext } from '../../db';
 import { decryptValue } from './crypto';
 import { isEnvelopeEncrypted } from '../../security/EncryptionService';
 import type { ConnectorConfig, ConnectorType } from './types';
@@ -632,7 +632,7 @@ export async function listRefreshableConnectorConfigs(
 ): Promise<ConnectorConfig[]> {
   if (providers.length === 0) return [];
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows: integRows } = await pool.query(
     `SELECT tenant_id, id, integration_type, provider, is_enabled, config,
             fallback_connector_type, fallback_provider
@@ -778,7 +778,7 @@ export async function listConnectorTokenHealth(
   const onTenantError: ConnectorTokenHealthErrorMode = options.onTenantError ?? 'skip';
   if (providers.length === 0) return [];
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { rows: integRows } = await pool.query(
     `SELECT i.tenant_id, i.id, i.integration_type, i.provider, i.name,
             i.is_enabled, i.last_sync_status, i.last_sync_at, i.last_sync_error_at,

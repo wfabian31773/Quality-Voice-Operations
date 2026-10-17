@@ -43,6 +43,19 @@ npm run db:migrate    # Run migrations
 npm run db:seed       # Seed demo data
 ```
 
+### RLS application role (`qvo_app`)
+
+The app must **not** connect as `postgres`. That role has `rolbypassrls=true`, so every tenant RLS policy is ignored and the daily isolation suite (`runAllIsolationTests`) reports false `Cross-tenant read blocked` failures (foreign rows visible on `agents`, `audit_logs`, etc.).
+
+| Env var | Role after rollout |
+|---------|--------------------|
+| `PLATFORM_DB_POOL_URL` (production, Render `qvo-secrets`) / `DATABASE_URL` (development only) | Restricted `qvo_app` (`LOGIN`, `NOBYPASSRLS`) |
+| `DATABASE_URL_PRIVILEGED` | Current `postgres` URL (migrations, workers, platform-admin, seeds, pre-tenant webhooks, voice number lookup) |
+
+**Rollout, verification and rollback:** follow [`docs/runbooks/qvo-app-rls-rollout.md`](docs/runbooks/qvo-app-rls-rollout.md) step by step (Render first; Replit is legacy/fallback).
+
+Authenticated tenant requests run inside `runWithTenantScope(tenantId)` (set by `requireTenantContext` / API-key auth), so `getPlatformPool()` queries and checked-out clients there run as `qvo_app` bound to `app.tenant_id`. Outside a tenant scope (webhooks, public routes, voice gateway, platform admins, schedulers) `getPlatformPool()` calls go to the privileged pool, as before the switch. See the runbook's last section. Explicit transactions must `BEGIN` and `SET LOCAL app.tenant_id` via `withTenantContext` / `withTenantClient`. Cross-tenant work must use `withPrivilegedClient` / `getPrivilegedPool()`.
+
 ## Linting
 
 ```bash
@@ -141,6 +154,6 @@ platform/       # Core platform modules
   core/         # Environment config, RBAC
   db/           # Database connection pool
   tenant/       # Tenant management
-migrations/     # SQL migration files (001-027)
+migrations/     # SQL migration files (001-120; 120 = qvo_app NOBYPASSRLS role)
 scripts/        # Migration runner, seed scripts
 ```

@@ -10,7 +10,10 @@ const h = vi.hoisted(() => ({
   getDrainStatusMock: vi.fn(),
 }));
 
-vi.mock('../../../platform/db', () => ({ getPlatformPool: () => ({ query: h.poolQueryMock }) }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: () => ({ query: h.poolQueryMock }),
+  pingDatabasePools: (sql = 'SELECT 1') => h.poolQueryMock(sql),
+}));
 vi.mock('../services/sessionManager', () => ({
   sessionManager: {
     getActiveCount: h.getActiveCountMock,

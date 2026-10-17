@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../platform/db';
+import { getPlatformPool, runWithRestrictedScope } from '../platform/db';
 import { validateBillingConfig } from '../platform/billing/stripe/plans';
 import { resolveProcessRole, isRenderRuntime, REPLIT_ONLY_ENV_NAMES, type ProcessRole } from '../platform/runtime/processRole';
 
@@ -33,8 +33,8 @@ export const AZUL_ONLY_ENV_NAMES = [
 
 const ENV_VARS: EnvVar[] = [
   { name: 'APP_ENV', required: 'always', purpose: 'Environment selector (development | staging | production)' },
-  { name: 'DATABASE_URL', required: 'development', purpose: 'Local PostgreSQL connection string (Replit)' },
-  { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Supabase transaction pooler URL (port 6543, SSL)' },
+  { name: 'DATABASE_URL', required: 'development', purpose: 'Restricted application role (qvo_app after RLS rollout) — local PostgreSQL (dev / Replit only; not read on Render production)' },
+  { name: 'PLATFORM_DB_POOL_URL', required: 'production', purpose: 'Restricted application role (qvo_app after RLS rollout) — Supabase transaction pooler URL (port 6543, SSL)' },
   { name: 'XAI_API_KEY', required: 'always', purpose: 'xAI Grok Voice Agent API key for the Master Voice Agent runtime', roles: ['voice', 'api'] },
   { name: 'TWILIO_ACCOUNT_SID', required: 'always', purpose: 'Twilio account SID', roles: ['voice', 'api', 'worker'] },
   { name: 'TWILIO_AUTH_TOKEN', required: 'always', purpose: 'Twilio auth token', roles: ['voice', 'api', 'worker'] },
@@ -95,6 +95,10 @@ const ENV_VARS: EnvVar[] = [
 ];
 
 const OPTIONAL_VARS: EnvVar[] = [
+  // PR #88: every role (api login/webhooks, voice number lookup, worker
+  // schedulers, cron jobs, pre-deploy migrations). Required once the pool
+  // URL is qvo_app (checked below).
+  { name: 'DATABASE_URL_PRIVILEGED', required: 'development', purpose: 'Postgres / BYPASSRLS URL for migrations, workers, platform-admin, seeds, and pre-tenant webhooks. Falls back to DATABASE_URL / PLATFORM_DB_POOL_URL with a loud warning when unset; required once that URL is qvo_app.' },
   { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
   { name: 'TURNSTILE_SITE_KEY', required: 'development', purpose: 'Cloudflare Turnstile site key served to the signup form at runtime via GET /auth/signup-config. Prefer this over VITE_TURNSTILE_SITE_KEY so the widget can render without a frontend rebuild. The form fails closed when captcha is required and no site key is available.' },
   { name: 'VITE_TURNSTILE_SITE_KEY', required: 'development', purpose: 'Build-time fallback Cloudflare Turnstile site key inlined into the signup bundle. Used when TURNSTILE_SITE_KEY is unset.' },
@@ -135,6 +139,17 @@ function resolveBookDemoSchedulerProvider(): string {
       .trim()
       .toLowerCase();
   return v || 'cal.com';
+}
+
+/** True when a Postgres URL logs in as the restricted role (`qvo_app` or Supavisor `qvo_app.<ref>`). */
+export function isQvoAppUrl(url: string | undefined): boolean {
+  if (!url?.trim()) return false;
+  try {
+    const user = decodeURIComponent(new URL(url).username);
+    return user === 'qvo_app' || user.startsWith('qvo_app.');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -266,6 +281,26 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
 
   if (isProd && process.env.PLATFORM_DB_POOL_URL && !process.env.PLATFORM_DB_POOL_URL.includes('6543')) {
     warnings.push('PLATFORM_DB_POOL_URL may not be using transaction pooler port 6543');
+  }
+
+  if (!process.env.DATABASE_URL_PRIVILEGED) {
+    warnings.push(
+      'DATABASE_URL_PRIVILEGED is not set — privileged jobs fall back to the default pool URL. After switching DATABASE_URL / PLATFORM_DB_POOL_URL to qvo_app this must be the postgres URL.',
+    );
+  }
+
+  // Once the restricted pool is qvo_app, the privileged URL must exist and be
+  // a different (BYPASSRLS) role, or migrations, login, workers and
+  // pre-tenant webhooks fail. Before rollout this stays a warning only.
+  const restrictedPoolVar = isProd ? 'PLATFORM_DB_POOL_URL' : 'DATABASE_URL';
+  if (isQvoAppUrl(process.env[restrictedPoolVar])) {
+    const privileged = process.env.DATABASE_URL_PRIVILEGED;
+    if (!privileged?.trim() || isQvoAppUrl(privileged)) {
+      console.log(
+        `\n  FAIL  DATABASE_URL_PRIVILEGED — ${restrictedPoolVar} connects as qvo_app, so DATABASE_URL_PRIVILEGED must be set to the postgres (BYPASSRLS) URL`,
+      );
+      if (!missing.includes('DATABASE_URL_PRIVILEGED')) missing.push('DATABASE_URL_PRIVILEGED');
+    }
   }
 
   if (process.env.CONNECTOR_ENCRYPTION_KEY && process.env.CONNECTOR_ENCRYPTION_KEY.length < 64) {
@@ -404,8 +439,10 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
 
 export async function validateDatabaseConnection(): Promise<boolean> {
   try {
+    // The restricted (qvo_app) pool itself, not the privileged pool that
+    // unscoped calls are routed to.
     const pool = getPlatformPool();
-    const client = await pool.connect();
+    const client = await runWithRestrictedScope(() => pool.connect());
     const { rows } = await client.query('SELECT COUNT(*) AS cnt FROM schema_migrations');
     const migrationCount = parseInt(rows[0]?.cnt as string, 10);
     console.log(`  DB connection: OK (${migrationCount} migrations applied)`);

@@ -13,6 +13,10 @@ vi.mock('../../db', () => ({
     query: queryMock,
     connect: connectMock,
   }),
+  getPrivilegedPool: () => ({
+    query: queryMock,
+    connect: connectMock,
+  }),
 }));
 
 vi.mock('./ConnectorService', () => ({

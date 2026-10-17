@@ -19,6 +19,7 @@ const a = vi.hoisted(() => ({
 
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ connect: async () => ({ query: a.clientQuery, release: a.release }) }),
+  getPrivilegedPool: () => ({ connect: async () => ({ query: a.clientQuery, release: a.release }) }),
 }));
 vi.mock('../middleware/auth', () => ({
   verifyMfaFlowToken: a.verifyFlow,

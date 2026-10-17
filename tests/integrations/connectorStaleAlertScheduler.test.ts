@@ -8,6 +8,7 @@ const queryMock = vi.fn<
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 const sendEmailMock = vi.fn(async () => ({ success: true }));

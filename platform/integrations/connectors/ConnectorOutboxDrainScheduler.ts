@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { getPlatformPool } from '../../db';
+import { getPrivilegedPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import { writeAuditLog } from '../../audit/AuditService';
 import { connectorService } from './ConnectorService';
@@ -127,7 +127,7 @@ async function claimBatch(
 }
 
 async function markDelivered(id: string): Promise<void> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(
     `UPDATE outbox_events
         SET status = 'delivered',
@@ -147,7 +147,7 @@ async function markFailure(
   maxAttempts: number,
   errorMessage: string,
 ): Promise<'failed' | 'dead_letter'> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const truncated = errorMessage.length > 4000 ? `${errorMessage.slice(0, 4000)}…` : errorMessage;
   const isDead = attempts >= maxAttempts;
   if (isDead) {
@@ -191,7 +191,7 @@ export async function runConnectorOutboxDrainCycle(
 ): Promise<DrainCycleResult> {
   const limit = Math.max(1, options.batchLimit ?? DEFAULT_BATCH_LIMIT);
   const leaseMs = Math.max(1_000, options.leaseDurationMs ?? leaseDurationMs());
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const result: DrainCycleResult = {
     claimed: 0,
     reclaimed: 0,
@@ -333,7 +333,7 @@ export async function runOutboxArchiveSweepCycle(
   options: { retentionDays?: number } = {},
 ): Promise<OutboxArchiveSweepResult> {
   const retentionDays = Math.max(1, options.retentionDays ?? archiveRetentionDays());
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const result: OutboxArchiveSweepResult = {
     deleted: 0,
     retentionDays,

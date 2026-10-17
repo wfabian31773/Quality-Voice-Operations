@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { isDocsFeedbackReplyPermanentFailure } from '../email/smtpErrorClass';
 
@@ -44,7 +44,7 @@ export interface FailedReply {
 }
 
 export async function findUnnotifiedFailedReplies(): Promise<FailedReply[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<FailedReply>(
     `SELECT r.id AS reply_id,
             r.feedback_id,
@@ -67,7 +67,7 @@ export async function findUnnotifiedFailedReplies(): Promise<FailedReply[]> {
 
 async function markNotified(replyIds: number[]): Promise<void> {
   if (replyIds.length === 0) return;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(
     `UPDATE docs_feedback_replies
      SET digest_notified_at = NOW()
@@ -77,7 +77,7 @@ async function markNotified(replyIds: number[]): Promise<void> {
 }
 
 async function getPlatformAdminEmails(): Promise<string[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const r = await pool.query<{ email: string }>(
       `SELECT email FROM users

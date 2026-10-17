@@ -32,6 +32,7 @@ const { queryMock, raiseDemoAnalyticsWriteFailureAlertMock } = vi.hoisted(() => 
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 vi.mock('../../platform/core/logger', () => ({

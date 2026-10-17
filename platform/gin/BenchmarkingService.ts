@@ -52,6 +52,8 @@ export async function getTenantBenchmarkComparison(
   const client = await pool.connect();
 
   try {
+    await client.query('BEGIN');
+    await withTenantContext(client, tenantId, async () => {});
     const { rows: agentRows } = await client.query(
       `SELECT DISTINCT type FROM agents WHERE tenant_id = $1 AND status = 'deployed'`,
       [tenantId],
@@ -157,7 +159,11 @@ export async function getTenantBenchmarkComparison(
       });
     }
 
+    await client.query('COMMIT');
     return { industry, comparisons };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
   } finally {
     client.release();
   }

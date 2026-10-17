@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { validateApiKey } from '../../../platform/rbac/ApiKeyService';
 import { createLogger } from '../../../platform/core/logger';
+import { runWithTenantScope } from '../../../platform/db/tenantScope';
 
 const logger = createLogger('API_KEY_AUTH');
 
@@ -25,7 +26,7 @@ export function requireApiKeyOrJwt(
           isPlatformAdmin: false,
         };
         req.apiKeyScopes = result.scopes;
-        next();
+        runWithTenantScope(result.tenantId, () => next());
         return;
       } catch (err) {
         logger.error('API key validation error', { error: String(err) });

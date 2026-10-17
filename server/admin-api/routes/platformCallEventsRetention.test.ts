@@ -13,7 +13,10 @@ vi.mock('../middleware/auth', () => ({
     next();
   },
 }));
-vi.mock('../../../platform/db', () => ({ getPlatformPool: () => ({ query: a.queryMock }) }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: () => ({ query: a.queryMock }),
+  getPrivilegedPool: () => ({ query: a.queryMock }),
+}));
 vi.mock('../../../platform/billing/CallEventsRetentionScheduler', () => ({
   CALL_EVENTS_RETENTION_DEFAULTS: { intervalMs: 86_400_000, retainDays: 90 },
 }));

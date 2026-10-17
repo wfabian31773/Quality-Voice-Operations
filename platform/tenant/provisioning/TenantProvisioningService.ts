@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { getPlatformPool } from '../../db';
+import { getPrivilegedPool } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
   MASTER_VOICE_AGENT_DEFAULT_VOICE,
@@ -125,7 +125,7 @@ export async function provisionTenant(
   userId: string,
   plan: string,
 ): Promise<ProvisioningResult> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {
@@ -239,7 +239,7 @@ export async function provisionTenant(
 export async function getProvisioningStatus(
   tenantId: string,
 ): Promise<{ status: ProvisioningStatus; agentCount: number; phoneNumberCount: number; tenantCreatedAt: string | null }> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {

@@ -31,6 +31,7 @@ const fakePool = {
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => fakePool,
+  getPrivilegedPool: () => fakePool,
   withTenantContext: async (
     _c: unknown,
     _tid: string,

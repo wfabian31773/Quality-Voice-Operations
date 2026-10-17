@@ -32,6 +32,9 @@ vi.mock('../../platform/db', () => ({
   getPlatformPool: () => {
     throw new Error('platform pool not used in this test');
   },
+  getPrivilegedPool: () => {
+    throw new Error('privileged pool not used in this test');
+  },
 }));
 
 import {

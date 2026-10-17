@@ -30,6 +30,7 @@ const { queryMock, privilegedClientMock } = vi.hoisted(() => {
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
   withPrivilegedClient: privilegedClientMock,
 }));
 

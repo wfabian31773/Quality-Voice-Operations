@@ -404,16 +404,21 @@ async function main() {
   const env = process.env.APP_ENV ?? 'development';
   let url: string;
 
-  if (env === 'development') {
-    url = process.env.DATABASE_URL ?? '';
-    if (!url) {
-      throw new Error('[SEED] DATABASE_URL is not set for development.');
-    }
-  } else {
-    url = process.env.PLATFORM_DB_POOL_URL ?? '';
-    if (!url) {
-      throw new Error('[SEED] PLATFORM_DB_POOL_URL is not set for production/staging.');
-    }
+  url = process.env.DATABASE_URL_PRIVILEGED
+    ?? (env === 'development' ? process.env.DATABASE_URL : process.env.PLATFORM_DB_POOL_URL)
+    ?? '';
+  if (!url) {
+    throw new Error(
+      env === 'development'
+        ? '[SEED] DATABASE_URL is not set for development.'
+        : '[SEED] PLATFORM_DB_POOL_URL is not set for production/staging.',
+    );
+  }
+  if (!process.env.DATABASE_URL_PRIVILEGED) {
+    console.warn(
+      '[SEED] DATABASE_URL_PRIVILEGED is not set — using the default pool URL. ' +
+      'After switching DATABASE_URL to qvo_app, seeding must use DATABASE_URL_PRIVILEGED.',
+    );
   }
 
   console.log(`[SEED] Environment: ${env}`);

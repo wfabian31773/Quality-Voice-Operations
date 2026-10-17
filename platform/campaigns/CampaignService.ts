@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { getPlatformPool, withTenantContext } from '../db';
+import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import { encryptSensitiveField, decryptSensitiveField } from '../security/FieldEncryption';
 import type {
@@ -516,23 +516,6 @@ export async function checkCampaignCompletion(tenantId: string, campaignId: stri
     }
     return false;
   });
-}
-
-async function withPrivilegedClient<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
-  const pool = getPlatformPool();
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(`SET LOCAL row_security = off`);
-    const result = await fn(client as unknown as DbClient);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
 }
 
 export async function getRunningCampaigns(): Promise<Array<{ id: string; tenantId: string; agentId: string; config: Campaign['config'] }>> {

@@ -1,4 +1,4 @@
-import { getPlatformPool, withTenantContext } from '../../../platform/db';
+import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import type { ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 
@@ -18,47 +18,49 @@ export interface NumberLookupResult {
 
 /**
  * Cross-tenant system-level query for inbound call routing.
- * This intentionally does NOT set tenant context because the tenant
- * is unknown until the phone number is resolved. The DB connection
- * role (table owner) bypasses RLS for this system operation.
+ * Tenant is unknown until the phone number is resolved, so this
+ * runs on the privileged pool (DATABASE_URL_PRIVILEGED).
  */
 export async function lookupByPhoneNumber(
   calledNumber: string,
 ): Promise<NumberLookupResult | null> {
-  const pool = getPlatformPool();
   const normalized = calledNumber.replace(/\D/g, '');
   const e164 = normalized.length === 10 ? `+1${normalized}` : `+${normalized}`;
 
-  const { rows } = await pool.query<{
-    tenant_id: string;
-    agent_id: string;
-    agent_type: string;
-    agent_name: string;
-    tenant_name: string;
-    agent_metadata: Record<string, unknown> | null;
-    phone_number_id: string;
-    routing_id: string;
-    conditions: Record<string, unknown> | null;
-  }>(
-    `SELECT
-       pn.tenant_id,
-       nr.agent_id,
-       a.type AS agent_type,
-       a.name AS agent_name,
-       a.metadata AS agent_metadata,
-       t.name AS tenant_name,
-       pn.id AS phone_number_id,
-       nr.id AS routing_id,
-       nr.conditions
-     FROM phone_numbers pn
-     JOIN number_routing nr ON nr.phone_number_id = pn.id AND nr.tenant_id = pn.tenant_id AND nr.is_active = true
-     JOIN agents a ON a.id = nr.agent_id AND a.tenant_id = pn.tenant_id AND a.status = 'active'
-     JOIN tenants t ON t.id = pn.tenant_id
-     WHERE pn.phone_number = $1 AND pn.status = 'active'
-     ORDER BY nr.priority ASC
-     LIMIT 1`,
-    [e164],
-  );
+  const { rows } = await withPrivilegedClient(async (client) => {
+    return client.query(
+      `SELECT
+         pn.tenant_id,
+         nr.agent_id,
+         a.type AS agent_type,
+         a.name AS agent_name,
+         a.metadata AS agent_metadata,
+         t.name AS tenant_name,
+         pn.id AS phone_number_id,
+         nr.id AS routing_id,
+         nr.conditions
+       FROM phone_numbers pn
+       JOIN number_routing nr ON nr.phone_number_id = pn.id AND nr.tenant_id = pn.tenant_id AND nr.is_active = true
+       JOIN agents a ON a.id = nr.agent_id AND a.tenant_id = pn.tenant_id AND a.status = 'active'
+       JOIN tenants t ON t.id = pn.tenant_id
+       WHERE pn.phone_number = $1 AND pn.status = 'active'
+       ORDER BY nr.priority ASC
+       LIMIT 1`,
+      [e164],
+    );
+  }) as {
+    rows: Array<{
+      tenant_id: string;
+      agent_id: string;
+      agent_type: string;
+      agent_name: string;
+      tenant_name: string;
+      agent_metadata: Record<string, unknown> | null;
+      phone_number_id: string;
+      routing_id: string;
+      conditions: Record<string, unknown> | null;
+    }>;
+  };
 
   if (rows.length === 0) {
     logger.warn('No routing found for number', { phoneNumber: `***${e164.slice(-4)}` });

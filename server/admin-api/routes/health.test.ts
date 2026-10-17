@@ -4,7 +4,10 @@ import request from 'supertest';
 
 const a = vi.hoisted(() => ({ getPoolMock: vi.fn() }));
 
-vi.mock('../../../platform/db', () => ({ getPlatformPool: a.getPoolMock }));
+vi.mock('../../../platform/db', () => ({
+  getPlatformPool: a.getPoolMock,
+  pingDatabasePools: (sql = 'SELECT 1') => a.getPoolMock().query(sql),
+}));
 
 import healthRouter from './health';
 

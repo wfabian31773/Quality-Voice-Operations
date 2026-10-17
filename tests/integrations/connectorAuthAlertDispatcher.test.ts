@@ -17,6 +17,9 @@ const syncErrorTemplateMock = vi.fn<(input: Record<string, unknown>) => {
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
+  withTenantClient: async (_tenantId: string, fn: (c: { query: typeof queryMock }) => Promise<unknown>) =>
+    fn({ query: queryMock }),
 }));
 
 const schedulingDriftTemplateMock = vi.fn<(input: Record<string, unknown>) => {

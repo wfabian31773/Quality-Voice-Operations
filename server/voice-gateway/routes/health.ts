@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { timingSafeEqual } from 'crypto';
-import { getPlatformPool } from '../../../platform/db';
+import { pingDatabasePools } from '../../../platform/db';
 import { createProbeRouter } from '../../../platform/runtime/health';
 import { resolveProcessRole } from '../../../platform/runtime/processRole';
 import { sessionManager } from '../services/sessionManager';
@@ -29,15 +29,14 @@ router.use(
   createProbeRouter({
     service: 'voice-gateway',
     role: () => resolveProcessRole(),
-    dbPing: () => getPlatformPool().query('SELECT 1'),
+    dbPing: () => pingDatabasePools(),
     isDraining: () => sessionManager.isDraining(),
   }),
 );
 
 router.get('/health', async (_req, res) => {
   try {
-    const pool = getPlatformPool();
-    const result = await pool.query('SELECT 1 AS ok');
+    const result = await pingDatabasePools('SELECT 1 AS ok');
     const dbOk = result.rows[0]?.ok === 1;
 
     res.json({

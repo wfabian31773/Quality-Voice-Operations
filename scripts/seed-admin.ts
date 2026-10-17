@@ -55,9 +55,15 @@ async function main() {
   const memberEmail = process.env.MEMBER_EMAIL ?? 'member@voiceaihub.dev';
   const memberPassword = process.env.MEMBER_PASSWORD ?? adminPassword;
 
-  const url = process.env.DATABASE_URL ?? '';
+  const url = process.env.DATABASE_URL_PRIVILEGED ?? process.env.DATABASE_URL ?? '';
   if (!url) {
     throw new Error('[SEED-ADMIN] DATABASE_URL is not set for development.');
+  }
+  if (!process.env.DATABASE_URL_PRIVILEGED) {
+    console.warn(
+      '[SEED-ADMIN] DATABASE_URL_PRIVILEGED is not set — using DATABASE_URL. ' +
+      'After switching DATABASE_URL to qvo_app, seeding must use DATABASE_URL_PRIVILEGED.',
+    );
   }
 
   console.log(`[SEED-ADMIN] Environment: ${env}`);

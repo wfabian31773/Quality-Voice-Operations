@@ -8,17 +8,29 @@ async function main() {
   let url: string;
   let sslConfig: { rejectUnauthorized: boolean } | false = false;
 
-  if (env === 'development') {
+  if (process.env.DATABASE_URL_PRIVILEGED) {
+    url = process.env.DATABASE_URL_PRIVILEGED;
+    // Same SSL rule as the platform pools: Supabase outside development.
+    if (env !== 'development') sslConfig = { rejectUnauthorized: false };
+  } else if (env === 'development') {
     url = process.env.DATABASE_URL ?? '';
     if (!url) {
       throw new Error('[MIGRATE] DATABASE_URL is not set for development.');
     }
+    console.warn(
+      '[MIGRATE] DATABASE_URL_PRIVILEGED is not set — using DATABASE_URL. ' +
+      'After switching DATABASE_URL to qvo_app, migrations must use DATABASE_URL_PRIVILEGED (postgres).',
+    );
   } else {
     url = process.env.PLATFORM_DB_POOL_URL ?? '';
     if (!url) {
       throw new Error('[MIGRATE] PLATFORM_DB_POOL_URL is not set for production/staging.');
     }
     sslConfig = { rejectUnauthorized: false };
+    console.warn(
+      '[MIGRATE] DATABASE_URL_PRIVILEGED is not set — using PLATFORM_DB_POOL_URL. ' +
+      'After switching the pool URL to qvo_app, migrations must use DATABASE_URL_PRIVILEGED (postgres).',
+    );
   }
 
   console.log(`[MIGRATE] Environment: ${env}`);

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../../../platform/core/logger';
+import { runWithTenantScope } from '../../../platform/db/tenantScope';
 
 const logger = createLogger('TENANT_GUARD');
 
@@ -45,5 +46,13 @@ export function requireTenantContext(req: Request, res: Response, next: NextFunc
     }
   }
 
-  next();
+  // Bind restricted-pool work in this request to the tenant so RLS sees
+  // app.tenant_id once the pool connects as qvo_app. Platform admins (MFA
+  // verified) act across tenants, so their requests stay unscoped, which
+  // routes them to the privileged pool as before the role switch.
+  if (req.user.isPlatformAdmin) {
+    next();
+    return;
+  }
+  runWithTenantScope(tenantId, () => next());
 }

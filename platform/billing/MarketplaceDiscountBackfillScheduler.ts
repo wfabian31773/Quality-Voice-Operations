@@ -26,7 +26,7 @@ import type { PoolClient } from 'pg';
 import type Stripe from 'stripe';
 
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { postToOpsSlackWebhook } from '../messaging/SlackWebhookNotifier';
 import {
   runBackfill,
@@ -128,7 +128,7 @@ export interface RunMarketplaceDiscountBackfillCycleOptions {
   source?: 'scheduled' | 'manual';
   /**
    * Inject a custom dependency factory. The default acquires a
-   * `getPlatformPool()` client and lazily imports the live Stripe
+   * `getPrivilegedPool()` client and lazily imports the live Stripe
    * client (so the env-validated client never enters the import graph
    * of test files that import this module).
    */
@@ -168,7 +168,7 @@ async function defaultAcquireDeps(): Promise<{
 }> {
   const { getStripeClient } = await import('./stripe/client');
   const stripe = getStripeClient();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
   return {
     deps: { stripe, client },

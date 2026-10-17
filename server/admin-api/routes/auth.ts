@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { getPlatformPool } from '../../../platform/db';
+import { getPrivilegedPool } from '../../../platform/db';
 import { issueMfaFlowToken, issueToken, requireAuth } from '../middleware/auth';
 import { authCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
@@ -74,7 +74,7 @@ router.post('/auth/login', loginRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'email and password are required' });
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {
@@ -247,7 +247,7 @@ router.post('/auth/signup', async (req, res) => {
     }
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {
@@ -394,7 +394,7 @@ router.post('/auth/verify-email', async (req, res) => {
     return res.status(400).json({ error: 'Verification token is required' });
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {
@@ -439,7 +439,7 @@ router.post('/auth/verify-email', async (req, res) => {
 
 router.post('/auth/resend-verification', requireAuth, async (req, res) => {
   const { userId, tenantId } = req.user!;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
 
   try {
     const newToken = crypto.randomBytes(32).toString('hex');
@@ -483,7 +483,7 @@ router.post('/auth/send-phone-verification', requireAuth, async (req, res) => {
   }
 
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
 
   try {
     await pool.query(
@@ -532,7 +532,7 @@ router.post('/auth/verify-phone', requireAuth, async (req, res) => {
     return res.status(429).json({ error: `Too many attempts. Try again in ${remainMin} minute(s).` });
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {
@@ -595,7 +595,7 @@ router.post('/auth/verify-phone', requireAuth, async (req, res) => {
 
 router.get('/auth/verification-status', requireAuth, async (req, res) => {
   const { userId } = req.user!;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
 
   try {
     const { rows } = await pool.query(
@@ -622,7 +622,7 @@ router.get('/auth/invite-info', async (req, res) => {
   const { token } = req.query as { token?: string };
   if (!token) return res.status(400).json({ error: 'token is required' });
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows } = await pool.query(
       `SELECT ui.email, ui.role, ui.expires_at, ui.accepted_at,
@@ -669,7 +669,7 @@ router.post('/auth/accept-invite', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   try {
@@ -836,7 +836,7 @@ router.post('/auth/forgot-password', async (req, res) => {
   // Fire-and-forget the lookup + token mint + email send. We intentionally
   // don't `await` this in the request path to keep response timing flat.
   void (async () => {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -945,7 +945,7 @@ router.post('/auth/reset-password', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
 
   const INVALID_TOKEN_MESSAGE = 'This reset link is no longer valid. Please request a new one.';

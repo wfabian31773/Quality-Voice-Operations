@@ -94,6 +94,7 @@ vi.mock('../../platform/db', () => {
   return {
     __queryMock: queryMock,
     getPlatformPool: () => ({ query: queryMock }),
+    getPrivilegedPool: () => ({ query: queryMock }),
   };
 });
 

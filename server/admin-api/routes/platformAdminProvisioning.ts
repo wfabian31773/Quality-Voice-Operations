@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { Router } from 'express';
-import { getPlatformPool } from '../../../platform/db';
+import { getPrivilegedPool } from '../../../platform/db';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { sendEmail } from '../../../platform/email/EmailService';
 import { invitationEmail } from '../../../platform/email/templates';
@@ -64,7 +64,7 @@ router.post(
     }
 
     const { tenantId, userId: inviterId, role: inviterRole } = req.user!;
-    const client = await getPlatformPool().connect();
+    const client = await getPrivilegedPool().connect();
     let invitedUser: { id: string; email: string } | null = null;
     let token = '';
     let expiresAt = new Date(0);

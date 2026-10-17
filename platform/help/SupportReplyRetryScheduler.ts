@@ -10,7 +10,7 @@
  */
 
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { isPermanentSmtpError, isReplyPermanentFailure } from '../email/smtpErrorClass';
 import {
@@ -60,7 +60,7 @@ export async function findFailedOutboundReplies(
   lookbackMinutes: number = LOOKBACK_MINUTES,
   limit: number = BATCH_LIMIT,
 ): Promise<FailedOutboundReply[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<FailedOutboundReply>(
     `SELECT r.id           AS reply_id,
             r.ticket_id    AS ticket_id,
@@ -92,7 +92,7 @@ async function ensureInboundToken(
   if (existing) return existing;
   const token = generateInboundToken();
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     await pool.query(
       `UPDATE support_tickets SET inbound_token = $2 WHERE id = $1`,
       [ticketId, token],
@@ -126,7 +126,7 @@ export interface RetryAttemptResult {
  * if our send crashes mid-flight we won't infinite-loop on the same row.
  */
 async function claimReplyForRetry(reply: FailedOutboundReply): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{ id: number }>(
     `UPDATE support_ticket_replies
      SET retry_count = retry_count + 1,
@@ -157,7 +157,7 @@ async function markReplySkippedByList(
   reply: FailedOutboundReply,
   reason: SupportEmailSkipReason,
 ): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{ id: number }>(
     `UPDATE support_ticket_replies
      SET retry_count = $3,
@@ -182,7 +182,7 @@ async function markReplySkippedByList(
  * knows whether to fire the persistent-failure ops alert).
  */
 async function markReplyPermanentlyFailed(reply: FailedOutboundReply): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   // Record `retry_skipped_reason = 'permanent_smtp_failure'` alongside the
   // retry-count bump so the admin UI can render the "Hard bounce — won't
   // auto-retry" badge straight from authoritative server state without
@@ -246,7 +246,7 @@ async function retrySingleReply(reply: FailedOutboundReply): Promise<RetryAttemp
   // permanent failure so the row leaves the auto-retry pool.
   const effectiveRetryCount = permanent ? MAX_RETRY_ATTEMPTS : attempt;
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     if (permanent) {
       // Hard failure: record the outcome AND bump retry_count to MAX so the

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPlatformPool } from '../../../platform/db';
+import { getPrivilegedPool } from '../../../platform/db';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import { authAttemptRateLimitMax } from '../../../platform/security/authAttemptRateLimit';
@@ -62,7 +62,7 @@ router.post('/auth/mfa/setup/start', mfaRateLimit, async (req, res) => {
   const identity = verifyFlow(req.body, 'mfaSetupToken', 'mfa_setup');
   if (!identity) return res.status(401).json({ error: 'Invalid or expired MFA setup session' });
 
-  const client = await getPlatformPool().connect();
+  const client = await getPrivilegedPool().connect();
   try {
     const { rows } = await client.query(
       `SELECT is_platform_admin, mfa_enabled_at
@@ -122,7 +122,7 @@ router.post('/auth/mfa/setup/confirm', mfaRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'A six-digit authenticator code is required' });
   }
 
-  const client = await getPlatformPool().connect();
+  const client = await getPrivilegedPool().connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
@@ -204,7 +204,7 @@ router.post('/auth/mfa/challenge', mfaRateLimit, async (req, res) => {
   }
   if (code && !/^\d{6}$/u.test(code)) return res.status(400).json({ error: 'Authenticator code must be six digits' });
 
-  const client = await getPlatformPool().connect();
+  const client = await getPrivilegedPool().connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(

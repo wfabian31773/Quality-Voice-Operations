@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
-import { getPlatformPool } from '../../../platform/db';
+import { getPlatformPool, getPrivilegedPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { sendEmail } from '../../../platform/email';
 import {
@@ -15,7 +15,7 @@ const router = Router();
 const logger = createLogger('ADMIN_TICKETS');
 
 async function runAutomatedSlaBreachCheck() {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     const { rows: tenants } = await pool.query(`SELECT DISTINCT tenant_id FROM ticket_sla_instances WHERE paused_at IS NULL`);
     for (const { tenant_id: tenantId } of tenants) {

@@ -1,7 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripeClient, getWebhookSecret } from './client';
 import { getPlanFromPriceId, PLAN_LIMITS } from './plans';
-import { getPlatformPool, withTenantContext } from '../../db';
+import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import { provisionTenant } from '../../tenant/provisioning/TenantProvisioningService';
 import { normalizeDiscount, type UpgradeDiscount } from './effectiveRate';
@@ -25,23 +25,6 @@ async function withTenant<T>(tenantId: string, fn: (client: import('pg').PoolCli
     return result;
   } catch (err) {
     await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-async function withPrivilegedClient<T>(fn: (client: import('pg').PoolClient) => Promise<T>): Promise<T> {
-  const pool = getPlatformPool();
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(`SET LOCAL row_security = off`);
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     client.release();

@@ -123,9 +123,11 @@ describe('tenant-status pending gate', () => {
     expect(tenantStatusCacheSize()).toBe(1);
   });
   it('blocks a pending tenant with TENANT_NOT_PROVISIONED', async () => {
-    a.poolQueryMock.mockImplementation(async (sql: string) =>
-      sql.includes('FROM tenants') ? { rows: [{ status: 'pending' }] } : { rows: [] },
-    );
+    // The status lookup runs on a tenant-bound transaction client (RLS).
+    a.clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM user_roles')) return { rows: [{ role: 'operations_manager' }] };
+      return sql.includes('FROM tenants') ? { rows: [{ status: 'pending' }] } : { rows: [] };
+    });
     const res = await request(app()).get('/dashboard').set('Authorization', `Bearer ${token()}`);
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('TENANT_NOT_PROVISIONED');

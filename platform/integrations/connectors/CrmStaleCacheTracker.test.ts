@@ -7,6 +7,7 @@ const { queryMock, fanoutMock } = vi.hoisted(() => ({
 
 vi.mock('../../db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
 }));
 
 vi.mock('../../notifications/NotificationPreferences', () => ({

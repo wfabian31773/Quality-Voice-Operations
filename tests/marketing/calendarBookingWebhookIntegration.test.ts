@@ -164,6 +164,7 @@ async function buildFixture(): Promise<Fixture> {
   // `sales-alert-settings.ts` import from this module.
   vi.doMock('../../platform/db', () => ({
     getPlatformPool: () => pool,
+    getPrivilegedPool: () => pool,
   }));
 
   // Capture every email the alert pipeline tries to send so we can assert

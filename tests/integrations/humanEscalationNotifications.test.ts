@@ -12,6 +12,7 @@ const escalationTemplateMock = vi.fn<
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock }),
+  getPrivilegedPool: () => ({ query: queryMock }),
   // notifyHumanEscalation never opens a transaction itself, so we only need a
   // no-op tenant context shim for safety in case any helper reaches for it.
   withTenantContext: async (_client: unknown, _tenantId: string, fn: () => Promise<unknown>) => fn(),

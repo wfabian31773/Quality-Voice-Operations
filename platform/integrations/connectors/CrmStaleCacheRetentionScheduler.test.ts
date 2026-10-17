@@ -6,6 +6,7 @@ const { poolQueryMock } = vi.hoisted(() => ({
 
 vi.mock('../../db', () => ({
   getPlatformPool: () => ({ query: poolQueryMock }),
+  getPrivilegedPool: () => ({ query: poolQueryMock }),
 }));
 
 import {

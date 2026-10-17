@@ -36,6 +36,13 @@ vi.mock('../../platform/db', () => ({
     query: poolQueryMock,
     connect: vi.fn(),
   }),
+  getPrivilegedPool: () => ({
+    query: poolQueryMock,
+    connect: vi.fn(),
+  }),
+  withPrivilegedClient: vi.fn(async (fn: (c: { query: typeof poolQueryMock }) => Promise<unknown>) =>
+    fn({ query: poolQueryMock }),
+  ),
   withTenantContext: vi.fn(
     async (_client: unknown, _tenantId: string, fn: () => Promise<void>) =>
       fn(),

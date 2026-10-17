@@ -8,7 +8,7 @@
  * this role, so a fresh deploy is safe in shadow mode. Daily schedulers with
  * a run-once function are never started here; `qvo-nightly` runs them.
  */
-import { closePlatformPool, getPlatformPool } from '../../platform/db';
+import { closePlatformPool, getPrivilegedPool } from '../../platform/db';
 import { createLogger } from '../../platform/core/logger';
 import { logError } from '../../platform/core/observability';
 import { validateEnvironment } from '../../scripts/validate-env';
@@ -76,7 +76,9 @@ const worker = new SchedulerWorker({
       onAcquire: hooks.onAcquire,
       onLose: hooks.onLose,
     }),
-  pool: () => getPlatformPool(),
+  // Scheduler ticks run in the privileged DB scope, so in-flight work shows
+  // up on the privileged pool (the same pool until DATABASE_URL_PRIVILEGED is set).
+  pool: () => getPrivilegedPool(),
   closePool: async () => {
     await closeWithTimeout('DB pool', closePlatformPool);
   },

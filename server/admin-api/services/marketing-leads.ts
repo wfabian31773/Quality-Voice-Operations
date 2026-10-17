@@ -1,4 +1,4 @@
-import { getPlatformPool } from '../../../platform/db';
+import { getPrivilegedPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { postToOpsSlackWebhook, getOpsSlackWebhookUrl } from '../../../platform/messaging/SlackWebhookNotifier';
 import { sendEmail } from '../../../platform/email/EmailService';
@@ -42,7 +42,7 @@ let tableEnsured = false;
 
 async function ensureTable(): Promise<void> {
   if (tableEnsured) return;
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS marketing_leads (
       id BIGSERIAL PRIMARY KEY,
@@ -106,7 +106,7 @@ async function recordLeadEvent(
   },
 ): Promise<void> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     await pool.query(
       `INSERT INTO marketing_lead_events
          (lead_id, event_type, previous_status, new_status, notes, author)
@@ -138,7 +138,7 @@ async function recordLeadEvent(
  */
 export async function listLeadEventAuthors(): Promise<string[]> {
   await ensureTable();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const result = await pool.query<{ author: string }>(
     `SELECT DISTINCT author
        FROM marketing_lead_events
@@ -152,7 +152,7 @@ export async function listLeadEventAuthors(): Promise<string[]> {
 
 export async function listLeadEvents(leadId: number): Promise<LeadEvent[]> {
   await ensureTable();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const result = await pool.query(
     `SELECT id, lead_id, event_type, previous_status, new_status, notes, author, created_at
        FROM marketing_lead_events
@@ -355,7 +355,7 @@ function mapLeadRow(r: Record<string, unknown>): LeadListItem {
 
 export async function listLeads(filters: LeadListFilters = {}): Promise<LeadListResult> {
   await ensureTable();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
 
   const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
   const offset = Math.max(filters.offset ?? 0, 0);
@@ -481,7 +481,7 @@ export async function* iterateLeadsForExport(
   batchSize = 500,
 ): AsyncGenerator<LeadListItem> {
   await ensureTable();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const { where, values } = buildLeadWhereClause(filters);
   const safeBatch = Math.min(Math.max(batchSize, 50), 1000);
 
@@ -514,7 +514,7 @@ export async function updateLeadStatus(
   options: { notes?: string | null; updatedBy?: string | null } = {},
 ): Promise<LeadListItem | null> {
   await ensureTable();
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
 
   // Capture the previous status so we can record an event row that reflects
   // exactly what changed (status flip vs. note-only update).
@@ -588,7 +588,7 @@ export async function updateLeadStatus(
 export async function recordLead(lead: LeadRecord): Promise<{ id: number | null }> {
   try {
     await ensureTable();
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const result = await pool.query<{ id: string }>(
       `INSERT INTO marketing_leads (source, name, email, company, phone, payload)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
@@ -623,7 +623,7 @@ export async function findLeadById(
 ): Promise<{ id: number; email: string; payload: Record<string, unknown>; name: string | null; company: string | null; notified: boolean } | null> {
   try {
     await ensureTable();
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const result = await pool.query<{
       id: string;
       email: string;
@@ -678,7 +678,7 @@ export async function attachBookingToLeadById(
       logger.warn('attachBookingToLeadById: lead not found', { leadId });
       return { leadId: null, duplicate: false };
     }
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const bookingPayload = { ...booking, recordedAt: new Date().toISOString() };
     const history = Array.isArray((existing.payload as { bookingHistory?: unknown[] }).bookingHistory)
       ? ((existing.payload as { bookingHistory?: unknown[] }).bookingHistory as unknown[])
@@ -726,7 +726,7 @@ export async function findLatestLeadByEmail(
 ): Promise<{ id: number; payload: Record<string, unknown>; name: string | null; company: string | null } | null> {
   try {
     await ensureTable();
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const result = source
       ? await pool.query<{ id: string; payload: Record<string, unknown>; name: string | null; company: string | null }>(
           `SELECT id, payload, name, company FROM marketing_leads
@@ -761,7 +761,7 @@ export async function attachBookingToLead(
   try {
     await ensureTable();
     const existing = await findLatestLeadByEmail(email, 'book_demo');
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
 
     const bookingPayload = {
       ...booking,
@@ -901,7 +901,7 @@ function resolveSlackUrl(settings: SalesAlertSettings): string | null {
 
 async function markLeadNotified(leadId: number): Promise<void> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     await pool.query(`UPDATE marketing_leads SET notified = TRUE WHERE id = $1`, [leadId]);
   } catch (err) {
     logger.warn('Failed to mark lead as notified', {
@@ -913,7 +913,7 @@ async function markLeadNotified(leadId: number): Promise<void> {
 
 async function isLeadAlreadyNotified(leadId: number): Promise<boolean> {
   try {
-    const pool = getPlatformPool();
+    const pool = getPrivilegedPool();
     const { rows } = await pool.query<{ notified: boolean }>(
       `SELECT notified FROM marketing_leads WHERE id = $1 LIMIT 1`,
       [leadId],

@@ -9,6 +9,7 @@ const connectMock = vi.fn(async () => ({ query: queryMock, release: releaseMock 
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({ query: queryMock, connect: connectMock }),
+  getPrivilegedPool: () => ({ query: queryMock, connect: connectMock }),
   withTenantContext: async (_client: unknown, _tenantId: string, fn: () => Promise<unknown>) => fn(),
   withPrivilegedClient: async (fn: (c: unknown) => unknown) => fn({ query: queryMock }),
 }));

@@ -24,7 +24,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/rbac';
-import { getPlatformPool } from '../../../platform/db';
+import { getPrivilegedPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { CALL_EVENTS_RETENTION_DEFAULTS } from '../../../platform/billing/CallEventsRetentionScheduler';
 
@@ -133,7 +133,7 @@ router.get(
   requirePlatformAdmin,
   async (_req, res) => {
     try {
-      const pool = getPlatformPool();
+      const pool = getPrivilegedPool();
 
       const partitionsResult = await pool.query<{ name: string; bounds: string | null }>(
         `SELECT child.relname AS name,

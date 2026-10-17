@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { getPlatformPool, withTenantContext } from '../../db';
+import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../../db';
 import { createLogger } from '../logger';
 
 const logger = createLogger('ERROR_LOGGER');
@@ -32,15 +32,7 @@ export async function logError(
   } = {},
 ): Promise<void> {
   try {
-    const pool = getPlatformPool();
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      if (tenantId) {
-        await withTenantContext(client, tenantId, async () => {});
-      } else {
-        await client.query(`SET LOCAL row_security = off`);
-      }
+    const write = async (client: { query: (sql: string, values?: unknown[]) => Promise<unknown> }) => {
       await client.query(
         `INSERT INTO error_logs (id, tenant_id, severity, service, error_code, message, stack_trace, context, call_session_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
@@ -56,12 +48,26 @@ export async function logError(
           context.callSessionId ?? null,
         ],
       );
-      await client.query('COMMIT');
-    } catch (innerErr) {
-      await client.query('ROLLBACK');
-      throw innerErr;
-    } finally {
-      client.release();
+    };
+
+    if (tenantId) {
+      const pool = getPlatformPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await withTenantContext(client, tenantId, async () => {});
+        await write(client);
+        await client.query('COMMIT');
+      } catch (innerErr) {
+        await client.query('ROLLBACK');
+        throw innerErr;
+      } finally {
+        client.release();
+      }
+    } else {
+      await withPrivilegedClient(async (client) => {
+        await write(client);
+      });
     }
   } catch (err) {
     logger.error('Failed to write error log to DB', { error: String(err) });

@@ -1,4 +1,4 @@
-import { getPlatformPool, withTenantContext } from '../db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 import { formatDollars } from '../core/formatCurrency';
 
@@ -362,7 +362,7 @@ function mapPublicRow(row: Record<string, unknown>): PublicCaseStudy {
 }
 
 export async function checkAllTenantMilestones(): Promise<{ tenantId: string; generated: number }[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const client = await pool.connect();
   try {
     const { rows: tenants } = await client.query(

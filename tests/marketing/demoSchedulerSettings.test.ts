@@ -84,7 +84,7 @@ describe('demo-scheduler-settings service — setDemoSchedulerSettings validatio
     pool = made.pool;
     store = made.store;
 
-    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool }));
+    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool, getPrivilegedPool: () => pool }));
   });
 
   afterEach(() => {
@@ -243,7 +243,7 @@ describe('demo-scheduler-settings service — webhook secret resolver', () => {
 
     const made = createMemoryPool();
     pool = made.pool;
-    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool }));
+    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool, getPrivilegedPool: () => pool }));
   });
 
   afterEach(() => {
@@ -343,7 +343,7 @@ describe('GET /book-demo/config — public scheduler config endpoint', () => {
 
     const made = createMemoryPool();
     pool = made.pool;
-    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool }));
+    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool, getPrivilegedPool: () => pool }));
     // Stub the marketing-leads service so loading the contact router doesn't
     // require the full DB-backed lead store.
     vi.doMock('../../server/admin-api/services/marketing-leads', () => ({
@@ -454,6 +454,7 @@ describe('Admin /platform/demo-scheduler-settings routes — real router contrac
     pool = made.pool;
     vi.doMock('../../platform/db', () => ({
       getPlatformPool: () => pool,
+      getPrivilegedPool: () => pool,
       // Other platformAdmin routes call withPrivilegedClient/withTenantContext;
       // we don't exercise those in this suite but provide stubs so the
       // module imports cleanly.
@@ -716,7 +717,7 @@ describe('Webhook routes — DB-only signing secret (no env var present)', () =>
 
     const made = createMemoryPool();
     pool = made.pool;
-    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool }));
+    vi.doMock('../../platform/db', () => ({ getPlatformPool: () => pool, getPrivilegedPool: () => pool }));
 
     mocks = {
       findLeadById: vi.fn(async (id: number) => ({

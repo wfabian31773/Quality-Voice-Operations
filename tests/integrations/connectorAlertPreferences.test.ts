@@ -36,12 +36,18 @@ function makeClient() {
   };
 }
 
-vi.mock('../../platform/db', () => ({
-  getPlatformPool: () => ({
+vi.mock('../../platform/db', () => {
+  const pool = () => ({
     query: queryMock,
     connect: async () => makeClient(),
-  }),
-}));
+  });
+  return {
+    getPlatformPool: pool,
+    getPrivilegedPool: pool,
+    withTenantClient: async (_tenantId: string, fn: (client: { query: typeof queryMock }) => Promise<unknown>) =>
+      fn({ query: queryMock }),
+  };
+});
 
 // The scheduler tests at the bottom of this file drive the real
 // ConnectorAlertPreferences module via the alert cycle, so we also need to

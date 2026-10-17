@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from 'express';
 vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }) }));
 
 import { requireTenantContext } from './tenantGuard';
+import { getScopedTenantId } from '../../../platform/db/tenantScope';
 
 function ctx(opts: { user?: Record<string, unknown>; body?: unknown; query?: Record<string, unknown> }) {
   const req = { user: opts.user, body: opts.body, query: opts.query ?? {}, path: '/x' } as unknown as Request;
@@ -31,6 +32,21 @@ describe('requireTenantContext', () => {
     const { req, res, next } = ctx({ user: { userId: 'u1', tenantId: 't1' } });
     requireTenantContext(req, res, next);
     expect(next).toHaveBeenCalled();
+  });
+  it('runs the rest of the request inside the tenant scope', () => {
+    const { req, res, next } = ctx({ user: { userId: 'u1', tenantId: 't1' } });
+    let seen: string | undefined;
+    next.mockImplementation(() => { seen = getScopedTenantId(); });
+    requireTenantContext(req, res, next);
+    expect(seen).toBe('t1');
+    expect(getScopedTenantId()).toBeUndefined();
+  });
+  it('leaves platform-admin requests unscoped (privileged pool)', () => {
+    const { req, res, next } = ctx({ user: { userId: 'u1', tenantId: 't1', isPlatformAdmin: true } });
+    let seen: string | undefined = 'unset';
+    next.mockImplementation(() => { seen = getScopedTenantId(); });
+    requireTenantContext(req, res, next);
+    expect(seen).toBeUndefined();
   });
   it('blocks a cross-tenant body tenant_id', () => {
     const { req, res, next } = ctx({ user: { userId: 'u1', tenantId: 't1' }, body: { tenant_id: 't2' } });

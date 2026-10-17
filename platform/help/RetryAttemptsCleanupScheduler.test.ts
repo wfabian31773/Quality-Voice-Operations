@@ -9,6 +9,7 @@ const { poolQueryMock, getRetryCooldownSecondsMock, getSupportReplyRetryCooldown
 
 vi.mock('../db', () => ({
   getPlatformPool: () => ({ query: poolQueryMock }),
+  getPrivilegedPool: () => ({ query: poolQueryMock }),
 }));
 
 vi.mock('./docsFeedbackRetryLimiter', () => ({

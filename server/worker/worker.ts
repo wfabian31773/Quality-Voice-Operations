@@ -10,6 +10,7 @@
  */
 import { createLogger } from '../../platform/core/logger';
 import type { SchedulerContext, SchedulerDefinition } from '../../platform/runtime/schedulers';
+import { runWithPrivilegedScope } from '../../platform/db/tenantScope';
 
 const logger = createLogger('WORKER');
 
@@ -92,7 +93,10 @@ export class SchedulerWorker {
     if (this.running || this.shuttingDown) return;
     this.running = true;
     logger.info('Leader: starting schedulers', { schedulers: this.opts.schedulers.map((s) => s.name) });
-    for (const s of this.opts.schedulers) s.start(this.opts.ctx);
+    // Cross-tenant work: privileged DB scope (see startSchedulers).
+    runWithPrivilegedScope(() => {
+      for (const s of this.opts.schedulers) s.start(this.opts.ctx);
+    });
   }
 
   private stopSchedulers(reason: string): void {

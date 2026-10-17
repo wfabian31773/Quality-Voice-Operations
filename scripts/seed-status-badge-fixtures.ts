@@ -179,9 +179,12 @@ async function main(): Promise<void> {
     );
   }
 
-  const url = process.env.DATABASE_URL ?? '';
+  const url = process.env.DATABASE_URL_PRIVILEGED ?? process.env.DATABASE_URL ?? '';
   if (!url) {
     throw new Error('[SEED-FIXTURES] DATABASE_URL is not set for development.');
+  }
+  if (!process.env.DATABASE_URL_PRIVILEGED) {
+    console.warn('[SEED-FIXTURES] DATABASE_URL_PRIVILEGED is not set — using DATABASE_URL.');
   }
 
   console.log(`[SEED-FIXTURES] Environment: ${env}`);

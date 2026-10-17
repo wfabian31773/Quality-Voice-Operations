@@ -22,7 +22,7 @@
  */
 
 import { createLogger } from '../core/logger';
-import { getPlatformPool } from '../db';
+import { getPrivilegedPool } from '../db';
 import { sendEmail } from '../email/EmailService';
 import { isPermanentSmtpError, isDocsFeedbackReplyPermanentFailure } from '../email/smtpErrorClass';
 import { renderDocsFeedbackReplyEmail } from './docsFeedbackReplyEmail';
@@ -62,7 +62,7 @@ export async function findFailedOutboundDocsFeedbackReplies(
   lookbackMinutes: number = LOOKBACK_MINUTES,
   limit: number = BATCH_LIMIT,
 ): Promise<FailedOutboundDocsReply[]> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   // Critical: skip any failed reply that already has a NEWER reply in the
   // same feedback chain. The manual /retry endpoint INSERTs a new
   // docs_feedback_replies row (with retry_of pointing at the chain root)
@@ -120,7 +120,7 @@ export interface DocsRetryAttemptResult {
  * send crashes mid-flight we won't infinite-loop on the same row.
  */
 async function claimReplyForRetry(reply: FailedOutboundDocsReply): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{ id: number }>(
     `UPDATE docs_feedback_replies
      SET retry_count = retry_count + 1,
@@ -141,7 +141,7 @@ async function claimReplyForRetry(reply: FailedOutboundDocsReply): Promise<boole
  * worker actually made the transition (so we know whether to fire the alert).
  */
 async function markReplyPermanentlyFailed(reply: FailedOutboundDocsReply): Promise<boolean> {
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   const r = await pool.query<{ id: number }>(
     `UPDATE docs_feedback_replies
      SET retry_count = $3,
@@ -196,7 +196,7 @@ async function retrySingleReply(
   // permanent failure so the row leaves the auto-retry pool.
   const effectiveRetryCount = permanent ? MAX_RETRY_ATTEMPTS : attempt;
 
-  const pool = getPlatformPool();
+  const pool = getPrivilegedPool();
   try {
     if (permanent) {
       // Hard failure: record the outcome AND bump retry_count to MAX so the

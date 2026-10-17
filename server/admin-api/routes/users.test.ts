@@ -22,6 +22,7 @@ vi.mock('../../../platform/db', () => ({
     connect: async () => ({ query: a.clientQueryMock, release: a.releaseMock }),
     query: a.poolQueryMock,
   }),
+  getPrivilegedPool: () => ({ query: a.clientQueryMock }),
   withTenantContext: async (_c: unknown, _t: string, cb: () => Promise<void>) => cb(),
 }));
 vi.mock('bcryptjs', () => ({ default: { hash: vi.fn().mockResolvedValue('hashed-pw') } }));

@@ -4,6 +4,9 @@ const a = vi.hoisted(() => ({ poolQueryMock: vi.fn(), clientQueryMock: vi.fn(), 
 
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ query: a.poolQueryMock, connect: async () => ({ query: a.clientQueryMock, release: a.releaseMock }) }),
+  getPrivilegedPool: () => ({ query: a.poolQueryMock, connect: async () => ({ query: a.clientQueryMock, release: a.releaseMock }) }),
+  withPrivilegedClient: async (fn: (c: { query: typeof a.poolQueryMock }) => Promise<unknown>) =>
+    fn({ query: a.poolQueryMock }),
   withTenantContext: async (_c: unknown, _t: string, cb: () => Promise<void>) => cb(),
 }));
 vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) }));

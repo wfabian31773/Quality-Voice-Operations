@@ -5,7 +5,9 @@
  * Covers: agents, tenants, phone_numbers, call_sessions, outbox_events, billing_events
  *
  * Uses platform_rls_tester role (no BYPASSRLS) so policies are enforced.
- * Requires PLATFORM_DB_POOL_URL to be set.
+ * Connects with DATABASE_URL_PRIVILEGED (postgres) when set, so fixtures can
+ * be seeded after PLATFORM_DB_POOL_URL becomes the restricted qvo_app role;
+ * falls back to PLATFORM_DB_POOL_URL.
  *
  * RLS design note: policies use current_setting('app.tenant_id') because this
  * platform connects to Supabase as a server-side Node.js process via the transaction
@@ -18,8 +20,8 @@ const TENANT_A = 'rls-test-tenant-a';
 const TENANT_B = 'rls-test-tenant-b';
 
 async function main() {
-  const url = process.env.PLATFORM_DB_POOL_URL;
-  if (!url) throw new Error('[VERIFY-RLS] PLATFORM_DB_POOL_URL is not set');
+  const url = process.env.DATABASE_URL_PRIVILEGED || process.env.PLATFORM_DB_POOL_URL;
+  if (!url) throw new Error('[VERIFY-RLS] DATABASE_URL_PRIVILEGED / PLATFORM_DB_POOL_URL is not set');
 
   const pool = new Pool({ connectionString: url, max: 3, ssl: { rejectUnauthorized: false } });
   const client = await pool.connect();

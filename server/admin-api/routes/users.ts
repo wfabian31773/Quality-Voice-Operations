@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
-import { getPlatformPool, withTenantContext } from '../../../platform/db';
+import { getPlatformPool, getPrivilegedPool, withTenantContext } from '../../../platform/db';
 import { requireAuth } from '../middleware/auth';
 import { requireRole, simpleToDatabaseRole, dbRoleToSimple, type SimpleRole } from '../middleware/rbac';
 import { createLogger } from '../../../platform/core/logger';
@@ -23,14 +23,14 @@ function paginate(req: { query: Record<string, unknown> }): { limit: number; off
 router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
   const { tenantId } = req.user!;
   const { limit, offset } = paginate(req);
-  const pool = getPlatformPool();
-  const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
-    await withTenantContext(client, tenantId, async () => {});
-
-    const { rows } = await client.query(
+    // Members are users with a user_roles row in this tenant, including users
+    // whose home tenant is another one (invited by email). The users RLS
+    // policy is home-tenant based, so read through the privileged pool with
+    // the explicit membership predicate.
+    const pool = getPrivilegedPool();
+    const { rows } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active,
               u.email_verified, u.last_login_at, u.created_at,
               ur.role
@@ -41,11 +41,10 @@ router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
       [tenantId, limit, offset],
     );
 
-    const { rows: countRows } = await client.query(
+    const { rows: countRows } = await pool.query(
       `SELECT COUNT(*) AS total FROM user_roles WHERE tenant_id = $1`,
       [tenantId],
     );
-    await client.query('COMMIT');
 
     const mappedUsers = rows.map((row) => ({
       ...row,
@@ -54,11 +53,8 @@ router.get('/users', requireAuth, requireRole('viewer'), async (req, res) => {
 
     return res.json({ users: mappedUsers, total: parseInt(countRows[0].total as string), limit, offset });
   } catch (err) {
-    await client.query('ROLLBACK');
     logger.error('Failed to list users', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to list users' });
-  } finally {
-    client.release();
   }
 });
 
@@ -88,7 +84,10 @@ router.post('/users/invite', requireAuth, requireRole('owner'), async (req, res)
     const passwordHash = password ? await bcrypt.hash(password, 12) : null;
     const dbRole = simpleToDatabaseRole(role as SimpleRole);
 
-    const { rows: existing } = await client.query(
+    // Emails are unique across tenants, so look the user up across tenants
+    // (privileged): under RLS a tenant-bound read misses other tenants' users
+    // and the insert below then fails the unique constraint.
+    const { rows: existing } = await getPrivilegedPool().query(
       `SELECT id, email, first_name, last_name, created_at FROM users WHERE email = $1`,
       [email.toLowerCase()],
     );
