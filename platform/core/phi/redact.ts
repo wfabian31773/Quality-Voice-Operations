@@ -7,9 +7,9 @@ const DOB_REGEX =
 const SSN_REGEX = /\b\d{3}-\d{2}-\d{4}\b/g;
 
 /**
- * Words that follow "I'm" / "this is" without being a name ("I'm looking
- * for a fade", "I'm calling from", "I'm Good"). Compared lower-case against
- * the first word of a candidate name.
+ * Words that follow a name lead-in without being a name ("I'm Looking for a
+ * fade" as STT capitalized it, "I'm Good", "caller from"). Compared
+ * lower-case against the first word of a candidate name.
  */
 export const NAME_STOP_WORDS: ReadonlySet<string> = new Set([
   'looking', 'calling', 'trying', 'just', 'here', 'wondering', 'interested',
@@ -18,17 +18,19 @@ export const NAME_STOP_WORDS: ReadonlySet<string> = new Set([
   'done', 'new', 'back', 'the', 'a',
 ]);
 
-/** True when a capitalized candidate after "I'm" / "this is" can be a name. */
-export function isLikelyIntroducedName(candidate: string): boolean {
+function startsWithStopWord(candidate: string): boolean {
   const first = candidate.trim().split(/\s+/)[0] ?? '';
-  return /^\p{Lu}/u.test(first) && !NAME_STOP_WORDS.has(first.toLowerCase());
+  return NAME_STOP_WORDS.has(first.toLowerCase());
 }
 
-// The lead-in is case-insensitive by spelling; the name itself must start
-// with a capital letter (no `i` flag), so "I'm looking for a fade" is not a
-// name. \p{Lu}\p{Ll} keeps accented names such as "Maria José".
+// \p{L} / \p{Lu}\p{Ll} keep accented names such as "Maria José".
 const NAME_AFTER_PATTERNS: RegExp[] = [
-  /\b(?:[Mm]y\s+[Nn]ame\s+[Ii]s|[Tt]his\s+[Ii]s|[Ii]['’]m|[Ii]\s+[Aa]m|[Pp]atient|[Cc]aller|[Nn]ame:\s*)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+){0,2})/gu,
+  // Unambiguous lead-ins take lowercase names too, because STT often
+  // lowercases them ("my name is maria lopez", "patient john smith").
+  /\b(?:my\s+name\s+is|patient|caller|name:\s*)\s+(\p{L}{2,}(?:\s+\p{L}{2,}){0,2})/giu,
+  // Ambiguous lead-ins need a capitalized name (no `i` flag), so "I'm
+  // looking for a fade" and "the one I'm calling from" are not names.
+  /\b(?:[Tt]his\s+[Ii]s|[Ii]['’]m|[Ii]\s+[Aa]m)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+){0,2})/gu,
   /\b(?:Mrs?\.|Ms\.|Dr\.)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/g,
 ];
 
@@ -46,8 +48,10 @@ export function redactPHI(text: string): string {
   redacted = redacted.replace(DOB_REGEX, '[DOB_REDACTED]');
 
   for (const pattern of NAME_AFTER_PATTERNS) {
+    // The name is the end of the match; replace it there so a name that also
+    // appears inside the lead-in ("patient pat") doesn't hit the lead-in.
     redacted = redacted.replace(pattern, (match, name: string) => (
-      isLikelyIntroducedName(name) ? match.replace(name, '[NAME_REDACTED]') : match
+      startsWithStopWord(name) ? match : `${match.slice(0, match.length - name.length)}[NAME_REDACTED]`
     ));
   }
 

@@ -1,5 +1,4 @@
 import { createLogger } from '../core/logger';
-import { isLikelyIntroducedName } from '../core/phi/redact';
 import type { TenantId } from '../core/types';
 import { SlotTracker } from './SlotTracker';
 import { DecisionEngine } from './DecisionEngine';
@@ -10,7 +9,6 @@ import { MemoryManager, type MemoryStorage } from './MemoryManager';
 import { getIndustryPack } from './industry-packs';
 import { hasCancelOrRescheduleLanguage, inferCancelOrRescheduleAction, isPolicyOrNegatedCancel } from './cancelRescheduleLanguage';
 import { isAdditionalTransactionRequest } from './additionalTransactionLanguage';
-import { CALLER_ID_TOKEN } from './sessionBinding';
 import type {
   ReasoningContext,
   DecisionResult,
@@ -50,18 +48,6 @@ const DECISION_EXEMPT_TOOLS = new Set([
   'list_staff',
   'scheduling.list_staff',
 ]);
-
-// The caller agreeing to use their caller ID as the callback number.
-const USE_CALLER_ID_UTTERANCE = /\b(?:(?:number|one|phone) (?:i'?m|i am) calling (?:from|on)|this number|(?:the )?same number|caller id|el (?:número|numero) (?:del que|de donde) (?:llamo|estoy llamando)|este (?:número|numero))\b/i;
-
-/** "a fade." → "fade", "un corte?" → "corte": leading articles and edge punctuation off. */
-function trimServiceValue(raw: string): string {
-  return raw
-    .trim()
-    .replace(/[\s.,!?¿¡]+$/u, '')
-    .replace(/^(?:a|an|the|some|un|una|unos|unas|el|la|los|las)\s+/i, '')
-    .trim();
-}
 
 // Generic intents strong enough to beat an industry-pack match on score.
 const GENERIC_OVERRIDE_INTENTS = new Set(['urgent_medical', 'transfer_human']);
@@ -378,14 +364,7 @@ export class ReasoningEngine {
 
     const freshAdditionalBooking = additionalRequest && isBookingIntent(intent);
     if (intent !== 'unknown' && intent !== previousIntent) {
-      // What the caller said before any intent was known ("Hi, this is
-      // Wayne") carries into the intent's manifest instead of being dropped.
-      const carried = previousIntent === 'unknown' ? this.slotTracker.getFilledSlots() : {};
       this.updateSlotManifest(intent);
-      const manifestSlotNames = new Set(this.slotTracker.getState().manifest.slots.map((s) => s.name));
-      for (const [name, value] of Object.entries(carried)) {
-        if (manifestSlotNames.has(name)) this.slotTracker.fillSlot(name, value);
-      }
 
       if (!freshAdditionalBooking) {
         const restoredSlots = this.preservedSlots.get(intent);
@@ -811,17 +790,15 @@ export class ReasoningEngine {
     switch (slotName) {
       case 'caller_name':
       case 'contactName': {
-        // Lead-ins match in any case; the name must start with a capital
-        // (no `i` flag), so "I'm looking for a fade" is not a name.
         const namePatterns = [
-          /[Mm]y [Nn]ame [Ii]s (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
-          /[Tt]his [Ii]s (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
-          /[Ii]['’]m (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
-          /[Ii]t['’]s (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)*)/u,
+          /my name is ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
+          /this is ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
+          /i'm ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
+          /it's ([A-Z][a-z]+(?: [A-Z][a-z]+)*)/i,
         ];
         for (const pattern of namePatterns) {
           const match = originalUtterance.match(pattern);
-          if (match && match[1] && isLikelyIntroducedName(match[1])) return match[1].trim();
+          if (match && match[1]) return match[1].trim();
         }
         return null;
       }
@@ -829,12 +806,7 @@ export class ReasoningEngine {
       case 'contactPhone':
       case 'toNumber': {
         const phoneMatch = originalUtterance.match(/(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
-        if (phoneMatch) return phoneMatch[1];
-        // "You can use the one I'm calling from": the slot holds the
-        // caller-ID token (never the number); tools get the real caller ID
-        // from the session.
-        if (this.config.callerNumber && USE_CALLER_ID_UTTERANCE.test(originalUtterance)) return CALLER_ID_TOKEN;
-        return null;
+        return phoneMatch ? phoneMatch[1] : null;
       }
       case 'action': {
         return inferCancelOrRescheduleAction(originalUtterance);
@@ -845,17 +817,12 @@ export class ReasoningEngine {
       case 'description':
       case 'query':
       case 'reason': {
-        // Longer lead-ins come first so "I want to get a fade" yields "fade",
-        // not "to get a fade".
         const reasonPatterns = [
-          /\b(?:i want to get|i'd like to get|i would like to get|i need to get|i'm trying to get|i am trying to get|i'm looking for|i am looking for|looking for|can i get|could i get|gimme|give me|book me in for|book me for|book me|do you do|i need|i want|i'd like|i would like|calling about|calling for|calling to|i'm calling about|i'm calling for|need help with)\s+(.+)/i,
-          /(?:¿\s*)?\b(?:me puede hacer|me puedes hacer|me gustaría|me gustaria|quisiera|necesito|quiero|busco)\s+(.+)/i,
+          /(?:i need|i want|i'd like|i would like|calling about|calling for|calling to|i'm calling about|i'm calling for|need help with)\s+(.+)/i,
         ];
         for (const pattern of reasonPatterns) {
           const match = originalUtterance.match(pattern);
-          if (!match?.[1] || match[1].trim().length <= 3) continue;
-          const value = trimServiceValue(match[1]);
-          if (value) return value;
+          if (match && match[1] && match[1].length > 3) return match[1].trim();
         }
         return null;
       }
