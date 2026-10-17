@@ -95,6 +95,10 @@ vi.mock('../../../platform/tools/ToolExecutionService', () => ({
 vi.mock('../../../platform/tools/HumanEscalationService', () => ({ createEscalationTask: vi.fn(async () => ({ id: 'esc-1' })) }));
 vi.mock('../../../platform/billing/usage/UsageRecorder', () => ({ recordToolExecution: vi.fn(async () => {}) }));
 vi.mock('./demoToolHandler', () => ({ handleDemoToolCall: vi.fn(() => null) }));
+vi.mock('../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool')>();
+  return { ...actual, triageEscalate: vi.fn(actual.triageEscalate) };
+});
 vi.mock('../../../platform/tools/registry', () => ({
   globalToolRegistry: { get: (name: string) => (h.toolHandlers.has(name) ? { handler: h.toolHandlers.get(name) } : undefined) },
 }));
@@ -107,6 +111,8 @@ import { executeCreateBooking } from '../../../platform/tools/library/handlers/c
 import { resetBookingConfirmations } from '../../../platform/tools/library/handlers/bookingConfirmation';
 import type { ToolContext } from '../../../platform/tools/registry/types';
 import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
+import { triageEscalate } from '../../../platform/agent-templates/medical-after-hours/tools/triageEscalateTool';
+import { updateCallState, writeCallEvent } from './callPersistence';
 
 const CALLER = '+15555550100';
 const tool = (name: string) => ({ name, description: name, parameters: { type: 'object', properties: {} } });
@@ -473,6 +479,92 @@ describe('repeated-tool stop on the voice tool path (every mode)', () => {
 
     await result.session.close();
     expect(toolStopGuard.failureCount('cs-shadow-voice', 'transfer_to_agent')).toBe(0);
+  });
+
+  describe('triageEscalate', () => {
+    const escalationArgs = {
+      patientFirstName: 'Ana',
+      patientLastName: 'Diaz',
+      patientDob: '1990-01-01',
+      callbackNumber: CALLER,
+      urgentConcern: 'severe pain',
+    };
+    const startWithEscalation = (onEscalation?: SessionContext['onEscalation']) => {
+      const base = makeCtx();
+      const agentConfig = base.agentConfig as unknown as { tools: Array<ReturnType<typeof tool>>; metadata: Record<string, unknown> };
+      // triageEscalate is denied on salon; it belongs to medical-after-hours.
+      return start({
+        onEscalation,
+        templateKey: 'medical-after-hours',
+        agentConfig: {
+          ...agentConfig,
+          tools: [...agentConfig.tools, tool('triageEscalate')],
+          metadata: { ...agentConfig.metadata, onCallTransferNumber: '+15555550111' },
+        } as never,
+      });
+    };
+
+    beforeEach(() => {
+      // No engine, so its slot-collection gate doesn't block the tool; this
+      // exercises the tool handler + stop guard only.
+      h.failEngine = true;
+      vi.mocked(triageEscalate).mockClear();
+      vi.mocked(updateCallState).mockClear();
+      vi.mocked(writeCallEvent).mockClear();
+    });
+
+    const cases: Array<[string, SessionContext['onEscalation'] | undefined]> = [
+      ['no onEscalation', undefined],
+      ['onEscalation throws', async (): Promise<void> => { throw new Error('twilio down'); }],
+    ];
+    for (const [label, makeOnEscalation] of cases) {
+      it(`${label}: each failed escalation runs once, counts once, and the 3rd returns the stop`, async () => {
+        const onEscalation = makeOnEscalation ? vi.fn(makeOnEscalation) : undefined;
+        const { result, callTool } = await startWithEscalation(onEscalation);
+        const escalate = () => callTool('triageEscalate', escalationArgs);
+
+        const first = JSON.parse(await escalate());
+        expect(triageEscalate).toHaveBeenCalledTimes(1);
+        if (onEscalation) expect(onEscalation).toHaveBeenCalledTimes(1);
+        expect(first).toMatchObject({ success: false, flaggedForFollowUp: true });
+        expect(first.code).toBeUndefined();
+        expect(first.message).toMatch(/marked as urgent/);
+        expect(first.recovery).toMatch(/stay on the line/);
+        expect(toolStopGuard.failureCount('cs-shadow-voice', 'triageEscalate')).toBe(1);
+
+        const second = JSON.parse(await escalate());
+        expect(second.code).toBeUndefined();
+        expect(triageEscalate).toHaveBeenCalledTimes(2);
+
+        const third = JSON.parse(await escalate());
+        expect(triageEscalate).toHaveBeenCalledTimes(3);
+        if (onEscalation) expect(onEscalation).toHaveBeenCalledTimes(3);
+        expect(third).toMatchObject({ success: false, code: 'TOOL_STOPPED', retryable: false, tool: 'triageEscalate', failedAttempts: 3 });
+
+        const fourth = JSON.parse(await escalate());
+        expect(triageEscalate).toHaveBeenCalledTimes(3);
+        if (onEscalation) expect(onEscalation).toHaveBeenCalledTimes(3);
+        expect(fourth).toMatchObject({ code: 'TOOL_STOPPED', failedAttempts: 3 });
+
+        expect(updateCallState).not.toHaveBeenCalledWith('t-shadow', 'cs-shadow-voice', 'ESCALATED', expect.anything());
+        await result.session.close();
+        expect(toolStopGuard.failureCount('cs-shadow-voice', 'triageEscalate')).toBe(0);
+      });
+    }
+
+    it('a successful escalation is not counted and still marks the call ESCALATED', async () => {
+      const onEscalation = vi.fn(async (): Promise<void> => {});
+      const { result, callTool } = await startWithEscalation(onEscalation);
+
+      const out = JSON.parse(await callTool('triageEscalate', escalationArgs));
+      expect(out).toEqual({ success: true, message: "I'm connecting you with our on-call team now. Please hold." });
+      expect(triageEscalate).toHaveBeenCalledTimes(1);
+      expect(onEscalation).toHaveBeenCalledTimes(1);
+      expect(toolStopGuard.failureCount('cs-shadow-voice', 'triageEscalate')).toBe(0);
+      expect(updateCallState).toHaveBeenCalledWith('t-shadow', 'cs-shadow-voice', 'ESCALATED', expect.objectContaining({ escalationTarget: '+15555550111' }));
+      expect(writeCallEvent).toHaveBeenCalledWith('t-shadow', 'cs-shadow-voice', 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', { target: '+15555550111' });
+      await result.session.close();
+    });
   });
 
   it('transfer_to_agent: a successful handoff is not counted', async () => {

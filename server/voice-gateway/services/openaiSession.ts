@@ -416,13 +416,6 @@ function buildToolHandler(
     let executionStatus: 'success' | 'failed' = 'success';
     let executionError: string | undefined;
 
-    const NON_RETRYABLE_TOOLS = ['triageEscalate'];
-
-    const assertToolSuccess = (jsonResult: string, tool: string): string => {
-      if (NON_RETRYABLE_TOOLS.includes(tool)) return jsonResult;
-      return assertToolResultSucceeded(jsonResult);
-    };
-
     const dispatchToolExecution = async (): Promise<string> => {
       let rawResult: string;
       switch (toolName) {
@@ -458,7 +451,7 @@ function buildToolHandler(
             },
           );
           rawResult = JSON.stringify(ticketResult);
-          return assertToolSuccess(rawResult, toolName);
+          return assertToolResultSucceeded(rawResult);
         }
 
         case 'createAfterHoursTicket': {
@@ -478,7 +471,7 @@ function buildToolHandler(
             },
           );
           rawResult = JSON.stringify(afterHoursResult);
-          return assertToolSuccess(rawResult, toolName);
+          return assertToolResultSucceeded(rawResult);
         }
 
         case 'triageEscalate': {
@@ -508,15 +501,21 @@ function buildToolHandler(
             },
           );
 
-          if (escalateResult.success) {
-            await updateCallState(tenantId, callSessionId, 'ESCALATED', {
-              escalationTarget: transferNumber,
-              escalationReason: (args as Record<string, string>).urgentConcern,
-            });
-            await writeCallEvent(tenantId, callSessionId, 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', {
-              target: transferNumber,
-            });
+          if (!escalateResult.success) {
+            // Fail without a retry (no duplicate transfer attempt) so the
+            // invocation counts once toward the repeated-tool stop and the
+            // model gets the caller-safe fallback. Fixed message: the tool's
+            // message can carry the caller's callback number (PII).
+            throw new NonRetryableToolError('ToolExecutionFailed: escalation transfer not started');
           }
+
+          await updateCallState(tenantId, callSessionId, 'ESCALATED', {
+            escalationTarget: transferNumber,
+            escalationReason: (args as Record<string, string>).urgentConcern,
+          });
+          await writeCallEvent(tenantId, callSessionId, 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', {
+            target: transferNumber,
+          });
 
           return JSON.stringify(escalateResult);
         }
@@ -601,14 +600,14 @@ function buildToolHandler(
               requireBookingConfirmation: ctx.reasoningMode === 'shadow',
             });
             rawResult = JSON.stringify(toolResult);
-            return assertToolSuccess(rawResult, toolName);
+            return assertToolResultSucceeded(rawResult);
           } else {
             logger.warn('Unknown tool called', { tenantId, callId: callSessionId, tool: toolName });
             return JSON.stringify({ success: false, message: `Unknown tool: ${toolName}` });
           }
         }
       }
-      return assertToolSuccess(rawResult, toolName);
+      return assertToolResultSucceeded(rawResult);
     };
 
     const retryConfig = getToolRetryConfig(toolName);
