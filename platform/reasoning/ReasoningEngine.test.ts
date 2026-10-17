@@ -105,22 +105,36 @@ describe('ReasoningEngine booking intent under an industry pack', () => {
     expect(salon().classifyIntent('chemical burn, can\'t breathe, emergency, my haircut').intent).toBe('urgent_medical');
   });
 
-  it('keeps an active booking through availability words and the other booking alias', () => {
+  it('keeps an active booking through the other booking alias', () => {
     const engine = salon();
     engine.processUtterance('I want a haircut', 'book_appointment', 'high');
     const plan = engine.getWorkflowPlan();
-    for (const [utterance, intent] of [
-      ['Do you have an opening Saturday?', 'hours_services'],
-      ['Can I come in at nine if it is available', 'schedule_appointment'],
-    ] as const) {
-      engine.processUtterance(utterance, intent, 'high');
-      expect(engine.getWorkflowPlan()).toBe(plan);
-      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
-    }
+    const slots = () => engine.getCallSummary().slots as { intent: string; slots: Record<string, { value: string | null }> };
+    const titleBefore = slots().slots.title.value;
+    expect(titleBefore).toBeTruthy();
+    engine.processUtterance("Yeah, if nine is available, I'll take it.", 'schedule_appointment', 'high');
+    expect(engine.getWorkflowPlan()).toBe(plan);
+    expect(slots().intent).toBe('book_appointment');
+    expect(slots().slots.title.value).toBe(titleBefore);
+    expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
     expect(engine.handlePartialAnswer('').topicSwitchCount).toBe(0);
     // A real topic change still switches.
     engine.processUtterance('can I leave a message for the owner', 'leave_message', 'high');
     expect(engine.getWorkflowPlan()?.intent).toBe('leave_message');
+  });
+
+  it('does not force a non-booking question with an availability word back to the booking', () => {
+    for (const [utterance, intent] of [
+      ['Do you have free parking?', 'general_inquiry'],
+      ['Are you available on Sundays?', 'hours_services'],
+    ] as const) {
+      const engine = salon();
+      engine.processUtterance('I want a haircut', 'book_appointment', 'high');
+      const decision = engine.processUtterance(utterance, intent, 'high');
+      expect(engine.getWorkflowPlan()?.intent).not.toBe('book_appointment');
+      expect(decision.clarifyingQuestion ?? '').not.toMatch(/time/i);
+      expect(engine.handlePartialAnswer('').topicSwitchCount).toBe(1);
+    }
   });
 
   it('runs without a generic plan whose slots the library-tool manifest never fills', () => {

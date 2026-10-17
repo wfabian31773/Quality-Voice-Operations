@@ -52,9 +52,6 @@ const DECISION_EXEMPT_TOOLS = new Set([
 // Generic intents strong enough to beat an industry-pack match on score.
 const GENERIC_OVERRIDE_INTENTS = new Set(['urgent_medical', 'transfer_human']);
 
-// Availability words that mean "the time I'm booking", not a new topic.
-const BOOKING_AVAILABILITY_WORDS = /\b(?:available|availability|opening|openings|open slot|slot|slots|come in|free)\b/i;
-
 export interface ReasoningEngineConfig {
   tenantId: TenantId;
   callSessionId: string;
@@ -333,16 +330,14 @@ export class ReasoningEngine {
       intentConfidence = 'high';
     }
 
-    // Inside an active booking, the other booking alias or an availability
-    // phrase ("if nine is available, I'll take it") is the same booking,
-    // not a topic switch: no slot reset, no new plan.
+    // Inside an active booking, the other booking alias ("if nine is
+    // available" classified as the generic schedule_appointment) is the same
+    // booking, not a topic switch: no slot reset, no new plan.
     if (
       isBookingIntent(previousIntent)
+      && isBookingIntent(intent)
       && intent !== previousIntent
-      && intent !== 'unknown'
       && !additionalRequest
-      && (isBookingIntent(intent)
-        || (BOOKING_AVAILABILITY_WORDS.test(utterance) && !hasCancelOrRescheduleLanguage(utterance)))
     ) {
       intent = previousIntent;
     }
