@@ -154,6 +154,7 @@ When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback un
 |---|---|
 | `barbershop-basic` | Marco, Andre, Tony. Men's cut "from $35", beard trim "$20", cut and beard combo "$50", hot towel shave unpriced. Open Tue–Sun, closed Monday. Marco is off Wednesdays. Only Marco does cut + beard. |
 | `barbershop-basic:cut-and-beard` | Slots sized for men's cut + beard trim: 45 minutes (base slots are one 30-minute men's cut). |
+| `barbershop-basic:cut-beard-combo` | Slots sized for the cut and beard combo service: 45 minutes. Used by `v1-sched-bb-change-after-readback`, so its corrected 4:30 booking ends at 5:15. |
 | `barbershop-basic:slot-held-by-other-caller` | Marco's 3:30 on Tue Oct 20 is held by another line. |
 | `barbershop-basic:after-same-day-cutoff` | No slots on Tue Oct 20 (`outside_lead_time`); the next open date is Oct 21. |
 | `barbershop-basic:existing-booking` | Luis is confirmed with Marco on Thu Oct 22 at 10:00. |
@@ -162,7 +163,7 @@ When PR-17 lands, `v1-sms-ns-es-different-mobile` still fails on the readback un
 | `nail-salon-basic:gel-plus-removal` | Slots sized for gel manicure + gel removal: 60 minutes (base slots are one 45-minute pedicure). |
 | `nail-salon-basic:sms-disabled` | SMS turned off for the tenant (`messagingEnabled: false`). |
 
-Slot ends come from the services in `slotServiceIds` (sum of `durationMin` + optional `bufferMin`, default 0), and a start is only offered when that whole interval ends by closing. `FakeToolProvider` returns `slot.end` as seeded and doesn't know the requested services, so each seed's slots are sized for one booking; multi-service scenarios use the `cut-and-beard` / `gel-plus-removal` variants (follow-up 5).
+Slot ends come from the services in `slotServiceIds` (sum of `durationMin` + optional `bufferMin`, default 0), and a start is only offered when that whole interval ends by closing. `FakeToolProvider` returns `slot.end` as seeded and doesn't know the requested services, so each seed's slots are sized for one booking; multi-service scenarios use the `cut-and-beard` / `gel-plus-removal` variants, and `v1-sched-bb-change-after-readback` uses `cut-beard-combo` (follow-up 5).
 
 The `sms` and `transferHours` fixture fields are carried into the tenant state but not read by `FakeToolProvider` today. They describe the state the PR-17/PR-26 actions must honor when they replace the fake.
 
@@ -174,4 +175,4 @@ These need changes in `scripts/quality/` (matcher, runner or fake), outside this
 2. **Map Spanish success phrases to their commit.** `unlockCommitForBannedPhrase` only maps English phrases, so `quedó confirmada`, `su cita está confirmada`, `quedó registrado` and the rest never unlock, even after the commit. Map the booking phrases to `scheduling.book.commit` and `quedó registrado` to `tickets.open.commit`.
 3. **Turn-order checks for commits.** Add "commit must come after caller turn N" and "must not happen" (e.g. no `sms.send_confirmation.commit`) assertions. That covers 0.2.2 ("uh-huh" is not a yes) and lets the opt-out scenarios prove no SMS was sent.
 4. **Error-code assertions.** Let an expected action require a failure with a given code (e.g. `RECIPIENT_OPTED_OUT`, `MESSAGING_NOT_ENABLED`). Today the opt-out and flag-off scenarios can only see the refusal through the relayed `callerSafeMessage`.
-5. **Fake derives slot ends from the requested services.** `FakeToolProvider.checkAvailability` should compute each slot's `end` from the request's `serviceIds` (sum of durations plus buffers) and only offer starts where that interval fits the hours and doesn't overlap a held/confirmed booking. Then drop the `cut-and-beard` / `gel-plus-removal` variants and `slotServiceIds`, and point the multi-service scenarios back at the base seeds.
+5. **Fake derives slot ends from the requested services.** `FakeToolProvider.checkAvailability` should compute each slot's `end` from the request's `serviceIds` (sum of durations plus buffers) and only offer starts where that interval fits the hours and doesn't overlap a held/confirmed booking. Then drop the `cut-and-beard` / `gel-plus-removal` / `cut-beard-combo` variants and `slotServiceIds`, and point the multi-service scenarios back at the base seeds. Until then a scenario that books two different-length services can size only one of them: in `v1-sched-bb-change-after-readback` the final combo booking is correct (4:30–5:15), but the superseded 3:30 men's-cut hold is mis-sized at 45 minutes (3:30–4:15, should be 4:00).

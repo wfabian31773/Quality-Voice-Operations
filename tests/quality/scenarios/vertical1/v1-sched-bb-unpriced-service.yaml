@@ -17,6 +17,10 @@ script:
             serviceIds: [hot-towel-shave]
             staffId: andre
             date: "2026-10-23"
+      # The price comes from the catalog: the hot towel shave's priceText is "".
+      - call:
+          name: scheduling.list_services
+          input: {}
       - say: "Andre has Friday at 10:00, 1:00 or 3:30. I don't have a price for the hot towel shave; the shop will confirm the price."
   - on: 1
     steps:
@@ -43,6 +47,7 @@ expect:
       input:
         serviceIds: [hot-towel-shave]
         staffId: andre
+    - name: scheduling.list_services
     - name: scheduling.book.prepare
       input:
         serviceIds: [hot-towel-shave]

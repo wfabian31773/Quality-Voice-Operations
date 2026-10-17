@@ -24,7 +24,14 @@ script:
             serviceIds: [mens-cut]
             staffId: marco
             date: "2026-10-22"
-      - say: "Marco doesn't have anything tomorrow. His next day is Thursday: 10:00, 1:00 or 3:30. Andre and Tony are in tomorrow if you'd rather keep the day."
+      # Who else is in tomorrow: Andre and Tony, 10:00, 1:00, 3:30 or 4:30.
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            date: "2026-10-21"
+      - say: "Marco doesn't have anything tomorrow. His next day is Thursday: 10:00, 1:00 or 3:30. If you'd rather keep the day, Andre and Tony both have 10:00, 1:00, 3:30 or 4:30 tomorrow."
   - on: 1
     steps:
       - call:
@@ -54,6 +61,10 @@ expect:
       input:
         staffId: marco
         date: "2026-10-22"
+    - name: scheduling.check_availability
+      input:
+        staffId: any
+        date: "2026-10-21"
     - name: scheduling.book.prepare
       input:
         staffId: marco

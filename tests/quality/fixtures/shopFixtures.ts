@@ -179,7 +179,19 @@ export function listShopFixtureNames(): string[] {
   });
 }
 
+const built = new Map<string, ShopTenantState>();
+
+/** Fresh, mutable tenant state for `seedName`; the expanded slots are built once per seed. */
 export function buildShopFixture(seedName: string): ShopTenantState {
+  let state = built.get(seedName);
+  if (!state) {
+    state = expandShopFixture(seedName);
+    built.set(seedName, state);
+  }
+  return structuredClone(state);
+}
+
+function expandShopFixture(seedName: string): ShopTenantState {
   const [file, variantName] = seedName.split(':');
   if (!(SHOP_FIXTURE_FILES as readonly string[]).includes(file)) {
     throw new Error(`unknown shop fixture ${seedName}; known: ${listShopFixtureNames().join(', ')}`);

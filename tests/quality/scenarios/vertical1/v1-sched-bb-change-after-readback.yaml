@@ -2,7 +2,10 @@ id: v1-sched-bb-change-after-readback
 template: barbershop
 tools: [scheduling, sms, tickets, business, calls]
 tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.book, spec:1.6-6, spec:0.2-correction, expected-fail]
-seed: barbershop-basic
+# Slots sized for the 45-minute combo, so the corrected 4:30 booking ends at
+# 5:15. The superseded 3:30 men's-cut hold is mis-sized (also 45 minutes)
+# until the fake derives slot ends from the requested services.
+seed: barbershop-basic:cut-beard-combo
 now: "2026-10-20T14:00:00-04:00"
 # FakeToolProvider never releases the first hold, so the 3:30 hold is still
 # there at the end (two rows). PR-13's prepare releases the call's old hold.

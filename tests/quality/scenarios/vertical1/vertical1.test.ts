@@ -100,6 +100,9 @@ const BANNED_ES = [
 
 const scenarios = loadScenarioDir(DIR);
 
+/** Tests that run every scenario back to back outgrow Vitest's 5 s default. */
+const ALL_SCENARIOS_TIMEOUT_MS = 60_000;
+
 function category(id: string): string {
   return id.split('-')[1];
 }
@@ -185,6 +188,17 @@ describe('vertical1 shop fixtures', () => {
     // Sunday closes at 4: a 3:30 cut fits, a 3:30 cut + beard (until 4:15) doesn't.
     expect(slotAt('barbershop-basic', 'marco', '2026-10-25T15:30:00-04:00')?.end).toBe('2026-10-25T16:00:00-04:00');
     expect(slotAt('barbershop-basic:cut-and-beard', 'marco', '2026-10-25T15:30:00-04:00')).toBeUndefined();
+    // The cut and beard combo is one 45-minute service: Marco's 4:30 today runs to 5:15.
+    expect(slotAt('barbershop-basic:cut-beard-combo', 'marco', '2026-10-20T16:30:00-04:00')?.end).toBe('2026-10-20T17:15:00-04:00');
+  });
+
+  it('hands out a fresh copy of the seed on every build', () => {
+    const first = buildShopFixture('barbershop-basic:existing-booking');
+    first.bookings[0].status = 'cancelled';
+    first.slots.pop();
+    const second = buildShopFixture('barbershop-basic:existing-booking');
+    expect(second.bookings[0].status).toBe('confirmed');
+    expect(second.slots).toHaveLength(first.slots.length + 1);
   });
 });
 
@@ -246,7 +260,7 @@ describe('vertical1 scenario pack: deterministic run', () => {
     for (const row of report.expectedFailed) byPr[row.expectedFail] = (byPr[row.expectedFail] ?? 0) + 1;
     expect(byPr).toEqual({ 'PR-13': 1, 'PR-14': 1, 'PR-17': 6, 'PR-20': 1, 'PR-26': 1, 'matcher-es-readback': 3 });
     console.log(formatHumanSummary(report));
-  });
+  }, ALL_SCENARIOS_TIMEOUT_MS);
 
   it.each(Object.entries(EXPECTED_FAIL))('%s fails only on its pinned checks', async (id, entry) => {
     const scenario = scenarios.find((row) => row.id === id);
@@ -271,5 +285,5 @@ describe('vertical1 scenario pack: deterministic run', () => {
       if (result.status !== 'failed') stillPassing.push(scenario.id);
     }
     expect(stillPassing).toEqual([]);
-  });
+  }, ALL_SCENARIOS_TIMEOUT_MS);
 });

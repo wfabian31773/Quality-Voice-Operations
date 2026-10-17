@@ -64,6 +64,9 @@ variants:
   # Cut + beard trim in one booking: slots are 45 minutes (30 + 15).
   cut-and-beard:
     slotServiceIds: [mens-cut, beard-trim]
+  # The cut and beard combo service: slots are 45 minutes.
+  cut-beard-combo:
+    slotServiceIds: [cut-beard-combo]
   # Another caller (a different line) holds Marco's 3:30 today.
   slot-held-by-other-caller:
     bookings:
