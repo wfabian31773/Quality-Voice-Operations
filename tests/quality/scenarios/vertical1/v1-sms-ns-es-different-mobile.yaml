@@ -1,0 +1,81 @@
+id: v1-sms-ns-es-different-mobile
+template: nail_salon
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:sms, tool:scheduling, template:nail_salon, lang:es, action:sms.send_confirmation, spec:2.5-different-number, expected-fail]
+seed: nail-salon-basic
+now: "2026-10-20T14:00:00-04:00"
+# sms.send_confirmation.* is not in FakeToolProvider.
+expectedFail: PR-17
+caller:
+  - text: "Hola, una pedicura con Mai el viernes a las 10. Soy Lucía."
+  - text: "Sí. Y mándeme la confirmación a mi celular, el 555-555-0199, no a este."
+  - text: "Sí, a ese número."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [pedicure]
+            staffId: mai
+            date: "2026-10-23"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [pedicure]
+            staffId: mai
+            start: "2026-10-23T10:00:00-04:00"
+            customer:
+              name: Lucía
+              phone: "+15555550166"
+      - say: "Le confirmo: {{readback}}. ¿Es correcto?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Listo, su cita con Mai quedó confirmada para el viernes a las 10."
+      # A different mobile number gets its own readback.
+      - call:
+          name: sms.send_confirmation.prepare
+          input:
+            bookingId: "{{bookingId}}"
+            kind: confirmation
+            to: "+15555550199"
+      - say: "{{readback}}"
+  - on: 2
+    steps:
+      - call:
+          name: sms.send_confirmation.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Listo, la confirmación va en camino al número que termina en 0199."
+expect:
+  actions:
+    - name: scheduling.book.commit
+    - name: sms.send_confirmation.prepare
+      input:
+        kind: confirmation
+        to: "+15555550199"
+    - name: sms.send_confirmation.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: mai
+          date: "2026-10-23"
+          startLocal: "10:00"
+  mustSay:
+    - "0199"
+  mustNotSay:
+    - "I've texted you"
+    - "you're booked"
+    - "I've sent"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

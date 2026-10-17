@@ -1,0 +1,51 @@
+id: v1-transfer-bb-asks-for-person
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:calls, template:barbershop, lang:en, action:calls.transfer_to_human, spec:6-transfer]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Can I talk to Marco, please?"
+  - text: "Yes, please."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: calls.transfer_to_human.prepare
+          input:
+            target: Marco
+      - say: "{{readback}}. Okay?"
+  - on: 1
+    steps:
+      - call:
+          name: calls.transfer_to_human.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Connecting you to Marco now."
+expect:
+  actions:
+    - name: calls.transfer_to_human.prepare
+      input:
+        target: Marco
+    - name: calls.transfer_to_human.commit
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 0
+    transfers:
+      count: 1
+      to: Marco
+      status: committed
+  mustSay:
+    - "Marco"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

@@ -1,0 +1,75 @@
+id: v1-sms-bb-es-opted-out
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:sms, tool:scheduling, template:barbershop, lang:es, action:sms.send_confirmation, spec:2.6-1, spec:2.5-opted-out]
+# Jorge (+15555550188) texted STOP last month.
+seed: barbershop-basic:sms-opted-out
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Hola, un corte con Andre mañana a la 1, y mándeme un mensaje de confirmación. Soy Jorge."
+  - text: "Sí, correcto."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: andre
+            date: "2026-10-21"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: andre
+            start: "2026-10-21T13:00:00-04:00"
+            customer:
+              name: Jorge
+              phone: "+15555550188"
+      - say: "Le confirmo: {{readback}}. ¿Es correcto?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - call:
+          name: sms.send_confirmation.prepare
+          input:
+            bookingId: "{{bookingId}}"
+            kind: confirmation
+      - say: "Listo, su cita con Andre quedó confirmada para mañana a la 1. No puedo enviarle mensajes de texto a este número; la barbería le confirmará por otro medio, o puede llamarnos."
+expect:
+  actions:
+    - name: scheduling.book.prepare
+      input:
+        staffId: andre
+        customer:
+          name: Jorge
+          phone: "+15555550188"
+    - name: scheduling.book.commit
+    - name: sms.send_confirmation.prepare
+      input:
+        kind: confirmation
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: andre
+          date: "2026-10-21"
+          startLocal: "13:00"
+  mustSay:
+    - "No puedo enviarle mensajes"
+  mustNotSay:
+    - "le envié"
+    - "le mandé el mensaje"
+    - "le llegará un mensaje"
+    - "I've texted you"
+    - "you're booked"
+    - "I've sent"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "ya le avisé"
+  readbackRequired: true

@@ -1,0 +1,73 @@
+id: v1-sched-bb-unpriced-service
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.book, spec:1.6-13, spec:1.5-price-text, spec:0.2-facts-from-reads]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Can I book a hot towel shave with Andre on Friday? How much is it?"
+  - text: "1:00 is fine. Luis."
+  - text: "Yes."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [hot-towel-shave]
+            staffId: andre
+            date: "2026-10-23"
+      - say: "Andre has Friday at 10:00, 1:00 or 3:30. I don't have a price for the hot towel shave; the shop will confirm the price."
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [hot-towel-shave]
+            staffId: andre
+            start: "2026-10-23T13:00:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. The shop will confirm the price. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked with Andre on Friday at 1."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        serviceIds: [hot-towel-shave]
+        staffId: andre
+    - name: scheduling.book.prepare
+      input:
+        serviceIds: [hot-towel-shave]
+        staffId: andre
+        start: "2026-10-23T13:00:00-04:00"
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: andre
+          date: "2026-10-23"
+          startLocal: "13:00"
+  mustSay:
+    - "the shop will confirm the price"
+  mustNotSay:
+    # No invented price for an unpriced service.
+    - "$"
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

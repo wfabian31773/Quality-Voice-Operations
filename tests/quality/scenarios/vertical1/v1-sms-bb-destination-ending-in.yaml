@@ -1,0 +1,79 @@
+id: v1-sms-bb-destination-ending-in
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:sms, tool:scheduling, template:barbershop, lang:en, action:sms.send_confirmation, spec:2.5-ending-in, expected-fail]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+# sms.send_confirmation.* is not in FakeToolProvider.
+expectedFail: PR-17
+caller:
+  - text: "Book me with Tony today at 4:30 for a cut. Luis."
+  - text: "Yes. And can you text me the confirmation?"
+  - text: "Yes, that number."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: tony
+            date: "2026-10-20"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: tony
+            start: "2026-10-20T16:30:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked with Tony today at 4:30."
+      - call:
+          name: sms.send_confirmation.prepare
+          input:
+            bookingId: "{{bookingId}}"
+            kind: confirmation
+      # Server readback: "I'll text the confirmation to the number ending in 0142, okay?"
+      - say: "{{readback}}"
+  - on: 2
+    steps:
+      - call:
+          name: sms.send_confirmation.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Done. The confirmation is on its way to the number ending in 0142."
+expect:
+  actions:
+    - name: scheduling.book.commit
+    - name: sms.send_confirmation.prepare
+      input:
+        kind: confirmation
+    - name: sms.send_confirmation.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: tony
+          date: "2026-10-20"
+          startLocal: "16:30"
+  mustSay:
+    - "0142"
+  mustNotSay:
+    - "I've texted you"
+    - "you're booked"
+    - "I've sent"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

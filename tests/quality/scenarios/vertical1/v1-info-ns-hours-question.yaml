@@ -1,0 +1,42 @@
+id: v1-info-ns-hours-question
+template: nail_salon
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:business, template:nail_salon, lang:en, action:business.get_info, spec:0.2-facts-from-reads, spec:6-get-info]
+seed: nail-salon-basic
+# Saturday; the caller asks about tomorrow (Sunday, closed).
+now: "2026-10-24T11:00:00-04:00"
+caller:
+  - text: "Are you open tomorrow?"
+  - text: "Okay, thanks. Bye."
+script:
+  - on: 0
+    steps:
+      # Hours come from business.get_info, never from the prompt.
+      - call:
+          name: business.get_info
+          input: {}
+      - say: "We're closed on Sunday. We're open Monday to Saturday, 9:30 to 7."
+  - on: 1
+    steps:
+      - say: "Thanks for calling. Bye."
+expect:
+  actions:
+    - name: business.get_info
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 0
+    transfers:
+      count: 0
+  mustSay:
+    - "closed on Sunday"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"

@@ -1,0 +1,91 @@
+# Seed fixture: barbershop-basic (PR-12, scenario pack vertical1).
+# Built into a TenantState by tests/quality/fixtures/shopFixtures.ts.
+# Seed names: `barbershop-basic` or `barbershop-basic:<variant>`.
+name: barbershop-basic
+template: barbershop
+timezone: America/New_York
+transferTarget: Marco
+address: 212 Fulton Avenue
+hoursText: "Tuesday to Friday 9 to 7, Saturday 8 to 5, Sunday 10 to 4. Closed Monday."
+# Weekly business hours (local). A missing day is closed.
+hours:
+  tue: ["09:00", "19:00"]
+  wed: ["09:00", "19:00"]
+  thu: ["09:00", "19:00"]
+  fri: ["09:00", "19:00"]
+  sat: ["08:00", "17:00"]
+  sun: ["10:00", "16:00"]
+slotMinutes: 30
+# Free start times each working barber has on each open day, after existing
+# bookings. Times that would run past closing are dropped.
+openTimes: ["10:00", "13:00", "15:30", "16:30"]
+dateRange:
+  from: "2026-10-19"
+  to: "2026-11-08"
+staff:
+  - id: marco
+    displayName: Marco
+    serviceIds: [mens-cut, beard-trim, cut-beard-combo, hot-towel-shave]
+    daysOff: [wed]
+  - id: andre
+    displayName: Andre
+    serviceIds: [mens-cut, hot-towel-shave]
+  - id: tony
+    displayName: Tony
+    serviceIds: [mens-cut]
+# priceText kinds: "from" price, fixed price, and one unpriced service ("").
+services:
+  - id: mens-cut
+    name: men's cut
+    durationMin: 30
+    priceText: from $35
+  - id: beard-trim
+    name: beard trim
+    durationMin: 15
+    priceText: $20
+  - id: cut-beard-combo
+    name: cut and beard combo
+    durationMin: 45
+    priceText: $50
+  - id: hot-towel-shave
+    name: hot towel shave
+    durationMin: 30
+    priceText: ""
+# Not read by FakeToolProvider today; documents the state the sms.* and
+# calls.* actions (PR-17, PR-26) must honor when they replace the fake.
+sms:
+  messagingEnabled: true
+  optedOut: []
+transferHours:
+  days: [tue, wed, thu, fri, sat, sun]
+variants:
+  # Another caller (a different line) holds Marco's 3:30 today.
+  slot-held-by-other-caller:
+    bookings:
+      - id: hold_other_line
+        status: held
+        staffId: marco
+        serviceIds: [mens-cut]
+        start: "2026-10-20T15:30:00-04:00"
+        customerName: Jordan
+        customerPhone: "+15555550111"
+  # Past today's same-day cutoff: nothing bookable today.
+  after-same-day-cutoff:
+    dropSlotsOn: ["2026-10-20"]
+    reasonIfNoneToday: outside_lead_time
+    nextOpenDate: "2026-10-21"
+  # Luis already has Thursday 10:00 with Marco.
+  existing-booking:
+    bookings:
+      - id: bk_luis_thu
+        status: confirmed
+        staffId: marco
+        serviceIds: [mens-cut]
+        start: "2026-10-22T10:00:00-04:00"
+        customerName: Luis
+        customerPhone: "+15555550142"
+  # These callers texted STOP last month.
+  sms-opted-out:
+    sms:
+      messagingEnabled: true
+      optedOut: ["+15555550142", "+15555550188"]

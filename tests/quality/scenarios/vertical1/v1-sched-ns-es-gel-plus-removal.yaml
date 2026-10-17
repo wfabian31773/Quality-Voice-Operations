@@ -1,0 +1,75 @@
+id: v1-sched-ns-es-gel-plus-removal
+template: nail_salon
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:nail_salon, lang:es, action:scheduling.book, spec:1.6-5, multi-service, add-on]
+seed: nail-salon-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "Hola, quisiera una manicura de gel con Rosa el jueves, y que me quiten el gel viejo."
+  - text: "A la una, por favor. Me llamo Carmen."
+  - text: "Sí, correcto."
+script:
+  - on: 0
+    steps:
+      # Gel removal is an add-on booked with the gel manicure.
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [gel-manicure, gel-removal]
+            staffId: rosa
+            date: "2026-10-22"
+      - say: "Rosa tiene el jueves a las 10:00, a la 1:00 o a las 3:30. ¿Cuál prefiere?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [gel-manicure, gel-removal]
+            staffId: rosa
+            start: "2026-10-22T13:00:00-04:00"
+            customer:
+              name: Carmen
+              phone: "+15555550177"
+      - say: "Le confirmo: {{readback}}. ¿Es correcto?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Listo, su cita con Rosa quedó confirmada para el jueves a la 1:00."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        serviceIds: [gel-manicure, gel-removal]
+        staffId: rosa
+        date: "2026-10-22"
+    - name: scheduling.book.prepare
+      input:
+        serviceIds: [gel-manicure, gel-removal]
+        staffId: rosa
+        start: "2026-10-22T13:00:00-04:00"
+        customer:
+          name: Carmen
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: rosa
+          date: "2026-10-22"
+          startLocal: "13:00"
+  mustSay:
+    - "Rosa"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

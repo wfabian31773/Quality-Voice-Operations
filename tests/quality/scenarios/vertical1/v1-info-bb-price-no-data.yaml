@@ -1,0 +1,41 @@
+id: v1-info-bb-price-no-data
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, tool:business, template:barbershop, lang:en, action:scheduling.list_services, spec:0.2-facts-from-reads, spec:1.6-13]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "How much is a hot towel shave?"
+  - text: "No, that's okay. Thanks."
+script:
+  - on: 0
+    steps:
+      # The hot towel shave has no price in the catalog.
+      - call:
+          name: scheduling.list_services
+          input: {}
+      - say: "I don't have that. The shop will confirm the price. I can take a message for Marco if you'd like."
+  - on: 1
+    steps:
+      - say: "No problem. Thanks for calling."
+expect:
+  actions:
+    - name: scheduling.list_services
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 0
+  mustSay:
+    - "I don't have that"
+  mustNotSay:
+    # No invented price.
+    - "$"
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"

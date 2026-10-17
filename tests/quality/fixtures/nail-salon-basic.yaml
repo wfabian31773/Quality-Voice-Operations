@@ -1,0 +1,64 @@
+# Seed fixture: nail-salon-basic (PR-12, scenario pack vertical1).
+# Built into a TenantState by tests/quality/fixtures/shopFixtures.ts.
+# Seed names: `nail-salon-basic` or `nail-salon-basic:<variant>`.
+name: nail-salon-basic
+template: nail_salon
+timezone: America/New_York
+transferTarget: Linh
+address: 88 Grand Street
+hoursText: "Monday to Saturday, 9:30 to 7. Closed Sunday."
+# Weekly business hours (local). Sunday is closed.
+hours:
+  mon: ["09:30", "19:00"]
+  tue: ["09:30", "19:00"]
+  wed: ["09:30", "19:00"]
+  thu: ["09:30", "19:00"]
+  fri: ["09:30", "19:00"]
+  sat: ["09:30", "19:00"]
+slotMinutes: 45
+openTimes: ["10:00", "13:00", "15:30", "17:00"]
+dateRange:
+  from: "2026-10-19"
+  to: "2026-11-08"
+staff:
+  - id: linh
+    displayName: Linh
+    serviceIds: [manicure, pedicure, gel-manicure, gel-removal]
+  - id: kim
+    displayName: Kim
+    serviceIds: [manicure, pedicure]
+  - id: rosa
+    displayName: Rosa
+    serviceIds: [manicure, gel-manicure, gel-removal]
+  - id: mai
+    displayName: Mai
+    serviceIds: [manicure, pedicure]
+services:
+  - id: manicure
+    name: manicure
+    durationMin: 30
+    priceText: $25
+  - id: pedicure
+    name: pedicure
+    durationMin: 45
+    priceText: $40
+  - id: gel-manicure
+    name: gel manicure
+    durationMin: 45
+    priceText: from $45
+  # Add-on: booked together with a gel manicure.
+  - id: gel-removal
+    name: gel removal
+    durationMin: 15
+    priceText: $10
+sms:
+  messagingEnabled: true
+  optedOut: []
+transferHours:
+  days: [mon, tue, wed, thu, fri, sat]
+variants:
+  # SMS_ENABLED is off for this tenant (A2P not approved yet).
+  sms-disabled:
+    sms:
+      messagingEnabled: false
+      optedOut: []

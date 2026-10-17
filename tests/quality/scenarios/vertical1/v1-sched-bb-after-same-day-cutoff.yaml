@@ -1,0 +1,78 @@
+id: v1-sched-bb-after-same-day-cutoff
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.book, spec:1.6-14, no-availability]
+seed: barbershop-basic:after-same-day-cutoff
+now: "2026-10-20T16:45:00-04:00"
+caller:
+  - text: "What's the earliest anything today? Any barber."
+  - text: "Tomorrow at 10 is fine. Luis."
+  - text: "That's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            date: "2026-10-20"
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            date: "2026-10-21"
+      - say: "We can't take any more bookings for today. The earliest is tomorrow, Wednesday, at 10:00 with Andre or Tony."
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            start: "2026-10-21T10:00:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked tomorrow at 10."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: any
+        date: "2026-10-20"
+    - name: scheduling.check_availability
+      input:
+        staffId: any
+        date: "2026-10-21"
+    - name: scheduling.book.prepare
+      input:
+        start: "2026-10-21T10:00:00-04:00"
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          date: "2026-10-21"
+          startLocal: "10:00"
+  mustSay:
+    - "tomorrow"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true
