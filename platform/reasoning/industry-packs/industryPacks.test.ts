@@ -138,6 +138,12 @@ describe('salon pack rule branches', () => {
     expect(r.additionalContext).toContain('create_booking');
   });
 
+  it('classifies a Spanish booking request', () => {
+    const r = bookingRule.evaluate(ctx('puedo reservar otra cita'));
+    expect(r.triggered).toBe(true);
+    expect(r.additionalContext).toContain('create_booking');
+  });
+
   it('classifies hours questions', () => {
     const r = hoursRule.evaluate(ctx('are you open on Sunday?'));
     expect(r.triggered).toBe(true);

@@ -22,6 +22,7 @@ function classifyBookingRequest(context: ReasoningContext) {
     'haircut', 'fade', 'trim', 'cut', 'color', 'highlight', 'blowout',
     'manicure', 'pedicure', 'nails', 'beard', 'shave', 'stylist',
     'barber', 'appointment', 'book', 'booking', 'schedule', 'slot',
+    'reservar', 'reserva', 'cita', 'agendar', 'hacer una cita',
   ];
   for (const keyword of bookingKeywords) {
     if (utterance.includes(keyword)) {
@@ -155,6 +156,7 @@ export const salonPack: IndustryReasoningPack = {
         'manicure', 'pedicure', 'nails', 'beard', 'shave', 'stylist',
         'barber', 'appointment', 'book', 'booking', 'schedule', 'slot',
         'come in', 'cut my hair',
+        'reservar', 'reserva', 'cita', 'agendar', 'hacer una cita',
       ],
       confidence: 'high',
     },
