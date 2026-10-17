@@ -8,8 +8,9 @@ export {
   matchMustSay,
   matchReadback,
   partialMatch,
+  unlockCommitForBannedPhrase,
 } from './matcher';
-export { FakeToolProvider, resetFakeTokens } from './fakeToolProvider';
+export { FakeToolProvider, localDate, resetFakeTokens } from './fakeToolProvider';
 export { MemoryTenantStore, PostgresTenantStore, createTenantStore, buildFixture } from './seed';
 export { ScriptedAgent } from './scriptedAgent';
 export { LlmAgent, createLlmAgent, assertLlmModeAllowed } from './llmAgent';

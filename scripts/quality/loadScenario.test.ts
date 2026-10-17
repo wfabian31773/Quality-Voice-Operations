@@ -7,7 +7,7 @@ const minimal = {
   tools: ['scheduling'],
   seed: 'barbershop-marco',
   caller: [{ text: 'hi' }],
-  expect: {},
+  expect: { endState: { bookings: { count: 0 } } },
 };
 
 describe('parseScenario', () => {
@@ -17,7 +17,7 @@ describe('parseScenario', () => {
       tags: ['sample'],
       caller: [{ text: 'hi', silence: 4 }, { text: 'yes', interrupt: true }],
       script: [{ on: 0, steps: [{ say: 'hello' }] }],
-      expect: { readbackRequired: true, mustNotSay: ["you're booked"] },
+      expect: { readbackRequired: true, mustNotSay: ["you're booked"], endState: { bookings: { count: 0 } } },
     });
     expect(scenario.caller[0].silence).toBe(4);
     expect(scenario.caller[1].interrupt).toBe(true);
@@ -27,6 +27,13 @@ describe('parseScenario', () => {
   it('rejects an unknown template and an empty caller list', () => {
     expect(() => parseScenario({ ...minimal, template: 'law_office' })).toThrow(/template/i);
     expect(() => parseScenario({ ...minimal, caller: [] })).toThrow(/caller/i);
+  });
+
+  it('rejects an empty expect so a scenario cannot pass with no assertions', () => {
+    expect(() => parseScenario({ ...minimal, expect: {} })).toThrow(/actions and\/or endState/i);
+    expect(() =>
+      parseScenario({ ...minimal, expect: { mustSay: ['hi'], readbackRequired: true } }),
+    ).toThrow(/actions and\/or endState/i);
   });
 
   it('rejects unknown expectation keys so typos cannot silently drop checks', () => {

@@ -59,6 +59,7 @@ expect:
       items:
         - status: confirmed
           startLocal: "15:30"
+          date: "2026-10-20"
           staffId: marco
           staffName: Marco
   mustSay:

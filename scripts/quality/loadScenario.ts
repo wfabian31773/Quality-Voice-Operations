@@ -31,6 +31,7 @@ const expectedBookingSchema = z
   .object({
     status: z.string().optional(),
     startLocal: z.string().optional(),
+    date: z.string().optional(),
     staffId: z.string().optional(),
     staffName: z.string().optional(),
   })
@@ -104,7 +105,11 @@ const scenarioSchema = z
         mustNotSay: z.array(z.string()).optional(),
         readbackRequired: z.boolean().optional(),
       })
-      .strict(),
+      .strict()
+      .refine((value) => {
+        const hasActions = Array.isArray(value.actions) && value.actions.length > 0;
+        return hasActions || value.endState !== undefined;
+      }, { message: 'expect requires actions and/or endState' }),
     expectedFail: z.string().optional(),
   })
   .strict();

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { FakeToolProvider, resetFakeTokens } from './fakeToolProvider';
+import { FakeToolProvider, localDate, resetFakeTokens } from './fakeToolProvider';
 import { loadScenarioYaml } from './loadScenario';
 import { evaluateExpect, formatDiff } from './matcher';
 import { createTenantStore, type TenantStore } from './seed';
@@ -57,7 +57,11 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
     }
     if (store.flush) await store.flush();
     const snapshot = store.snapshot();
-    const failures = evaluateExpect(scenario.expect, trace, snapshot);
+    const timeZone = store.state.timezone;
+    const failures = evaluateExpect(scenario.expect, trace, snapshot, {
+      date: localDate(now.toISOString(), timeZone),
+      timeZone,
+    });
     const status = classify(scenario, failures);
     return {
       id: scenario.id,

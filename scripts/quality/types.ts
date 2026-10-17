@@ -44,8 +44,16 @@ export type ExpectedAction = {
 export type ExpectedBooking = {
   status?: string;
   startLocal?: string;
+  /** Calendar date (YYYY-MM-DD) the booking must fall on. */
+  date?: string;
   staffId?: string;
   staffName?: string;
+};
+
+export type TimeMatchContext = {
+  /** Scenario local calendar date (YYYY-MM-DD). Bare HH:MM values match only this date. */
+  date: string;
+  timeZone: string;
 };
 
 export type EndStateExpect = {

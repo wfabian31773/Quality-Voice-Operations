@@ -1,19 +1,46 @@
+import { formatLocalHm, localDate } from './fakeToolProvider';
 import type {
   CheckFailure,
   EndSnapshot,
   EndStateExpect,
   ExpectedAction,
   ScenarioExpect,
+  TimeMatchContext,
   TraceEvent,
 } from './types';
 
-export function partialMatch(expected: unknown, actual: unknown): boolean {
+const HM = /^\d{1,2}:\d{2}$/;
+
+function isHourMinute(value: string): boolean {
+  return HM.test(value);
+}
+
+function normalizeHm(value: string): string {
+  const [hour, minute] = value.split(':');
+  return `${hour.padStart(2, '0')}:${minute}`;
+}
+
+function looksLikeInstant(value: string): boolean {
+  return value.includes('T') && !Number.isNaN(Date.parse(value));
+}
+
+function hmMatchesInstant(expectedHm: string, actualIso: string, ctx: TimeMatchContext): boolean {
+  return (
+    formatLocalHm(actualIso, ctx.timeZone) === normalizeHm(expectedHm) &&
+    localDate(actualIso, ctx.timeZone) === ctx.date
+  );
+}
+
+export function partialMatch(expected: unknown, actual: unknown, ctx?: TimeMatchContext): boolean {
   if (expected === undefined) return true;
   if (expected === null) return actual === null;
   if (typeof expected === 'string') {
     if (typeof actual !== 'string') return String(actual) === expected;
     if (actual === expected) return true;
-    return actual.toLowerCase().includes(expected.toLowerCase());
+    if (ctx && isHourMinute(expected) && looksLikeInstant(actual)) {
+      return hmMatchesInstant(expected, actual, ctx);
+    }
+    return false;
   }
   if (typeof expected === 'number' || typeof expected === 'boolean') {
     return expected === actual;
@@ -22,7 +49,7 @@ export function partialMatch(expected: unknown, actual: unknown): boolean {
     if (!Array.isArray(actual)) return false;
     let cursor = 0;
     for (const item of expected) {
-      while (cursor < actual.length && !partialMatch(item, actual[cursor])) cursor += 1;
+      while (cursor < actual.length && !partialMatch(item, actual[cursor], ctx)) cursor += 1;
       if (cursor >= actual.length) return false;
       cursor += 1;
     }
@@ -32,7 +59,7 @@ export function partialMatch(expected: unknown, actual: unknown): boolean {
     if (typeof actual !== 'object' || actual === null || Array.isArray(actual)) return false;
     const actualRecord = actual as Record<string, unknown>;
     for (const [key, value] of Object.entries(expected as Record<string, unknown>)) {
-      if (!partialMatch(value, actualRecord[key])) return false;
+      if (!partialMatch(value, actualRecord[key], ctx)) return false;
     }
     return true;
   }
@@ -56,7 +83,32 @@ export function firstSuccessfulCommitIndex(trace: TraceEvent[]): number {
   return trace.findIndex((event) => event.type === 'tool' && event.name.endsWith('.commit') && event.result.ok);
 }
 
-export function matchActions(expected: ExpectedAction[] | undefined, trace: TraceEvent[]): CheckFailure[] {
+/**
+ * Banned success phrases unlock only after the commit they describe.
+ * Unmapped strings never unlock — a ticket commit must not clear "you're booked".
+ */
+export function unlockCommitForBannedPhrase(phrase: string): string | undefined {
+  const normalized = phrase.toLowerCase();
+  if (/\bbooked\b/.test(normalized)) return 'scheduling.book.commit';
+  if (
+    /i['’]ve let them know/.test(normalized) ||
+    /let them know/.test(normalized) ||
+    /left a message/.test(normalized) ||
+    /\bticket\b/.test(normalized)
+  ) {
+    return 'tickets.open.commit';
+  }
+  if (/\btransfer/.test(normalized) || /connect(?:ing)? you/.test(normalized)) {
+    return 'calls.transfer_to_human.commit';
+  }
+  return undefined;
+}
+
+export function matchActions(
+  expected: ExpectedAction[] | undefined,
+  trace: TraceEvent[],
+  ctx?: TimeMatchContext,
+): CheckFailure[] {
   if (!expected || expected.length === 0) return [];
   const actual = toolEvents(trace);
   const failures: CheckFailure[] = [];
@@ -64,7 +116,7 @@ export function matchActions(expected: ExpectedAction[] | undefined, trace: Trac
   for (const exp of expected) {
     let found = -1;
     for (let i = cursor; i < actual.length; i += 1) {
-      if (actual[i].name === exp.name && partialMatch(exp.input ?? {}, actual[i].input)) {
+      if (actual[i].name === exp.name && partialMatch(exp.input ?? {}, actual[i].input, ctx)) {
         found = i;
         break;
       }
@@ -108,26 +160,31 @@ export function matchMustSay(phrases: string[] | undefined, trace: TraceEvent[])
 
 export function matchMustNotSayBeforeCommit(phrases: string[] | undefined, trace: TraceEvent[]): CheckFailure[] {
   if (!phrases || phrases.length === 0) return [];
-  const commitAt = firstSuccessfulCommitIndex(trace);
-  const failures: CheckFailure[] = [];
-  let index = 0;
-  for (const event of trace) {
-    if (commitAt >= 0 && index >= commitAt) break;
-    if (event.type === 'say') {
-      const lower = event.text.toLowerCase();
-      for (const phrase of phrases) {
-        if (lower.includes(phrase.toLowerCase())) {
-          failures.push({
-            check: 'mustNotSay',
-            message: `said ${JSON.stringify(phrase)} before commit succeeded`,
-            expected: { bannedUntilCommit: phrase },
-            actual: event.text,
-          });
-        }
-      }
+  const firstSuccessByName = new Map<string, number>();
+  trace.forEach((event, index) => {
+    if (event.type === 'tool' && event.name.endsWith('.commit') && event.result.ok) {
+      if (!firstSuccessByName.has(event.name)) firstSuccessByName.set(event.name, index);
     }
-    index += 1;
-  }
+  });
+  const failures: CheckFailure[] = [];
+  trace.forEach((event, index) => {
+    if (event.type !== 'say') return;
+    const lower = event.text.toLowerCase();
+    for (const phrase of phrases) {
+      if (!lower.includes(phrase.toLowerCase())) continue;
+      const commit = unlockCommitForBannedPhrase(phrase);
+      const unlockedAt = commit ? firstSuccessByName.get(commit) : undefined;
+      if (commit && unlockedAt !== undefined && index > unlockedAt) continue;
+      failures.push({
+        check: 'mustNotSay',
+        message: commit
+          ? `said ${JSON.stringify(phrase)} before ${commit} succeeded`
+          : `said ${JSON.stringify(phrase)} (not tied to a commit; never unlocks)`,
+        expected: { bannedUntilCommit: phrase, commit: commit ?? null },
+        actual: event.text,
+      });
+    }
+  });
   return failures;
 }
 
@@ -154,30 +211,76 @@ export function matchReadback(required: boolean | undefined, trace: TraceEvent[]
   for (const prepare of prepares) {
     const prepareIndex = trace.indexOf(prepare.event);
     const commitName = prepare.event.name.replace(/\.prepare$/, '.commit');
-    const window: TraceEvent[] = [];
+    let spokenIndex = -1;
+    let commitIndex = -1;
     for (let i = prepareIndex + 1; i < trace.length; i += 1) {
       const later = trace[i];
-      if (later.type === 'tool' && later.name === commitName) break;
-      window.push(later);
+      if (later.type === 'tool' && later.name === commitName) {
+        commitIndex = i;
+        break;
+      }
+      if (
+        spokenIndex < 0 &&
+        later.type === 'say' &&
+        normalizeSpeech(later.text).includes(normalizeSpeech(prepare.readback))
+      ) {
+        spokenIndex = i;
+      }
     }
-    const spoken = window.filter((event): event is Extract<TraceEvent, { type: 'say' }> => event.type === 'say');
-    if (!spoken.some((event) => normalizeSpeech(event.text).includes(normalizeSpeech(prepare.readback)))) {
+    if (spokenIndex < 0) {
       failures.push({
         check: 'readbackRequired',
         message: `${prepare.event.name} readback was not spoken before ${commitName}`,
         expected: prepare.readback,
-        actual: spoken.map((event) => event.text),
+        actual: trace
+          .slice(prepareIndex + 1, commitIndex >= 0 ? commitIndex : undefined)
+          .filter((event): event is Extract<TraceEvent, { type: 'say' }> => event.type === 'say')
+          .map((event) => event.text),
       });
+      continue;
+    }
+    if (commitIndex >= 0) {
+      const confirmed = trace
+        .slice(spokenIndex + 1, commitIndex)
+        .some((event) => event.type === 'caller');
+      if (!confirmed) {
+        failures.push({
+          check: 'readbackRequired',
+          message: `${prepare.event.name} readback and ${commitName} ran in the same turn; caller must confirm after the spoken readback`,
+          expected: prepare.readback,
+          actual: trace[spokenIndex].type === 'say' ? trace[spokenIndex].text : undefined,
+        });
+      }
     }
   }
   return failures;
 }
 
-function localMatches(expected: string, booking: EndSnapshot['bookings'][number]): boolean {
-  return booking.startLocal === expected || booking.start.includes(expected);
+function localMatches(
+  expected: string,
+  booking: EndSnapshot['bookings'][number],
+  ctx: TimeMatchContext | undefined,
+  itemDate: string | undefined,
+): boolean {
+  const date = itemDate ?? ctx?.date;
+  const timeZone = ctx?.timeZone;
+  if (isHourMinute(expected)) {
+    if (booking.startLocal !== normalizeHm(expected)) return false;
+    if (!date || !timeZone) return false;
+    return localDate(booking.start, timeZone) === date;
+  }
+  if (booking.start === expected || booking.startLocal === expected) return true;
+  if (ctx && looksLikeInstant(expected)) {
+    return booking.start === expected;
+  }
+  return false;
 }
 
-export function matchEndState(expected: EndStateExpect | undefined, snapshot: EndSnapshot): CheckFailure[] {
+export function matchEndState(
+  expected: EndStateExpect | undefined,
+  snapshot: EndSnapshot,
+  ctx?: TimeMatchContext,
+): CheckFailure[] {
   if (!expected) return [];
   const failures: CheckFailure[] = [];
   if (expected.bookings) {
@@ -189,6 +292,7 @@ export function matchEndState(expected: EndStateExpect | undefined, snapshot: En
         actual: snapshot.bookings.map((row) => ({
           status: row.status,
           startLocal: row.startLocal,
+          date: ctx ? localDate(row.start, ctx.timeZone) : undefined,
           staffId: row.staffId,
           staffName: row.staffName,
         })),
@@ -200,7 +304,8 @@ export function matchEndState(expected: EndStateExpect | undefined, snapshot: En
           (!item.status || row.status === item.status) &&
           (!item.staffId || row.staffId === item.staffId) &&
           (!item.staffName || row.staffName === item.staffName) &&
-          (!item.startLocal || localMatches(item.startLocal, row)),
+          (!item.startLocal || localMatches(item.startLocal, row, ctx, item.date)) &&
+          (!item.date || (ctx ? localDate(row.start, ctx.timeZone) === item.date : false)),
       );
       if (!match) {
         failures.push({
@@ -213,12 +318,7 @@ export function matchEndState(expected: EndStateExpect | undefined, snapshot: En
     }
   }
   if (expected.tickets) {
-    const rows = snapshot.tickets.filter((row) => {
-      if (expected.tickets?.status && row.status !== expected.tickets.status) return false;
-      if (expected.tickets?.kind && row.kind !== expected.tickets.kind) return false;
-      return true;
-    });
-    if (expected.tickets.count !== undefined && rows.length !== expected.tickets.count) {
+    if (expected.tickets.count !== undefined && snapshot.tickets.length !== expected.tickets.count) {
       failures.push({
         check: 'endState',
         message: 'tickets count',
@@ -226,17 +326,37 @@ export function matchEndState(expected: EndStateExpect | undefined, snapshot: En
         actual: snapshot.tickets,
       });
     }
+    if (expected.tickets.status && snapshot.tickets.some((row) => row.status !== expected.tickets?.status)) {
+      failures.push({
+        check: 'endState',
+        message: 'tickets status',
+        expected: expected.tickets.status,
+        actual: snapshot.tickets,
+      });
+    }
+    if (expected.tickets.kind && snapshot.tickets.some((row) => row.kind !== expected.tickets?.kind)) {
+      failures.push({
+        check: 'endState',
+        message: 'tickets kind',
+        expected: expected.tickets.kind,
+        actual: snapshot.tickets,
+      });
+    }
   }
   if (expected.transfers) {
-    const rows = snapshot.transfers.filter((row) => {
-      if (expected.transfers?.to && row.to !== expected.transfers.to) return false;
-      return row.status === 'committed';
-    });
-    if (expected.transfers.count !== undefined && rows.length !== expected.transfers.count) {
+    if (expected.transfers.count !== undefined && snapshot.transfers.length !== expected.transfers.count) {
       failures.push({
         check: 'endState',
         message: 'transfers count',
         expected: expected.transfers,
+        actual: snapshot.transfers,
+      });
+    }
+    if (expected.transfers.to && snapshot.transfers.some((row) => row.to !== expected.transfers?.to)) {
+      failures.push({
+        check: 'endState',
+        message: 'transfers to',
+        expected: expected.transfers.to,
         actual: snapshot.transfers,
       });
     }
@@ -252,10 +372,15 @@ export function matchEndState(expected: EndStateExpect | undefined, snapshot: En
   return failures;
 }
 
-export function evaluateExpect(expect: ScenarioExpect, trace: TraceEvent[], snapshot: EndSnapshot): CheckFailure[] {
+export function evaluateExpect(
+  expect: ScenarioExpect,
+  trace: TraceEvent[],
+  snapshot: EndSnapshot,
+  ctx?: TimeMatchContext,
+): CheckFailure[] {
   return [
-    ...matchActions(expect.actions, trace),
-    ...matchEndState(expect.endState, snapshot),
+    ...matchActions(expect.actions, trace, ctx),
+    ...matchEndState(expect.endState, snapshot, ctx),
     ...matchMustSay(expect.mustSay, trace),
     ...matchMustNotSayBeforeCommit(expect.mustNotSay, trace),
     ...matchReadback(expect.readbackRequired, trace),
