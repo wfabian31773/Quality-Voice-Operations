@@ -96,6 +96,16 @@ describe('tool library catalog', () => {
     expect(tools[0]).toMatchObject({ name: 'send_sms' });
     expect(tools[1].parameters.required).toEqual(expect.arrayContaining(['subject', 'description']));
   });
+
+  it('makes send_sms template-only: templateKey + vars, no free-text body', () => {
+    const params = getToolLibraryEntry('send_sms')!.parameters;
+    expect(Object.keys(params.properties).sort()).toEqual(['templateKey', 'toNumber', 'vars']);
+    expect(params.properties).not.toHaveProperty('body');
+    expect(params.required).toEqual(['templateKey', 'vars']);
+    expect(params.additionalProperties).toBe(false);
+    expect(params.properties.templateKey).toMatchObject({ type: 'string', enum: ['confirmation', 'directions', 'link'] });
+    expect(params.properties.vars).toMatchObject({ type: 'object' });
+  });
 });
 
 describe('tool library handlers', () => {

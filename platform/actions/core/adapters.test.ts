@@ -195,6 +195,21 @@ describe('adapters', () => {
     });
     expect(actionFail('CONFLICT', 'taken', { alternatives: [{ start: 'x' }] }).ok).toBe(false);
   });
+
+  it('maps the SMS send-policy codes to their statuses, not 500', () => {
+    const expected: Partial<Record<ActionErrorCode, number>> = {
+      RECIPIENT_OPTED_OUT: 422,
+      MESSAGING_NOT_ENABLED: 403,
+      QUIET_HOURS: 202,
+      INVALID_NUMBER: 400,
+      UPSTREAM_UNAVAILABLE: 502,
+    };
+    for (const [code, status] of Object.entries(expected) as [ActionErrorCode, number][]) {
+      expect(ACTION_ERROR_CODES).toContain(code);
+      expect(HTTP_STATUS_BY_ERROR[code]).toBe(status);
+      expect(httpStatusFor(actionFail(code, code))).toBe(status);
+    }
+  });
 });
 
 describe('zodToJsonSchema', () => {

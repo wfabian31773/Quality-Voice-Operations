@@ -329,6 +329,81 @@ describe('POST /twilio/sms', () => {
     expect(m.addToDncMock).toHaveBeenCalledWith('t1', '+15551112222', 'sms', expect.any(String));
   });
 
+  it.each(['START', ' unstop '])('records %s as opt_in and lifts the SMS-sourced DNC entry', async (keyword) => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
+    m.poolQueryMock.mockResolvedValue({ rows: [], rowCount: 1 });
+    const res = await form(request(app()).post('/twilio/sms'), { ...base, Body: keyword });
+    expect(res.status).toBe(200);
+    expect(m.smsService.logConsent).toHaveBeenCalledWith('t1', '+15551112222', 'opt_in', keyword.trim(), 'inbound_sms', 'SM1');
+    const dncDelete = m.poolQueryMock.mock.calls.find(([sql]) => String(sql).includes('DELETE FROM dnc_list'));
+    expect(dncDelete?.[0]).toContain("source = 'sms'");
+    expect(dncDelete?.[1]).toEqual(['t1', '+15551112222']);
+    expect(m.addToDncMock).not.toHaveBeenCalled();
+  });
+
+  it('does not treat ordinary messages as opt-in', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
+    await form(request(app()).post('/twilio/sms'), { ...base, Body: 'start time?' });
+    expect(m.smsService.logConsent).not.toHaveBeenCalled();
+    expect(m.poolQueryMock.mock.calls.some(([sql]) => String(sql).includes('dnc_list'))).toBe(false);
+  });
+
+  it('STOP then START re-enables chokepoint sends; STOP alone keeps them refused', async () => {
+    // The consent rows the route writes are what sms.send reads (latest opt_in/opt_out wins).
+    const consentLog: Array<{ phone: string; action: string }> = [];
+    m.smsService.logConsent = vi.fn(async (_t: string, phone: string, action: string) => {
+      consentLog.push({ phone, action });
+    });
+    m.isSmsOptOutMock.mockImplementation((b: string) => b.trim().toLowerCase() === 'stop');
+    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
+
+    const { createSmsSendAction, sendSystemSms } = await import('../../../platform/actions/sms/send');
+    const { createMemoryStore } = await import('../../../platform/actions/core');
+    const transport = { defaultFromNumber: vi.fn(async () => '+15553334444'), send: vi.fn(async () => ({ sid: 'SMx' })) };
+    const action = createSmsSendAction({
+      store: {
+        isTenantMessagingEnabled: async () => true,
+        isTenantSender: async () => true,
+        latestConsentAction: async (_tx, _t, phone) =>
+          (consentLog.filter((c) => c.phone === phone && c.action !== 'help_request').at(-1)?.action ?? null) as
+            | 'opt_in'
+            | 'opt_out'
+            | null,
+        reserveOutbound: async () => ({ reserved: true }),
+        reserveDeferredSend: async () => ({ reserved: true }),
+        insertOutbound: async () => {},
+        updateOutbound: async () => {},
+        claimDueDeferred: async () => [],
+      },
+      transport,
+      quietHours: { isAllowed: async () => true, nextWindowStart: async (_t, _to, now) => now },
+      config: {
+        smsEnabled: () => true,
+        liveCallExemptSeconds: () => 60,
+        rateLimit: () => ({ max: 0, windowMs: 0 }),
+        statusCallbackUrl: () => null,
+      },
+    });
+    const memory = createMemoryStore();
+    const runtime = { store: memory, withTenantTx: memory.withTenantTx.bind(memory) };
+    const send = () =>
+      sendSystemSms(
+        { tenantId: 't1', to: '+15551112222', templateKey: 'directions', vars: { businessName: 'Fade Lab', address: '12 Main St' }, purpose: 'transactional' },
+        { action, runtime },
+      );
+
+    await form(request(app()).post('/twilio/sms'), { ...base, Body: 'STOP', MessageSid: 'SM-stop' });
+    const refused = await send();
+    expect(refused.ok ? null : refused.error.code).toBe('RECIPIENT_OPTED_OUT');
+    expect(transport.send).not.toHaveBeenCalled();
+
+    await form(request(app()).post('/twilio/sms'), { ...base, Body: 'START', MessageSid: 'SM-start' });
+    expect(consentLog.map((c) => c.action)).toEqual(['opt_out', 'opt_in']);
+    const sent = await send();
+    expect(sent).toMatchObject({ ok: true, data: { status: 'queued' } });
+    expect(transport.send).toHaveBeenCalledTimes(1);
+  });
+
   it('records a CSAT reply and short-circuits without an auto-reply', async () => {
     m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
     m.csatService.tryRecordSmsCsatResponse = vi.fn().mockResolvedValue({ handled: true, csat: { id: 'cs1' } });
