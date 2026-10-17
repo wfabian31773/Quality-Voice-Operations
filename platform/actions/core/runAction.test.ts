@@ -7,7 +7,7 @@ import {
   createEchoWriteAction,
 } from './__fixtures__/echo';
 import { defineAction } from './defineAction';
-import { actionOk } from './errors';
+import { actionFail, actionOk } from './errors';
 import { createMemoryStore } from './memoryStore';
 import { consumeProposal, createProposal } from './proposals';
 import { runAction, runActionDefinition } from './runAction';
@@ -299,6 +299,95 @@ describe('runAction', () => {
     const { deps } = runtime([def]);
     const result = await runAction('core.bad_output', ctx(), {}, deps);
     expectFail(result, 'INTERNAL');
+  });
+
+  it('rolls back a write when output validation fails and does not complete idempotency', async () => {
+    let staging = 0;
+    const def = defineAction({
+      name: 'core.bad_write_output',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ message: z.string() }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async () => {
+        staging += 1;
+        return actionOk({ echoed: 12 as unknown as string });
+      },
+    });
+    const store = createMemoryStore();
+    const result = await runAction(
+      'core.bad_write_output',
+      ctx({ idempotencyKey: 'bad-out' }),
+      { message: 'x' },
+      {
+        store,
+        registry: [def],
+        withTenantTx: async (_tenantId, fn) => {
+          const snapshot = staging;
+          try {
+            const value = await fn({ query: async () => ({ rows: [], rowCount: 0 }) });
+            return value;
+          } catch (err) {
+            staging = snapshot;
+            throw err;
+          }
+        },
+      },
+    );
+    expectFail(result, 'INTERNAL');
+    expect(staging).toBe(0);
+    expect([...store.idempotency.values()].every((row) => row.status !== 'completed')).toBe(true);
+  });
+
+  it('does not finalize idempotency for retryable failures so a retry re-runs', async () => {
+    const side = { count: 0 };
+    const def = defineAction({
+      name: 'core.rate_limited',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ message: z.string() }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async (_c, input) => {
+        side.count += 1;
+        if (side.count === 1) return actionFail('RATE_LIMITED', 'slow down');
+        return actionOk({ echoed: input.message });
+      },
+    });
+    const { store, deps } = runtime([def]);
+    const first = await runAction(
+      'core.rate_limited',
+      ctx({ idempotencyKey: 'retry-1' }),
+      { message: 'hi' },
+      deps,
+    );
+    expectFail(first, 'RATE_LIMITED');
+    expect([...store.idempotency.values()]).toHaveLength(0);
+    const second = await runAction(
+      'core.rate_limited',
+      ctx({ idempotencyKey: 'retry-1' }),
+      { message: 'hi' },
+      deps,
+    );
+    expect(second).toEqual({ ok: true, data: { echoed: 'hi' } });
+    expect(side.count).toBe(2);
+  });
+
+  it('returns VALIDATION_FAILED even when the audit transaction cannot start', async () => {
+    const result = await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'no-begin' }),
+      { phone: '+15550142' },
+      {
+        store: createMemoryStore(),
+        registry: [createEchoWriteAction({ count: 0 })],
+        withTenantTx: async () => {
+          throw new Error('cannot BEGIN');
+        },
+      },
+    );
+    expectFail(result, 'VALIDATION_FAILED', 'message');
   });
 
   it('denies users when the allowed role list is empty', async () => {

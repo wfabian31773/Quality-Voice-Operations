@@ -69,6 +69,10 @@ export interface ActionStore {
     tx: TenantTx,
     input: { tenantId: string; action: string; key: string; response: ActionResult; now: Date },
   ): Promise<void>;
+  releaseIdempotency(
+    tx: TenantTx,
+    input: { tenantId: string; action: string; key: string },
+  ): Promise<void>;
   createProposal(tx: TenantTx, ctx: ActionContext, input: CreateProposalInput): Promise<ProposalRecord>;
   consumeProposal(tx: TenantTx, ctx: ActionContext, input: ConsumeProposalInput): Promise<ProposalRecord | null>;
   inspectProposal(tx: TenantTx, ctx: ActionContext, id: string): Promise<ProposalRecord | null>;

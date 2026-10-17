@@ -15,8 +15,13 @@ export {
   toHttpHandler,
   httpStatusFor,
   HTTP_STATUS_BY_ERROR,
+  OPENAI_TOOL_NAME,
+  sanitizeExternalToolName,
+  assignExternalToolNames,
+  actionNameFromExternal,
   type AgentToolSchema,
   type McpToolSchema,
+  type ExternalToolNames,
   type ActionHttpRequest,
   type ActionHttpResponse,
 } from './adapters';

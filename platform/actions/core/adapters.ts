@@ -1,19 +1,71 @@
+import { createHash } from 'node:crypto';
 import { actionFail } from './errors';
 import { zodToJsonSchema } from './jsonSchema';
 import { runActionDefinition, type ActionRuntime } from './runAction';
 import type { ActionContext, ActionDefinition, ActionErrorCode, ActionResult, Actor } from './types';
 
+export const OPENAI_TOOL_NAME = /^[a-zA-Z0-9_-]{1,64}$/;
+
 export interface AgentToolSchema {
   name: string;
+  actionName: string;
   description: string;
   agentDescription: string;
   parameters: Record<string, unknown>;
 }
 
-export function toAgentToolSchema<I, O>(def: ActionDefinition<I, O>): AgentToolSchema {
+export interface ExternalToolNames {
+  toExternal: Map<string, string>;
+  toAction: Map<string, string>;
+}
+
+/** OpenAI-safe form of an action name. Dots and other punctuation become `_`. */
+export function sanitizeExternalToolName(actionName: string): string {
+  const cleaned = actionName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  const base = cleaned.length > 0 ? cleaned : 'action';
+  return base.slice(0, 64);
+}
+
+function hashedExternalName(actionName: string, used: Set<string>): string {
+  const digest = createHash('sha256').update(actionName).digest('hex').slice(0, 8);
+  const prefix = sanitizeExternalToolName(actionName).slice(0, 55);
+  let candidate = `${prefix}_${digest}`.slice(0, 64);
+  let n = 0;
+  while (used.has(candidate) || !OPENAI_TOOL_NAME.test(candidate)) {
+    n += 1;
+    candidate = `${prefix}_${digest}${n}`.slice(0, 64);
+  }
+  return candidate;
+}
+
+/** Deterministic, collision-checked external names plus a reverse dispatch map. */
+export function assignExternalToolNames(actionNames: Iterable<string>): ExternalToolNames {
+  const toExternal = new Map<string, string>();
+  const toAction = new Map<string, string>();
+  const used = new Set<string>();
+  for (const actionName of [...actionNames].sort()) {
+    let candidate = sanitizeExternalToolName(actionName);
+    if (used.has(candidate)) candidate = hashedExternalName(actionName, used);
+    used.add(candidate);
+    toExternal.set(actionName, candidate);
+    toAction.set(candidate, actionName);
+  }
+  return { toExternal, toAction };
+}
+
+export function actionNameFromExternal(external: string, names: ExternalToolNames): string | undefined {
+  return names.toAction.get(external);
+}
+
+export function toAgentToolSchema<I, O>(
+  def: ActionDefinition<I, O>,
+  names?: ExternalToolNames,
+): AgentToolSchema {
   const agentDescription = def.agentDescription ?? def.name;
+  const name = names?.toExternal.get(def.name) ?? sanitizeExternalToolName(def.name);
   return {
-    name: def.name,
+    name,
+    actionName: def.name,
     description: agentDescription,
     agentDescription,
     parameters: zodToJsonSchema(def.input),

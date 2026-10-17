@@ -88,6 +88,9 @@ export function createMemoryStore(): MemoryActionStore {
       existing.status = 'completed';
       existing.response = cloneResult(input.response);
     },
+    async releaseIdempotency(_tx, input): Promise<void> {
+      idempotency.delete(idempKey(input.tenantId, input.action, input.key));
+    },
     async createProposal(_tx, ctx, input): Promise<ProposalRecord> {
       const record: ProposalRecord = {
         id: randomUUID(),

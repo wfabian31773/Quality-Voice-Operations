@@ -46,6 +46,10 @@ function resultCode(result: ActionResult): string {
   return result.ok ? 'ok' : result.error.code;
 }
 
+function shouldFinalizeIdempotency(result: ActionResult): boolean {
+  return result.ok || result.error.retryable !== true;
+}
+
 async function withAuditSavepoint(tx: TenantTx, fn: () => Promise<void>): Promise<void> {
   let opened = false;
   try {
@@ -111,6 +115,22 @@ export async function runActionDefinition<I, O>(
   );
 }
 
+async function auditBestEffort(
+  withTenantTx: <T>(tenantId: string, fn: (tx: TenantTx) => Promise<T>) => Promise<T>,
+  store: ActionStore,
+  ctx: ActionContext,
+  action: string,
+  input: unknown,
+  result: ActionResult,
+  startedAt: number,
+): Promise<void> {
+  try {
+    await withTenantTx(ctx.tenantId, (tx) => writeAudit(store, tx, ctx, action, input, result, startedAt));
+  } catch {
+    // Validation/permission responses must not depend on audit being available.
+  }
+}
+
 async function execute<I, O>(
   def: ActionDefinition<I, O>,
   ctx: ActionContext,
@@ -123,13 +143,13 @@ async function execute<I, O>(
   const parsed = def.input.safeParse(rawInput);
   if (!parsed.success) {
     const failed = validationError(parsed.error);
-    await withTenantTx(ctx.tenantId, (tx) => writeAudit(store, tx, ctx, def.name, rawInput, failed, startedAt));
+    await auditBestEffort(withTenantTx, store, ctx, def.name, rawInput, failed, startedAt);
     return failed;
   }
 
   const denied = checkPermission(def, ctx.actor);
   if (denied) {
-    await withTenantTx(ctx.tenantId, (tx) => writeAudit(store, tx, ctx, def.name, parsed.data, denied, startedAt));
+    await auditBestEffort(withTenantTx, store, ctx, def.name, parsed.data, denied, startedAt);
     return denied;
   }
 
@@ -142,7 +162,7 @@ async function execute<I, O>(
     const failed = actionFail('VALIDATION_FAILED', 'Idempotency key is required for writes', {
       field: 'idempotencyKey',
     });
-    await withTenantTx(ctx.tenantId, (tx) => writeAudit(store, tx, ctx, def.name, parsed.data, failed, startedAt));
+    await auditBestEffort(withTenantTx, store, ctx, def.name, parsed.data, failed, startedAt);
     return failed;
   }
 
@@ -180,24 +200,27 @@ async function execute<I, O>(
       if (result.ok) {
         const out = def.output.safeParse(result.data);
         if (!out.success) {
-          result = actionFail(
-            'INTERNAL',
-            `Action ${def.name} returned data that did not match its output schema`,
-            { callerSafeMessage: 'Something went wrong on our side. Please try again.', retryable: true },
-          ) as ActionResult<O>;
-        } else {
-          result = { ...result, data: out.data };
+          throw new Error(`Action ${def.name} returned data that did not match its output schema`);
         }
+        result = { ...result, data: out.data };
       }
 
       if (isWriteKind(def.kind) && idempotencyKey) {
-        await store.completeIdempotency(tx, {
-          tenantId: ctx.tenantId,
-          action: def.name,
-          key: idempotencyKey,
-          response: result,
-          now: ctx.now,
-        });
+        if (shouldFinalizeIdempotency(result)) {
+          await store.completeIdempotency(tx, {
+            tenantId: ctx.tenantId,
+            action: def.name,
+            key: idempotencyKey,
+            response: result,
+            now: ctx.now,
+          });
+        } else {
+          await store.releaseIdempotency(tx, {
+            tenantId: ctx.tenantId,
+            action: def.name,
+            key: idempotencyKey,
+          });
+        }
       }
       await writeAudit(store, tx, boundCtx, def.name, parsed.data, result, startedAt);
       return result;
@@ -227,7 +250,7 @@ export async function runAction(
     const withTenantTx = runtime.withTenantTx ?? defaultWithTenantTx;
     const startedAt = performance.now();
     await runWithActionStore(store, () =>
-      withTenantTx(ctx.tenantId, (tx) => writeAudit(store, tx, ctx, name, input, failed, startedAt)),
+      auditBestEffort(withTenantTx, store, ctx, name, input, failed, startedAt),
     );
     return failed;
   }

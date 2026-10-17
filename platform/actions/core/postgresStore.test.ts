@@ -230,6 +230,12 @@ describe('postgresActionStore', () => {
       response: { ok: true, data: { echoed: 'hi' } },
       now,
     });
+    await postgresActionStore.releaseIdempotency(client, {
+      tenantId: 't1',
+      action: 'core.echo.write',
+      key: 'k',
+    });
+    expect(calls.some((c) => c.sql.includes('DELETE FROM action_idempotency'))).toBe(true);
     await postgresActionStore.insertAudit(client, {
       tenantId: 't1',
       action: 'core.echo.write',

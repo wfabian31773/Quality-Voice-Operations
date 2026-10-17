@@ -141,6 +141,14 @@ export const postgresActionStore: ActionStore = {
     );
   },
 
+  async releaseIdempotency(tx, input): Promise<void> {
+    await tx.query(
+      `DELETE FROM action_idempotency
+        WHERE tenant_id = $1 AND action = $2 AND key = $3`,
+      [input.tenantId, input.action, input.key],
+    );
+  },
+
   async createProposal(tx, ctx, input): Promise<ProposalRecord> {
     const id = randomUUID();
     const result = await tx.query(

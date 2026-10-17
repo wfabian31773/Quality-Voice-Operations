@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createEchoWriteAction } from './__fixtures__/echo';
-import { HTTP_STATUS_BY_ERROR, httpStatusFor, toAgentToolSchema, toHttpHandler, toMcpTool } from './adapters';
+import {
+  OPENAI_TOOL_NAME,
+  actionNameFromExternal,
+  assignExternalToolNames,
+  HTTP_STATUS_BY_ERROR,
+  httpStatusFor,
+  sanitizeExternalToolName,
+  toAgentToolSchema,
+  toHttpHandler,
+  toMcpTool,
+} from './adapters';
 import { defineAction } from './defineAction';
 import { actionFail, actionOk } from './errors';
 import { zodToJsonSchema } from './jsonSchema';
@@ -13,7 +23,8 @@ describe('adapters', () => {
 
   it('builds an agent tool schema with JSON schema and agentDescription', () => {
     expect(toAgentToolSchema(echo)).toEqual({
-      name: 'core.echo.write',
+      name: 'core_echo_write',
+      actionName: 'core.echo.write',
       description: 'Echo a message as a write. Fixture used only in tests.',
       agentDescription: 'Echo a message as a write. Fixture used only in tests.',
       parameters: {
@@ -147,7 +158,27 @@ describe('adapters', () => {
       run: async () => actionOk({}),
     });
     expect(toAgentToolSchema(nameless).agentDescription).toBe('core.plain');
+    expect(toAgentToolSchema(nameless).name).toBe('core_plain');
     expect(toMcpTool(nameless).description).toBe('core.plain');
+  });
+
+  it('maps dotted action names to OpenAI-safe tool names with a reverse dispatch map', () => {
+    const schema = toAgentToolSchema(echo);
+    expect(schema.name).toMatch(OPENAI_TOOL_NAME);
+    expect(schema.name).toBe('core_echo_write');
+    expect(schema.actionName).toBe('core.echo.write');
+
+    const names = assignExternalToolNames(['core.echo.write', 'core_echo_write', `${'a'.repeat(80)}.z`]);
+    expect(names.toExternal.get('core.echo.write')).toBe('core_echo_write');
+    expect(names.toExternal.get('core_echo_write')).not.toBe('core_echo_write');
+    expect(names.toExternal.get('core_echo_write')).toMatch(OPENAI_TOOL_NAME);
+    expect(actionNameFromExternal('core_echo_write', names)).toBe('core.echo.write');
+    expect(actionNameFromExternal(names.toExternal.get('core_echo_write')!, names)).toBe('core_echo_write');
+    const long = names.toExternal.get(`${'a'.repeat(80)}.z`)!;
+    expect(long.length).toBeLessThanOrEqual(64);
+    expect(long).toMatch(OPENAI_TOOL_NAME);
+    expect(sanitizeExternalToolName('core.echo.write')).toBe('core_echo_write');
+    expect(toAgentToolSchema(echo, names).name).toBe('core_echo_write');
   });
 
   it('maps every error code to an HTTP status', () => {

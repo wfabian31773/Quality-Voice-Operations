@@ -12,6 +12,7 @@ import {
   createEchoWriteAction,
 } from './__fixtures__/echo';
 import { defineAction } from './defineAction';
+import { actionOk } from './errors';
 import { postgresActionStore } from './postgresStore';
 import { runActionDefinition } from './runAction';
 import type { ActionContext, TenantTx } from './types';
@@ -421,6 +422,52 @@ describe.skipIf(skipReason !== null)('action layer postgres integration', () => 
     expect(proposals.rows).toHaveLength(0);
     const idem = await currentPool.query(
       `SELECT status, response FROM action_idempotency WHERE tenant_id = $1 AND key = 'throw-pg'`,
+      [tenantId],
+    );
+    expect(idem.rows).toHaveLength(0);
+  });
+
+  it('rolls back a write when output validation fails', async () => {
+    const tenantId = randomUUID();
+    await currentPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'BadOut', `bo-${tenantId.slice(0, 8)}`],
+    );
+    const def = defineAction({
+      name: 'core.pg_bad_output',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ message: z.string() }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async (actionCtx, _input, tx) => {
+        await tx.query(
+          `INSERT INTO action_proposals (tenant_id, action, payload_hash, payload, readback, expires_at)
+           VALUES ($1, 'core.pg_bad_output', $2, '{}'::jsonb, 'x', NOW() + interval '5 minutes')`,
+          [actionCtx.tenantId, 'c'.repeat(64)],
+        );
+        return actionOk({ echoed: 12 as unknown as string });
+      },
+    });
+    const result = await runActionDefinition(
+      def,
+      { ...makeCtx(tenantId), idempotencyKey: 'bad-out-pg' },
+      { message: 'x' },
+      {
+        store: postgresActionStore,
+        withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withTenantTx(currentPool, id, fn),
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('INTERNAL');
+    const proposals = await currentPool.query(
+      `SELECT 1 FROM action_proposals WHERE tenant_id = $1 AND action = 'core.pg_bad_output'`,
+      [tenantId],
+    );
+    expect(proposals.rows).toHaveLength(0);
+    const idem = await currentPool.query(
+      `SELECT 1 FROM action_idempotency WHERE tenant_id = $1 AND key = 'bad-out-pg'`,
       [tenantId],
     );
     expect(idem.rows).toHaveLength(0);
