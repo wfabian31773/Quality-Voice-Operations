@@ -58,7 +58,7 @@ const RLS_TABLES = [
   'agents', 'phone_numbers', 'call_sessions', 'integrations',
   'connector_configs', 'campaigns', 'campaign_contacts',
   'audit_logs', 'api_keys', 'user_roles', 'analytics_metrics',
-  'encryption_keys', 'encrypted_fields', 'gdpr_requests',
+  'encryption_keys', 'encrypted_fields', 'gdpr_requests', 'tickets',
 ];
 
 /**

@@ -12,14 +12,20 @@ describe('action registry', () => {
   it('imports each tool folder and starts empty', () => {
     expect(schedulingActions).toEqual([]);
     expect(smsActions).toEqual([]);
-    expect(ticketsActions).toEqual([]);
     expect(businessActions).toEqual([]);
     expect(callsActions).toEqual([]);
     expect(dispatchActions).toEqual([]);
     expect(ordersActions).toEqual([]);
-    expect(ACTION_REGISTRY).toEqual([]);
-    expect(listActions()).toEqual([]);
     expect(getAction('scheduling.book.commit')).toBeUndefined();
+  });
+
+  it('registers the ticket actions with unique names', () => {
+    expect(ticketsActions.length).toBeGreaterThan(0);
+    expect(ACTION_REGISTRY).toEqual(expect.arrayContaining(ticketsActions));
+    expect(listActions()).toEqual(ACTION_REGISTRY);
+    expect(getAction('tickets.open.commit')?.tool).toBe('tickets');
+    const names = ACTION_REGISTRY.map((def) => def.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it('runAction uses the empty registry by default', async () => {
