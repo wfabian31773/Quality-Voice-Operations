@@ -33,6 +33,11 @@ type FixtureVariant = {
   transferHours?: TransferHours;
   /** Services this variant's slots are sized for; overrides `slotServiceIds`. */
   slotServiceIds?: string[];
+  /**
+   * The call's trusted caller ID (call_sessions.caller_number; null = blocked).
+   * A scenario's `callerId` overrides it.
+   */
+  callerNumber?: string | null;
 };
 
 export type TransferHours = { days: Weekday[] };
@@ -56,6 +61,8 @@ export type ShopFixture = {
   services: FixtureService[];
   sms: SmsSettings;
   transferHours: TransferHours;
+  /** scheduling_booking_rules.cancellation_window_hours (reschedule/cancel policy). */
+  cancellationWindowHours: number;
   variants?: Record<string, FixtureVariant>;
 };
 
@@ -225,6 +232,8 @@ function expandShopFixture(seedName: string): ShopTenantState {
     transfers: [],
     waitlist: [],
     holds: {},
+    callerNumber: variant.callerNumber ?? null,
+    cancellationWindowHours: fixture.cancellationWindowHours,
     sms: { ...(variant.sms ?? fixture.sms) },
     transferHours: { ...(variant.transferHours ?? fixture.transferHours) },
   };

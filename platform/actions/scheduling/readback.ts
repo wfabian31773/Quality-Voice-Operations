@@ -145,6 +145,13 @@ export function cancelledReadback(
   return `Cancelled: ${facts.customerName}'s ${services} with ${facts.staffName}, ${facts.when}.`;
 }
 
+/** One find_bookings result as the agent says it: "Men's cut with Marco, Thursday at 10 AM, for Luis." */
+export function foundBookingLine(facts: Omit<BookingFacts, 'phone'>, lang: ReadbackLang): string {
+  const services = serviceList(facts.serviceNames, lang);
+  if (lang === 'es') return `${services} con ${facts.staffName}, ${facts.when}, para ${facts.customerName}.`;
+  return `${services} with ${facts.staffName}, ${facts.when}, for ${facts.customerName}.`;
+}
+
 // ─── caller-safe messages ───
 
 const MESSAGES = {

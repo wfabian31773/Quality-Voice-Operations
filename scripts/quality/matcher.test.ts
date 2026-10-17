@@ -179,6 +179,19 @@ describe('mustNotSay before the matching commit', () => {
     expect(unlockCommitForBannedPhrase('connecting you')).toBe('calls.transfer_to_human.commit');
     expect(unlockCommitForBannedPhrase("I've sent")).toBeUndefined();
     expect(unlockCommitForBannedPhrase('your order is in')).toBeUndefined();
+    expect(unlockCommitForBannedPhrase("I've moved")).toBe('scheduling.reschedule.commit');
+    expect(unlockCommitForBannedPhrase("I've cancelled")).toBe('scheduling.cancel.commit');
+    expect(unlockCommitForBannedPhrase('it has been canceled')).toBe('scheduling.cancel.commit');
+  });
+
+  it('unlocks "I\'ve cancelled" only after scheduling.cancel.commit succeeded, not a reschedule or book commit', () => {
+    const said: TraceEvent = { type: 'say', text: "I've cancelled Saturday's appointment." };
+    const before = [said, tool('scheduling.cancel.commit', {})];
+    expect(matchMustNotSayBeforeCommit(["I've cancelled"], before)[0]?.message).toBe(
+      `said "I've cancelled" before scheduling.cancel.commit succeeded`,
+    );
+    expect(matchMustNotSayBeforeCommit(["I've cancelled"], [tool('scheduling.book.commit', {}), said])).toHaveLength(1);
+    expect(matchMustNotSayBeforeCommit(["I've cancelled"], [tool('scheduling.cancel.commit', {}), said])).toEqual([]);
   });
 });
 

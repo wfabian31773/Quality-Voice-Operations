@@ -16,8 +16,8 @@ import {
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
-/** The only PRs a vertical1 scenario may wait on (task brief). PR-13 landed. */
-const ALLOWED_EXPECTED_FAIL = ['PR-14', 'PR-17', 'PR-20', 'PR-26'];
+/** The only PRs a vertical1 scenario may wait on (task brief). PR-13 and PR-14 landed. */
+const ALLOWED_EXPECTED_FAIL = ['PR-17', 'PR-20', 'PR-26'];
 
 /**
  * Harness follow-ups no product PR fixes. `matcher-es-readback`: readbackRequired
@@ -38,14 +38,6 @@ const BOOK_READBACK_NOT_SPOKEN: PinnedFailure = [
  * or broken script can't pass as the expected failure.
  */
 const EXPECTED_FAIL: Record<string, { pr: string; failures: PinnedFailure[] }> = {
-  'v1-sched-bb-reschedule-verified': {
-    pr: 'PR-14',
-    failures: [
-      ['actions', 'scheduling.reschedule.commit ran but did not succeed'],
-      ['endState', 'no booking matched'],
-      ['readbackRequired', 'no successful prepare returned a readback'],
-    ],
-  },
   'v1-sms-bb-opted-out-no-text-claim': {
     pr: 'PR-17',
     failures: [['mustSay', `agent never said "I can't text this number"`]],
@@ -169,6 +161,17 @@ describe('vertical1 shop fixtures', () => {
     expect(() => buildShopFixture('barbershop-basic:nope')).toThrow(/unknown shop fixture/);
   });
 
+  it('carries the trusted caller ID and the cancellation window into the tenant state', () => {
+    expect(buildShopFixture('barbershop-basic').callerNumber).toBeNull();
+    expect(buildShopFixture('barbershop-basic:existing-booking').callerNumber).toBe('+15555550142');
+    expect(buildShopFixture('barbershop-basic:existing-booking').cancellationWindowHours).toBe(24);
+    const family = buildShopFixture('barbershop-basic:family-on-one-phone');
+    expect(family.bookings.map((row) => [row.customerName, row.customerPhone, row.staffName])).toEqual([
+      ['Luis Garcia', '+15555550142', 'Marco'],
+      ['Luis Garcia Jr.', '+15555550142', 'Andre'],
+    ]);
+  });
+
   it('carries transferHours into the tenant state', () => {
     const { transferHours } = buildShopFixture('barbershop-basic');
     expect(transferHours.days).toEqual(['tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
@@ -202,17 +205,17 @@ describe('vertical1 shop fixtures', () => {
 });
 
 describe('vertical1 scenario pack: shape', () => {
-  it('loads all 31 scenarios with unique ids matching file names', () => {
+  it('loads all 34 scenarios with unique ids matching file names', () => {
     const files = readdirSync(DIR).filter((name) => name.endsWith('.yaml')).sort();
-    expect(files).toHaveLength(31);
-    expect(scenarios).toHaveLength(31);
+    expect(files).toHaveLength(34);
+    expect(scenarios).toHaveLength(34);
     expect(scenarios.map((scenario) => `${scenario.id}.yaml`)).toEqual(files);
   });
 
   it('spreads across scheduling, SMS, tickets and transfer/knowledge', () => {
     const counts: Record<string, number> = {};
     for (const scenario of scenarios) counts[category(scenario.id)] = (counts[category(scenario.id)] ?? 0) + 1;
-    expect(counts).toEqual({ sched: 15, sms: 6, tickets: 6, transfer: 2, info: 2 });
+    expect(counts).toEqual({ sched: 18, sms: 6, tickets: 6, transfer: 2, info: 2 });
   });
 
   it('includes Spanish callers in scheduling, SMS and tickets', () => {
@@ -254,10 +257,10 @@ describe('vertical1 scenario pack: deterministic run', () => {
       Object.fromEntries(Object.entries(EXPECTED_FAIL).map(([id, entry]) => [id, entry.pr])),
     );
     // Totals quoted in COVERAGE.md.
-    expect(report.passed).toHaveLength(19);
+    expect(report.passed).toHaveLength(23);
     const byPr: Record<string, number> = {};
     for (const row of report.expectedFailed) byPr[row.expectedFail] = (byPr[row.expectedFail] ?? 0) + 1;
-    expect(byPr).toEqual({ 'PR-14': 1, 'PR-17': 6, 'PR-20': 1, 'PR-26': 1, 'matcher-es-readback': 3 });
+    expect(byPr).toEqual({ 'PR-17': 6, 'PR-20': 1, 'PR-26': 1, 'matcher-es-readback': 3 });
     console.log(formatHumanSummary(report));
   }, ALL_SCENARIOS_TIMEOUT_MS);
 

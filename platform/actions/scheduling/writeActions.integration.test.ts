@@ -1,9 +1,10 @@
 // @vitest-environment node
-// Scheduling write actions (PR-13) through runAction against a throwaway
-// local Postgres (all migrations), with the real postgres action store
-// (action_proposals / action_idempotency) and every transaction running as
-// the NOBYPASSRLS tester role bound to app.tenant_id, like withTenantClient.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+// Scheduling write actions (PR-13) and find_bookings + the agent identity
+// rules (PR-14) through runAction against a throwaway local Postgres (all
+// migrations), with the real postgres action store (action_proposals /
+// action_idempotency) and every transaction running as the NOBYPASSRLS
+// tester role bound to app.tenant_id, like withTenantClient.
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Client, Pool, type PoolClient } from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +17,7 @@ import {
   type ActionResult,
   type TenantTx,
 } from '../index';
+import { createPiiLookupHashRecord } from '../../security/PiiLookupHash';
 import { bookPrepareAction } from './book';
 import { runHoldSweepCycle, type HoldSweepDeps } from './holdSweeper';
 
@@ -539,7 +541,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       expect((await live(shop.tenantId)).map((r) => r.id)).toEqual([soon]);
     });
 
-    it('offers alternatives when the new time is taken, and is not open to the agent yet', async () => {
+    it('offers alternatives when the new time is taken; an agent without a verified find gets NOT_FOUND', async () => {
       const shop = await seedShop('resched2');
       const original = await confirmedBooking(shop, edt(22, '10:00'));
       await confirmedBooking(shop, edt(23, '14:00'), { callId: 'CA-2' });
@@ -548,7 +550,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       expect(taken.code).toBe('CONFLICT');
       expect((taken.alternatives as unknown[]).length).toBeGreaterThan(0);
       const agent = errorOf(await act('scheduling.reschedule.prepare', ctx(shop.tenantId), { bookingId: original, newStart: edt(23, '15:00') }));
-      expect(agent.code).toBe('FORBIDDEN');
+      expect(agent.code).toBe('NOT_FOUND');
       const missing = errorOf(await act('scheduling.reschedule.prepare', admin, { bookingId: 'nope', newStart: edt(23, '15:00') }));
       expect(missing.code).toBe('NOT_FOUND');
     });
@@ -588,6 +590,422 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       await pool.query(`UPDATE bookings SET start_time = $2, end_time = $3 WHERE id = $1`, [booking, edt(22, '11:00'), edt(22, '11:30')]);
       expect(errorOf(await act('scheduling.cancel.commit', admin, { confirmationToken: p.confirmationToken })).code).toBe('CONFLICT');
       expect((await bookingRows(shop.tenantId))[0].status).toBe('confirmed');
+    });
+  });
+
+  describe('scheduling.find_bookings and the agent identity rules (PR-14, spec §0.2.6)', () => {
+    const PHONE = '+15555550142';
+    const STAFF = { type: 'user' as const, id: 'u-staff', role: 'staff' };
+
+    /** A call_sessions row (the trusted caller ID); callerNumber null = blocked. */
+    async function call(tenantId: string, callerNumber: string | null, extra: Record<string, unknown> = {}): Promise<string> {
+      const id = `CA-${randomUUID()}`;
+      await insert('call_sessions', { id, tenant_id: tenantId, caller_number: callerNumber, ...extra });
+      return id;
+    }
+
+    /** A booking written straight to the table, as the admin routes or a past call left it. */
+    function booking(shop: Shop, start: string, extra: Record<string, unknown> = {}): Promise<string> {
+      return insert('bookings', {
+        tenant_id: shop.tenantId, title: "Men's cut", provider_id: shop.marco, appointment_type_id: shop.cut,
+        status: 'confirmed', contact_name: 'Luis', contact_phone: PHONE,
+        start_time: start, end_time: new Date(Date.parse(start) + minutes(30)).toISOString(), ...extra,
+      });
+    }
+
+    const agentIn = (shop: Shop, callId: string | undefined, extra: Partial<ActionContext> = {}) =>
+      ctx(shop.tenantId, { callId, ...extra });
+
+    type Found = { verified: boolean; bookings: Array<Record<string, unknown>>; needs?: string; matchCount?: number };
+    const find = async (c: ActionContext, input: Record<string, unknown>) => data<Found>(await act('scheduling.find_bookings', c, input));
+    const ids = (found: Found) => found.bookings.map((b) => b.bookingId);
+    const REFUSED_NAME = { verified: false, bookings: [], needs: 'name' };
+    const REFUSED_NDT = { verified: false, bookings: [], needs: 'name_date_time' };
+
+    it('caller-ID match plus the name on the booking returns it verified, with a spoken line', async () => {
+      const shop = await seedShop('find-ok');
+      const id = await booking(shop, edt(22, '10:00'));
+      const c = agentIn(shop, await call(shop.tenantId, PHONE));
+      expect(await find(c, { phone: '(555) 555-0142', name: 'luís' })).toEqual({
+        verified: true,
+        bookings: [{
+          bookingId: id,
+          customerName: 'Luis',
+          serviceNames: ["Men's cut"],
+          staffId: shop.marco,
+          staffName: 'Marco',
+          start: '2026-10-22T14:00:00.000Z',
+          end: '2026-10-22T14:30:00.000Z',
+          spoken: "Men's cut with Marco, Thursday at 10 AM, for Luis.",
+        }],
+      });
+    });
+
+    it('caller-ID match with a wrong name or no name reveals nothing but what to ask for', async () => {
+      const shop = await seedShop('find-name');
+      await booking(shop, edt(22, '10:00'));
+      const c = agentIn(shop, await call(shop.tenantId, PHONE));
+      expect(await find(c, { phone: PHONE, name: 'Ana' })).toEqual(REFUSED_NAME);
+      expect(await find(c, { phone: PHONE, name: 'Ana', date: '2026-10-22', time: '10:00' })).toEqual(REFUSED_NAME);
+      // No name: the caller's own number may hear how many there are, nothing more.
+      expect(await find(c, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 1 });
+      // A wrong name looks exactly like a number with no bookings at all.
+      const empty = agentIn(shop, await call(shop.tenantId, '+15555550199'));
+      expect(await find(empty, { phone: '+15555550199', name: 'Ana' })).toEqual(REFUSED_NAME);
+    });
+
+    it('a different, blocked or missing caller ID needs name + date + time; any one wrong or missing reveals nothing', async () => {
+      const shop = await seedShop('find-ndt');
+      const id = await booking(shop, edt(22, '10:00'));
+      const full = { phone: PHONE, name: 'Luis', date: '2026-10-22', time: '10:00' };
+      const partials = [
+        { ...full, name: 'Ana' },
+        { ...full, date: '2026-10-23' },
+        { ...full, time: '10:30' },
+        { phone: PHONE, name: 'Luis' },
+        { phone: PHONE, name: 'Luis', date: '2026-10-22' },
+        { phone: PHONE, date: '2026-10-22', time: '10:00' },
+      ];
+      const contexts = [
+        agentIn(shop, await call(shop.tenantId, '+15555550199')), // different caller ID
+        agentIn(shop, await call(shop.tenantId, null)), // blocked
+        agentIn(shop, await call(shop.tenantId, 'enc:15555550142')), // unreadable (ciphertext, no lookup hash)
+        agentIn(shop, 'CA-no-session'), // no call_sessions row
+        agentIn(shop, undefined), // no callId
+      ];
+      for (const c of contexts) {
+        expect(ids(await find(c, full))).toEqual([id]);
+        for (const partial of partials) expect(await find(c, partial)).toEqual(REFUSED_NDT);
+      }
+    });
+
+    it('matches an encrypted caller_number through its caller_lookup_hash', async () => {
+      vi.stubEnv('QVO_PII_LOOKUP_HMAC_KEY', 'k'.repeat(48));
+      try {
+        const shop = await seedShop('find-hash');
+        const id = await booking(shop, edt(22, '10:00'));
+        const mine = createPiiLookupHashRecord(shop.tenantId, PHONE, 'caller_memory')!;
+        const other = createPiiLookupHashRecord(shop.tenantId, '+15555550199', 'caller_memory')!;
+        const hashed = (h: typeof mine) => ({ caller_lookup_hash: h.hash, caller_lookup_key_version: h.keyVersion });
+        const c = agentIn(shop, await call(shop.tenantId, 'enc:v1:opaque', hashed(mine)));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([id]);
+        const d = agentIn(shop, await call(shop.tenantId, 'enc:v1:opaque', hashed(other)));
+        expect(await find(d, { phone: PHONE, name: 'Luis' })).toEqual(REFUSED_NDT);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('lists only upcoming confirmed bookings: never past, cancelled, held or superseded', async () => {
+      const shop = await seedShop('find-excl');
+      const upcoming = await booking(shop, edt(22, '10:00'));
+      await booking(shop, edt(19, '07:30')); // earlier today
+      await booking(shop, edt(16, '10:00')); // last Friday
+      await booking(shop, edt(22, '13:00'), { status: 'cancelled' });
+      await booking(shop, edt(22, '15:00'), { status: 'held', hold_expires_at: edt(19, '08:05') });
+      await booking(shop, edt(23, '10:00'), { status: 'rescheduled' });
+      const staff = ctx(shop.tenantId, { actor: STAFF, callId: undefined });
+      expect(ids(await find(staff, { phone: PHONE }))).toEqual([upcoming]);
+      const c = agentIn(shop, await call(shop.tenantId, PHONE));
+      expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([upcoming]);
+      expect(await find(c, { phone: PHONE })).toMatchObject({ matchCount: 1 });
+    });
+
+    it('two family members on one phone: the first name finds both, the full name one (spec §1.6 #12)', async () => {
+      const shop = await seedShop('find-family');
+      const dad = await booking(shop, edt(22, '10:00'), { contact_name: 'Luis Garcia' });
+      const son = await booking(shop, edt(24, '10:00'), { contact_name: 'Luis Garcia Jr.', provider_id: shop.andre });
+      const ana = await booking(shop, edt(23, '10:00'), { contact_name: 'Ana García' });
+      const c = agentIn(shop, await call(shop.tenantId, PHONE));
+      const both = await find(c, { phone: PHONE, name: 'Luis' });
+      expect(both.bookings.map((b) => [b.bookingId, b.customerName, b.staffName])).toEqual([
+        [dad, 'Luis Garcia', 'Marco'],
+        [son, 'Luis Garcia Jr.', 'Andre'],
+      ]);
+      expect(ids(await find(c, { phone: PHONE, name: 'luis garcia jr' }))).toEqual([son]);
+      expect(ids(await find(c, { phone: PHONE, name: 'ana garcia' }))).toEqual([ana]);
+      expect(await find(c, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 3 });
+    });
+
+    it('filters by name, date and time before the result cap: the 25th upcoming booking on one phone is found', async () => {
+      const shop = await seedShop('find-many');
+      const created: string[] = [];
+      for (const day of [20, 21, 22, 23, 24]) {
+        for (const at of ['09:00', '09:30', '10:00', '10:30', '11:00']) created.push(await booking(shop, edt(day, at)));
+      }
+      const last = created[created.length - 1];
+      await pool.query(`UPDATE bookings SET contact_name = 'Mateo Ruiz' WHERE id = $1`, [last]);
+      const exact = { phone: PHONE, name: 'Mateo', date: '2026-10-24', time: '11:00' };
+
+      const staff = ctx(shop.tenantId, { actor: STAFF, callId: undefined });
+      expect(ids(await find(staff, { phone: PHONE }))).toEqual(created.slice(0, 20));
+      expect(ids(await find(staff, exact))).toEqual([last]);
+      expect(ids(await find(staff, { phone: PHONE, name: 'Mateo' }))).toEqual([last]);
+
+      // Agent, caller ID differs: name + date + time of the last one verifies it, and it can be acted on.
+      const c = agentIn(shop, await call(shop.tenantId, '+15555550199'));
+      expect(ids(await find(c, exact))).toEqual([last]);
+      expect(data(await act('scheduling.cancel.prepare', c, { bookingId: last }))).toMatchObject({ confirmationToken: expect.any(String) });
+      // Agent, caller ID matches: the name alone finds it; the count covers every upcoming booking.
+      const mine = agentIn(shop, await call(shop.tenantId, PHONE));
+      expect(ids(await find(mine, { phone: PHONE, name: 'Mateo Ruiz' }))).toEqual([last]);
+      expect(await find(mine, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 25 });
+    });
+
+    it("tenant A never sees tenant B's bookings on the same phone, nor acts on them", async () => {
+      const a = await seedShop('find-iso-a');
+      const b = await seedShop('find-iso-b');
+      const mine = await booking(a, edt(22, '10:00'));
+      const theirs = await booking(b, edt(22, '13:00'));
+      const aCall = await call(a.tenantId, PHONE);
+      const bCall = await call(b.tenantId, PHONE);
+      expect(ids(await find(agentIn(a, aCall), { phone: PHONE, name: 'Luis' }))).toEqual([mine]);
+      expect(ids(await find(ctx(a.tenantId, { actor: STAFF }), { phone: PHONE }))).toEqual([mine]);
+      // B's call is not A's caller ID.
+      expect(await find(agentIn(a, bCall), { phone: PHONE, name: 'Luis' })).toEqual(REFUSED_NDT);
+      // B verified its own booking in its own call; A can't act on it with either callId.
+      expect(ids(await find(agentIn(b, bCall), { phone: PHONE, name: 'Luis' }))).toEqual([theirs]);
+      for (const callId of [aCall, bCall]) {
+        expect(errorOf(await act('scheduling.cancel.prepare', agentIn(a, callId), { bookingId: theirs })).code).toBe('NOT_FOUND');
+        expect(errorOf(await act('scheduling.reschedule.prepare', agentIn(a, callId), { bookingId: theirs, newStart: edt(23, '14:00') })).code).toBe('NOT_FOUND');
+      }
+      expect((await bookingRows(b.tenantId)).map((r) => r.status)).toEqual(['confirmed']);
+    });
+
+    it('staff, UI and MCP get a plain tenant-scoped lookup by phone, with optional filters', async () => {
+      const shop = await seedShop('find-staff');
+      const thu = await booking(shop, edt(22, '10:00'));
+      const fri = await booking(shop, edt(23, '13:00'), { contact_name: 'Mateo' });
+      const staff = ctx(shop.tenantId, { actor: STAFF, callId: undefined });
+      expect(await find(staff, { phone: '555-555-0142' })).toMatchObject({ verified: true, bookings: [{ bookingId: thu }, { bookingId: fri }] });
+      expect(ids(await find(staff, { phone: PHONE, name: 'Mateo' }))).toEqual([fri]);
+      expect(ids(await find(staff, { phone: PHONE, date: '2026-10-22', time: '10:00' }))).toEqual([thu]);
+      const reader = ctx(shop.tenantId, { actor: { type: 'mcp', id: 'bot', scopes: ['qvo:read'] }, callId: undefined });
+      expect(ids(await find(reader, { phone: PHONE }))).toEqual([thu, fri]);
+      const noScope = ctx(shop.tenantId, { actor: { type: 'mcp', id: 'bot', scopes: [] } });
+      expect(errorOf(await act('scheduling.find_bookings', noScope, { phone: PHONE })).code).toBe('FORBIDDEN');
+      expect(errorOf(await act('scheduling.find_bookings', staff, { phone: '12345' }))).toMatchObject({ code: 'VALIDATION_FAILED', field: 'phone' });
+      expect(errorOf(await act('scheduling.find_bookings', staff, { phone: PHONE, time: '3:30 PM' }))).toMatchObject({ code: 'VALIDATION_FAILED', field: 'time' });
+    });
+
+    describe('agent reschedule / cancel', () => {
+      it('moves and cancels after a verified find in the same call', async () => {
+        const shop = await seedShop('agent-happy');
+        const thu = await booking(shop, edt(22, '10:00'));
+        const fri = await booking(shop, edt(23, '10:00'));
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([thu, fri]);
+
+        const p = data<{ confirmationToken: string; holdId: string; readback: string }>(
+          await act('scheduling.reschedule.prepare', c, { bookingId: thu, newStart: edt(22, '14:00') }),
+        );
+        expect(p.readback).toBe("Moving Luis's Men's cut from Thursday at 10 AM with Marco to Thursday at 2 PM with Marco.");
+        expect(data(await act('scheduling.reschedule.commit', c, { confirmationToken: p.confirmationToken }))).toMatchObject({
+          bookingId: p.holdId,
+          previousBookingId: thu,
+          status: 'confirmed',
+          start: '2026-10-22T18:00:00.000Z',
+          readback: "Done: Luis's Men's cut is now Thursday at 2 PM with Marco.",
+        });
+
+        const cp = data<{ confirmationToken: string; readback: string }>(await act('scheduling.cancel.prepare', c, { bookingId: fri, reason: 'Out of town' }));
+        expect(cp.readback).toBe("Cancelling Luis's Men's cut with Marco, Friday at 10 AM.");
+        expect(data(await act('scheduling.cancel.commit', c, { confirmationToken: cp.confirmationToken }))).toMatchObject({
+          bookingId: fri,
+          status: 'cancelled',
+          readback: "Cancelled: Luis's Men's cut with Marco, Friday at 10 AM.",
+        });
+
+        const rows = await bookingRows(shop.tenantId);
+        expect(rows.find((r) => r.id === thu)).toMatchObject({ status: 'rescheduled' });
+        expect(rows.find((r) => r.id === p.holdId)).toMatchObject({ status: 'confirmed', booking_source: 'ai_agent', contact_phone: PHONE });
+        expect(rows.find((r) => r.id === fri)).toMatchObject({ status: 'cancelled', cancellation_reason: 'Out of town' });
+      });
+
+      it('refuses a guessed id, one verified in another call, and an agent without a callId, exactly like an unknown id', async () => {
+        const shop = await seedShop('agent-refuse');
+        const thu = await booking(shop, edt(22, '10:00'));
+        const unknown = errorOf(await act('scheduling.cancel.prepare', agentIn(shop, await call(shop.tenantId, PHONE)), { bookingId: 'nope' }));
+        expect(unknown).toMatchObject({ code: 'NOT_FOUND', message: 'Booking not found', field: 'bookingId', callerSafeMessage: "I couldn't find that appointment." });
+        const refusedBoth = async (c: ActionContext) => {
+          expect(errorOf(await act('scheduling.reschedule.prepare', c, { bookingId: thu, newStart: edt(23, '14:00') }))).toEqual(unknown);
+          expect(errorOf(await act('scheduling.cancel.prepare', c, { bookingId: thu }))).toEqual(unknown);
+        };
+
+        // Guessed: this call never found it, and an unverified find records nothing.
+        const guess = agentIn(shop, await call(shop.tenantId, PHONE));
+        await refusedBoth(guess);
+        expect(await find(guess, { phone: PHONE, name: 'Ana' })).toEqual(REFUSED_NAME);
+        await refusedBoth(guess);
+
+        // Verified in call 1; call 2 (same caller, same tenant) and no callId can't use it.
+        const call1 = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(call1, { phone: PHONE, name: 'Luis' }))).toEqual([thu]);
+        await refusedBoth(agentIn(shop, await call(shop.tenantId, PHONE)));
+        await refusedBoth(agentIn(shop, undefined));
+        // The verification lasts the call, not forever.
+        await refusedBoth({ ...call1, now: new Date(NOW.getTime() + minutes(61)) });
+
+        // The token stays bound to call 1: not another call, not a callId-less agent.
+        const p = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', call1, { bookingId: thu }));
+        const other = errorOf(await act('scheduling.cancel.commit', agentIn(shop, 'CA-other'), { confirmationToken: p.confirmationToken }));
+        expect(['CONFIRMATION_INVALID', 'IDEMPOTENCY_KEY_REUSED']).toContain(other.code);
+        const noCall = errorOf(await act('scheduling.cancel.commit', agentIn(shop, undefined), { confirmationToken: p.confirmationToken }));
+        expect(['CONFIRMATION_INVALID', 'IDEMPOTENCY_KEY_REUSED']).toContain(noCall.code);
+        expect(await bookingRows(shop.tenantId)).toMatchObject([{ id: thu, status: 'confirmed' }]);
+        // Call 1 itself still can.
+        expect(data(await act('scheduling.cancel.commit', call1, { confirmationToken: p.confirmationToken }))).toMatchObject({ status: 'cancelled' });
+      });
+
+      it('refuses a verified booking once staff change its contact name or phone; an unchanged one still works', async () => {
+        const shop = await seedShop('agent-reassigned');
+        const named = await booking(shop, edt(22, '10:00'));
+        const phoned = await booking(shop, edt(23, '10:00'));
+        const kept = await booking(shop, edt(24, '10:00'));
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([named, phoned, kept]);
+        // The verification row carries no raw name or phone.
+        const { rows: proofs } = await pool.query(`SELECT payload::text AS p FROM action_proposals WHERE tenant_id = $1 AND action = 'scheduling.find_bookings'`, [shop.tenantId]);
+        expect(proofs).toHaveLength(1);
+        expect(proofs[0].p).not.toMatch(/Luis|5555550142/);
+
+        // Staff edit the bookings the way the admin update route does: same id, new contact.
+        await pool.query(`UPDATE bookings SET contact_name = 'Ana Ruiz' WHERE id = $1`, [named]);
+        await pool.query(`UPDATE bookings SET contact_phone = '+15555550188' WHERE id = $1`, [phoned]);
+        const unknown = errorOf(await act('scheduling.cancel.prepare', c, { bookingId: 'nope' }));
+        for (const id of [named, phoned]) {
+          expect(errorOf(await act('scheduling.cancel.prepare', c, { bookingId: id }))).toEqual(unknown);
+          expect(errorOf(await act('scheduling.reschedule.prepare', c, { bookingId: id, newStart: edt(26, '14:00') }))).toEqual(unknown);
+        }
+        // A cosmetic edit that keeps the same phone digits and name still counts.
+        await pool.query(`UPDATE bookings SET contact_phone = '(555) 555-0142', contact_name = 'LUIS' WHERE id = $1`, [kept]);
+        expect(data(await act('scheduling.cancel.prepare', c, { bookingId: kept }))).toMatchObject({ confirmationToken: expect.any(String) });
+        expect((await bookingRows(shop.tenantId)).map((r) => r.status)).toEqual(['confirmed', 'confirmed', 'confirmed']);
+      });
+
+      it('refuses an agent commit once staff change the contact name or phone after the prepare; unchanged and staff commits go through', async () => {
+        const shop = await seedShop('agent-commit-identity');
+        const cancelRenamed = await booking(shop, edt(21, '10:00'));
+        const cancelRephoned = await booking(shop, edt(22, '10:00'));
+        const moveRenamed = await booking(shop, edt(23, '10:00'));
+        const moveRephoned = await booking(shop, edt(24, '10:00'));
+        const cancelKept = await booking(shop, edt(26, '10:00'));
+        const moveKept = await booking(shop, edt(26, '11:00'));
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toHaveLength(6);
+        const changed = {
+          code: 'CONFLICT',
+          callerSafeMessage: 'That appointment was just changed by the shop. I can check it again or take a message.',
+        };
+        const snapshot = async (id: string) => (await bookingRows(shop.tenantId)).find((r) => r.id === id);
+
+        // Cancel: staff edit the contact between the agent's prepare and the caller's yes.
+        for (const [id, edit] of [[cancelRenamed, `contact_name = 'Ana Ruiz'`], [cancelRephoned, `contact_phone = '+15555550188'`]]) {
+          const p = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', c, { bookingId: id }));
+          await pool.query(`UPDATE bookings SET ${edit} WHERE id = $1`, [id]);
+          const before = await snapshot(id);
+          expect(errorOf(await act('scheduling.cancel.commit', c, { confirmationToken: p.confirmationToken }))).toMatchObject(changed);
+          expect(await snapshot(id)).toEqual(before);
+          expect(before).toMatchObject({ status: 'confirmed' });
+        }
+
+        // Reschedule: same, and the held new time is never confirmed.
+        for (const [id, edit, to] of [
+          [moveRenamed, `contact_name = 'Ana Ruiz'`, edt(23, '14:00')],
+          [moveRephoned, `contact_phone = '+15555550188'`, edt(24, '14:00')],
+        ]) {
+          const p = data<{ confirmationToken: string; holdId: string }>(await act('scheduling.reschedule.prepare', c, { bookingId: id, newStart: to }));
+          await pool.query(`UPDATE bookings SET ${edit} WHERE id = $1`, [id]);
+          const before = await snapshot(id);
+          expect(errorOf(await act('scheduling.reschedule.commit', c, { confirmationToken: p.confirmationToken }))).toMatchObject(changed);
+          expect(await snapshot(id)).toEqual(before);
+          expect(before).toMatchObject({ status: 'confirmed' });
+          expect((await snapshot(p.holdId))?.status).not.toBe('confirmed');
+        }
+        const confirmed = (await bookingRows(shop.tenantId)).filter((r) => r.status === 'confirmed').map((r) => r.id);
+        expect(confirmed.sort()).toEqual([cancelRenamed, cancelRephoned, moveRenamed, moveRephoned, cancelKept, moveKept].sort());
+
+        // Unchanged (or only a cosmetic edit of the same digits and name): the agent commit goes through.
+        const cp = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', c, { bookingId: cancelKept }));
+        await pool.query(`UPDATE bookings SET contact_phone = '(555) 555-0142', contact_name = 'LUIS' WHERE id = $1`, [cancelKept]);
+        expect(data(await act('scheduling.cancel.commit', c, { confirmationToken: cp.confirmationToken }))).toMatchObject({ bookingId: cancelKept, status: 'cancelled' });
+        const mp = data<{ confirmationToken: string; holdId: string }>(await act('scheduling.reschedule.prepare', c, { bookingId: moveKept, newStart: edt(26, '14:00') }));
+        expect(data(await act('scheduling.reschedule.commit', c, { confirmationToken: mp.confirmationToken }))).toMatchObject({
+          bookingId: mp.holdId,
+          previousBookingId: moveKept,
+          status: 'confirmed',
+        });
+
+        // A staff (MCP admin) commit is not identity-checked: an edit between its prepare and commit is fine.
+        const admin = ctx(shop.tenantId, { actor: ADMIN_BOT, callId: undefined });
+        const sp = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', admin, { bookingId: cancelRenamed }));
+        const sm = data<{ confirmationToken: string; holdId: string }>(await act('scheduling.reschedule.prepare', admin, { bookingId: moveRenamed, newStart: edt(23, '15:00') }));
+        await pool.query(`UPDATE bookings SET contact_name = 'Ana Ruiz Lopez' WHERE id = ANY($1)`, [[cancelRenamed, moveRenamed]]);
+        expect(data(await act('scheduling.cancel.commit', admin, { confirmationToken: sp.confirmationToken }))).toMatchObject({ status: 'cancelled' });
+        expect(data(await act('scheduling.reschedule.commit', admin, { confirmationToken: sm.confirmationToken }))).toMatchObject({ previousBookingId: moveRenamed, status: 'confirmed' });
+
+        const rows = await bookingRows(shop.tenantId);
+        const statusOf = (id: string) => rows.find((r) => r.id === id)?.status;
+        expect([cancelRenamed, cancelRephoned, moveRenamed, moveRephoned, cancelKept, moveKept].map(statusOf))
+          .toEqual(['cancelled', 'confirmed', 'rescheduled', 'confirmed', 'cancelled', 'rescheduled']);
+      });
+
+      it('keeps the policy: OUTSIDE_POLICY inside the cancellation window and once the time has passed', async () => {
+        const shop = await seedShop('agent-policy');
+        const imminent = await booking(shop, edt(19, '08:20'), { provider_id: shop.andre }); // 20 minutes away
+        const soon = await booking(shop, edt(19, '15:00')); // 7 hours away; window 24 h
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([imminent, soon]);
+
+        const policy = "The shop's policy needs at least 24 hours' notice to change or cancel an appointment. I can take a message for the shop.";
+        expect(errorOf(await act('scheduling.reschedule.prepare', c, { bookingId: soon, newStart: edt(23, '14:00') }))).toMatchObject({ code: 'OUTSIDE_POLICY', callerSafeMessage: policy });
+        expect(errorOf(await act('scheduling.cancel.prepare', c, { bookingId: soon }))).toMatchObject({ code: 'OUTSIDE_POLICY', callerSafeMessage: policy });
+        const es = errorOf(await act('scheduling.cancel.prepare', { ...c, locale: 'es' }, { bookingId: soon }));
+        expect(es.callerSafeMessage).toMatch(/^La política del negocio pide al menos 24 horas de aviso.+Puedo dejarle un mensaje al negocio\.$/);
+
+        // Later in the same call the 8:20 has started.
+        const later = { ...c, now: new Date(NOW.getTime() + minutes(25)) };
+        const passed = "That appointment has already started or passed, so I can't change it. I can take a message for the shop.";
+        expect(errorOf(await act('scheduling.reschedule.prepare', later, { bookingId: imminent, newStart: edt(23, '14:00') }))).toMatchObject({ code: 'OUTSIDE_POLICY', callerSafeMessage: passed });
+        expect(errorOf(await act('scheduling.cancel.prepare', later, { bookingId: imminent }))).toMatchObject({ code: 'OUTSIDE_POLICY', callerSafeMessage: passed });
+        expect((await live(shop.tenantId)).map((r) => r.id)).toEqual([imminent, soon]);
+      });
+
+      it('reschedule into a taken slot returns CONFLICT with alternatives and moves nothing', async () => {
+        const shop = await seedShop('agent-taken');
+        const thu = await booking(shop, edt(22, '10:00'));
+        await booking(shop, edt(23, '14:00'), { contact_name: 'Ana', contact_phone: '+15555550188' });
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([thu]);
+        const taken = errorOf(await act('scheduling.reschedule.prepare', c, { bookingId: thu, newStart: edt(23, '14:00') }));
+        expect(taken.code).toBe('CONFLICT');
+        expect(taken.callerSafeMessage).toBe("That time isn't available. I can offer the closest open times.");
+        const alternatives = taken.alternatives as Array<{ start: string; staffId: string; spoken: string }>;
+        expect(alternatives.length).toBeGreaterThan(0);
+        expect(alternatives.map((a) => a.start)).not.toContain('2026-10-23T18:00:00.000Z');
+        expect((await live(shop.tenantId)).map((r) => [r.id === thu, r.status])).toEqual([[true, 'confirmed'], [false, 'confirmed']]);
+      });
+
+      it('reads find, reschedule and cancel back in Spanish for an es call', async () => {
+        const shop = await seedShop('agent-es');
+        const thu = await booking(shop, edt(22, '10:00'));
+        const fri = await booking(shop, edt(23, '10:00'));
+        const es = agentIn(shop, await call(shop.tenantId, PHONE), { locale: 'es' });
+        const found = await find(es, { phone: PHONE, name: 'Luis' });
+        expect(found.bookings[0].spoken).toMatch(/^Men's cut con Marco, .*jueves.*10.*, para Luis\.$/);
+
+        const p = data<{ confirmationToken: string; readback: string }>(await act('scheduling.reschedule.prepare', es, { bookingId: thu, newStart: edt(22, '14:00') }));
+        expect(p.readback).toMatch(/^Vamos a mover la cita de Luis, Men's cut, de .*jueves.* con Marco a .*jueves.* con Marco\.$/);
+        const moved = data<{ readback: string }>(await act('scheduling.reschedule.commit', es, { confirmationToken: p.confirmationToken }));
+        expect(moved.readback).toMatch(/^Listo: la cita de Luis, Men's cut, ahora es .*jueves.* con Marco\.$/);
+
+        const cp = data<{ confirmationToken: string; readback: string }>(await act('scheduling.cancel.prepare', es, { bookingId: fri }));
+        expect(cp.readback).toMatch(/^Vamos a cancelar la cita de Luis, Men's cut con Marco, .*viernes.*\.$/);
+        const cancelled = data<{ readback: string }>(await act('scheduling.cancel.commit', es, { confirmationToken: cp.confirmationToken }));
+        expect(cancelled.readback).toMatch(/^Cancelada: la cita de Luis, Men's cut con Marco, .*viernes.*\.$/);
+        const unknown = errorOf(await act('scheduling.cancel.prepare', es, { bookingId: 'nope' }));
+        expect(unknown.callerSafeMessage).toBe('No encontré esa cita.');
+      });
     });
   });
 

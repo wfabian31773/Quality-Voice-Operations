@@ -15,7 +15,15 @@ import {
   writeBookingAudit,
   type BookingRecord,
 } from './bookingRows';
-import { consumeToken, policyBlock, SCHEDULING_WRITE_ROLES } from './commitShared';
+import {
+  agentBookingBlock,
+  agentCommitBlock,
+  agentIdentityChanged,
+  agentIdKey,
+  consumeToken,
+  policyBlock,
+  SCHEDULING_WRITE_ROLES,
+} from './commitShared';
 import {
   callerMessage,
   cancelledReadback,
@@ -48,19 +56,23 @@ async function readbackFacts(tx: TenantTx, ctx: ActionContext, booking: BookingR
   };
 }
 
-// Agent use waits for PR-14 (verified find_bookings), like reschedule.
+// Like reschedule: the agent may only cancel a booking find_bookings verified in the same call.
 export const cancelPrepareAction = defineAction({
   name: CANCEL_PREPARE,
   tool: 'scheduling',
   kind: 'prepare',
   input: cancelPrepareInput,
   output: cancelPrepareOutput,
-  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: false, mcpScope: 'qvo:admin' },
+  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
-    'Prepare to cancel an existing appointment and get the readback. Nothing changes until '
-    + 'scheduling.cancel.commit. Inside the shop\'s cancellation window this returns OUTSIDE_POLICY with the policy to state.',
+    'Prepare to cancel an existing appointment and get the readback. Nothing changes until scheduling.cancel.commit. '
+    + 'Call scheduling.find_bookings first: bookingId must be one it returned verified in this call. '
+    + 'Read the readback word for word and commit only after an explicit yes. On OUTSIDE_POLICY (inside the '
+    + 'cancellation window, or already passed) say the callerSafeMessage and offer to take a message for the owner.',
   async run(ctx, input, tx) {
     const lang = readbackLang(ctx.locale);
+    const unverified = await agentBookingBlock(tx, ctx, input.bookingId);
+    if (unverified) return unverified;
     const booking = await loadBooking(tx, ctx.tenantId, input.bookingId);
     if (!booking || booking.status === 'held') {
       return actionFail('NOT_FOUND', 'Booking not found', { field: 'bookingId', callerSafeMessage: callerMessage('unknownBooking', lang) });
@@ -77,7 +89,13 @@ export const cancelPrepareAction = defineAction({
     const readback = cancelReadback(await readbackFacts(tx, ctx, booking, ctx.locale), lang);
     const proposal = await createProposal(tx, ctx, {
       action: CANCEL_PREPARE,
-      payload: { bookingId: booking.id, start: booking.startTime.toISOString(), reason: input.reason ?? null, locale: ctx.locale ?? null },
+      payload: {
+        bookingId: booking.id,
+        start: booking.startTime.toISOString(),
+        reason: input.reason ?? null,
+        locale: ctx.locale ?? null,
+        ...agentIdKey(ctx, booking),
+      },
       readback,
       callId: ctx.callId,
     });
@@ -94,18 +112,27 @@ export const cancelCommitAction = defineAction({
   kind: 'commit',
   input: confirmationTokenInput,
   output: cancelCommitOutput,
-  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: false, mcpScope: 'qvo:admin' },
+  permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
-    'Cancel the appointment after the caller explicitly said yes to the readback. Only say it was cancelled once this returns ok.',
+    'Cancel the appointment after the caller explicitly said yes to the readback. Only say it was cancelled once this '
+    + 'returns ok. Retrying with the same token is safe.',
   async run(ctx, input, tx) {
     const lang = readbackLang(ctx.locale);
+    const noCall = agentCommitBlock(ctx);
+    if (noCall) return noCall;
     const consumed = await consumeToken(tx, ctx, input.confirmationToken, CANCEL_PREPARE);
     if (isActionFailure(consumed)) return consumed;
     const payload = cancelProposalPayload.safeParse(consumed.payload);
     if (!payload.success) return actionFail('CONFIRMATION_INVALID', 'Stored proposal payload is not a cancellation');
 
     const booking = await loadBooking(tx, ctx.tenantId, payload.data.bookingId, { forUpdate: true });
-    if (!booking || !isCancellable(booking.status) || booking.startTime.toISOString() !== payload.data.start) {
+    // For an agent, the locked booking must still carry the contact verified at prepare.
+    if (
+      !booking
+      || !isCancellable(booking.status)
+      || booking.startTime.toISOString() !== payload.data.start
+      || agentIdentityChanged(ctx, booking, payload.data.idKey)
+    ) {
       return actionFail('CONFLICT', 'The booking changed since the prepare', { callerSafeMessage: callerMessage('bookingChanged', lang) });
     }
     const blocked = await policyBlock(tx, ctx, booking);

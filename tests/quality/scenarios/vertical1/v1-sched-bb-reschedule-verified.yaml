@@ -1,12 +1,10 @@
 id: v1-sched-bb-reschedule-verified
 template: barbershop
 tools: [scheduling, sms, tickets, business, calls]
-tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.reschedule, spec:0.2-identity, expected-fail]
-# Luis has Thursday 10:00 with Marco; caller ID matches.
+tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.reschedule, spec:0.2-identity]
+# Luis has Thursday 10:00 with Marco; caller ID (the seed's callerNumber) matches.
 seed: barbershop-basic:existing-booking
 now: "2026-10-20T14:00:00-04:00"
-# find_bookings / reschedule.* are not in FakeToolProvider.
-expectedFail: PR-14
 caller:
   - text: "Hi, this is Luis. I need to move my Thursday appointment with Marco to Friday."
   - text: "1:00 on Friday."
@@ -76,4 +74,5 @@ expect:
     - "quedó registrado"
     - "le envié"
     - "ya le avisé"
+    - "I've moved"
   readbackRequired: true

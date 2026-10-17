@@ -35,6 +35,8 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
   resetFakeTokens();
   const store = opts.store ?? (await createTenantStore({ seed: scenario.seed }));
   await store.seed(scenario.seed);
+  // The trusted caller ID is call state (call_sessions), not agent input.
+  if (scenario.callerId !== undefined) store.state.callerNumber = scenario.callerId;
   const now = opts.now ?? (scenario.now ? new Date(scenario.now) : new Date('2026-10-20T14:00:00-04:00'));
   const tools = new FakeToolProvider(store.state, scenario.tools);
   const agent =

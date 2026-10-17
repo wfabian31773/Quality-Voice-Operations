@@ -23,6 +23,7 @@ import {
   type BookingRecord,
 } from './bookingRows';
 import { bookingOverlapKind, expireStaleHolds } from './holds';
+import { bookingIdentityKey, verifiedInCall } from './identity';
 import {
   callerMessage,
   cancellationPolicyText,
@@ -143,6 +144,58 @@ export async function takeHold(
     return slotConflict(tx, ctx, scope, hold.startTime.getTime(), `Hold lost: slot taken (${flipped.overlap} overlap)`, 'holdLost');
   }
   return { retaken: true };
+}
+
+/**
+ * Agent reschedule/cancel only touch a booking that scheduling.find_bookings
+ * verified in this same call and tenant (spec §0.2.6), and that still has the
+ * contact phone and name it was verified against. A guessed id, one verified
+ * in another call, another tenant's, one staff re-assigned since the find, or
+ * any id without a callId gets exactly the NOT_FOUND an unknown id gets (same
+ * message too), so the agent can't probe which ids exist. It runs before the
+ * action loads the booking for status or policy checks.
+ * Staff, UI and MCP callers are not gated here.
+ */
+export async function agentBookingBlock(
+  tx: TenantTx,
+  ctx: ActionContext,
+  bookingId: string,
+): Promise<ActionResult<never> | null> {
+  if (ctx.actor.type !== 'agent') return null;
+  if (await verifiedInCall(tx, ctx, bookingId)) return null;
+  return actionFail('NOT_FOUND', 'Booking not found', {
+    field: 'bookingId',
+    callerSafeMessage: callerMessage('unknownBooking', readbackLang(ctx.locale)),
+  });
+}
+
+/**
+ * An agent commit needs its call: the core consume matches call_id, and a
+ * missing callId would otherwise match a UI/MCP proposal (call_id NULL).
+ */
+export function agentCommitBlock(ctx: ActionContext): ActionResult<never> | null {
+  if (ctx.actor.type !== 'agent' || ctx.callId) return null;
+  return actionFail('CONFIRMATION_INVALID', 'Unknown or expired confirmation token');
+}
+
+/**
+ * The identity key an agent proposal stores at prepare (where
+ * agentBookingBlock just verified the booking). Staff, UI and MCP proposals
+ * store none.
+ */
+export function agentIdKey(ctx: ActionContext, booking: BookingRecord): { idKey?: string } {
+  if (ctx.actor.type !== 'agent') return {};
+  return { idKey: bookingIdentityKey(ctx.tenantId, booking.contactPhone, booking.contactName) };
+}
+
+/**
+ * At an agent commit, with the booking locked FOR UPDATE: whether staff
+ * changed its contact name or phone since the prepare (a missing key counts
+ * as changed). Staff, UI and MCP commits are not checked.
+ */
+export function agentIdentityChanged(ctx: ActionContext, booking: BookingRecord, idKey: string | undefined): boolean {
+  if (ctx.actor.type !== 'agent') return false;
+  return !idKey || idKey !== bookingIdentityKey(ctx.tenantId, booking.contactPhone, booking.contactName);
 }
 
 /**

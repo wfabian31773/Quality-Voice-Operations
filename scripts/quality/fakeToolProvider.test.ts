@@ -172,6 +172,95 @@ describe('FakeToolProvider', () => {
     ]);
   });
 
+  describe('find_bookings / reschedule / cancel (spec §0.2.6)', () => {
+    const PHONE = '+15555550142';
+    /** barbershop-marco plus Luis's Thursday 10:00 with Marco; caller ID as given. */
+    function shop(callerNumber: string | null, extra: Partial<ReturnType<typeof buildFixture>> = {}) {
+      const state = buildFixture('barbershop-marco');
+      state.slots.push({ start: '2026-10-23T13:00:00-04:00', end: '2026-10-23T13:30:00-04:00', staffId: 'marco' });
+      state.bookings.push({
+        id: 'bk_thu', status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut'],
+        start: '2026-10-22T10:00:00-04:00', startLocal: '10:00', customerName: 'Luis', customerPhone: PHONE,
+      });
+      Object.assign(state, { callerNumber, ...extra });
+      return { state, tools: new FakeToolProvider(state, ['scheduling']) };
+    }
+    const dataOf = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) => (result.ok ? (result.data as Record<string, unknown>) : null);
+    const codeOf = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) => (result.ok ? 'ok' : result.error.code);
+
+    it('caller-ID match: the name verifies; no name or a wrong name reveals nothing', async () => {
+      const { tools } = shop(PHONE);
+      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE }, ctx()))).toEqual({ verified: false, bookings: [], needs: 'name', matchCount: 1 });
+      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Ana' }, ctx()))).toEqual({ verified: false, bookings: [], needs: 'name' });
+      const found = dataOf(await tools.invoke('scheduling.find_bookings', { phone: '555-555-0142', name: 'luis' }, ctx()));
+      expect(found).toMatchObject({ verified: true, bookings: [{ bookingId: 'bk_thu', staffName: 'Marco', end: '2026-10-22T14:30:00.000Z' }] });
+    });
+
+    it('different or blocked caller ID: needs name + date + time, and never says how many', async () => {
+      for (const callerNumber of ['+15555550199', null]) {
+        const { tools } = shop(callerNumber);
+        const refused = { verified: false, bookings: [], needs: 'name_date_time' };
+        expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx()))).toEqual(refused);
+        expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis', date: '2026-10-22', time: '10:30' }, ctx()))).toEqual(refused);
+        const found = await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis', date: '2026-10-22', time: '10:00' }, ctx());
+        expect(dataOf(found)).toMatchObject({ verified: true, bookings: [{ bookingId: 'bk_thu' }] });
+      }
+    });
+
+    it('reschedule/cancel only a booking verified in the same call', async () => {
+      resetFakeTokens();
+      const { state, tools } = shop(PHONE);
+      const move = { bookingId: 'bk_thu', newStart: '2026-10-23T13:00:00-04:00' };
+      expect(codeOf(await tools.invoke('scheduling.reschedule.prepare', move, ctx()))).toBe('NOT_FOUND');
+      await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+      expect(codeOf(await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, { ...ctx(), callId: 'c2' }))).toBe('NOT_FOUND');
+      const prepared = await tools.invoke('scheduling.reschedule.prepare', move, ctx());
+      expect(prepared.ok && prepared.readback).toBe("Moving Luis's men's cut from Thursday, October 22 at 10:00 AM with Marco to Friday, October 23 at 1:00 PM with Marco.");
+      expect(codeOf(await tools.invoke('scheduling.reschedule.commit', { confirmationToken: tokenOf(prepared) }, { ...ctx(), callId: 'c2' }))).toBe('CONFIRMATION_INVALID');
+      expect(codeOf(await tools.invoke('scheduling.reschedule.commit', { confirmationToken: tokenOf(prepared) }, ctx()))).toBe('ok');
+      expect(snapshotOf(state).bookings.map((row) => [row.status, row.start])).toEqual([['confirmed', '2026-10-23T13:00:00-04:00']]);
+      expect(state.bookings.find((row) => row.id === 'bk_thu')?.status).toBe('rescheduled');
+    });
+
+    it('a booking staff re-assigned after the find (name or phone) is NOT_FOUND', async () => {
+      for (const change of [{ customerName: 'Ana' }, { customerPhone: '+15555550188' }]) {
+        const { state, tools } = shop(PHONE);
+        await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+        Object.assign(state.bookings.find((row) => row.id === 'bk_thu')!, change);
+        expect(codeOf(await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx()))).toBe('NOT_FOUND');
+      }
+    });
+
+    it('an agent commit after staff changed the name or phone since the prepare is CONFLICT and changes nothing', async () => {
+      const move = { bookingId: 'bk_thu', newStart: '2026-10-23T13:00:00-04:00' };
+      for (const change of [{ customerName: 'Ana' }, { customerPhone: '+15555550188' }]) {
+        const { state, tools } = shop(PHONE);
+        await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+        const cancel = await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx());
+        const moved = await tools.invoke('scheduling.reschedule.prepare', move, ctx());
+        Object.assign(state.bookings.find((row) => row.id === 'bk_thu')!, change);
+        expect(codeOf(await tools.invoke('scheduling.cancel.commit', { confirmationToken: tokenOf(cancel) }, ctx()))).toBe('CONFLICT');
+        expect(codeOf(await tools.invoke('scheduling.reschedule.commit', { confirmationToken: tokenOf(moved) }, ctx()))).toBe('CONFLICT');
+        expect(state.bookings.map((row) => row.status)).toEqual(['confirmed', 'held']);
+      }
+    });
+
+    it('keeps the policy (window, already passed) and offers alternatives for a taken slot', async () => {
+      const { state, tools } = shop(PHONE);
+      state.bookings.push({
+        id: 'bk_ana', status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut'],
+        start: '2026-10-23T13:00:00-04:00', startLocal: '13:00', customerName: 'Ana', customerPhone: '+15555550188',
+      });
+      await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+      const taken = await tools.invoke('scheduling.reschedule.prepare', { bookingId: 'bk_thu', newStart: '2026-10-23T13:00:00-04:00' }, ctx());
+      expect(taken.ok ? null : taken.error).toMatchObject({ code: 'CONFLICT', callerSafeMessage: "That time isn't available. I can offer the closest open times." });
+      const window = await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx('2026-10-21T14:00:00-04:00'));
+      expect(window.ok ? null : window.error.callerSafeMessage).toMatch(/24 hours' notice/);
+      const passed = await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx('2026-10-22T10:05:00-04:00'));
+      expect(passed.ok ? null : passed.error).toMatchObject({ code: 'OUTSIDE_POLICY', callerSafeMessage: expect.stringMatching(/already started or passed/) });
+    });
+  });
+
   it('replays a commit retried with the same token instead of failing it', async () => {
     resetFakeTokens();
     const state = buildFixture('barbershop-marco');
@@ -182,5 +271,18 @@ describe('FakeToolProvider', () => {
     expect(first.ok).toBe(true);
     expect(retry).toEqual(first);
     expect(state.bookings.filter((row) => row.status === 'confirmed')).toHaveLength(1);
+  });
+
+  it('refuses a committed token replayed from another call (runAction hashes the callId): IDEMPOTENCY_KEY_REUSED', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const prepare = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    const first = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx());
+    expect(first.ok).toBe(true);
+    const other = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, { ...ctx(), callId: 'c2' });
+    expect(other.ok ? null : other.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    // The original call still replays its result.
+    expect(await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx())).toEqual(first);
   });
 });
