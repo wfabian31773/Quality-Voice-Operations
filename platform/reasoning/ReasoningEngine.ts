@@ -24,6 +24,10 @@ import type {
 
 const logger = createLogger('REASONING_ENGINE');
 
+function isBookingIntent(intent: string): boolean {
+  return intent === 'book_appointment' || intent === 'schedule_appointment';
+}
+
 export interface ReasoningEngineConfig {
   tenantId: TenantId;
   callSessionId: string;
@@ -265,6 +269,14 @@ export class ReasoningEngine {
     const previousIntent = this.currentIntent;
     if (previousIntent !== 'unknown' && isPolicyOrNegatedCancel(utterance)) {
       intent = previousIntent;
+    }
+    if (
+      intent === 'unknown'
+      && this.workflowPlan?.status === 'completed'
+      && isBookingIntent(this.workflowPlan.intent)
+      && isAdditionalTransactionRequest(utterance)
+    ) {
+      intent = this.workflowPlan.intent;
     }
 
     if (previousIntent !== 'unknown' && intent !== previousIntent && intent !== 'unknown') {

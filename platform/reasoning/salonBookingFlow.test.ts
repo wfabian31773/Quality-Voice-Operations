@@ -231,6 +231,41 @@ describe('salon booking conversation', () => {
     }
   });
 
+  it('starts a second booking from shorthand EN/ES follow-ups after a completed one', () => {
+    const phrases = [
+      'one more for my son',
+      'one for my daughter too',
+      'another one for my friend',
+      'una más para mi hijo',
+      'otra para mi hija',
+    ];
+
+    for (const phrase of phrases) {
+      const engine = makeSalonEngine();
+      completeFirstHaircut(engine);
+
+      const classified = engine.classifyIntent(phrase);
+      expect(classified.intent).toBe('unknown');
+
+      const decision = engine.processUtterance(phrase, classified.intent, classified.confidence);
+      expect(decision.action).not.toBe('complete_interaction');
+      expect(engine.getWorkflowPlan()?.status).toBe('active');
+      expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+
+      const secondArgs = {
+        title: 'Haircut',
+        startTime: '2026-10-18T15:00:00-07:00',
+        contactName: 'Jordan Lee',
+        contactPhone: '555-201-3344',
+      };
+      engine.fillSlot('title', secondArgs.title, 'tool_args');
+      engine.fillSlot('startTime', secondArgs.startTime, 'tool_args');
+      engine.fillSlot('contactName', secondArgs.contactName, 'tool_args');
+      engine.fillSlot('contactPhone', secondArgs.contactPhone, 'tool_args');
+      expect(engine.authorizeToolRequest('create_booking', secondArgs).allowed).toBe(true);
+    }
+  });
+
   it('rebuilds a fresh plan when the caller asks to book another service too', () => {
     const engine = makeSalonEngine();
     completeFirstHaircut(engine);
