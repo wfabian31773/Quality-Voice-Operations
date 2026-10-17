@@ -8,29 +8,52 @@ import { schedulingActions } from './scheduling';
 import { smsActions } from './sms';
 import { ticketsActions } from './tickets';
 
+const SCHEDULING_READS = [
+  'scheduling.list_services',
+  'scheduling.list_staff',
+  'scheduling.check_availability',
+];
+
 describe('action registry', () => {
-  it('imports each tool folder; sms and tickets are registered so far', () => {
-    expect(schedulingActions).toEqual([]);
+  it('imports each tool folder; scheduling reads, sms.send and tickets are registered', () => {
+    expect(schedulingActions.map((a) => a.name)).toEqual(SCHEDULING_READS);
     expect(smsActions.map((def) => def.name)).toEqual(['sms.send']);
     expect(businessActions).toEqual([]);
     expect(callsActions).toEqual([]);
     expect(dispatchActions).toEqual([]);
     expect(ordersActions).toEqual([]);
+    expect(ACTION_REGISTRY.map((a) => a.name)).toEqual([
+      ...SCHEDULING_READS,
+      'sms.send',
+      ...ticketsActions.map((a) => a.name),
+    ]);
+    expect(listActions().map((a) => a.name)).toEqual(ACTION_REGISTRY.map((a) => a.name));
+    expect(getAction('scheduling.check_availability')?.kind).toBe('read');
     expect(getAction('sms.send')?.permissions.agent).toBe(false);
     expect(getAction('scheduling.book.commit')).toBeUndefined();
   });
 
   it('registers the ticket actions with unique names', () => {
     expect(ticketsActions.length).toBeGreaterThan(0);
-    expect(ACTION_REGISTRY).toEqual(expect.arrayContaining([...smsActions, ...ticketsActions]));
-    expect(ACTION_REGISTRY).toHaveLength(smsActions.length + ticketsActions.length);
+    expect(ACTION_REGISTRY).toEqual(expect.arrayContaining([...schedulingActions, ...smsActions, ...ticketsActions]));
+    expect(ACTION_REGISTRY).toHaveLength(schedulingActions.length + smsActions.length + ticketsActions.length);
     expect(listActions()).toEqual(ACTION_REGISTRY);
     expect(getAction('tickets.open.commit')?.tool).toBe('tickets');
     const names = ACTION_REGISTRY.map((def) => def.name);
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('runAction uses the empty registry by default', async () => {
+  it('registers the scheduling reads as agent-allowed read actions', () => {
+    for (const name of SCHEDULING_READS) {
+      const def = getAction(name)!;
+      expect(def.tool).toBe('scheduling');
+      expect(def.kind).toBe('read');
+      expect(def.permissions.agent).toBe(true);
+      expect(def.agentDescription).toBeTruthy();
+    }
+  });
+
+  it('runAction returns NOT_FOUND for an action that is not registered', async () => {
     const store = createMemoryStore();
     const result = await runAction(
       'scheduling.book.commit',

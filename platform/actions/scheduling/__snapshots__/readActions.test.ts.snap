@@ -1,0 +1,64 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`scheduling.check_availability > generates a stable agent tool schema 1`] = `
+{
+  "actionName": "scheduling.check_availability",
+  "agentDescription": "Find open appointment times for 1 to 3 services done back-to-back by one staff member. staffId is a staff id or 'any'. Give date (YYYY-MM-DD, resolved from the tenant's current time) or window {from,to}; with neither it finds the first available day. Optional partOfDay (morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.",
+  "description": "Find open appointment times for 1 to 3 services done back-to-back by one staff member. staffId is a staff id or 'any'. Give date (YYYY-MM-DD, resolved from the tenant's current time) or window {from,to}; with neither it finds the first available day. Optional partOfDay (morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.",
+  "name": "scheduling_check_availability",
+  "parameters": {
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "type": "string",
+      },
+      "limit": {
+        "maximum": 5,
+        "minimum": 1,
+        "type": "integer",
+      },
+      "partOfDay": {
+        "enum": [
+          "morning",
+          "afternoon",
+          "evening",
+        ],
+        "type": "string",
+      },
+      "serviceIds": {
+        "items": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "type": "array",
+      },
+      "staffId": {
+        "maxLength": 255,
+        "minLength": 1,
+        "type": "string",
+      },
+      "window": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string",
+          },
+          "to": {
+            "type": "string",
+          },
+        },
+        "required": [
+          "from",
+          "to",
+        ],
+        "type": "object",
+      },
+    },
+    "required": [
+      "serviceIds",
+    ],
+    "type": "object",
+  },
+}
+`;
