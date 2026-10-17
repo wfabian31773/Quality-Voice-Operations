@@ -1,0 +1,50 @@
+id: v1-sms-bb-inbound-x-cancels
+template: barbershop
+tools: [sms, scheduling]
+tags: [vertical1, tool:sms, template:barbershop, lang:en, action:sms.handle_inbound, spec:2.1-reply-keywords, expected-fail]
+# Luis has Thursday 10:00 with Marco and replies "X" to the reminder.
+seed: barbershop-basic:existing-booking
+now: "2026-10-21T18:00:00-04:00"
+# sms.handle_inbound (C/X keywords) is not in FakeToolProvider.
+expectedFail: PR-17
+# Inbound SMS is a system write from the webhook, not an agent prepare/commit,
+# so there is no spoken readback (readbackRequired would never apply).
+caller:
+  - text: "X"
+script:
+  - on: 0
+    steps:
+      - call:
+          name: sms.handle_inbound
+          input:
+            from: "+15555550142"
+            body: "X"
+      - say: "Your Thursday 10:00 AM appointment with Marco is cancelled. Call us to rebook."
+expect:
+  actions:
+    - name: sms.handle_inbound
+      input:
+        from: "+15555550142"
+        body: "X"
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: cancelled
+          staffId: marco
+          date: "2026-10-22"
+          startLocal: "10:00"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
