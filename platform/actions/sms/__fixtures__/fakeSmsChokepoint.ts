@@ -6,7 +6,14 @@
  */
 import { vi } from 'vitest';
 import { createMemoryStore } from '../../core';
-import type { ClaimedSmsRecord, OutboundSmsPatch, OutboundSmsRecord, SmsSendDeps, SmsSendStore } from '../deps';
+import type {
+  ClaimedSmsRecord,
+  OutboundSmsPatch,
+  OutboundSmsRecord,
+  SmsRateLimitWindow,
+  SmsSendDeps,
+  SmsSendStore,
+} from '../deps';
 import { createSmsSendAction, type SystemSmsOptions } from '../send';
 
 export type FakeSmsRow = OutboundSmsRecord & { twilioSid?: string; errorMessage?: string; sentAt?: Date };
@@ -20,6 +27,8 @@ export function createFakeSmsChokepoint(opts: { from?: string; senders?: string[
     optedOut: new Set<string>(),
     /** Thrown by the next Twilio send(s) while set. */
     sendError: null as Error | null,
+    /** Per-recipient limit per hour; 0 = off. Every stored live row counts. */
+    rateLimitMax: 0,
   };
   const rows = new Map<string, FakeSmsRow>();
   let seq = 0;
@@ -51,7 +60,13 @@ export function createFakeSmsChokepoint(opts: { from?: string; senders?: string[
       }
       return { ...r };
     }),
-    reserveOutbound: vi.fn(async (record: OutboundSmsRecord) => {
+    reserveOutbound: vi.fn(async (record: OutboundSmsRecord, limit: SmsRateLimitWindow | null) => {
+      if (limit) {
+        const recent = [...rows.values()].filter(
+          (r) => r.to === record.to && r.id !== record.id && !['failed', 'deferred_quiet_hours', 'suppressed'].includes(r.status),
+        ).length;
+        if (recent >= limit.max) return { reserved: false as const, recent };
+      }
       upsert(record);
       return { reserved: true as const };
     }),
@@ -83,7 +98,7 @@ export function createFakeSmsChokepoint(opts: { from?: string; senders?: string[
     config: {
       smsEnabled: () => state.smsEnabled,
       liveCallExemptSeconds: () => 60,
-      rateLimit: () => ({ max: 0, windowMs: 0 }),
+      rateLimit: () => ({ max: state.rateLimitMax, windowMs: 3_600_000 }),
       statusCallbackUrl: () => 'https://voice.example.com/twilio/sms-status',
     },
     newId: () => `sms-${rows.size + 1}`,

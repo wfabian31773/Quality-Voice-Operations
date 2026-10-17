@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  clientQuery: vi.fn(async () => ({ rows: [], rowCount: 1 })),
+  clientQuery: vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [], rowCount: 1 })),
   fake: null as null | import('../actions/sms/__fixtures__/fakeSmsChokepoint').FakeSmsChokepoint,
 }));
 

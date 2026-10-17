@@ -407,6 +407,7 @@ describe('POST /twilio/sms', () => {
       store: {
         isTenantMessagingEnabled: async () => true,
         isTenantSender: async () => true,
+        loadStoredOutbound: async () => null,
         latestConsentAction: async (_tx, _t, phone) =>
           (consentLog.filter((c) => c.phone === phone && c.action !== 'help_request').at(-1)?.action ?? null) as
             | 'opt_in'

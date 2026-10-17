@@ -9,7 +9,7 @@ vi.mock('../../db', () => ({
   withTenantContext: vi.fn(),
 }));
 
-import { createMemoryStore, runActionDefinition, type ActionContext, type Actor } from '../core';
+import { createMemoryStore, runAction, runActionDefinition, type ActionContext, type Actor } from '../core';
 import { TwilioApiError } from '../../integrations/twilio/sender';
 import { clearSmsQuietHoursCache } from '../../sms/SmsQuietHours';
 import {
@@ -425,7 +425,7 @@ describe('sms.send chokepoint', () => {
       const t = setup();
       await defer(t, 'b1');
       // Twilio accepts; the SID write right after it fails.
-      const update = t.store.updateOutbound as ReturnType<typeof vi.fn>;
+      const update = vi.mocked(t.store.updateOutbound);
       const realUpdate = update.getMockImplementation()!;
       update.mockImplementation(async (tenant: string, id: string, patch: OutboundSmsPatch) => {
         if (patch.twilioSid) throw new Error('connection reset');
@@ -576,6 +576,102 @@ describe('sms.send chokepoint', () => {
       expect(result).toMatchObject({ ok: true, data: { status: 'queued' } });
       const [row] = [...t.records.values()];
       expect(row.metadata).toMatchObject({ actor: { type: 'user', id: 'u1' } });
+    });
+  });
+
+  describe('per-recipient rate limit on human inbox sends', () => {
+    const reply = (t: ReturnType<typeof setup>, n: number, now = DAYTIME) =>
+      sendUserSms(
+        { tenantId: TENANT, userId: 'u1', role: 'tenant_owner', to: TO, from: FROM, body: `Reply ${n}`, purpose: 'conversational', now },
+        { action: t.action, runtime: t.runtime },
+      );
+
+    it('sends a 6th inbox reply within the hour (limit 5)', async () => {
+      const t = setup();
+      for (let n = 1; n <= 6; n++) {
+        expect(await reply(t, n)).toMatchObject({ ok: true, data: { status: 'queued' } });
+      }
+      expect(t.transport.send).toHaveBeenCalledTimes(6);
+      expect(t.records.get('msg-6')!.metadata).toMatchObject({ rateLimitExempt: true });
+    });
+
+    it('sends a 6th scheduled inbox message within the hour', async () => {
+      const t = setup();
+      for (let n = 1; n <= 5; n++) expect((await reply(t, n)).ok).toBe(true);
+      t.records.set('inbox-msg-6', {
+        id: 'inbox-msg-6',
+        tenantId: TENANT,
+        from: FROM,
+        to: TO,
+        body: 'Scheduled by the owner',
+        status: 'sending',
+        scheduledAt: DAYTIME,
+        metadata: { rateLimitExempt: false },
+      });
+      const result = await sendStoredSms(
+        { tenantId: TENANT, messageId: 'inbox-msg-6', to: TO, purpose: 'conversational', now: DAYTIME },
+        { action: t.action, runtime: t.runtime },
+      );
+      expect(result).toMatchObject({ ok: true, data: { status: 'queued' } });
+      expect(t.transport.send).toHaveBeenCalledTimes(6);
+    });
+
+    it('a deferred inbox reply stays exempt when the window opens', async () => {
+      const t = setup();
+      // 7:00 AM CDT, before the window: this reply is deferred to 8:00.
+      const deferred = await reply(t, 0, new Date('2026-10-15T12:00:00.000Z'));
+      expect(deferred).toMatchObject({ ok: true, data: { status: 'deferred_quiet_hours' } });
+      // Five more replies go out at 8:00, so the deferred one is the 6th in the hour.
+      for (let n = 1; n <= 5; n++) expect((await reply(t, n, new Date(WINDOW_START))).ok).toBe(true);
+      const summary = await releaseDueDeferredSms({
+        deps: t.deps,
+        now: new Date(Date.parse(WINDOW_START) + 60_000),
+        withTenantTx: t.runtime.withTenantTx,
+      });
+      expect(summary).toMatchObject({ claimed: 1, sent: 1, rateLimited: 0 });
+      expect(t.transport.send).toHaveBeenCalledTimes(6);
+    });
+
+    it('still rate-limits a 6th automated send, also after 5 inbox replies', async () => {
+      const t = setup();
+      for (let n = 1; n <= 5; n++) expect((await t.system()).ok).toBe(true);
+      expect(await t.system()).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+
+      const u = setup();
+      for (let n = 1; n <= 5; n++) expect((await reply(u, n)).ok).toBe(true);
+      expect(await u.system()).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+      expect(u.transport.send).toHaveBeenCalledTimes(5);
+    });
+
+    it('still refuses an opted-out recipient on the inbox path', async () => {
+      const t = setup();
+      t.state.consent.set(TO, 'opt_out');
+      expect(await reply(t, 1)).toMatchObject({ ok: false, error: { code: 'RECIPIENT_OPTED_OUT' } });
+      expect(t.transport.send).not.toHaveBeenCalled();
+    });
+
+    it('public runAction("sms.send") callers cannot use the bypass', async () => {
+      const t = setup();
+      const runtime = { ...t.runtime, registry: [t.action] };
+      const call = (actor: Actor, input: Record<string, unknown>) =>
+        runAction(
+          'sms.send',
+          { tenantId: TENANT, actor, now: DAYTIME, idempotencyKey: `k-${Math.random()}`, tenantTimezone: 'America/Chicago' },
+          input,
+          runtime,
+        );
+      const input = { to: TO, body: 'Hi', purpose: 'conversational' };
+      // Not an input field.
+      expect(await call(owner, { ...input, rateLimitExempt: true })).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+      // Same user/MCP actor as an inbox reply, outside the inbox entry points: limited.
+      for (let n = 1; n <= 5; n++) expect((await call(owner, input)).ok).toBe(true);
+      expect(await call(owner, input)).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+      const mcp: Actor = { type: 'mcp', id: 'key-1', scopes: ['qvo:admin'] };
+      expect(await call(mcp, input)).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+      expect(t.transport.send).toHaveBeenCalledTimes(5);
     });
   });
 

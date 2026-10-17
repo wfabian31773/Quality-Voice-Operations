@@ -66,6 +66,7 @@ vi.mock('../../platform/actions/sms', async (importOriginal) => {
   };
 });
 import { createFakeSmsChokepoint } from '../../platform/actions/sms/__fixtures__/fakeSmsChokepoint';
+import { sendSystemSms } from '../../platform/actions/sms';
 import { TwilioApiError } from '../../platform/integrations/twilio/sender';
 
 const isOnDncMock = vi.fn(async () => false);
@@ -358,6 +359,29 @@ describe('POST /sms-inbox/threads/:id/messages through the sms.send chokepoint',
       messageId: 'sms-1',
     });
   });
+
+  it('has no per-recipient rate limit, as before: a 6th reply in the hour is sent', async () => {
+    smsFake.current!.state.rateLimitMax = 5;
+    for (let n = 1; n <= 6; n++) {
+      const res = await send(`Reply ${n}`);
+      expect(res.status).toBe(200);
+    }
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(6);
+
+    // An automated send to the same number is still limited.
+    const automated = await sendSystemSms(
+      {
+        tenantId: 'tenant-1',
+        to: '+12025550100',
+        templateKey: 'escalation_alert',
+        vars: { session: 'call-1', reason: 'transfer', time: '2026-04-28T17:00:00.000Z' },
+        purpose: 'transactional',
+      },
+      smsFake.current!.options,
+    );
+    expect(automated).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(6);
+  });
 });
 
 describe('processScheduledMessages quiet-hours deferral', () => {
@@ -614,6 +638,25 @@ describe('processScheduledMessages through the sms.send chokepoint', () => {
     await processScheduledMessages();
     expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
     expect(updateMessageStatusMock).toHaveBeenCalledWith('tenant-1', 'msg-1', 'failed');
+  });
+
+  it('has no per-recipient rate limit, as before: sends after 5 messages in the hour', async () => {
+    smsFake.current!.state.rateLimitMax = 5;
+    for (let n = 1; n <= 5; n++) {
+      smsFake.current!.rows.set(`earlier-${n}`, {
+        id: `earlier-${n}`,
+        tenantId: 'tenant-1',
+        from: '+15555550100',
+        to: '+12025550100',
+        body: `Earlier ${n}`,
+        status: 'queued',
+        scheduledAt: null,
+        metadata: { source: 'sms.send' },
+      });
+    }
+    await processScheduledMessages();
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
+    expect(updateMessageStatusMock).toHaveBeenCalledWith('tenant-1', 'msg-1', 'sent', 'SM1');
   });
 
   it('marks the message failed on a Twilio error, as before', async () => {

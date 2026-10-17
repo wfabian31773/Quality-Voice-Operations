@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createLogger } from '../../core/logger';
@@ -277,6 +278,20 @@ function rateLimitWindow(deps: SmsSendDeps, now: Date): SmsRateLimitWindow | nul
   return max > 0 ? { max, since: new Date(now.getTime() - windowMs) } : null;
 }
 
+/**
+ * Human-initiated inbox sends (a signed-in user's reply, a message the owner
+ * scheduled in the inbox) skip the per-recipient rate limit, as before the
+ * chokepoint. Only `sendUserSms` / `sendStoredSms` in this module open the
+ * scope, around the actor they build; it is not part of the action input,
+ * so `runAction('sms.send', …)`, MCP and the agent can't set it.
+ */
+const humanInboxSend = new AsyncLocalStorage<Actor>();
+
+function isHumanInboxSend(actor: Actor): boolean {
+  const scoped = humanInboxSend.getStore();
+  return scoped !== undefined && scoped.type === actor.type && scoped.id === actor.id;
+}
+
 export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): ActionDefinition<SmsSendInput, SmsSendOutput> {
   const newId = deps.newId ?? randomUUID;
   return {
@@ -346,6 +361,7 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         return smsFail('RECIPIENT_OPTED_OUT', 'Recipient has opted out of SMS');
       }
 
+      const rateLimitExempt = isHumanInboxSend(ctx.actor);
       const metadata: Record<string, unknown> = {
         source: SMS_SEND_ACTION,
         purpose: input.purpose,
@@ -356,6 +372,8 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         idempotencyKey: ctx.idempotencyKey ?? null,
         segments: stats.segments,
         encoding: stats.encoding,
+        // Always written, so a stored row can't carry its own value in.
+        rateLimitExempt,
       };
       const id = stored ? stored.id : newId();
       const existing = stored !== null;
@@ -391,7 +409,7 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
       // tenant + recipient), before calling Twilio.
       const reserved = await deps.store.reserveOutbound(
         { id, tenantId: ctx.tenantId, from, to, body, status: 'sending', scheduledAt: null, metadata, existing },
-        rateLimitWindow(deps, ctx.now),
+        rateLimitExempt ? null : rateLimitWindow(deps, ctx.now),
       );
       if (!reserved.reserved) {
         return actionFail('RATE_LIMITED', `Recipient already received ${reserved.recent} SMS in the rate-limit window`);
@@ -537,7 +555,8 @@ export async function sendUserSms(
     idempotencyKey: req.idempotencyKey ?? `sms:user:${randomUUID()}`,
     tenantTimezone: 'UTC',
   };
-  return runActionDefinition(opts.action ?? smsSendAction, ctx, input, opts.runtime);
+  // A person typing in the inbox: no per-recipient rate limit (see humanInboxSend).
+  return humanInboxSend.run(ctx.actor, () => runActionDefinition(opts.action ?? smsSendAction, ctx, input, opts.runtime));
 }
 
 export interface StoredSmsRequest {
@@ -564,7 +583,8 @@ export async function sendStoredSms(
     idempotencyKey: req.idempotencyKey ?? `sms:stored:${req.messageId}`,
     tenantTimezone: 'UTC',
   };
-  return runActionDefinition(opts.action ?? smsSendAction, ctx, input, opts.runtime);
+  // The owner scheduled it in the inbox: no per-recipient rate limit (see humanInboxSend).
+  return humanInboxSend.run(ctx.actor, () => runActionDefinition(opts.action ?? smsSendAction, ctx, input, opts.runtime));
 }
 
 export interface DeferredReleaseSummary {
@@ -631,8 +651,10 @@ async function releaseOne(
     if (!(await deps.quietHours.isAllowed(msg.tenantId, msg.to, now))) {
       return { kind: 'quiet_hours', next: await deps.quietHours.nextWindowStart(msg.tenantId, msg.to, now) };
     }
-    // Same per-recipient limit as live sends, atomically reserved.
-    const reserved = await deps.store.reserveDeferredSend(msg, rateLimitWindow(deps, now), now);
+    // Same per-recipient limit as live sends, atomically reserved. A deferred
+    // human inbox send stays exempt (the chokepoint wrote the flag).
+    const limit = msg.metadata.rateLimitExempt === true ? null : rateLimitWindow(deps, now);
+    const reserved = await deps.store.reserveDeferredSend(msg, limit, now);
     if (!reserved.reserved) {
       const { windowMs } = deps.config.rateLimit();
       const delay = Math.min(Math.max(windowMs, RATE_LIMIT_REDEFER_MIN_MS), RATE_LIMIT_REDEFER_MAX_MS);
