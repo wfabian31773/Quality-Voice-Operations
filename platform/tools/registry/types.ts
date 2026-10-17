@@ -15,6 +15,11 @@ export interface ToolContext {
   agentSlug?: string;
   callerNumber?: string;
   transcriptTurnIndex?: number;
+  /**
+   * create_booking must be read back and confirmed on a later caller turn
+   * (confirmationToken) before it stores anything. Set for shadow-mode calls.
+   */
+  requireBookingConfirmation?: boolean;
   metadata?: Record<string, unknown>;
 }
 

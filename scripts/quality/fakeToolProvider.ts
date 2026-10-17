@@ -215,6 +215,9 @@ const HANDLED = new Set([
 /** cancellation_reason the real scheduling.book.prepare writes on a hold a newer prepare in the call replaced. */
 export const HOLD_SUPERSEDED_REASON = 'hold_superseded';
 
+/** Most bookings one find_bookings returns (platform/actions/scheduling/bookingRows.ts FIND_LIMIT). */
+export const FIND_LIMIT = 20;
+
 type CommitKind = 'booking' | 'reschedule' | 'cancel' | 'ticket' | 'transfer';
 
 export class FakeToolProvider implements ToolProvider {
@@ -406,12 +409,16 @@ export class FakeToolProvider implements ToolProvider {
     return serviceIds.map((id) => this.state.services.find((service) => service.id === id)?.name ?? id);
   }
 
-  private endOf(booking: BookingRow): string {
-    const minutes = booking.serviceIds.reduce(
+  private endFor(serviceIds: string[], start: string): string {
+    const minutes = serviceIds.reduce(
       (total, id) => total + (this.state.services.find((service) => service.id === id)?.durationMin ?? 0),
       0,
     );
-    return new Date(Date.parse(booking.start) + minutes * 60_000).toISOString();
+    return new Date(Date.parse(start) + minutes * 60_000).toISOString();
+  }
+
+  private endOf(booking: BookingRow): string {
+    return this.endFor(booking.serviceIds, booking.start);
   }
 
   /**
@@ -431,10 +438,12 @@ export class FakeToolProvider implements ToolProvider {
     const upcoming = this.state.bookings
       .filter((row) => row.status === 'confirmed' && Date.parse(row.start) > ctx.now.getTime() && toE164(row.customerPhone) === phone)
       .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
-    const matches = (row: BookingRow) =>
+    const isMatch = (row: BookingRow) =>
       (!name || namesMatch(name, row.customerName)) &&
       (!date || localDate(row.start, tz) === date) &&
       (!time || formatLocalHm(row.start, tz) === time);
+    // Like the real action: filter every scanned row, then cap at FIND_LIMIT.
+    const matching = () => upcoming.filter(isMatch).slice(0, FIND_LIMIT);
     const present = (rows: BookingRow[]) =>
       rows.map((row) => {
         const services = this.serviceNamesOf(row.serviceIds);
@@ -457,15 +466,15 @@ export class FakeToolProvider implements ToolProvider {
       return ok({ verified: true, bookings: present(rows) });
     };
 
-    if (ctx.actor.type !== 'agent') return ok({ verified: true, bookings: present(upcoming.filter(matches)) });
+    if (ctx.actor.type !== 'agent') return ok({ verified: true, bookings: present(matching()) });
     const callerId = this.state.callerNumber ? toE164(this.state.callerNumber) : null;
     if (callerId === phone) {
       if (!name) return ok({ verified: false, bookings: [], needs: 'name', matchCount: upcoming.length });
-      const found = upcoming.filter(matches);
+      const found = matching();
       return found.length > 0 ? verify(found) : ok({ verified: false, bookings: [], needs: 'name' });
     }
     if (!name || !date || !time) return ok({ verified: false, bookings: [], needs: 'name_date_time' });
-    const found = upcoming.filter(matches);
+    const found = matching();
     return found.length > 0 ? verify(found) : ok({ verified: false, bookings: [], needs: 'name_date_time' });
   }
 
@@ -500,9 +509,20 @@ export class FakeToolProvider implements ToolProvider {
     return booking;
   }
 
-  private isFree(staffId: string, start: string): boolean {
+  /**
+   * No held or confirmed booking of this staff member overlaps [start, end):
+   * start < otherEnd && otherStart < end. The booking being rescheduled still
+   * occupies its own time until the commit, like the real action.
+   */
+  private isFree(staffId: string, start: string, end: string): boolean {
+    const startMs = Date.parse(start);
+    const endMs = Date.parse(end);
     return !this.state.bookings.some(
-      (row) => row.staffId === staffId && Date.parse(row.start) === Date.parse(start) && (row.status === 'held' || row.status === 'confirmed'),
+      (row) =>
+        row.staffId === staffId &&
+        (row.status === 'held' || row.status === 'confirmed') &&
+        startMs < Date.parse(this.endOf(row)) &&
+        Date.parse(row.start) < endMs,
     );
   }
 
@@ -518,11 +538,13 @@ export class FakeToolProvider implements ToolProvider {
     const tz = ctx.tenantTimezone;
     const fits = (slot: { staffId: string }) =>
       (staffPref === 'any' || slot.staffId === staffPref) && staffPerforms(this.state, slot.staffId, original.serviceIds);
+    const free = (candidate: { staffId: string; start: string }) =>
+      this.isFree(candidate.staffId, candidate.start, this.endFor(original.serviceIds, candidate.start));
     const slot = this.state.slots.find((candidate) => fits(candidate) && Date.parse(candidate.start) === Date.parse(newStart));
-    if (!slot || !this.isFree(slot.staffId, slot.start)) {
+    if (!slot || !free(slot)) {
       const day = localDate(newStart, tz);
       const alternatives = this.state.slots
-        .filter((candidate) => fits(candidate) && localDate(candidate.start, tz) === day && this.isFree(candidate.staffId, candidate.start))
+        .filter((candidate) => fits(candidate) && localDate(candidate.start, tz) === day && free(candidate))
         .slice(0, 3)
         .map((candidate) => ({ start: candidate.start, staffId: candidate.staffId, spoken: spokenSlot(candidate.start, tz) }));
       return fail('CONFLICT', 'that time is not available', { alternatives, callerSafeMessage: SLOT_UNAVAILABLE });

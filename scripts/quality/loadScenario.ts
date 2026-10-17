@@ -141,6 +141,16 @@ const scenarioSchema = z
         mustSay: z.array(z.string()).optional(),
         mustNotSay: z.array(z.string()).optional(),
         readbackRequired: z.boolean().optional(),
+        reasoning: z
+          .object({
+            mode: z.enum(['enforce', 'shadow']).optional(),
+            injections: z.number().int().nonnegative().optional(),
+            blockedTools: z.number().int().nonnegative().optional(),
+            minShadowLines: z.number().int().nonnegative().optional(),
+          })
+          .strict()
+          .optional(),
+        toolAttempts: z.record(z.number().int().nonnegative()).optional(),
       })
       .strict()
       .refine((value) => hasRealAssertion(value), {
@@ -148,6 +158,25 @@ const scenarioSchema = z
       }),
     expectedFail: z.string().optional(),
     callerId: z.string().regex(/^\+[1-9]\d{7,14}$/, 'callerId must be E.164 or null').nullable().optional(),
+    reasoning: z
+      .object({
+        agentType: z.string().min(1),
+        agentMetadata: z.record(z.unknown()).optional(),
+        tenantSettings: z.record(z.unknown()).optional(),
+      })
+      .strict()
+      .optional(),
+    toolFaults: z
+      .record(
+        z
+          .object({
+            failTimes: z.number().int().positive(),
+            code: z.string().optional(),
+            retryable: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 

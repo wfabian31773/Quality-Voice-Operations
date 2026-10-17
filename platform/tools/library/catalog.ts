@@ -127,6 +127,7 @@ export const TOOL_LIBRARY: readonly ToolLibraryEntry[] = [
         contactPhone: { type: 'string' },
         contactEmail: { type: 'string' },
         notes: { type: 'string' },
+        confirmationToken: { type: 'string', description: 'Server-issued token from a previous create_booking challenge, sent after the caller confirmed the readback.' },
       },
       required: ['title', 'startTime', 'contactName', 'contactPhone'],
       additionalProperties: false,

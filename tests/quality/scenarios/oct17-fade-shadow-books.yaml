@@ -1,0 +1,106 @@
+id: oct17-fade-shadow-books
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [oct17, reasoning:shadow, scheduling, book, template:barbershop, lang:en]
+# Replay of the Oct 17 2:16 PM Sharp Line call with the salon agent's
+# ReasoningEngine in shadow (the vertical default). On the real call the
+# engine injected "Which service would you like to book?", reset the slots on
+# "if nine is available", and blocked lookup_customer, so the caller had to
+# read out his number. Here the engine still sees every turn and tool call,
+# but only logs reasoning_shadow lines: "fade" is understood, the caller ID is
+# offered and used, one readback, an explicit yes, then the commit.
+seed: sharp-line-oct17
+callerId: "+15555550100"
+now: "2026-10-17T14:16:00-04:00"
+reasoning:
+  agentType: salon
+  agentMetadata:
+    vertical: barbershop
+caller:
+  - text: "Hi, this is Wayne."
+  - text: "I'm looking for a fade."
+  - text: "Um, Saturday mornings."
+  - text: "Yeah, if nine is available, I'll take it."
+  - text: "You can use the one I'm calling from."
+  - text: "Yes."
+script:
+  - on: 0
+    steps:
+      - say: "Hi Wayne, nice to speak with you. What can I help you with today?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.list_services
+      - say: "A fade, sure. That's 45 minutes. What day works for you?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [fade]
+            staffId: any
+            date: "2026-10-24"
+      - say: "This morning has passed, so the next Saturday is October 24th. I have 9, 10 or 11 that morning."
+  - on: 3
+    steps:
+      - say: "9 AM on Saturday, October 24th. Should I use the number you're calling from, ending in 0100?"
+  - on: 4
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [fade]
+            staffId: any
+            start: "2026-10-24T09:00:00-04:00"
+            customer:
+              name: Wayne
+              phone: "{{callerId}}"
+      - say: "{{readback}}. Is that right?"
+  - on: 5
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked: a fade with Marcus on Saturday, October 24 at 9 AM."
+expect:
+  actions:
+    - name: scheduling.list_services
+    - name: scheduling.check_availability
+      input:
+        serviceIds: [fade]
+        date: "2026-10-24"
+    - name: scheduling.book.prepare
+      input:
+        serviceIds: [fade]
+        start: "2026-10-24T09:00:00-04:00"
+        customer:
+          name: Wayne
+          # The caller ID, not a number the caller had to read out.
+          phone: "+15555550100"
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          date: "2026-10-24"
+          startLocal: "09:00"
+          staffId: marcus
+  mustSay:
+    - "fade"
+    - "ending in 0100"
+  mustNotSay:
+    - "you're booked"
+    - "which service would you like"
+    - "what's the best number"
+    - "what is the best number"
+    - "your phone number"
+    - "identify caller"
+  readbackRequired: true
+  reasoning:
+    mode: shadow
+    injections: 0
+    blockedTools: 0
+    # One line per caller turn (6) and per tool call (4).
+    minShadowLines: 10

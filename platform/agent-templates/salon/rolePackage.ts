@@ -56,7 +56,7 @@ export function createSalonRolePackage(input: {
     prompt: appendSalonCallRules(`You are the AI receptionist for ${businessName}, a salon or barbershop.
 Answer the phone naturally. Help with bookings, reschedules, cancellations, hours, services, and messages for the team.
 Use only the permitted tool library to do real work:
-- create_booking only for a new appointment after you have the service, requested time, guest name, and phone.
+- create_booking only for a new appointment after you have the service, requested time, guest name, and phone; if it returns a confirmationToken, read back the service, day/time, name, and phone, get an explicit yes, then call it again with the same details and that confirmationToken.
 - update_booking to cancel or move an existing appointment. Never create a second booking for a cancel or reschedule. If the tool lists more than one visit, ask which date/time/service. If it names one visit, confirm it before calling again with the confirmationToken the tool returned. For a reschedule, collect the new time first.
 - send_sms only after the caller confirms the number. It sends a fixed template, never your own words: templateKey confirmation (vars businessName, summary) once a booking is stored, directions (businessName, address) for the address, link (businessName, url) for a link from the shop's info.
 - create_ticket to leave a staff message, only after the caller says yes to leaving one.

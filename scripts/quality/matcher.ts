@@ -4,6 +4,9 @@ import type {
   EndSnapshot,
   EndStateExpect,
   ExpectedAction,
+  ReasoningExpect,
+  ReasoningObservation,
+  Scenario,
   ScenarioExpect,
   TimeMatchContext,
   TraceEvent,
@@ -390,11 +393,89 @@ export function matchEndState(
   return failures;
 }
 
+/** Every caller line, the caller ID (and its digits), and every string tool-input value of 4+ chars. */
+function piiNeedles(scenario: Scenario | undefined, trace: TraceEvent[]): string[] {
+  const needles = new Set<string>();
+  const add = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed.length >= 4) needles.add(trimmed.toLowerCase());
+  };
+  const walk = (value: unknown) => {
+    if (typeof value === 'string') add(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+  };
+  for (const event of trace) {
+    if (event.type === 'caller' && event.turn.text) add(event.turn.text);
+    if (event.type === 'tool') walk(event.input);
+  }
+  if (scenario?.callerId) {
+    add(scenario.callerId);
+    add(scenario.callerId.replace(/\D/g, ''));
+  }
+  return [...needles];
+}
+
+export function matchReasoning(
+  expected: ReasoningExpect | undefined,
+  observation: ReasoningObservation | undefined,
+  trace: TraceEvent[],
+  scenario?: Scenario,
+): CheckFailure[] {
+  if (!expected) return [];
+  if (!observation) {
+    return [{ check: 'reasoning', message: 'scenario expects reasoning but sets no `reasoning` setup', expected }];
+  }
+  const failures: CheckFailure[] = [];
+  if (expected.mode && observation.mode !== expected.mode) {
+    failures.push({ check: 'reasoning', message: 'reasoning mode', expected: expected.mode, actual: observation.mode });
+  }
+  if (expected.injections !== undefined && observation.injections.length !== expected.injections) {
+    failures.push({ check: 'reasoning', message: 'reasoning injections', expected: expected.injections, actual: observation.injections });
+  }
+  if (expected.blockedTools !== undefined && observation.blocked.length !== expected.blockedTools) {
+    failures.push({ check: 'reasoning', message: 'tools blocked by reasoning', expected: expected.blockedTools, actual: observation.blocked });
+  }
+  if (expected.minShadowLines !== undefined && observation.shadowLines.length < expected.minShadowLines) {
+    failures.push({
+      check: 'reasoning',
+      message: 'too few reasoning_shadow lines',
+      expected: `>= ${expected.minShadowLines}`,
+      actual: observation.shadowLines.length,
+    });
+  }
+  // A shadow line carries ids and enums only: no utterance, name, phone or slot
+  // value. The callId is the session id (the sim derives it from the scenario id).
+  const blob = JSON.stringify(observation.shadowLines.map(({ callId: _callId, ...rest }) => rest)).toLowerCase();
+  const leaked = piiNeedles(scenario, trace).filter((needle) => blob.includes(needle));
+  if (/\d{7,}/.test(blob)) leaked.push('<7+ digit run>');
+  if (leaked.length > 0) {
+    failures.push({ check: 'reasoning', message: 'reasoning_shadow lines contain caller data', expected: 'no PII', actual: leaked });
+  }
+  return failures;
+}
+
+export function matchToolAttempts(
+  expected: Record<string, number> | undefined,
+  attempts: Record<string, number> | undefined,
+): CheckFailure[] {
+  if (!expected) return [];
+  const failures: CheckFailure[] = [];
+  for (const [tool, count] of Object.entries(expected)) {
+    const actual = attempts?.[tool] ?? 0;
+    if (actual !== count) {
+      failures.push({ check: 'toolAttempts', message: `${tool} executed ${actual} time(s)`, expected: count, actual });
+    }
+  }
+  return failures;
+}
+
 export function evaluateExpect(
   expect: ScenarioExpect,
   trace: TraceEvent[],
   snapshot: EndSnapshot,
   ctx?: TimeMatchContext,
+  extras: { reasoning?: ReasoningObservation; toolAttempts?: Record<string, number>; scenario?: Scenario } = {},
 ): CheckFailure[] {
   return [
     ...matchActions(expect.actions, trace, ctx),
@@ -402,6 +483,8 @@ export function evaluateExpect(
     ...matchMustSay(expect.mustSay, trace),
     ...matchMustNotSayBeforeCommit(expect.mustNotSay, trace),
     ...matchReadback(expect.readbackRequired, trace),
+    ...matchReasoning(expect.reasoning, extras.reasoning, trace, extras.scenario),
+    ...matchToolAttempts(expect.toolAttempts, extras.toolAttempts),
   ];
 }
 

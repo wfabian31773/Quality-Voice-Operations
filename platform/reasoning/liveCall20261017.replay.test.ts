@@ -11,6 +11,8 @@ import { ReasoningEngine } from './ReasoningEngine';
 import { bindSessionToolArgs } from './sessionBinding';
 import { SALON_TOOLS } from '../agent-templates/salon/rolePackage';
 import type { DecisionResult } from './types';
+import { ReasoningCallGate, type ReasoningShadowLine } from './reasoningShadow';
+import { resolveReasoningMode } from './reasoningMode';
 
 const CALLER = '+15555550100';
 
@@ -219,6 +221,52 @@ describe('Oct 17 live call replay (salon pack, legacy library tools)', () => {
       expect(line).not.toMatch(/I'll (go ahead and )?create a ticket/i);
       expect(line).not.toMatch(/within the hour|as soon as possible/i);
     }
+  });
+});
+
+describe('Oct 17 replay through the call gate: salon = shadow, enforce unchanged (VA-01)', () => {
+  const TOOLS = SALON_TOOLS.map((tool) => tool.name);
+  function gated(mode: 'enforce' | 'shadow') {
+    const engine = makeEngine();
+    const lines: ReasoningShadowLine[] = [];
+    return { engine, lines, gate: new ReasoningCallGate({ engine, mode, callId: 'cs-replay', toolsAvailable: TOOLS, log: (l) => lines.push(l) }) };
+  }
+
+  it('the Sharp Line agent (type salon, vertical barbershop) resolves to shadow', () => {
+    expect(resolveReasoningMode({ agentType: 'salon', agentMetadata: { vertical: 'barbershop' } }).mode).toBe('shadow');
+  });
+
+  it('shadow: the "Which service…?" injection and the decision block are only logged', () => {
+    const { engine, gate, lines } = gated('shadow');
+    gate.processTurn('Hi, this is Wayne.');
+    const fade = gate.processTurn("I'm looking for a fade.");
+    // The engine still decides it (main's extractor, see (a)); the call never hears it.
+    expect(fade.effects.injectTemplates).toContain('slot_clarification');
+    expect(lines[1]).toMatchObject({ would_inject: true, inject_template: expect.stringContaining('slot_clarification') });
+
+    let decision = gate.processTurn('Um, Saturday mornings.').result;
+    for (let i = 0; i < 6 && !(decision.action === 'execute_tool' && decision.toolToExecute === 'create_ticket'); i++) {
+      engine.handleToolFailure();
+      decision = gate.processTurn('hmm').result;
+    }
+    const sms = gate.authorizeTool('send_sms', { templateKey: 'confirmation', toNumber: '' });
+    expect(sms.engine?.allowed).toBe(false);
+    expect(sms.allowed).toBe(true);
+    expect(JSON.stringify(lines)).not.toMatch(/wayne|fade|5555/i);
+  });
+
+  it('enforce: the same requests are still blocked and the guidance still returned', () => {
+    const { engine, gate, lines } = gated('enforce');
+    gate.processTurn('Hi, this is Wayne.');
+    expect(gate.processTurn("I'm looking for a fade.").effects.injectTemplates).toContain('slot_clarification');
+    let decision = gate.processTurn('Um, Saturday mornings.').result;
+    for (let i = 0; i < 6 && !(decision.action === 'execute_tool' && decision.toolToExecute === 'create_ticket'); i++) {
+      engine.handleToolFailure();
+      decision = gate.processTurn('hmm').result;
+    }
+    expect(gate.authorizeTool('send_sms', { templateKey: 'confirmation', toNumber: '' }).allowed).toBe(false);
+    expect(gate.authorizeTool('lookup_customer', {}).allowed).toBe(true);
+    expect(lines).toEqual([]);
   });
 });
 

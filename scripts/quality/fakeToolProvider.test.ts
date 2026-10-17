@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FakeToolProvider, formatLocalHm, localDate, resetFakeTokens, slotStartMatches } from './fakeToolProvider';
+import { FakeToolProvider, FIND_LIMIT, formatLocalHm, localDate, resetFakeTokens, slotStartMatches } from './fakeToolProvider';
 import { buildFixture, snapshotOf } from './seed';
 import type { ToolCallContext } from './types';
 
@@ -258,6 +258,66 @@ describe('FakeToolProvider', () => {
       expect(window.ok ? null : window.error.callerSafeMessage).toMatch(/24 hours' notice/);
       const passed = await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx('2026-10-22T10:05:00-04:00'));
       expect(passed.ok ? null : passed.error).toMatchObject({ code: 'OUTSIDE_POLICY', callerSafeMessage: expect.stringMatching(/already started or passed/) });
+    });
+
+    it('reschedule free check compares full time ranges, not only start times', async () => {
+      // Ana's 45-minute combo with Marco runs 12:45-13:30; the 13:00 slot starts inside it.
+      const { state, tools } = shop(PHONE);
+      state.services.push({ id: 'combo', name: 'cut and beard combo', durationMin: 45, priceText: '$50' });
+      state.staff.find((member) => member.id === 'marco')!.serviceIds.push('combo');
+      state.slots.push({ start: '2026-10-23T14:00:00-04:00', end: '2026-10-23T14:30:00-04:00', staffId: 'marco' });
+      state.bookings.push({
+        id: 'bk_ana', status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['combo'],
+        start: '2026-10-23T12:45:00-04:00', startLocal: '12:45', customerName: 'Ana', customerPhone: '+15555550188',
+      });
+      await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+      const overlapping = await tools.invoke('scheduling.reschedule.prepare', { bookingId: 'bk_thu', newStart: '2026-10-23T13:00:00-04:00' }, ctx());
+      expect(overlapping.ok ? null : overlapping.error).toMatchObject({
+        code: 'CONFLICT',
+        alternatives: [{ start: '2026-10-23T14:00:00-04:00', staffId: 'marco' }],
+      });
+
+      // Back to back is free: a 30-minute move ending exactly when the next booking starts.
+      state.bookings.find((row) => row.id === 'bk_ana')!.start = '2026-10-23T13:30:00-04:00';
+      const adjacent = await tools.invoke('scheduling.reschedule.prepare', { bookingId: 'bk_thu', newStart: '2026-10-23T13:00:00-04:00' }, ctx());
+      expect(adjacent.ok).toBe(true);
+    });
+
+    it('a new start inside a booking that started earlier the same day is taken (staff-scoped)', async () => {
+      const { state, tools } = shop(PHONE);
+      state.slots.push({ start: '2026-10-23T13:15:00-04:00', end: '2026-10-23T13:45:00-04:00', staffId: 'marco' });
+      state.slots.push({ start: '2026-10-23T13:15:00-04:00', end: '2026-10-23T13:45:00-04:00', staffId: 'dana' });
+      state.bookings.push({
+        id: 'bk_ana', status: 'held', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut'],
+        start: '2026-10-23T13:00:00-04:00', startLocal: '13:00', customerName: 'Ana', customerPhone: '+15555550188',
+      });
+      await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+      const marco = await tools.invoke('scheduling.reschedule.prepare', { bookingId: 'bk_thu', newStart: '2026-10-23T13:15:00-04:00' }, ctx());
+      expect(codeOf(marco)).toBe('CONFLICT');
+      const dana = await tools.invoke('scheduling.reschedule.prepare', { bookingId: 'bk_thu', newStart: '2026-10-23T13:15:00-04:00', staffId: 'dana' }, ctx());
+      expect(codeOf(dana)).toBe('ok');
+    });
+
+    it(`find_bookings returns at most FIND_LIMIT (${FIND_LIMIT}) bookings, like the real action`, async () => {
+      const { state, tools } = shop(PHONE);
+      for (let day = 0; day < 25; day += 1) {
+        const date = new Date(Date.UTC(2026, 9, 26 + day, 14, 0));
+        state.bookings.push({
+          id: `bk_many_${day}`, status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut'],
+          start: date.toISOString(), startLocal: '10:00', customerName: 'Luis', customerPhone: PHONE,
+        });
+      }
+      const found = dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx())) as { bookings: Array<{ bookingId: string }> };
+      expect(found.bookings).toHaveLength(FIND_LIMIT);
+      // Soonest first: Thursday's booking, then the earliest of the 25.
+      expect(found.bookings[0].bookingId).toBe('bk_thu');
+      expect(found.bookings[1].bookingId).toBe('bk_many_0');
+      // Only the returned bookings are verified for a change in this call.
+      expect(codeOf(await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_many_24' }, ctx()))).toBe('NOT_FOUND');
+      expect(codeOf(await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_many_18' }, ctx()))).toBe('ok');
+      // Trusted (non-agent) lookups are capped too; the uncapped count is never listed.
+      const staff = dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE }, { ...ctx(), actor: { type: 'user', id: 'u1' } })) as { bookings: unknown[] };
+      expect(staff.bookings).toHaveLength(FIND_LIMIT);
     });
   });
 

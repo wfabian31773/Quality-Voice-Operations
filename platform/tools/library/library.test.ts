@@ -574,6 +574,78 @@ describe('tool library handlers', () => {
       '2026-10-20T18:30:00.000Z',
     ]));
   });
+
+  describe('create_booking readback gate (shadow mode: requireBookingConfirmation)', () => {
+    const fade = {
+      title: 'Fade',
+      startTime: '2026-10-24T09:00:00-04:00',
+      durationMinutes: 45,
+      contactName: 'Wayne',
+      contactPhone: '+15551230000',
+    };
+    const shadowCtx = { ...ctx, requireBookingConfirmation: true };
+    const inserts = () => query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO bookings'));
+
+    it('without a token inserts nothing and returns a pending challenge with a token', async () => {
+      const result = await executeCreateBooking(fade, shadowCtx);
+      expect(result).toMatchObject({ success: true, pending: true, status: 'needs_confirmation' });
+      expect(result.confirmationToken).toMatch(/^[0-9a-f]{32}$/);
+      expect(result.message).toMatch(/read back the service, day and time, name, and phone/i);
+      expect(result.message).toContain(result.confirmationToken);
+      expect(result.bookingId).toBeUndefined();
+      expect(isPendingBookingChallenge(result)).toBe(true);
+      expect(inserts()).toHaveLength(0);
+    });
+
+    it('rejects the token on the same caller turn (nothing inserted, new challenge)', async () => {
+      const challenge = await executeCreateBooking(fade, shadowCtx);
+      const sameTurn = await executeCreateBooking({ ...fade, confirmationToken: challenge.confirmationToken }, shadowCtx);
+      expect(sameTurn).toMatchObject({ success: true, pending: true, status: 'needs_confirmation' });
+      expect(sameTurn.bookingId).toBeUndefined();
+      expect(inserts()).toHaveLength(0);
+    });
+
+    it('commits on a later caller turn with the same details and the token (single use)', async () => {
+      const challenge = await executeCreateBooking(fade, shadowCtx);
+      const committed = await executeCreateBooking(
+        { ...fade, confirmationToken: challenge.confirmationToken },
+        { ...shadowCtx, transcriptTurnIndex: 2 },
+      );
+      expect(committed).toMatchObject({ success: true, bookingId: 'bk-1' });
+      expect(isPendingBookingChallenge(committed)).toBe(false);
+      expect(inserts()).toHaveLength(1);
+
+      const replay = await executeCreateBooking(
+        { ...fade, confirmationToken: challenge.confirmationToken },
+        { ...shadowCtx, transcriptTurnIndex: 3 },
+      );
+      expect(replay).toMatchObject({ pending: true, status: 'needs_confirmation' });
+      expect(inserts()).toHaveLength(1);
+    });
+
+    it('rejects a token presented with different details', async () => {
+      const later = { ...shadowCtx, transcriptTurnIndex: 2 };
+      for (const changed of [
+        { startTime: '2026-10-24T10:00:00-04:00' },
+        { title: 'Beard trim' },
+        { contactPhone: '+15559998888' },
+        { durationMinutes: 30 },
+        { contactName: 'Marcus' },
+      ]) {
+        const challenge = await executeCreateBooking(fade, shadowCtx);
+        const result = await executeCreateBooking({ ...fade, ...changed, confirmationToken: challenge.confirmationToken }, later);
+        expect(result, JSON.stringify(changed)).toMatchObject({ success: true, pending: true, status: 'needs_confirmation' });
+      }
+      expect(inserts()).toHaveLength(0);
+    });
+
+    it('without requireBookingConfirmation (enforce mode) stores the booking as before', async () => {
+      const result = await executeCreateBooking(fade, ctx);
+      expect(result).toMatchObject({ success: true, bookingId: 'bk-1' });
+      expect(result.pending).toBeUndefined();
+      expect(inserts()).toHaveLength(1);
+    });
+  });
 });
 
 describe('registerToolLibrary', () => {

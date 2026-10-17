@@ -97,7 +97,8 @@ export async function getAgentConfig(tenantId: string, agentId: string) {
       `SELECT a.id, a.name, a.type, a.system_prompt, a.voice, a.model, a.temperature,
               a.max_response_output_tokens, a.tools, a.knowledge_base,
               a.escalation_config, a.metadata, a.language,
-              COALESCE(t.timezone, 'America/New_York') AS tenant_timezone
+              COALESCE(t.timezone, 'America/New_York') AS tenant_timezone,
+              t.settings AS tenant_settings
        FROM agents a
        JOIN tenants t ON t.id = a.tenant_id
        WHERE a.id = $1 AND a.tenant_id = $2`,

@@ -91,6 +91,29 @@ const FIXTURES: Record<string, () => TenantState> = {
     reasonIfNoneToday: 'fully_booked',
     nextOpenDate: '2026-10-21',
   }),
+  // The Oct 17 test-call shop (Sharp Line Barbers): a 45-minute fade and
+  // Saturday-morning openings. Fake 555 caller ID.
+  'sharp-line-oct17': () => ({
+    ...baseShop('barbershop', 'sharp-line-oct17'),
+    transferTarget: 'Marcus',
+    address: '1 Demo Way',
+    hoursText: 'Tuesday to Saturday, 9 to 7',
+    staff: [
+      { id: 'marcus', displayName: 'Marcus', serviceIds: ['haircut', 'fade', 'beard-trim'] },
+      { id: 'dee', displayName: 'Dee', serviceIds: ['haircut', 'fade'] },
+    ],
+    services: [
+      { id: 'haircut', name: 'haircut', durationMin: 30, priceText: 'from $30' },
+      { id: 'fade', name: 'fade', durationMin: 45, priceText: 'from $35' },
+      { id: 'beard-trim', name: 'beard trim', durationMin: 15, priceText: '$15' },
+    ],
+    slots: [
+      { start: '2026-10-24T09:00:00-04:00', end: '2026-10-24T09:45:00-04:00', staffId: 'marcus' },
+      { start: '2026-10-24T10:00:00-04:00', end: '2026-10-24T10:45:00-04:00', staffId: 'dee' },
+      { start: '2026-10-24T11:00:00-04:00', end: '2026-10-24T11:45:00-04:00', staffId: 'marcus' },
+    ],
+    callerNumber: '+15555550100',
+  }),
   'nail-salon-front-desk': () => ({
     ...baseShop('nail_salon', 'nail-salon-front-desk'),
     staff: [

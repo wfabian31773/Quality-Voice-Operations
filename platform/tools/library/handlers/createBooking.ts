@@ -42,10 +42,31 @@ export function parseBookingDateTime(raw: string, timeZone: string): Date | null
 
 const logger = createLogger('TOOL_CREATE_BOOKING');
 
+export interface CreateBookingResult {
+  success: boolean;
+  message: string;
+  bookingId?: string;
+  retryable?: boolean;
+  pending?: boolean;
+  status?: 'needs_confirmation';
+  confirmationToken?: string;
+}
+
+/** Stable key of what the caller confirms: service, start time, duration, name, phone. */
+function newBookingDetailsKey(title: string, startTime: string, duration: number, contactName: string, contactPhone: string): string {
+  return [
+    title.toLowerCase().replace(/\s+/g, ' '),
+    startTime,
+    String(duration),
+    contactName.trim().toLowerCase(),
+    phoneDigits(contactPhone).slice(-10),
+  ].join('|');
+}
+
 export async function executeCreateBooking(
   input: Record<string, unknown>,
   context: ToolContext,
-): Promise<{ success: boolean; message: string; bookingId?: string; retryable?: boolean }> {
+): Promise<CreateBookingResult> {
   const title = String(input.title ?? '').trim();
   const startTime = String(input.startTime ?? '').trim();
   const contactName = String(input.contactName ?? '').trim();
@@ -56,6 +77,27 @@ export async function executeCreateBooking(
 
   const durationMinutes = Number(input.durationMinutes ?? 30);
   const duration = Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30;
+
+  if (context.requireBookingConfirmation) {
+    // The token is accepted only on a later caller turn and only for the
+    // same details, so the caller answered after the readback.
+    const requested = {
+      bookingId: 'new',
+      action: 'create',
+      detailsKey: newBookingDetailsKey(title, startTime, duration, contactName, contactPhone),
+    };
+    const presentedToken = String(input.confirmationToken ?? '').trim();
+    if (!consumeBookingConfirmation(context, requested, presentedToken)) {
+      const confirmationToken = issueBookingConfirmation(context, requested);
+      return {
+        success: true,
+        pending: true,
+        status: 'needs_confirmation',
+        confirmationToken,
+        message: `Nothing is booked yet. Read back the service, day and time, name, and phone number to the caller and get an explicit yes. Then call create_booking again with the same details and confirmationToken ${confirmationToken}.`,
+      };
+    }
+  }
 
   const pool = getPlatformPool();
   const client = await pool.connect();

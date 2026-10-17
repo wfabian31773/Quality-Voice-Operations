@@ -30,6 +30,10 @@ import { bindSessionToolArgs } from '../../../platform/reasoning/sessionBinding'
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { WorkforceRoutingService } from '../../../platform/workforce/WorkforceRoutingService';
 import { ReasoningEngine, type ReasoningEngineConfig } from '../../../platform/reasoning';
+import { isSalonVerticalAgent, resolveReasoningMode, type ReasoningMode } from '../../../platform/reasoning/reasoningMode';
+import { ReasoningCallGate } from '../../../platform/reasoning/reasoningShadow';
+import { toolStopGuard } from '../../../platform/tools/ToolStopGuard';
+import { checkAgentToolAllowlist } from '../../../platform/tools/agentToolAllowlist';
 import { compressConversation, shouldCompress, type ConversationMessage } from '../../../platform/billing/cost/TokenCompressor';
 import { checkConversationBudget, getConversationCostRunningTotal, recordConversationCost, getSessionCacheCounters, clearSessionCacheCounters, type RoutingDecision } from '../../../platform/billing/cost';
 import {
@@ -78,8 +82,25 @@ export interface SessionContext {
   onSessionSwapRequired?: (targetAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
   onToolCall?: (name: string, args: unknown, callSessionId: string) => Promise<string>;
   isTrial?: boolean;
+  /**
+   * Resolved reasoning mode (agent config → tenant settings → vertical
+   * default). When omitted it is resolved from templateKey + agent metadata;
+   * ignored (enforce) unless templateKey is the salon template.
+   * createRealtimeSession sets it to the resolved mode either way.
+   */
+  reasoningMode?: ReasoningMode;
   reasoningEngine?: ReasoningEngine;
+  /** Applies (enforce) or only logs (shadow) the engine's decisions. */
+  reasoningGate?: ReasoningCallGate;
+  /**
+   * Completed caller utterances this call, counted by the session itself so
+   * the create_booking readback gate works even if the reasoning engine
+   * never started. An object so handoff copies of ctx share the count.
+   */
+  callerTurns?: { count: number };
 }
+
+const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
 
 interface RealtimeMessageItem {
   type: string;
@@ -95,7 +116,6 @@ function buildToolHandler(
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
     const startTime = Date.now();
 
-    const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
     if (ctx.templateKey && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName) && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
       const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
@@ -109,6 +129,27 @@ function buildToolHandler(
         durationMs: Date.now() - startTime
       });
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+    }
+
+    // Agent tool allowlist in shadow mode (with or without an engine). In
+    // enforce mode the engine's safety gate keeps doing this check, and an
+    // enforce call whose engine failed to start is unchanged.
+    if (ctx.reasoningMode === 'shadow') {
+      const allowlist = checkAgentToolAllowlist(toolName, agentConfig.tools.map((tool) => tool.name), INTERNAL_ORCHESTRATION_TOOLS);
+      if (!allowlist.allowed) {
+        logger.warn('Tool not in agent allowlist blocked', { tenantId, callId: callSessionId, tool: toolName });
+        const alId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+        await completeToolExecution({
+          tenantId,
+          executionId: alId,
+          callSessionId,
+          result: { success: false, reason: 'unauthorized_tool' },
+          status: 'failed',
+          errorMessage: 'Tool not in agent allowlist',
+          durationMs: Date.now() - startTime,
+        });
+        return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
+      }
     }
 
     const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
@@ -172,19 +213,11 @@ function buildToolHandler(
       args = sessionBound.args;
     }
 
-    if (ctx.reasoningEngine && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
+    if (ctx.reasoningGate && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
       try {
-        for (const [key, value] of Object.entries(args)) {
-          if (typeof value === 'string' && value.length > 0) {
-            ctx.reasoningEngine.fillSlot(key, value, 'tool_args');
-          }
-        }
-      } catch (slotErr) {
-        logger.warn('Failed to fill slots from tool args (pre-safety)', { tenantId, callId: callSessionId, tool: toolName, error: String(slotErr) });
-      }
-
-      try {
-        const authorization = ctx.reasoningEngine.authorizeToolRequest(toolName, args);
+        // Enforce: the engine's verdict. Shadow: logged only; just the
+        // allowlist can block, and an engine error never does.
+        const authorization = ctx.reasoningGate.authorizeTool(toolName, args, agentConfig.tools.map((tool) => tool.name));
         if (!authorization.allowed) {
           const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
           logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
@@ -218,6 +251,18 @@ function buildToolHandler(
     }
 
     if (toolName === 'transfer_to_agent' && ctx.onHandoff) {
+      // This branch bypasses executeWithRetry, so it applies the repeated-tool
+      // stop itself: no handoff once stopped, one failure per failed call.
+      if (toolStopGuard.isStopped(callSessionId, toolName)) {
+        logger.warn('Stopped tool not executed', { tenantId, callId: callSessionId, tool: toolName });
+        return JSON.stringify(toolStopGuard.result(callSessionId, toolName));
+      }
+      const handoffFailed = (message: string): string => {
+        const failures = toolStopGuard.recordFailure(callSessionId, toolName);
+        return failures >= toolStopGuard.threshold
+          ? JSON.stringify(toolStopGuard.result(callSessionId, toolName))
+          : JSON.stringify({ success: false, message });
+      };
       const intent = (args.intent as string) ?? 'general';
       const context = (args.conversation_summary as string) ?? '';
       logger.info('Workforce handoff tool invoked', { tenantId, callId: callSessionId, intent });
@@ -262,7 +307,7 @@ function buildToolHandler(
             });
             await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(swapErr) });
             await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-            return JSON.stringify({ success: false, message: 'Transfer failed. Continuing with current agent.' });
+            return handoffFailed('Transfer failed. Continuing with current agent.');
           }
         } else if (handoffResult.success) {
           await completeToolExecution({
@@ -286,7 +331,7 @@ function buildToolHandler(
           });
           await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, reason: handoffResult.message });
           await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-          return JSON.stringify({ success: false, message: handoffResult.message });
+          return handoffFailed(handoffResult.message);
         }
       } catch (handoffErr) {
         await completeToolExecution({
@@ -300,7 +345,7 @@ function buildToolHandler(
         });
         await writeCallEvent(tenantId, callSessionId, 'handoff_failed', 'HANDOFF', 'ACTIVE_CONVERSATION', { intent, error: String(handoffErr) });
         await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-        return JSON.stringify({ success: false, message: 'Handoff failed. Continuing with current agent.' });
+        return handoffFailed('Handoff failed. Continuing with current agent.');
       }
     }
 
@@ -371,13 +416,6 @@ function buildToolHandler(
     let executionStatus: 'success' | 'failed' = 'success';
     let executionError: string | undefined;
 
-    const NON_RETRYABLE_TOOLS = ['triageEscalate'];
-
-    const assertToolSuccess = (jsonResult: string, tool: string): string => {
-      if (NON_RETRYABLE_TOOLS.includes(tool)) return jsonResult;
-      return assertToolResultSucceeded(jsonResult);
-    };
-
     const dispatchToolExecution = async (): Promise<string> => {
       let rawResult: string;
       switch (toolName) {
@@ -413,7 +451,7 @@ function buildToolHandler(
             },
           );
           rawResult = JSON.stringify(ticketResult);
-          return assertToolSuccess(rawResult, toolName);
+          return assertToolResultSucceeded(rawResult);
         }
 
         case 'createAfterHoursTicket': {
@@ -433,7 +471,7 @@ function buildToolHandler(
             },
           );
           rawResult = JSON.stringify(afterHoursResult);
-          return assertToolSuccess(rawResult, toolName);
+          return assertToolResultSucceeded(rawResult);
         }
 
         case 'triageEscalate': {
@@ -463,15 +501,21 @@ function buildToolHandler(
             },
           );
 
-          if (escalateResult.success) {
-            await updateCallState(tenantId, callSessionId, 'ESCALATED', {
-              escalationTarget: transferNumber,
-              escalationReason: (args as Record<string, string>).urgentConcern,
-            });
-            await writeCallEvent(tenantId, callSessionId, 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', {
-              target: transferNumber,
-            });
+          if (!escalateResult.success) {
+            // Fail without a retry (no duplicate transfer attempt) so the
+            // invocation counts once toward the repeated-tool stop and the
+            // model gets the caller-safe fallback. Fixed message: the tool's
+            // message can carry the caller's callback number (PII).
+            throw new NonRetryableToolError('ToolExecutionFailed: escalation transfer not started');
           }
+
+          await updateCallState(tenantId, callSessionId, 'ESCALATED', {
+            escalationTarget: transferNumber,
+            escalationReason: (args as Record<string, string>).urgentConcern,
+          });
+          await writeCallEvent(tenantId, callSessionId, 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', {
+            target: transferNumber,
+          });
 
           return JSON.stringify(escalateResult);
         }
@@ -550,17 +594,20 @@ function buildToolHandler(
               callSid,
               agentSlug: agentConfig.agentId,
               callerNumber: ctx.callerNumber,
-              transcriptTurnIndex: ctx.reasoningEngine?.getTranscript().length ?? 0,
+              transcriptTurnIndex: ctx.callerTurns?.count ?? 0,
+              // Shadow mode no longer enforces the engine's slot checks, so
+              // create_booking needs a readback + later-turn confirmation.
+              requireBookingConfirmation: ctx.reasoningMode === 'shadow',
             });
             rawResult = JSON.stringify(toolResult);
-            return assertToolSuccess(rawResult, toolName);
+            return assertToolResultSucceeded(rawResult);
           } else {
             logger.warn('Unknown tool called', { tenantId, callId: callSessionId, tool: toolName });
             return JSON.stringify({ success: false, message: `Unknown tool: ${toolName}` });
           }
         }
       }
-      return assertToolSuccess(rawResult, toolName);
+      return assertToolResultSucceeded(rawResult);
     };
 
     const retryConfig = getToolRetryConfig(toolName);
@@ -572,11 +619,19 @@ function buildToolHandler(
         callSessionId,
         agentSlug: agentConfig.agentId,
         retryConfig,
+        stopGuard: toolStopGuard,
       },
     );
 
     if (retryResult.success && retryResult.result !== undefined) {
       result = retryResult.result;
+    } else if (retryResult.stopped && retryResult.attempts === 0) {
+      // Stopped earlier in this call: nothing ran, so no new escalation
+      // task. The model gets the structured stop and the caller-safe hint.
+      executionStatus = 'failed';
+      executionError = retryResult.error ?? 'TOOL_STOPPED';
+      logger.warn('Stopped tool not executed', { tenantId, callId: callSessionId, tool: toolName });
+      result = JSON.stringify(toolStopGuard.result(callSessionId, toolName));
     } else {
       executionStatus = 'failed';
       executionError = retryResult.error ?? 'Unknown tool failure';
@@ -587,12 +642,16 @@ function buildToolHandler(
         usedFallback: retryResult.usedFallback,
       });
 
-      result = JSON.stringify({
-        success: false,
-        message: fallback.message,
-        recovery: unifiedToolRegistry.getRecoveryInstructions(toolName),
-        flaggedForFollowUp: true,
-      });
+      // This call's attempts reached the stop threshold: tell the model to
+      // stop now rather than hand it a retry-able fallback.
+      result = retryResult.stopped
+        ? JSON.stringify(toolStopGuard.result(callSessionId, toolName))
+        : JSON.stringify({
+          success: false,
+          message: fallback.message,
+          recovery: unifiedToolRegistry.getRecoveryInstructions(toolName),
+          flaggedForFollowUp: true,
+        });
 
       createEscalationTask({
         tenantId,
@@ -839,6 +898,17 @@ export async function createRealtimeSession(
   // is run concurrently with the caller-memory lookup and the call-session
   // insert below (all three are independent DB round-trips). Running them
   // sequentially was a big contributor to time-to-first-audio.
+  // A caller-supplied mode is trusted only for the salon template; every
+  // other template enforces.
+  const reasoningMode: ReasoningMode = !isSalonVerticalAgent({ agentType: ctx.templateKey })
+    ? 'enforce'
+    : ctx.reasoningMode ?? resolveReasoningMode({
+      agentType: ctx.templateKey,
+      agentMetadata: agentConfig.metadata,
+    }).mode;
+  // The tool handler reads the resolved mode (allowlist, booking readback).
+  ctx.reasoningMode = reasoningMode;
+  ctx.callerTurns = { count: 0 };
   let reasoningEngine: ReasoningEngine | undefined;
   try {
     const reasoningConfig: ReasoningEngineConfig = {
@@ -939,6 +1009,20 @@ export async function createRealtimeSession(
   }).catch((err) => logger.error('Failed to write call_received event', { tenantId, error: String(err) }));
 
   ctx.reasoningEngine = reasoningEngine;
+  toolStopGuard.openCall(callSessionId);
+  let reasoningGate = reasoningEngine
+    ? new ReasoningCallGate({
+      engine: reasoningEngine,
+      mode: reasoningMode,
+      callId: callSessionId,
+      toolsAvailable: agentConfig.tools.map((t) => t.name),
+      exemptTools: INTERNAL_ORCHESTRATION_TOOLS,
+    })
+    : undefined;
+  ctx.reasoningGate = reasoningGate;
+  // Engine decisions reach the model only in enforce mode.
+  let enforceEffects = reasoningGate?.enforcing ?? false;
+  slog.info('Reasoning mode', { reasoningMode, engine: Boolean(reasoningEngine) });
 
   const toolHandler = buildToolHandler(ctx, callSessionId);
   const agentTools = buildRealtimeTools(agentConfig.tools);
@@ -1097,13 +1181,14 @@ export async function createRealtimeSession(
   const resetSilenceTimer = (): void => {
     if (silenceTimer) clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
-      if (reasoningEngine) {
+      if (reasoningGate) {
         try {
-          const recovery = reasoningEngine.handleSilence();
-          if (recovery.recoveryPrompt) {
-            sendModelInstruction(recovery.recoveryPrompt);
+          // null in shadow mode (logged as would_inject silence_recovery).
+          const recoveryPrompt = reasoningGate.handleSilence();
+          if (recoveryPrompt) {
+            sendModelInstruction(recoveryPrompt);
             writeCallEvent(tenantId, callSessionId, 'silence_recovery', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-              prompt: recovery.recoveryPrompt,
+              prompt: recoveryPrompt,
             }).catch(() => {});
           }
         } catch (silenceErr) {
@@ -1128,6 +1213,7 @@ export async function createRealtimeSession(
           const text = c.text || c.transcript;
           if (text) {
             line = `CALLER: ${text}`;
+            if (ctx.callerTurns) ctx.callerTurns.count++;
             costTracker.addUtterance('user', text);
 
             recordTrace({
@@ -1178,9 +1264,11 @@ export async function createRealtimeSession(
               }
             }
 
-            if (reasoningEngine) {
+            if (reasoningGate) {
               try {
-                const reasoningResult = reasoningEngine.processUtterance(
+                // Shadow mode: the gate logs the decision as reasoning_shadow
+                // and every effect branch below is skipped (enforceEffects).
+                const { result: reasoningResult, partialRecoveryPrompt } = reasoningGate.processTurn(
                   text,
                   classifiedIntent,
                   classifiedConfidence,
@@ -1196,7 +1284,7 @@ export async function createRealtimeSession(
                   escalation: reasoningResult.escalation?.trigger,
                 }).catch(() => {});
 
-                if (reasoningResult.action === 'escalate_to_human') {
+                if (enforceEffects && reasoningResult.action === 'escalate_to_human') {
                   const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
                   const hasOnCallNumber = Boolean(
                     (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
@@ -1263,7 +1351,8 @@ export async function createRealtimeSession(
                 }
 
                 if (
-                  reasoningResult.action === 'execute_tool'
+                  enforceEffects
+                  && reasoningResult.action === 'execute_tool'
                   && reasoningResult.fallbackStep === 'create_ticket'
                   && reasoningResult.escalation?.output === 'take_message'
                 ) {
@@ -1280,7 +1369,7 @@ export async function createRealtimeSession(
                   }
                 }
 
-                if (reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
+                if (enforceEffects && reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
                   writeCallEvent(tenantId, callSessionId, 'reasoning_clarification', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
                     question: reasoningResult.clarifyingQuestion,
                     missingSlots: reasoningResult.traceEntry.missingSlots,
@@ -1296,7 +1385,7 @@ export async function createRealtimeSession(
                   }
                 }
 
-                if (reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
+                if (enforceEffects && reasoningResult.action === 'continue_workflow' && reasoningResult.reasoning) {
                   try {
                     sendModelInstruction(
                       `Continue the conversation. Current step guidance: ${reasoningResult.reasoning}`,
@@ -1312,18 +1401,13 @@ export async function createRealtimeSession(
                   }).catch(() => {});
                 }
 
-                if (
-                  classifiedIntent === 'unknown' &&
-                  classifiedConfidence === 'low' &&
-                  reasoningResult.action !== 'escalate_to_human'
-                ) {
+                // The gate ran handlePartialAnswer for an unclear turn
+                // (unknown intent, low confidence, no escalation).
+                if (enforceEffects && partialRecoveryPrompt) {
                   try {
-                    const recovery = reasoningEngine.handlePartialAnswer(text);
-                    if (recovery.recoveryPrompt) {
-                      sendModelInstruction(
-                        `The caller's response was unclear. ${recovery.recoveryPrompt}`,
-                      );
-                    }
+                    sendModelInstruction(
+                      `The caller's response was unclear. ${partialRecoveryPrompt}`,
+                    );
                   } catch (recoveryErr) {
                     slog.warn('Partial answer recovery failed', { error: String(recoveryErr) });
                   }
@@ -1361,9 +1445,10 @@ export async function createRealtimeSession(
               metadata: { model: agentConfig.model, agentId: agentConfig.agentId },
             }).catch(() => {});
 
-            if (reasoningEngine) {
+            if (reasoningGate) {
               try {
-                const responseSafety = reasoningEngine.checkResponseSafety(c.text);
+                // Always allowed in shadow mode (logged if it would cancel).
+                const responseSafety = reasoningGate.checkResponse(c.text);
                 if (!responseSafety.allowed) {
                   const criticalViolations = responseSafety.violations
                     .filter((v) => v.severity === 'critical')
@@ -1444,6 +1529,7 @@ export async function createRealtimeSession(
     startedAt: new Date(),
     cleanup: async () => {
       if (silenceTimer) clearTimeout(silenceTimer);
+      toolStopGuard.clearCall(callSessionId);
       try {
         await activeSession.close();
       } catch {}
@@ -1466,6 +1552,7 @@ export async function createRealtimeSession(
       slog.info('Realtime session closed');
 
       if (silenceTimer) clearTimeout(silenceTimer);
+      toolStopGuard.clearCall(callSessionId);
       // Clear the per-call budget-check interval here too. Without this, the
       // hangup teardown path (finalizeStream -> session.close() ->
       // sessionManager.unregister) never runs the sessionManager `cleanup`
@@ -1694,6 +1781,24 @@ export async function createRealtimeSession(
       rolePackageId: newAgentConfig.rolePackageId,
       rolePackageVersion: newAgentConfig.rolePackageVersion,
     });
+
+    // Shadow does not follow the call to a non-salon template: the target
+    // runs in enforce (tool gate, allowlist, booking commit, turn effects).
+    if (ctx.reasoningMode === 'shadow' && !isSalonVerticalAgent({ agentType: newAgentConfig.rolePackageId })) {
+      ctx.reasoningMode = 'enforce';
+      reasoningGate = reasoningEngine
+        ? new ReasoningCallGate({
+          engine: reasoningEngine,
+          mode: 'enforce',
+          callId: callSessionId,
+          toolsAvailable: newAgentConfig.tools.map((t) => t.name),
+          exemptTools: INTERNAL_ORCHESTRATION_TOOLS,
+        })
+        : undefined;
+      ctx.reasoningGate = reasoningGate;
+      enforceEffects = reasoningGate?.enforcing ?? false;
+      slog.info('Reasoning mode', { reasoningMode: ctx.reasoningMode, engine: Boolean(reasoningEngine), reason: 'handoff_to_non_salon' });
+    }
 
     const newToolHandler = buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId);
     const newAgentTools = buildRealtimeTools(newAgentConfig.tools);

@@ -6,7 +6,9 @@ import { evaluateExpect, formatDiff } from './matcher';
 import { createTenantStore, type TenantStore } from './seed';
 import { ScriptedAgent, type SimAgent } from './scriptedAgent';
 import { createLlmAgent } from './llmAgent';
+import { createScenarioReasoning, GuardedToolProvider, observeCallerTurn } from './reasoningHarness';
 import type {
+  ReasoningObservation,
   RunReport,
   Scenario,
   ScenarioRunResult,
@@ -23,6 +25,8 @@ export type RunOptions = {
   store?: TenantStore;
   agent?: SimAgent;
   only?: string[];
+  /** Force the reasoning mode of scenarios that set `reasoning` (e.g. replay a shadow scenario in enforce). */
+  reasoningMode?: ReasoningObservation['mode'];
 };
 
 function classify(scenario: Scenario, failures: ReturnType<typeof evaluateExpect>): ScenarioStatus {
@@ -38,32 +42,49 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
   // The trusted caller ID is call state (call_sessions), not agent input.
   if (scenario.callerId !== undefined) store.state.callerNumber = scenario.callerId;
   const now = opts.now ?? (scenario.now ? new Date(scenario.now) : new Date('2026-10-20T14:00:00-04:00'));
-  const tools = new FakeToolProvider(store.state, scenario.tools);
+  const callId = `call-${scenario.id}`;
+  const fake = new FakeToolProvider(store.state, scenario.tools);
+  const reasoning = scenario.reasoning
+    ? createScenarioReasoning(scenario.reasoning, {
+      callId,
+      tenantId: store.state.tenantId,
+      callerNumber: store.state.callerNumber,
+      toolNames: fake.listTools().map((tool) => tool.name),
+      modeOverride: opts.reasoningMode,
+    })
+    : undefined;
+  const tools = new GuardedToolProvider(fake, { reasoning, faults: scenario.toolFaults });
   const agent =
     opts.agent ??
-    (opts.mode === 'llm' ? createLlmAgent() : new ScriptedAgent(scenario));
+    (opts.mode === 'llm'
+      ? createLlmAgent()
+      : new ScriptedAgent(scenario, store.state.callerNumber ? { callerId: store.state.callerNumber } : {}));
   const ctx: ToolCallContext = {
     tenantId: store.state.tenantId,
     actor: { type: 'agent', id: 'quality-sim', role: 'agent' },
     now,
     tenantTimezone: store.state.timezone,
-    callId: `call-${scenario.id}`,
+    callId,
   };
   const trace: TraceEvent[] = [];
   try {
     for (let i = 0; i < scenario.caller.length; i += 1) {
       const turn = scenario.caller[i];
       trace.push({ type: 'caller', turn });
+      if (reasoning) observeCallerTurn(reasoning, turn);
       const output = await agent.handleTurn(i, tools, ctx);
       trace.push(...output.events);
     }
     if (store.flush) await store.flush();
     const snapshot = store.snapshot();
     const timeZone = store.state.timezone;
-    const failures = evaluateExpect(scenario.expect, trace, snapshot, {
-      date: localDate(now.toISOString(), timeZone),
-      timeZone,
-    });
+    const failures = evaluateExpect(
+      scenario.expect,
+      trace,
+      snapshot,
+      { date: localDate(now.toISOString(), timeZone), timeZone },
+      { reasoning: reasoning?.observation, toolAttempts: tools.attempts, scenario },
+    );
     const status = classify(scenario, failures);
     return {
       id: scenario.id,
@@ -73,6 +94,8 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
       diff: formatDiff(scenario.id, failures),
       trace,
       snapshot,
+      reasoning: reasoning?.observation,
+      toolAttempts: { ...tools.attempts },
     };
   } finally {
     if (!opts.store) await store.close();
