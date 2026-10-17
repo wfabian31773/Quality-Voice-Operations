@@ -1,9 +1,14 @@
 id: v1-sched-bb-es-anyone-saturday
 template: barbershop
 tools: [scheduling, sms, tickets, business, calls]
-tags: [vertical1, tool:scheduling, template:barbershop, lang:es, action:scheduling.book, spec:1.5-anyone]
+tags: [vertical1, tool:scheduling, template:barbershop, lang:es, action:scheduling.book, spec:1.5-anyone, expected-fail]
 seed: barbershop-basic
 now: "2026-10-20T14:00:00-04:00"
+# Spanish readback blocked on matcher follow-up: matcher accepts Spanish
+# readback. The agent reads the booking back in Spanish, and readbackRequired
+# only accepts the fake's English readback verbatim. No product PR fixes this,
+# so the ledger id names the follow-up instead of a PR.
+expectedFail: matcher-es-readback
 caller:
   - text: "Buenas, ¿tienen un corte el sábado en la mañana? Con cualquiera."
   - text: "A las 10. Soy Jorge."
@@ -30,14 +35,14 @@ script:
             customer:
               name: Jorge
               phone: "+15555550188"
-      - say: "Le confirmo: {{readback}}. ¿Es correcto?"
+      - say: "Le confirmo: un corte de caballero con Marco, el sábado 24 de octubre a las 10:00 de la mañana, a nombre de Jorge, al número que termina en 0188. ¿Es correcto?"
   - on: 2
     steps:
       - call:
           name: scheduling.book.commit
           input:
             confirmationToken: "{{confirmationToken}}"
-      - say: "Listo, su cita con Marco quedó confirmada para el sábado a las 10."
+      - say: "Listo, tiene su cita con Marco el sábado a las 10."
 expect:
   actions:
     - name: scheduling.check_availability
@@ -69,6 +74,11 @@ expect:
     - "I've let them know"
     - "your order is in"
     - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
     - "le envié"
     - "ya le avisé"
   readbackRequired: true

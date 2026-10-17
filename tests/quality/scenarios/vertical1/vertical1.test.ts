@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { formatHumanSummary } from '../../../../scripts/quality/report';
 import { loadScenarioDir, runScenario, runScenarios } from '../../../../scripts/quality/runner';
-import type { Scenario } from '../../../../scripts/quality/types';
+import type { CheckName, Scenario } from '../../../../scripts/quality/types';
 import {
   buildShopFixture,
   listShopFixtureNames,
@@ -17,19 +17,84 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 /** The only PRs a vertical1 scenario may wait on (task brief). */
 const ALLOWED_EXPECTED_FAIL = ['PR-13', 'PR-14', 'PR-17', 'PR-20', 'PR-26'];
 
-/** Expected-fail ledger: when one of these PRs lands, move its ids to passing. */
-const EXPECTED_FAIL: Record<string, string> = {
-  'v1-sched-bb-change-after-readback': 'PR-13',
-  'v1-sched-bb-reschedule-verified': 'PR-14',
-  'v1-sms-bb-destination-ending-in': 'PR-17',
-  'v1-sms-ns-es-different-mobile': 'PR-17',
-  'v1-sms-bb-inbound-x-cancels': 'PR-17',
-  'v1-tickets-bb-repeat-dedupe': 'PR-20',
-  'v1-transfer-bb-after-hours-message': 'PR-26',
+/**
+ * Harness follow-ups no product PR fixes. `matcher-es-readback`: readbackRequired
+ * only accepts the fake's English readback verbatim, so a Spanish readback fails.
+ */
+const ALLOWED_FOLLOW_UPS = ['matcher-es-readback'];
+
+type PinnedFailure = [check: CheckName, messageSubstring: string];
+
+const BOOK_READBACK_NOT_SPOKEN: PinnedFailure = [
+  'readbackRequired',
+  'scheduling.book.prepare readback was not spoken before scheduling.book.commit',
+];
+
+/**
+ * Expected-fail ledger: when one of these lands, move its ids to passing.
+ * `failures` pins the exact checks that must fail (in matcher order), so a typo
+ * or broken script can't pass as the expected failure.
+ */
+const EXPECTED_FAIL: Record<string, { pr: string; failures: PinnedFailure[] }> = {
+  'v1-sched-bb-change-after-readback': { pr: 'PR-13', failures: [['endState', 'bookings count']] },
+  'v1-sched-bb-reschedule-verified': {
+    pr: 'PR-14',
+    failures: [
+      ['actions', 'scheduling.reschedule.commit ran but did not succeed'],
+      ['endState', 'no booking matched'],
+      ['readbackRequired', 'no successful prepare returned a readback'],
+    ],
+  },
+  'v1-sms-bb-opted-out-no-text-claim': {
+    pr: 'PR-17',
+    failures: [['mustSay', `agent never said "I can't text this number"`]],
+  },
+  'v1-sms-ns-flag-off-truthful-fallback': {
+    pr: 'PR-17',
+    failures: [['mustSay', `agent never said "I can't text this number"`]],
+  },
+  'v1-sms-bb-es-opted-out': {
+    pr: 'PR-17',
+    failures: [['mustSay', 'agent never said "No puedo enviarle mensajes"'], BOOK_READBACK_NOT_SPOKEN],
+  },
+  'v1-sms-bb-destination-ending-in': {
+    pr: 'PR-17',
+    failures: [['actions', 'sms.send_confirmation.commit ran but did not succeed']],
+  },
+  'v1-sms-ns-es-different-mobile': {
+    pr: 'PR-17',
+    failures: [['actions', 'sms.send_confirmation.commit ran but did not succeed'], BOOK_READBACK_NOT_SPOKEN],
+  },
+  'v1-sms-bb-inbound-x-cancels': { pr: 'PR-17', failures: [['endState', 'no booking matched']] },
+  'v1-tickets-bb-repeat-dedupe': { pr: 'PR-20', failures: [['endState', 'tickets count']] },
+  'v1-transfer-bb-after-hours-message': {
+    pr: 'PR-26',
+    failures: [
+      ['endState', 'transfers count'],
+      ['readbackRequired', 'calls.transfer_to_human.prepare readback was not spoken'],
+    ],
+  },
+  'v1-sched-bb-es-anyone-saturday': { pr: 'matcher-es-readback', failures: [BOOK_READBACK_NOT_SPOKEN] },
+  'v1-sched-ns-es-gel-plus-removal': { pr: 'matcher-es-readback', failures: [BOOK_READBACK_NOT_SPOKEN] },
+  'v1-tickets-ns-es-callback': {
+    pr: 'matcher-es-readback',
+    failures: [['readbackRequired', 'tickets.open.prepare readback was not spoken before tickets.open.commit']],
+  },
 };
 
 const BANNED_EN = ["you're booked", "I've sent", "I've texted you", "I've let them know", 'your order is in'];
-const BANNED_ES = ['ya está reservado', 'le envié', 'ya le avisé'];
+// The matcher doesn't map Spanish phrases to a commit, so these never unlock:
+// post-commit Spanish lines must avoid them too.
+const BANNED_ES = [
+  'ya está reservado',
+  'quedó confirmada',
+  'quedó confirmado',
+  'su cita está confirmada',
+  'ya quedó',
+  'quedó registrado',
+  'le envié',
+  'ya le avisé',
+];
 
 const scenarios = loadScenarioDir(DIR);
 
@@ -134,9 +199,9 @@ describe('vertical1 scenario pack: shape', () => {
     if (calls.some((name) => name.endsWith('.prepare') || name.endsWith('.commit'))) {
       expect(scenario.expect.readbackRequired).toBe(true);
     }
-    expect(scenario.expectedFail).toBe(EXPECTED_FAIL[scenario.id]);
+    expect(scenario.expectedFail).toBe(EXPECTED_FAIL[scenario.id]?.pr);
     if (scenario.expectedFail) {
-      expect(ALLOWED_EXPECTED_FAIL).toContain(scenario.expectedFail);
+      expect([...ALLOWED_EXPECTED_FAIL, ...ALLOWED_FOLLOW_UPS]).toContain(scenario.expectedFail);
       expect(scenario.tags).toContain('expected-fail');
     }
   });
@@ -150,9 +215,29 @@ describe('vertical1 scenario pack: deterministic run', () => {
     expect(report.failed).toEqual([]);
     expect(report.unexpectedPassed).toEqual([]);
     expect(report.ok).toBe(true);
-    expect(Object.fromEntries(report.expectedFailed.map((row) => [row.id, row.expectedFail]))).toEqual(EXPECTED_FAIL);
-    expect(report.passed).toHaveLength(30 - Object.keys(EXPECTED_FAIL).length);
+    expect(Object.fromEntries(report.expectedFailed.map((row) => [row.id, row.expectedFail]))).toEqual(
+      Object.fromEntries(Object.entries(EXPECTED_FAIL).map(([id, entry]) => [id, entry.pr])),
+    );
+    // Totals quoted in COVERAGE.md.
+    expect(report.passed).toHaveLength(17);
+    const byPr: Record<string, number> = {};
+    for (const row of report.expectedFailed) byPr[row.expectedFail] = (byPr[row.expectedFail] ?? 0) + 1;
+    expect(byPr).toEqual({ 'PR-13': 1, 'PR-14': 1, 'PR-17': 6, 'PR-20': 1, 'PR-26': 1, 'matcher-es-readback': 3 });
     console.log(formatHumanSummary(report));
+  });
+
+  it.each(Object.entries(EXPECTED_FAIL))('%s fails only on its pinned checks', async (id, entry) => {
+    const scenario = scenarios.find((row) => row.id === id);
+    expect(scenario).toBeDefined();
+    const result = await runScenario(scenario!, { mode: 'scripted', store: new ShopFixtureStore() });
+    expect(result.status).toBe('expected_fail');
+    const pinned = entry.failures;
+    const actual = result.failures.map((failure, index): PinnedFailure => {
+      const want = pinned[index];
+      const matches = want && want[0] === failure.check && failure.message.includes(want[1]);
+      return [failure.check, matches ? want[1] : failure.message];
+    });
+    expect(actual).toEqual(pinned);
   });
 
   it('fails every passing scenario when its commits (or reads) are removed', async () => {

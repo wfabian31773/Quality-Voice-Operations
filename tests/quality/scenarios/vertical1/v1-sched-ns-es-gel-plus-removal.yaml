@@ -1,9 +1,14 @@
 id: v1-sched-ns-es-gel-plus-removal
 template: nail_salon
 tools: [scheduling, sms, tickets, business, calls]
-tags: [vertical1, tool:scheduling, template:nail_salon, lang:es, action:scheduling.book, spec:1.6-5, multi-service, add-on]
+tags: [vertical1, tool:scheduling, template:nail_salon, lang:es, action:scheduling.book, spec:1.6-5, multi-service, add-on, expected-fail]
 seed: nail-salon-basic
 now: "2026-10-20T14:00:00-04:00"
+# Spanish readback blocked on matcher follow-up: matcher accepts Spanish
+# readback. The agent reads the booking back in Spanish, and readbackRequired
+# only accepts the fake's English readback verbatim. No product PR fixes this,
+# so the ledger id names the follow-up instead of a PR.
+expectedFail: matcher-es-readback
 caller:
   - text: "Hola, quisiera una manicura de gel con Rosa el jueves, y que me quiten el gel viejo."
   - text: "A la una, por favor. Me llamo Carmen."
@@ -30,14 +35,14 @@ script:
             customer:
               name: Carmen
               phone: "+15555550177"
-      - say: "Le confirmo: {{readback}}. ¿Es correcto?"
+      - say: "Le confirmo: una manicura de gel con retiro del gel anterior, con Rosa, el jueves 22 de octubre a la 1:00 de la tarde, a nombre de Carmen, al número que termina en 0177. ¿Es correcto?"
   - on: 2
     steps:
       - call:
           name: scheduling.book.commit
           input:
             confirmationToken: "{{confirmationToken}}"
-      - say: "Listo, su cita con Rosa quedó confirmada para el jueves a la 1:00."
+      - say: "Listo, tiene su cita con Rosa el jueves a la 1:00."
 expect:
   actions:
     - name: scheduling.check_availability
@@ -70,6 +75,11 @@ expect:
     - "I've let them know"
     - "your order is in"
     - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
     - "le envié"
     - "ya le avisé"
   readbackRequired: true

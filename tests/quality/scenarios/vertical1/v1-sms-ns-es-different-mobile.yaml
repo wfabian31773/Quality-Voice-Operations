@@ -4,7 +4,10 @@ tools: [scheduling, sms, tickets, business, calls]
 tags: [vertical1, tool:sms, tool:scheduling, template:nail_salon, lang:es, action:sms.send_confirmation, spec:2.5-different-number, expected-fail]
 seed: nail-salon-basic
 now: "2026-10-20T14:00:00-04:00"
-# sms.send_confirmation.* is not in FakeToolProvider.
+# sms.send_confirmation.* is not in FakeToolProvider, so the commit fails.
+# Spanish readback blocked on matcher follow-up: matcher accepts Spanish
+# readback. The agent reads the booking back in Spanish, and readbackRequired
+# only accepts the fake's English readback verbatim, so that check fails too.
 expectedFail: PR-17
 caller:
   - text: "Hola, una pedicura con Mai el viernes a las 10. Soy Lucía."
@@ -28,14 +31,13 @@ script:
             customer:
               name: Lucía
               phone: "+15555550166"
-      - say: "Le confirmo: {{readback}}. ¿Es correcto?"
+      - say: "Le confirmo: una pedicura con Mai, el viernes 23 de octubre a las 10:00 de la mañana, a nombre de Lucía, al número que termina en 0166. ¿Es correcto?"
   - on: 1
     steps:
       - call:
           name: scheduling.book.commit
           input:
             confirmationToken: "{{confirmationToken}}"
-      - say: "Listo, su cita con Mai quedó confirmada para el viernes a las 10."
       # A different mobile number gets its own readback.
       - call:
           name: sms.send_confirmation.prepare
@@ -43,14 +45,14 @@ script:
             bookingId: "{{bookingId}}"
             kind: confirmation
             to: "+15555550199"
-      - say: "{{readback}}"
+      - say: "Listo, tiene su cita con Mai el viernes a las 10. Le mando la confirmación por mensaje al número que termina en 0199, ¿de acuerdo?"
   - on: 2
     steps:
       - call:
           name: sms.send_confirmation.commit
           input:
             confirmationToken: "{{confirmationToken}}"
-      - say: "Listo, la confirmación va en camino al número que termina en 0199."
+      - say: "Perfecto, la confirmación va en camino al número que termina en 0199."
 expect:
   actions:
     - name: scheduling.book.commit
@@ -76,6 +78,11 @@ expect:
     - "I've let them know"
     - "your order is in"
     - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
     - "le envié"
     - "ya le avisé"
   readbackRequired: true

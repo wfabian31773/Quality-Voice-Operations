@@ -65,6 +65,11 @@ expect:
     - "I've let them know"
     - "your order is in"
     - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
     - "le envié"
     - "ya le avisé"
   readbackRequired: true

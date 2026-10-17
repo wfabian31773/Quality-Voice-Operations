@@ -1,10 +1,14 @@
 id: v1-sms-bb-opted-out-no-text-claim
 template: barbershop
 tools: [scheduling, sms, tickets, business, calls]
-tags: [vertical1, tool:sms, tool:scheduling, template:barbershop, lang:en, action:sms.send_confirmation, spec:2.6-1, spec:2.5-opted-out, spec:0.2-failure-truth]
+tags: [vertical1, tool:sms, tool:scheduling, template:barbershop, lang:en, action:sms.send_confirmation, spec:2.6-1, spec:2.5-opted-out, spec:0.2-failure-truth, expected-fail]
 # The caller texted STOP last month (fixture variant sms.optedOut).
 seed: barbershop-basic:sms-opted-out
 now: "2026-10-20T14:00:00-04:00"
+# sms.send_confirmation.* is not in FakeToolProvider, so the prepare fails with
+# NOT_FOUND ("I couldn't find that.") instead of RECIPIENT_OPTED_OUT, and the
+# agent never relays the spec §2.5 refusal.
+expectedFail: PR-17
 caller:
   - text: "Cut with Marco today at 3:30, and text me the confirmation. It's Luis."
   - text: "Yes, that's right."
@@ -33,13 +37,14 @@ script:
           name: scheduling.book.commit
           input:
             confirmationToken: "{{confirmationToken}}"
-      # The chokepoint refuses an opted-out number (RECIPIENT_OPTED_OUT).
+      # The chokepoint refuses an opted-out number (RECIPIENT_OPTED_OUT). The
+      # agent relays the server's callerSafeMessage instead of scripting it.
       - call:
           name: sms.send_confirmation.prepare
           input:
             bookingId: "{{bookingId}}"
             kind: confirmation
-      - say: "You're booked with Marco today at 3:30. I can't text this number, so the shop will confirm another way, or you can call back anytime."
+      - say: "You're booked with Marco today at 3:30. {{callerSafeMessage}}"
 expect:
   actions:
     - name: scheduling.book.prepare
@@ -58,6 +63,7 @@ expect:
           staffId: marco
           date: "2026-10-20"
           startLocal: "15:30"
+  # Spec §2.5 callerSafeMessage for RECIPIENT_OPTED_OUT.
   mustSay:
     - "I can't text this number"
   mustNotSay:
@@ -69,6 +75,11 @@ expect:
     - "I've let them know"
     - "your order is in"
     - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
     - "le envié"
     - "ya le avisé"
   readbackRequired: true
