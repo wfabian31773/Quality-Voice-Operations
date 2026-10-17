@@ -883,6 +883,73 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
         expect((await bookingRows(shop.tenantId)).map((r) => r.status)).toEqual(['confirmed', 'confirmed', 'confirmed']);
       });
 
+      it('refuses an agent commit once staff change the contact name or phone after the prepare; unchanged and staff commits go through', async () => {
+        const shop = await seedShop('agent-commit-identity');
+        const cancelRenamed = await booking(shop, edt(21, '10:00'));
+        const cancelRephoned = await booking(shop, edt(22, '10:00'));
+        const moveRenamed = await booking(shop, edt(23, '10:00'));
+        const moveRephoned = await booking(shop, edt(24, '10:00'));
+        const cancelKept = await booking(shop, edt(26, '10:00'));
+        const moveKept = await booking(shop, edt(26, '11:00'));
+        const c = agentIn(shop, await call(shop.tenantId, PHONE));
+        expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toHaveLength(6);
+        const changed = {
+          code: 'CONFLICT',
+          callerSafeMessage: 'That appointment was just changed by the shop. I can check it again or take a message.',
+        };
+        const snapshot = async (id: string) => (await bookingRows(shop.tenantId)).find((r) => r.id === id);
+
+        // Cancel: staff edit the contact between the agent's prepare and the caller's yes.
+        for (const [id, edit] of [[cancelRenamed, `contact_name = 'Ana Ruiz'`], [cancelRephoned, `contact_phone = '+15555550188'`]]) {
+          const p = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', c, { bookingId: id }));
+          await pool.query(`UPDATE bookings SET ${edit} WHERE id = $1`, [id]);
+          const before = await snapshot(id);
+          expect(errorOf(await act('scheduling.cancel.commit', c, { confirmationToken: p.confirmationToken }))).toMatchObject(changed);
+          expect(await snapshot(id)).toEqual(before);
+          expect(before).toMatchObject({ status: 'confirmed' });
+        }
+
+        // Reschedule: same, and the held new time is never confirmed.
+        for (const [id, edit, to] of [
+          [moveRenamed, `contact_name = 'Ana Ruiz'`, edt(23, '14:00')],
+          [moveRephoned, `contact_phone = '+15555550188'`, edt(24, '14:00')],
+        ]) {
+          const p = data<{ confirmationToken: string; holdId: string }>(await act('scheduling.reschedule.prepare', c, { bookingId: id, newStart: to }));
+          await pool.query(`UPDATE bookings SET ${edit} WHERE id = $1`, [id]);
+          const before = await snapshot(id);
+          expect(errorOf(await act('scheduling.reschedule.commit', c, { confirmationToken: p.confirmationToken }))).toMatchObject(changed);
+          expect(await snapshot(id)).toEqual(before);
+          expect(before).toMatchObject({ status: 'confirmed' });
+          expect((await snapshot(p.holdId))?.status).not.toBe('confirmed');
+        }
+        const confirmed = (await bookingRows(shop.tenantId)).filter((r) => r.status === 'confirmed').map((r) => r.id);
+        expect(confirmed.sort()).toEqual([cancelRenamed, cancelRephoned, moveRenamed, moveRephoned, cancelKept, moveKept].sort());
+
+        // Unchanged (or only a cosmetic edit of the same digits and name): the agent commit goes through.
+        const cp = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', c, { bookingId: cancelKept }));
+        await pool.query(`UPDATE bookings SET contact_phone = '(555) 555-0142', contact_name = 'LUIS' WHERE id = $1`, [cancelKept]);
+        expect(data(await act('scheduling.cancel.commit', c, { confirmationToken: cp.confirmationToken }))).toMatchObject({ bookingId: cancelKept, status: 'cancelled' });
+        const mp = data<{ confirmationToken: string; holdId: string }>(await act('scheduling.reschedule.prepare', c, { bookingId: moveKept, newStart: edt(26, '14:00') }));
+        expect(data(await act('scheduling.reschedule.commit', c, { confirmationToken: mp.confirmationToken }))).toMatchObject({
+          bookingId: mp.holdId,
+          previousBookingId: moveKept,
+          status: 'confirmed',
+        });
+
+        // A staff (MCP admin) commit is not identity-checked: an edit between its prepare and commit is fine.
+        const admin = ctx(shop.tenantId, { actor: ADMIN_BOT, callId: undefined });
+        const sp = data<{ confirmationToken: string }>(await act('scheduling.cancel.prepare', admin, { bookingId: cancelRenamed }));
+        const sm = data<{ confirmationToken: string; holdId: string }>(await act('scheduling.reschedule.prepare', admin, { bookingId: moveRenamed, newStart: edt(23, '15:00') }));
+        await pool.query(`UPDATE bookings SET contact_name = 'Ana Ruiz Lopez' WHERE id = ANY($1)`, [[cancelRenamed, moveRenamed]]);
+        expect(data(await act('scheduling.cancel.commit', admin, { confirmationToken: sp.confirmationToken }))).toMatchObject({ status: 'cancelled' });
+        expect(data(await act('scheduling.reschedule.commit', admin, { confirmationToken: sm.confirmationToken }))).toMatchObject({ previousBookingId: moveRenamed, status: 'confirmed' });
+
+        const rows = await bookingRows(shop.tenantId);
+        const statusOf = (id: string) => rows.find((r) => r.id === id)?.status;
+        expect([cancelRenamed, cancelRephoned, moveRenamed, moveRephoned, cancelKept, moveKept].map(statusOf))
+          .toEqual(['cancelled', 'confirmed', 'rescheduled', 'confirmed', 'cancelled', 'rescheduled']);
+      });
+
       it('keeps the policy: OUTSIDE_POLICY inside the cancellation window and once the time has passed', async () => {
         const shop = await seedShop('agent-policy');
         const imminent = await booking(shop, edt(19, '08:20'), { provider_id: shop.andre }); // 20 minutes away

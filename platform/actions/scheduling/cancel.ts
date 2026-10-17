@@ -15,7 +15,15 @@ import {
   writeBookingAudit,
   type BookingRecord,
 } from './bookingRows';
-import { agentBookingBlock, agentCommitBlock, consumeToken, policyBlock, SCHEDULING_WRITE_ROLES } from './commitShared';
+import {
+  agentBookingBlock,
+  agentCommitBlock,
+  agentIdentityChanged,
+  agentIdKey,
+  consumeToken,
+  policyBlock,
+  SCHEDULING_WRITE_ROLES,
+} from './commitShared';
 import {
   callerMessage,
   cancelledReadback,
@@ -81,7 +89,13 @@ export const cancelPrepareAction = defineAction({
     const readback = cancelReadback(await readbackFacts(tx, ctx, booking, ctx.locale), lang);
     const proposal = await createProposal(tx, ctx, {
       action: CANCEL_PREPARE,
-      payload: { bookingId: booking.id, start: booking.startTime.toISOString(), reason: input.reason ?? null, locale: ctx.locale ?? null },
+      payload: {
+        bookingId: booking.id,
+        start: booking.startTime.toISOString(),
+        reason: input.reason ?? null,
+        locale: ctx.locale ?? null,
+        ...agentIdKey(ctx, booking),
+      },
       readback,
       callId: ctx.callId,
     });
@@ -112,7 +126,13 @@ export const cancelCommitAction = defineAction({
     if (!payload.success) return actionFail('CONFIRMATION_INVALID', 'Stored proposal payload is not a cancellation');
 
     const booking = await loadBooking(tx, ctx.tenantId, payload.data.bookingId, { forUpdate: true });
-    if (!booking || !isCancellable(booking.status) || booking.startTime.toISOString() !== payload.data.start) {
+    // For an agent, the locked booking must still carry the contact verified at prepare.
+    if (
+      !booking
+      || !isCancellable(booking.status)
+      || booking.startTime.toISOString() !== payload.data.start
+      || agentIdentityChanged(ctx, booking, payload.data.idKey)
+    ) {
       return actionFail('CONFLICT', 'The booking changed since the prepare', { callerSafeMessage: callerMessage('bookingChanged', lang) });
     }
     const blocked = await policyBlock(tx, ctx, booking);

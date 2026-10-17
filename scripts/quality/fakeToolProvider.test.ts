@@ -231,6 +231,20 @@ describe('FakeToolProvider', () => {
       }
     });
 
+    it('an agent commit after staff changed the name or phone since the prepare is CONFLICT and changes nothing', async () => {
+      const move = { bookingId: 'bk_thu', newStart: '2026-10-23T13:00:00-04:00' };
+      for (const change of [{ customerName: 'Ana' }, { customerPhone: '+15555550188' }]) {
+        const { state, tools } = shop(PHONE);
+        await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx());
+        const cancel = await tools.invoke('scheduling.cancel.prepare', { bookingId: 'bk_thu' }, ctx());
+        const moved = await tools.invoke('scheduling.reschedule.prepare', move, ctx());
+        Object.assign(state.bookings.find((row) => row.id === 'bk_thu')!, change);
+        expect(codeOf(await tools.invoke('scheduling.cancel.commit', { confirmationToken: tokenOf(cancel) }, ctx()))).toBe('CONFLICT');
+        expect(codeOf(await tools.invoke('scheduling.reschedule.commit', { confirmationToken: tokenOf(moved) }, ctx()))).toBe('CONFLICT');
+        expect(state.bookings.map((row) => row.status)).toEqual(['confirmed', 'held']);
+      }
+    });
+
     it('keeps the policy (window, already passed) and offers alternatives for a taken slot', async () => {
       const { state, tools } = shop(PHONE);
       state.bookings.push({

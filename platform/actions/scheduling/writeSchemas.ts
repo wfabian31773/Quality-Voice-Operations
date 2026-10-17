@@ -129,6 +129,8 @@ export const bookProposalPayload = z.object({
 export const rescheduleProposalPayload = bookProposalPayload.extend({
   bookingId: z.string(),
   fromStart: z.string(),
+  /** Agent proposals only: bookingIdentityKey of the booking verified at prepare. */
+  idKey: z.string().optional(),
 });
 
 export const cancelProposalPayload = z.object({
@@ -136,4 +138,6 @@ export const cancelProposalPayload = z.object({
   start: z.string(),
   reason: z.string().nullable(),
   locale: z.string().nullable(),
+  /** Agent proposals only: bookingIdentityKey of the booking verified at prepare. */
+  idKey: z.string().optional(),
 });

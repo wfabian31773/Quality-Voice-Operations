@@ -23,6 +23,8 @@ import {
 import {
   agentBookingBlock,
   agentCommitBlock,
+  agentIdentityChanged,
+  agentIdKey,
   catchOverlap,
   consumeToken,
   policyBlock,
@@ -151,6 +153,7 @@ export const reschedulePrepareAction = defineAction({
         end,
         customerName: booking.contactName,
         locale: ctx.locale ?? null,
+        ...agentIdKey(ctx, booking),
       },
       readback,
       callId: ctx.callId,
@@ -197,7 +200,13 @@ export const rescheduleCommitAction = defineAction({
     // Lock the original first, then the hold, in one transaction: both rows
     // change together or not at all (like the admin reschedule transition).
     const original = await loadBooking(tx, ctx.tenantId, payload.data.bookingId, { forUpdate: true });
-    if (!original || !isReschedulable(original.status) || original.startTime.toISOString() !== payload.data.fromStart) {
+    // For an agent, the locked booking must still carry the contact verified at prepare.
+    if (
+      !original
+      || !isReschedulable(original.status)
+      || original.startTime.toISOString() !== payload.data.fromStart
+      || agentIdentityChanged(ctx, original, payload.data.idKey)
+    ) {
       return actionFail('CONFLICT', 'The original booking changed since the prepare', {
         callerSafeMessage: callerMessage('bookingChanged', lang),
       });

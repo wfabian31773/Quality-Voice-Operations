@@ -23,7 +23,7 @@ import {
   type BookingRecord,
 } from './bookingRows';
 import { bookingOverlapKind, expireStaleHolds } from './holds';
-import { verifiedInCall } from './identity';
+import { bookingIdentityKey, verifiedInCall } from './identity';
 import {
   callerMessage,
   cancellationPolicyText,
@@ -176,6 +176,26 @@ export async function agentBookingBlock(
 export function agentCommitBlock(ctx: ActionContext): ActionResult<never> | null {
   if (ctx.actor.type !== 'agent' || ctx.callId) return null;
   return actionFail('CONFIRMATION_INVALID', 'Unknown or expired confirmation token');
+}
+
+/**
+ * The identity key an agent proposal stores at prepare (where
+ * agentBookingBlock just verified the booking). Staff, UI and MCP proposals
+ * store none.
+ */
+export function agentIdKey(ctx: ActionContext, booking: BookingRecord): { idKey?: string } {
+  if (ctx.actor.type !== 'agent') return {};
+  return { idKey: bookingIdentityKey(ctx.tenantId, booking.contactPhone, booking.contactName) };
+}
+
+/**
+ * At an agent commit, with the booking locked FOR UPDATE: whether staff
+ * changed its contact name or phone since the prepare (a missing key counts
+ * as changed). Staff, UI and MCP commits are not checked.
+ */
+export function agentIdentityChanged(ctx: ActionContext, booking: BookingRecord, idKey: string | undefined): boolean {
+  if (ctx.actor.type !== 'agent') return false;
+  return !idKey || idKey !== bookingIdentityKey(ctx.tenantId, booking.contactPhone, booking.contactName);
 }
 
 /**

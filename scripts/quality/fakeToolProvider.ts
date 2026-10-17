@@ -85,6 +85,16 @@ function identityOf(row: BookingRow): string {
   return `${toE164(row.customerPhone) ?? row.customerPhone}\0${nameTokens(row.customerName).join(' ')}`;
 }
 
+/** Agent reschedule/cancel proposals keep the identity verified at prepare (the real payload's idKey). */
+function agentIdKey(row: BookingRow, ctx: ToolCallContext): { idKey?: string } {
+  return ctx.actor.type === 'agent' ? { idKey: identityOf(row) } : {};
+}
+
+/** An agent commit refuses a booking whose phone or name changed since the prepare. */
+function agentIdentityChanged(row: BookingRow, payload: Record<string, unknown>, ctx: ToolCallContext): boolean {
+  return ctx.actor.type === 'agent' && payload.idKey !== identityOf(row);
+}
+
 function ok(data: unknown, readback?: string): ToolResult {
   return readback ? { ok: true, data, readback } : { ok: true, data };
 }
@@ -537,7 +547,7 @@ export class FakeToolProvider implements ToolProvider {
     this.state.bookings.push(hold);
     this.state.holds[token] = {
       kind: 'reschedule',
-      payload: { bookingId: hold.id, originalId: original.id },
+      payload: { bookingId: hold.id, originalId: original.id, ...agentIdKey(original, ctx) },
       readback,
       callId: ctx.callId,
     };
@@ -564,7 +574,7 @@ export class FakeToolProvider implements ToolProvider {
     const token = nextToken();
     this.state.holds[token] = {
       kind: 'cancel',
-      payload: { bookingId: booking.id, reason: asString(input.reason) ?? '' },
+      payload: { bookingId: booking.id, reason: asString(input.reason) ?? '', ...agentIdKey(booking, ctx) },
       readback,
       callId: ctx.callId,
     };
@@ -631,7 +641,7 @@ export class FakeToolProvider implements ToolProvider {
       const moved = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
       const original = this.state.bookings.find((row) => row.id === hold.payload.originalId);
       if (!moved || moved.status !== 'held') return fail('CONFIRMATION_INVALID', 'hold was lost');
-      if (!original || original.status !== 'confirmed') {
+      if (!original || original.status !== 'confirmed' || agentIdentityChanged(original, hold.payload, ctx)) {
         return fail('CONFLICT', 'The original booking changed since the prepare');
       }
       moved.status = 'confirmed';
@@ -641,7 +651,9 @@ export class FakeToolProvider implements ToolProvider {
     }
     if (kind === 'cancel') {
       const booking = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
-      if (!booking || booking.status !== 'confirmed') return fail('CONFLICT', 'The booking changed since the prepare');
+      if (!booking || booking.status !== 'confirmed' || agentIdentityChanged(booking, hold.payload, ctx)) {
+        return fail('CONFLICT', 'The booking changed since the prepare');
+      }
       booking.status = 'cancelled';
       booking.cancellationReason = String(hold.payload.reason ?? '');
       return ok({ bookingId: booking.id, status: 'cancelled', readback: hold.readback.replace(/^Cancelling /, 'Cancelled: ') });
