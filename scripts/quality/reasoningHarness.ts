@@ -4,14 +4,14 @@
  * from platform/tools, and scripted tool faults.
  *
  * Every tool call goes through executeWithRetry with a per-scenario
- * ToolStopGuard, so a tool that fails 3 times in a call answers TOOL_STOPPED
- * without running, as on the voice path. Each sim call is one attempt
- * (maxRetries 0): the script, not the orchestrator, decides when to retry.
+ * ToolStopGuard, as on the voice path: a retryable failure gets the default
+ * 2 retries (no delay), the whole call counts as one failure, and after 3
+ * failed calls the tool answers TOOL_STOPPED without running.
  */
 import { ReasoningEngine } from '../../platform/reasoning/ReasoningEngine';
 import { isSalonVerticalAgent, resolveReasoningMode } from '../../platform/reasoning/reasoningMode';
 import { ReasoningCallGate, toolBlockReason } from '../../platform/reasoning/reasoningShadow';
-import { executeWithRetry } from '../../platform/tools/RetryOrchestrator';
+import { DEFAULT_RETRY_CONFIG, executeWithRetry } from '../../platform/tools/RetryOrchestrator';
 import { ToolStopGuard, TOOL_STOPPED_CODE } from '../../platform/tools/ToolStopGuard';
 import type {
   AgentToolSchema,
@@ -34,7 +34,6 @@ export function createScenarioReasoning(
 ): ScenarioReasoning {
   const mode = opts.modeOverride ?? resolveReasoningMode(setup).mode;
   const observation: ReasoningObservation = { mode, shadowLines: [], injections: [], blocked: [] };
-  if (mode === 'off') return { observation };
   // openaiSession passes the template key as the vertical: salon / barbershop → salon.
   const vertical = isSalonVerticalAgent(setup) ? 'salon' : setup.agentType;
   const engine = new ReasoningEngine({
@@ -128,7 +127,7 @@ export class GuardedToolProvider implements ToolProvider {
         tenantId: ctx.tenantId,
         toolName: name,
         callSessionId: ctx.callId,
-        retryConfig: { maxRetries: 0, baseDelayMs: 0, maxDelayMs: 0, timeoutMs: 10_000 },
+        retryConfig: { maxRetries: DEFAULT_RETRY_CONFIG.maxRetries, baseDelayMs: 0, maxDelayMs: 0, timeoutMs: 10_000 },
         stopGuard: this.stopGuard,
       },
     );

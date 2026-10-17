@@ -143,7 +143,7 @@ const scenarioSchema = z
         readbackRequired: z.boolean().optional(),
         reasoning: z
           .object({
-            mode: z.enum(['enforce', 'shadow', 'off']).optional(),
+            mode: z.enum(['enforce', 'shadow']).optional(),
             injections: z.number().int().nonnegative().optional(),
             blockedTools: z.number().int().nonnegative().optional(),
             minShadowLines: z.number().int().nonnegative().optional(),

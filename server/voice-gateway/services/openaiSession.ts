@@ -84,7 +84,8 @@ export interface SessionContext {
   isTrial?: boolean;
   /**
    * Resolved reasoning mode (agent config → tenant settings → vertical
-   * default). When omitted it is resolved from templateKey + agent metadata.
+   * default). When omitted it is resolved from templateKey + agent metadata;
+   * createRealtimeSession sets it to the resolved mode either way.
    */
   reasoningMode?: ReasoningMode;
   reasoningEngine?: ReasoningEngine;
@@ -123,9 +124,10 @@ function buildToolHandler(
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
     }
 
-    // Agent tool allowlist, in every reasoning mode. In enforce mode the
-    // engine's safety gate keeps doing this check (unchanged behavior).
-    if (!ctx.reasoningGate?.enforcing) {
+    // Agent tool allowlist in shadow mode (with or without an engine). In
+    // enforce mode the engine's safety gate keeps doing this check, and an
+    // enforce call whose engine failed to start is unchanged.
+    if (ctx.reasoningMode === 'shadow') {
       const allowlist = checkAgentToolAllowlist(toolName, agentConfig.tools.map((tool) => tool.name), INTERNAL_ORCHESTRATION_TOOLS);
       if (!allowlist.allowed) {
         logger.warn('Tool not in agent allowlist blocked', { tenantId, callId: callSessionId, tool: toolName });
@@ -575,6 +577,9 @@ function buildToolHandler(
               agentSlug: agentConfig.agentId,
               callerNumber: ctx.callerNumber,
               transcriptTurnIndex: ctx.reasoningEngine?.getTranscript().length ?? 0,
+              // Shadow mode no longer enforces the engine's slot checks, so
+              // create_booking needs a readback + later-turn confirmation.
+              requireBookingConfirmation: ctx.reasoningMode === 'shadow',
             });
             rawResult = JSON.stringify(toolResult);
             return assertToolSuccess(rawResult, toolName);
@@ -879,31 +884,31 @@ export async function createRealtimeSession(
     agentType: ctx.templateKey,
     agentMetadata: agentConfig.metadata,
   }).mode;
+  // The tool handler reads the resolved mode (allowlist, booking readback).
+  ctx.reasoningMode = reasoningMode;
   let reasoningEngine: ReasoningEngine | undefined;
-  if (reasoningMode !== 'off') {
-    try {
-      const reasoningConfig: ReasoningEngineConfig = {
-        tenantId,
-        callSessionId: '', // will be set after callSession creation
-        callSid,
-        agentSlug: agentConfig.agentId,
-        vertical: ctx.templateKey ?? 'general',
-        callerNumber,
-        toolsAvailable: agentConfig.tools.map((t) => t.name),
-        memoryStorage: ctx.callerMemory ?? null,
-        humanTransferAvailable: Boolean(
-          ctx.onHandoff
-          || (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
-        ),
-      };
-      reasoningEngine = new ReasoningEngine(reasoningConfig);
-    } catch (err) {
-      logger.error('Reasoning engine construction failed, continuing without it', {
-        tenantId,
-        error: String(err),
-      });
-      reasoningEngine = undefined;
-    }
+  try {
+    const reasoningConfig: ReasoningEngineConfig = {
+      tenantId,
+      callSessionId: '', // will be set after callSession creation
+      callSid,
+      agentSlug: agentConfig.agentId,
+      vertical: ctx.templateKey ?? 'general',
+      callerNumber,
+      toolsAvailable: agentConfig.tools.map((t) => t.name),
+      memoryStorage: ctx.callerMemory ?? null,
+      humanTransferAvailable: Boolean(
+        ctx.onHandoff
+        || (agentConfig.metadata as Record<string, unknown> | undefined)?.onCallTransferNumber,
+      ),
+    };
+    reasoningEngine = new ReasoningEngine(reasoningConfig);
+  } catch (err) {
+    logger.error('Reasoning engine construction failed, continuing without it', {
+      tenantId,
+      error: String(err),
+    });
+    reasoningEngine = undefined;
   }
 
   const [callerMemoryResult, reasoningContextPrompt, callSessionId] = await Promise.all([
@@ -981,7 +986,8 @@ export async function createRealtimeSession(
   }).catch((err) => logger.error('Failed to write call_received event', { tenantId, error: String(err) }));
 
   ctx.reasoningEngine = reasoningEngine;
-  const reasoningGate = reasoningEngine && reasoningMode !== 'off'
+  toolStopGuard.openCall(callSessionId);
+  const reasoningGate = reasoningEngine
     ? new ReasoningCallGate({
       engine: reasoningEngine,
       mode: reasoningMode,

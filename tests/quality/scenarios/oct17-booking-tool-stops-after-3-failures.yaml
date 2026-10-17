@@ -4,7 +4,8 @@ tools: [scheduling, sms, tickets, business, calls]
 tags: [oct17, reasoning:shadow, tool-stop, scheduling, tickets, template:barbershop, lang:en]
 # Oct 17: create_booking failed 6 times (2 calls x 3 retries, ~9.5 s of dead
 # air) before the agent gave up and promised a follow-up "within the hour".
-# Here the booking tool fails 3 times; the repeated-tool stop answers the 4th
+# Here 3 booking calls fail (each runs 3 attempts: the first try plus 2
+# retries, and counts as one failure); the repeated-tool stop answers the 4th
 # call with TOOL_STOPPED without running it, and the agent tells the caller
 # plainly and offers a callback, with no time promise. The salon agent's
 # ReasoningEngine is in shadow the whole call.
@@ -17,7 +18,7 @@ reasoning:
     vertical: barbershop
 toolFaults:
   scheduling.book.prepare:
-    failTimes: 3
+    failTimes: 9
     code: INTERNAL
 caller:
   - text: "Hi, this is Wayne. I'm looking for a fade, Saturday morning."
@@ -117,9 +118,9 @@ expect:
       count: 1
       kind: callback
       status: open
-  # Three executed attempts; the fourth call was stopped before it ran.
+  # Three failed calls x 3 attempts; the fourth call was stopped before it ran.
   toolAttempts:
-    scheduling.book.prepare: 3
+    scheduling.book.prepare: 9
   mustSay:
     - "wasn't able to complete that"
     - "have the shop follow up"

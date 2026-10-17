@@ -18,25 +18,51 @@ describe('resolveReasoningMode', () => {
     expect(resolveReasoningMode({ agentType: 'dental', agentMetadata: {}, tenantSettings: {} }).mode).toBe('enforce');
   });
 
-  it('agent config wins over tenant settings and the vertical default', () => {
+  it('non-salon agents resolve to enforce whatever agent metadata or tenant settings say', () => {
+    for (const agentType of ['healthcare-receptionist', 'medical-after-hours', 'general', 'dental']) {
+      for (const value of ['shadow', 'off', 'SHADOW', 'enforce']) {
+        expect(resolveReasoningMode({ agentType, agentMetadata: { reasoningMode: value } }), `${agentType} agent ${value}`)
+          .toEqual({ mode: 'enforce', source: 'vertical_default' });
+        expect(resolveReasoningMode({ agentType, tenantSettings: { reasoningMode: value } }), `${agentType} tenant ${value}`)
+          .toEqual({ mode: 'enforce', source: 'vertical_default' });
+        expect(resolveReasoningMode({
+          agentType,
+          agentMetadata: { vertical: 'healthcare', reasoningMode: value },
+          tenantSettings: { reasoningMode: value },
+        }).mode).toBe('enforce');
+      }
+    }
+  });
+
+  it('agent config wins over tenant settings and the vertical default (salon)', () => {
     expect(resolveReasoningMode({
       agentType: 'salon',
       agentMetadata: { reasoningMode: 'enforce' },
-      tenantSettings: { reasoningMode: 'off' },
+      tenantSettings: { reasoningMode: 'shadow' },
     })).toEqual({ mode: 'enforce', source: 'agent' });
     expect(resolveReasoningMode({
-      agentType: 'dental',
+      agentType: 'barbershop',
       agentMetadata: { reasoningMode: 'shadow' },
       tenantSettings: { reasoningMode: 'enforce' },
     })).toEqual({ mode: 'shadow', source: 'agent' });
   });
 
-  it('tenant settings win over the vertical default', () => {
+  it('tenant settings win over the vertical default (salon)', () => {
     expect(resolveReasoningMode({ agentType: 'salon', tenantSettings: { reasoningMode: 'enforce' } }))
       .toEqual({ mode: 'enforce', source: 'tenant' });
-    expect(resolveReasoningMode({ agentType: 'dental', tenantSettings: { reasoningMode: 'shadow' } }))
+    expect(resolveReasoningMode({ agentType: 'salon', tenantSettings: { reasoningMode: 'shadow' } }))
       .toEqual({ mode: 'shadow', source: 'tenant' });
-    expect(resolveReasoningMode({ agentType: 'dental', tenantSettings: { reasoningMode: 'off' } }).mode).toBe('off');
+  });
+
+  it('treats off as invalid: it falls through to the next level', () => {
+    expect(resolveReasoningMode({ agentType: 'salon', agentMetadata: { reasoningMode: 'off' } }))
+      .toEqual({ mode: 'shadow', source: 'vertical_default' });
+    expect(resolveReasoningMode({
+      agentType: 'salon',
+      agentMetadata: { reasoningMode: 'off' },
+      tenantSettings: { reasoningMode: 'enforce' },
+    })).toEqual({ mode: 'enforce', source: 'tenant' });
+    expect(parseReasoningMode('off')).toBeNull();
   });
 
   it('ignores unknown or non-string values and falls through to the next level', () => {

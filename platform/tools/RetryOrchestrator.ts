@@ -44,7 +44,7 @@ export interface RetryResult<T> {
   usedFallback: boolean;
   /**
    * The stop guard stopped this tool for the call (TOOL_STOP_THRESHOLD failed
-   * attempts). `attempts` counts only the attempts this call executed.
+   * tool calls). `attempts` counts only the attempts this call executed.
    */
   stopped?: boolean;
 }
@@ -141,8 +141,9 @@ export async function executeWithRetry<T>(
     retryConfig?: Partial<RetryConfig>;
     fallbackExecutor?: FallbackExecutor<T>;
     /**
-     * Repeated-tool stop: every executed attempt that fails counts toward
-     * the call's limit for this tool; once stopped, no further attempt runs.
+     * Repeated-tool stop: an invocation that ends in failure counts once
+     * toward the call's limit for this tool (retries inside it don't add
+     * more); once stopped, later invocations run nothing.
      */
     stopGuard?: ToolStopGuard;
   },
@@ -152,13 +153,20 @@ export async function executeWithRetry<T>(
   const guard = context.stopGuard;
   let lastError = '';
   let attemptsMade = 0;
-  let stopped = false;
+
+  if (guard?.isStopped(context.callSessionId, context.toolName)) {
+    // Stopped earlier in this call: no attempt, no tool-failure event, no fallback.
+    return {
+      success: false,
+      error: `TOOL_STOPPED: ${context.toolName} is stopped for this call`,
+      attempts: 0,
+      totalDurationMs: Date.now() - startTime,
+      usedFallback: false,
+      stopped: true,
+    };
+  }
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
-    if (guard?.isStopped(context.callSessionId, context.toolName)) {
-      stopped = true;
-      break;
-    }
     attemptsMade = attempt + 1;
     try {
       const result = await withTimeout(executor(), config.timeoutMs);
@@ -171,7 +179,6 @@ export async function executeWithRetry<T>(
       };
     } catch (err) {
       lastError = String(err);
-      guard?.recordFailure(context.callSessionId, context.toolName);
       logger.warn('Tool execution attempt failed', {
         tenantId: context.tenantId,
         tool: context.toolName,
@@ -180,17 +187,6 @@ export async function executeWithRetry<T>(
         maxRetries: config.maxRetries,
         error: lastError,
       });
-
-      if (guard?.isStopped(context.callSessionId, context.toolName)) {
-        stopped = true;
-        logger.warn('Tool stopped for this call after repeated failures', {
-          tenantId: context.tenantId,
-          tool: context.toolName,
-          callId: context.callSessionId,
-          failedAttempts: guard.failureCount(context.callSessionId, context.toolName),
-        });
-        break;
-      }
 
       if (!isRetryableToolError(err)) {
         logger.info('Tool failure is not retryable; failing fast', {
@@ -223,22 +219,10 @@ export async function executeWithRetry<T>(
     }
   }
 
-  if (stopped && attemptsMade === 0) {
-    // Nothing ran on this call: no tool-failure event, no fallback.
-    return {
-      success: false,
-      error: `TOOL_STOPPED: ${context.toolName} is stopped for this call`,
-      attempts: 0,
-      totalDurationMs: Date.now() - startTime,
-      usedFallback: false,
-      stopped: true,
-    };
-  }
-
   let fallbackAttempted = false;
   let fallbackSuccess = false;
 
-  if (context.fallbackExecutor && !stopped) {
+  if (context.fallbackExecutor) {
     fallbackAttempted = true;
     try {
       logger.info('Attempting fallback executor', {
@@ -277,6 +261,21 @@ export async function executeWithRetry<T>(
         tool: context.toolName,
         callId: context.callSessionId,
         error: lastError,
+      });
+    }
+  }
+
+  // This invocation failed: one failure toward the call's limit.
+  let stopped = false;
+  if (guard) {
+    guard.recordFailure(context.callSessionId, context.toolName);
+    stopped = guard.isStopped(context.callSessionId, context.toolName);
+    if (stopped) {
+      logger.warn('Tool stopped for this call after repeated failures', {
+        tenantId: context.tenantId,
+        tool: context.toolName,
+        callId: context.callSessionId,
+        failedCalls: guard.failureCount(context.callSessionId, context.toolName),
       });
     }
   }

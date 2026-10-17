@@ -32,6 +32,28 @@ describe('ToolStopGuard', () => {
     expect(guard.trackedCallCount()).toBe(0);
   });
 
+  it('a failure recorded after clearCall (hangup mid-tool) does not recreate the call entry', () => {
+    const guard = new ToolStopGuard();
+    guard.recordFailure('call-late', 'create_booking');
+    guard.clearCall('call-late');
+    expect(guard.recordFailure('call-late', 'create_booking')).toBe(0);
+    expect(guard.failureCount('call-late', 'create_booking')).toBe(0);
+    expect(guard.trackedCallCount()).toBe(0);
+
+    // A call id that starts again is tracked again.
+    guard.openCall('call-late');
+    expect(guard.recordFailure('call-late', 'create_booking')).toBe(1);
+  });
+
+  it('remembers a bounded number of cleared calls', () => {
+    const guard = new ToolStopGuard(3, 2);
+    for (const id of ['c1', 'c2', 'c3']) guard.clearCall(id);
+    // c1 fell out of the bounded set; c2 and c3 are still closed.
+    expect(guard.recordFailure('c1', 't')).toBe(1);
+    expect(guard.recordFailure('c2', 't')).toBe(0);
+    expect(guard.recordFailure('c3', 't')).toBe(0);
+  });
+
   it('builds a structured non-retryable result that tells the model to stop, with no time promise', () => {
     const result = toolStoppedResult('create_booking', 3);
     expect(result).toMatchObject({ ok: false, success: false, code: TOOL_STOPPED_CODE, retryable: false, tool: 'create_booking', failedAttempts: 3 });
@@ -45,19 +67,27 @@ describe('ToolStopGuard', () => {
 });
 
 describe('executeWithRetry with a stop guard', () => {
-  it('counts RetryOrchestrator retries: one call of 3 attempts stops the tool, the next call does not execute', async () => {
+  it('retries inside one call count once: 3 failed calls stop the tool, the 4th does not execute', async () => {
     const guard = new ToolStopGuard();
     const counter = { calls: 0 };
     const ctx = { tenantId: 't', toolName: 'create_booking', callSessionId: 'call-retries', retryConfig: fast, stopGuard: guard };
 
     const first = await executeWithRetry(failing(counter), ctx);
     expect(counter.calls).toBe(3);
-    expect(first).toMatchObject({ success: false, attempts: 3, stopped: true });
+    expect(first).toMatchObject({ success: false, attempts: 3 });
+    expect(first.stopped).toBeUndefined();
+    expect(guard.failureCount('call-retries', 'create_booking')).toBe(1);
 
     const second = await executeWithRetry(failing(counter), ctx);
-    expect(counter.calls).toBe(3); // no 4th attempt
-    expect(second).toMatchObject({ success: false, attempts: 0, stopped: true });
-    expect(second.error).toMatch(/TOOL_STOPPED/);
+    expect(second.stopped).toBeUndefined();
+    const third = await executeWithRetry(failing(counter), ctx);
+    expect(counter.calls).toBe(9);
+    expect(third).toMatchObject({ success: false, attempts: 3, stopped: true });
+
+    const fourth = await executeWithRetry(failing(counter), ctx);
+    expect(counter.calls).toBe(9); // the 4th call never runs
+    expect(fourth).toMatchObject({ success: false, attempts: 0, stopped: true });
+    expect(fourth.error).toMatch(/TOOL_STOPPED/);
   });
 
   it('counts across calls for non-retryable failures (1 attempt each): the 4th call never runs', async () => {
@@ -73,20 +103,36 @@ describe('executeWithRetry with a stop guard', () => {
     expect(results.map((r) => Boolean(r.stopped))).toEqual([false, false, true, true]);
   });
 
-  it('stops mid-retry once the threshold is reached (earlier failures in the call count)', async () => {
+  it('a call that recovers on a retry records no failure', async () => {
+    const guard = new ToolStopGuard();
+    let calls = 0;
+    const flaky = async () => {
+      calls += 1;
+      if (calls < 3) throw new Error('ToolExecutionFailed: timeout');
+      return 'ok';
+    };
+    const res = await executeWithRetry(flaky, { tenantId: 't', toolName: 'send_sms', callSessionId: 'call-flaky', retryConfig: fast, stopGuard: guard });
+    expect(res).toMatchObject({ success: true, attempts: 3 });
+    expect(guard.failureCount('call-flaky', 'send_sms')).toBe(0);
+  });
+
+  it('a failed call after two earlier failed calls stops the tool (earlier failures in the call count)', async () => {
     const guard = new ToolStopGuard();
     guard.recordFailure('call-mid', 'send_sms');
     guard.recordFailure('call-mid', 'send_sms');
     const counter = { calls: 0 };
     const res = await executeWithRetry(failing(counter), { tenantId: 't', toolName: 'send_sms', callSessionId: 'call-mid', retryConfig: fast, stopGuard: guard });
-    expect(counter.calls).toBe(1);
-    expect(res).toMatchObject({ attempts: 1, stopped: true });
+    expect(counter.calls).toBe(3);
+    expect(res).toMatchObject({ attempts: 3, stopped: true });
+    expect(guard.failureCount('call-mid', 'send_sms')).toBe(3);
   });
 
   it('does not stop other tools, other calls, or a call after it ended', async () => {
     const guard = new ToolStopGuard();
     const counter = { calls: 0 };
-    await executeWithRetry(failing(counter), { tenantId: 't', toolName: 'create_booking', callSessionId: 'call-a', retryConfig: fast, stopGuard: guard });
+    for (let i = 0; i < 3; i++) {
+      await executeWithRetry(failing(counter), { tenantId: 't', toolName: 'create_booking', callSessionId: 'call-a', retryConfig: fast, stopGuard: guard });
+    }
     expect(guard.isStopped('call-a', 'create_booking')).toBe(true);
 
     let okCalls = 0;
@@ -112,10 +158,10 @@ describe('executeWithRetry with a stop guard', () => {
 
   it('without a guard, behavior is unchanged (no stop)', async () => {
     const counter = { calls: 0 };
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const res = await executeWithRetry(failing(counter), { tenantId: 't', toolName: 'x', callSessionId: 'c', retryConfig: fast });
       expect(res.stopped).toBeUndefined();
     }
-    expect(counter.calls).toBe(9);
+    expect(counter.calls).toBe(12);
   });
 });

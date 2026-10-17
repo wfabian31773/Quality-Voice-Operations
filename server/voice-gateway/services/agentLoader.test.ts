@@ -124,7 +124,7 @@ describe('loadAgentConfig', () => {
 
     const PACKAGE_IDENTITY = 'You are the AI receptionist for Sharp Line Barbers, a salon or barbershop.';
     const PACKAGE_TOOL_RULES = [
-      'create_booking only for a new appointment after you have the service, requested time, guest name, and phone.',
+      'create_booking only for a new appointment after you have the service, requested time, guest name, and phone; if it returns a confirmationToken, read back the service, day/time, name, and phone, get an explicit yes, then call it again with the same details and that confirmationToken.',
       'Never create a second booking for a cancel or reschedule.',
       'It sends a fixed template, never your own words',
       'Never claim a booking, ticket, or text succeeded until the tool confirms it.',

@@ -5,18 +5,18 @@
  *   tools, and drives escalations.
  * - `shadow`: the engine still processes every turn and logs what it would
  *   have done (`reasoning_shadow`), but nothing it decides reaches the model
- *   or the tool layer.
- * - `off`: no engine for the call.
+ *   or the tool layer. Only salon / barbershop agents can run in shadow.
  *
- * Resolution order, first valid value wins:
+ * Resolution for salon / barbershop agents, first valid value wins:
  *   1. agent config: `agents.metadata.reasoningMode`
  *   2. tenant settings: `tenants.settings.reasoningMode`
- *   3. vertical default: salon / barbershop agents = `shadow`, all others =
- *      `enforce`.
- * Unknown values are ignored. No env var is read.
+ *   3. vertical default: `shadow`.
+ * Every other agent always resolves to `enforce`, whatever agent metadata or
+ * tenant settings say (medical guardrails are never bypassed). Unknown
+ * values are ignored. No env var is read.
  */
 
-export const REASONING_MODES = ['enforce', 'shadow', 'off'] as const;
+export const REASONING_MODES = ['enforce', 'shadow'] as const;
 export type ReasoningMode = (typeof REASONING_MODES)[number];
 
 export type ReasoningModeSource = 'agent' | 'tenant' | 'vertical_default';
@@ -55,9 +55,10 @@ export function isSalonVerticalAgent(input: Pick<ReasoningModeInput, 'agentType'
 }
 
 export function resolveReasoningMode(input: ReasoningModeInput): ResolvedReasoningMode {
+  if (!isSalonVerticalAgent(input)) return { mode: 'enforce', source: 'vertical_default' };
   const fromAgent = parseReasoningMode(input.agentMetadata?.[REASONING_MODE_SETTING_KEY]);
   if (fromAgent) return { mode: fromAgent, source: 'agent' };
   const fromTenant = parseReasoningMode(input.tenantSettings?.[REASONING_MODE_SETTING_KEY]);
   if (fromTenant) return { mode: fromTenant, source: 'tenant' };
-  return { mode: isSalonVerticalAgent(input) ? 'shadow' : 'enforce', source: 'vertical_default' };
+  return { mode: 'shadow', source: 'vertical_default' };
 }

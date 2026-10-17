@@ -116,7 +116,7 @@ export interface ReasoningToolDecision extends SafetyCheckResult {
 
 export interface ReasoningCallGateOptions {
   engine: ReasoningEngine;
-  mode: Exclude<ReasoningMode, 'off'>;
+  mode: ReasoningMode;
   callId: string;
   /** Agent tool allowlist (names the model was given). */
   toolsAvailable: string[];
@@ -128,7 +128,7 @@ export interface ReasoningCallGateOptions {
 
 export class ReasoningCallGate {
   readonly engine: ReasoningEngine;
-  readonly mode: Exclude<ReasoningMode, 'off'>;
+  readonly mode: ReasoningMode;
   private readonly callId: string;
   private readonly toolsAvailable: string[];
   private readonly exemptTools: string[];

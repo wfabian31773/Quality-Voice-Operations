@@ -33,7 +33,8 @@ describe('Oct 17 replay scenarios with the salon ReasoningEngine in shadow', () 
     const result = await runScenario(byId('oct17-booking-tool-stops-after-3-failures'));
     expect(result.diff).toBe('');
     expect(result.status).toBe('passed');
-    expect(result.toolAttempts?.['scheduling.book.prepare']).toBe(3);
+    // 3 failed calls x 3 attempts (retries inside a call count once); the 4th never ran.
+    expect(result.toolAttempts?.['scheduling.book.prepare']).toBe(9);
     const prepares = result.trace.filter((event) => event.type === 'tool' && event.name === 'scheduling.book.prepare');
     const codes = prepares.map((event) => (event.type === 'tool' && !event.result.ok ? event.result.error.code : 'ok'));
     expect(codes).toEqual(['INTERNAL', 'INTERNAL', 'TOOL_STOPPED', 'TOOL_STOPPED']);

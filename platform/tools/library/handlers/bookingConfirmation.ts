@@ -4,6 +4,8 @@ export interface BookingConfirmationChange {
   bookingId: string;
   action: string;
   newStartTime?: string | null;
+  /** Stable key of the details being confirmed (new bookings). */
+  detailsKey?: string | null;
 }
 
 export interface BookingConfirmationContext {
@@ -20,6 +22,7 @@ export interface BookingConfirmationChallenge {
   bookingId: string;
   action: string;
   newStartTime: string | null;
+  detailsKey: string | null;
   issuedAtTurn: number;
   expiresAt: number;
 }
@@ -70,6 +73,7 @@ export function issueBookingConfirmation(
     bookingId: change.bookingId,
     action: change.action,
     newStartTime: normalizeStartTime(change.newStartTime),
+    detailsKey: change.detailsKey ?? null,
     issuedAtTurn: currentTurn(context),
     expiresAt: Date.now() + TTL_MS,
   });
@@ -90,6 +94,7 @@ export function consumeBookingConfirmation(
   if (currentTurn(context) <= challenge.issuedAtTurn) return false;
   if (challenge.bookingId !== change.bookingId || challenge.action !== change.action) return false;
   if (challenge.newStartTime !== normalizeStartTime(change.newStartTime)) return false;
+  if (challenge.detailsKey !== (change.detailsKey ?? null)) return false;
   pending.delete(key);
   return true;
 }

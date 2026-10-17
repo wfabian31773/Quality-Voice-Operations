@@ -9,7 +9,39 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   transports: [] as Array<{ opts: { onFunctionCall: (name: string, args: Record<string, unknown>) => Promise<string> }; sendEvent: ReturnType<typeof vi.fn> }>,
   toolHandlers: new Map<string, ReturnType<typeof vi.fn>>(),
+  failEngine: false,
+  bookingInserts: [] as unknown[][],
 }));
+
+vi.mock('../../../platform/reasoning', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../platform/reasoning')>();
+  class MaybeFailingEngine extends actual.ReasoningEngine {
+    constructor(config: ConstructorParameters<typeof actual.ReasoningEngine>[0]) {
+      if (h.failEngine) throw new Error('engine construction failed');
+      super(config);
+    }
+  }
+  return { ...actual, ReasoningEngine: MaybeFailingEngine };
+});
+vi.mock('../../../platform/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../platform/db')>();
+  const query = async (sql: string, params?: unknown[]): Promise<{ rows: Array<Record<string, unknown>> }> => {
+    if (sql.includes('INSERT INTO bookings')) {
+      h.bookingInserts.push(params ?? []);
+      return { rows: [{ id: 'bk-voice' }] };
+    }
+    return { rows: [] };
+  };
+  return {
+    ...actual,
+    getPlatformPool: () => ({ connect: async () => ({ query, release: () => {} }) }),
+    withTenantContext: async (_client: unknown, _tenantId: string, fn: () => Promise<unknown>) => fn(),
+  };
+});
+vi.mock('../../admin-api/routes/scheduling', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../admin-api/routes/scheduling')>();
+  return { ...actual, getTenantTimezone: vi.fn(async () => 'America/New_York') };
+});
 
 vi.mock('./xaiRealtimeTransport', async () => {
   const { EventEmitter: NodeEventEmitter } = await import('events');
@@ -65,6 +97,10 @@ import { createRealtimeSession, type SessionContext } from './openaiSession';
 import { sessionManager } from './sessionManager';
 import { clearToolRetryConfig, setToolRetryConfig } from '../../../platform/tools/RetryOrchestrator';
 import { toolStopGuard } from '../../../platform/tools/ToolStopGuard';
+import { executeCreateBooking } from '../../../platform/tools/library/handlers/createBooking';
+import { resetBookingConfirmations } from '../../../platform/tools/library/handlers/bookingConfirmation';
+import type { ToolContext } from '../../../platform/tools/registry/types';
+import { createEscalationTask } from '../../../platform/tools/HumanEscalationService';
 
 const CALLER = '+15555550100';
 const tool = (name: string) => ({ name, description: name, parameters: { type: 'object', properties: {} } });
@@ -125,6 +161,10 @@ beforeEach(() => {
   process.env.XAI_API_KEY = 'test-xai-key';
   h.transports.length = 0;
   h.toolHandlers.clear();
+  h.failEngine = false;
+  h.bookingInserts.length = 0;
+  resetBookingConfirmations();
+  vi.mocked(createEscalationTask).mockClear();
   info = vi.spyOn(console, 'info').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -219,22 +259,118 @@ describe('non-salon agent (enforce by default, unchanged)', () => {
   });
 });
 
+describe('create_booking readback gate on the voice tool path', () => {
+  const fade = { title: 'Fade', startTime: '2026-10-24T09:00:00-04:00', durationMinutes: 45, contactName: 'Wayne', contactPhone: CALLER };
+
+  it('shadow: needs a readback challenge, rejects the token on the same turn, commits after the caller says yes', async () => {
+    const handler = vi.fn((input: Record<string, unknown>, context: ToolContext) => executeCreateBooking(input, context));
+    h.toolHandlers.set('create_booking', handler);
+    const { ctx, result, say, callTool } = await start();
+    expect(ctx.reasoningMode).toBe('shadow');
+
+    say("Hi, this is Wayne. I'd like a fade Saturday at nine.");
+    const challenge = JSON.parse(await callTool('create_booking', fade));
+    expect(challenge).toMatchObject({ success: true, pending: true, status: 'needs_confirmation' });
+    expect(typeof challenge.confirmationToken).toBe('string');
+    expect((handler.mock.calls[0][1] as ToolContext).requireBookingConfirmation).toBe(true);
+    expect(h.bookingInserts).toHaveLength(0);
+
+    // Same caller turn: the model can't confirm on the caller's behalf.
+    const sameTurn = JSON.parse(await callTool('create_booking', { ...fade, confirmationToken: challenge.confirmationToken }));
+    expect(sameTurn).toMatchObject({ pending: true, status: 'needs_confirmation' });
+    expect(h.bookingInserts).toHaveLength(0);
+
+    // A challenge is not a failure: no stop count, no escalation task.
+    expect(toolStopGuard.failureCount('cs-shadow-voice', 'create_booking')).toBe(0);
+    expect(createEscalationTask).not.toHaveBeenCalled();
+
+    say('Yes, that is right.');
+    const committed = JSON.parse(await callTool('create_booking', { ...fade, confirmationToken: sameTurn.confirmationToken }));
+    expect(committed).toMatchObject({ success: true, bookingId: 'bk-voice' });
+    expect(h.bookingInserts).toHaveLength(1);
+    await result.session.close();
+  });
+
+  it('enforce: create_booking stores directly as before (no confirmation required)', async () => {
+    const handler = vi.fn((input: Record<string, unknown>, context: ToolContext) => executeCreateBooking(input, context));
+    h.toolHandlers.set('create_booking', handler);
+    h.failEngine = true; // no engine, so nothing in enforce blocks the call
+    const { ctx, result, callTool } = await start({ reasoningMode: 'enforce' });
+    expect(ctx.reasoningMode).toBe('enforce');
+
+    const out = JSON.parse(await callTool('create_booking', fade));
+    expect(out).toMatchObject({ success: true, bookingId: 'bk-voice' });
+    expect(out.pending).toBeUndefined();
+    expect((handler.mock.calls[0][1] as ToolContext).requireBookingConfirmation).toBe(false);
+    expect(h.bookingInserts).toHaveLength(1);
+    await result.session.close();
+  });
+});
+
+describe('enforce-mode call whose engine failed to start (unchanged)', () => {
+  it('does not apply the shadow allowlist check: a registered tool outside agentConfig.tools still runs', async () => {
+    h.failEngine = true;
+    const extra = vi.fn(async () => ({ success: true }));
+    h.toolHandlers.set('partner_crm_sync', extra);
+    // No template key, so template permissions don't apply either (as before this PR).
+    const { ctx, result, callTool } = await start({
+      templateKey: undefined,
+      agentConfig: { ...makeCtx().agentConfig, rolePackageId: 'core-receptionist', metadata: { businessName: 'Acme Plumbing' } },
+    });
+    expect(ctx.reasoningMode).toBe('enforce');
+    expect(ctx.reasoningGate).toBeUndefined();
+
+    const out = JSON.parse(await callTool('partner_crm_sync', {}));
+    expect(out.success).toBe(true);
+    expect(extra).toHaveBeenCalledTimes(1);
+    await result.session.close();
+  });
+
+  it('shadow mode without an engine still blocks a tool outside the agent allowlist', async () => {
+    h.failEngine = true;
+    const extra = vi.fn(async () => ({ success: true }));
+    h.toolHandlers.set('partner_crm_sync', extra);
+    // No template key (template permissions don't apply); shadow via metadata.vertical.
+    const { ctx, result, callTool } = await start({
+      templateKey: undefined,
+      agentConfig: { ...makeCtx().agentConfig, metadata: { businessName: 'Sharp Line Barbers', vertical: 'barbershop' } },
+    });
+    expect(ctx.reasoningMode).toBe('shadow');
+    expect(ctx.reasoningGate).toBeUndefined();
+
+    const out = JSON.parse(await callTool('partner_crm_sync', {}));
+    expect(out.message).toMatch(/not available for this agent/);
+    expect(extra).not.toHaveBeenCalled();
+    await result.session.close();
+  });
+});
+
 describe('repeated-tool stop on the voice tool path (every mode)', () => {
   for (const reasoningMode of ['shadow', 'enforce'] as const) {
-    it(`${reasoningMode}: 3 failed attempts (with retries) stop the tool; the next call does not execute`, async () => {
+    it(`${reasoningMode}: retries inside one call count once; 3 failed calls stop the tool and the 4th does not execute`, async () => {
       setToolRetryConfig('lookup_customer', { baseDelayMs: 1, maxDelayMs: 2, timeoutMs: 1000, maxRetries: 2 });
       const lookup = vi.fn(async () => ({ success: false, message: 'Customer lookup failed.' }));
       h.toolHandlers.set('lookup_customer', lookup);
       const { result, callTool } = await start({ reasoningMode });
 
+      // One correctable failure (3 attempts) does not stop the tool.
       const first = JSON.parse(await callTool('lookup_customer', { phoneNumber: '' }));
       expect(lookup).toHaveBeenCalledTimes(3);
-      expect(first).toMatchObject({ success: false, code: 'TOOL_STOPPED', retryable: false, tool: 'lookup_customer', failedAttempts: 3 });
-      expect(first.message_for_caller_hint).toMatch(/shop follow up/);
+      expect(first.success).toBe(false);
+      expect(first.code).toBeUndefined();
+      expect(toolStopGuard.failureCount('cs-shadow-voice', 'lookup_customer')).toBe(1);
 
       const second = JSON.parse(await callTool('lookup_customer', { phoneNumber: '' }));
-      expect(lookup).toHaveBeenCalledTimes(3);
-      expect(second).toMatchObject({ code: 'TOOL_STOPPED', failedAttempts: 3 });
+      expect(second.code).toBeUndefined();
+
+      const third = JSON.parse(await callTool('lookup_customer', { phoneNumber: '' }));
+      expect(lookup).toHaveBeenCalledTimes(9);
+      expect(third).toMatchObject({ success: false, code: 'TOOL_STOPPED', retryable: false, tool: 'lookup_customer', failedAttempts: 3 });
+      expect(third.message_for_caller_hint).toMatch(/shop follow up/);
+
+      const fourth = JSON.parse(await callTool('lookup_customer', { phoneNumber: '' }));
+      expect(lookup).toHaveBeenCalledTimes(9);
+      expect(fourth).toMatchObject({ code: 'TOOL_STOPPED', failedAttempts: 3 });
       expect(toolStopGuard.isStopped('cs-shadow-voice', 'lookup_customer')).toBe(true);
 
       await result.session.close();

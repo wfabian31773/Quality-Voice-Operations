@@ -78,7 +78,7 @@ export type EndStateExpect = {
 
 /** What the ReasoningEngine gate did during the scenario (see ReasoningSetup). */
 export type ReasoningExpect = {
-  mode?: 'enforce' | 'shadow' | 'off';
+  mode?: 'enforce' | 'shadow';
   /** Guidance injected into the agent (enforce only; shadow must be 0). */
   injections?: number;
   /** Tool calls the gate blocked. */
@@ -251,7 +251,7 @@ export type ScenarioRunResult = {
 };
 
 export type ReasoningObservation = {
-  mode: 'enforce' | 'shadow' | 'off';
+  mode: 'enforce' | 'shadow';
   /** reasoning_shadow lines, as logged. */
   shadowLines: Array<Record<string, unknown>>;
   /** Template ids the gate handed back to apply (enforce only). */
