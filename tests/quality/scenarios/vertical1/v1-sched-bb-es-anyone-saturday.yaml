@@ -1,0 +1,84 @@
+id: v1-sched-bb-es-anyone-saturday
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:barbershop, lang:es, action:scheduling.book, spec:1.5-anyone, expected-fail]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+# Spanish readback blocked on matcher follow-up: matcher accepts Spanish
+# readback. The agent reads the booking back in Spanish, and readbackRequired
+# only accepts the fake's English readback verbatim. No product PR fixes this,
+# so the ledger id names the follow-up instead of a PR.
+expectedFail: matcher-es-readback
+caller:
+  - text: "Buenas, ¿tienen un corte el sábado en la mañana? Con cualquiera."
+  - text: "A las 10. Soy Jorge."
+  - text: "Sí, así es."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            date: "2026-10-24"
+            partOfDay: morning
+      - say: "El sábado a las 10:00 está disponible Marco. ¿Le sirve?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            start: "2026-10-24T10:00:00-04:00"
+            customer:
+              name: Jorge
+              phone: "+15555550188"
+      - say: "Le confirmo: un corte de caballero con Marco, el sábado 24 de octubre a las 10:00 de la mañana, a nombre de Jorge, al número que termina en 0188. ¿Es correcto?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Listo, tiene su cita con Marco el sábado a las 10."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: any
+        date: "2026-10-24"
+    - name: scheduling.book.prepare
+      input:
+        staffId: any
+        start: "2026-10-24T10:00:00-04:00"
+        customer:
+          name: Jorge
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        # "Anyone" defaults to the first available barber.
+        - status: confirmed
+          staffId: marco
+          date: "2026-10-24"
+          startLocal: "10:00"
+  mustSay:
+    - "sábado"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

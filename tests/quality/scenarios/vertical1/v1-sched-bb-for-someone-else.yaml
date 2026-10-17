@@ -1,0 +1,80 @@
+id: v1-sched-bb-for-someone-else
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:barbershop, lang:en, action:scheduling.book, spec:1.6-15]
+seed: barbershop-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "I'd like to book my son Mateo for a cut with Tony on Saturday morning."
+  - text: "10 is good. Use my number."
+  - text: "Yes, correct."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: tony
+            date: "2026-10-24"
+            partOfDay: morning
+      - say: "Tony has Saturday at 10:00. Should I put that under Mateo's name?"
+  - on: 1
+    steps:
+      # The customer is the son; the phone is the caller's.
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: tony
+            start: "2026-10-24T10:00:00-04:00"
+            customer:
+              name: Mateo
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Mateo is booked with Tony on Saturday at 10."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: tony
+        date: "2026-10-24"
+    - name: scheduling.book.prepare
+      input:
+        staffId: tony
+        start: "2026-10-24T10:00:00-04:00"
+        customer:
+          name: Mateo
+          phone: "+15555550142"
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: tony
+          date: "2026-10-24"
+          startLocal: "10:00"
+  mustSay:
+    - "Mateo"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true

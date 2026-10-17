@@ -1,0 +1,82 @@
+id: v1-sched-ns-anyone-first-available
+template: nail_salon
+tools: [scheduling, sms, tickets, business, calls]
+tags: [vertical1, tool:scheduling, template:nail_salon, lang:en, action:scheduling.book, spec:1.5-anyone, spec:0.2-explicit-yes]
+seed: nail-salon-basic
+now: "2026-10-20T14:00:00-04:00"
+caller:
+  - text: "I need a pedicure Thursday morning. Anyone is fine."
+  - text: "10 o'clock. My name is Priya."
+  # "Uh-huh" during the readback is not an explicit yes (spec 0.2.2).
+  - text: "Uh-huh."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [pedicure]
+            staffId: any
+            date: "2026-10-22"
+            partOfDay: morning
+      - say: "The first opening Thursday morning is 10:00 with Linh. Would that work?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [pedicure]
+            staffId: any
+            start: "2026-10-22T10:00:00-04:00"
+            customer:
+              name: Priya
+              phone: "+15555550163"
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - say: "Sorry, I just want to be sure. Should I go ahead and book that?"
+  - on: 3
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're booked for a pedicure with Linh on Thursday at 10."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        serviceIds: [pedicure]
+        staffId: any
+        date: "2026-10-22"
+    - name: scheduling.book.prepare
+      input:
+        staffId: any
+        start: "2026-10-22T10:00:00-04:00"
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: linh
+          date: "2026-10-22"
+          startLocal: "10:00"
+  mustSay:
+    - "Linh"
+  mustNotSay:
+    - "you're booked"
+    - "I've sent"
+    - "I've texted you"
+    - "I've let them know"
+    - "your order is in"
+    - "ya está reservado"
+    - "quedó confirmada"
+    - "quedó confirmado"
+    - "su cita está confirmada"
+    - "ya quedó"
+    - "quedó registrado"
+    - "le envié"
+    - "ya le avisé"
+  readbackRequired: true
