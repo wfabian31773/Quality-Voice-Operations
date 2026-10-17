@@ -26,7 +26,9 @@ import {
   automatedSmsIdempotencyKey,
   createSmsSendAction,
   releaseDueDeferredSms,
+  sendStoredSms,
   sendSystemSms,
+  sendUserSms,
   SMS_RELEASE_MAX_ATTEMPTS,
   type SystemSmsRequest,
 } from './send';
@@ -65,14 +67,34 @@ function setup(overrides: Partial<SmsSendConfig> = {}) {
         (r.sentAt ? r.sentAt >= since : !r.metadata.releaseClaimedAt),
     ).length;
 
+  // Like insertOutboundRow: a stored row (`existing`) is updated in place.
+  const upsert = (record: OutboundSmsRecord) => {
+    const { existing, ...fields } = record;
+    const row = records.get(record.id);
+    if (existing) {
+      if (!row) throw new Error('Stored SMS is no longer sendable');
+      Object.assign(row, { status: fields.status, scheduledAt: fields.scheduledAt ?? row.scheduledAt });
+      row.metadata = { ...row.metadata, ...fields.metadata };
+      return;
+    }
+    records.set(record.id, { ...fields });
+  };
+
   const store: SmsSendStore = {
     isTenantMessagingEnabled: vi.fn(async () => state.tenantEnabled),
     isTenantSender: vi.fn(async (_tx: unknown, _tenant: string, from: string) => state.senders.includes(from)),
     latestConsentAction: vi.fn(async (_tx: unknown, _tenant: string, phone: string) => state.consent.get(phone) ?? null),
+    loadStoredOutbound: vi.fn(async (_tx: unknown, _tenant: string, id: string) => {
+      const r = records.get(id);
+      if (!r || r.twilioSid || !['scheduled', 'sending'].includes(r.status) || r.metadata.source === 'sms.send') {
+        return null;
+      }
+      return { ...r };
+    }),
     reserveOutbound: vi.fn(async (record: OutboundSmsRecord, limit: SmsRateLimitWindow | null) => {
-      const recent = limit ? recentSends(record.to, limit.since) : 0;
+      const recent = limit ? recentSends(record.to, limit.since, record.existing ? record.id : undefined) : 0;
       if (limit && recent >= limit.max) return { reserved: false as const, recent };
-      records.set(record.id, { ...record });
+      upsert(record);
       return { reserved: true as const };
     }),
     reserveDeferredSend: vi.fn(async (msg: { id: string; to: string }, limit: SmsRateLimitWindow | null, now: Date) => {
@@ -83,7 +105,7 @@ function setup(overrides: Partial<SmsSendConfig> = {}) {
       return { reserved: true as const };
     }),
     insertOutbound: vi.fn(async (record: OutboundSmsRecord) => {
-      records.set(record.id, { ...record });
+      upsert(record);
     }),
     updateOutbound: vi.fn(async (_tenant: string, id: string, patch: OutboundSmsPatch) => {
       const row = records.get(id);
@@ -104,8 +126,14 @@ function setup(overrides: Partial<SmsSendConfig> = {}) {
       return due.map((r) => {
         const reclaimed = r.status === 'sending';
         r.status = 'sending';
-        r.metadata = { ...r.metadata, releaseClaimedAt: now.toISOString() };
-        return { ...r, reclaimed };
+        // A fresh claim drops the transmit marker of earlier attempts.
+        const kept = { ...r.metadata };
+        if (!reclaimed) {
+          delete kept.transmitAttemptId;
+          delete kept.transmitStartedAt;
+        }
+        r.metadata = { ...kept, releaseClaimedAt: now.toISOString() };
+        return { ...r, metadata: { ...r.metadata }, reclaimed };
       });
     }),
   };
@@ -171,7 +199,8 @@ describe('sms.send chokepoint', () => {
       from: FROM,
       to: TO,
       body: 'Fade Lab: you are confirmed for a cut with Marco, Tue Oct 20 at 3:30 PM.',
-      statusCallback: CALLBACK,
+      // The row id rides on the callback so a SID-less row can still be matched.
+      statusCallback: `${CALLBACK}?mid=msg-1`,
     });
     const [row] = [...t.records.values()];
     expect(row).toMatchObject({ status: 'queued', twilioSid: 'SM1', from: FROM, to: TO });
@@ -179,6 +208,29 @@ describe('sms.send chokepoint', () => {
     // Persisted before Twilio was called.
     const insertOrder = (t.store.reserveOutbound as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     expect(insertOrder).toBeLessThan(t.transport.send.mock.invocationCallOrder[0]);
+  });
+
+  it('commits a transmit marker on the row before calling Twilio', async () => {
+    const t = setup();
+    await t.system();
+    const update = t.store.updateOutbound as ReturnType<typeof vi.fn>;
+    const markerCall = update.mock.calls.findIndex(
+      ([, , patch]) => typeof (patch as OutboundSmsPatch).metadata?.transmitAttemptId === 'string',
+    );
+    expect(markerCall).toBeGreaterThanOrEqual(0);
+    expect(update.mock.calls[markerCall][2]).toMatchObject({
+      status: 'sending',
+      metadata: { transmitStartedAt: DAYTIME.toISOString() },
+    });
+    expect(update.mock.invocationCallOrder[markerCall]).toBeLessThan(t.transport.send.mock.invocationCallOrder[0]);
+  });
+
+  it('does not call Twilio when the transmit marker cannot be written', async () => {
+    const t = setup();
+    (t.store.updateOutbound as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('db down'));
+    const result = await t.system();
+    expect(result).toMatchObject({ ok: false, error: { code: 'UPSTREAM_UNAVAILABLE', retryable: true } });
+    expect(t.transport.send).not.toHaveBeenCalled();
   });
 
   it('returns RECIPIENT_OPTED_OUT and never calls Twilio for an opted-out recipient', async () => {
@@ -255,7 +307,7 @@ describe('sms.send chokepoint', () => {
     });
     expect(summary).toMatchObject({ claimed: 2, sent: 1, suppressed: 1 });
     expect(t.transport.send).toHaveBeenCalledTimes(1);
-    expect(t.transport.send.mock.calls[0][0]).toMatchObject({ to: TO, statusCallback: CALLBACK });
+    expect(t.transport.send.mock.calls[0][0]).toMatchObject({ to: TO, statusCallback: `${CALLBACK}?mid=msg-1` });
     const statuses = [...t.records.values()].map((r) => [r.to, r.status]);
     expect(statuses).toEqual([
       [TO, 'queued'],
@@ -369,6 +421,54 @@ describe('sms.send chokepoint', () => {
       expect(row(t, 'msg-1').status).toBe('queued');
     });
 
+    it('never resends when Twilio accepted but the SID write failed (double-send race)', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      // Twilio accepts; the SID write right after it fails.
+      const update = t.store.updateOutbound as ReturnType<typeof vi.fn>;
+      const realUpdate = update.getMockImplementation()!;
+      update.mockImplementation(async (tenant: string, id: string, patch: OutboundSmsPatch) => {
+        if (patch.twilioSid) throw new Error('connection reset');
+        return realUpdate(tenant, id, patch);
+      });
+
+      expect(await release(t, WINDOW_START)).toMatchObject({ claimed: 1, sent: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+      expect(row(t, 'msg-1').status).toBe('sending');
+      expect(row(t, 'msg-1').twilioSid).toBeUndefined();
+      expect(typeof row(t, 'msg-1').metadata.transmitAttemptId).toBe('string');
+
+      // The reclaim job runs after the stuck timeout: no second Twilio call.
+      update.mockImplementation(realUpdate);
+      const summary = await release(t, plusMs(WINDOW_START, 11 * 60_000));
+      expect(summary).toMatchObject({ claimed: 1, reclaimed: 1, sent: 0, failed: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+      expect(row(t, 'msg-1')).toMatchObject({ status: 'failed', errorMessage: 'SEND_OUTCOME_UNKNOWN' });
+
+      // And it stays that way on later runs.
+      expect(await release(t, plusMs(WINDOW_START, 60 * 60_000))).toMatchObject({ claimed: 0 });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('a transient failure re-defers, and the next claim drops the old transmit marker', async () => {
+      const t = setup();
+      await defer(t, 'b1');
+      t.transport.send.mockRejectedValueOnce(new TwilioApiError('Twilio API error: 503', 503, null));
+      expect(await release(t, WINDOW_START)).toMatchObject({ retried: 1 });
+      expect(typeof row(t, 'msg-1').metadata.transmitAttemptId).toBe('string');
+
+      // Next release claims it, then the process dies before transmit runs.
+      const retryAt = row(t, 'msg-1').scheduledAt!;
+      await t.store.claimDueDeferred(retryAt, 100, new Date(0));
+      expect(row(t, 'msg-1').metadata.transmitAttemptId).toBeUndefined();
+
+      // No marker from this attempt, so the reclaim sends it as before.
+      const summary = await release(t, new Date(retryAt.getTime() + 11 * 60_000));
+      expect(summary).toMatchObject({ reclaimed: 1, sent: 1 });
+      expect(t.transport.send).toHaveBeenCalledTimes(2);
+      expect(row(t, 'msg-1').status).toBe('queued');
+    });
+
     it('never reclaims a sending row that has a Twilio SID', async () => {
       const t = setup();
       await defer(t, 'b1');
@@ -388,6 +488,94 @@ describe('sms.send chokepoint', () => {
       expect(await release(t, plusMs(WINDOW_START, 11 * 60_000))).toMatchObject({ reclaimed: 1, failed: 1 });
       expect(row(t, 'msg-1')).toMatchObject({ status: 'failed', errorMessage: 'STUCK_SENDING' });
       expect(t.transport.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stored messages (inbox scheduled sends)', () => {
+    const SCHEDULED_ID = 'inbox-msg-1';
+    function storeScheduled(t: ReturnType<typeof setup>, overrides: Partial<StoredRecord> = {}) {
+      t.records.set(SCHEDULED_ID, {
+        id: SCHEDULED_ID,
+        tenantId: TENANT,
+        from: FROM,
+        to: TO,
+        body: 'See you at 3, Luis!',
+        status: 'sending',
+        scheduledAt: new Date('2026-10-14T14:59:00.000Z'),
+        metadata: {},
+        ...overrides,
+      });
+    }
+    const stored = (t: ReturnType<typeof setup>, req: Partial<Parameters<typeof sendStoredSms>[0]> = {}) =>
+      sendStoredSms(
+        { tenantId: TENANT, messageId: SCHEDULED_ID, to: TO, purpose: 'conversational', now: DAYTIME, ...req },
+        { action: t.action, runtime: t.runtime },
+      );
+
+    it('sends the stored row in place: its body and sender, no new row', async () => {
+      const t = setup();
+      storeScheduled(t);
+      const result = await stored(t);
+      expect(result).toMatchObject({ ok: true, data: { messageId: SCHEDULED_ID, status: 'queued', twilioSid: 'SM1' } });
+      expect(t.records.size).toBe(1);
+      expect(t.transport.send.mock.calls[0][0]).toMatchObject({
+        from: FROM,
+        to: TO,
+        body: 'See you at 3, Luis!',
+        statusCallback: `${CALLBACK}?mid=${SCHEDULED_ID}`,
+      });
+      expect(t.records.get(SCHEDULED_ID)).toMatchObject({ status: 'queued', twilioSid: 'SM1' });
+      expect(t.records.get(SCHEDULED_ID)!.metadata).toMatchObject({ source: 'sms.send' });
+    });
+
+    it('does not send to an opted-out recipient or with messaging off, and leaves the row alone', async () => {
+      for (const disable of [
+        (t: ReturnType<typeof setup>) => t.state.consent.set(TO, 'opt_out'),
+        (t: ReturnType<typeof setup>) => (t.state.smsEnabled = false),
+      ]) {
+        const t = setup();
+        storeScheduled(t);
+        disable(t);
+        const result = await stored(t);
+        expect(result.ok).toBe(false);
+        expect(t.transport.send).not.toHaveBeenCalled();
+        expect(t.records.get(SCHEDULED_ID)!.status).toBe('sending');
+      }
+    });
+
+    it('refuses non-system actors, a different recipient, and rows the chokepoint already owns', async () => {
+      const t = setup();
+      storeScheduled(t);
+      const asUser = await t.asActor(owner, { to: TO, storedMessageId: SCHEDULED_ID, purpose: 'conversational' });
+      expect(asUser).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+      expect(await stored(t, { to: '+13125550199' })).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+
+      storeScheduled(t, { metadata: { source: 'sms.send' } });
+      expect(await stored(t, { idempotencyKey: 'k2' })).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+      expect(t.transport.send).not.toHaveBeenCalled();
+    });
+
+    it('defers the stored row itself during quiet hours', async () => {
+      const t = setup();
+      storeScheduled(t);
+      const result = await stored(t, { now: NINE_OH_FIVE_PM });
+      expect(result).toMatchObject({ ok: true, data: { messageId: SCHEDULED_ID, status: 'deferred_quiet_hours' } });
+      expect(t.records.size).toBe(1);
+      expect(t.records.get(SCHEDULED_ID)!.status).toBe('deferred_quiet_hours');
+      expect(t.transport.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('user sends (inbox replies)', () => {
+    it('sends free text as the signed-in user', async () => {
+      const t = setup();
+      const result = await sendUserSms(
+        { tenantId: TENANT, userId: 'u1', role: 'tenant_owner', to: TO, from: FROM, body: 'Hi!', purpose: 'conversational', now: DAYTIME },
+        { action: t.action, runtime: t.runtime },
+      );
+      expect(result).toMatchObject({ ok: true, data: { status: 'queued' } });
+      const [row] = [...t.records.values()];
+      expect(row.metadata).toMatchObject({ actor: { type: 'user', id: 'u1' } });
     });
   });
 

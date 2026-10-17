@@ -51,6 +51,23 @@ vi.mock('../../platform/audit/AuditService', () => ({
   extractIp: () => '127.0.0.1',
 }));
 
+// Sends go through the real `sms.send` action over an in-memory store and a
+// mocked Twilio transport (no fetch, no DB).
+const smsFake = vi.hoisted(() => ({
+  current: null as null | import('../../platform/actions/sms/__fixtures__/fakeSmsChokepoint').FakeSmsChokepoint,
+}));
+vi.mock('../../platform/actions/sms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../platform/actions/sms')>();
+  return {
+    ...actual,
+    sendUserSms: (req: Parameters<typeof actual.sendUserSms>[0]) => actual.sendUserSms(req, smsFake.current!.options),
+    sendStoredSms: (req: Parameters<typeof actual.sendStoredSms>[0]) =>
+      actual.sendStoredSms(req, smsFake.current!.options),
+  };
+});
+import { createFakeSmsChokepoint } from '../../platform/actions/sms/__fixtures__/fakeSmsChokepoint';
+import { TwilioApiError } from '../../platform/integrations/twilio/sender';
+
 const isOnDncMock = vi.fn(async () => false);
 vi.mock('../../platform/campaigns/DncService', () => ({
   isOnDnc: (...args: unknown[]) => isOnDncMock(...(args as [string, string])),
@@ -58,6 +75,7 @@ vi.mock('../../platform/campaigns/DncService', () => ({
 
 const getConversationMock = vi.fn();
 const saveMessageMock = vi.fn();
+const getMessageMock = vi.fn();
 const logActivityMock = vi.fn(async () => {});
 const claimDueScheduledMessagesMock = vi.fn();
 const updateMessageStatusMock = vi.fn(async () => {});
@@ -65,6 +83,7 @@ const updateMessageStatusMock = vi.fn(async () => {});
 vi.mock('../../platform/sms/SmsConversationService', () => ({
   getConversation: (...args: unknown[]) => getConversationMock(...args),
   saveMessage: (...args: unknown[]) => saveMessageMock(...args),
+  getMessage: (...args: unknown[]) => getMessageMock(...args),
   logActivity: (...args: unknown[]) => logActivityMock(...args),
   claimDueScheduledMessages: (...args: unknown[]) =>
     claimDueScheduledMessagesMock(...args),
@@ -139,6 +158,15 @@ beforeEach(() => {
   isOnDncMock.mockResolvedValue(false);
   getConversationMock.mockReset();
   saveMessageMock.mockReset();
+  getMessageMock.mockReset();
+  getMessageMock.mockImplementation(async (_tenantId: string, id: string) => ({
+    id,
+    tenantId: 'tenant-1',
+    conversationId: 'conv-1',
+    direction: 'outbound',
+    status: 'queued',
+  }));
+  smsFake.current = createFakeSmsChokepoint({ from: '+15555550100' });
   logActivityMock.mockReset();
   logActivityMock.mockResolvedValue(undefined);
   claimDueScheduledMessagesMock.mockReset();
@@ -239,70 +267,96 @@ describe('POST /sms-inbox/threads/:id/messages quiet-hours enforcement', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    saveMessageMock.mockResolvedValue({
-      id: 'msg-1',
-      tenantId: 'tenant-1',
-      conversationId: 'conv-1',
-      direction: 'outbound',
-      fromNumber: '+15555550100',
-      toNumber: '+12025550100',
-      body: 'Daytime ping',
-      status: 'queued',
-      twilioSid: 'SMxxxx',
-      scheduledAt: null,
-      sentAt: new Date(),
-      deliveredAt: null,
-      errorMessage: null,
-      metadata: {},
-      createdAt: new Date(),
-    });
-
     queryMock.mockImplementation(async (sql: string) => {
       if (/SELECT phone_number FROM phone_numbers/i.test(sql)) {
         return { rows: [{ phone_number: '+15555550100' }], rowCount: 1 };
       }
-      if (/connectors WHERE tenant_id/i.test(sql)) {
-        return {
-          rows: [
-            {
-              config: {
-                credentials: {
-                  account_sid: 'AC1',
-                  api_key: 'AC1',
-                  api_key_secret: 'secret',
-                  from_number: '+15555550100',
-                },
-              },
-            },
-          ],
-          rowCount: 1,
-        };
-      }
       return { rows: [], rowCount: 0 };
     });
 
-    // Stub fetch so the Twilio HTTP call resolves without hitting the network.
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ sid: 'SMxxxx', status: 'queued' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+    const app = buildApp();
+    const res = await request(app)
+      .post('/sms-inbox/threads/conv-1/messages')
+      .send({ body: 'Daytime ping' });
 
-    try {
-      const app = buildApp();
-      const res = await request(app)
-        .post('/sms-inbox/threads/conv-1/messages')
-        .send({ body: 'Daytime ping' });
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatchObject({ id: 'sms-1', status: 'queued' });
+    // Sent through the chokepoint, from the thread's number, as the user.
+    const fake = smsFake.current!;
+    expect(fake.transport.send).toHaveBeenCalledTimes(1);
+    expect(fake.transport.send.mock.calls[0][0]).toMatchObject({
+      from: '+15555550100',
+      to: '+12025550100',
+      body: 'Daytime ping',
+      statusCallback: 'https://voice.example.com/twilio/sms-status?mid=sms-1',
+    });
+    expect(fake.rows.get('sms-1')!.metadata).toMatchObject({ actor: { type: 'user', id: 'user-1' } });
+    // The chokepoint's row is the message: no second row is saved.
+    expect(saveMessageMock).not.toHaveBeenCalled();
+    expect(fake.rows.size).toBe(1);
+    expect(getMessageMock).toHaveBeenCalledWith('tenant-1', 'sms-1');
+  });
+});
 
-      expect(res.status).toBe(200);
-      expect(res.body.message).toMatchObject({ id: 'msg-1', status: 'queued' });
-      expect(saveMessageMock).toHaveBeenCalledTimes(1);
-    } finally {
-      fetchSpy.mockRestore();
-    }
+describe('POST /sms-inbox/threads/:id/messages through the sms.send chokepoint', () => {
+  const conversation = {
+    id: 'conv-1',
+    tenantId: 'tenant-1',
+    phoneNumberId: 'pn-1',
+    remoteNumber: '+12025550100',
+    status: 'open',
+  };
+  const send = (body: string) => request(buildApp()).post('/sms-inbox/threads/conv-1/messages').send({ body });
+
+  beforeEach(() => {
+    // 13:00 Eastern: inside the recipient's window.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 3, 28, 17, 0)));
+    getConversationMock.mockResolvedValue(conversation);
+    queryMock.mockImplementation(async (sql: string) =>
+      /SELECT phone_number FROM phone_numbers/i.test(sql)
+        ? { rows: [{ phone_number: '+15555550100' }], rowCount: 1 }
+        : { rows: [], rowCount: 0 },
+    );
+  });
+
+  it('does not text an opted-out recipient (403)', async () => {
+    smsFake.current!.state.optedOut.add('+12025550100');
+    const res = await send('Hi');
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ reason: 'recipient_opted_out' });
+    expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+    expect(saveMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('does not send while messaging is off (503, as before when SMS was not configured)', async () => {
+    smsFake.current!.state.smsEnabled = false;
+    const res = await send('Hi');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('SMS service not configured');
+    expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+  });
+
+  it('reports a Twilio error as before (500 "Failed to send message: …")', async () => {
+    smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 400 Bad To', 400, 21604);
+    const res = await send('Hi');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to send message: Twilio API error: 400 Bad To');
+    expect(logActivityMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a body over 640 characters before sending', async () => {
+    const res = await send('x'.repeat(641));
+    expect(res.status).toBe(400);
+    expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+  });
+
+  it('keeps the activity and audit rows on success', async () => {
+    const res = await send('Hi');
+    expect(res.status).toBe(200);
+    expect(logActivityMock).toHaveBeenCalledWith('tenant-1', 'conv-1', 'message_sent', 'user-1', 'op@example.com', {
+      messageId: 'sms-1',
+    });
   });
 });
 
@@ -463,52 +517,110 @@ describe('processScheduledMessages quiet-hours deferral', () => {
     const captured: Array<{ sql: string; values?: unknown[] }> = [];
     queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
       captured.push({ sql, values });
-      if (/connectors WHERE tenant_id/i.test(sql)) {
-        return {
-          rows: [
-            {
-              config: {
-                credentials: {
-                  account_sid: 'AC1',
-                  api_key: 'AC1',
-                  api_key_secret: 'secret',
-                  from_number: '+15555550100',
-                },
-              },
-            },
-          ],
-          rowCount: 1,
-        };
-      }
       return { rows: [], rowCount: 0 };
     });
+    // The scheduled row as stored by the inbox (claimed → 'sending').
+    const fake = smsFake.current!;
+    fake.rows.set('msg-1', {
+      id: 'msg-1',
+      tenantId: 'tenant-1',
+      from: '+15555550100',
+      to: '+12025550100',
+      body: 'Daytime ping',
+      status: 'sending',
+      scheduledAt: new Date(Date.UTC(2026, 3, 28, 16, 59)),
+      metadata: {},
+    });
 
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ sid: 'SMxxxx', status: 'sent' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+    await processScheduledMessages();
 
-    try {
-      await processScheduledMessages();
-    } finally {
-      fetchSpy.mockRestore();
-    }
-
-    // Send happened: status flipped to 'sent' with the Twilio SID.
+    // Send happened through the chokepoint, on the stored row (no new row).
+    expect(fake.transport.send).toHaveBeenCalledTimes(1);
+    expect(fake.transport.send.mock.calls[0][0]).toMatchObject({
+      from: '+15555550100',
+      to: '+12025550100',
+      body: 'Daytime ping',
+      statusCallback: 'https://voice.example.com/twilio/sms-status?mid=msg-1',
+    });
+    expect(fake.rows.size).toBe(1);
+    // Status flipped to 'sent' with the Twilio SID, as before.
     expect(updateMessageStatusMock).toHaveBeenCalledWith(
       'tenant-1',
       'msg-1',
       'sent',
-      'SMxxxx',
+      'SM1',
     );
+    expect(logActivityMock).toHaveBeenCalledWith('tenant-1', 'conv-1', 'message_sent', null, null, {
+      messageId: 'msg-1',
+      scheduled: true,
+    });
     // No deferral UPDATE was issued.
     const deferCall = captured.find((c) =>
       /UPDATE sms_messages SET status = 'scheduled', scheduled_at =/i.test(c.sql),
     );
     expect(deferCall).toBeUndefined();
+  });
+});
+
+describe('processScheduledMessages through the sms.send chokepoint', () => {
+  const scheduledAt = new Date(Date.UTC(2026, 3, 28, 16, 59));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 3, 28, 17, 0)));
+    claimDueScheduledMessagesMock.mockResolvedValue([
+      {
+        id: 'msg-1',
+        tenantId: 'tenant-1',
+        conversationId: 'conv-1',
+        direction: 'outbound',
+        fromNumber: '+15555550100',
+        toNumber: '+12025550100',
+        body: 'Daytime ping',
+        status: 'sending',
+        twilioSid: null,
+        scheduledAt,
+        metadata: {},
+      },
+    ]);
+    getConversationMock.mockResolvedValue({ id: 'conv-1', tenantId: 'tenant-1', remoteNumber: '+12025550100' });
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 });
+    smsFake.current!.rows.set('msg-1', {
+      id: 'msg-1',
+      tenantId: 'tenant-1',
+      from: '+15555550100',
+      to: '+12025550100',
+      body: 'Daytime ping',
+      status: 'sending',
+      scheduledAt,
+      metadata: {},
+    });
+  });
+
+  it('does not text an opted-out recipient; marks the message failed with the suppression activity', async () => {
+    smsFake.current!.state.optedOut.add('+12025550100');
+    await processScheduledMessages();
+    expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+    expect(updateMessageStatusMock).toHaveBeenCalledWith('tenant-1', 'msg-1', 'failed');
+    expect(logActivityMock).toHaveBeenCalledWith('tenant-1', 'conv-1', 'message_sent', null, null, {
+      messageId: 'msg-1',
+      suppressed: true,
+      reason: 'recipient_opted_out_after_schedule',
+    });
+  });
+
+  it('does not send while messaging is off; marks the message failed', async () => {
+    smsFake.current!.state.tenantEnabled = false;
+    await processScheduledMessages();
+    expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+    expect(updateMessageStatusMock).toHaveBeenCalledWith('tenant-1', 'msg-1', 'failed');
+  });
+
+  it('marks the message failed on a Twilio error, as before', async () => {
+    smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 500 boom', 500, null);
+    await processScheduledMessages();
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
+    expect(updateMessageStatusMock).toHaveBeenCalledWith('tenant-1', 'msg-1', 'failed');
+    expect(updateMessageStatusMock).not.toHaveBeenCalledWith('tenant-1', 'msg-1', 'sent', expect.anything());
   });
 });

@@ -5,6 +5,9 @@ import { resolveVoicePublicBaseUrl } from '../../runtime/processRole';
 import { evaluateSmsQuietHoursForTenant, nextSmsWindowStartForTenant } from '../../sms/SmsQuietHours';
 import type { TenantTx } from '../core';
 
+/** `metadata.source` of every row the chokepoint wrote (= the action name). */
+const CHOKEPOINT_SOURCE = 'sms.send';
+
 export type OutboundStatus =
   | 'sending'
   | 'queued'
@@ -21,6 +24,11 @@ export interface OutboundSmsRecord {
   status: OutboundStatus;
   scheduledAt: Date | null;
   metadata: Record<string, unknown>;
+  /**
+   * The row already exists (a stored message, e.g. an inbox message a user
+   * scheduled): reserve/insert update it in place instead of inserting.
+   */
+  existing?: boolean;
 }
 
 /** A deferred row returned by the release claim; `reclaimed` = it was stuck in `sending`. */
@@ -56,6 +64,11 @@ export interface SmsSendStore {
   isTenantSender(tx: TenantTx, tenantId: string, from: string): Promise<boolean>;
   latestConsentAction(tx: TenantTx, tenantId: string, phone: string): Promise<'opt_in' | 'opt_out' | null>;
   /**
+   * A stored outbound row that was never handed to Twilio (no SID, still
+   * `scheduled`/`sending`, not already owned by the chokepoint), or null.
+   */
+  loadStoredOutbound(tx: TenantTx, tenantId: string, id: string): Promise<OutboundSmsRecord | null>;
+  /**
    * Steps 4–5 in one transaction: under a per-recipient lock, count recent
    * sends and insert the row only when under the limit (`null` = no limit).
    */
@@ -74,7 +87,9 @@ export interface SmsSendStore {
   /**
    * Cross-tenant claim (sets `sending`) of due deferred messages, plus rows a
    * previous release left in `sending` with no Twilio SID since `stuckBefore`.
-   * Rows with a SID are never reclaimed.
+   * Rows with a SID are never reclaimed. A fresh claim clears the transmit
+   * marker of earlier attempts; a reclaimed row keeps it, so the release can
+   * tell whether the stuck attempt may have reached Twilio.
    */
   claimDueDeferred(now: Date, limit: number, stuckBefore: Date): Promise<ClaimedSmsRecord[]>;
 }
@@ -199,10 +214,23 @@ export const postgresSmsSendStore: SmsSendStore = {
     return action === 'opt_in' || action === 'opt_out' ? action : null;
   },
 
+  async loadStoredOutbound(tx, tenantId, id) {
+    const { rows } = await tx.query(
+      `SELECT * FROM sms_messages
+        WHERE id = $1 AND tenant_id = $2 AND direction = 'outbound' AND twilio_sid IS NULL
+          AND status IN ('scheduled', 'sending')
+          AND COALESCE(metadata ->> 'source', '') <> $3
+        LIMIT 1`,
+      [id, tenantId, CHOKEPOINT_SOURCE],
+    );
+    return rows[0] ? rowToRecord(rows[0]) : null;
+  },
+
   async reserveOutbound(record, limit) {
     return withTenantClient(record.tenantId, async (client) => {
       if (limit) {
-        const recent = await lockAndCountRecent(client, record.tenantId, record.to, limit.since, null);
+        const excludeId = record.existing ? record.id : null;
+        const recent = await lockAndCountRecent(client, record.tenantId, record.to, limit.since, excludeId);
         if (recent >= limit.max) return { reserved: false as const, recent };
       }
       await insertOutboundRow(client, record);
@@ -257,7 +285,9 @@ export const postgresSmsSendStore: SmsSendStore = {
   async claimDueDeferred(now, limit, stuckBefore) {
     // Scheduler path with no tenant yet, like claimDueScheduledMessages.
     // `releaseClaimedAt` marks rows this job moved to `sending`; only those
-    // can be reclaimed, and only while no Twilio SID is recorded.
+    // can be reclaimed, and only while no Twilio SID is recorded. A fresh
+    // claim drops the transmit marker of earlier attempts, so a marker on a
+    // reclaimed row always belongs to the attempt that got stuck.
     return withPrivilegedClient(async (client) => {
       const { rows } = await client.query(
         `WITH due AS (
@@ -272,7 +302,9 @@ export const postgresSmsSendStore: SmsSendStore = {
          )
          UPDATE sms_messages m
             SET status = 'sending',
-                metadata = COALESCE(m.metadata, '{}'::jsonb) || jsonb_build_object('releaseClaimedAt', $4::timestamptz)
+                metadata = (CASE WHEN due.reclaimed THEN COALESCE(m.metadata, '{}'::jsonb)
+                                 ELSE COALESCE(m.metadata, '{}'::jsonb) - 'transmitAttemptId' - 'transmitStartedAt'
+                            END) || jsonb_build_object('releaseClaimedAt', $4::timestamptz)
            FROM due
           WHERE m.id = due.id
          RETURNING m.*, due.reclaimed`,
@@ -310,6 +342,20 @@ async function lockAndCountRecent(
 }
 
 async function insertOutboundRow(client: SqlClient, record: OutboundSmsRecord): Promise<void> {
+  if (record.existing) {
+    // A stored message (already in its conversation): take it over in place.
+    const result = await client.query(
+      `UPDATE sms_messages
+          SET status = $3,
+              scheduled_at = COALESCE($4, scheduled_at),
+              metadata = COALESCE(metadata, '{}'::jsonb) || $5::jsonb
+        WHERE id = $1 AND tenant_id = $2 AND direction = 'outbound' AND twilio_sid IS NULL
+          AND COALESCE(metadata ->> 'source', '') <> $6`,
+      [record.id, record.tenantId, record.status, record.scheduledAt, JSON.stringify(record.metadata), CHOKEPOINT_SOURCE],
+    );
+    if ((result.rowCount ?? 0) === 0) throw new Error('Stored SMS is no longer sendable');
+    return;
+  }
   const { rows: numbers } = await client.query(
     `SELECT id FROM phone_numbers WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1`,
     [record.tenantId, record.from],

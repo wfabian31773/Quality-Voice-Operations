@@ -482,6 +482,28 @@ describe('twilioSignatureMiddleware', () => {
       expect(getTwilioSignatureMetrics().totals.replay_detected).toBe(1);
     });
 
+    it('validates /twilio/sms-status?mid=… against the full signed URL, so mid cannot be swapped', async () => {
+      const app = buildApp('example.com', 'https');
+      app.use('/twilio/sms-status', twilioSignatureMiddleware);
+      app.post('/twilio/sms-status', (_req, res) => res.sendStatus(204));
+
+      const params = { MessageSid: 'SM_mid_case', MessageStatus: 'sent', To: '+13125550142', From: '+13125550100' };
+      const signedUrl = 'https://example.com/twilio/sms-status?mid=msg-123';
+      const ok = await request(app)
+        .post('/twilio/sms-status?mid=msg-123')
+        .set('X-Twilio-Signature', signRequest(signedUrl, params))
+        .type('form')
+        .send(params);
+      expect(ok.status).toBe(204);
+
+      const tampered = await request(app)
+        .post('/twilio/sms-status?mid=msg-999')
+        .set('X-Twilio-Signature', signRequest(signedUrl, { ...params, MessageStatus: 'delivered' }))
+        .type('form')
+        .send({ ...params, MessageStatus: 'delivered' });
+      expect(tampered.status).toBe(403);
+    });
+
     it('dedupes /twilio/status by CallSid + SequenceNumber so legitimate per-event status callbacks pass', async () => {
       const app = buildApp('example.com', 'https');
       const fullUrl = 'https://example.com/twilio/status';

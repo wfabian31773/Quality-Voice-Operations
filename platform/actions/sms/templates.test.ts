@@ -11,10 +11,26 @@ describe('SMS template registry', () => {
       'reminder_2h',
       'csat_survey',
       'ops_alert',
+      'escalation_alert',
+      'autopilot_alert',
     ]);
     expect(listSmsTemplates().filter((t) => t.agent).map((t) => t.key)).toEqual(['confirmation', 'directions', 'link']);
     expect(isAgentSmsTemplate('ops_alert')).toBe(false);
+    expect(isAgentSmsTemplate('escalation_alert')).toBe(false);
+    expect(isAgentSmsTemplate('autopilot_alert')).toBe(false);
     expect(isAgentSmsTemplate('nope')).toBe(false);
+  });
+
+  it('keeps the exact wording of the escalation and autopilot staff alerts', () => {
+    expect(
+      renderSmsTemplate('escalation_alert', { session: 'cs-1', reason: 'caller upset', time: '2026-10-14T15:00:00.000Z' }),
+    ).toEqual({
+      ok: true,
+      body: '[ESCALATION ALERT]\nSession: cs-1\nReason: caller upset\nTime: 2026-10-14T15:00:00.000Z',
+    });
+    expect(
+      renderSmsTemplate('autopilot_alert', { riskTier: 'HIGH', title: 'Missed calls spiking', summary: '12 missed today' }),
+    ).toEqual({ ok: true, body: '[QVO Autopilot] HIGH RISK: Missed calls spiking. 12 missed today. Log in to review.' });
   });
 
   it('renders variables', () => {

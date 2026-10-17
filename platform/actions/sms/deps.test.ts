@@ -165,6 +165,66 @@ describe.skipIf(!dbUp)('postgresSmsSendStore (local Postgres)', () => {
     expect(await store.claimDueDeferred(muchLater, 10, muchLater)).toEqual([]);
   });
 
+  it('keeps the transmit marker on a reclaim but drops a stale one on a fresh claim', async () => {
+    const TO = '+13125550177';
+    const base = { tenantId: T, from: '+13125550100', to: TO, body: 'hi', metadata: { source: 'sms.send' } };
+    const marker = { transmitAttemptId: 'a1', transmitStartedAt: new Date().toISOString() };
+    // r1: deferred again after an earlier attempt (stale marker). r2: stuck mid-send.
+    await store.insertOutbound({ ...base, id: 'r1', status: 'deferred_quiet_hours', scheduledAt: new Date(Date.now() - 60_000) });
+    await store.updateOutbound(T, 'r1', { status: 'deferred_quiet_hours', metadata: marker });
+    await store.insertOutbound({ ...base, id: 'r2', status: 'sending', scheduledAt: null });
+    await store.updateOutbound(T, 'r2', {
+      status: 'sending',
+      metadata: { ...marker, releaseClaimedAt: new Date(Date.now() - 20 * 60_000).toISOString() },
+    });
+
+    const claimed = await store.claimDueDeferred(new Date(), 10, new Date(Date.now() - 10 * 60_000));
+    const byId = Object.fromEntries(claimed.map((r) => [r.id, r]));
+    expect(byId.r1.reclaimed).toBe(false);
+    expect(byId.r1.metadata.transmitAttemptId).toBeUndefined();
+    expect(byId.r2.reclaimed).toBe(true);
+    expect(byId.r2.metadata).toMatchObject({ transmitAttemptId: 'a1' });
+  });
+
+  it('loads and takes over a stored inbox message in place, once', async () => {
+    const TO = '+13125550188';
+    await client.query(
+      `INSERT INTO sms_messages (id, tenant_id, conversation_id, direction, from_number, to_number, body, status, scheduled_at)
+       VALUES ('s1', $1, 'conv-s', 'outbound', '+13125550100', $2, 'scheduled hi', 'sending', NOW()),
+              ('s2', 't2', 'conv-x', 'outbound', '+13125550100', $2, 'other tenant', 'sending', NOW()),
+              ('s3', $1, 'conv-s', 'inbound', $2, '+13125550100', 'inbound', 'received', NULL)`,
+      [T, TO],
+    );
+    expect(await store.loadStoredOutbound(tx, T, 's1')).toMatchObject({ id: 's1', to: TO, body: 'scheduled hi' });
+    expect(await store.loadStoredOutbound(tx, T, 's2')).toBeNull();
+    expect(await store.loadStoredOutbound(tx, T, 's3')).toBeNull();
+
+    const record = {
+      id: 's1',
+      tenantId: T,
+      from: '+13125550100',
+      to: TO,
+      body: 'scheduled hi',
+      status: 'sending' as const,
+      scheduledAt: null,
+      metadata: { source: 'sms.send' },
+      existing: true,
+    };
+    expect(await store.reserveOutbound(record, { max: 5, since: new Date(Date.now() - 3_600_000) })).toEqual({
+      reserved: true,
+    });
+    const { rows } = await client.query(`SELECT * FROM sms_messages WHERE id IN ('s1', 's2', 's3') ORDER BY id`);
+    expect(rows.map((r) => [r.id, r.conversation_id, r.status])).toEqual([
+      ['s1', 'conv-s', 'sending'],
+      ['s2', 'conv-x', 'sending'],
+      ['s3', 'conv-s', 'received'],
+    ]);
+    expect(rows[0].metadata).toMatchObject({ source: 'sms.send' });
+    // Now owned by the chokepoint: it can't be loaded or taken over again.
+    expect(await store.loadStoredOutbound(tx, T, 's1')).toBeNull();
+    await expect(store.insertOutbound(record)).rejects.toThrow('no longer sendable');
+  });
+
   it('START lifts only the SMS-sourced DNC entry', async () => {
     await client.query(`CREATE TEMP TABLE dnc_list (id VARCHAR PRIMARY KEY, tenant_id VARCHAR, phone_number VARCHAR, source VARCHAR)`);
     await client.query(`INSERT INTO dnc_list VALUES ('d1', 't1', '+13125550142', 'sms'), ('d2', 't1', '+13125550177', 'manual')`);

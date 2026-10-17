@@ -538,6 +538,16 @@ export async function saveMessage(
   });
 }
 
+export async function getMessage(tenantId: string, messageId: string): Promise<SmsMessage | null> {
+  return withTenant(tenantId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM sms_messages WHERE id = $1 AND tenant_id = $2`,
+      [messageId, tenantId],
+    );
+    return rows[0] ? rowToMessage(rows[0]) : null;
+  });
+}
+
 export async function listMessages(
   tenantId: string,
   conversationId: string,
