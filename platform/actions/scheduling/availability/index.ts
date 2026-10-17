@@ -10,7 +10,7 @@ export {
 } from './engine';
 export { DEFAULT_BOOKING_RULES, resolveBookingRules } from './rules';
 export { spokenSlot } from './spoken';
-export { addDays, isRealIsoDate, localDateOf, wallClockToUtc } from './time';
+export { addDays, isRealIsoDate, localDateOf, localMinuteOf, MINUTE_MS, wallClockToUtc } from './time';
 export {
   loadAvailabilityData,
   loadBookingRuleRows,

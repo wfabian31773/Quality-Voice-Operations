@@ -144,7 +144,13 @@ const HANDLED = new Set([
   'business.get_info',
 ]);
 
+/** cancellation_reason the real scheduling.book.prepare writes on a hold a newer prepare in the call replaced. */
+export const HOLD_SUPERSEDED_REASON = 'hold_superseded';
+
 export class FakeToolProvider implements ToolProvider {
+  /** Successful commit results by token: a retry with the same token replays it (core idempotency). */
+  private readonly commits = new Map<string, ToolResult>();
+
   constructor(
     private readonly state: TenantState,
     private readonly enabled: ToolName[],
@@ -229,6 +235,22 @@ export class FakeToolProvider implements ToolProvider {
     return ok({ slots });
   }
 
+  /**
+   * Like PR-13's scheduling.book.prepare: a new prepare in the same call
+   * releases that call's earlier, still-held hold first (spec §1.6 #6), so
+   * its token can no longer commit and exactly one booking can remain.
+   */
+  private releaseCallHolds(callId: string): void {
+    for (const [token, hold] of Object.entries(this.state.holds)) {
+      if (hold.kind !== 'booking' || hold.callId !== callId) continue;
+      const booking = this.state.bookings.find((row) => row.id === hold.payload.bookingId);
+      if (booking?.status !== 'held') continue;
+      booking.status = 'cancelled';
+      booking.cancellationReason = HOLD_SUPERSEDED_REASON;
+      delete this.state.holds[token];
+    }
+  }
+
   private bookPrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const serviceIds = asStringArray(input.serviceIds);
     const start = asString(input.start);
@@ -243,6 +265,7 @@ export class FakeToolProvider implements ToolProvider {
     }
     const unknown = unknownServiceIds(this.state, serviceIds);
     if (unknown.length > 0) return fail('NOT_FOUND', `unknown service ${unknown.join(', ')}`, { field: 'serviceIds' });
+    this.releaseCallHolds(ctx.callId);
     const onDate = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slot = this.state.slots.find((candidate) => {
       if (!slotStartMatches(candidate.start, start, ctx.tenantTimezone, onDate)) return false;
@@ -278,7 +301,7 @@ export class FakeToolProvider implements ToolProvider {
       customerPhone: phone,
     };
     this.state.bookings.push(booking);
-    this.state.holds[token] = { kind: 'booking', payload: { bookingId: booking.id }, readback };
+    this.state.holds[token] = { kind: 'booking', payload: { bookingId: booking.id }, readback, callId: ctx.callId };
     return ok(
       {
         confirmationToken: token,
@@ -319,9 +342,18 @@ export class FakeToolProvider implements ToolProvider {
     return ok({ confirmationToken: token, target, readback }, readback);
   }
 
+  /** A retry with an already-committed token replays the stored result (runAction idempotency). */
   private commit(kind: 'booking' | 'ticket' | 'transfer', input: Record<string, unknown>): ToolResult {
     const token = asString(input.confirmationToken);
     if (!token) return fail('VALIDATION_FAILED', 'confirmationToken is required', { field: 'confirmationToken' });
+    const replay = this.commits.get(`${kind}\0${token}`);
+    if (replay) return structuredClone(replay);
+    const result = this.commitOnce(kind, token);
+    if (result.ok) this.commits.set(`${kind}\0${token}`, structuredClone(result));
+    return result;
+  }
+
+  private commitOnce(kind: 'booking' | 'ticket' | 'transfer', token: string): ToolResult {
     const hold = this.state.holds[token];
     if (!hold || hold.kind !== kind) return fail('CONFIRMATION_INVALID', 'confirmation token is invalid or expired');
     delete this.state.holds[token];

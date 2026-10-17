@@ -24,16 +24,27 @@ function dollars(cents: number): string {
   return formatCurrency(cents, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-/** Spoken price text for a service (§1.5: say it exactly). */
-export function priceText(s: Pick<CatalogService, 'priceKind' | 'priceCents' | 'priceMaxCents'>): string | null {
+const PRICE_WORDS = {
+  en: { from: 'from', to: 'to' },
+  es: { from: 'desde', to: 'a' },
+} as const;
+
+/** Spoken price text for a service (§1.5: say it exactly). English unless `lang` is 'es'. */
+export function priceText(
+  s: Pick<CatalogService, 'priceKind' | 'priceCents' | 'priceMaxCents'>,
+  lang: keyof typeof PRICE_WORDS = 'en',
+): string | null {
   if (s.priceCents === null) return null;
+  const words = PRICE_WORDS[lang];
   switch (s.priceKind) {
     case 'fixed':
       return dollars(s.priceCents);
     case 'from':
-      return `from ${dollars(s.priceCents)}`;
+      return `${words.from} ${dollars(s.priceCents)}`;
     case 'range':
-      return s.priceMaxCents === null ? `from ${dollars(s.priceCents)}` : `${dollars(s.priceCents)} to ${dollars(s.priceMaxCents)}`;
+      return s.priceMaxCents === null
+        ? `${words.from} ${dollars(s.priceCents)}`
+        : `${dollars(s.priceCents)} ${words.to} ${dollars(s.priceMaxCents)}`;
     default:
       return null;
   }

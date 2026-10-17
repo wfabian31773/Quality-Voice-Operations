@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FakeToolProvider, formatLocalHm, localDate, resetFakeTokens, slotStartMatches } from './fakeToolProvider';
-import { buildFixture } from './seed';
+import { buildFixture, snapshotOf } from './seed';
 import type { ToolCallContext } from './types';
 
 function ctx(now = '2026-10-20T14:00:00-04:00'): ToolCallContext {
@@ -143,5 +143,44 @@ describe('FakeToolProvider', () => {
       ctx(),
     );
     expect(prepare.ok).toBe(false);
+  });
+
+  const LUIS = { name: 'Luis', phone: '+15555550142' };
+  const tokenOf = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) =>
+    (result.ok ? (result.data as { confirmationToken: string }).confirmationToken : '');
+
+  it('releases the call\'s earlier hold on a new prepare; the old token no longer commits', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const first = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    // Another call's hold survives this call's correction.
+    const other = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'dana', start: '2026-10-20T16:00:00-04:00', customer: LUIS }, { ...ctx(), callId: 'c2' });
+    const second = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    expect([first.ok, other.ok, second.ok]).toEqual([true, true, true]);
+    expect(state.bookings.map((row) => [row.staffId, row.status, row.cancellationReason])).toEqual([
+      ['marco', 'cancelled', 'hold_superseded'],
+      ['dana', 'held', undefined],
+      ['marco', 'held', undefined],
+    ]);
+    const stale = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(first) }, ctx());
+    expect(stale.ok ? null : stale.error.code).toBe('CONFIRMATION_INVALID');
+    expect((await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(second) }, ctx())).ok).toBe(true);
+    expect(snapshotOf(state).bookings.map((row) => [row.staffId, row.status])).toEqual([
+      ['dana', 'held'],
+      ['marco', 'confirmed'],
+    ]);
+  });
+
+  it('replays a commit retried with the same token instead of failing it', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const prepare = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    const first = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx());
+    const retry = await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx());
+    expect(first.ok).toBe(true);
+    expect(retry).toEqual(first);
+    expect(state.bookings.filter((row) => row.status === 'confirmed')).toHaveLength(1);
   });
 });

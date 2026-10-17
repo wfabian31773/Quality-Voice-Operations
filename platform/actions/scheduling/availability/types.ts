@@ -100,6 +100,10 @@ export interface AvailabilityInput {
   partOfDay?: PartOfDay;
   /** At most 5 (default 3). */
   limit?: number;
+  /** Only this exact start (epoch ms) is considered: validates one requested slot. */
+  at?: number;
+  /** Return the slots closest to this instant (epoch ms) instead of spreading them across the day. */
+  near?: number;
 }
 
 export interface Slot {
