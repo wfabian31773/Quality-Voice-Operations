@@ -151,22 +151,28 @@ describe('salon booking conversation', () => {
   });
 
   it('ends the interaction after thanks for a completed booking without clearing slots', () => {
-    const engine = makeSalonEngine();
-    const firstArgs = completeFirstHaircut(engine);
+    const closings = [
+      'thanks for booking my appointment',
+      'Thanks, you too',
+      'you too, bye',
+      'igualmente',
+      'gracias, usted también',
+    ];
 
-    const thanks = 'thanks for booking my appointment';
-    const classified = engine.classifyIntent(thanks);
-    expect(classified.intent).toBe('book_appointment');
+    for (const thanks of closings) {
+      const engine = makeSalonEngine();
+      const firstArgs = completeFirstHaircut(engine);
+      const classified = engine.classifyIntent(thanks);
+      const decision = engine.processUtterance(thanks, classified.intent, classified.confidence);
+      expect(decision.action).toBe('complete_interaction');
+      expect(engine.getWorkflowPlan()?.status).toBe('completed');
+      expect(engine.getCurrentWorkflowStepTool()).toBeNull();
 
-    const decision = engine.processUtterance(thanks, classified.intent, classified.confidence);
-    expect(decision.action).toBe('complete_interaction');
-    expect(engine.getWorkflowPlan()?.status).toBe('completed');
-    expect(engine.getCurrentWorkflowStepTool()).toBeNull();
-
-    const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
-    expect(slots.contactName?.value).toBe(firstArgs.contactName);
-    expect(slots.contactPhone?.value).toBe(firstArgs.contactPhone);
-    expect(slots.title?.value).toBe(firstArgs.title);
+      const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+      expect(slots.contactName?.value).toBe(firstArgs.contactName);
+      expect(slots.contactPhone?.value).toBe(firstArgs.contactPhone);
+      expect(slots.title?.value).toBe(firstArgs.title);
+    }
   });
 
   it('starts a fresh plan for an explicit additional booking after a completed one', () => {
@@ -212,9 +218,14 @@ describe('salon booking conversation', () => {
   it('does not restart a completed booking after a negated additional request', () => {
     const phrases = [
       "I don't need another appointment",
+      "Don't book another appointment",
+      "I don't want to book another appointment",
+      'no need for another',
       'no other',
       'no quiero otra cita',
       'no necesito otra',
+      'no me reserve otra cita',
+      'no quiero reservar otra',
     ];
 
     for (const phrase of phrases) {
