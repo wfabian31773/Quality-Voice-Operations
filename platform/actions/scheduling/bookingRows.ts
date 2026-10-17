@@ -155,9 +155,12 @@ export function sessionOf(ctx: ActionContext): string | null {
 }
 
 /**
- * Releases this session's still-held holds (spec §1.6 #6: a correction is a
- * new prepare and the old hold is released). Their tokens then commit as
- * CONFIRMATION_INVALID, never as a second booking.
+ * Supersedes every earlier hold of this session that never became a booking
+ * (spec §1.6 #6: a correction is a new prepare and the old hold is released):
+ * still-held rows, and rows the sweeper or another prepare's expireStaleHolds
+ * already cancelled as hold_expired (they stay cancelled, re-marked
+ * hold_superseded). Their tokens then commit as CONFIRMATION_INVALID instead
+ * of re-taking the slot, never as a second booking.
  */
 export async function releaseSessionHolds(tx: TenantTx, tenantId: string, session: string | null): Promise<string[]> {
   if (!session) return [];
@@ -167,12 +170,34 @@ export async function releaseSessionHolds(tx: TenantTx, tenantId: string, sessio
             cancellation_reason = $3,
             updated_at = NOW()
       WHERE tenant_id = $1
-        AND status = 'held'
+        AND (status = 'held' OR (status = 'cancelled' AND cancellation_reason = $4))
         AND intake_data -> 'qvo' ->> 'session' = $2
       RETURNING id`,
-    [tenantId, session, HOLD_SUPERSEDED_REASON],
+    [tenantId, session, HOLD_SUPERSEDED_REASON, HOLD_EXPIRED_REASON],
   );
   return rows.map((r) => str(r.id));
+}
+
+/**
+ * Whether a later prepare in the same session wrote a row after this hold.
+ * A re-take must not reopen a hold the caller has already corrected, even if
+ * a sweep re-marked it hold_expired after the release. A tie on created_at
+ * counts as newer.
+ */
+export async function hasNewerSessionPrepare(tx: TenantTx, tenantId: string, hold: BookingRecord): Promise<boolean> {
+  if (!hold.session) return false;
+  const { rows } = await tx.query(
+    `SELECT 1
+       FROM bookings n
+       JOIN bookings h ON h.tenant_id = n.tenant_id AND h.id = $2
+      WHERE n.tenant_id = $1
+        AND n.id <> h.id
+        AND n.intake_data -> 'qvo' ->> 'session' = $3
+        AND n.created_at >= h.created_at
+      LIMIT 1`,
+    [tenantId, hold.id, hold.session],
+  );
+  return rows.length > 0;
 }
 
 export function bookingSource(ctx: ActionContext): 'ai_agent' | 'manual' | 'api' {

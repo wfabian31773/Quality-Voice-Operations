@@ -714,6 +714,69 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
         const rows = await bookingRows(shop.tenantId);
         expect(rows.map((r) => r.status)).toEqual(['confirmed']);
       });
+
+      const at = (minute: number) => new Date(PAST.getTime() + minutes(minute));
+
+      it('a correction supersedes a hold the sweeper already expired; its stale token never re-takes it', async () => {
+        const shop = await seedShop('sweepfix');
+        const a = data<{ confirmationToken: string; holdId: string }>(
+          await act('scheduling.book.prepare', pastCtx(shop), bookInput(shop, '2020-10-20T15:30:00-04:00')),
+        );
+        expect((await runHoldSweepCycle(sweepDeps())).released).toBeGreaterThanOrEqual(1);
+        expect((await bookingRows(shop.tenantId))[0]).toMatchObject({ id: a.holdId, status: 'cancelled', cancellation_reason: 'hold_expired' });
+
+        const b = data<{ confirmationToken: string; holdId: string; replacedHoldIds: string[] }>(
+          await act('scheduling.book.prepare', pastCtx(shop, { now: at(6) }), bookInput(shop, '2020-10-20T16:30:00-04:00')),
+        );
+        expect(b.replacedHoldIds).toEqual([a.holdId]);
+        expect((await bookingRows(shop.tenantId)).find((r) => r.id === a.holdId)).toMatchObject({ status: 'cancelled', cancellation_reason: 'hold_superseded' });
+
+        data(await act('scheduling.book.commit', pastCtx(shop, { now: at(7) }), { confirmationToken: b.confirmationToken }));
+        const stale = errorOf(await act('scheduling.book.commit', pastCtx(shop, { now: at(8) }), { confirmationToken: a.confirmationToken }));
+        expect(stale.code).toBe('CONFIRMATION_INVALID');
+        const confirmed = (await bookingRows(shop.tenantId)).filter((r) => r.status === 'confirmed');
+        expect(confirmed.map((r) => [r.id, r.start_time.toISOString()])).toEqual([[b.holdId, '2020-10-20T20:30:00.000Z']]);
+      });
+
+      it("a correction supersedes a hold another prepare's expireStaleHolds expired; its stale token never re-takes it", async () => {
+        const shop = await seedShop('expirefix');
+        const a = data<{ confirmationToken: string; holdId: string }>(
+          await act('scheduling.book.prepare', pastCtx(shop), bookInput(shop, '2020-10-20T15:30:00-04:00')),
+        );
+        // Another caller's prepare for the same staff expires my stale hold.
+        data(await act('scheduling.book.prepare', pastCtx(shop, { callId: 'CA-2', now: at(6) }), bookInput(shop, '2020-10-20T11:00:00-04:00', {
+          customer: { name: 'Ana', phone: '+15555550188' },
+        })));
+        expect((await bookingRows(shop.tenantId)).find((r) => r.id === a.holdId)).toMatchObject({ status: 'cancelled', cancellation_reason: 'hold_expired' });
+
+        const b = data<{ confirmationToken: string; holdId: string; replacedHoldIds: string[] }>(
+          await act('scheduling.book.prepare', pastCtx(shop, { now: at(7) }), bookInput(shop, '2020-10-20T16:30:00-04:00')),
+        );
+        expect(b.replacedHoldIds).toEqual([a.holdId]);
+        data(await act('scheduling.book.commit', pastCtx(shop, { now: at(8) }), { confirmationToken: b.confirmationToken }));
+        const stale = errorOf(await act('scheduling.book.commit', pastCtx(shop, { now: at(9) }), { confirmationToken: a.confirmationToken }));
+        expect(stale.code).toBe('CONFIRMATION_INVALID');
+        const rows = await bookingRows(shop.tenantId);
+        expect(rows.find((r) => r.id === a.holdId)).toMatchObject({ status: 'cancelled', cancellation_reason: 'hold_superseded' });
+        expect(rows.filter((r) => r.status === 'confirmed').map((r) => r.id)).toEqual([b.holdId]);
+      });
+
+      it('refuses the re-take when a newer prepare exists in the call, even if a late sweep re-marked the hold hold_expired', async () => {
+        const shop = await seedShop('sweeplate');
+        const a = data<{ confirmationToken: string; holdId: string }>(
+          await act('scheduling.book.prepare', pastCtx(shop), bookInput(shop, '2020-10-20T15:30:00-04:00')),
+        );
+        const b = data<{ holdId: string }>(
+          await act('scheduling.book.prepare', pastCtx(shop, { now: at(6) }), bookInput(shop, '2020-10-20T16:30:00-04:00')),
+        );
+        // Whatever the release/sweep ordering, the row ends up looking lapsed.
+        await pool.query(`UPDATE bookings SET status = 'cancelled', cancellation_reason = 'hold_expired' WHERE id = $1`, [a.holdId]);
+        const stale = errorOf(await act('scheduling.book.commit', pastCtx(shop, { now: at(7) }), { confirmationToken: a.confirmationToken }));
+        expect(stale.code).toBe('CONFIRMATION_INVALID');
+        const rows = await bookingRows(shop.tenantId);
+        expect(rows.find((r) => r.id === a.holdId)).toMatchObject({ status: 'cancelled', cancellation_reason: 'hold_expired' });
+        expect(rows.filter((r) => r.status === 'held' || r.status === 'confirmed').map((r) => r.id)).toEqual([b.holdId]);
+      });
     });
   });
 });

@@ -19,6 +19,7 @@ import {
   confirmHold,
   HOLD_EXPIRED_REASON,
   HOLD_SUPERSEDED_REASON,
+  hasNewerSessionPrepare,
   type BookingRecord,
 } from './bookingRows';
 import { bookingOverlapKind, expireStaleHolds } from './holds';
@@ -86,7 +87,8 @@ export async function catchOverlap<T>(
  * - hold that ran out (still 'held', or swept to 'cancelled'/hold_expired) →
  *   re-take the same slot if the engine still offers it, atomically under the
  *   exclusion constraint; otherwise CONFLICT (hold lost) with alternatives;
- * - hold released by a newer prepare in the call → CONFIRMATION_INVALID.
+ * - hold released by a newer prepare in the call, or any lapsed hold with a
+ *   newer prepare in the same session → CONFIRMATION_INVALID.
  */
 export async function takeHold(
   tx: TenantTx,
@@ -106,6 +108,13 @@ export async function takeHold(
   }
   const lapsed = hold.status === 'held' || (hold.status === 'cancelled' && hold.cancellationReason === HOLD_EXPIRED_REASON);
   if (!lapsed) return actionFail('CONFIRMATION_INVALID', `Hold is ${hold.status}; nothing to confirm`);
+  // A newer prepare in the same call means the caller corrected this one;
+  // whatever the release/sweep ordering, the old hold is never re-taken.
+  if (await hasNewerSessionPrepare(tx, ctx.tenantId, hold)) {
+    return actionFail('CONFIRMATION_INVALID', 'This hold was replaced by a newer prepare in the same call', {
+      callerSafeMessage: callerMessage('holdReplaced', lang),
+    });
+  }
 
   // Re-take: release the lapsed hold (if the sweeper hasn't yet), then the
   // slot must still be one the engine offers, and the status flip re-runs
