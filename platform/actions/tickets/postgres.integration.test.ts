@@ -304,7 +304,7 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
       return result.data as T;
     };
 
-    const open = async (subject: string) => {
+    const openWithToken = async (subject: string) => {
       const prepared = ok<{ confirmationToken: string; payloadHash: string }>(
         await run(OPEN_PREPARE, { ...ctx, idempotencyKey: randomUUID() }, {
           kind: 'callback',
@@ -312,20 +312,55 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
           customer: { name: 'Luis', phone: '+1 555 010 0142' },
         }),
       );
-      return run(OPEN_COMMIT, ctx, prepared);
+      const commit = { confirmationToken: prepared.confirmationToken, payloadHash: prepared.payloadHash };
+      return { commit, result: await run(OPEN_COMMIT, ctx, commit) };
     };
+    const open = async (subject: string) => (await openWithToken(subject)).result;
+    const outboxRows = async () =>
+      (
+        await copyPool.query<{ tenant_id: string; status: string; payload: Record<string, unknown> }>(
+          `SELECT tenant_id, status, payload FROM ticket_outbox WHERE tenant_id = $1 AND event_type = 'ticket.opened'`,
+          [tenantId],
+        )
+      ).rows;
 
-    const first = await open('the leaking sink');
+    const { commit: firstCommit, result: first } = await openWithToken('the leaking sink');
     const firstData = ok<{ ticketId: string; dueAt: string | null; deduped: boolean }>(first);
     expect(firstData.deduped).toBe(false);
     expect(new Date(firstData.dueAt!).getTime()).toBe(now.getTime() + 90 * 60_000);
     expect(first.ok && first.effects?.[0]?.type).toBe('ticket.opened');
 
+    // ticket.opened is a ticket_outbox row written under RLS in the commit transaction.
+    const opened = await outboxRows();
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ tenant_id: tenantId, status: 'pending' });
+    expect(opened[0].payload).toMatchObject({
+      ticketId: firstData.ticketId,
+      callId,
+      proposalId: firstCommit.confirmationToken,
+      idempotencyKey: firstCommit.confirmationToken,
+    });
+
+    // A commit retry with the same token replays the stored result: no second ticket or outbox row.
+    const retry = await run(OPEN_COMMIT, ctx, firstCommit);
+    expect(retry).toEqual(first);
+    expect(await outboxRows()).toHaveLength(1);
+
     const again = ok<{ ticketId: string; deduped: boolean }>(await open('the sink, again'));
     expect(again).toMatchObject({ ticketId: firstData.ticketId, deduped: true });
+    // Deduped repeat: no outbox row.
+    expect(await outboxRows()).toHaveLength(1);
 
     const { rows } = await copyPool.query(`SELECT count(*)::int AS n FROM tickets WHERE tenant_id = $1`, [tenantId]);
     expect(rows[0].n).toBe(1);
+
+    // The unique index backs up exactly-once: a second ticket.opened row for the same ticket is rejected.
+    await expect(
+      copyPool.query(
+        `INSERT INTO ticket_outbox (tenant_id, event_type, payload) VALUES ($1, 'ticket.opened', $2::jsonb)`,
+        [tenantId, JSON.stringify({ ticketId: firstData.ticketId })],
+      ),
+    ).rejects.toThrow(/uq_ticket_outbox_ticket_opened/);
 
     const owner: ActionContext = { ...ctx, actor: { type: 'system', id: 'test' }, callId: undefined };
     const detail = ok<{ callId: string; sourceCallRef: string; notes: unknown[]; source?: string }>(
@@ -350,5 +385,85 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
     const other = await insertTenant(copyPool);
     const foreign = await run('tickets.get', { ...owner, tenantId: other }, { ticketId: firstData.ticketId });
     expect(!foreign.ok && foreign.error.code).toBe('NOT_FOUND');
+  });
+
+  it("does not link another tenant's call as tickets.call_id even with RLS bypassed", async () => {
+    const tenantA = await insertTenant(copyPool);
+    const tenantB = await insertTenant(copyPool);
+    const callB = randomUUID();
+    await copyPool.query(`INSERT INTO call_sessions (id, tenant_id) VALUES ($1, $2)`, [callB, tenantB]);
+
+    // The admin connection bypasses RLS, like the app before the qvo_app rollout.
+    const withBypassTx = async <T>(id: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> => {
+      const client = await copyPool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [id]);
+        const result = await fn(client as unknown as TenantTx);
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    };
+    const registry = createTicketsActions();
+    const byName = new Map(registry.map((def) => [def.name, def]));
+    const runtime = { store: postgresActionStore, withTenantTx: withBypassTx };
+    const ctx: ActionContext = {
+      tenantId: tenantA,
+      actor: { type: 'agent', id: 'agent-1' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId: callB,
+    };
+    const prepared = await runActionDefinition(byName.get(OPEN_PREPARE)!, { ...ctx, idempotencyKey: randomUUID() }, {
+      kind: 'message',
+      subject: 'wrong tenant call',
+      customer: { phone: '555-010-8888' },
+    }, runtime);
+    if (!prepared.ok) throw new Error(prepared.error.message);
+    const { confirmationToken, payloadHash } = prepared.data as { confirmationToken: string; payloadHash: string };
+    const committed = await runActionDefinition(byName.get(OPEN_COMMIT)!, ctx, { confirmationToken, payloadHash }, runtime);
+    if (!committed.ok) throw new Error(committed.error.message);
+    const { ticketId } = committed.data as { ticketId: string };
+
+    const { rows } = await copyPool.query(`SELECT tenant_id, call_id, source_call_ref FROM tickets WHERE id = $1`, [ticketId]);
+    expect(rows[0]).toEqual({ tenant_id: tenantA, call_id: null, source_call_ref: callB });
+  });
+
+  it('adds the CHECKs NOT VALID and the ticket.opened outbox index, and re-runs cleanly', async () => {
+    for (const pool of [cleanPool, copyPool]) {
+      const { rows } = await pool.query<{ conname: string; convalidated: boolean }>(
+        `SELECT conname, convalidated FROM pg_constraint
+          WHERE conrelid = 'tickets'::regclass AND conname = ANY($1) ORDER BY conname`,
+        [['tickets_intake_object_check', 'tickets_kind_check', 'tickets_urgency_check']],
+      );
+      expect(rows).toEqual([
+        { conname: 'tickets_intake_object_check', convalidated: false },
+        { conname: 'tickets_kind_check', convalidated: false },
+        { conname: 'tickets_urgency_check', convalidated: false },
+      ]);
+      const { rows: idx } = await pool.query(
+        `SELECT 1 FROM pg_indexes WHERE tablename = 'ticket_outbox' AND indexname = 'uq_ticket_outbox_ticket_opened'`,
+      );
+      expect(idx).toHaveLength(1);
+    }
+    // Re-run the file the way scripts/run-migrations.ts does: one explicit transaction, SET LOCAL included.
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, MIGRATION_123), 'utf8');
+    const client = await cleanPool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(sql);
+      const { rows } = await client.query<{ lock_timeout: string }>(`SHOW lock_timeout`);
+      expect(rows[0].lock_timeout).toBe('5s');
+      await client.query('COMMIT');
+      const { rows: after } = await client.query<{ lock_timeout: string }>(`SHOW lock_timeout`);
+      expect(after[0].lock_timeout).not.toBe('5s');
+    } finally {
+      client.release();
+    }
   });
 });

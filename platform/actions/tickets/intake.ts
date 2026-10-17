@@ -5,20 +5,11 @@ export type IntakeCheck = { ok: true; value: Record<string, unknown> } | { ok: f
 const MAX_INTAKE_BYTES = 8 * 1024;
 
 /**
- * Validates `intake` against the template's intake schema. Intake without a
- * schema is rejected: the template decides which fields exist, not the caller.
+ * Validates `intake` against the server-resolved intake schema for the ticket
+ * kind (intakeSchemaFor). The tenant/template decides which fields exist,
+ * never the caller.
  */
-export function validateIntake(
-  intake: Record<string, unknown> | undefined,
-  schema: IntakeSchema | undefined,
-): IntakeCheck {
-  if (!schema) {
-    if (intake && Object.keys(intake).length > 0) {
-      return { ok: false, field: 'intake', message: 'Intake fields need the template intake schema' };
-    }
-    return { ok: true, value: {} };
-  }
-
+export function validateIntake(intake: Record<string, unknown> | undefined, schema: IntakeSchema): IntakeCheck {
   const value = intake ?? {};
   for (const key of schema.required ?? []) {
     const entry = value[key];

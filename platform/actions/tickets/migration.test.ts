@@ -17,12 +17,27 @@ describe('123_tickets_v2.sql', () => {
     expect(statements).toMatch(/ADD COLUMN IF NOT EXISTS source_call_ref VARCHAR\(128\);/);
   });
 
-  it('checks the allowed kinds and urgencies', () => {
+  it('sets a lock_timeout before taking any lock', () => {
+    expect(statements.trim()).toMatch(/^SET LOCAL lock_timeout = '5s';/);
+  });
+
+  it('checks the allowed kinds and urgencies with NOT VALID constraints (no full-table scan)', () => {
     expect(statements).toMatch(
-      /tickets_kind_check\s+CHECK \(kind IN \('message', 'callback', 'complaint', 'quote_request', 'intake', 'other'\)\)/,
+      /tickets_kind_check\s+CHECK \(kind IN \('message', 'callback', 'complaint', 'quote_request', 'intake', 'other'\)\) NOT VALID;/,
     );
-    expect(statements).toMatch(/tickets_urgency_check\s+CHECK \(urgency IN \('normal', 'urgent'\)\)/);
-    expect(statements).toMatch(/tickets_intake_object_check\s+CHECK \(jsonb_typeof\(intake\) = 'object'\)/);
+    expect(statements).toMatch(/tickets_urgency_check\s+CHECK \(urgency IN \('normal', 'urgent'\)\) NOT VALID;/);
+    expect(statements).toMatch(/tickets_intake_object_check\s+CHECK \(jsonb_typeof\(intake\) = 'object'\) NOT VALID;/);
+    const checks = [...statements.matchAll(/ADD CONSTRAINT \w+\s+CHECK[^;]*;/g)].map((m) => m[0]);
+    expect(checks).toHaveLength(3);
+    for (const check of checks) expect(check).toMatch(/NOT VALID;$/);
+    // VALIDATE CONSTRAINT is a later migration.
+    expect(statements).not.toMatch(/VALIDATE CONSTRAINT/i);
+  });
+
+  it('allows at most one ticket.opened outbox row per ticket', () => {
+    expect(statements).toMatch(
+      /CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_outbox_ticket_opened\s+ON ticket_outbox \(tenant_id, \(payload->>'ticketId'\)\)\s+WHERE event_type = 'ticket\.opened';/,
+    );
   });
 
   it('indexes (tenant_id, status, callback_due_at)', () => {
@@ -41,7 +56,7 @@ describe('123_tickets_v2.sql', () => {
     for (const match of statements.matchAll(/ADD CONSTRAINT (\w+)/g)) {
       expect(statements).toContain(`conname = '${match[1]}'`);
     }
-    for (const line of statements.split('\n').filter((l) => /ADD COLUMN|CREATE INDEX/.test(l))) {
+    for (const line of statements.split('\n').filter((l) => /ADD COLUMN|CREATE (UNIQUE )?INDEX/.test(l))) {
       expect(line).toMatch(/IF NOT EXISTS/);
     }
   });

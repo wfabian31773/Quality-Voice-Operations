@@ -10,6 +10,7 @@ import {
   type AnyActionDefinition,
 } from '../core';
 import { validateIntake } from './intake';
+import { intakeSchemaFor } from './intakeSchemas';
 import { buildOpenReadback, normalizePhone } from './readback';
 import { sqlTicketsRepo, type NewActivity, type TicketPatch, type TicketRecord, type TicketsRepo, type TicketsRepoFactory } from './repo';
 import {
@@ -116,11 +117,11 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
       'Prepare a message, callback request, complaint, quote request or intake for the business. ' +
       'Read the returned readback to the caller word for word and commit only after an explicit yes.',
     async run(ctx, input, tx) {
-      const intake = validateIntake(input.intake, input.intakeSchema);
+      const settings = await repoFor(tx, ctx.tenantId).getSettings();
+      const intake = validateIntake(input.intake, intakeSchemaFor(input.kind, settings.intakeSchemas));
       if (!intake.ok) {
         return actionFail('VALIDATION_FAILED', intake.message, { field: intake.field });
       }
-      const settings = await repoFor(tx, ctx.tenantId).getSettings();
       const payload = withOpenDefaults({ ...input, intake: intake.value });
       const readback = buildOpenReadback(payload, settings);
       const proposal = await createProposal(tx, ctx, { action: OPEN_PREPARE, payload, readback, callId: ctx.callId });
@@ -240,14 +241,23 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
         dueAt: ticket.callbackDueAt?.toISOString() ?? null,
         deduped: false,
       };
-      return actionOk(data, {
-        effects: [
-          {
-            type: 'ticket.opened',
-            payload: { ...data, kind: ticket.kind, urgency: ticket.urgency, callId: callRef },
-          },
-        ],
-      });
+      // The owner alert's source of truth is this ticket_outbox row, written in
+      // the same transaction as the ticket (rolls back with it). A commit retry
+      // with the same token replays the stored result in runAction without
+      // calling run(), so no second row; the unique index from migration 123
+      // backs that up. `effects` below is informational only and is replayed
+      // verbatim on retries: adapters must not dispatch from it.
+      const event = {
+        ...data,
+        kind: ticket.kind,
+        urgency: ticket.urgency,
+        priority: ticket.priority,
+        callId: callRef,
+        proposalId: input.confirmationToken,
+        idempotencyKey: ctx.idempotencyKey ?? input.confirmationToken,
+      };
+      const outboxId = await repo.enqueueOutbox({ eventType: 'ticket.opened', payload: event });
+      return actionOk(data, { effects: [{ type: 'ticket.opened', payload: { ...event, outboxId } }] });
     },
   });
 

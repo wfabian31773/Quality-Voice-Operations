@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { TenantTx } from '../core';
+import { parseTenantIntakeSchemas, type TenantIntakeSchemas } from './intakeSchemas';
 import type { TicketKind, TicketPriority, TicketStatus, TicketUrgency } from './schemas';
 
 export interface TicketRecord {
@@ -28,6 +29,8 @@ export interface TicketSettings {
   ownerName: string | null;
   slaText: string | null;
   callbackSlaMinutes: number | null;
+  /** `tenants.settings.tickets.intakeSchemas[kind]`; kinds without one use DEFAULT_INTAKE_SCHEMAS. */
+  intakeSchemas: TenantIntakeSchemas;
 }
 
 export type TicketSource = 'manual' | 'api' | 'ai_agent';
@@ -90,6 +93,12 @@ export interface TicketNote {
   createdAt: Date;
 }
 
+/** A row for `ticket_outbox` (migration 002). The dispatcher reads only that table. */
+export interface NewOutboxEvent {
+  eventType: 'ticket.opened';
+  payload: Record<string, unknown>;
+}
+
 export interface TicketsRepo {
   getSettings(): Promise<TicketSettings>;
   /** First-response minutes from an active `ticket_sla_policies` row for this priority. */
@@ -99,6 +108,8 @@ export interface TicketsRepo {
   findByCallRef(callRef: string, kind: TicketKind): Promise<TicketRecord[]>;
   insert(ticket: NewTicket): Promise<TicketRecord>;
   addActivity(activity: NewActivity): Promise<void>;
+  /** Writes a pending outbox row in the caller's transaction and returns its id. */
+  enqueueOutbox(event: NewOutboxEvent): Promise<string>;
   get(id: string, opts?: { forUpdate?: boolean }): Promise<TicketRecord | null>;
   update(id: string, patch: TicketPatch, now: Date): Promise<TicketRecord>;
   list(filter: ListFilter): Promise<TicketRecord[]>;
@@ -172,6 +183,7 @@ export function parseTicketSettings(businessName: unknown, settings: unknown): T
     slaText: trimmedOrNull(tickets.slaText, 120),
     callbackSlaMinutes:
       typeof minutes === 'number' && Number.isInteger(minutes) && minutes > 0 && minutes <= 60 * 24 * 30 ? minutes : null,
+    intakeSchemas: parseTenantIntakeSchemas(tickets.intakeSchemas),
   };
 }
 
@@ -182,13 +194,20 @@ export function advisoryLockKey(key: string): string {
 
 /**
  * FK columns (tickets.call_id, created_by_user_id, ticket_activity_log.user_id)
- * only get ids that resolve to a row visible in this tenant transaction;
- * anything else (e.g. a call id with no call_sessions row) is stored as NULL
- * instead of failing the insert.
+ * only get ids that resolve to an existing row; anything else (e.g. a call id
+ * with no call_sessions row) is stored as NULL instead of failing the insert.
+ * Calls must also belong to this tenant. That filter is explicit, so a foreign
+ * call is never linked even while RLS is bypassed (app still on `postgres`).
  */
-async function existingId(tx: TenantTx, table: 'call_sessions' | 'users', id: string | null): Promise<string | null> {
+async function existingUserId(tx: TenantTx, id: string | null): Promise<string | null> {
   if (!id) return null;
-  const { rows } = await tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]);
+  const { rows } = await tx.query(`SELECT id FROM users WHERE id = $1`, [id]);
+  return rows[0] ? String(rows[0].id) : null;
+}
+
+async function tenantCallId(tx: TenantTx, tenantId: string, id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const { rows } = await tx.query(`SELECT id FROM call_sessions WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
   return rows[0] ? String(rows[0].id) : null;
 }
 
@@ -237,7 +256,7 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
        RETURNING ${TICKET_COLUMNS}`,
       [
         tenantId,
-        await existingId(tx, 'call_sessions', ticket.callRef),
+        await tenantCallId(tx, tenantId, ticket.callRef),
         ticket.callRef,
         ticket.subject,
         ticket.description,
@@ -249,7 +268,7 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
         ticket.urgency,
         JSON.stringify(ticket.intake),
         ticket.callbackDueAt,
-        await existingId(tx, 'users', ticket.createdByUserId),
+        await existingUserId(tx, ticket.createdByUserId),
         ticket.now,
       ],
     );
@@ -264,7 +283,7 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
       [
         tenantId,
         activity.ticketId,
-        await existingId(tx, 'users', activity.actorUserId),
+        await existingUserId(tx, activity.actorUserId),
         activity.type,
         activity.content ?? '',
         activity.fieldName ?? '',
@@ -274,6 +293,16 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
         activity.now,
       ],
     );
+  },
+
+  async enqueueOutbox(event) {
+    const { rows } = await tx.query(
+      `INSERT INTO ticket_outbox (tenant_id, event_type, payload, status)
+       VALUES ($1, $2, $3::jsonb, 'pending')
+       RETURNING id`,
+      [tenantId, event.eventType, JSON.stringify(event.payload)],
+    );
+    return String(rows[0].id);
   },
 
   async get(id, opts) {

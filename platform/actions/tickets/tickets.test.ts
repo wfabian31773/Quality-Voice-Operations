@@ -4,9 +4,10 @@ import { createMemoryStore, runAction, toAgentToolSchema, type ActionContext, ty
 import { createMemoryTicketsRepo } from './__fixtures__/memoryRepo';
 import { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE } from './actions';
 import { ticketsActions } from './index';
-import { buildOpenReadback, normalizePhone } from './readback';
+import { buildOpenReadback, normalizePhone, phoneDigitGroups } from './readback';
 import { advisoryLockKey, parseTicketSettings } from './repo';
-import { canTransition, STATUS_TRANSITIONS, TICKET_STATUSES } from './schemas';
+import { DEFAULT_INTAKE_SCHEMAS, intakeSchemaFor } from './intakeSchemas';
+import { canTransition, STATUS_TRANSITIONS, TICKET_KINDS, TICKET_STATUSES } from './schemas';
 
 const NOW = new Date('2026-10-17T15:00:00.000Z');
 const TENANT = 'tenant-a';
@@ -114,6 +115,7 @@ describe('tickets action registry', () => {
     const schema = toAgentToolSchema(prepare);
     expect(schema.name).not.toContain('.');
     expect(JSON.stringify(schema.parameters)).toContain('callbackWindow');
+    expect(JSON.stringify(schema.parameters)).not.toContain('intakeSchema');
   });
 });
 
@@ -125,10 +127,11 @@ describe('tickets.open.prepare', () => {
       ownerName: 'Dana',
       slaText: 'usually within 2 business hours',
       callbackSlaMinutes: null,
+      intakeSchemas: {},
     });
     const result = await run(OPEN_PREPARE, agentCtx(), baseInput({ callbackWindow: 'today after 3' }));
     expect(result.ok && result.readback).toBe(
-      "I'll pass this to Dana: a callback request about the leaking sink, callback at the number ending 0142, today after 3.",
+      "I'll pass this to Dana: a callback request about the leaking sink, callback at 555, 010, 0142, today after 3.",
     );
     expect(data<Prepared>(result).confirmationToken).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -136,12 +139,27 @@ describe('tickets.open.prepare', () => {
   it('falls back to SLA text, then the business name, and never invents a window', async () => {
     const settings = parseTicketSettings('Marco Barbers', { tickets: { slaText: 'usually within 2 business hours.' } });
     expect(buildOpenReadback({ ...baseInput(), kind: 'message', urgency: 'normal', details: '' } as never, settings)).toBe(
-      "I'll pass this to Marco Barbers: a message about the leaking sink, callback at the number ending 0142, usually within 2 business hours.",
+      "I'll pass this to Marco Barbers: a message about the leaking sink, callback at 555, 010, 0142, usually within 2 business hours.",
     );
     const bare = parseTicketSettings(null, {});
     expect(buildOpenReadback({ ...baseInput(), kind: 'intake', urgency: 'urgent', details: '' } as never, bare)).toBe(
-      "I'll pass this to the team: an urgent intake request about the leaking sink, callback at the number ending 0142.",
+      "I'll pass this to the team: an urgent intake request about the leaking sink, callback at 555, 010, 0142.",
     );
+  });
+
+  it('reads back the full callback number in digit groups', () => {
+    expect(phoneDigitGroups('+1 (555) 010-0142')).toBe('555, 010, 0142');
+    expect(phoneDigitGroups('555.010.0142')).toBe('555, 010, 0142');
+    expect(phoneDigitGroups('15550100142')).toBe('555, 010, 0142');
+    expect(phoneDigitGroups('010-0142')).toBe('010, 0142');
+    expect(phoneDigitGroups('+44 20 7946 0958')).toBe('442, 079, 46, 0958');
+    expect(phoneDigitGroups('12345678')).toBe('12, 34, 5678');
+    const readback = buildOpenReadback(
+      { ...baseInput({ customer: { phone: '(212) 555-0199' } }), kind: 'callback', urgency: 'normal', details: '' } as never,
+      parseTicketSettings(null, {}),
+    );
+    expect(readback).toContain('callback at 212, 555, 0199');
+    expect(readback).not.toMatch(/ending/);
   });
 
   it('rejects a subject over 120 characters and a phone with too few digits', async () => {
@@ -161,16 +179,21 @@ describe('tickets.open.prepare', () => {
     expect(data<Committed>(committed).deduped).toBe(false);
   });
 
-  describe('intake validated by the template schema in the input', () => {
-    it('accepts intake that matches the schema', async () => {
-      const { tickets, run } = setup();
+  describe('intake validated by the server-side schema', () => {
+    function withLawSchema() {
+      const env = setup();
+      env.tickets.state.settings.set(
+        TENANT,
+        parseTicketSettings('Law Office', { tickets: { intakeSchemas: { intake: LAW_INTAKE_SCHEMA } } }),
+      );
+      return env;
+    }
+
+    it("accepts intake that matches the tenant's configured schema", async () => {
+      const { tickets, run } = withLawSchema();
       const { committed } = await prepareAndCommit(
         run,
-        baseInput({
-          kind: 'intake',
-          intakeSchema: LAW_INTAKE_SCHEMA,
-          intake: { matterType: 'estate', opposingParties: ['R. Smith'], deadlineDays: 3 },
-        }),
+        baseInput({ kind: 'intake', intake: { matterType: 'estate', opposingParties: ['R. Smith'], deadlineDays: 3 } }),
       );
       const { ticketId } = data<Committed>(committed);
       expect(tickets.state.tickets.find((t) => t.id === ticketId)?.intake).toEqual({
@@ -181,53 +204,102 @@ describe('tickets.open.prepare', () => {
     });
 
     it('rejects a missing required field', async () => {
-      const { run } = setup();
-      const result = await run(
-        OPEN_PREPARE,
-        agentCtx(),
-        baseInput({ kind: 'intake', intakeSchema: LAW_INTAKE_SCHEMA, intake: { deadlineDays: 2 } }),
-      );
+      const { run } = withLawSchema();
+      const result = await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'intake', intake: { deadlineDays: 2 } }));
       expectFail(result, 'VALIDATION_FAILED', 'intake.matterType');
     });
 
     it('rejects a value outside the enum, a wrong type and an unknown field', async () => {
-      const { run } = setup();
+      const { run } = withLawSchema();
       for (const [intake, field] of [
         [{ matterType: 'criminal' }, 'intake.matterType'],
         [{ matterType: 'estate', deadlineDays: 'soon' }, 'intake.deadlineDays'],
         [{ matterType: 'estate', budget: 5000 }, 'intake.budget'],
       ] as const) {
-        const result = await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'intake', intakeSchema: LAW_INTAKE_SCHEMA, intake }));
+        const result = await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'intake', intake }));
         expectFail(result, 'VALIDATION_FAILED', field);
       }
     });
 
-    it('rejects intake fields when no template schema is supplied', async () => {
-      const { run } = setup();
-      const result = await run(OPEN_PREPARE, agentCtx(), baseInput({ intake: { budget: 5000 } }));
-      expectFail(result, 'VALIDATION_FAILED', 'intake');
+    it('ignores a caller-supplied intakeSchema; the server schema still decides', async () => {
+      const { tickets, run } = withLawSchema();
+      const lax = { properties: { budget: { type: 'number' } }, additionalProperties: true };
+      expectFail(
+        await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'intake', intakeSchema: lax, intake: { budget: 5000 } })),
+        'VALIDATION_FAILED',
+        'intake.matterType',
+      );
+      // Without a tenant schema the built-in default applies: a callback takes no intake fields.
+      expectFail(
+        await run(OPEN_PREPARE, agentCtx(), baseInput({ intakeSchema: lax, intake: { budget: 5000 } })),
+        'VALIDATION_FAILED',
+        'intake.budget',
+      );
+      expect(tickets.state.tickets).toHaveLength(0);
     });
 
-    it('rejects a malformed intake schema', async () => {
-      const { run } = setup();
-      const result = await run(
-        OPEN_PREPARE,
-        agentCtx(),
-        baseInput({ intakeSchema: { properties: { x: { type: 'object' } } }, intake: { x: {} } }),
+    it('uses the built-in default schema per kind when the tenant has none', async () => {
+      const { tickets, run } = setup();
+      const { committed } = await prepareAndCommit(
+        run,
+        baseInput({ kind: 'quote_request', intake: { serviceType: 'bathroom remodel', timeframe: 'next month' } }),
       );
-      expectFail(result, 'VALIDATION_FAILED');
+      const { ticketId } = data<Committed>(committed);
+      expect(tickets.state.tickets.find((t) => t.id === ticketId)?.intake).toEqual({
+        serviceType: 'bathroom remodel',
+        timeframe: 'next month',
+      });
+      expectFail(
+        await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'quote_request', intake: { ssn: '123' } })),
+        'VALIDATION_FAILED',
+        'intake.ssn',
+      );
+      expect(intakeSchemaFor('message', {})).toBe(DEFAULT_INTAKE_SCHEMAS.message);
+      expect(Object.keys(DEFAULT_INTAKE_SCHEMAS).sort()).toEqual([...TICKET_KINDS].sort());
+    });
+
+    it('fails closed to "no intake fields" when the configured schema is malformed', async () => {
+      const { tickets, run } = setup();
+      tickets.state.settings.set(
+        TENANT,
+        parseTicketSettings('Shop', { tickets: { intakeSchemas: { quote_request: { properties: { x: { type: 'object' } } } } } }),
+      );
+      expectFail(
+        await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'quote_request', intake: { serviceType: 'deck' } })),
+        'VALIDATION_FAILED',
+        'intake.serviceType',
+      );
+      data(await run(OPEN_PREPARE, agentCtx(), baseInput({ kind: 'quote_request' })));
     });
   });
 });
 
 describe('tickets.open.commit', () => {
-  it('creates one ticket, links the call, and emits ticket.opened', async () => {
+  it('creates one ticket, links the call, and writes ticket.opened to the outbox', async () => {
     const { tickets, run } = setup();
-    const { committed } = await prepareAndCommit(run);
+    const { prepared, committed } = await prepareAndCommit(run);
+    const { ticketId } = data<Committed>(committed);
+    expect(tickets.state.outbox).toEqual([
+      {
+        id: expect.any(String),
+        tenantId: TENANT,
+        status: 'pending',
+        eventType: 'ticket.opened',
+        payload: expect.objectContaining({
+          ticketId,
+          kind: 'callback',
+          urgency: 'normal',
+          callId: 'call-1',
+          proposalId: prepared.confirmationToken,
+          idempotencyKey: prepared.confirmationToken,
+        }),
+      },
+    ]);
+    // The effect mirrors the outbox row (informational only; never dispatched from).
     expect(committed.ok && committed.effects).toEqual([
       {
         type: 'ticket.opened',
-        payload: expect.objectContaining({ ticketId: expect.any(String), kind: 'callback', urgency: 'normal', callId: 'call-1' }),
+        payload: { ...tickets.state.outbox[0].payload, outboxId: tickets.state.outbox[0].id },
       },
     ]);
     expect(tickets.state.tickets).toHaveLength(1);
@@ -281,6 +353,7 @@ describe('tickets.open.commit', () => {
       expect(data<Committed>(third.committed)).toEqual({ ...first, deduped: true });
       expect(second.committed.ok && second.committed.effects).toBeFalsy();
       expect(tickets.state.tickets).toHaveLength(1);
+      expect(tickets.state.outbox.map((row) => row.payload.ticketId)).toEqual([first.ticketId]);
       const notes = tickets.state.activities.filter((a) => a.type === 'note');
       expect(notes).toHaveLength(2);
       expect(notes[0]).toMatchObject({ ticketId: first.ticketId, metadata: { dedupe: true } });
@@ -315,16 +388,21 @@ describe('tickets.open.commit', () => {
     });
   });
 
-  it('replays an idempotent commit retry with one ticket and one effect', async () => {
+  it('replays an idempotent commit retry without running it again: one ticket, one outbox row', async () => {
     const { tickets, run } = setup();
     const { prepared, committed } = await prepareAndCommit(run);
-    const retry = await run(OPEN_COMMIT, agentCtx(), {
-      confirmationToken: prepared.confirmationToken,
-      payloadHash: prepared.payloadHash,
-    });
+    const commitInput = { confirmationToken: prepared.confirmationToken, payloadHash: prepared.payloadHash };
+    const retry = await run(OPEN_COMMIT, agentCtx(), commitInput);
     expect(retry).toEqual(committed);
     expect(tickets.state.tickets).toHaveLength(1);
     expect(tickets.state.activities).toHaveLength(1);
+    expect(tickets.state.outbox).toHaveLength(1);
+
+    // A different idempotency key can't reuse the consumed token either.
+    const otherKey = await run(OPEN_COMMIT, agentCtx({ idempotencyKey: randomUUID() }), commitInput);
+    expectFail(otherKey, 'CONFIRMATION_INVALID');
+    expect(tickets.state.tickets).toHaveLength(1);
+    expect(tickets.state.outbox).toHaveLength(1);
   });
 
   it('returns CONFIRMATION_INVALID for an expired token and creates nothing', async () => {

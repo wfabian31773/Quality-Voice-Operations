@@ -58,6 +58,17 @@ const SCHEMA = `
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+  CREATE TABLE ticket_outbox (
+    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id VARCHAR,
+    event_type VARCHAR(100) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  );
 `;
 
 /** pg-mem lacks row locks; strip FOR UPDATE at the client boundary only. */
@@ -104,7 +115,7 @@ describe('sqlTicketsRepo on pg-mem', () => {
     );
     await tx.query(`INSERT INTO users (id) VALUES ('owner-1'), ('staff-1')`);
     await tx.query(`INSERT INTO user_roles (user_id, tenant_id, role) VALUES ('staff-1', $1, 'technician')`, [TENANT]);
-    await tx.query(`INSERT INTO call_sessions (id, tenant_id) VALUES ('call-1', $1)`, [TENANT]);
+    await tx.query(`INSERT INTO call_sessions (id, tenant_id) VALUES ('call-1', $1), ('call-foreign', $2)`, [TENANT, OTHER]);
     await tx.query(
       `INSERT INTO ticket_sla_policies (tenant_id, name, priority, first_response_minutes) VALUES ($1, 'Callbacks', 'medium', 90)`,
       [TENANT],
@@ -160,7 +171,7 @@ describe('sqlTicketsRepo on pg-mem', () => {
       customer: { name: 'Luis', phone: '+1 555 010 0142' },
     });
     expect(readback).toBe(
-      "I'll pass this to Dana: a callback request about the leaking sink, callback at the number ending 0142, usually within 2 business hours.",
+      "I'll pass this to Dana: a callback request about the leaking sink, callback at 555, 010, 0142, usually within 2 business hours.",
     );
     const data = ok<{ ticketId: string; ticketNumber: number; dueAt: string; deduped: boolean }>(committed);
     expect(data).toMatchObject({ deduped: false, dueAt: '2026-10-17T16:30:00.000Z' });
@@ -180,6 +191,11 @@ describe('sqlTicketsRepo on pg-mem', () => {
       priority: 'medium',
     });
     expect(locks).toHaveLength(1);
+
+    const { rows: outbox } = await tx.query(`SELECT tenant_id, event_type, status, payload FROM ticket_outbox`);
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({ tenant_id: TENANT, event_type: 'ticket.opened', status: 'pending' });
+    expect(outbox[0].payload).toMatchObject({ ticketId, kind: 'callback', callId: 'call-1' });
   });
 
   it('dedupes a repeat within the call into a note and leaves call_id null for unknown calls', async () => {
@@ -197,6 +213,23 @@ describe('sqlTicketsRepo on pg-mem', () => {
     const { ticketId: otherId } = ok<{ ticketId: string }>(unknownCall.committed);
     const { rows: linked } = await tx.query(`SELECT call_id, source_call_ref FROM tickets WHERE id = $1`, [otherId]);
     expect(linked[0]).toMatchObject({ call_id: null, source_call_ref: 'not-a-session' });
+
+    // Deduped repeat wrote no outbox row; the two new tickets wrote one each.
+    const { rows: outbox } = await tx.query(`SELECT payload FROM ticket_outbox WHERE event_type = 'ticket.opened'`);
+    expect(outbox.map((row) => (row.payload as { ticketId: string }).ticketId).sort()).toEqual([ticketId, otherId].sort());
+  });
+
+  it("never links another tenant's call as tickets.call_id (no RLS here, like the postgres role)", async () => {
+    const foreign = await open(
+      { kind: 'message', subject: 'wrong tenant call', customer: { phone: '555-010-8888' } },
+      agent({ callId: 'call-foreign' }),
+    );
+    const { ticketId: foreignId } = ok<{ ticketId: string }>(foreign.committed);
+    const { rows } = await tx.query(`SELECT tenant_id, call_id, source_call_ref FROM tickets WHERE id = $1`, [foreignId]);
+    expect(rows[0]).toMatchObject({ tenant_id: TENANT, call_id: null, source_call_ref: 'call-foreign' });
+    // Keep later list counts unchanged.
+    await tx.query(`DELETE FROM ticket_activity_log WHERE ticket_id = $1`, [foreignId]);
+    await tx.query(`DELETE FROM tickets WHERE id = $1`, [foreignId]);
   });
 
   it('adds notes, updates with transitions and reads back with notes', async () => {

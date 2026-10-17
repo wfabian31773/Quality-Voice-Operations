@@ -56,9 +56,10 @@ const intakeFieldSchema = z.object({
 });
 
 /**
- * A template's intake schema: a small JSON Schema subset (flat object of
- * primitives and string lists). Passed in the input for now; templates
- * will supply it once `platform/templates/use-cases` exists.
+ * An intake schema: a small JSON Schema subset (flat object of primitives and
+ * string lists). Always resolved server-side (tenant settings, else the
+ * built-in default per kind in intakeSchemas.ts), never taken from the caller.
+ * Templates will supply it once `platform/templates/use-cases` exists.
  */
 export const intakeSchemaSchema = z.object({
   type: z.literal('object').optional(),
@@ -79,8 +80,8 @@ export const openPrepareInput = z.object({
   }),
   urgency: z.enum(TICKET_URGENCIES).optional(),
   callbackWindow: z.string().trim().min(1).max(120).optional(),
+  // Validated against the server-side schema for this kind (see intakeSchemas.ts).
   intake: z.record(z.string(), z.unknown()).optional(),
-  intakeSchema: intakeSchemaSchema.optional(),
   related: z.object({ type: z.string().trim().min(1).max(50), id: z.string().trim().min(1).max(255) }).optional(),
 });
 export type OpenPrepareInput = z.infer<typeof openPrepareInput>;

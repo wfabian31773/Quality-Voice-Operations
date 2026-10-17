@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import type { NewActivity, TicketRecord, TicketSettings, TicketsRepoFactory } from '../repo';
+import type { NewActivity, NewOutboxEvent, TicketRecord, TicketSettings, TicketsRepoFactory } from '../repo';
 import { ACTIVE_STATUSES, type TicketPriority } from '../schemas';
 
 export interface MemoryTicketsState {
   tickets: Array<TicketRecord & { tenantId: string }>;
   activities: Array<NewActivity & { tenantId: string }>;
+  outbox: Array<NewOutboxEvent & { id: string; tenantId: string; status: 'pending' }>;
   settings: Map<string, TicketSettings>;
   slaMinutes: Map<string, Partial<Record<TicketPriority, number>>>;
   members: Map<string, Set<string>>;
@@ -16,6 +17,7 @@ const EMPTY_SETTINGS: TicketSettings = {
   ownerName: null,
   slaText: null,
   callbackSlaMinutes: null,
+  intakeSchemas: {},
 };
 
 /** In-memory TicketsRepo keyed by tenant, mirroring sqlTicketsRepo's semantics. */
@@ -23,6 +25,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
   const state: MemoryTicketsState = {
     tickets: [],
     activities: [],
+    outbox: [],
     settings: new Map(),
     slaMinutes: new Map(),
     members: new Map(),
@@ -79,6 +82,11 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
       },
       async addActivity(activity) {
         state.activities.push({ ...activity, tenantId });
+      },
+      async enqueueOutbox(event) {
+        const id = randomUUID();
+        state.outbox.push({ ...event, payload: { ...event.payload }, id, tenantId, status: 'pending' });
+        return id;
       },
       async get(id) {
         const found = own().find((ticket) => ticket.id === id);
