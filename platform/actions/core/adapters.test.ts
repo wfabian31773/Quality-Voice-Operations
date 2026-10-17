@@ -111,6 +111,32 @@ describe('adapters', () => {
     });
     expect(noKeyHeader.status).toBe(400);
 
+    const boom = defineAction({
+      name: 'core.http_boom',
+      tool: 'business',
+      kind: 'read',
+      input: z.object({}),
+      output: z.object({ ok: z.boolean() }),
+      permissions: { roles: ['owner'] },
+      run: async () => {
+        throw new Error('secret disk path /var/lib/qvo');
+      },
+    });
+    const boomHandler = toHttpHandler(boom, { store, withTenantTx: store.withTenantTx.bind(store) });
+    const crashed = await boomHandler({
+      body: {},
+      tenantId: 'tenant-a',
+      actor: { type: 'user', id: 'u', role: 'owner' },
+      tenantTimezone: 'UTC',
+    });
+    expect(crashed.status).toBe(500);
+    expect(crashed.body.ok).toBe(false);
+    if (crashed.body.ok) return;
+    expect(crashed.body.error.code).toBe('INTERNAL');
+    expect(crashed.body.error.message).toBe(crashed.body.error.callerSafeMessage);
+    expect(crashed.body.error.message).not.toContain('/var/lib');
+    expect(JSON.stringify(crashed.body)).not.toContain('secret disk path');
+
     const nameless = defineAction({
       name: 'core.plain',
       tool: 'business',

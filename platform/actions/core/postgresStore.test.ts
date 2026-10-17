@@ -242,6 +242,40 @@ describe('postgresActionStore', () => {
     expect(calls.some((c) => c.sql.includes('INSERT INTO action_audit_log'))).toBe(true);
   });
 
+  it('binds a JSON object when inputRedacted is missing', async () => {
+    let bound: unknown[] | undefined;
+    await postgresActionStore.insertAudit(
+      tx((_sql, values) => {
+        bound = values;
+        return { rows: [], rowCount: 1 };
+      }),
+      {
+        tenantId: 't1',
+        action: 'core.echo.write',
+        actor: { type: 'user', id: 'u1' },
+        inputRedacted: undefined,
+        resultCode: 'VALIDATION_FAILED',
+        latencyMs: 1,
+      },
+    );
+    expect(bound?.[3]).toBe('{}');
+    await postgresActionStore.insertAudit(
+      tx((_sql, values) => {
+        bound = values;
+        return { rows: [], rowCount: 1 };
+      }),
+      {
+        tenantId: 't1',
+        action: 'core.echo.write',
+        actor: { type: 'user', id: 'u1' },
+        inputRedacted: null,
+        resultCode: 'VALIDATION_FAILED',
+        latencyMs: 1,
+      },
+    );
+    expect(bound?.[3]).toBe('{}');
+  });
+
   it('inserts after a lock miss', async () => {
     let inserts = 0;
     const result = await postgresActionStore.beginIdempotency(

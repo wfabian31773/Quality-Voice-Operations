@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import {
   createEchoCommitAction,
   createEchoPrepareAction,
+  createEchoReadAction,
 } from './__fixtures__/echo';
 import { postgresActionStore } from './postgresStore';
 import { runActionDefinition } from './runAction';
@@ -147,6 +148,7 @@ async function ensureRlsTester(pool: Pool): Promise<void> {
   `);
   await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO platform_rls_tester`);
   await pool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO platform_rls_tester`);
+  await pool.query(`REVOKE UPDATE, DELETE ON action_audit_log FROM platform_rls_tester`);
   await pool.query(`GRANT platform_rls_tester TO CURRENT_USER`);
 }
 
@@ -320,6 +322,53 @@ describe.skipIf(skipReason !== null)('action layer postgres integration', () => 
       }
     });
   }
+
+  it('rejects UPDATE and DELETE on action_audit_log', async () => {
+    const tenantId = randomUUID();
+    await currentPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'Audit', `audit-${tenantId.slice(0, 8)}`],
+    );
+    const { rows } = await currentPool.query<{ id: string }>(
+      `INSERT INTO action_audit_log (tenant_id, action, actor, input_redacted, result_code, latency_ms)
+       VALUES ($1, 'core.echo.write', '{}'::jsonb, '{}'::jsonb, 'ok', 1)
+       RETURNING id`,
+      [tenantId],
+    );
+    const id = rows[0].id;
+    await expect(
+      currentPool.query(`UPDATE action_audit_log SET result_code = 'tampered' WHERE id = $1`, [id]),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      currentPool.query(`DELETE FROM action_audit_log WHERE id = $1`, [id]),
+    ).rejects.toThrow(/immutable/);
+  });
+
+  it('stores {} for a missing body instead of SQL NULL', async () => {
+    const tenantId = randomUUID();
+    await currentPool.query(
+      `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+      [tenantId, 'Sentinel', `s-${tenantId.slice(0, 8)}`],
+    );
+    const read = createEchoReadAction();
+    const result = await runActionDefinition(
+      read,
+      makeCtx(tenantId),
+      undefined,
+      {
+        store: postgresActionStore,
+        withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withTenantTx(currentPool, id, fn),
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('VALIDATION_FAILED');
+    const { rows } = await currentPool.query<{ input_redacted: unknown }>(
+      `SELECT input_redacted FROM action_audit_log WHERE tenant_id = $1 AND action = $2`,
+      [tenantId, 'core.echo.read'],
+    );
+    expect(rows[0]?.input_redacted).toEqual({});
+  });
 
   it('runs two parallel commits with the same token as exactly one side effect', async () => {
     const tenantId = randomUUID();

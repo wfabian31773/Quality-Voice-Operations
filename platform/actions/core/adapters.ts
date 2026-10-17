@@ -93,6 +93,18 @@ export function httpStatusFor(result: ActionResult): number {
   return HTTP_STATUS_BY_ERROR[result.error.code] ?? 500;
 }
 
+/** HTTP callers only see caller-safe INTERNAL text, never exception details. */
+export function publicHttpResult(result: ActionResult): ActionResult {
+  if (result.ok || result.error.code !== 'INTERNAL') return result;
+  return {
+    ok: false,
+    error: {
+      ...result.error,
+      message: result.error.callerSafeMessage,
+    },
+  };
+}
+
 export function toHttpHandler<I, O>(def: ActionDefinition<I, O>, runtime?: ActionRuntime) {
   return async (req: ActionHttpRequest): Promise<ActionHttpResponse> => {
     if (!req.tenantId) {
@@ -109,7 +121,7 @@ export function toHttpHandler<I, O>(def: ActionDefinition<I, O>, runtime?: Actio
       locale: req.locale,
       tenantTimezone: req.tenantTimezone,
     };
-    const body = await runActionDefinition(def, ctx, req.body, runtime);
+    const body = publicHttpResult(await runActionDefinition(def, ctx, req.body, runtime));
     return { status: httpStatusFor(body), body };
   };
 }

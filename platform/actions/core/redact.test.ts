@@ -22,6 +22,16 @@ describe('redactInput', () => {
     expect(maskPhoneLast4('no-digits')).toBe('***');
     expect(auditActor({ type: 'agent', id: 'a1' })).toEqual({ type: 'agent', id: 'a1' });
   });
+
+  it('redacts a parenthesized number that does not follow a word boundary', () => {
+    expect(redactInput('Call (555) 555-0142')).toBe('Call ***0142');
+    expect(redactInput('Call (555)555-0142 please')).toBe('Call ***0142 please');
+  });
+
+  it('stores a JSON object sentinel when the body is missing', () => {
+    expect(redactInput(undefined)).toEqual({});
+    expect(redactInput(null)).toEqual({});
+  });
 });
 
 describe('requestHash', () => {
@@ -29,6 +39,28 @@ describe('requestHash', () => {
     expect(canonicalize({ b: 1, a: { z: 2, y: [3, 1] } })).toBe(canonicalize({ a: { y: [3, 1], z: 2 }, b: 1 }));
     expect(requestHash({ a: 1, b: 2 })).toBe(requestHash({ b: 2, a: 1 }));
     expect(requestHash({ a: 1 })).not.toBe(requestHash({ a: 2 }));
+  });
+
+  it('serializes Dates and other non-plain values so different instants hash differently', () => {
+    const morning = new Date('2026-10-17T09:00:00.000Z');
+    const evening = new Date('2026-10-17T21:00:00.000Z');
+    expect(canonicalize({ when: morning })).toBe(JSON.stringify({ when: morning.toISOString() }));
+    expect(requestHash({ when: morning })).not.toBe(requestHash({ when: evening }));
+    expect(requestHash({ when: morning })).toBe(requestHash({ when: new Date(morning.getTime()) }));
+    expect(canonicalize({ when: new Date('invalid') })).toBe(JSON.stringify({ when: 'Invalid Date' }));
+    expect(canonicalize({ n: 1n, s: Symbol.for('x'), fn: function named() {}, nan: Number.NaN })).toEqual(
+      JSON.stringify({ fn: '[Function named]', n: '1n', nan: 'NaN', s: 'Symbol(x)' }),
+    );
+    expect(canonicalize(new Map([['b', 2], ['a', 1]]))).toContain('__type');
+    expect(canonicalize(new Set([2, 1]))).toContain('Set');
+    expect(canonicalize(new Uint8Array([1, 2]))).toContain('bytes');
+    expect(canonicalize(new ArrayBuffer(2))).toContain('ArrayBuffer');
+    class Instant {
+      toJSON() {
+        return { when: new Date('2026-01-01T00:00:00.000Z') };
+      }
+    }
+    expect(canonicalize(new Instant())).toBe(JSON.stringify({ when: '2026-01-01T00:00:00.000Z' }));
   });
 });
 

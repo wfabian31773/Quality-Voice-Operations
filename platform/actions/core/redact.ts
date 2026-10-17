@@ -2,7 +2,7 @@ const PHONE_KEY =
   /^(phone|phone[_-]?number|to_number|from_number|mobile|caller[_-]?id|callback[_-]?number|contact[_-]?phone|e164)$/i;
 
 const PHONE_VALUE =
-  /(?:\+\d{8,15}\b|\b(?:\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\(\d{3}\)\s?\d{3}[-.\s]?\d{4})\b|\b\d{10,15}\b)/g;
+  /(?:\+\d{8,15}\b|\(\d{3}\)\s?\d{3}[-.\s]?\d{4}\b|\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b|\b\d{10,15}\b)/g;
 
 export function maskPhoneLast4(value: string): string {
   const digits = value.replace(/\D/g, '');
@@ -11,6 +11,7 @@ export function maskPhoneLast4(value: string): string {
 }
 
 export function redactInput(value: unknown): unknown {
+  if (value === undefined || value === null) return {};
   return walk(value);
 }
 

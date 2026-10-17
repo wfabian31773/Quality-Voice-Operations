@@ -89,16 +89,37 @@ CREATE POLICY tenant_isolation_action_audit_log ON action_audit_log
   USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), '')::varchar)
   WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), '')::varchar);
 
+-- Append-only, matching audit_logs in 046_enterprise_security.sql.
+CREATE OR REPLACE FUNCTION prevent_action_audit_log_mutation() RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'action_audit_log is immutable: % operations are not permitted', TG_OP;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS action_audit_log_no_update ON action_audit_log;
+CREATE TRIGGER action_audit_log_no_update BEFORE UPDATE ON action_audit_log
+  FOR EACH ROW EXECUTE FUNCTION prevent_action_audit_log_mutation();
+
+DROP TRIGGER IF EXISTS action_audit_log_no_delete ON action_audit_log;
+CREATE TRIGGER action_audit_log_no_delete BEFORE DELETE ON action_audit_log
+  FOR EACH ROW EXECUTE FUNCTION prevent_action_audit_log_mutation();
+
 -- 120 already sets DEFAULT PRIVILEGES for qvo_app on objects created by the
--- migration role. Repeat the GRANT here so a restored schema or a role that
--- did not inherit those defaults still has DML. Do not edit 120 from this PR.
+-- migration role (including UPDATE/DELETE). Repeat GRANTs here so a restored
+-- schema still has DML, then revoke mutations on the append-only audit table.
+-- Do not edit 120 from this PR.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qvo_app') THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON action_idempotency, action_proposals, action_audit_log TO qvo_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON action_idempotency, action_proposals TO qvo_app;
+    GRANT SELECT, INSERT ON action_audit_log TO qvo_app;
+    REVOKE UPDATE, DELETE ON action_audit_log FROM qvo_app;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'platform_rls_tester') THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON action_idempotency, action_proposals, action_audit_log TO platform_rls_tester;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON action_idempotency, action_proposals TO platform_rls_tester;
+    GRANT SELECT, INSERT ON action_audit_log TO platform_rls_tester;
+    REVOKE UPDATE, DELETE ON action_audit_log FROM platform_rls_tester;
   END IF;
 END
 $$;

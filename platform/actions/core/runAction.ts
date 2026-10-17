@@ -48,15 +48,20 @@ async function writeAudit(
   result: ActionResult,
   startedAt: number,
 ): Promise<void> {
-  await store.insertAudit(tx, {
-    tenantId: ctx.tenantId,
-    action,
-    actor: auditActor(ctx.actor),
-    inputRedacted: redactInput(input),
-    resultCode: resultCode(result),
-    latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
-    callId: ctx.callId,
-  });
+  try {
+    await store.insertAudit(tx, {
+      tenantId: ctx.tenantId,
+      action,
+      actor: auditActor(ctx.actor),
+      inputRedacted: redactInput(input) ?? {},
+      resultCode: resultCode(result),
+      latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      callId: ctx.callId,
+    });
+  } catch {
+    // Audit is best-effort. A failed insert must not replace the action result
+    // (e.g. VALIDATION_FAILED becoming an unhandled rejection).
+  }
 }
 
 export async function runActionDefinition<I, O>(

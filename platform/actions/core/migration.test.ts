@@ -43,4 +43,18 @@ describe('121_action_layer.sql', () => {
     expect(migration).toMatch(/consumed_at TIMESTAMPTZ/);
     expect(migration).toMatch(/request_hash CHAR\(64\) NOT NULL/);
   });
+
+  it('makes action_audit_log append-only with INSERT/SELECT grants and mutation triggers', () => {
+    expect(migration).toMatch(/GRANT SELECT, INSERT ON action_audit_log TO qvo_app/);
+    expect(migration).toMatch(/REVOKE UPDATE, DELETE ON action_audit_log FROM qvo_app/);
+    expect(migration).toMatch(/GRANT SELECT, INSERT ON action_audit_log TO platform_rls_tester/);
+    expect(migration).toMatch(/REVOKE UPDATE, DELETE ON action_audit_log FROM platform_rls_tester/);
+    expect(migration).not.toMatch(
+      /GRANT SELECT, INSERT, UPDATE, DELETE ON action_idempotency, action_proposals, action_audit_log/,
+    );
+    expect(migration).toMatch(/CREATE OR REPLACE FUNCTION prevent_action_audit_log_mutation\(\)/);
+    expect(migration).toMatch(/CREATE TRIGGER action_audit_log_no_update BEFORE UPDATE ON action_audit_log/);
+    expect(migration).toMatch(/CREATE TRIGGER action_audit_log_no_delete BEFORE DELETE ON action_audit_log/);
+    expect(migration).toMatch(/action_audit_log is immutable/);
+  });
 });

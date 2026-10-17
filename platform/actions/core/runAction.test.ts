@@ -161,6 +161,33 @@ describe('runAction', () => {
     expect(side.count).toBe(1);
   });
 
+  it('rejects a reused key when only a Date field changed', async () => {
+    const def = defineAction({
+      name: 'core.when.write',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ when: z.date() }),
+      output: z.object({ when: z.date() }),
+      permissions: { roles: ['owner'] },
+      run: async (_c, input) => actionOk(input),
+    });
+    const { deps } = runtime([def]);
+    const first = await runAction(
+      'core.when.write',
+      ctx({ idempotencyKey: 'when-1' }),
+      { when: new Date('2026-10-17T09:00:00.000Z') },
+      deps,
+    );
+    expect(first.ok).toBe(true);
+    const reused = await runAction(
+      'core.when.write',
+      ctx({ idempotencyKey: 'when-1' }),
+      { when: new Date('2026-10-17T21:00:00.000Z') },
+      deps,
+    );
+    expectFail(reused, 'IDEMPOTENCY_KEY_REUSED');
+  });
+
   it('treats an expired idempotency row as a new request', async () => {
     const side = { count: 0 };
     const { deps } = runtime([createEchoWriteAction(side)]);
@@ -412,6 +439,24 @@ describe('two-phase proposals', () => {
 });
 
 describe('audit', () => {
+  it('returns VALIDATION_FAILED when the body is missing even if audit insert throws', async () => {
+    const store = createMemoryStore();
+    store.insertAudit = async () => {
+      throw new Error('null value in column "input_redacted"');
+    };
+    const result = await runAction(
+      'core.echo.write',
+      ctx({ idempotencyKey: 'missing-body' }),
+      undefined,
+      {
+        store,
+        registry: [createEchoWriteAction({ count: 0 })],
+        withTenantTx: store.withTenantTx.bind(store),
+      },
+    );
+    expectFail(result, 'VALIDATION_FAILED');
+  });
+
   it('writes a redacted row per run including phones masked to last 4', async () => {
     const side = { count: 0 };
     const { store, deps } = runtime([createEchoWriteAction(side)]);

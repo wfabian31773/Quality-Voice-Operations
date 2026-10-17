@@ -32,6 +32,12 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
 }
 
+/** JSONB NOT NULL columns must never receive SQL NULL (`JSON.stringify(undefined)`). */
+function jsonbNotNull(value: unknown): string {
+  if (value === undefined || value === null) return '{}';
+  return JSON.stringify(value);
+}
+
 export const postgresActionStore: ActionStore = {
   async beginIdempotency(tx, input): Promise<BeginIdempotencyResult> {
     const insertSql = `
@@ -204,7 +210,7 @@ export const postgresActionStore: ActionStore = {
         record.tenantId,
         record.action,
         JSON.stringify(record.actor),
-        JSON.stringify(record.inputRedacted),
+        jsonbNotNull(record.inputRedacted),
         record.resultCode,
         record.latencyMs,
         record.callId ?? null,
