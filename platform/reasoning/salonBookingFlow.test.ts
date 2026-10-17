@@ -67,6 +67,69 @@ describe('salon booking conversation', () => {
     expect(authorized.allowed).toBe(true);
   });
 
+  it('rebuilds a fresh booking plan when the caller books a second appointment in the same call', () => {
+    const engine = makeSalonEngine();
+    const firstUtterance =
+      'Hi, I want to book a haircut tomorrow at 2pm. My name is Jordan Lee, you can reach me at 555-201-3344.';
+    const firstClassified = engine.classifyIntent(firstUtterance);
+    expect(firstClassified.intent).toBe('book_appointment');
+
+    const firstDecision = engine.processUtterance(
+      firstUtterance,
+      firstClassified.intent,
+      firstClassified.confidence,
+    );
+    expect(firstDecision.action).not.toBe('complete_interaction');
+
+    const firstArgs = {
+      title: 'Haircut',
+      startTime: '2026-10-17T14:00:00-07:00',
+      contactName: 'Jordan Lee',
+      contactPhone: '555-201-3344',
+    };
+    engine.fillSlot('title', firstArgs.title, 'tool_args');
+    engine.fillSlot('startTime', firstArgs.startTime, 'tool_args');
+    engine.fillSlot('contactName', firstArgs.contactName, 'tool_args');
+    engine.fillSlot('contactPhone', firstArgs.contactPhone, 'tool_args');
+    expect(engine.authorizeToolRequest('create_booking', firstArgs).allowed).toBe(true);
+
+    engine.handleToolSuccess('create_booking');
+    expect(engine.getWorkflowPlan()?.status).toBe('completed');
+
+    const secondUtterance =
+      'I want to book a haircut for my son too, this is Alex, you can reach me at 555-201-4400, Saturday at 3pm.';
+    const secondClassified = engine.classifyIntent(secondUtterance);
+    expect(secondClassified.intent).toBe('book_appointment');
+
+    const secondDecision = engine.processUtterance(
+      secondUtterance,
+      secondClassified.intent,
+      secondClassified.confidence,
+    );
+    expect(secondDecision.action).not.toBe('complete_interaction');
+    expect(engine.getWorkflowPlan()?.status).toBe('active');
+    expect(engine.getWorkflowPlan()?.intent).toBe('book_appointment');
+    expect(engine.getCurrentWorkflowStepTool()).toBe('create_booking');
+
+    const slots = (engine.getCallSummary().slots as { slots: Record<string, { value: string | null }> }).slots;
+    expect(slots.contactName?.value).toBe('Alex');
+    expect(slots.contactName?.value).not.toBe('Jordan Lee');
+    expect(slots.contactPhone?.value).toBe('555-201-4400');
+    expect(slots.startTime?.value?.toLowerCase()).toMatch(/saturday|3\s*pm/);
+
+    const secondArgs = {
+      title: 'Haircut',
+      startTime: '2026-10-18T15:00:00-07:00',
+      contactName: 'Alex',
+      contactPhone: '555-201-4400',
+    };
+    engine.fillSlot('title', secondArgs.title, 'tool_args');
+    engine.fillSlot('startTime', secondArgs.startTime, 'tool_args');
+    engine.fillSlot('contactName', secondArgs.contactName, 'tool_args');
+    engine.fillSlot('contactPhone', secondArgs.contactPhone, 'tool_args');
+    expect(engine.authorizeToolRequest('create_booking', secondArgs).allowed).toBe(true);
+  });
+
   it('lets create_ticket through the gate when the caller leaves a message', () => {
     const engine = makeSalonEngine();
     const classified = engine.classifyIntent('Please leave a message for the owner, this is Sam, 555-888-1212');

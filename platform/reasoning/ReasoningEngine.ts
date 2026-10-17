@@ -296,6 +296,15 @@ export class ReasoningEngine {
       }
       const context = this.buildContext(utterance);
       this.workflowPlan = this.workflowPlanner.createPlan(context);
+    } else if (
+      intent !== 'unknown'
+      && this.workflowPlan
+      && this.workflowPlan.status !== 'active'
+    ) {
+      // Same intent after a finished plan (e.g. a second booking in one call):
+      // start a fresh slot set and plan so authorization can allow the new tool.
+      this.updateSlotManifest(intent);
+      this.workflowPlan = this.workflowPlanner.createPlan(this.buildContext(utterance));
     }
 
     this.extractSlotsFromUtterance(utterance);
