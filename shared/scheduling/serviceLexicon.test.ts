@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isContextualServiceTerm,
   matchServiceTerm,
   normalizeServiceText,
   serviceAliases,
-  serviceIntentKeywords,
   serviceLabel,
-  serviceTitleFromUtterance,
   SERVICE_KEYS,
   STRONG_MATCH_CONFIDENCE,
   type ServiceKey,
@@ -145,12 +144,39 @@ describe('serviceLexicon', () => {
     expect(matchServiceTerm('hi, this is Wayne')).toBeNull();
   });
 
-  it('turns a strong match into an English title, and ignores weak ones', () => {
-    expect(serviceTitleFromUtterance("I'm looking for a fade")).toBe('Fade');
-    expect(serviceTitleFromUtterance('can I get a shape up')).toBe('Lineup');
-    expect(serviceTitleFromUtterance('quiero un degradado')).toBe('Fade');
-    expect(serviceTitleFromUtterance('one more for my son')).toBeNull();
-    expect(serviceTitleFromUtterance('Saturday morning')).toBeNull();
+  it('needs service context for "line up", "edges" and "hairline" (review finding 3)', () => {
+    // Everyday "line up" is not a lineup.
+    for (const utterance of [
+      "I'd like to line up an appointment for Friday",
+      'line up a time',
+      'can we line up something next week',
+      'my kids are lined up at the door',
+      'we should line up early',
+    ]) {
+      const match = matchServiceTerm(utterance);
+      expect(match === null || match.confidence < STRONG_MATCH_CONFIDENCE, utterance).toBe(true);
+    }
+    expect(matchServiceTerm("I'd like to line up an appointment for Friday")).toEqual({
+      key: 'lineup', matchedText: 'line up', confidence: 0.6,
+    });
+    // With service context, or said on its own, it is.
+    expect(matchServiceTerm('a line up')).toEqual({ key: 'lineup', matchedText: 'line up', confidence: 1 });
+    expect(matchServiceTerm('can I get a line up on Friday')).toMatchObject({ key: 'lineup', confidence: 0.9 });
+    expect(matchServiceTerm('just my edges')).toMatchObject({ key: 'lineup', confidence: 0.9 });
+    expect(matchServiceTerm('clean up his hairline')).toMatchObject({ key: 'lineup', confidence: 0.9 });
+    expect(matchServiceTerm('edges')).toMatchObject({ key: 'lineup', confidence: 1 });
+    expect(matchServiceTerm('I need a lineup')).toMatchObject({ key: 'lineup', confidence: 0.9 });
+    // A real service elsewhere in the sentence still wins.
+    expect(matchServiceTerm('line up a fade for Saturday')).toMatchObject({ key: 'fade', confidence: 0.9 });
+    expect(matchServiceTerm('beard line up')).toMatchObject({ key: 'beard_trim' });
+  });
+
+  it('flags contextual terms', () => {
+    expect(isContextualServiceTerm('line up')).toBe(true);
+    expect(isContextualServiceTerm('Line-Up')).toBe(true);
+    expect(isContextualServiceTerm('edges')).toBe(true);
+    expect(isContextualServiceTerm('lineup')).toBe(false);
+    expect(isContextualServiceTerm('fade')).toBe(false);
   });
 
   it('has a label in both languages and aliases for every key', () => {
@@ -168,16 +194,10 @@ describe('serviceLexicon', () => {
     const fade = serviceAliases('fade');
     expect(fade).toEqual(expect.arrayContaining(['skin fade', 'bald fade', 'low fade', 'degradado', 'desvanecido']));
     expect(serviceAliases('kids_cut')).not.toContain('for my son');
-    expect(serviceAliases('lineup')).toContain('line-up');
-    expect(serviceAliases('lineup')).not.toContain('line up');
+    expect(serviceAliases('lineup')).toEqual(expect.arrayContaining(['lineup', 'shape-up', 'edge-up', 'perfilado']));
+    // Contextual words are never catalog aliases (an alias matches anywhere in a sentence).
+    for (const word of ['line-up', 'line up', 'edges', 'hairline']) expect(serviceAliases('lineup')).not.toContain(word);
     expect(serviceAliases('fade', 'es')).not.toContain('skin fade');
-  });
-
-  it('exposes intent keywords that exclude weak phrases', () => {
-    const keywords = serviceIntentKeywords();
-    expect(keywords).toEqual(expect.arrayContaining(['fade', 'shape-up', 'degradado', 'beard trim']));
-    expect(keywords).not.toContain('for my son');
-    expect(keywords).not.toContain('buzz');
   });
 
   it('normalizes punctuation, accents, apostrophes and articles', () => {

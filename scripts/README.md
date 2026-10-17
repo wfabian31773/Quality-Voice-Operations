@@ -106,9 +106,14 @@ exits without touching the database.
 for live test calls) into a small bilingual barbershop, so
 `scheduling.list_services` and `scheduling.check_availability` return real
 services and slots. It is a seed, not a migration: nothing runs it
-automatically. Wayne or a bot runs it by hand **after** the PR is merged and
-migration `125_service_aliases.sql` is applied to the target database (the
-seed writes the `aliases` column).
+automatically, and the PR that adds it does not run it either.
+
+**When and where:** after the PR is merged, and on the **test database
+only** (the one behind the `demo` test-call number), never production:
+
+1. Apply migration `125_service_aliases.sql` to the test database (the seed
+   writes the `aliases` column).
+2. Then run the seed against that same test database, as below.
 
 ```
 # 1. See what it will write (reads the tenant, writes nothing)
@@ -127,7 +132,9 @@ What it seeds (QVO tables only):
 
 - 8 services in `scheduling_appointment_types` with durations, "from" or
   fixed prices, and EN/ES spoken aliases from
-  `shared/scheduling/serviceLexicon.ts`: Haircut 30 min, Fade 45, Taper 45,
+  `shared/scheduling/serviceLexicon.ts` (`scheduling.list_services` with a
+  `query` matches against them; everyday words such as "line up" are left
+  out on purpose): Haircut 30 min, Fade 45, Taper 45,
   Lineup 15, Beard trim 15, Haircut and beard 45, Hot towel shave 30 (no
   price: the agent says the shop will confirm), Kids cut 30 (12 and under).
 - 3 barbers: Marcus (all services), Luis (English/Spanish; everything but

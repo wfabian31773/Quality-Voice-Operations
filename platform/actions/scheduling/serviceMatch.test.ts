@@ -118,6 +118,16 @@ describe('resolveServiceByName', () => {
     expect(resolveServiceByName({ services: [] }, 'fade').service).toBeNull();
   });
 
+  it('needs service context for a contextual alias inside a sentence', () => {
+    const catalog = { services: [svc('lineup', 'Lineup', ['line up', 'edges']), svc('fade', 'Fade')] };
+    expect(resolveServiceByName(catalog, 'line up an appointment for Friday')).toMatchObject({ service: null, candidates: [] });
+    expect(resolveServiceByName(catalog, 'line up a time')).toMatchObject({ service: null, candidates: [] });
+    expect(resolveServiceByName(catalog, 'can I get a line up')).toMatchObject({ service: { id: 'lineup' }, matchedBy: 'alias_in_text' });
+    expect(resolveServiceByName(catalog, 'just my edges')).toMatchObject({ service: { id: 'lineup' } });
+    expect(resolveServiceByName(catalog, 'line up')).toMatchObject({ service: { id: 'lineup' }, matchedBy: 'alias' });
+    expect(idOf('line up an appointment')).toBeNull();
+  });
+
   it('works on fixture catalogs without aliases', () => {
     expect(idOf('a fade', { services: [svc('fade', 'Fade')] })).toBe('fade');
   });

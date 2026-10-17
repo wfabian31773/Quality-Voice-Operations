@@ -1,12 +1,15 @@
 // Barbershop / salon service vocabulary (EN + ES).
 //
 // Maps the words callers actually say ("a skin fade", "shape-up", "quiero un
-// degradado") to a canonical service key. Two consumers:
-//   - platform/reasoning: the voice slot extractor fills the booking `title`
-//     and the salon pack detects booking intent;
+// degradado") to a canonical service key. It is data, used three ways:
+//   - catalog aliases: the demo seed writes serviceAliases(key) into
+//     scheduling_appointment_types.aliases;
 //   - platform/actions/scheduling/serviceMatch.ts: matches spoken text to a
-//     tenant's catalog services (name → aliases → lexicon key).
-// It lives in shared/ so neither side imports the other. Pure data + string
+//     tenant's catalog services (name → aliases → lexicon key), which
+//     scheduling.list_services uses for its `query` input;
+//   - speech-recognizer keyterms (serviceKeyterms.ts).
+// It is deliberately NOT wired into the ReasoningEngine keyword/slot
+// matching (that path is leaving the live call). Pure data + string
 // matching: no I/O, no imports.
 //
 // Taper vs fade: a term goes to `taper` only when it says taper ("taper",
@@ -38,7 +41,10 @@ export interface ServiceTermMatch {
   key: ServiceKey;
   /** The matched phrase, normalized (lowercase, no accents or punctuation, articles dropped). */
   matchedText: string;
-  /** 1 = the whole utterance is the term; 0.9 = term inside a sentence; 0.8 = combined; 0.6 = weak context ("for my son"). */
+  /**
+   * 1 = the whole utterance is the term; 0.9 = term inside a sentence; 0.8 =
+   * combined; 0.6 = weak ("for my son", or "line up" with no service context).
+   */
   confidence: number;
 }
 
@@ -50,6 +56,13 @@ interface LexiconEntry {
   terms: Record<ServiceLang, string[]>;
   /** Context phrases that hint at the service but are not a service name. */
   weak?: Partial<Record<ServiceLang, string[]>>;
+  /**
+   * Everyday words that name the service only with service context: the
+   * whole utterance ("line up"), or right after an article or possessive
+   * ("a line up", "get a line up", "my edges"). Otherwise weak: "I'd like to
+   * line up an appointment" is not a lineup. Not aliases.
+   */
+  contextual?: Partial<Record<ServiceLang, string[]>>;
 }
 
 const LEXICON: Record<ServiceKey, LexiconEntry> = {
@@ -96,12 +109,10 @@ const LEXICON: Record<ServiceKey, LexiconEntry> = {
   lineup: {
     label: { en: 'Lineup', es: 'Perfilado' },
     terms: {
-      en: [
-        'lineup', 'line-up', 'line up', 'shape-up', 'shape up', 'shapeup', 'edge-up',
-        'edge up', 'edgeup', 'edges', 'hairline',
-      ],
+      en: ['lineup', 'shape-up', 'shape up', 'shapeup', 'edge-up', 'edge up', 'edgeup'],
       es: ['perfilado', 'arreglo de contorno', 'perfilar', 'contorno'],
     },
+    contextual: { en: ['line-up', 'line up', 'edges', 'hairline'] },
   },
   beard_trim: {
     label: { en: 'Beard trim', es: 'Arreglo de barba' },
@@ -206,14 +217,17 @@ const LEXICON: Record<ServiceKey, LexiconEntry> = {
 
 const DROPPED_WORDS = new Set(['a', 'an', 'un', 'una']);
 const CONJUNCTIONS: Record<string, string> = { y: 'and', plus: 'and' };
+/** Words that make a contextual term a service: "a line up", "my edges". */
+const CONTEXT_WORDS = new Set(['a', 'an', 'the', 'my', 'his', 'her', 'un', 'una', 'el', 'mi', 'su']);
 
-/**
- * Lowercase, strip accents and apostrophes, turn "+"/"&"/"y"/"plus" into
- * "and", drop articles (a, an, un, una), and collapse everything else to
- * single spaces. "Kid's line-up" → "kids line up"; "Niño" → "nino".
- */
-export function normalizeServiceText(text: string): string {
-  return text
+interface Word {
+  text: string;
+  /** Position in the token list before articles were dropped. */
+  rawIndex: number;
+}
+
+function tokenize(text: string): { raw: string[]; words: Word[] } {
+  const raw = text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
@@ -221,17 +235,31 @@ export function normalizeServiceText(text: string): string {
     .replace(/[+&]/g, ' and ')
     .replace(/[^a-z0-9]+/g, ' ')
     .split(' ')
-    .filter((w) => w && !DROPPED_WORDS.has(w))
-    .map((w) => CONJUNCTIONS[w] ?? w)
-    .join(' ');
+    .filter((w) => w);
+  const words: Word[] = [];
+  raw.forEach((w, rawIndex) => {
+    if (!DROPPED_WORDS.has(w)) words.push({ text: CONJUNCTIONS[w] ?? w, rawIndex });
+  });
+  return { raw, words };
 }
+
+/**
+ * Lowercase, strip accents and apostrophes, turn "+"/"&"/"y"/"plus" into
+ * "and", drop articles (a, an, un, una), and collapse everything else to
+ * single spaces. "Kid's line-up" → "kids line up"; "Niño" → "nino".
+ */
+export function normalizeServiceText(text: string): string {
+  return tokenize(text).words.map((w) => w.text).join(' ');
+}
+
+type TermKind = 'strong' | 'contextual' | 'weak';
 
 interface IndexedTerm {
   key: ServiceKey;
   tokens: string[];
   text: string;
   lang: ServiceLang;
-  weak: boolean;
+  kind: TermKind;
 }
 
 const INDEX: IndexedTerm[] = (() => {
@@ -239,10 +267,14 @@ const INDEX: IndexedTerm[] = (() => {
   const out: IndexedTerm[] = [];
   for (const key of SERVICE_KEYS) {
     const entry = LEXICON[key];
-    for (const weak of [false, true]) {
-      const lists = weak ? entry.weak ?? {} : entry.terms;
+    const lists: Record<TermKind, Partial<Record<ServiceLang, string[]>>> = {
+      strong: entry.terms,
+      contextual: entry.contextual ?? {},
+      weak: entry.weak ?? {},
+    };
+    for (const kind of ['strong', 'contextual', 'weak'] as const) {
       for (const lang of ['en', 'es'] as const) {
-        for (const term of lists[lang] ?? []) {
+        for (const term of lists[kind][lang] ?? []) {
           const text = normalizeServiceText(term);
           const owner = seen.get(text);
           if (owner && owner !== key) {
@@ -250,7 +282,7 @@ const INDEX: IndexedTerm[] = (() => {
           }
           if (owner) continue;
           seen.set(text, key);
-          out.push({ key, tokens: text.split(' '), text, lang, weak });
+          out.push({ key, tokens: text.split(' '), text, lang, kind });
         }
       }
     }
@@ -259,13 +291,26 @@ const INDEX: IndexedTerm[] = (() => {
   return out.sort((a, b) => b.tokens.length - a.tokens.length || b.text.length - a.text.length);
 })();
 
+const CONTEXTUAL_TEXTS = new Set(INDEX.filter((t) => t.kind === 'contextual').map((t) => t.text));
+
+/**
+ * True for an everyday phrase that names a service only with service context
+ * ("line up", "edges", "hairline"). Callers that look for a phrase inside a
+ * sentence must not treat it as a service on its own.
+ */
+export function isContextualServiceTerm(phrase: string): boolean {
+  return CONTEXTUAL_TEXTS.has(normalizeServiceText(phrase));
+}
+
 interface Hit {
   term: IndexedTerm;
   start: number;
   end: number;
+  weak: boolean;
 }
 
-function findHits(tokens: string[]): Hit[] {
+function findHits(raw: string[], words: Word[]): Hit[] {
+  const tokens = words.map((w) => w.text);
   const hits: Hit[] = [];
   for (const term of INDEX) {
     const n = term.tokens.length;
@@ -277,7 +322,13 @@ function findHits(tokens: string[]): Hit[] {
           break;
         }
       }
-      if (ok) hits.push({ term, start: i, end: i + n });
+      if (!ok) continue;
+      let weak = term.kind === 'weak';
+      if (term.kind === 'contextual') {
+        const whole = i === 0 && n === tokens.length;
+        weak = !whole && !CONTEXT_WORDS.has(raw[words[i].rawIndex - 1] ?? '');
+      }
+      hits.push({ term, start: i, end: i + n, weak });
     }
   }
   return hits;
@@ -294,10 +345,10 @@ function findHits(tokens: string[]): Hit[] {
  * always searched because callers mix them ("quiero un fade").
  */
 export function matchServiceTerm(utterance: string, lang?: ServiceLang): ServiceTermMatch | null {
-  const normalized = normalizeServiceText(utterance);
-  if (!normalized) return null;
-  const tokens = normalized.split(' ');
-  const hits = findHits(tokens);
+  const { raw, words } = tokenize(utterance);
+  if (words.length === 0) return null;
+  const normalized = words.map((w) => w.text).join(' ');
+  const hits = findHits(raw, words);
   if (hits.length === 0) return null;
 
   // Strong terms beat weak context phrases; then INDEX order (longest first);
@@ -305,7 +356,7 @@ export function matchServiceTerm(utterance: string, lang?: ServiceLang): Service
   const ranked = hits
     .map((hit, order) => ({ hit, order: INDEX.indexOf(hit.term), seq: order }))
     .sort((a, b) =>
-      Number(a.hit.term.weak) - Number(b.hit.term.weak)
+      Number(a.hit.weak) - Number(b.hit.weak)
       || a.order - b.order
       || Number(b.hit.term.lang === lang) - Number(a.hit.term.lang === lang)
       || a.hit.start - b.hit.start
@@ -318,7 +369,7 @@ export function matchServiceTerm(utterance: string, lang?: ServiceLang): Service
     if (chosen.every((c) => hit.end <= c.start || hit.start >= c.end)) chosen.push(hit);
   }
 
-  const strong = chosen.filter((c) => !c.term.weak).sort((a, b) => a.start - b.start);
+  const strong = chosen.filter((c) => !c.weak).sort((a, b) => a.start - b.start);
   if (strong.length === 0) {
     return { key: chosen[0].term.key, matchedText: chosen[0].term.text, confidence: 0.6 };
   }
@@ -343,7 +394,8 @@ export function serviceLabel(key: ServiceKey, lang: ServiceLang = 'en'): string 
 
 /**
  * Spoken variants of a service, in display form ("skin fade", "degradado"),
- * deduplicated by normalized text. Weak context phrases are not aliases.
+ * deduplicated by normalized text. Weak and contextual phrases ("for my son",
+ * "line up") are not aliases: a catalog alias matches anywhere in a sentence.
  * Without `lang`, English then Spanish.
  */
 export function serviceAliases(key: ServiceKey, lang?: ServiceLang): string[] {
@@ -360,30 +412,4 @@ export function serviceAliases(key: ServiceKey, lang?: ServiceLang): string[] {
     }
   }
   return out;
-}
-
-/**
- * Every strong term for raw-text keyword lists (intent detection), both as
- * written ("shape-up", "niños") and normalized ("shape up", "ninos").
- */
-export function serviceIntentKeywords(): string[] {
-  const out = new Set<string>();
-  for (const key of SERVICE_KEYS) {
-    for (const lang of ['en', 'es'] as const) {
-      for (const term of LEXICON[key].terms[lang]) {
-        out.add(term.toLowerCase());
-        out.add(normalizeServiceText(term));
-      }
-    }
-  }
-  return [...out];
-}
-
-/**
- * English label of the service a caller named, for the voice `title` slot.
- * Null for no match or a weak one ("one more for my son" is not a service).
- */
-export function serviceTitleFromUtterance(utterance: string): string | null {
-  const match = matchServiceTerm(utterance);
-  return match && match.confidence >= STRONG_MATCH_CONFIDENCE ? serviceLabel(match.key) : null;
 }

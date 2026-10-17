@@ -12,6 +12,7 @@
 // so the agent asks which one instead of guessing. Pure: no I/O.
 
 import {
+  isContextualServiceTerm,
   matchServiceTerm,
   normalizeServiceText,
   serviceLabel,
@@ -99,9 +100,13 @@ export function resolveServiceByName<S extends MatchableService>(
   // phrase that means a different service: "kids haircut" contains the name
   // "Haircut", but the caller asked for a kids cut.
   // Names and aliases compete on phrase length; a name wins a tie.
+  // A contextual phrase ("line up", "edges") only counts when the lexicon
+  // read it as a service here: "line up an appointment" is not a lineup.
   let inTextFallback: ServiceMatchResult | null = null;
+  const counts = (p: string) =>
+    containsPhrase(text, p) && (!isContextualServiceTerm(p) || (lexiconKey !== null && lexicon!.matchedText === p));
   const inTextLength = (s: S, source: 'name' | 'alias') =>
-    Math.max(0, ...phrases(s, source).filter((p) => containsPhrase(text, p)).map((p) => p.length));
+    Math.max(0, ...phrases(s, source).filter(counts).map((p) => p.length));
   const inText = longest(services.map((s) => ({ service: s, length: Math.max(inTextLength(s, 'name'), inTextLength(s, 'alias')) })));
   if (inText.services.length > 0) {
     const byName = inText.services.some((s) => inTextLength(s, 'name') === inText.length);
