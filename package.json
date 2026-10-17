@@ -99,6 +99,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@google-cloud/storage": "^7.19.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@neondatabase/serverless": "^1.0.2",
     "@openai/agents": "0.3.7",
     "@openai/agents-realtime": "0.3.7",

@@ -120,6 +120,9 @@ export function buildToolCatalog(
     if (!isMcpScope(def.permissions.mcpScope)) {
       throw new Error(`Action ${def.name} has unknown mcpScope "${def.permissions.mcpScope}"`);
     }
+    if (isWriteKind(def.kind) && def.permissions.mcpScope !== 'qvo:admin') {
+      throw new Error(`Action ${def.name} is a ${def.kind} action and must use mcpScope "qvo:admin"`);
+    }
   }
   const allNames = [...helpers.map((helper) => helper.name), ...exposed.map((def) => def.name)];
   if (new Set(allNames).size !== allNames.length) throw new Error('Duplicate MCP tool name in registry');

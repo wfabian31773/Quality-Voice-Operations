@@ -77,4 +77,31 @@ describe('generated MCP tool schemas', () => {
     });
     expect(() => buildToolCatalog([badScope])).toThrow(/unknown mcpScope/);
   });
+
+  it('requires qvo:admin for write, prepare and commit actions', () => {
+    for (const kind of ['write', 'prepare', 'commit'] as const) {
+      const readScoped = defineAction({
+        name: `business.${kind}_thing`,
+        tool: 'business',
+        kind,
+        input: z.object({}),
+        output: z.object({}),
+        permissions: { mcpScope: 'qvo:read' },
+        run: async () => actionOk({}),
+      });
+      expect(() => buildToolCatalog([readScoped])).toThrow(/must use mcpScope "qvo:admin"/);
+    }
+
+    const read = defineAction({
+      name: 'business.read_thing',
+      tool: 'business',
+      kind: 'read',
+      input: z.object({}),
+      output: z.object({}),
+      permissions: { mcpScope: 'qvo:read' },
+      run: async () => actionOk({}),
+    });
+    const catalog = buildToolCatalog([read]);
+    expect(catalog.entries.find((entry) => entry.name === 'business.read_thing')?.scope).toBe('qvo:read');
+  });
 });
