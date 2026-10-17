@@ -24,6 +24,43 @@ describe('redactPHI', () => {
     expect(redactPHI('Dr. Smith will see you')).toContain('[NAME_REDACTED]');
   });
 
+  it('leaves ordinary words after "I\'m" alone (Oct 17 transcript)', () => {
+    for (const line of [
+      "I'm looking for a fade.",
+      "You can use the one I'm calling from.",
+      "I'm just wondering about prices",
+      "I'm Looking for a fade",
+      "I'm Good, thanks",
+      'this is the front desk',
+      "I'm not sure",
+    ]) {
+      expect(redactPHI(line)).toBe(line);
+    }
+  });
+
+  it('still redacts real introduced names, including accented ones', () => {
+    expect(redactPHI('Hi, this is Wayne.')).toBe('Hi, this is [NAME_REDACTED].');
+    expect(redactPHI("I'm Wayne")).toBe("I'm [NAME_REDACTED]");
+    expect(redactPHI('this is Maria José')).toBe('this is [NAME_REDACTED]');
+    expect(redactPHI('My name is Ada Lovelace')).toBe('My name is [NAME_REDACTED]');
+  });
+
+  it('redacts lowercase names after unambiguous lead-ins (STT lowercasing)', () => {
+    expect(redactPHI('my name is maria lopez')).toBe('my name is [NAME_REDACTED]');
+    expect(redactPHI('patient john smith called')).toBe('patient [NAME_REDACTED]');
+    expect(redactPHI('name: ana')).toBe('name: [NAME_REDACTED]');
+    expect(redactPHI('patient pat')).toBe('patient [NAME_REDACTED]');
+  });
+
+  it('applies the stop words after unambiguous lead-ins too', () => {
+    expect(redactPHI('the caller from the front desk')).toBe('the caller from the front desk');
+  });
+
+  it('needs a capitalized name after the ambiguous lead-ins', () => {
+    expect(redactPHI("i'm wayne")).toBe("i'm wayne");
+    expect(redactPHI('this is wayne')).toBe('this is wayne');
+  });
+
   it('returns falsy/empty input unchanged', () => {
     expect(redactPHI('')).toBe('');
   });

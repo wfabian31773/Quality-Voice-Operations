@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { compileRolePackage } from '../../agent-runtime/masterVoiceAgent';
 import {
+  SALON_MESSAGE_CONSENT_RULE,
   SALON_ROLE_ID,
   SALON_TOOLS,
+  appendSalonCallRules,
+  buildCallerIdPromptLine,
   createSalonRolePackage,
 } from './rolePackage';
 
@@ -32,6 +35,23 @@ describe('salon role package', () => {
     expect(compiled.rolePrompt).toContain('create_booking');
     expect(compiled.rolePrompt).toContain('update_booking');
     expect(compiled.rolePrompt).not.toMatch(/diagnos|prescription|phi/i);
+  });
+
+  it('renders only the last four digits of the caller ID and the caller-ID token', () => {
+    const role = createSalonRolePackage({ businessName: 'Sharp Line Barbers', callerPhone: '+1 (555) 555-0142' });
+    expect(role.prompt).toContain('calling from a number ending in 0142');
+    expect(role.prompt).toContain('"caller_id"');
+    expect(role.prompt).not.toMatch(/555.?555.?0142/);
+    expect(buildCallerIdPromptLine('')).toBe('');
+    expect(buildCallerIdPromptLine('anonymous')).toBe('');
+  });
+
+  it('tells the agent to wait for a yes before create_ticket, with no time promise', () => {
+    const prompt = appendSalonCallRules('Tenant prompt.', '+15555550142');
+    expect(prompt.startsWith('Tenant prompt.')).toBe(true);
+    expect(prompt).toContain('Call create_ticket only after the caller says yes');
+    expect(prompt).not.toMatch(/within the hour/i);
+    expect(createSalonRolePackage({}).prompt).toContain(SALON_MESSAGE_CONSENT_RULE);
   });
 
   it('rejects a role package that tries to pick another runtime', () => {

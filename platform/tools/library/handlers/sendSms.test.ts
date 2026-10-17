@@ -78,6 +78,7 @@ describe('send_sms tool (thin wrapper over sms.send)', () => {
     expect(await executeSendSms({ templateKey: 'confirmation', vars: {} }, ctx)).toEqual({
       success: false,
       code: 'RECIPIENT_OPTED_OUT',
+      retryable: false,
       message: "I can't text this number",
     });
 

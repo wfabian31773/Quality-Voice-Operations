@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { loadAgentConfig, type AgentLoadContext } from './agentLoader';
+import { loadAgentConfig, salonBusinessDetails, type AgentLoadContext } from './agentLoader';
+import { getIndustryTemplateCopy } from '../../../client-app/src/lib/agentBuilderI18n';
 
 function ctx(over: Partial<AgentLoadContext> = {}): AgentLoadContext {
   return { tenantId: 't1' as never, agentId: 'ag1', agentType: 'answering_service', ...over };
@@ -115,6 +116,89 @@ describe('loadAgentConfig', () => {
       'get_current_tenant_time',
     ]));
     expect(cfg.tools.map((tool) => tool.name)).not.toContain('createServiceTicket');
+  });
+
+  describe('salon branch (Oct 17 live call)', () => {
+    const CALLER = '+15555550100';
+    const BARBER_PROMPT = 'You are the front desk at Sharp Line Barbers. Services: Haircut 30 min, Fade 45 min, Beard trim 15 min. Hours Tue–Sat 9–7.';
+
+    const PACKAGE_IDENTITY = 'You are the AI receptionist for Sharp Line Barbers, a salon or barbershop.';
+    const PACKAGE_TOOL_RULES = [
+      'create_booking only for a new appointment after you have the service, requested time, guest name, and phone.',
+      'Never create a second booking for a cancel or reschedule.',
+      'It sends a fixed template, never your own words',
+      'Never claim a booking, ticket, or text succeeded until the tool confirms it.',
+    ];
+
+    it('keeps the package prompt as the base and adds the tenant prompt as business details', () => {
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: BARBER_PROMPT, metadata: { businessName: 'Sharp Line Barbers' } },
+      }));
+      expect(cfg.rolePackageId).toBe('salon');
+      for (const text of [PACKAGE_IDENTITY, ...PACKAGE_TOOL_RULES]) expect(cfg.rolePrompt).toContain(text);
+      expect(cfg.rolePrompt).toContain(`Business details from the shop:\n${BARBER_PROMPT}`);
+      expect(cfg.rolePrompt).toContain('If these business details conflict with the tool rules or call rules above, the tool and call rules win.');
+      expect(cfg.rolePrompt.indexOf(PACKAGE_IDENTITY)).toBeLessThan(cfg.rolePrompt.indexOf(BARBER_PROMPT));
+      expect(cfg.rolePrompt.indexOf(BARBER_PROMPT)).toBeLessThan(cfg.rolePrompt.indexOf('number ending in 0100'));
+      expect(cfg.systemPrompt).toContain('Fade 45 min');
+      expect(cfg.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['create_booking', 'lookup_customer', 'record_call_outcome']));
+      expect(cfg.guardrails).toContain('Do not invent availability, prices, or stylist schedules.');
+    });
+
+    it.each(['', '   \n '])('uses the package prompt only when the DB prompt is empty (%j)', (systemPrompt) => {
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: systemPrompt, metadata: { businessName: 'Sharp Line Barbers' } },
+      }));
+      for (const text of [PACKAGE_IDENTITY, ...PACKAGE_TOOL_RULES]) expect(cfg.rolePrompt).toContain(text);
+      expect(cfg.rolePrompt).not.toContain('Business details from the shop');
+    });
+
+    it.each(['en', 'es', 'fr'])('does not append the stock salon template copy the builder saves (%s)', (language) => {
+      const stock = getIndustryTemplateCopy(language, 'salon').systemPrompt;
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: stock, metadata: { businessName: 'Sharp Line Barbers' } },
+      }));
+      for (const text of [PACKAGE_IDENTITY, ...PACKAGE_TOOL_RULES]) expect(cfg.rolePrompt).toContain(text);
+      expect(cfg.rolePrompt).not.toContain('Business details from the shop');
+      expect(cfg.rolePrompt).not.toContain(stock.trim());
+      expect(cfg.rolePrompt).not.toContain('cancellation policy');
+    });
+
+    it('treats only empty or stock copy as no business details', () => {
+      expect(salonBusinessDetails(undefined)).toBeNull();
+      expect(salonBusinessDetails('  ')).toBeNull();
+      expect(salonBusinessDetails(`\n${getIndustryTemplateCopy('en', 'salon').systemPrompt}\n`)).toBeNull();
+      expect(salonBusinessDetails(` ${BARBER_PROMPT} `)).toBe(BARBER_PROMPT);
+    });
+
+    it.each([
+      ['DB prompt', BARBER_PROMPT],
+      ['fallback prompt', ''],
+    ])('appends the caller-ID line with only the last 4 digits (%s)', (_label, systemPrompt) => {
+      const cfg = loadAgentConfig(ctx({
+        agentType: 'salon',
+        callerPhone: CALLER,
+        dbAgent: { name: 'Front Desk', system_prompt: systemPrompt },
+      }));
+      expect(cfg.systemPrompt).toContain('calling from a number ending in 0100');
+      expect(cfg.systemPrompt).toContain('offer to use the number they\'re calling from');
+      expect(cfg.systemPrompt).toContain('Call create_ticket only after the caller says yes');
+      expect(cfg.systemPrompt).not.toContain(CALLER);
+      expect(cfg.systemPrompt).not.toContain('5555550100');
+      expect(cfg.systemPrompt).not.toContain('555-0100');
+    });
+
+    it('leaves the caller-ID line out when there is no caller ID', () => {
+      const cfg = loadAgentConfig(ctx({ agentType: 'salon', dbAgent: { name: 'Front Desk', system_prompt: BARBER_PROMPT } }));
+      expect(cfg.systemPrompt).not.toContain('number ending in');
+      expect(cfg.systemPrompt).toContain('Call create_ticket only after the caller says yes');
+    });
   });
 
   it('loads the GTM core-receptionist role for general and core-receptionist types', () => {

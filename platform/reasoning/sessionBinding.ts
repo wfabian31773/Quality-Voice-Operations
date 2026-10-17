@@ -34,6 +34,35 @@ const CALLER_PHONE_FIELDS = [
   'phone',
 ];
 
+/**
+ * What the prompt tells the model to pass for "use the number I'm calling
+ * from". The server swaps it (or an empty value) for the session caller ID,
+ * so the full number never has to be in the prompt.
+ */
+export const CALLER_ID_TOKEN = 'caller_id';
+
+const CALLER_ID_PHRASE = /\b(?:caller[\s_-]?id|calling|caller'?s?|this number|same number|current number)\b/i;
+
+/**
+ * True when a phone argument points at the caller ID instead of carrying a
+ * number: missing, empty, the token, or a phrase like "calling number"
+ * (what the model passed on the Oct 16 test call). Anything with a digit is
+ * a real number and is left to the normal checks.
+ */
+export function isCallerIdReference(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  const text = String(value).trim();
+  if (!text) return true;
+  if (/\d/.test(text)) return false;
+  return CALLER_ID_PHRASE.test(text);
+}
+
+/** The phone to use for a tool argument: the caller ID for a caller-ID reference, otherwise the value. */
+export function resolveCallerPhone(value: unknown, callerNumber?: string | null): string {
+  if (isCallerIdReference(value)) return String(callerNumber ?? '').trim();
+  return String(value).trim();
+}
+
 export function phoneDigits(value: string): string {
   const digits = value.replace(/\D/g, '');
   return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
@@ -85,8 +114,9 @@ export function bindSessionToolArgs(
 
   for (const field of CALLER_PHONE_FIELDS) {
     const supplied = typeof next[field] === 'string' ? String(next[field]).trim() : '';
-    if (!supplied) {
+    if (!supplied || isCallerIdReference(supplied)) {
       if (session.callerNumber) next[field] = session.callerNumber;
+      else if (supplied) next[field] = '';
       continue;
     }
     if (phonesMatch(supplied, session.callerNumber)) {

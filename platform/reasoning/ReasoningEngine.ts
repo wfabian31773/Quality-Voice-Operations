@@ -28,6 +28,30 @@ function isBookingIntent(intent: string): boolean {
   return intent === 'book_appointment' || intent === 'schedule_appointment';
 }
 
+/**
+ * Read-only / observational tools. The tool catalog has no read flag, so
+ * this list is explicit. A conflict with the active reasoning decision never
+ * blocks these (the safety gate still runs): on the Oct 17 call a
+ * create_ticket decision blocked lookup_customer and the agent made the
+ * caller read out his whole number.
+ */
+const DECISION_EXEMPT_TOOLS = new Set([
+  'lookup_customer',
+  'get_current_tenant_time',
+  'retrieve_knowledge',
+  'record_language_change',
+  'record_call_outcome',
+  'check_availability',
+  'scheduling.check_availability',
+  'list_services',
+  'scheduling.list_services',
+  'list_staff',
+  'scheduling.list_staff',
+]);
+
+// Generic intents strong enough to beat an industry-pack match on score.
+const GENERIC_OVERRIDE_INTENTS = new Set(['urgent_medical', 'transfer_human']);
+
 export interface ReasoningEngineConfig {
   tenantId: TenantId;
   callSessionId: string;
@@ -215,14 +239,34 @@ export class ReasoningEngine {
     );
     const genericMatch = dropNonAffirmativeChange(scorePatterns(patterns));
 
-    if (packMatch && (!genericMatch || packMatch.score >= genericMatch.score)) {
+    // The industry pack's intents win over the generic list. Only a
+    // stronger generic safety intent (emergency, asking for a person) can
+    // override a pack match.
+    if (packMatch && (
+      !genericMatch
+      || packMatch.score >= genericMatch.score
+      || !GENERIC_OVERRIDE_INTENTS.has(genericMatch.intent)
+    )) {
       return { intent: packMatch.intent, confidence: packMatch.confidence };
     }
     if (genericMatch) {
-      return { intent: genericMatch.intent, confidence: genericMatch.confidence };
+      return { intent: this.toPackIntent(genericMatch.intent), confidence: genericMatch.confidence };
     }
 
     return { intent: 'unknown', confidence: 'low' };
+  }
+
+  /**
+   * book_appointment and schedule_appointment are one booking intent. When
+   * the pack has a slot manifest for one of them, a generic match maps to
+   * it, so a word like "available" can't swap the pack's booking flow for
+   * the generic one.
+   */
+  private toPackIntent(intent: string): string {
+    const pack = getIndustryPack(this.config.vertical);
+    if (!pack || !isBookingIntent(intent) || pack.slotManifests[intent]) return intent;
+    const packBookingIntent = Object.keys(pack.slotManifests).find(isBookingIntent);
+    return packBookingIntent ?? intent;
   }
 
   getSafetyPolicyPrompt(): string {
@@ -286,6 +330,18 @@ export class ReasoningEngine {
       intentConfidence = 'high';
     }
 
+    // Inside an active booking, the other booking alias ("if nine is
+    // available" classified as the generic schedule_appointment) is the same
+    // booking, not a topic switch: no slot reset, no new plan.
+    if (
+      isBookingIntent(previousIntent)
+      && isBookingIntent(intent)
+      && intent !== previousIntent
+      && !additionalRequest
+    ) {
+      intent = previousIntent;
+    }
+
     if (previousIntent !== 'unknown' && intent !== previousIntent && intent !== 'unknown') {
       const priorContext = this.buildContext(utterance);
       priorContext.currentIntent = previousIntent;
@@ -319,8 +375,7 @@ export class ReasoningEngine {
       if (this.workflowPlan?.status === 'active') {
         this.workflowPlanner.markAbandoned(this.workflowPlan);
       }
-      const context = this.buildContext(utterance);
-      this.workflowPlan = this.workflowPlanner.createPlan(context);
+      this.workflowPlan = this.createFillablePlan(utterance);
     } else if (
       intent !== 'unknown'
       && this.workflowPlan
@@ -331,7 +386,7 @@ export class ReasoningEngine {
       // asks for another transaction (e.g. "book one for my son too").
       this.updateSlotManifest(intent);
       this.preservedSlots.delete(intent);
-      this.workflowPlan = this.workflowPlanner.createPlan(this.buildContext(utterance));
+      this.workflowPlan = this.createFillablePlan(utterance);
     }
 
     this.extractSlotsFromUtterance(utterance);
@@ -429,6 +484,7 @@ export class ReasoningEngine {
 
     const safety = this.checkToolSafety(toolName, toolArgs);
     if (!safety.allowed) return safety;
+    if (DECISION_EXEMPT_TOOLS.has(toolName)) return safety;
 
     const latest = this.lastDecisionResult;
     const workflowTool = this.getCurrentWorkflowStepTool();
@@ -548,6 +604,28 @@ export class ReasoningEngine {
       escalationAttempts: this.escalationAttempts,
       humanTransferAvailable: this.config.humanTransferAvailable,
     };
+  }
+
+  /**
+   * A plan for the current intent, unless its steps wait on slots the
+   * active manifest never fills. The generic templates wait on
+   * caller_name / callback_number; with a pack or library-tool manifest
+   * (contactName / contactPhone) such a plan stalls on "Identify Caller",
+   * blocks other tools and drags confidence down until repeated_confusion
+   * fires. Without a plan, the manifest drives the clarifying questions.
+   */
+  private createFillablePlan(utterance: string): WorkflowPlan | null {
+    const plan = this.workflowPlanner.createPlan(this.buildContext(utterance));
+    if (!plan) return null;
+    const fillable = new Set(this.slotTracker.getState().manifest.slots.map((s) => s.name));
+    const unfillable = plan.steps.flatMap((s) => s.requiredSlots).filter((name) => !fillable.has(name));
+    if (unfillable.length === 0) return plan;
+    logger.debug('Skipping workflow plan the slot manifest cannot fill', {
+      callId: this.config.callSessionId,
+      intent: plan.intent,
+      unfillable,
+    });
+    return null;
   }
 
   private updateSlotManifest(intent: string): void {

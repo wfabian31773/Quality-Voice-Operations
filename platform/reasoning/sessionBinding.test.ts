@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   bindSessionToolArgs,
+  CALLER_ID_TOKEN,
+  isCallerIdReference,
   phonesMatch,
+  resolveCallerPhone,
   transcriptIncludesPhone,
 } from './sessionBinding';
 
@@ -55,6 +58,38 @@ describe('bindSessionToolArgs', () => {
     const bound = bindSessionToolArgs({ contactPhone: '555-555-0199' }, session);
     expect(bound.ok).toBe(true);
     expect(bound.args.contactPhone).toBe('+15555550199');
+  });
+
+  it.each(['calling number', 'caller_id', 'the number I\'m calling from', 'Caller ID'])(
+    'swaps a caller-ID reference (%s) for the session caller id instead of rejecting it',
+    (contactPhone) => {
+      const bound = bindSessionToolArgs({ contactPhone, toNumber: CALLER_ID_TOKEN }, session);
+      expect(bound.ok).toBe(true);
+      expect(bound.args.contactPhone).toBe('+15555550199');
+      expect(bound.args.toNumber).toBe('+15555550199');
+    },
+  );
+
+  it('blanks a caller-ID reference when the call has no caller ID', () => {
+    const bound = bindSessionToolArgs({ contactPhone: 'calling number' }, { ...session, callerNumber: '' });
+    expect(bound.ok).toBe(true);
+    expect(bound.args.contactPhone).toBe('');
+  });
+});
+
+describe('caller-ID references', () => {
+  it('treats empty values, the token and caller-ID phrases as the caller ID', () => {
+    for (const value of [undefined, null, '', '  ', 'caller_id', 'calling number', 'same number', 'this number']) {
+      expect(isCallerIdReference(value)).toBe(true);
+    }
+    expect(resolveCallerPhone('calling number', '+15555550199')).toBe('+15555550199');
+    expect(resolveCallerPhone('', '+15555550199')).toBe('+15555550199');
+  });
+
+  it('keeps real numbers and unrelated text', () => {
+    expect(isCallerIdReference('555-201-3344')).toBe(false);
+    expect(isCallerIdReference('my cell')).toBe(false);
+    expect(resolveCallerPhone(' 555-201-3344 ', '+15555550199')).toBe('555-201-3344');
   });
 });
 

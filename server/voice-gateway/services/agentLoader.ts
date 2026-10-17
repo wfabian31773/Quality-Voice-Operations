@@ -72,9 +72,22 @@ import {
   normalizeTimeZone,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
 import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
-import { createSalonRolePackage } from '../../../platform/agent-templates/salon';
+import { buildCallerIdPromptLine, createSalonRolePackage } from '../../../platform/agent-templates/salon';
+import { isTemplateOrDefaultSystemPrompt } from '../../../client-app/src/lib/agentBuilderI18n';
 
 const logger = createLogger('AGENT_LOADER');
+
+/**
+ * The salon agent's DB prompt as shop-specific business details, or null
+ * when it is empty or the stock copy the agent builder / onboarding saves
+ * (base prompt + industry suffix, any locale). That generic copy has no
+ * shop facts and would only contradict the package's tool rules.
+ */
+export function salonBusinessDetails(systemPrompt: string | null | undefined): string | null {
+  const trimmed = systemPrompt?.trim();
+  if (!trimmed || isTemplateOrDefaultSystemPrompt(trimmed)) return null;
+  return trimmed;
+}
 
 export interface LoadedAgentConfig {
   agentId: string;
@@ -509,10 +522,21 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         timeZone,
         voice: dbAgent?.voice,
       });
+      // The package prompt is the base (identity, tool rules, message
+      // consent). The tenant's own prompt (services, durations, hours) is
+      // added as business details below it, unless it is the stock
+      // template copy the agent builder saves. The caller-ID line goes last.
+      const businessDetails = salonBusinessDetails(dbAgent?.system_prompt);
+      const callerIdLine = buildCallerIdPromptLine(callerPhone);
+      const systemPrompt = [
+        role.prompt,
+        businessDetails && `Business details from the shop:\n${businessDetails}\n\nIf these business details conflict with the tool rules or call rules above, the tool and call rules win.`,
+        callerIdLine && `Caller ID:\n- ${callerIdLine}`,
+      ].filter(Boolean).join('\n\n');
       return finalize({
         agentId,
         tenantId,
-        systemPrompt: role.prompt,
+        systemPrompt,
         greeting: (meta.greeting as string) ?? role.greeting,
         voice: role.voice ?? dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: MASTER_VOICE_AGENT_MODEL,

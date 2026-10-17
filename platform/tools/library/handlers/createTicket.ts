@@ -1,5 +1,7 @@
 import { createLogger } from '../../../core/logger';
 import { getPlatformPool, withTenantContext } from '../../../db';
+import { resolveCallerPhone } from '../../../reasoning/sessionBinding';
+import { isRetryableToolError } from '../../RetryOrchestrator';
 import type { ToolContext, ToolDefinition } from '../../registry/types';
 import { getToolLibraryEntry } from '../catalog';
 
@@ -8,13 +10,13 @@ const logger = createLogger('TOOL_CREATE_TICKET');
 export async function executeCreateTicket(
   input: Record<string, unknown>,
   context: ToolContext,
-): Promise<{ success: boolean; message: string; ticketId?: string; ticketNumber?: string }> {
+): Promise<{ success: boolean; message: string; ticketId?: string; ticketNumber?: string; retryable?: boolean }> {
   const subject = String(input.subject ?? '').trim();
   const description = String(input.description ?? '').trim();
   const contactName = String(input.contactName ?? '').trim();
-  const contactPhone = String(input.contactPhone ?? context.callerNumber ?? '').trim();
+  const contactPhone = resolveCallerPhone(input.contactPhone, context.callerNumber);
   if (!subject || !description || !contactName || !contactPhone) {
-    return { success: false, message: 'subject, description, contactName, and contactPhone are required.' };
+    return { success: false, retryable: false, message: 'subject, description, contactName, and contactPhone are required.' };
   }
 
   const pool = getPlatformPool();
@@ -58,7 +60,11 @@ export async function executeCreateTicket(
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('create_ticket failed', { tenantId: context.tenantId, error: String(err) });
-    return { success: false, message: 'Failed to create the ticket. Offer to try again or escalate.' };
+    return {
+      success: false,
+      retryable: isRetryableToolError(err),
+      message: 'Failed to create the ticket. Offer to try again or escalate.',
+    };
   } finally {
     client.release();
   }

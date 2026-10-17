@@ -1,7 +1,8 @@
 import { bookingOverlapKind } from '../../../actions/scheduling/holds';
 import { createLogger } from '../../../core/logger';
 import { getPlatformPool, withTenantContext } from '../../../db';
-import { phoneDigits } from '../../../reasoning/sessionBinding';
+import { phoneDigits, resolveCallerPhone } from '../../../reasoning/sessionBinding';
+import { isRetryableToolError } from '../../RetryOrchestrator';
 import { transitionBooking } from '../../../scheduling/bookingLifecycle';
 import {
   buildOverrideConflictResponse,
@@ -44,13 +45,13 @@ const logger = createLogger('TOOL_CREATE_BOOKING');
 export async function executeCreateBooking(
   input: Record<string, unknown>,
   context: ToolContext,
-): Promise<{ success: boolean; message: string; bookingId?: string }> {
+): Promise<{ success: boolean; message: string; bookingId?: string; retryable?: boolean }> {
   const title = String(input.title ?? '').trim();
   const startTime = String(input.startTime ?? '').trim();
   const contactName = String(input.contactName ?? '').trim();
-  const contactPhone = String(input.contactPhone ?? context.callerNumber ?? '').trim();
+  const contactPhone = resolveCallerPhone(input.contactPhone, context.callerNumber);
   if (!title || !startTime || !contactName || !contactPhone) {
-    return { success: false, message: 'title, startTime, contactName, and contactPhone are required.' };
+    return { success: false, retryable: false, message: 'title, startTime, contactName, and contactPhone are required.' };
   }
 
   const durationMinutes = Number(input.durationMinutes ?? 30);
@@ -70,11 +71,14 @@ export async function executeCreateBooking(
         return;
       }
       const end = new Date(start.getTime() + duration * 60_000);
+      // Each parameter is used once: reusing $1 for bookings.tenant_id
+      // (varchar) and tenants.id (text) made Postgres reject every insert
+      // with "inconsistent types deduced for parameter $1".
       const { rows } = await client.query(
         `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
             contact_name, contact_phone, contact_email, notes, booking_source, timezone)
          VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, 'pending',
-            $6, $7, $8, $9, 'ai_agent', COALESCE((SELECT timezone FROM tenants WHERE id = $1), 'America/New_York'))
+            $6, $7, $8, $9, 'ai_agent', $10)
          RETURNING id`,
         [
           context.tenantId,
@@ -86,13 +90,14 @@ export async function executeCreateBooking(
           contactPhone,
           String(input.contactEmail ?? ''),
           String(input.notes ?? ''),
+          tenantTz,
         ],
       );
       bookingId = rows[0]?.id as string;
     });
     if (invalidStart) {
       await client.query('ROLLBACK').catch(() => {});
-      return { success: false, message: 'startTime must be a valid ISO-8601 timestamp.' };
+      return { success: false, retryable: false, message: 'startTime must be a valid ISO-8601 timestamp.' };
     }
     await client.query('COMMIT');
     return {
@@ -103,7 +108,11 @@ export async function executeCreateBooking(
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     logger.error('create_booking failed', { tenantId: context.tenantId, error: String(err) });
-    return { success: false, message: 'Failed to store the booking request. Offer to try again or escalate.' };
+    return {
+      success: false,
+      retryable: isRetryableToolError(err),
+      message: 'Failed to store the booking request. Offer to try again or escalate.',
+    };
   } finally {
     client.release();
   }
@@ -281,7 +290,10 @@ export async function executeUpdateBooking(
         cancellationReason: String(input.notes ?? 'Caller cancelled on a voice call').trim(),
         newStartTime: newStart?.toISOString(),
         newEndTime: newEnd?.toISOString(),
-        changedBy: context.agentSlug ?? 'voice_agent',
+        // changed_by / created_by reference users(id); the voice agent is
+        // not a user, and an agent slug here broke every cancel/reschedule
+        // with a foreign-key violation.
+        changedBy: null,
       }, {
         deferSideEffects: true,
         checkBlackout: async ({ startTime, endTime, providerId }) => {

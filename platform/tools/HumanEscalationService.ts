@@ -19,6 +19,69 @@ const logger = createLogger('HUMAN_ESCALATION');
 
 const ESCALATION_NOTIFICATION_TYPE = 'escalation';
 
+// Both recipient queries de-duplicate inside a subquery and sort outside
+// it. Postgres rejects `SELECT DISTINCT … ORDER BY <expression not in the
+// select list>` ("for SELECT DISTINCT, ORDER BY expressions must appear in
+// select list"), which silently skipped every escalation email. The outer
+// alias is `u` so the shared LEADERSHIP_PRIORITY_ORDER_BY fragment
+// (`u.role`) still resolves.
+
+/** Admin/owner emails paged about a human escalation, owners first. */
+export const ESCALATION_EMAIL_RECIPIENTS_SQL = `SELECT u.email, u.role
+   FROM (
+     SELECT DISTINCT u.email, u.role
+       FROM users u
+       ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
+      WHERE u.tenant_id = $1
+        AND u.email IS NOT NULL
+        AND COALESCE(u.is_active, TRUE) = TRUE
+        AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
+   ) u
+  ORDER BY ${LEADERSHIP_PRIORITY_ORDER_BY},
+           LOWER(u.email) ASC`;
+
+/** The on-call roster preview; same audience and order as the email query. */
+export const ESCALATION_ROSTER_SQL = `SELECT u.*
+   FROM (
+     SELECT DISTINCT
+            u.id,
+            u.email,
+            u.first_name,
+            u.last_name,
+            u.role,
+            -- For users who only qualify as leadership through the
+            -- canonical RBAC table, surface that role so the UI badge
+            -- says "tenant_owner" instead of whatever benign value
+            -- (e.g. 'member') happens to live in users.role. Picks a
+            -- single deterministic role per user — tenant_owner wins
+            -- over operations_manager when both are assigned.
+            (SELECT ur2.role
+               FROM user_roles ur2
+              WHERE ur2.user_id = u.id
+                AND ur2.tenant_id = u.tenant_id
+                AND ur2.role IN (${LEADERSHIP_RBAC_ROLES_SQL_LIST})
+              ORDER BY CASE ur2.role WHEN 'tenant_owner' THEN 0 ELSE 1 END
+              LIMIT 1) AS rbac_role,
+            COALESCE(in_app_pref.enabled, TRUE) AS in_app_enabled,
+            COALESCE(email_pref.enabled, TRUE)  AS email_enabled
+       FROM users u
+       ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
+       LEFT JOIN user_notification_preferences in_app_pref
+              ON in_app_pref.user_id = u.id
+             AND in_app_pref.category = 'escalation'
+             AND in_app_pref.channel  = 'in_app'
+       LEFT JOIN user_notification_preferences email_pref
+              ON email_pref.user_id = u.id
+             AND email_pref.category = 'escalation'
+             AND email_pref.channel  = 'email'
+      WHERE u.tenant_id = $1
+        AND u.email IS NOT NULL
+        AND COALESCE(u.is_active, TRUE) = TRUE
+        AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
+   ) u
+  ORDER BY ${LEADERSHIP_PRIORITY_ORDER_BY},
+           LOWER(u.email) ASC`;
+
 function appBaseUrl(): string {
   return (
     process.env.APP_URL ??
@@ -269,18 +332,7 @@ export async function notifyHumanEscalation(task: EscalationTask): Promise<void>
     // those teammates silently miss escalation emails even though they
     // are on call. DISTINCT collapses duplicates from users who hold
     // the role via both `user_roles` and the legacy column.
-    const { rows: userRows } = await pool.query(
-      `SELECT DISTINCT u.email, u.role
-         FROM users u
-         ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
-        WHERE u.tenant_id = $1
-          AND u.email IS NOT NULL
-          AND COALESCE(u.is_active, TRUE) = TRUE
-          AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
-        ORDER BY ${LEADERSHIP_PRIORITY_ORDER_BY},
-                 LOWER(u.email) ASC`,
-      [task.tenantId],
-    );
+    const { rows: userRows } = await pool.query(ESCALATION_EMAIL_RECIPIENTS_SQL, [task.tenantId]);
     recipients = userRows
       .map((r) => (r.email as string | null) ?? '')
       .filter((e): e is string => Boolean(e));
@@ -463,46 +515,7 @@ export async function listEscalationRecipients(
   tenantId: string,
 ): Promise<EscalationRecipient[]> {
   return withTenant(tenantId, async (client) => {
-    const { rows } = await client.query(
-      `SELECT DISTINCT
-              u.id,
-              u.email,
-              u.first_name,
-              u.last_name,
-              u.role,
-              -- For users who only qualify as leadership through the
-              -- canonical RBAC table, surface that role so the UI badge
-              -- says "tenant_owner" instead of whatever benign value
-              -- (e.g. 'member') happens to live in users.role. Picks a
-              -- single deterministic role per user — tenant_owner wins
-              -- over operations_manager when both are assigned.
-              (SELECT ur2.role
-                 FROM user_roles ur2
-                WHERE ur2.user_id = u.id
-                  AND ur2.tenant_id = u.tenant_id
-                  AND ur2.role IN (${LEADERSHIP_RBAC_ROLES_SQL_LIST})
-                ORDER BY CASE ur2.role WHEN 'tenant_owner' THEN 0 ELSE 1 END
-                LIMIT 1) AS rbac_role,
-              COALESCE(in_app_pref.enabled, TRUE) AS in_app_enabled,
-              COALESCE(email_pref.enabled, TRUE)  AS email_enabled
-         FROM users u
-         ${LEADERSHIP_USER_ROLES_LEFT_JOIN}
-         LEFT JOIN user_notification_preferences in_app_pref
-                ON in_app_pref.user_id = u.id
-               AND in_app_pref.category = 'escalation'
-               AND in_app_pref.channel  = 'in_app'
-         LEFT JOIN user_notification_preferences email_pref
-                ON email_pref.user_id = u.id
-               AND email_pref.category = 'escalation'
-               AND email_pref.channel  = 'email'
-        WHERE u.tenant_id = $1
-          AND u.email IS NOT NULL
-          AND COALESCE(u.is_active, TRUE) = TRUE
-          AND ${LEADERSHIP_RECIPIENT_WHERE_CLAUSE}
-        ORDER BY ${LEADERSHIP_PRIORITY_ORDER_BY},
-                 LOWER(u.email) ASC`,
-      [tenantId],
-    );
+    const { rows } = await client.query(ESCALATION_ROSTER_SQL, [tenantId]);
 
     return rows.map((row) => {
       const first = (row.first_name as string | null) ?? '';
