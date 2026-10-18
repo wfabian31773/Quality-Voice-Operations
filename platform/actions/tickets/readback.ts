@@ -1,5 +1,5 @@
 import type { TicketSettings } from './repo';
-import type { OpenPrepareInput, TicketKind } from './schemas';
+import type { OpenTicketInput, TicketKind } from './schemas';
 
 const KIND_PHRASE: Record<TicketKind, string> = {
   message: 'message',
@@ -47,15 +47,15 @@ export function phoneDigitGroups(value: string): string {
  * Server-built readback for tickets.open.prepare:
  * "I'll pass this to <owner>: <kind> about <subject>, callback at <full number, digit-grouped>, <window>."
  * The window is the caller's own preference, else the business's SLA text, else omitted.
+ * A message filed without a callback number says so and promises no callback window.
  */
-export function buildOpenReadback(input: OpenPrepareInput, settings: TicketSettings): string {
+export function buildOpenReadback(input: OpenTicketInput, settings: TicketSettings): string {
   const owner = settings.ownerName ?? settings.businessName ?? 'the team';
   const phrase = `${input.urgency === 'urgent' ? 'urgent ' : ''}${KIND_PHRASE[input.kind]}`;
+  const lead = `I'll pass this to ${spoken(owner)}: ${article(phrase)} ${phrase} about ${spoken(input.subject)}`;
+  if (!input.customer.phone) return `${lead}, with no callback number left.`;
   const window = input.callbackWindow ? spoken(input.callbackWindow) : settings.slaText ? spoken(settings.slaText) : '';
-  const parts = [
-    `I'll pass this to ${spoken(owner)}: ${article(phrase)} ${phrase} about ${spoken(input.subject)}`,
-    `callback at ${phoneDigitGroups(input.customer.phone)}`,
-  ];
+  const parts = [lead, `callback at ${phoneDigitGroups(input.customer.phone)}`];
   if (window) parts.push(window);
   return `${parts.join(', ')}.`;
 }

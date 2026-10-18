@@ -36,6 +36,13 @@ export interface SlotSpec {
    * refuses any other value exactly like an unknown one.
    */
   verifiedBy?: string;
+  /**
+   * What happens once a required slot has had its one ask and is still
+   * missing. Unset: the refusal exits (onFailure.SLOT_MISSING). 'proceed': the
+   * action goes on without the slot and says so in its readback (a message
+   * is filed without a callback number rather than lost).
+   */
+  afterAsk?: 'proceed';
 }
 
 export type FailureStep =

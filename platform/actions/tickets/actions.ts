@@ -1,4 +1,11 @@
-import type { z } from 'zod';
+import type { z, ZodError } from 'zod';
+import {
+  isEmptySlotValue,
+  TICKETS_MESSAGE_V1,
+  valueAtPath,
+  type HeldFacts,
+  type SlotSpec,
+} from '../../callcore/contracts';
 import {
   actionFail,
   actionOk,
@@ -7,8 +14,11 @@ import {
   defineAction,
   isActionFailure,
   type ActionContext,
+  type ActionResult,
   type AnyActionDefinition,
 } from '../core';
+import { readbackLang, toE164 } from '../scheduling/readback';
+import { clearSlotAsks, countSlotAsk } from '../scheduling/slotAsks';
 import { createFloorAction, type CallerNumberDecrypter } from './floor';
 import { validateIntake } from './intake';
 import { intakeSchemaFor } from './intakeSchemas';
@@ -25,12 +35,15 @@ import {
   listOutput,
   openCommitInput,
   openCommitOutput,
+  openPrepareActionInput,
   openPrepareInput,
   openPrepareOutput,
   ticketDetail,
   ticketSummary,
   updateInput,
-  type OpenPrepareInput,
+  type OpenPrepareActionInput,
+  type OpenTicketInput,
+  type TicketKind,
   type TicketSummary,
   type TicketUrgency,
 } from './schemas';
@@ -85,15 +98,94 @@ function toSummary(ticket: TicketRecord, now: Date): TicketSummary {
   };
 }
 
-function ticketDescription(details: string, callbackWindow: string | undefined): string {
+/** Marks a message the caller left without a callback number, so the shop sees it. */
+export const NO_CALLBACK_NUMBER = 'No callback number given.';
+
+function ticketDescription(details: string, callbackWindow: string | undefined, phone?: string): string {
   const window = callbackWindow ? `Best time to call back: ${callbackWindow}` : '';
-  return [details, window].filter(Boolean).join('\n\n');
+  return [phone ? '' : NO_CALLBACK_NUMBER, details, window].filter(Boolean).join('\n\n');
 }
 
-type OpenPayload = OpenPrepareInput & { details: string; urgency: TicketUrgency; intake: Record<string, unknown> };
+type OpenPayload = OpenTicketInput & { details: string; urgency: TicketUrgency; intake: Record<string, unknown> };
 
-function withOpenDefaults(input: OpenPrepareInput): OpenPayload {
+function withOpenDefaults(input: OpenTicketInput): OpenPayload {
   return { ...input, details: input.details ?? '', urgency: input.urgency ?? 'normal', intake: input.intake ?? {} };
+}
+
+/** Same shape as runAction's input validation failure: the first issue's message and path. */
+function validationFailure(error: ZodError): ActionResult<never> {
+  const issue = error.issues[0];
+  const field = issue?.path?.length ? issue.path.map(String).join('.') : undefined;
+  return actionFail('VALIDATION_FAILED', issue?.message ?? 'Invalid input', { field });
+}
+
+/** Ticket kinds the agent files under tickets.message@1. */
+const MESSAGE_KINDS: ReadonlySet<TicketKind> = new Set<TicketKind>(['message', 'callback']);
+
+/** What the agent says when the subject is still missing after one ask: no second ask. */
+const MESSAGE_EXIT = {
+  en: "I'll let the team know you called.",
+  es: 'Le avisaré al equipo que llamó.',
+};
+
+/**
+ * tickets.message@1 at the action: each required slot the input leaves empty
+ * and no held fact fills is asked once (counted server-side per tenant, call,
+ * contract and slot in slotAsks.ts, never from model args). The second miss
+ * of the subject exits; the callback number instead proceeds (afterAsk), so
+ * the message is prepared without one. A filled slot's count is cleared; a
+ * declined callback number stays counted, so a correction or a second
+ * message in the call doesn't ask for it again.
+ */
+function enforceMessageContract(ctx: ActionContext, input: OpenPrepareActionInput): OpenTicketInput | ActionResult<never> {
+  const contract = TICKETS_MESSAGE_V1;
+  const lang = readbackLang(ctx.locale);
+  const callerPhone = ctx.callerPhone ? toE164(ctx.callerPhone) : null;
+  const held: HeldFacts = callerPhone ? { callerPhone } : {};
+  // With no call or conversation, asks can't be counted: a slot that proceeds never blocks.
+  const counted = Boolean(ctx.callId ?? ctx.conversationId);
+  const filled: SlotSpec[] = [];
+  for (const slot of contract.slots) {
+    if (!slot.required) continue;
+    const given = !isEmptySlotValue(valueAtPath(input, slot.inputPath));
+    if (given || (slot.heldFrom && !isEmptySlotValue(held[slot.heldFrom]))) {
+      filled.push(slot);
+      continue;
+    }
+    if (slot.afterAsk === 'proceed' && !counted) continue;
+    const asks = countSlotAsk(ctx, contract, slot);
+    if (asks <= contract.ceilings.maxAsksPerSlot) {
+      return actionFail('SLOT_MISSING', `Missing ${slot.name}: ask ${slot.askId}, then call prepare again`, {
+        field: slot.name,
+        askId: slot.askId,
+        retryable: true,
+        callerSafeMessage: slot.defaultAsk[lang],
+      });
+    }
+    if (slot.afterAsk === 'proceed') continue;
+    return actionFail('SLOT_MISSING', `Still missing ${slot.name} after one ask this call; do not ask again`, {
+      field: slot.name,
+      askId: slot.askId,
+      exit: 'message_ticket',
+      retryable: false,
+      callerSafeMessage: MESSAGE_EXIT[lang],
+    });
+  }
+  clearSlotAsks(ctx, { ...contract, slots: filled });
+  const subject = input.subject?.trim();
+  if (!subject) return actionFail('VALIDATION_FAILED', 'Message details are incomplete', { field: 'subject' });
+  const phone = input.customer?.phone?.trim() || callerPhone || undefined;
+  return { ...input, subject, customer: { name: input.customer?.name, phone } };
+}
+
+/**
+ * The agent's messages and callbacks follow tickets.message@1; staff, UI and
+ * MCP callers and every other kind get exactly the openPrepareInput validation.
+ */
+function openTicketInput(ctx: ActionContext, input: OpenPrepareActionInput): OpenTicketInput | ActionResult<never> {
+  if (ctx.actor.type === 'agent' && MESSAGE_KINDS.has(input.kind)) return enforceMessageContract(ctx, input);
+  const strict = openPrepareInput.safeParse(input);
+  return strict.success ? strict.data : validationFailure(strict.error);
 }
 
 export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDefinition[] {
@@ -103,13 +195,19 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
     name: OPEN_PREPARE,
     tool: 'tickets',
     kind: 'prepare',
-    input: openPrepareInput,
+    input: openPrepareActionInput,
     output: openPrepareOutput,
     permissions: { roles: WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
     agentDescription:
       'Prepare a message, callback request, complaint, quote request or intake for the business. ' +
-      'Read the returned readback to the caller word for word and commit only after an explicit yes.',
-    async run(ctx, input, tx) {
+      'Read the returned readback to the caller word for word and commit only after an explicit yes. ' +
+      'For a message or callback, the callback number comes from caller ID when there is one; do not ask for it. ' +
+      'On SLOT_MISSING, ask the caller the one question in callerSafeMessage and call prepare again; if the caller ' +
+      'will not give a callback number, call prepare again without one and the message is filed without it. ' +
+      'If exit is set, do not ask again: say callerSafeMessage.',
+    async run(ctx, rawInput, tx) {
+      const input = openTicketInput(ctx, rawInput);
+      if (isActionFailure(input)) return input;
       const settings = await repoFor(tx, ctx.tenantId).getSettings();
       const intake = validateIntake(input.intake, intakeSchemaFor(input.kind, settings.intakeSchemas));
       if (!intake.ok) {
@@ -148,12 +246,16 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
         callId: ctx.callId,
       });
       if (isActionFailure(consumed)) return consumed;
-      const parsed = openPrepareInput.safeParse(consumed.payload);
-      if (!parsed.success) return actionFail('CONFIRMATION_INVALID', 'Stored proposal payload is not a ticket');
-      const payload = withOpenDefaults(parsed.data);
+      // Prepare already enforced its rules; only a tickets.message@1 message may lack a callback number.
+      const parsed = openPrepareActionInput.safeParse(consumed.payload);
+      const stored = parsed.success ? parsed.data : null;
+      const subject = stored?.subject;
+      if (!stored || !subject) return actionFail('CONFIRMATION_INVALID', 'Stored proposal payload is not a ticket');
+      const phone = stored.customer?.phone || undefined;
+      const payload = withOpenDefaults({ ...stored, subject, customer: { name: stored.customer?.name, phone } });
       const repo = repoFor(tx, ctx.tenantId);
       const userId = actorUserId(ctx);
-      const phoneKey = normalizePhone(payload.customer.phone);
+      const phoneKey = normalizePhone(phone ?? '');
       const callRef = ctx.callId ?? null;
 
       if (callRef) {
@@ -166,8 +268,8 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
             ticketId: first.id,
             actorUserId: userId,
             type: 'note',
-            content: ticketDescription(note, payload.callbackWindow),
-            metadata: { dedupe: true, urgency: payload.urgency },
+            content: ticketDescription(note, payload.callbackWindow, phone),
+            metadata: { dedupe: true, urgency: payload.urgency, ...(phone ? {} : { noCallbackNumber: true }) },
             now: ctx.now,
           });
           const patch: TicketPatch = {};
@@ -218,9 +320,10 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
       const ticket = await repo.insert({
         kind: payload.kind,
         subject: payload.subject,
-        description: ticketDescription(payload.details, payload.callbackWindow),
+        description: ticketDescription(payload.details, payload.callbackWindow, phone),
         contactName: payload.customer.name ?? '',
-        contactPhone: payload.customer.phone,
+        // contact_phone is nullable with a '' default; '' is how the floor stores "no number" too.
+        contactPhone: phone ?? '',
         urgency: payload.urgency,
         priority,
         source: sourceFor(ctx),
@@ -243,6 +346,7 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
           actor: ctx.actor.type,
           ...(payload.related ? { related: payload.related } : {}),
           ...(payload.callbackWindow ? { callbackWindow: payload.callbackWindow } : {}),
+          ...(phone ? {} : { noCallbackNumber: true }),
         },
         now: ctx.now,
       });

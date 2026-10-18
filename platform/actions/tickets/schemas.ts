@@ -34,15 +34,14 @@ export function canTransition(from: TicketStatus, to: TicketStatus): boolean {
   return from === to || STATUS_TRANSITIONS[from].includes(to);
 }
 
-const phoneSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(32)
-  .refine((value) => {
-    const digits = value.replace(/\D/g, '').length;
-    return digits >= 7 && digits <= 15;
-  }, 'Phone number must have 7 to 15 digits');
+function hasPhoneDigits(value: string): boolean {
+  const digits = value.replace(/\D/g, '').length;
+  return digits >= 7 && digits <= 15;
+}
+
+const PHONE_DIGITS_MESSAGE = 'Phone number must have 7 to 15 digits';
+
+const phoneSchema = z.string().trim().min(1).max(32).refine(hasPhoneDigits, PHONE_DIGITS_MESSAGE);
 
 const intakeFieldSchema = z.object({
   type: z.enum(['string', 'number', 'integer', 'boolean', 'array']),
@@ -85,6 +84,33 @@ export const openPrepareInput = z.object({
   related: z.object({ type: z.string().trim().min(1).max(50), id: z.string().trim().min(1).max(255) }).optional(),
 });
 export type OpenPrepareInput = z.infer<typeof openPrepareInput>;
+
+/**
+ * The tickets.open.prepare action input: openPrepareInput with the
+ * tickets.message@1 slots (subject, customer, customer.phone) optional or
+ * blank, so an agent's partial message reaches prepare and comes back as the
+ * next askId. A non-blank value is validated as in openPrepareInput, and
+ * prepare re-checks staff, UI and MCP callers and the other kinds against
+ * openPrepareInput itself, so their validation and errors are as before.
+ */
+export const openPrepareActionInput = openPrepareInput.extend({
+  subject: z.string().trim().max(120).optional(),
+  customer: z
+    .object({
+      name: z.string().trim().max(255).optional(),
+      phone: z
+        .string()
+        .trim()
+        .max(32)
+        .refine((value) => value === '' || hasPhoneDigits(value), PHONE_DIGITS_MESSAGE)
+        .optional(),
+    })
+    .optional(),
+});
+export type OpenPrepareActionInput = z.infer<typeof openPrepareActionInput>;
+
+/** A prepared ticket: openPrepareInput, except a message filed after one ask may have no callback number. */
+export type OpenTicketInput = Omit<OpenPrepareInput, 'customer'> & { customer: { name?: string; phone?: string } };
 
 export const openPrepareOutput = z.object({
   confirmationToken: z.string(),

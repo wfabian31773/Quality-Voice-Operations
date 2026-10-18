@@ -83,12 +83,13 @@ export function schemaHasPath(schema: ZodTypeAny, path: string): boolean {
  *    a confirm block names its one action.
  * 2. A write contract has a confirm block.
  * 3. Outbound other than 'none' names its destination source.
- * 4. Every sayBack field exists in the commit action's output schema (a read
- *    contract's: its action's output).
+ * 4. Every sayBack field exists in the commit action's output schema, or in
+ *    the prepare action's (the readback heard before the yes); a read
+ *    contract's: its action's output.
  * 5. onFailure has a 'default' chain, and every chain ends in message_ticket
  *    or scripted_close. When `errorCodes` is given (the action runtime's code
  *    list, passed in so this folder never imports it), every onFailure key is
- *    one of them or 'default'.
+ *    one of them or 'default'. A slot that proceeds after its ask is required.
  * 6. id@version appears at most once in `peers` (which includes the contract
  *    itself), every slot inputPath exists in the prepare (or read action)
  *    input, and a slot's verifiedBy names a peer contract with identity 'verified'.
@@ -124,10 +125,11 @@ export function validateContract(
 
   const readAction = contract.action ? actions.get(contract.action) : undefined;
   const commit = contract.confirm ? actions.get(contract.confirm.commit) : readAction;
+  const readbackFrom = contract.confirm ? actions.get(contract.confirm.prepare) : undefined;
   for (const field of contract.sayBack) {
     if (!commit) {
       issues.push({ rule: 4, message: `${key}: sayBack '${field}' has no commit action output to come from` });
-    } else if (!schemaHasPath(commit.output, field)) {
+    } else if (!schemaHasPath(commit.output, field) && !(readbackFrom && schemaHasPath(readbackFrom.output, field))) {
       issues.push({ rule: 4, message: `${key}: sayBack '${field}' is not in ${commit.name} output` });
     }
   }
@@ -148,6 +150,12 @@ export function validateContract(
       if (step.step === 'ask_again' && !slotNames.has(step.slot)) {
         issues.push({ rule: 5, message: `${key}: onFailure.${code} asks again for unknown slot '${step.slot}'` });
       }
+    }
+  }
+  for (const slot of contract.slots) {
+    // An optional slot is never asked, so it has no "after the ask" to proceed from.
+    if (slot.afterAsk === 'proceed' && !slot.required) {
+      issues.push({ rule: 5, message: `${key}: slot '${slot.name}' proceeds after its ask but is not required` });
     }
   }
 
