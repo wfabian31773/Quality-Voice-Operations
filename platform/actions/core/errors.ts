@@ -22,6 +22,7 @@ const GENERIC_SAFE: Record<ActionErrorCode, string> = {
   MESSAGING_NOT_ENABLED: "Texting isn't set up for this business yet.",
   QUIET_HOURS: "You'll get the text in the morning.",
   INVALID_NUMBER: "That number can't receive texts.",
+  SLOT_MISSING: 'I need one more detail first.',
   INTERNAL: 'Something went wrong on our side. Please try again.',
 };
 
@@ -45,6 +46,8 @@ export function actionFail(
     alternatives?: unknown[];
     retryable?: boolean;
     callerSafeMessage?: string;
+    askId?: string;
+    exit?: 'message_ticket';
   },
 ): ActionResult<never> {
   return {
@@ -56,6 +59,8 @@ export function actionFail(
       retryable: opts?.retryable ?? RETRYABLE.has(code),
       ...(opts?.field ? { field: opts.field } : {}),
       ...(opts?.alternatives ? { alternatives: opts.alternatives } : {}),
+      ...(opts?.askId ? { askId: opts.askId } : {}),
+      ...(opts?.exit ? { exit: opts.exit } : {}),
     },
   };
 }

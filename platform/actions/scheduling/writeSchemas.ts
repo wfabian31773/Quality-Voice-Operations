@@ -30,18 +30,37 @@ export const confirmationTokenInput = z.object({
   confirmationToken: z.string().uuid(),
 });
 
+/**
+ * A contract slot: optional so a partial payload reaches prepare, which
+ * answers with the next missing slot's askId (booking.book@1). null, a blank
+ * string or an empty list counts as not given; any other value must still be valid.
+ */
+// The declared input type mirrors the output (as a plain .optional() would) so
+// defineAction infers the run() input from the parsed shape, not `unknown`.
+function slot<T extends z.ZodTypeAny>(schema: T): z.ZodType<z.output<T> | undefined, z.ZodTypeDef, z.output<T> | undefined> {
+  return z.preprocess(
+    (value) =>
+      value === null || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0)
+        ? undefined
+        : value,
+    schema.optional(),
+  ) as unknown as z.ZodType<z.output<T> | undefined, z.ZodTypeDef, z.output<T> | undefined>;
+}
+
 export const bookPrepareInput = z.object({
   /** 1 to 3 services, done back-to-back by one staff member. */
-  serviceIds,
+  serviceIds: slot(serviceIds),
   /** A staff id from list_staff, or 'any'. */
-  staffId: id,
+  staffId: slot(id),
   /** A start time returned by check_availability. */
-  start: instant,
-  customer: z.object({
-    name: z.string().trim().min(1).max(80),
-    phone,
-    email: z.string().email().max(255).optional(),
-  }),
+  start: slot(instant),
+  customer: slot(
+    z.object({
+      name: slot(z.string().trim().min(1).max(80)),
+      phone: slot(phone),
+      email: z.string().email().max(255).optional(),
+    }),
+  ),
   notes: z.string().max(1000).optional(),
 });
 export type BookPrepareInput = z.infer<typeof bookPrepareInput>;

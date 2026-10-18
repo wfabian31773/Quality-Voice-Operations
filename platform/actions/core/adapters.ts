@@ -112,6 +112,7 @@ export const HTTP_STATUS_BY_ERROR: Record<ActionErrorCode, number> = {
   MESSAGING_NOT_ENABLED: 403,
   QUIET_HOURS: 202,
   INVALID_NUMBER: 400,
+  SLOT_MISSING: 422,
   INTERNAL: 500,
 };
 

@@ -18,6 +18,11 @@ export interface ActionContext {
   conversationId?: string;
   locale?: string;
   tenantTimezone: string;
+  /**
+   * The caller's number from the telephony layer (server-injected, never from
+   * model arguments). A held fact: it fills a contract slot without an ask.
+   */
+  callerPhone?: string;
 }
 
 export type ActionTool =
@@ -47,6 +52,7 @@ export const ACTION_ERROR_CODES = [
   'MESSAGING_NOT_ENABLED',
   'QUIET_HOURS',
   'INVALID_NUMBER',
+  'SLOT_MISSING',
   'INTERNAL',
 ] as const;
 
@@ -59,6 +65,10 @@ export interface ActionError {
   retryable: boolean;
   field?: string;
   alternatives?: unknown[];
+  /** SLOT_MISSING: the contract askId for the slot to ask next. */
+  askId?: string;
+  /** Set when asking again won't help: offer to take a message instead. */
+  exit?: 'message_ticket';
 }
 
 export interface Effect {
