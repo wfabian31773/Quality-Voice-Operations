@@ -1,6 +1,5 @@
 export {
   BARBERSHOP_TEMPLATE_V1,
-  BUSINESS_INFO_TOOL,
   TEMPLATE_LANGUAGES,
   fillPlaceholders,
   phraseAsk,

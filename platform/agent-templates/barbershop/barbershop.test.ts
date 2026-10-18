@@ -17,7 +17,6 @@ import {
 } from '../../callcore/invariants';
 import {
   BARBERSHOP_TEMPLATE_V1,
-  BUSINESS_INFO_TOOL,
   TEMPLATE_LANGUAGES,
   fillPlaceholders,
   phraseAsk,
@@ -69,6 +68,9 @@ function allTexts(): Array<[string, string]> {
     for (const lang of TEMPLATE_LANGUAGES) out.push([`${label}.${lang}`, phrase[lang]]);
   };
   add('persona', T.persona);
+  for (const lang of TEMPLATE_LANGUAGES) {
+    out.push([`greeting.${lang}`, fillPlaceholders(T.greeting[lang], { businessName: 'Sharp Line Barbers' })]);
+  }
   for (const [askId, phrase] of Object.entries(T.asks)) add(askId, phrase);
   add('afterWrite.textWillFollow', T.afterWrite.textWillFollow);
   for (const key of Object.keys(SAMPLE_READBACK) as WriteKey[]) {
@@ -119,14 +121,25 @@ describe('barbershop@1 template export', () => {
     expect([...T.contracts].sort()).toEqual(CONTRACTS.map(contractKey).sort());
   });
 
-  it('lists business.get_info as an expected tool and the persona says to look hours up', () => {
-    expect(T.expectedTools).toEqual([BUSINESS_INFO_TOOL]);
-    expect(BUSINESS_INFO_TOOL).toBe('business.get_info');
+  it('answers hours and services from the business details, never a tool that does not exist', () => {
     for (const lang of TEMPLATE_LANGUAGES) {
-      expect(T.persona[lang]).toContain(BUSINESS_INFO_TOOL);
+      expect(T.persona[lang]).not.toMatch(/business[._]get_info|get_info/);
+      // No tool name of any kind: the persona's tools come from the composer.
+      expect(T.persona[lang]).not.toMatch(/\b[a-z][a-z0-9]+(?:[._][a-z0-9]+)+\b/);
     }
+    expect(T.persona.en).toMatch(/answer only from the business details/i);
     expect(T.persona.en).toMatch(/never guess/i);
+    expect(T.persona.en).toMatch(/you'll have the shop confirm it/i);
+    expect(T.persona.es).toMatch(/conteste solo con los datos del negocio/i);
     expect(T.persona.es).toMatch(/nunca los adivine/i);
+    expect(T.persona.es).toMatch(/la barbería se lo va a confirmar/i);
+  });
+
+  it('greets with the shop name in both languages', () => {
+    for (const lang of TEMPLATE_LANGUAGES) {
+      expect(T.greeting[lang]).toContain('{{businessName}}');
+      expect((T.greeting[lang].match(/\?/g) ?? []).length).toBe(1);
+    }
   });
 
   it('persona asks one question at a time and has the barbershop register', () => {
@@ -147,11 +160,11 @@ describe('barbershop@1 template export', () => {
 
   it('has the expected shape', () => {
     expect(Object.keys(T).sort()).toEqual(
-      ['afterWrite', 'asks', 'contracts', 'expectedTools', 'id', 'languages', 'persona', 'version'],
+      ['afterWrite', 'asks', 'contracts', 'greeting', 'id', 'languages', 'persona', 'version'],
     );
     expect(Object.keys(T.afterWrite).sort()).toEqual(['booked', 'cancelled', 'rescheduled', 'textWillFollow']);
     expect(Object.keys(T.asks).sort()).toEqual([...CONTRACT_ASK_IDS].sort());
-    for (const phrase of [T.persona, ...Object.values(T.asks), ...Object.values(T.afterWrite)]) {
+    for (const phrase of [T.persona, T.greeting, ...Object.values(T.asks), ...Object.values(T.afterWrite)]) {
       expect(Object.keys(phrase).sort()).toEqual(['en', 'es']);
     }
   });

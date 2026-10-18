@@ -62,6 +62,7 @@ import {
 import { SilenceWatchdog, type PlaybackConfirmMode } from './silenceWatchdog';
 import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
 import { CallInvariants, type FloorOutcome } from './callInvariants';
+import { createContractToolBridge } from './contractToolBridge';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
 
@@ -122,6 +123,8 @@ function buildToolHandler(
   ctx: SessionContext,
   callSessionId: string,
 ) {
+  // RT-09: a composer agent's contract tools run as platform actions (undefined for every other agent).
+  const contractTools = createContractToolBridge({ tenantId: ctx.tenantId, callId: callSessionId, callerNumber: ctx.callerNumber, agent: ctx.agentConfig });
   return async (toolName: string, args: Record<string, unknown>): Promise<string> => {
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
     const startTime = Date.now();
@@ -161,6 +164,9 @@ function buildToolHandler(
         return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
       }
     }
+
+    contractTools?.observeToolCall(toolName, args);
+    if (contractTools?.handles(toolName)) return contractTools.runTool(toolName, args);
 
     const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
     const validation = unifiedToolRegistry.validateToolInput(toolName, args, activeRoleSchema);
