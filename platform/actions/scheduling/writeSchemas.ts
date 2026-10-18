@@ -32,14 +32,17 @@ export const confirmationTokenInput = z.object({
 
 /**
  * A contract slot: optional so a partial payload reaches prepare, which
- * answers with the next missing slot's askId (booking.book@1). A blank string
- * or empty list counts as not given; any other value must still be valid.
+ * answers with the next missing slot's askId (booking.book@1). null, a blank
+ * string or an empty list counts as not given; any other value must still be valid.
  */
 // The declared input type mirrors the output (as a plain .optional() would) so
 // defineAction infers the run() input from the parsed shape, not `unknown`.
 function slot<T extends z.ZodTypeAny>(schema: T): z.ZodType<z.output<T> | undefined, z.ZodTypeDef, z.output<T> | undefined> {
   return z.preprocess(
-    (value) => ((typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0) ? undefined : value),
+    (value) =>
+      value === null || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0)
+        ? undefined
+        : value,
     schema.optional(),
   ) as unknown as z.ZodType<z.output<T> | undefined, z.ZodTypeDef, z.output<T> | undefined>;
 }

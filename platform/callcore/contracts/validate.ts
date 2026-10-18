@@ -79,13 +79,16 @@ export function schemaHasPath(schema: ZodTypeAny, path: string): boolean {
  * 2. A write contract has a confirm block.
  * 3. Outbound other than 'none' names its destination source.
  * 4. Every sayBack field exists in the commit action's output schema.
- * 5. Every onFailure chain ends in message_ticket or scripted_close.
+ * 5. Every onFailure chain ends in message_ticket or scripted_close. When
+ *    `errorCodes` is given (the action runtime's code list, passed in so this
+ *    folder never imports it), every onFailure key is one of them or 'default'.
  * 6. id@version is unique, and every slot inputPath exists in the prepare input.
  */
 export function validateContract(
   contract: ToolContract,
   registry: ContractActionRegistry,
   peers: readonly ToolContract[] = [],
+  errorCodes?: readonly string[],
 ): ContractValidation {
   const actions = toMap(registry);
   const issues: ContractIssue[] = [];
@@ -117,6 +120,9 @@ export function validateContract(
 
   const slotNames = new Set(contract.slots.map((s) => s.name));
   for (const [code, chain] of Object.entries(contract.onFailure)) {
+    if (errorCodes && code !== 'default' && !errorCodes.includes(code)) {
+      issues.push({ rule: 5, message: `${key}: onFailure.${code} is not a known error code` });
+    }
     const last = chain[chain.length - 1];
     if (!last || !TERMINAL_STEPS.has(last.step)) {
       issues.push({ rule: 5, message: `${key}: onFailure.${code} must end in message_ticket or scripted_close` });
@@ -147,8 +153,9 @@ export function validateContract(
 export function validateContracts(
   contracts: readonly ToolContract[],
   registry: ContractActionRegistry,
+  errorCodes?: readonly string[],
 ): ContractValidation {
   const actions = toMap(registry);
-  const issues = contracts.flatMap((c) => validateContract(c, actions, contracts).issues);
+  const issues = contracts.flatMap((c) => validateContract(c, actions, contracts, errorCodes).issues);
   return { ok: issues.length === 0, issues };
 }

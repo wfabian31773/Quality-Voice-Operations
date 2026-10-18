@@ -119,6 +119,52 @@ describe('scheduling.book.prepare enforces booking.book@1', () => {
     expect(other.exit).toBeUndefined();
   });
 
+  it('a complete prepare clears the call\'s counts, so a later booking asks again before exiting', async () => {
+    const ctx = agentCtx();
+    expect(refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() })).askId).toBe('ask.staff');
+    const full = { ...NO_NAME, customer: { name: 'Luis', phone: '+15555550142' } };
+    // Complete payload: past the contract to the (empty) memory-store catalog.
+    expect(refusal(await prepare(full, { ...ctx, idempotencyKey: randomUUID() })).code).not.toBe('SLOT_MISSING');
+
+    const again = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() }));
+    expect(again).toMatchObject({ code: 'SLOT_MISSING', askId: 'ask.staff', retryable: true });
+    expect(again.exit).toBeUndefined();
+  });
+
+  it('a retry of the same tool call (same idempotency key) counts once', async () => {
+    const ctx = agentCtx();
+    const key = randomUUID();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const retry = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: key }));
+      expect(retry).toMatchObject({ askId: 'ask.staff', retryable: true });
+      expect(retry.exit).toBeUndefined();
+    }
+    const next = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() }));
+    expect(next).toMatchObject({ askId: 'ask.staff', exit: 'message_ticket', retryable: false });
+  });
+
+  it('treats null as not given', async () => {
+    const error = refusal(await prepare({ ...SERVICE_ONLY, staffId: null }));
+    expect(error).toMatchObject({ code: 'SLOT_MISSING', field: 'staff', askId: 'ask.staff' });
+  });
+
+  it('counts expire after the TTL: 31 minutes later is a first ask again', async () => {
+    const ctx = agentCtx();
+    await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() });
+    const later = new Date(ctx.now.getTime() + 31 * 60_000);
+    const fresh = refusal(await prepare(SERVICE_ONLY, { ...ctx, now: later, idempotencyKey: randomUUID() }));
+    expect(fresh).toMatchObject({ askId: 'ask.staff', retryable: true });
+    expect(fresh.exit).toBeUndefined();
+  });
+
+  it('counts are per tenant: the same callId on another tenant starts fresh', async () => {
+    const ctx = agentCtx();
+    await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() });
+    const other = refusal(await prepare(SERVICE_ONLY, { ...ctx, tenantId: 'tenant-rt01-other', idempotencyKey: randomUUID() }));
+    expect(other).toMatchObject({ askId: 'ask.staff', retryable: true });
+    expect(other.exit).toBeUndefined();
+  });
+
   it('speaks the Spanish ask when the call locale is Spanish', async () => {
     const error = refusal(await prepare(SERVICE_ONLY, agentCtx({ locale: 'es-MX' })));
     expect(error.callerSafeMessage).toBe(BOOKING_BOOK_V1.slots[1].defaultAsk.es);
@@ -169,11 +215,5 @@ describe('generated agent schema for scheduling.book.prepare', () => {
     expect(Object.keys(params.properties.customer.properties ?? {}).sort()).toEqual(['email', 'name', 'phone']);
     expect(JSON.stringify(schema)).not.toMatch(/"strict":\s*true/);
     expect(params.strict).toBeUndefined();
-  });
-
-  it('a realistic partial payload (service only) reaches run and gets ask.staff', async () => {
-    const error = refusal(await prepare({ serviceIds: ['svc-cut'] }));
-    expect(error.code).toBe('SLOT_MISSING');
-    expect(error.askId).toBe('ask.staff');
   });
 });

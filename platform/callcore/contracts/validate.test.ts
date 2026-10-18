@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { ACTION_REGISTRY } from '../../actions';
+import { ACTION_ERROR_CODES, ACTION_REGISTRY } from '../../actions';
 import { BOOKING_BOOK_V1, CONTRACTS, getContract } from './index';
 import type { ToolContract } from './types';
 import { validateContract, validateContracts, type ContractActionInfo, type ContractRule } from './validate';
@@ -73,6 +73,20 @@ describe('validateContract', () => {
     expect(rulesBroken(fixture({ onFailure: { CONFLICT: [{ step: 'scripted_close' }] } }))).toEqual([]);
   });
 
+  it('rule 5: an ask_again step must name a slot of the contract', () => {
+    const unknownSlot = fixture({ onFailure: { CONFLICT: [{ step: 'ask_again', slot: 'time' }, { step: 'message_ticket' }] } });
+    const result = validateContract(unknownSlot, FAKE_ACTIONS);
+    expect(result.issues).toEqual([{ rule: 5, message: expect.stringMatching(/unknown slot 'time'/) }]);
+  });
+
+  it('rule 5: onFailure keys must be known error codes or default when the code list is given', () => {
+    const typo = fixture({ onFailure: { CONFLCT: [{ step: 'message_ticket' }], default: [{ step: 'message_ticket' }] } });
+    const result = validateContract(typo, FAKE_ACTIONS, [], ACTION_ERROR_CODES);
+    expect(result.issues).toEqual([{ rule: 5, message: expect.stringMatching(/onFailure\.CONFLCT is not a known error code/) }]);
+    const known = fixture({ onFailure: { CONFLICT: [{ step: 'message_ticket' }], default: [{ step: 'message_ticket' }] } });
+    expect(validateContract(known, FAKE_ACTIONS, [], ACTION_ERROR_CODES).ok).toBe(true);
+  });
+
   it('rule 6: id@version is unique and slot inputPaths exist in the prepare input', () => {
     const a = fixture();
     expect(rulesBroken(a, [a, fixture()])).toEqual([6]);
@@ -86,8 +100,8 @@ describe('validateContract', () => {
 
 describe('booking.book@1', () => {
   it('passes every rule against the real ACTION_REGISTRY', () => {
-    expect(validateContract(BOOKING_BOOK_V1, ACTION_REGISTRY, CONTRACTS)).toEqual({ ok: true, issues: [] });
-    expect(validateContracts(CONTRACTS, ACTION_REGISTRY).ok).toBe(true);
+    expect(validateContract(BOOKING_BOOK_V1, ACTION_REGISTRY, CONTRACTS, ACTION_ERROR_CODES)).toEqual({ ok: true, issues: [] });
+    expect(validateContracts(CONTRACTS, ACTION_REGISTRY, ACTION_ERROR_CODES).ok).toBe(true);
   });
 
   it('declares slots in ask order with the action input paths', () => {
