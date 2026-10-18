@@ -40,11 +40,17 @@ jobs:
       - name: Broken scenario produces a readable diff
         run: npm run quality:sim -- --self-check
 
+      # RT-10 gate G1: every core barbershop flow must pass 5 of 5 runs, graded on end state.
+      - name: Barbershop pack pass^5 gate (scripted)
+        run: npm run quality:sim -- --dir=tests/quality/scenarios/barbershop --mode=scripted --pass-k=5 --out=.ci-out/quality-sim-barbershop-pass5.json
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: quality-sim-report
-          path: .ci-out/quality-sim-report.json
+          path: |
+            .ci-out/quality-sim-report.json
+            .ci-out/quality-sim-barbershop-pass5.json
           if-no-files-found: ignore
           retention-days: 14

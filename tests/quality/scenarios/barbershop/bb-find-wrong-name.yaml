@@ -1,0 +1,82 @@
+id: bb-find-wrong-name
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:find-wrong-name, template:barbershop, lang:en]
+# Someone on Luis's phone gives another first name. The first miss is one ask;
+# the second exits to a message (exit: message_ticket). No booking is ever
+# handed to the agent, nothing is changed, and the caller's callback request
+# is filed with the caller ID.
+seed: barbershop-basic:existing-booking
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, this is Carlos. Can you check my appointment on Thursday?"
+  - text: "It's under Carlos Ruiz."
+  - text: "Sure, have someone call me."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.find_bookings
+          input:
+            phone: "+15555550142"
+            name: Carlos
+      - say: "{{callerSafeMessage}}"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.find_bookings
+          input:
+            phone: "+15555550142"
+            name: Carlos Ruiz
+      - say: "{{callerSafeMessage}}"
+  - on: 2
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: callback
+            subject: Asked about a Thursday appointment under Carlos Ruiz
+            customer:
+              name: Carlos
+      - say: "{{readback}}. Is that right?"
+  - on: 3
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Done. Someone will call you back."
+expect:
+  actions:
+    - name: scheduling.find_bookings
+      input:
+        name: Carlos
+    - name: scheduling.find_bookings
+      input:
+        name: Carlos Ruiz
+    - name: tickets.open.prepare
+      input:
+        kind: callback
+    - name: tickets.open.commit
+  endState:
+    disclosed:
+      count: 0
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: marco
+          date: "2026-10-22"
+          startLocal: "10:00"
+    tickets:
+      count: 1
+      items:
+        - kind: callback
+          status: open
+          floor: false
+          phone: "+15555550142"
+  toolAttempts:
+    scheduling.find_bookings: 2
+  readbackRequired: true

@@ -1,0 +1,61 @@
+id: bb-message-hidden-caller-id
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:message-hidden-caller-id, template:barbershop, lang:en]
+# tickets.message@1 with caller ID blocked: prepare asks for the callback
+# number once (SLOT_MISSING); the caller declines, and the second prepare files
+# the message anyway with no number. Exactly two prepares, one ticket.
+seed: barbershop-basic
+callerId: null
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, could you leave a message for Marco? Tell him Luis says thanks for the great fade."
+  - text: "I'd rather not give my number."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: message
+            subject: Luis says thanks for the great fade
+            customer:
+              name: Luis
+      - say: "{{callerSafeMessage}}"
+  - on: 1
+    steps:
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: message
+            subject: Luis says thanks for the great fade
+            customer:
+              name: Luis
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Done. Marco will get your message."
+expect:
+  actions:
+    - name: tickets.open.prepare
+    - name: tickets.open.prepare
+    - name: tickets.open.commit
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 1
+      items:
+        - kind: message
+          status: open
+          floor: false
+          phone: null
+  toolAttempts:
+    tickets.open.prepare: 2
+  readbackRequired: true

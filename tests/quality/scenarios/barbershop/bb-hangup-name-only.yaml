@@ -1,0 +1,25 @@
+id: bb-hangup-name-only
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:hangup-name-only, template:barbershop, lang:en]
+# The caller only gives their name and hangs up. The floor runs and decides
+# nothing_substantive: no ticket, no booking.
+seed: barbershop-basic
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, this is Luis Garcia."
+script:
+  - on: 0
+    steps:
+      - say: "Hi Luis, how can I help you today?"
+  # The caller hangs up here.
+expect:
+  actions:
+    - name: tickets.file_floor
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 0

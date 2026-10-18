@@ -1,0 +1,60 @@
+id: bb-book-named-barber
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:book-named-barber, template:barbershop, lang:en]
+# Luis asks for Andre by name. Graded on what got booked, not on wording.
+seed: barbershop-basic
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, this is Luis. Can I get a men's cut with Andre this Thursday at 1?"
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: andre
+            date: "2026-10-22"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: andre
+            start: "2026-10-22T13:00:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're all set with Andre on Thursday at 1."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: andre
+    - name: scheduling.book.prepare
+      input:
+        staffId: andre
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: andre
+          date: "2026-10-22"
+          startLocal: "13:00"
+          serviceIds: [mens-cut]
+          customerName: Luis
+    tickets:
+      count: 0
+  readbackRequired: true

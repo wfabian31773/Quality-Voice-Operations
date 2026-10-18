@@ -1,0 +1,54 @@
+id: bb-cancel
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:cancel, template:barbershop, lang:en]
+# Luis (caller ID + first name) cancels Thursday 10:00 with Marco.
+seed: barbershop-basic:existing-booking
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, it's Luis. I need to cancel my appointment on Thursday."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.find_bookings
+          input:
+            phone: "+15555550142"
+            name: Luis
+      - call:
+          name: scheduling.cancel.prepare
+          input:
+            bookingId: bk_luis_thu
+            reason: caller asked to cancel
+      - say: "{{readback}} Is that right?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.cancel.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Done, Thursday is off the calendar."
+expect:
+  actions:
+    - name: scheduling.find_bookings
+      input:
+        name: Luis
+    - name: scheduling.cancel.prepare
+      input:
+        bookingId: bk_luis_thu
+    - name: scheduling.cancel.commit
+  endState:
+    disclosed:
+      count: 1
+    bookings:
+      count: 1
+      items:
+        - status: cancelled
+          staffId: marco
+          date: "2026-10-22"
+          startLocal: "10:00"
+    tickets:
+      count: 0
+  readbackRequired: true

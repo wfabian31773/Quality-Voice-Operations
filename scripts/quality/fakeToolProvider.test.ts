@@ -188,20 +188,41 @@ describe('FakeToolProvider', () => {
     const dataOf = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) => (result.ok ? (result.data as Record<string, unknown>) : null);
     const codeOf = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) => (result.ok ? 'ok' : result.error.code);
 
-    it('caller-ID match: the name verifies; no name or a wrong name reveals nothing', async () => {
-      const { tools } = shop(PHONE);
-      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE }, ctx()))).toEqual({ verified: false, bookings: [], needs: 'name', matchCount: 1 });
-      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Ana' }, ctx()))).toEqual({ verified: false, bookings: [], needs: 'name' });
+    const ASK_NAME = { verified: false, bookings: [], askId: 'ask.bookingName', callerSafeMessage: 'What name is the appointment under?' };
+    const EXIT = { verified: false, bookings: [], askId: 'ask.bookingName', callerSafeMessage: 'I can take a message so someone can call you back.', exit: 'message_ticket' };
+
+    it('caller-ID match: the name verifies; no name reveals nothing, not even a count (booking.find@1)', async () => {
+      const { state, tools } = shop(PHONE);
+      const asked = dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE }, ctx()));
+      expect(asked).toEqual({ ...ASK_NAME, needs: 'name' });
+      expect(asked).not.toHaveProperty('matchCount');
       const found = dataOf(await tools.invoke('scheduling.find_bookings', { phone: '555-555-0142', name: 'luis' }, ctx()));
       expect(found).toMatchObject({ verified: true, bookings: [{ bookingId: 'bk_thu', staffName: 'Marco', end: '2026-10-22T14:30:00.000Z' }] });
+      expect(snapshotOf(state).disclosed).toEqual(['bk_thu']);
+    });
+
+    it('a wrong name is one ask; the second miss exits to a message and nothing matches after', async () => {
+      const { state, tools } = shop(PHONE);
+      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Ana' }, ctx()))).toEqual({ ...ASK_NAME, needs: 'name' });
+      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Carla' }, ctx()))).toEqual({ ...EXIT, needs: 'name' });
+      // After the exit, even the right name finds nothing in this call.
+      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx()))).toEqual({ ...EXIT, needs: 'name' });
+      expect(snapshotOf(state).disclosed).toEqual([]);
+      // Another call starts fresh.
+      expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, { ...ctx(), callId: 'c2' }))).toMatchObject({ verified: true });
     });
 
     it('different or blocked caller ID: needs name + date + time, and never says how many', async () => {
       for (const callerNumber of ['+15555550199', null]) {
         const { tools } = shop(callerNumber);
         const refused = { verified: false, bookings: [], needs: 'name_date_time' };
-        expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx()))).toEqual(refused);
-        expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis', date: '2026-10-22', time: '10:30' }, ctx()))).toEqual(refused);
+        // The date is the first missing slot, then a wrong time is a miss of the name check.
+        expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis' }, ctx()))).toEqual({
+          ...refused,
+          askId: 'ask.bookingDate',
+          callerSafeMessage: 'What day is the appointment?',
+        });
+        expect(dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis', date: '2026-10-22', time: '10:30' }, ctx()))).toEqual({ ...refused, ...ASK_NAME });
         const found = await tools.invoke('scheduling.find_bookings', { phone: PHONE, name: 'Luis', date: '2026-10-22', time: '10:00' }, ctx());
         expect(dataOf(found)).toMatchObject({ verified: true, bookings: [{ bookingId: 'bk_thu' }] });
       }
@@ -318,6 +339,86 @@ describe('FakeToolProvider', () => {
       // Trusted (non-agent) lookups are capped too; the uncapped count is never listed.
       const staff = dataOf(await tools.invoke('scheduling.find_bookings', { phone: PHONE }, { ...ctx(), actor: { type: 'user', id: 'u1' } })) as { bookings: unknown[] };
       expect(staff.bookings).toHaveLength(FIND_LIMIT);
+    });
+  });
+
+  it('check_availability and book.prepare compare full time ranges, not only start times', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    // Ana's 45-minute cut + beard with Marco runs 15:00-15:45; the 15:30 slot starts inside it.
+    state.bookings.push({
+      id: 'bk_ana', status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut', 'beard'],
+      start: '2026-10-20T15:00:00-04:00', startLocal: '15:00', customerName: 'Ana', customerPhone: '+15555550188',
+    });
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const availability = await tools.invoke('scheduling.check_availability', { serviceIds: ['mens-cut'], staffId: 'marco', date: '2026-10-20' }, ctx());
+    expect(availability.ok && availability.data).toMatchObject({ slots: [] });
+    const prepare = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    expect(prepare.ok ? null : prepare.error.code).toBe('CONFLICT');
+    // Back to back is free: Ana's booking moved to end exactly at 15:30.
+    state.bookings[0].start = '2026-10-20T14:45:00-04:00';
+    const adjacent = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+    expect(adjacent.ok).toBe(true);
+  });
+
+  describe('tickets.message@1 and the hangup floor', () => {
+    const dataOf = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) => (result.ok ? (result.data as Record<string, unknown>) : null);
+    const MESSAGE = { kind: 'message', subject: 'Ask about a standing cut', customer: { name: 'Luis' } };
+    const system: Partial<ToolCallContext> = { actor: { type: 'system', id: 'voice-runtime' } };
+    const shopWith = (callerNumber: string | null) => {
+      const state = buildFixture('barbershop-marco');
+      state.callerNumber = callerNumber;
+      return { state, tools: new FakeToolProvider(state, ['scheduling', 'tickets']) };
+    };
+    const floor = (tools: FakeToolProvider, callerLines: string[], extra: Record<string, unknown> = {}) =>
+      tools.invoke('tickets.file_floor', { callId: 'c1', callerLines, ...extra }, { ...ctx(), ...system });
+
+    it('holds the callback number from caller ID: no ask', async () => {
+      const { state, tools } = shopWith('+15555550142');
+      const prepare = await tools.invoke('tickets.open.prepare', MESSAGE, ctx());
+      expect(prepare.ok).toBe(true);
+      expect(state.tickets).toMatchObject([{ kind: 'message', phone: '+15555550142', callId: 'c1', status: 'held' }]);
+    });
+
+    it('caller ID hidden: asks for the number once, then prepares without one', async () => {
+      const { state, tools } = shopWith(null);
+      const asked = await tools.invoke('tickets.open.prepare', MESSAGE, ctx());
+      expect(asked.ok ? null : asked.error).toMatchObject({ code: 'SLOT_MISSING', askId: 'ask.callbackNumber', retryable: false });
+      expect(state.tickets).toHaveLength(0);
+      const filed = await tools.invoke('tickets.open.prepare', MESSAGE, ctx());
+      expect(filed.ok && filed.readback).toMatch(/with no callback number$/);
+      expect(state.tickets).toMatchObject([{ kind: 'message', phone: '' }]);
+    });
+
+    it('a missing subject is asked once, then exits to a message without a second ask', async () => {
+      const { tools } = shopWith('+15555550142');
+      const noSubject = { kind: 'message', customer: { name: 'Luis' } };
+      const first = await tools.invoke('tickets.open.prepare', noSubject, ctx());
+      expect(first.ok ? null : first.error).toMatchObject({ code: 'SLOT_MISSING', askId: 'ask.messageSubject' });
+      const second = await tools.invoke('tickets.open.prepare', noSubject, ctx());
+      expect(second.ok ? null : second.error).toMatchObject({ code: 'SLOT_MISSING', exit: 'message_ticket' });
+    });
+
+    it('floor: system only; never_heard, nothing_substantive, filed once, then already_filed', async () => {
+      const { state, tools } = shopWith('+15555550142');
+      const forbidden = await tools.invoke('tickets.file_floor', { callId: 'c1', callerLines: ['cancel my cut'] }, ctx());
+      expect(forbidden.ok ? null : forbidden.error.code).toBe('FORBIDDEN');
+      expect(dataOf(await floor(tools, ['  ']))).toEqual({ filed: false, reason: 'never_heard' });
+      expect(dataOf(await floor(tools, ['Hi, this is Luis Garcia.']))).toEqual({ filed: false, reason: 'nothing_substantive' });
+      const filed = await floor(tools, ['Hi, I need a beard trim with Marco on Friday']);
+      expect(dataOf(filed)).toMatchObject({ filed: true, reason: 'filed' });
+      expect(dataOf(await floor(tools, ['Hi, I need a beard trim with Marco on Friday']))).toEqual({ filed: false, reason: 'already_filed' });
+      expect(state.tickets).toMatchObject([{ kind: 'message', floor: true, phone: '+15555550142', status: 'open', callId: 'c1' }]);
+    });
+
+    it('floor: a booking or ticket the call committed is an artifact; a hold is not', async () => {
+      resetFakeTokens();
+      const { state, tools } = shopWith('+15555550142');
+      const prepare = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
+      expect(dataOf(await floor(tools, ['A cut with Marco at 3:30 please']))).toMatchObject({ filed: true });
+      state.tickets.length = 0;
+      await tools.invoke('scheduling.book.commit', { confirmationToken: tokenOf(prepare) }, ctx());
+      expect(dataOf(await floor(tools, ['A cut with Marco at 3:30 please']))).toEqual({ filed: false, reason: 'already_filed' });
     });
   });
 
