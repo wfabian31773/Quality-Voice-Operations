@@ -58,7 +58,12 @@ export interface ToolResultInput {
   kind: ActionKind;
   ok: boolean;
   refs?: readonly string[];
-  /** The token a commit consumed; an ok commit retires it. */
+  /**
+   * The token a commit consumed; an ok commit retires it. An ok commit with no
+   * token, or a token not in preparedTokens, retires every prepared token and
+   * clears explicitYesForToken (fail closed), so the next commit needs a new
+   * prepare and a new yes.
+   */
   confirmationToken?: string;
 }
 

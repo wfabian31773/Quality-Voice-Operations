@@ -14,6 +14,7 @@ import {
   normalizeArgs,
   normalizePhrases,
   normalizeSpeech,
+  sentences,
 } from './normalize';
 import {
   SMS_OFF_QUALIFIERS,
@@ -115,7 +116,13 @@ export function checkSay(facts: CallFacts, text: string): CheckResult {
 
   if (findPhrase(norm, TRANSFER) && !latestTransferOk(facts)) return block('say.transfer_without_result');
 
-  if (!facts.smsEnabled && findPhrase(norm, TEXT_PROMISES) && !findPhrase(norm, QUALIFIERS)) {
+  // The qualifier only covers a promise in the same sentence.
+  if (
+    !facts.smsEnabled &&
+    sentences(text)
+      .map(normalizeSpeech)
+      .some((s) => findPhrase(s, TEXT_PROMISES) && !findPhrase(s, QUALIFIERS))
+  ) {
     return block('say.text_promise_sms_off');
   }
 

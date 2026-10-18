@@ -37,7 +37,8 @@ export function onCallerHeard(facts: CallFacts): CallFacts {
 /**
  * Any tool result. Marks it unvoiced; commit, write and transfer results are
  * also recorded in `committed`. An ok commit retires its token so it can't be
- * committed twice.
+ * committed twice; an ok commit with no token, or one not prepared on this
+ * call, retires every prepared token and clears the yes.
  */
 export function onToolResult(facts: CallFacts, result: ToolResultInput): CallFacts {
   let next: CallFacts = { ...facts, unvoicedToolResult: true };
@@ -50,17 +51,19 @@ export function onToolResult(facts: CallFacts, result: ToolResultInput): CallFac
     };
     next = { ...next, committed: [...facts.committed, entry] };
   }
+  if (result.kind !== 'commit' || !result.ok) return next;
   const token = result.confirmationToken;
-  if (result.kind === 'commit' && result.ok && token && facts.preparedTokens.has(token)) {
-    const preparedTokens = new Set(facts.preparedTokens);
-    preparedTokens.delete(token);
-    next = {
-      ...next,
-      preparedTokens,
-      explicitYesForToken: facts.explicitYesForToken === token ? undefined : facts.explicitYesForToken,
-    };
+  if (!token || !facts.preparedTokens.has(token)) {
+    // Fail closed: we can't tell which token was consumed, so retire them all.
+    return { ...next, preparedTokens: new Set<string>(), explicitYesForToken: undefined };
   }
-  return next;
+  const preparedTokens = new Set(facts.preparedTokens);
+  preparedTokens.delete(token);
+  return {
+    ...next,
+    preparedTokens,
+    explicitYesForToken: facts.explicitYesForToken === token ? undefined : facts.explicitYesForToken,
+  };
 }
 
 /**

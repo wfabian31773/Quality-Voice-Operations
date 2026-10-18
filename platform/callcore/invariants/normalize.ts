@@ -39,6 +39,14 @@ export function leadingLabels(text: string): string[] {
     .filter((label) => label.length > 0);
 }
 
+/**
+ * Raw sentences, split at . ! ? ; ¡ ¿ or a newline (not commas):
+ * "I'll text you now; once texting is enabled, …" → ["I'll text you now", " once texting is enabled, …"].
+ */
+export function sentences(text: string): string[] {
+  return text.split(/[.!?;¡¿\n]+/).filter((s) => s.trim().length > 0);
+}
+
 const DIGIT_WORD_RE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${Object.keys(DIGIT_WORDS).join('|')})(?![\\p{L}\\p{N}])`, 'giu');
 
 // EN/ES month names and abbreviations, diacritics already stripped.

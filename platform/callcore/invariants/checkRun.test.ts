@@ -77,9 +77,46 @@ describe('checkRun: commit needs a prepared token and an explicit yes for it', (
     expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_token_not_prepared'));
   });
 
+  it('an ok commit retires only its own token: a second prepared tok-2 stays usable after its own yes', () => {
+    let f = onExplicitYes(onPrepared(onPrepared(facts(), 'tok-2'), 'tok-1'), 'tok-1');
+    f = onToolResult(f, { action: BOOK_COMMIT, kind: 'commit', ok: true, confirmationToken: 'tok-1' });
+    expect(f.preparedTokens.has('tok-2')).toBe(true);
+    expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_token_not_prepared'));
+    f = onExplicitYes(f, 'tok-2');
+    expect(checkRun(f, commit('tok-2'))).toEqual({ ok: true });
+  });
+
+  it('an ok commit result with no token retires every prepared token and the yes (fail closed)', () => {
+    let f = onExplicitYes(onPrepared(onPrepared(facts(), 'tok-2'), 'tok-1'), 'tok-1');
+    f = onToolResult(f, { action: BOOK_COMMIT, kind: 'commit', ok: true });
+    expect(f.preparedTokens.size).toBe(0);
+    expect(f.explicitYesForToken).toBeUndefined();
+    expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_token_not_prepared'));
+    expect(checkRun(onExplicitYes(f, 'tok-2'), commit('tok-2'))).toEqual(blocked('run.commit_token_not_prepared'));
+    // A new prepare and a new yes are needed.
+    f = onExplicitYes(onPrepared(f, 'tok-3'), 'tok-3');
+    expect(checkRun(f, commit('tok-3'))).toEqual({ ok: true });
+  });
+
+  it('an ok commit result with an unknown token retires every prepared token and the yes (fail closed)', () => {
+    let f = onExplicitYes(onPrepared(facts(), 'tok-1'), 'tok-1');
+    f = onToolResult(f, { action: BOOK_COMMIT, kind: 'commit', ok: true, confirmationToken: 'tok-unknown' });
+    expect(f.preparedTokens.size).toBe(0);
+    expect(f.explicitYesForToken).toBeUndefined();
+    expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_token_not_prepared'));
+  });
+
   it('a failed commit keeps the token so the same confirmed commit can retry', () => {
     let f = onExplicitYes(onPrepared(facts(), 'tok-1'), 'tok-1');
     f = onToolResult(f, { action: BOOK_COMMIT, kind: 'commit', ok: false, confirmationToken: 'tok-1' });
+    expect(checkRun(f, commit('tok-1'))).toEqual({ ok: true });
+  });
+
+  it('a failed commit without a token changes no token or yes', () => {
+    const before = onExplicitYes(onPrepared(facts(), 'tok-1'), 'tok-1');
+    const f = onToolResult(before, { action: BOOK_COMMIT, kind: 'commit', ok: false });
+    expect(f.preparedTokens).toBe(before.preparedTokens);
+    expect(f.explicitYesForToken).toBe('tok-1');
     expect(checkRun(f, commit('tok-1'))).toEqual({ ok: true });
   });
 

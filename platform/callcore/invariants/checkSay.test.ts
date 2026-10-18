@@ -363,6 +363,22 @@ describe('checkSay (f) text promises with SMS off', () => {
     ).toEqual({ ok: true });
   });
 
+  it('a qualifier only covers a text promise in its own sentence', () => {
+    expectBlocked(
+      checkSay(facts(), "I'll text you now; once texting is enabled, we'll send the receipt."),
+      'say.text_promise_sms_off',
+    );
+    expectBlocked(
+      checkSay(facts(), "I'll text you the confirmation. Once texting is enabled, you'll get a text too."),
+      'say.text_promise_sms_off',
+    );
+    expect(checkSay(facts(), "Once texting is enabled, I'll text you the details.")).toEqual({ ok: true });
+    expect(checkSay(facts(), "I'll text you once texting is enabled.")).toEqual({ ok: true });
+    expect(
+      checkSay(facts(), 'Cuando se activen los mensajes de texto, le enviaré un mensaje.'),
+    ).toEqual({ ok: true });
+  });
+
   it('SMS on: a text promise is allowed', () => {
     expect(checkSay(facts({ smsEnabled: true }), "I'll text you the details.")).toEqual({ ok: true });
   });
