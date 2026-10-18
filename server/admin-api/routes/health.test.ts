@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -10,6 +10,7 @@ vi.mock('../../../platform/db', () => ({
 }));
 
 import healthRouter from './health';
+import { __resetBuildInfoForTests } from '../../../platform/runtime/buildInfo';
 
 function app() {
   const app = express();
@@ -42,6 +43,40 @@ describe('GET /health (admin-api)', () => {
     const res = await request(app()).get('/health');
     expect(res.status).toBe(503);
     expect(res.body).toMatchObject({ status: 'degraded', db: 'error' });
+    expect(typeof res.body.marker).toBe('string');
+  });
+});
+
+describe('GET /health deploy marker (admin-api, VA-14)', () => {
+  const SHA = '32164aa8f00dbabe0123456789abcdef01234567';
+  const prev = process.env.RENDER_GIT_COMMIT;
+
+  beforeEach(() => {
+    __resetBuildInfoForTests();
+    a.getPoolMock.mockReturnValue({ query: () => Promise.resolve({ rows: [{ '?column?': 1 }] }) });
+  });
+  afterEach(() => {
+    if (prev === undefined) delete process.env.RENDER_GIT_COMMIT;
+    else process.env.RENDER_GIT_COMMIT = prev;
+    __resetBuildInfoForTests();
+  });
+
+  it('includes commit and marker next to the existing fields', async () => {
+    process.env.RENDER_GIT_COMMIT = SHA;
+    const res = await request(app()).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'healthy', service: 'admin-api', version: '1.0.0', db: 'connected', commit: SHA });
+    expect(res.body).toHaveProperty('timestamp');
+    expect(typeof res.body.buildTime).toBe('string');
+    expect(res.body.marker).toBe(`32164aa@${res.body.buildTime}`);
+  });
+
+  it('reports unknown when RENDER_GIT_COMMIT is unset', async () => {
+    delete process.env.RENDER_GIT_COMMIT;
+    const res = await request(app()).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body.commit).toBe('unknown');
+    expect(res.body.marker).toMatch(/^unknown@/);
   });
 });
 

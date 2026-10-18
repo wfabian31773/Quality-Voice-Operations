@@ -80,7 +80,7 @@ Both stay off on the Render worker (in shadow mode `SCHEDULERS_ENABLED` is unset
 | `/readyz` | api, voice | 200 when the env is valid for the role, `SELECT 1` answers within 1 s, the tool registries are loaded and the process is not draining. Otherwise 503 with reason codes: `env_invalid`, `env_not_validated`, `db_unreachable`, `db_timeout`, `registries_not_loaded`, `draining` (never values) | Deploy checks, uptime monitor, humans |
 | `/internal/drain-status` | voice | `{draining, activeSessions, oldestSessionAgeSec, openStreams}`; header `x-admin-token: $ADMIN_INTERNAL_TOKEN` | `scripts/render/deploy.ts` (waits for 0) |
 | `/metrics` | voice | Session metrics; now requires `x-admin-token` | Ops |
-| `/health` | api, voice | **Unchanged.** Returns 503 when the DB is down, so it must not be Render's health check | Legacy |
+| `/health` | api, voice | Returns 503 when the DB is down, so it must not be Render's health check. Carries the deploy marker (VA-14): `commit` (`RENDER_GIT_COMMIT`), `buildTime` (written by `scripts/render/build.sh` to `.build-info.json`) and `marker` = `<short sha>@<build time>`, also logged at boot; `unknown` when not available. Before a test call, check `marker` matches the merged commit | Legacy, deploy check |
 
 ---
 
