@@ -94,7 +94,10 @@ vi.mock('../../../platform/billing/cost', () => ({
 vi.mock('../../../platform/core/observability/traceLogger', () => ({ recordTrace: vi.fn(async () => {}) }));
 
 import { BARBERSHOP_TEMPLATE_V1 } from '../../../platform/agent-templates/barbershop';
+import { recordToolExecution } from '../../../platform/billing/usage/UsageRecorder';
+import { completeToolExecution, createToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { loadAgentConfig } from './agentLoader';
+import { writeCallEvent } from './callPersistence';
 import { createRealtimeSession, type SessionContext } from './openaiSession';
 import { sessionManager } from './sessionManager';
 
@@ -238,6 +241,23 @@ describe('composer agent in a live session', () => {
     expect(done.say).toBe(
       `Su cita quedó lista. Confirmado: corte con Marco, viernes, 3:30 p. m. ${BARBERSHOP_TEMPLATE_V1.afterWrite.textWillFollow.es}`,
     );
+    result.session.close();
+  });
+
+  it('a contract tool call gets one tool_invocations row, tool_start/tool_end and one meter increment', async () => {
+    fakeActions();
+    const { result, callTool } = await startCall();
+    vi.mocked(createToolExecution).mockClear();
+    vi.mocked(completeToolExecution).mockClear();
+    vi.mocked(writeCallEvent).mockClear();
+    vi.mocked(recordToolExecution).mockClear();
+
+    await callTool('scheduling_book_prepare', { customer: { name: 'Luis' } });
+    expect(vi.mocked(createToolExecution).mock.calls).toEqual([[expect.objectContaining({ toolName: 'scheduling_book_prepare', callSessionId: 'cs-composer' })]]);
+    expect(vi.mocked(completeToolExecution).mock.calls).toEqual([[expect.objectContaining({ executionId: 'exec-1', status: 'success' })]]);
+    const toolEvents = vi.mocked(writeCallEvent).mock.calls.map((c) => c[2]).filter((e) => e === 'tool_start' || e === 'tool_end');
+    expect(toolEvents).toEqual(['tool_start', 'tool_end']);
+    expect(recordToolExecution).toHaveBeenCalledTimes(1);
     result.session.close();
   });
 

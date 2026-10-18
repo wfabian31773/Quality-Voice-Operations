@@ -11,6 +11,7 @@ import {
   updateInstallation,
 } from '../../../platform/marketplace/InstallationService';
 import { checkEntitlement } from '../../../platform/marketplace/EntitlementService';
+import { guardRuntimeFlag, keepStoredRuntime } from '../services/agentRuntimeFlag';
 import {
   getChecklistState,
   markStepComplete,
@@ -855,6 +856,12 @@ router.post('/marketplace/templates/:id/install', requireAuth, requireRole('mana
   if (welcomeGreeting !== undefined && typeof welcomeGreeting !== 'string') {
     return res.status(400).json({ error: 'welcomeGreeting must be a string' });
   }
+  // The installed agent's metadata: only platform staff may set metadata.runtime in it.
+  const runtimeFlag = metadata === undefined
+    ? undefined
+    : guardRuntimeFlag({ isPlatformAdmin: req.user!.isPlatformAdmin, stored: undefined, requested: metadata });
+  if (runtimeFlag && !runtimeFlag.ok) return res.status(runtimeFlag.status).json({ error: runtimeFlag.error });
+  const installMetadata = runtimeFlag?.ok ? runtimeFlag.metadata : undefined;
 
   try {
     const purchaseCheck = await checkPurchaseAccess(tenantId, templateId);
@@ -872,7 +879,7 @@ router.post('/marketplace/templates/:id/install', requireAuth, requireRole('mana
       name: name?.trim(),
       welcomeGreeting,
       escalationConfig,
-      metadata,
+      metadata: installMetadata,
     });
 
     if (!result.success) {
@@ -1177,7 +1184,8 @@ router.patch('/marketplace/installations/:id/customize', requireAuth, requireRol
 
     if (hasMetaUpdates) {
       const existingMeta = (rows[0].agent_metadata as Record<string, unknown>) ?? {};
-      const newMeta = { ...existingMeta, ...metaUpdates };
+      // metadataFields can't carry runtime; this keeps the stored one either way.
+      const newMeta = keepStoredRuntime(existingMeta, { ...existingMeta, ...metaUpdates });
       values.push(JSON.stringify(newMeta));
       updates.push(`metadata = $${values.length}`);
     }

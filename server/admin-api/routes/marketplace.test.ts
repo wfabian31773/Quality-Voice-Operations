@@ -195,6 +195,20 @@ describe('install (requireRole manager)', () => {
   it('400 on an empty name', async () => {
     expect((await request(app()).post('/marketplace/templates/tpl1/install').send({ name: '  ' })).status).toBe(400);
   });
+  it('403 when a tenant user sets metadata.runtime; nothing is installed', async () => {
+    a.svc.checkPurchaseAccess.mockResolvedValue({ hasAccess: true });
+    a.svc.installTemplate.mockClear();
+    const res = await request(app()).post('/marketplace/templates/tpl1/install').send({ name: 'My Agent', metadata: { runtime: 'composer' } });
+    expect(res.status).toBe(403);
+    expect(a.svc.installTemplate).not.toHaveBeenCalled();
+  });
+  it('a platform admin may install with metadata.runtime', async () => {
+    a.user.isPlatformAdmin = true;
+    a.svc.checkPurchaseAccess.mockResolvedValue({ hasAccess: true });
+    a.svc.installTemplate.mockResolvedValue({ success: true, installation: { id: 'inst1', agentId: 'ag1', templateVersion: '1.0.0' } });
+    expect((await request(app()).post('/marketplace/templates/tpl1/install').send({ metadata: { runtime: 'composer' } })).status).toBe(201);
+    expect(a.svc.installTemplate).toHaveBeenLastCalledWith(expect.objectContaining({ metadata: { runtime: 'composer' } }));
+  });
 });
 
 describe('purchases', () => {

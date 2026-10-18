@@ -63,6 +63,7 @@ import { SilenceWatchdog, type PlaybackConfirmMode } from './silenceWatchdog';
 import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
 import { CallInvariants, type FloorOutcome } from './callInvariants';
 import { createContractToolBridge } from './contractToolBridge';
+import { beginToolRun, finishToolRun, runContractTool, type ToolRunCall } from './toolBookkeeping';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
 
@@ -166,7 +167,11 @@ function buildToolHandler(
     }
 
     contractTools?.observeToolCall(toolName, args);
-    if (contractTools?.handles(toolName)) return contractTools.runTool(toolName, args);
+    const bookkeeping: ToolRunCall = {
+      tenantId, callSessionId, agentId: agentConfig.agentId, toolName, args, workflow: Boolean(ctx.workflowEngine), isTrial: ctx.isTrial,
+    };
+    // Same tool_invocations row, call events and metering as every other tool.
+    if (contractTools?.handles(toolName)) return runContractTool(contractTools, bookkeeping);
 
     const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
     const validation = unifiedToolRegistry.validateToolInput(toolName, args, activeRoleSchema);
@@ -406,27 +411,9 @@ function buildToolHandler(
       return demoResult;
     }
 
-    const executionId = await createToolExecution({
-      tenantId,
-      callSessionId,
-      agentId: agentConfig.agentId,
-      agentSlug: agentConfig.agentId,
-      toolName,
-      parameters: args,
-    });
-
-    if (ctx.workflowEngine) {
-      await updateCallState(tenantId, callSessionId, 'WORKFLOW_EXECUTION');
-      await writeCallEvent(tenantId, callSessionId, 'workflow_execution_start', 'ACTIVE_CONVERSATION', 'WORKFLOW_EXECUTION', {
-        tool: toolName,
-      });
-    }
-
-    await updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION');
-    await writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
-      tool: toolName,
-      executionId,
-    });
+    // Session binding may have rewritten args since the bookkeeping record was built.
+    bookkeeping.args = args;
+    const executionId = await beginToolRun(bookkeeping);
 
     let result: string;
     let executionStatus: 'success' | 'failed' = 'success';
@@ -690,8 +677,6 @@ function buildToolHandler(
       }
     }
 
-    const durationMs = Date.now() - startTime;
-
     let parsedResult: unknown;
     try { parsedResult = JSON.parse(result); } catch { parsedResult = { raw: result }; }
 
@@ -702,17 +687,6 @@ function buildToolHandler(
         executionError = executionError ?? (typeof r.message === 'string' ? r.message : 'Tool returned success: false');
       }
     }
-
-    await completeToolExecution({
-      tenantId,
-      executionId,
-      callSessionId,
-      result: parsedResult,
-      status: executionStatus,
-      errorMessage: executionError,
-      recoveryAction: executionStatus === 'failed' ? unifiedToolRegistry.getRecoveryInstructions(toolName) : undefined,
-      durationMs,
-    });
 
     if (ctx.reasoningEngine) {
       try {
@@ -731,45 +705,14 @@ function buildToolHandler(
       }
     }
 
-    if (executionStatus === 'failed') {
-      try {
-        const { logError } = await import('../../../platform/core/observability');
-        logError(tenantId, 'error', `Tool "${toolName}" failed: ${executionError ?? 'unknown error'}`, {
-          service: 'tool_execution',
-          errorCode: 'TOOL_EXEC_FAILURE',
-          callSessionId: callSessionId,
-        });
-      } catch (obsErr) {
-        logger.warn('Failed to log tool error to observability', { error: String(obsErr) });
-      }
-    }
-
-    await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
-    await writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
-      tool: toolName,
+    await finishToolRun(bookkeeping, {
       executionId,
-      durationMs,
+      startTime,
+      result: parsedResult,
       status: executionStatus,
+      errorMessage: executionError,
+      recoveryAction: executionStatus === 'failed' ? unifiedToolRegistry.getRecoveryInstructions(toolName) : undefined,
     });
-
-    try {
-      const { recordToolExecution } = await import('../../../platform/billing/usage/UsageRecorder');
-      await recordToolExecution(tenantId, 1);
-    } catch (meterErr) {
-      logger.error('Failed to record tool execution', { tenantId, callId: callSessionId, error: String(meterErr) });
-    }
-
-    if (ctx.isTrial) {
-      try {
-        const { checkTrialLimits } = await import('../../../platform/billing/guardrails/TrialGuard');
-        const trialCheck = await checkTrialLimits(tenantId);
-        if (trialCheck.isTrial && !trialCheck.allowed && trialCheck.usage.toolExecutions >= trialCheck.usage.maxToolExecutions) {
-          logger.warn('Trial tool execution limit reached mid-session', { tenantId, callId: callSessionId, toolExecutions: trialCheck.usage.toolExecutions });
-        }
-      } catch (trialErr) {
-        logger.error('Failed to check trial tool limits', { tenantId, error: String(trialErr) });
-      }
-    }
 
     return result;
   };
