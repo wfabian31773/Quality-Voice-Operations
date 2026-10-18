@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { TenantTx } from '../core';
+import { HOLD_SUPERSEDED_REASON } from '../scheduling/bookingRows';
+import { HOLD_EXPIRED_REASON } from '../scheduling/types';
 import { parseTenantIntakeSchemas, type TenantIntakeSchemas } from './intakeSchemas';
 import type { TicketKind, TicketPriority, TicketStatus, TicketUrgency } from './schemas';
 
@@ -134,6 +136,16 @@ export interface TicketsRepo {
   /** Serializes same-call dedupe for (callRef, kind, phone) until the transaction ends. */
   lockCallDedupe(key: string): Promise<void>;
   findByCallRef(callRef: string, kind: TicketKind): Promise<TicketRecord[]>;
+  /**
+   * Whether this call already filed something: a ticket of any kind (by source_call_ref or
+   * call_id, including a call_id whose call_sessions row has this call_sid), or a booking.
+   * bookings has no call_id column; an agent booking carries its call in
+   * intake_data.qvo.session (scheduling/bookingRows.ts). Holds that never became a
+   * booking (still held, expired or superseded) do not count.
+   */
+  hasCallArtifact(callRef: string): Promise<boolean>;
+  /** call_sessions.caller_number as stored (ciphertext or legacy plain text) for this call, or null. */
+  callerNumber(callRef: string): Promise<string | null>;
   insert(ticket: NewTicket): Promise<TicketRecord>;
   addActivity(activity: NewActivity): Promise<void>;
   /** Writes a pending outbox row in the caller's transaction and returns its id. */
@@ -366,6 +378,49 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
       [tenantId, callRef, kind],
     );
     return rows.map(mapTicket);
+  },
+
+  async hasCallArtifact(callRef) {
+    const { rows: tickets } = await tx.query(
+      `SELECT 1
+         FROM tickets
+        WHERE tenant_id = $1
+          AND (source_call_ref = $2
+               OR call_id = $2
+               OR call_id IN (SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2)
+               OR source_call_ref IN (SELECT call_sid FROM call_sessions WHERE tenant_id = $1 AND id = $2))
+        LIMIT 1`,
+      [tenantId, callRef],
+    );
+    if (tickets.length > 0) return true;
+    // Agent bookings store the call_sessions.id as session; map a CallSid the same way as above,
+    // and a session id back to its CallSid for bookings stored under the CallSid.
+    const { rows: bookings } = await tx.query(
+      `SELECT 1
+         FROM bookings
+        WHERE tenant_id = $1
+          AND (intake_data -> 'qvo' ->> 'session' = $2
+               OR intake_data -> 'qvo' ->> 'session' IN (SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2)
+               OR intake_data -> 'qvo' ->> 'session' IN (SELECT call_sid FROM call_sessions WHERE tenant_id = $1 AND id = $2))
+          AND status <> 'held'
+          AND COALESCE(cancellation_reason, '') NOT IN ($3, $4)
+        LIMIT 1`,
+      [tenantId, callRef, HOLD_EXPIRED_REASON, HOLD_SUPERSEDED_REASON],
+    );
+    return bookings.length > 0;
+  },
+
+  async callerNumber(callRef) {
+    const { rows } = await tx.query(
+      `SELECT caller_number
+         FROM call_sessions
+        WHERE tenant_id = $1 AND (id = $2 OR call_sid = $2)
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [tenantId, callRef],
+    );
+    const value = rows[0]?.caller_number;
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
   },
 
   async insert(ticket) {

@@ -23,6 +23,12 @@ export interface MemoryTicketsState {
   slaInstances: MemorySlaInstance[];
   members: Map<string, Set<string>>;
   locks: string[];
+  /** `${tenantId}\0${callRef}` of calls that made a booking (bookings.intake_data.qvo.session). */
+  bookedCalls: Set<string>;
+  /** call_sessions.id by `${tenantId}\0${callSid}`, so a CallSid finds the session's tickets and bookings. */
+  callSessions: Map<string, string>;
+  /** call_sessions.caller_number as stored, by `${tenantId}\0${callRef}`. */
+  callerNumbers: Map<string, string>;
 }
 
 const EMPTY_SETTINGS: TicketSettings = {
@@ -45,6 +51,9 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
     slaInstances: [],
     members: new Map(),
     locks: [],
+    bookedCalls: new Set(),
+    callSessions: new Map(),
+    callerNumbers: new Map(),
   };
   let nextNumber = 1000;
 
@@ -117,6 +126,26 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
         return own()
           .filter((ticket) => ticket.sourceCallRef === callRef && ticket.kind === kind)
           .map(strip);
+      },
+      async hasCallArtifact(callRef) {
+        const session = state.callSessions.get(`${tenantId}\0${callRef}`);
+        const sessions = session ? [callRef, session] : [callRef];
+        // Tickets (source_call_ref) and bookings also match the CallSid of the call_sessions row whose id is callRef.
+        const callSids = [...state.callSessions]
+          .filter(([key, id]) => id === callRef && key.startsWith(`${tenantId}\0`))
+          .map(([key]) => key.slice(tenantId.length + 1));
+        return (
+          own().some(
+            (ticket) =>
+              ticket.sourceCallRef === callRef ||
+              callSids.includes(ticket.sourceCallRef ?? '') ||
+              sessions.includes(ticket.callId ?? ''),
+          ) ||
+          [...sessions, ...callSids].some((id) => state.bookedCalls.has(`${tenantId}\0${id}`))
+        );
+      },
+      async callerNumber(callRef) {
+        return state.callerNumbers.get(`${tenantId}\0${callRef}`) ?? null;
       },
       async insert(input) {
         nextNumber += 1;
