@@ -15,6 +15,7 @@ import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityT
 import { selectSchedulers, startSchedulers, stopSchedulers } from '../../platform/runtime/schedulers';
 import { resolveProcessRole, resolveApiPort, isRenderRuntime, scrubReplitFallbacks, resolveVoiceGatewayBaseUrl } from '../../platform/runtime/processRole';
 import { markDraining, markEnvValidated, markRegistriesLoaded } from '../../platform/runtime/health';
+import { getBuildInfo } from '../../platform/runtime/buildInfo';
 import { closeWithTimeout } from '../../platform/runtime/boundedClose';
 
 const logger = createLogger('ADMIN_API');
@@ -77,6 +78,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     role: ROLE,
     env: process.env.APP_ENV ?? 'development',
     nodeVersion: process.version,
+    deploy: getBuildInfo().marker,
   });
 
   await validateDatabaseConnection();

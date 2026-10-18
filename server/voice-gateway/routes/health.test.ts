@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -29,6 +29,7 @@ import {
   markEnvValidated,
   markRegistriesLoaded,
 } from '../../../platform/runtime/health';
+import { __resetBuildInfoForTests } from '../../../platform/runtime/buildInfo';
 
 const TOKEN = 'test-admin-token-0123456789';
 
@@ -70,6 +71,40 @@ describe('GET /health', () => {
     const res = await request(app()).get('/health');
     expect(res.status).toBe(503);
     expect(res.body).toMatchObject({ status: 'unhealthy', error: 'Database unreachable' });
+    expect(typeof res.body.marker).toBe('string');
+  });
+});
+
+describe('GET /health deploy marker (VA-14)', () => {
+  const SHA = '32164aa8f00dbabe0123456789abcdef01234567';
+  const prev = process.env.RENDER_GIT_COMMIT;
+
+  beforeEach(() => __resetBuildInfoForTests());
+  afterEach(() => {
+    if (prev === undefined) delete process.env.RENDER_GIT_COMMIT;
+    else process.env.RENDER_GIT_COMMIT = prev;
+    __resetBuildInfoForTests();
+  });
+
+  it('includes commit and marker next to the existing fields', async () => {
+    process.env.RENDER_GIT_COMMIT = SHA;
+    h.poolQueryMock.mockResolvedValue({ rows: [{ ok: 1 }] });
+    const res = await request(app()).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'healthy', db: 'connected', activeSessions: 3, draining: false, commit: SHA });
+    expect(res.body).toHaveProperty('version');
+    expect(res.body).toHaveProperty('timestamp');
+    expect(typeof res.body.buildTime).toBe('string');
+    expect(res.body.marker).toBe(`32164aa@${res.body.buildTime}`);
+  });
+
+  it('reports unknown when RENDER_GIT_COMMIT is unset', async () => {
+    delete process.env.RENDER_GIT_COMMIT;
+    h.poolQueryMock.mockResolvedValue({ rows: [{ ok: 1 }] });
+    const res = await request(app()).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body.commit).toBe('unknown');
+    expect(res.body.marker).toMatch(/^unknown@/);
   });
 });
 

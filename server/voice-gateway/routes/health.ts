@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto';
 import { pingDatabasePools } from '../../../platform/db';
 import { createProbeRouter } from '../../../platform/runtime/health';
 import { resolveProcessRole } from '../../../platform/runtime/processRole';
+import { getBuildInfo } from '../../../platform/runtime/buildInfo';
 import { sessionManager } from '../services/sessionManager';
 
 const router = Router();
@@ -35,6 +36,7 @@ router.use(
 );
 
 router.get('/health', async (_req, res) => {
+  const { commit, buildTime, marker } = getBuildInfo();
   try {
     const result = await pingDatabasePools('SELECT 1 AS ok');
     const dbOk = result.rows[0]?.ok === 1;
@@ -46,12 +48,18 @@ router.get('/health', async (_req, res) => {
       db: dbOk ? 'connected' : 'unreachable',
       activeSessions: sessionManager.getActiveCount(),
       draining: sessionManager.isDraining(),
+      commit,
+      buildTime,
+      marker,
     });
   } catch (err) {
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       error: 'Database unreachable',
+      commit,
+      buildTime,
+      marker,
     });
   }
 });

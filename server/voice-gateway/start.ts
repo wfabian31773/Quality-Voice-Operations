@@ -18,6 +18,7 @@ import { initToolHealthTracking } from '../../platform/tools/ToolHealthService';
 import { ensureReliabilityTables } from '../../platform/tools/ensureReliabilityTables';
 import { resolveProcessRole, resolveVoicePort, isRenderRuntime, scrubReplitFallbacks } from '../../platform/runtime/processRole';
 import { markEnvValidated, markRegistriesLoaded } from '../../platform/runtime/health';
+import { getBuildInfo } from '../../platform/runtime/buildInfo';
 import { closeWithTimeout } from '../../platform/runtime/boundedClose';
 import { createVoiceShutdown } from './shutdown';
 
@@ -65,6 +66,7 @@ server.listen(PORT, '0.0.0.0', () => {
     role: ROLE,
     env: process.env.APP_ENV ?? 'development',
     nodeVersion: process.version,
+    deploy: getBuildInfo().marker,
   });
   // Start the synthetic realtime-stream canary (no-op unless
   // STREAM_CANARY_ENABLED). Listens locally, so start it after the server is

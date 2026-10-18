@@ -34,4 +34,7 @@ if [[ "$role" == "api" ]]; then
   npx vite build --config client-app/vite.config.ts
 fi
 
+# VA-14 deploy marker for /health (platform/runtime/buildInfo.ts); gitignored.
+printf '{"commit":"%s","buildTime":"%s"}\n' "${RENDER_GIT_COMMIT:-unknown}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .build-info.json
+
 echo "==> [render-build:${role}] done"
