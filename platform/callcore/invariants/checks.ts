@@ -8,6 +8,7 @@
 import { INSTRUCTIONS } from './instructions';
 import {
   canonicalRef,
+  clauses,
   findPhrase,
   findRefs,
   leadingLabels,
@@ -21,6 +22,7 @@ import {
   STAGE_DIRECTION_PATTERNS,
   STAGE_DIRECTION_WORDS,
   SUCCESS_CLAIMS,
+  SUCCESS_NEGATORS,
   TEXT_PROMISE_PHRASES,
   TRANSFER_PHRASES,
 } from './phrases';
@@ -47,6 +49,7 @@ const TRANSFER = normalizePhrases(TRANSFER_PHRASES);
 const STAGE_WORDS = normalizePhrases(STAGE_DIRECTION_WORDS);
 const TEXT_PROMISES = normalizePhrases(TEXT_PROMISE_PHRASES);
 const QUALIFIERS = normalizePhrases(SMS_OFF_QUALIFIERS);
+const NEGATORS = normalizePhrases(SUCCESS_NEGATORS);
 
 export function checkRun(facts: CallFacts, req: RunRequest, history: readonly RunRecord[] = []): CheckResult {
   if (!facts.allowedActions.includes(req.action)) return block('run.action_not_allowed');
@@ -72,16 +75,45 @@ export function checkRun(facts: CallFacts, req: RunRequest, history: readonly Ru
   return OK;
 }
 
-/** The latest commit/write result whose action matches the claim must be ok. */
+/**
+ * The latest commit/write result whose action matches the claim must be ok,
+ * and recorded after every still-outstanding prepare: a new prepare voids the
+ * earlier results until its token retires (an ok commit, or the fail-closed
+ * clear). Not scoped by action, so a pending prepare of one kind also blocks
+ * earlier-backed claims of another kind (the safe direction).
+ */
 function latestMatchingOk(facts: CallFacts, actionSegments: readonly string[]): boolean {
+  const from = Math.max(0, ...facts.preparedTokens.values());
   for (let i = facts.committed.length - 1; i >= 0; i -= 1) {
     const c = facts.committed[i];
     if (c.kind === 'transfer') continue;
-    if (actionSegments.length === 0) return c.ok;
+    if (actionSegments.length === 0) return c.ok && i >= from;
     const segments = c.action.toLowerCase().replace(/@\d+$/, '').split(/[._]/);
-    if (segments.some((s) => actionSegments.includes(s))) return c.ok;
+    if (segments.some((s) => actionSegments.includes(s))) return c.ok && i >= from;
   }
   return false;
+}
+
+/** Offsets of each whole-word match of a normalized phrase in ` ${text} `. */
+function matchOffsets(normalizedText: string, phrase: string): number[] {
+  const padded = ` ${normalizedText} `;
+  const offsets: number[] = [];
+  for (let i = padded.indexOf(` ${phrase} `); i >= 0; i = padded.indexOf(` ${phrase} `, i + 1)) offsets.push(i);
+  return offsets;
+}
+
+/**
+ * Some phrase occurs at least once without a negator right before it in the
+ * same clause. Matches that span clauses still count, so only negation narrows.
+ */
+function claimsPhrase(norm: string, clauseNorms: readonly string[], phrases: readonly string[]): boolean {
+  return phrases.some((p) => {
+    const negated = clauseNorms.reduce((n, c) => {
+      const padded = ` ${c} `;
+      return n + matchOffsets(c, p).filter((i) => NEGATORS.some((neg) => padded.slice(0, i).endsWith(` ${neg}`))).length;
+    }, 0);
+    return matchOffsets(norm, p).length > negated;
+  });
 }
 
 function latestTransferOk(facts: CallFacts): boolean {
@@ -107,8 +139,9 @@ export function checkSay(facts: CallFacts, text: string): CheckResult {
   }
 
   const labels = leadingLabels(text);
+  const clauseNorms = clauses(text);
   for (const group of SUCCESS) {
-    const claimed = findPhrase(norm, group.phrases) || labels.some((l) => group.labels.includes(l));
+    const claimed = claimsPhrase(norm, clauseNorms, group.phrases) || labels.some((l) => group.labels.includes(l));
     if (claimed && !latestMatchingOk(facts, group.actionSegments)) {
       return block('say.success_before_commit');
     }

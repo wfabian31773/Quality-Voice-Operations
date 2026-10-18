@@ -47,6 +47,18 @@ export function sentences(text: string): string[] {
   return text.split(/[.!?;¡¿\n]+/).filter((s) => s.trim().length > 0);
 }
 
+/**
+ * Normalized clauses, split at . , : ; ! ? ¡ ¿ — – or a newline, so a "No," that
+ * answers something else never reads as negating what follows:
+ * "No, quedó reservada. ¿Algo más?" → ["no", "quedo reservada", "algo mas"].
+ */
+export function clauses(text: string): string[] {
+  return text
+    .split(/[.,:;!?¡¿\n—–]+/)
+    .map(normalizeSpeech)
+    .filter((c) => c.length > 0);
+}
+
 const DIGIT_WORD_RE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${Object.keys(DIGIT_WORDS).join('|')})(?![\\p{L}\\p{N}])`, 'giu');
 
 // EN/ES month names and abbreviations, diacritics already stripped.

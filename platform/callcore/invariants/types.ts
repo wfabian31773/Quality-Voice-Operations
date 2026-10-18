@@ -25,8 +25,12 @@ export interface CallFacts {
   readonly voiceRefs: boolean;
   readonly smsEnabled: boolean;
   readonly committed: readonly CommittedResult[];
-  /** Confirmation tokens returned by a prepare on this call and not yet committed. */
-  readonly preparedTokens: ReadonlySet<string>;
+  /**
+   * Confirmation tokens returned by a prepare on this call and not yet
+   * committed, each mapped to `committed.length` when it was prepared. While a
+   * token is outstanding, a success claim needs a result recorded after it.
+   */
+  readonly preparedTokens: ReadonlyMap<string, number>;
   /** Token the caller explicitly said yes to after its readback. */
   readonly explicitYesForToken?: string;
   /** The floor (file-a-message-if-nothing-filed) check has run for this call. */

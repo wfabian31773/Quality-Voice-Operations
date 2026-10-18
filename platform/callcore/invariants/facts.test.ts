@@ -75,6 +75,14 @@ describe('CallFacts reducers', () => {
     expect(onExplicitYes(onPrepared(f, 'tok-1'), 'tok-1').explicitYesForToken).toBe('tok-1');
   });
 
+  it('onPrepared records how many results came before the token; an ok commit retires it', () => {
+    let f = onPrepared(createCallFacts(init), 'tok-1');
+    expect(f.preparedTokens.get('tok-1')).toBe(0);
+    f = onToolResult(onExplicitYes(f, 'tok-1'), { action: 'scheduling.book.commit', kind: 'commit', ok: true, confirmationToken: 'tok-1' });
+    f = onPrepared(f, 'tok-2');
+    expect([...f.preparedTokens]).toEqual([['tok-2', 1]]);
+  });
+
   it('heard and floor flags are one-way', () => {
     const f = onFloorEvaluated(onCallerHeard(createCallFacts(init)));
     expect(f.heard).toBe(true);

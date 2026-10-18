@@ -15,7 +15,7 @@ export function createCallFacts(init: CallFactsInit): CallFacts {
     voiceRefs: init.voiceRefs,
     smsEnabled: init.smsEnabled,
     committed: [],
-    preparedTokens: new Set<string>(),
+    preparedTokens: new Map<string, number>(),
     floorEvaluated: false,
     unvoicedToolResult: false,
     allowedActions: [...init.allowedActions],
@@ -55,9 +55,9 @@ export function onToolResult(facts: CallFacts, result: ToolResultInput): CallFac
   const token = result.confirmationToken;
   if (!token || !facts.preparedTokens.has(token)) {
     // Fail closed: we can't tell which token was consumed, so retire them all.
-    return { ...next, preparedTokens: new Set<string>(), explicitYesForToken: undefined };
+    return { ...next, preparedTokens: new Map<string, number>(), explicitYesForToken: undefined };
   }
-  const preparedTokens = new Set(facts.preparedTokens);
+  const preparedTokens = new Map(facts.preparedTokens);
   preparedTokens.delete(token);
   return {
     ...next,
@@ -69,11 +69,15 @@ export function onToolResult(facts: CallFacts, result: ToolResultInput): CallFac
 /**
  * A prepare returned this confirmation token. A new prepare supersedes any
  * pending yes: after a correction the caller must confirm the new readback.
+ * The token remembers how many results were recorded before it, so success
+ * claims backed only by those earlier results are blocked until the token
+ * retires (see checkSay). Not scoped by action: a pending prepare of one kind
+ * also blocks earlier-backed claims of another kind, which is the safe side.
  */
 export function onPrepared(facts: CallFacts, token: string): CallFacts {
   if (!token || facts.preparedTokens.has(token)) return facts;
-  const preparedTokens = new Set(facts.preparedTokens);
-  preparedTokens.add(token);
+  const preparedTokens = new Map(facts.preparedTokens);
+  preparedTokens.set(token, facts.committed.length);
   return { ...facts, preparedTokens, explicitYesForToken: undefined };
 }
 

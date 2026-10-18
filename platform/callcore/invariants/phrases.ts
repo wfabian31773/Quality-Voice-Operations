@@ -13,6 +13,8 @@
  * whose action name has one of `actionSegments` (a trailing "@<version>" is
  * dropped, then the name is split on "." and "_") is ok.
  * An empty `actionSegments` matches any commit/write result (not a transfer).
+ * That result must also come after every prepare whose token is still
+ * outstanding: a second booking that is only prepared can't ride on the first.
  *
  * `labels` are claims only as a label: the whole text before a colon that opens
  * the line or a sentence, as in the app's own post-commit readbacks
@@ -121,6 +123,26 @@ export const SUCCESS_CLAIMS: readonly SuccessClaimGroup[] = [
     actionSegments: [],
     phrases: ["you're all set", 'you are all set', 'ya quedó', 'ya está todo listo'],
   },
+];
+
+/**
+ * A success phrase right after one of these, in the same clause, is a denial,
+ * not a claim: "No quedó reservada; voy a intentar de nuevo". Only the
+ * occurrence it touches is exempt; "No problem, you're booked" is still a claim.
+ */
+export const SUCCESS_NEGATORS: readonly string[] = [
+  'no',
+  'todavía no',
+  'aún no',
+  'not',
+  "wasn't",
+  'was not',
+  "isn't",
+  'is not',
+  "haven't",
+  'have not',
+  "couldn't",
+  "didn't",
 ];
 
 /** Transfer claims: allowed only after an ok transfer result. */

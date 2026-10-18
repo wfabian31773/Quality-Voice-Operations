@@ -169,6 +169,57 @@ describe('checkSay (a) success words need a matching ok commit', () => {
     }
   });
 
+  it('a new prepare after an ok booking blocks claims until its own commit is ok', () => {
+    const lines = ["You're booked for the second appointment.", 'Confirmed: Friday at 3 with Marco.'];
+    const booked = committed(facts(), BOOK_COMMIT, true, [], 'tok-1');
+    const pending = onExplicitYes(onPrepared(booked, 'tok-2'), 'tok-2');
+    const secondOk = onToolResult(pending, { action: BOOK_COMMIT, kind: 'commit', ok: true, confirmationToken: 'tok-2' });
+    const secondFailed = onToolResult(pending, { action: BOOK_COMMIT, kind: 'commit', ok: false, confirmationToken: 'tok-2' });
+    for (const line of lines) {
+      expect(checkSay(booked, line), line).toEqual({ ok: true });
+      expectBlocked(checkSay(onPrepared(booked, 'tok-2'), line), 'say.success_before_commit');
+      expectBlocked(checkSay(pending, line), 'say.success_before_commit');
+      expect(checkSay(secondOk, line), line).toEqual({ ok: true });
+      expectBlocked(checkSay(secondFailed, line), 'say.success_before_commit');
+    }
+  });
+
+  it('a pending prepare only voids results recorded before it, of any kind', () => {
+    // Correction: tok-1 is superseded by tok-2 and never committed; the tok-2 booking still counts.
+    const corrected = committed(onPrepared(facts(), 'tok-1'), BOOK_COMMIT, true, [], 'tok-2');
+    expect(checkSay(corrected, "You're booked.")).toEqual({ ok: true });
+    // Retired tokens release: a booking then a ticket leaves both claims allowed.
+    const bookedThenTicket = committed(committed(facts(), BOOK_COMMIT, true, [], 'tok-1'), TICKET_COMMIT, true, [], 'tok-2');
+    expect(checkSay(bookedThenTicket, "You're booked.")).toEqual({ ok: true });
+    expect(checkSay(bookedThenTicket, "I've let them know you called.")).toEqual({ ok: true });
+    // Not scoped by action: a pending booking prepare also blocks an earlier "I've sent".
+    const sent = onToolResult(facts(), { action: SMS_SEND, kind: 'write', ok: true });
+    expect(checkSay(sent, "I've sent you the details.")).toEqual({ ok: true });
+    expectBlocked(checkSay(onPrepared(sent, 'tok-1'), "I've sent you the details."), 'say.success_before_commit');
+  });
+
+  it('a success phrase right after a negator in its clause is not a claim; other claims in the line still are', () => {
+    for (const line of [
+      'No quedó reservada; voy a intentar de nuevo.',
+      'Su cita no está confirmada todavía.',
+      'Su cita no quedó reservada.',
+      'Todavía no le envié el mensaje.',
+      "You're not booked yet.",
+      "I haven't booked you yet.",
+    ]) {
+      expect(checkSay(facts(), line), line).toEqual({ ok: true });
+    }
+    for (const line of [
+      "No problem, you're booked.",
+      'No se preocupe, su cita está confirmada.',
+      'No, quedó reservada.',
+      'No quedó reservada, pero ya le reservé el viernes.',
+      'No quedó reservada. Quedó reservada el viernes.',
+    ]) {
+      expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
+    }
+  });
+
   it('every listed label is blocked with no commit', () => {
     for (const group of SUCCESS_CLAIMS) {
       for (const label of group.labels ?? []) {
