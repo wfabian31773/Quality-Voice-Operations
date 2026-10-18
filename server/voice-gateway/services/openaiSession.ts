@@ -63,6 +63,7 @@ import { SilenceWatchdog, type PlaybackConfirmMode } from './silenceWatchdog';
 import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
 import { CallInvariants, type FloorOutcome } from './callInvariants';
 import { createContractToolBridge } from './contractToolBridge';
+import { engineSuccessToolName, engineToolCall, engineToolNames, engineVertical } from './reasoningToolNames';
 import { beginToolRun, finishToolRun, runContractTool, type ToolRunCall } from './toolBookkeeping';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
@@ -168,14 +169,21 @@ function buildToolHandler(
 
     /**
      * The reasoning gate's verdict on this call: the JSON to return when it
-     * blocks (or its check throws: fail closed), undefined to go ahead.
+     * blocks (or its check throws: fail closed), undefined to go ahead. A
+     * contract tool is authorized under its engine name (reasoningToolNames.ts);
+     * rows and events keep the real name.
      */
     const reasoningBlock = async (): Promise<string | undefined> => {
       if (!ctx.reasoningGate || INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) return undefined;
       try {
         // Enforce: the engine's verdict. Shadow: logged only; just the
         // allowlist can block, and an engine error never does.
-        const authorization = ctx.reasoningGate.authorizeTool(toolName, args, agentConfig.tools.map((tool) => tool.name));
+        const engineCall = engineToolCall(toolName, args, agentConfig.contractTools);
+        const authorization = ctx.reasoningGate.authorizeTool(
+          engineCall.toolName,
+          engineCall.args,
+          engineToolNames(agentConfig.tools.map((tool) => tool.name), agentConfig.contractTools),
+        );
         if (authorization.allowed) return undefined;
         const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
         logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
@@ -211,9 +219,10 @@ function buildToolHandler(
     const reasoningToolSucceeded = (): void => {
       if (!ctx.reasoningEngine) return;
       try {
-        ctx.reasoningEngine.handleToolSuccess(toolName);
+        const engineTool = engineSuccessToolName(toolName, agentConfig.contractTools);
+        ctx.reasoningEngine.handleToolSuccess(engineTool);
         const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
-        if (stepTool === toolName) {
+        if (stepTool === engineTool) {
           ctx.reasoningEngine.advanceWorkflowStep();
           logger.debug('Advanced workflow step after tool execution', { tenantId, callId: callSessionId, tool: toolName });
         }
@@ -919,9 +928,9 @@ export async function createRealtimeSession(
       callSessionId: '', // will be set after callSession creation
       callSid,
       agentSlug: agentConfig.agentId,
-      vertical: ctx.templateKey ?? 'general',
+      vertical: engineVertical(ctx.templateKey, agentConfig.contractTools),
       callerNumber,
-      toolsAvailable: agentConfig.tools.map((t) => t.name),
+      toolsAvailable: engineToolNames(agentConfig.tools.map((t) => t.name), agentConfig.contractTools),
       memoryStorage: ctx.callerMemory ?? null,
       humanTransferAvailable: Boolean(
         ctx.onHandoff

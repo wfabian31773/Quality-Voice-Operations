@@ -342,7 +342,9 @@ describe('composer agent: reasoning authorization and notifications', () => {
     const { ctx, result, callTool } = await startCall('en', { reasoningMode: 'enforce' });
     await callTool('scheduling_list_services');
     expect(authorize).toHaveBeenCalledTimes(1);
-    expect(authorize).toHaveBeenCalledWith('scheduling_list_services', {}, ctx.agentConfig.tools.map((t) => t.name));
+    // Under its engine name (Codex 4307582062), with the engine names of the agent's contract tools added.
+    const toolNames = ctx.agentConfig.tools.map((t) => t.name);
+    expect(authorize).toHaveBeenCalledWith('list_services', {}, expect.arrayContaining([...toolNames, 'create_booking', 'update_booking', 'create_ticket', 'lookup_customer']));
     expect(h.runAction).toHaveBeenCalledTimes(1);
     result.session.close();
   });
@@ -361,7 +363,7 @@ describe('composer agent: reasoning authorization and notifications', () => {
     const { result, callTool } = await startCall();
 
     await callTool('scheduling_list_services');
-    expect(success.mock.calls).toEqual([['scheduling_list_services']]);
+    expect(success.mock.calls).toEqual([['list_services']]);
     expect(failure).not.toHaveBeenCalled();
 
     await callTool('scheduling_book_prepare', { customer: { name: 'Luis' } });
@@ -396,6 +398,113 @@ describe('composer agent: reasoning authorization and notifications', () => {
     expect(ctx.reasoningGate).toBeUndefined();
     expect((await callTool('scheduling_list_services')).ok).toBe(true);
     expect(h.runAction).toHaveBeenCalledTimes(1);
+    result.session.close();
+  });
+});
+
+/**
+ * Codex 4307582062: a real ReasoningEngine in enforce mode. Contract tools are
+ * authorized and reported under the engine's names (reasoningToolNames.ts), on
+ * the salon pack, so the engine's booking step lets a booking through.
+ */
+describe('Codex 4307582062: enforce mode with a real ReasoningEngine', () => {
+  const PREPARE = { serviceIds: ['service-1'], staffId: 'any', start: '2026-10-23T15:30:00-04:00', customer: { name: 'Luis' } };
+
+  /** An enforce call whose engine has collected the booking and sits on its create_booking step. */
+  async function onBookingStep() {
+    fakeActions();
+    const call = await startCall('en', { reasoningMode: 'enforce' });
+    expect(call.ctx.reasoningGate?.enforcing).toBe(true);
+    call.callerSays("Hi, I'd like a fade on Friday at 3:30 pm.");
+    call.callerSays('My name is Luis.');
+    call.callerSays('My number is 555-555-0100.');
+    expect(call.ctx.reasoningEngine?.getWorkflowPlan()?.vertical).toBe('salon');
+    expect(call.ctx.reasoningEngine?.getCurrentWorkflowStepTool()).toBe('create_booking');
+    vi.mocked(createToolExecution).mockClear();
+    return call;
+  }
+
+  it('scheduling_book_prepare then scheduling_book_commit are allowed on the create_booking step (runAction called)', async () => {
+    const authorize = vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest');
+    const { ctx, result, callTool, callerSays, agentSays } = await onBookingStep();
+
+    expect((await callTool('scheduling_book_prepare', PREPARE)).ok).toBe(true);
+    agentSays('Friday at 3:30 PM with Marco, for Luis. Shall I book it?');
+    callerSays('Yes, please.');
+    expect((await callTool('scheduling_book_commit', { confirmationToken: TOKEN })).ok).toBe(true);
+
+    expect(h.runAction.mock.calls.map((c) => c[0])).toEqual(['scheduling.book.prepare', 'scheduling.book.commit']);
+    expect(authorize.mock.calls.map((c) => c[0])).toEqual(['create_booking', 'create_booking']);
+    expect(authorize.mock.results.map((r) => (r.value as SafetyCheckResult).allowed)).toEqual([true, true]);
+    // The real contract name everywhere else.
+    expect(vi.mocked(createToolExecution).mock.calls.map((c) => c[0].toolName)).toEqual(['scheduling_book_prepare', 'scheduling_book_commit']);
+    expect(ctx.reasoningEngine?.getCurrentWorkflowStepTool()).toBeNull();
+    result.session.close();
+  });
+
+  it('notifications use the engine name: the prepare (a hold) keeps the step, the commit advances it', async () => {
+    const success = vi.spyOn(ReasoningEngine.prototype, 'handleToolSuccess');
+    const { ctx, result, callTool, callerSays, agentSays } = await onBookingStep();
+
+    await callTool('scheduling_book_prepare', PREPARE);
+    expect(success.mock.calls).toEqual([['scheduling_book_prepare']]);
+    expect(ctx.reasoningEngine?.getCurrentWorkflowStepTool()).toBe('create_booking');
+
+    agentSays('Friday at 3:30 PM with Marco, for Luis. Shall I book it?');
+    callerSays('Yes, please.');
+    await callTool('scheduling_book_commit', { confirmationToken: TOKEN });
+    expect(success.mock.calls).toEqual([['scheduling_book_prepare'], ['create_booking']]);
+    expect(ctx.reasoningEngine?.getWorkflowPlan()?.status).toBe('completed');
+    result.session.close();
+  });
+
+  it('off-step: a reschedule (update_booking) while the step is create_booking is blocked; runAction not called', async () => {
+    const authorize = vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest');
+    const { result, callTool } = await onBookingStep();
+    vi.mocked(completeToolExecution).mockClear();
+
+    const out = await callTool('scheduling_reschedule_prepare', { bookingId: 'booking-1', newStart: '2026-10-24T10:00:00-04:00' });
+    // The SafetyGate refuses it first (the caller never asked to reschedule), as it would a legacy update_booking.
+    expect(out).toEqual({ success: false, message: 'This action was blocked by policy: Tool "update_booking" required fields were supplied only in model tool arguments, not by the caller: action' });
+    expect(authorize.mock.calls.map((c) => c[0])).toEqual(['update_booking']);
+    expect(h.runAction).not.toHaveBeenCalled();
+    expect(vi.mocked(createToolExecution).mock.calls.map((c) => c[0].toolName)).toEqual(['scheduling_reschedule_prepare']);
+    expect(vi.mocked(completeToolExecution).mock.calls).toEqual([[expect.objectContaining({ status: 'failed', result: expect.objectContaining({ reason: 'safety_blocked' }) })]]);
+    result.session.close();
+  });
+
+  it('off-step: a message ticket (create_ticket) while the step is create_booking conflicts with the step; runAction not called', async () => {
+    const { result, callTool } = await onBookingStep();
+    const out = await callTool('tickets_open_prepare', { kind: 'message', subject: 'Fade', details: 'A fade on Friday', customer: { name: 'Luis' } });
+    expect(out).toEqual({ success: false, message: 'This action was blocked by policy: Requested tool "create_ticket" conflicts with the active reasoning decision' });
+    expect(h.runAction).not.toHaveBeenCalled();
+    expect(vi.mocked(createToolExecution).mock.calls.map((c) => c[0].toolName)).toEqual(['tickets_open_prepare']);
+    result.session.close();
+  });
+
+  it('a reschedule on the engine\'s update_booking step is allowed (runAction called)', async () => {
+    fakeActions();
+    const authorize = vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest');
+    const { ctx, result, callTool, callerSays } = await startCall('en', { reasoningMode: 'enforce' });
+    callerSays('I need to reschedule my appointment.');
+    callerSays('My name is Luis.');
+    callerSays('Can we do Saturday at 10 am?');
+    expect(ctx.reasoningEngine?.getCurrentWorkflowStepTool()).toBe('update_booking');
+
+    await callTool('scheduling_reschedule_prepare', { bookingId: 'booking-1', newStart: '2026-10-24T10:00:00-04:00' });
+    expect(authorize.mock.results.map((r) => (r.value as SafetyCheckResult).allowed)).toEqual([true]);
+    expect(h.runAction.mock.calls.map((c) => c[0])).toEqual(['scheduling.reschedule.prepare']);
+    result.session.close();
+  });
+
+  it('off-step: a new booking while the caller is cancelling is blocked (the engine\'s reschedule_cancel rule); runAction not called', async () => {
+    fakeActions();
+    const { result, callTool, callerSays } = await startCall('en', { reasoningMode: 'enforce' });
+    callerSays('I need to cancel my appointment.');
+
+    const out = await callTool('scheduling_book_prepare', PREPARE);
+    expect(out).toEqual({ success: false, message: 'This action was blocked by policy: Cancel and reschedule must update the existing booking. Do not create a new booking.' });
+    expect(h.runAction).not.toHaveBeenCalled();
     result.session.close();
   });
 });
