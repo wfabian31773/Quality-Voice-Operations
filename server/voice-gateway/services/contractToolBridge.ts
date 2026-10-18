@@ -18,19 +18,58 @@
  *   commit's readback, in the commit's own language (the proposal's locale,
  *   which the commit's readback also uses), plus "a text will follow once
  *   texting is enabled" while SMS is off.
+ *
+ * The guards legacy tools get in executeWithRetry, which this path skips:
+ * - each action run is cut off after the legacy per-attempt timeout (15s) and
+ *   comes back as a failure that offers a message, so the caller is never
+ *   left in dead air (the silence watchdog is paused during a tool run);
+ * - the repeated-tool stop: once a tool has failed TOOL_STOP_THRESHOLD times
+ *   in the call, it returns ToolStopGuard's stop result and no longer runs.
+ *   SLOT_MISSING is an ask with its own ceiling (the contract's exit), so it
+ *   doesn't count;
+ * - the per-tenant tool rate limit (unifiedToolRegistry.checkRateLimit).
  */
 import { randomUUID } from 'node:crypto';
 import { afterWriteLine, type ContractToolBinding } from '../../../platform/agent-runtime/composer';
-import { templateLanguage, type TemplateLanguage } from '../../../platform/agent-templates/shared';
+import { templateLanguage, type Phrase, type TemplateLanguage } from '../../../platform/agent-templates/shared';
 import { actionFail, getAction, runAction, type ActionContext, type ActionResult } from '../../../platform/actions';
 import { envSmsSendConfig } from '../../../platform/actions/sms/deps';
 import { isCallerIdReference } from '../../../platform/reasoning/sessionBinding';
+import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
+import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
+import { toolStopGuard, type ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 
 /** Production runs platform/actions' runAction; tests inject a fake. */
 export type ContractActionRunner = (name: string, ctx: ActionContext, input: unknown) => Promise<ActionResult>;
 
 /** The language note the runtime's record_language_change tool takes. */
 const LANGUAGE_TOOL = 'record_language_change';
+
+/** The per-attempt timeout legacy tools get (RetryOrchestrator's withTimeout, DEFAULT_RETRY_CONFIG.timeoutMs). */
+export const CONTRACT_TOOL_TIMEOUT_MS = DEFAULT_RETRY_CONFIG.timeoutMs;
+
+/** What the agent says when an action timed out. "Couldn't confirm": a timed-out commit may still land. */
+const TIMED_OUT: Phrase = {
+  en: "I'm sorry, I couldn't get that confirmed just now. I can take a message so they can follow up with you.",
+  es: 'Disculpe, no pude confirmarlo en este momento. Puedo tomar un mensaje para que le den seguimiento.',
+};
+
+class ActionTimeout extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new ActionTimeout()), timeoutMs);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err: unknown) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+/** An ask (SLOT_MISSING, with or without its exit) has its own ceiling; every other failure counts toward the stop. */
+function countsAsFailure(result: ActionResult): boolean {
+  return !result.ok && result.error.code !== 'SLOT_MISSING';
+}
 
 export interface ContractToolBridgeInit {
   tenantId: string;
@@ -48,6 +87,12 @@ export interface ContractToolBridgeInit {
   smsEnabled?: () => boolean;
   now?: () => Date;
   newIdempotencyKey?: () => string;
+  /** Defaults to CONTRACT_TOOL_TIMEOUT_MS. */
+  timeoutMs?: number;
+  /** Defaults to the process-wide guard openaiSession opens and clears per call. */
+  stopGuard?: ToolStopGuard;
+  /** Defaults to unifiedToolRegistry's per-tenant tool rate limit. */
+  checkRateLimit?: (tenantId: string, toolName: string) => boolean;
 }
 
 function hasOwn(record: Readonly<Record<string, unknown>>, key: string): boolean {
@@ -116,6 +161,14 @@ export class ContractToolBridge {
     const { binding } = this.init;
     const action = hasOwn(binding.actions, toolName) ? binding.actions[toolName] : undefined;
     if (!action) return JSON.stringify(actionFail('NOT_FOUND', `Not a contract tool: ${toolName}`));
+    const guard = this.init.stopGuard ?? toolStopGuard;
+    const { callId } = this.init;
+    if (guard.isStopped(callId, toolName)) return JSON.stringify(guard.result(callId, toolName));
+    const withinLimit = this.init.checkRateLimit ?? ((tenantId, name) => unifiedToolRegistry.checkRateLimit(tenantId, name));
+    if (!withinLimit(this.init.tenantId, toolName)) {
+      return JSON.stringify(actionFail('RATE_LIMITED', 'Rate limit exceeded for this tool. Please wait a moment before trying again.'));
+    }
+
     const kind = getAction(action)?.kind;
     const lang = this.language;
     const ctx: ActionContext = {
@@ -132,9 +185,16 @@ export class ContractToolBridge {
 
     let result: ActionResult;
     try {
-      result = forModel(await this.run(action, ctx, withoutCallerIdReferences(args, binding.callerIdPaths[action])));
-    } catch {
-      result = actionFail('INTERNAL', 'The action could not run');
+      const run = this.run(action, ctx, withoutCallerIdReferences(args, binding.callerIdPaths[action]));
+      result = forModel(await withTimeout(run, this.init.timeoutMs ?? CONTRACT_TOOL_TIMEOUT_MS));
+    } catch (err) {
+      result = err instanceof ActionTimeout
+        ? actionFail('UPSTREAM_UNAVAILABLE', 'The action timed out', { retryable: false, exit: 'message_ticket', callerSafeMessage: TIMED_OUT[lang] })
+        : actionFail('INTERNAL', 'The action could not run');
+    }
+
+    if (countsAsFailure(result) && guard.recordFailure(callId, toolName) >= guard.threshold) {
+      return JSON.stringify(guard.result(callId, toolName));
     }
 
     if (!result.ok) {

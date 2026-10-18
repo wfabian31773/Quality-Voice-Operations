@@ -59,6 +59,8 @@ export const BARBERSHOP_TEMPLATE_V1: AgentTemplate = {
   version: 1,
   languages: TEMPLATE_LANGUAGES,
   contracts: ['booking.book@1', 'booking.find@1', 'booking.reschedule@1', 'booking.cancel@1', 'tickets.message@1'],
+  // Booking and moving need service and staff ids and an open start time.
+  reads: ['scheduling.list_services', 'scheduling.list_staff', 'scheduling.check_availability'],
   persona: { en: PERSONA_EN, es: PERSONA_ES },
   greeting: {
     en: 'Thanks for calling {{businessName}}. How can I help you today?',

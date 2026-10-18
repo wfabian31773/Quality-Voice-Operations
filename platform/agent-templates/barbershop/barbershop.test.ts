@@ -160,7 +160,7 @@ describe('barbershop@1 template export', () => {
 
   it('has the expected shape', () => {
     expect(Object.keys(T).sort()).toEqual(
-      ['afterWrite', 'asks', 'contracts', 'greeting', 'id', 'languages', 'persona', 'version'],
+      ['afterWrite', 'asks', 'contracts', 'greeting', 'id', 'languages', 'persona', 'reads', 'version'],
     );
     expect(Object.keys(T.afterWrite).sort()).toEqual(['booked', 'cancelled', 'rescheduled', 'textWillFollow']);
     expect(Object.keys(T.asks).sort()).toEqual([...CONTRACT_ASK_IDS].sort());

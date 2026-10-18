@@ -36,6 +36,10 @@ const CONTRACT_TOOLS = [
   'scheduling_cancel_commit',
   'tickets_open_prepare',
   'tickets_open_commit',
+  // barbershop@1's reads: ids and open times for booking and moving.
+  'scheduling_list_services',
+  'scheduling_list_staff',
+  'scheduling_check_availability',
 ];
 
 describe('composer flag', () => {

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { compose, RUNTIME_TOOL_NAMES } from '../../agent-runtime/composer';
 import { findStageDirections } from '../../agent-runtime/promptLint';
-import { listActions } from '../../actions';
+import { getAction, listActions } from '../../actions';
 import { CONTRACTS } from '../../callcore/contracts';
 import { findRefs, normalizeSpeech, STAGE_DIRECTION_PATTERNS, STAGE_DIRECTION_WORDS } from '../../callcore/invariants';
 import { CALLER_ID_TOKEN } from '../../reasoning/sessionBinding';
@@ -29,12 +29,17 @@ function composeFor(language: TemplateLanguage) {
 
 /** Dotted or snake_case identifiers: how a prompt names a tool (scheduling.book.prepare, get_current_tenant_time). */
 const TOOL_SHAPED = /\b[a-z][a-z0-9]+(?:[._][a-z0-9]+)+\b/g;
-/** Tool-shaped words that are values, not tools. */
-const NOT_TOOLS = new Set([CALLER_ID_TOKEN]);
+/** Tool-shaped words that are values, not tools (find_bookings' `needs: "name_date_time"`). */
+const NOT_TOOLS = new Set([CALLER_ID_TOKEN, 'name_date_time']);
 
-/** Tool-shaped names in a prompt that the agent's tool list doesn't have (by tool name or its action name). */
+/**
+ * Tool-shaped names in a prompt or tool description that the agent's tool
+ * list doesn't have: by tool name, action name, or the action name without
+ * its namespace (action descriptions say "check_availability").
+ */
 function unknownToolMentions(prompt: string, tools: readonly string[], actions: Readonly<Record<string, string>>): string[] {
-  const known = new Set([...tools, ...Object.values(actions)]);
+  const actionNames = Object.values(actions);
+  const known = new Set([...tools, ...actionNames, ...actionNames.map((a) => a.slice(a.indexOf('.') + 1))]);
   return [...new Set(prompt.match(TOOL_SHAPED) ?? [])].filter((name) => !NOT_TOOLS.has(name) && !known.has(name));
 }
 
@@ -90,10 +95,26 @@ describe('barbershop@1 composed for a fixture shop', () => {
       it('names only tools in its own tool list', () => {
         expect(unknownToolMentions(c.prompt, c.tools.map((t) => t.name), c.contractTools.actions)).toEqual([]);
       });
+
+      it('every composed tool\'s description names only tools in its own tool list', () => {
+        const names = c.tools.map((t) => t.name);
+        for (const tool of c.tools) {
+          expect(unknownToolMentions(tool.description, names, c.contractTools.actions), tool.name).toEqual([]);
+        }
+      });
     });
   }
 
-  it('the tool list is the five contracts\' actions plus the runtime tools, no library tool', () => {
+  it('the booking reads are agent-permitted read actions', () => {
+    expect(BARBERSHOP_TEMPLATE_V1.reads).toEqual(['scheduling.list_services', 'scheduling.list_staff', 'scheduling.check_availability']);
+    for (const name of BARBERSHOP_TEMPLATE_V1.reads!) {
+      const def = getAction(name);
+      expect(def?.kind, name).toBe('read');
+      expect(def?.permissions.agent, name).toBe(true);
+    }
+  });
+
+  it('the tool list is the five contracts\' actions, the booking reads and the runtime tools, no library tool', () => {
     const c = composeFor('en');
     expect(c.tools.map((t) => t.name)).toEqual([
       'scheduling_book_prepare',
@@ -105,11 +126,15 @@ describe('barbershop@1 composed for a fixture shop', () => {
       'scheduling_cancel_commit',
       'tickets_open_prepare',
       'tickets_open_commit',
+      'scheduling_list_services',
+      'scheduling_list_staff',
+      'scheduling_check_availability',
       ...RUNTIME_TOOL_NAMES,
     ]);
-    expect(Object.values(c.contractTools.actions)).toEqual(
-      CONTRACTS.flatMap((k) => (k.confirm ? [k.confirm.prepare, k.confirm.commit] : [k.action!])),
-    );
+    expect(Object.values(c.contractTools.actions)).toEqual([
+      ...CONTRACTS.flatMap((k) => (k.confirm ? [k.confirm.prepare, k.confirm.commit] : [k.action!])),
+      ...BARBERSHOP_TEMPLATE_V1.reads!,
+    ]);
     const library = TOOL_LIBRARY_NAMES.filter((n) => !(RUNTIME_TOOL_NAMES as readonly string[]).includes(n));
     expect(c.tools.filter((t) => library.includes(t.name))).toEqual([]);
   });
@@ -125,6 +150,11 @@ describe('barbershop@1 composed for a fixture shop', () => {
     expect(unknownToolMentions('For hours, call business.get_info.', names, c.contractTools.actions)).toEqual(['business.get_info']);
     expect(unknownToolMentions('Use create_booking.', names, c.contractTools.actions)).toEqual(['create_booking']);
     expect(unknownToolMentions('Call scheduling.book.prepare, then get_current_tenant_time.', names, c.contractTools.actions)).toEqual([]);
+    expect(unknownToolMentions('Use a time from check_availability.', names, c.contractTools.actions)).toEqual([]);
+    // Without the template's reads, book.prepare's own description names a missing tool.
+    const noReads = compose({ ...BARBERSHOP_TEMPLATE_V1, reads: undefined }, undefined, SHOP, { language: 'en' });
+    const prepare = noReads.tools.find((t) => t.name === 'scheduling_book_prepare')!;
+    expect(unknownToolMentions(prepare.description, noReads.tools.map((t) => t.name), noReads.contractTools.actions)).toEqual(['check_availability']);
     // Every registry action name is tool-shaped, so none slips past the pattern.
     for (const def of listActions()) expect(def.name.match(TOOL_SHAPED)).toEqual([def.name]);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAction } from '../../actions';
+import { getAction, listActions } from '../../actions';
 import { CONTRACTS, getContract } from '../../callcore/contracts';
 import { TOOL_LIBRARY_NAMES } from '../../tools/library/catalog';
 import type { AgentTemplate } from '../../agent-templates/shared';
@@ -11,6 +11,7 @@ const FIXTURE: AgentTemplate = {
   version: 2,
   languages: ['en', 'es'],
   contracts: ['booking.book@1', 'tickets.message@1'],
+  reads: ['scheduling.check_availability'],
   persona: { en: 'You answer the phone for a small business.', es: 'Usted contesta el teléfono de un negocio pequeño.' },
   greeting: { en: 'Thanks for calling {{businessName}}.', es: 'Gracias por llamar a {{businessName}}.' },
   asks: {
@@ -29,9 +30,9 @@ const TENANT = { businessName: 'Corner Studio', businessDetails: 'Open Tue-Sat 9
 
 describe('compose: tools', () => {
   const composed = compose(FIXTURE, undefined, TENANT, { language: 'en' });
-  const expectedActions = FIXTURE.contracts.flatMap((key) => contractActionNames(getContract(key)!));
+  const expectedActions = [...FIXTURE.contracts.flatMap((key) => contractActionNames(getContract(key)!)), ...FIXTURE.reads!];
 
-  it('exposes exactly the selected contracts\' actions plus the runtime tools', () => {
+  it('exposes exactly the selected contracts\' actions, the template\'s reads and the runtime tools', () => {
     expect(Object.values(composed.contractTools.actions)).toEqual(expectedActions);
     expect(composed.tools.map((t) => t.name)).toEqual([
       ...Object.keys(composed.contractTools.actions),
@@ -42,7 +43,28 @@ describe('compose: tools', () => {
       'scheduling.book.commit',
       'tickets.open.prepare',
       'tickets.open.commit',
+      'scheduling.check_availability',
     ]);
+    expect(composed.contractTools.actions.scheduling_check_availability).toBe('scheduling.check_availability');
+  });
+
+  it('a template without reads gets only its contracts\' actions', () => {
+    const none = compose({ ...FIXTURE, reads: undefined }, undefined, TENANT, {});
+    expect(Object.values(none.contractTools.actions)).not.toContain('scheduling.check_availability');
+  });
+
+  it('refuses a template read that is a write, a prepare or not in the registry', () => {
+    expect(() => compose({ ...FIXTURE, reads: ['scheduling.book.commit'] }, undefined, TENANT, {})).toThrow(/is a commit action, not a read/);
+    expect(() => compose({ ...FIXTURE, reads: ['tickets.open.prepare'] }, undefined, TENANT, {})).toThrow(/not a read/);
+    expect(() => compose({ ...FIXTURE, reads: ['scheduling.nope'] }, undefined, TENANT, {})).toThrow(/not in the action registry/);
+    const write = listActions().find((def) => def.kind === 'write');
+    if (write) expect(() => compose({ ...FIXTURE, reads: [write.name] }, undefined, TENANT, {})).toThrow(/is a write action, not a read/);
+  });
+
+  it('refuses a read action that is not agent-permitted', () => {
+    const staffOnly = listActions().find((def) => def.kind === 'read' && def.permissions.agent !== true);
+    expect(staffOnly, 'the registry has a read the agent may not run').toBeDefined();
+    expect(() => compose({ ...FIXTURE, reads: [staffOnly!.name] }, undefined, TENANT, {})).toThrow(/not agent-permitted/);
   });
 
   it('every contract tool is a registered, agent-permitted action with its registry schema', () => {
@@ -58,9 +80,9 @@ describe('compose: tools', () => {
     expect(composed.tools.map((t) => t.name).filter((n) => libraryOnly.includes(n))).toEqual([]);
   });
 
-  it('a narrower selection narrows the tools', () => {
+  it('a narrower selection narrows the contract tools (the template\'s reads stay)', () => {
     const one = compose(FIXTURE, ['tickets.message@1'], TENANT, { language: 'en' });
-    expect(Object.values(one.contractTools.actions)).toEqual(['tickets.open.prepare', 'tickets.open.commit']);
+    expect(Object.values(one.contractTools.actions)).toEqual(['tickets.open.prepare', 'tickets.open.commit', 'scheduling.check_availability']);
   });
 
   it('refuses a contract the template does not phrase, or one that does not exist', () => {

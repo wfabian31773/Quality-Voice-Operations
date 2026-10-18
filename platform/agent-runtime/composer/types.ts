@@ -29,7 +29,7 @@ export interface ComposerCallFacts {
  * tools: names, the template's asks and the after-write lines. Data only.
  */
 export interface ContractToolBinding {
-  /** External tool name → platform action name, contract tools only. */
+  /** External tool name → platform action name: contract actions and the template's reads only. */
   actions: Readonly<Record<string, string>>;
   /** askId → the template's phrasing, for the selected contracts' slots. */
   asks: Readonly<Record<string, Phrase>>;

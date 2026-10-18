@@ -10,8 +10,10 @@ import {
   type ActionContext,
   type ActionResult,
 } from '../../../platform/actions';
+import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
+import { TOOL_STOP_THRESHOLD, ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { CallInvariants } from './callInvariants';
-import { ContractToolBridge, createContractToolBridge, type ContractActionRunner } from './contractToolBridge';
+import { CONTRACT_TOOL_TIMEOUT_MS, ContractToolBridge, createContractToolBridge, type ContractActionRunner } from './contractToolBridge';
 
 const TEMPLATE = BARBERSHOP_TEMPLATE_V1;
 const composed = compose(TEMPLATE, undefined, { businessName: 'Sharp Line Barbers' }, { language: 'en' });
@@ -196,6 +198,134 @@ describe('contract tool bridge: after-write line in the commit\'s language', () 
     const out = parse(await b.runTool('tickets_open_commit', { confirmationToken: prep.data.confirmationToken }));
     expect(out.ok).toBe(true);
     expect(out.say).toBeUndefined();
+  });
+});
+
+describe('contract tool bridge: booking with the template\'s reads', () => {
+  /** Fake catalog + availability on top of the fake booking backend. */
+  function withReads() {
+    const booking = fakeBooking();
+    const runner: ContractActionRunner = async (name, ctx, input) => {
+      if (name === 'scheduling.list_services') {
+        booking.calls.push({ name, ctx, input });
+        return actionOk({ services: [{ id: 'svc-cut', displayName: 'Cut', durationMinutes: 30, priceText: 'thirty dollars' }] });
+      }
+      if (name === 'scheduling.check_availability') {
+        booking.calls.push({ name, ctx, input });
+        return actionOk({ slots: [{ start: '2026-10-23T19:30:00.000Z', staffId: 'st-marco', spoken: 'Friday at 3:30 PM' }] });
+      }
+      return booking.runner(name, ctx, input);
+    };
+    return { runner, calls: booking.calls };
+  }
+
+  it('list_services → check_availability → book.prepare → explicit yes → book.commit succeeds', async () => {
+    const { runner, calls } = withReads();
+    const b = bridge(runner, { stopGuard: new ToolStopGuard() });
+    const invariants = new CallInvariants({
+      tenantId: 't-shop',
+      callId: 'cs-reads',
+      agent: { tools: composed.tools, metadata: {}, language: 'en', timeZone: 'America/New_York' },
+      callerNumber: CALLER,
+      log: { info: vi.fn(), warn: vi.fn() },
+      smsEnabled: () => false,
+      runFloorAction: async () => actionOk({ reason: 'never_heard' }),
+    });
+    const handler = invariants.wrapToolHandler((name, args) => (b.handles(name) ? b.runTool(name, args) : Promise.resolve('{}')));
+
+    const services = parse(await handler('scheduling_list_services', { query: 'cut' }));
+    expect(services.ok).toBe(true);
+    const serviceId = services.data.services[0].id as string;
+    const open = parse(await handler('scheduling_check_availability', { serviceIds: [serviceId], staffId: 'any' }));
+    expect(open.ok).toBe(true);
+    const slot = open.data.slots[0] as { start: string; staffId: string };
+    const prep = parse(await handler('scheduling_book_prepare', {
+      serviceIds: [serviceId], staffId: slot.staffId, start: slot.start, customer: { name: 'Luis' },
+    }));
+    expect(prep.ok).toBe(true);
+
+    invariants.agentTurnCompleted('A cut with Marco, Friday at 3:30, for Luis. Shall I book it?');
+    invariants.callerTranscribed('Yes, please.');
+    const done = parse(await handler('scheduling_book_commit', { confirmationToken: prep.data.confirmationToken }));
+    expect(done.ok).toBe(true);
+    expect(done.say).toMatch(/^You're booked\./);
+
+    expect(calls.map((c) => c.name)).toEqual([
+      'scheduling.list_services',
+      'scheduling.check_availability',
+      'scheduling.book.prepare',
+      'scheduling.book.commit',
+    ]);
+    // Reads run as the same agent, with no idempotency key.
+    for (const read of calls.slice(0, 2)) {
+      expect(read.ctx).toMatchObject({ tenantId: 't-shop', actor: { type: 'agent', id: 'ag-shop' }, callerPhone: CALLER, locale: 'en' });
+      expect(read.ctx.idempotencyKey).toBeUndefined();
+    }
+  });
+});
+
+describe('contract tool bridge: timeout, repeated-failure stop, rate limit', () => {
+  it('uses the legacy tools\' timeout', () => {
+    expect(CONTRACT_TOOL_TIMEOUT_MS).toBe(DEFAULT_RETRY_CONFIG.timeoutMs);
+  });
+
+  it('a hung action times out with a failure that offers a message, and counts as a failure', async () => {
+    const guard = new ToolStopGuard();
+    const b = bridge(() => new Promise<ActionResult>(() => {}), { callId: 'cs-hang', timeoutMs: 20, stopGuard: guard });
+    const out = parse(await b.runTool('scheduling_check_availability', { serviceIds: ['s'] }));
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: false, exit: 'message_ticket' });
+    expect(out.error.callerSafeMessage).toMatch(/take a message/);
+    expect(guard.failureCount('cs-hang', 'scheduling_check_availability')).toBe(1);
+
+    b.observeToolCall('record_language_change', { language: 'es', confidence: 'high' });
+    const es = parse(await b.runTool('scheduling_check_availability', { serviceIds: ['s'] }));
+    expect(es.error.callerSafeMessage).toMatch(/tomar un mensaje/);
+  });
+
+  it(`${TOOL_STOP_THRESHOLD} failures of the same tool trip the stop, and it no longer runs`, async () => {
+    const guard = new ToolStopGuard();
+    const run = vi.fn<ContractActionRunner>(async () => actionFail('NOT_FOUND', 'no such service'));
+    const b = bridge(run, { callId: 'cs-fail', stopGuard: guard });
+    const outs: Record<string, any>[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+    for (let i = 0; i < TOOL_STOP_THRESHOLD + 1; i++) outs.push(parse(await b.runTool('scheduling_book_prepare', { serviceIds: ['x'] })));
+
+    expect(outs.slice(0, TOOL_STOP_THRESHOLD - 1).map((o) => o.error.code)).toEqual(Array(TOOL_STOP_THRESHOLD - 1).fill('NOT_FOUND'));
+    expect(outs[TOOL_STOP_THRESHOLD - 1]).toMatchObject({ code: 'TOOL_STOPPED', tool: 'scheduling_book_prepare', failedAttempts: TOOL_STOP_THRESHOLD });
+    expect(outs[TOOL_STOP_THRESHOLD]).toMatchObject({ code: 'TOOL_STOPPED' });
+    expect(run).toHaveBeenCalledTimes(TOOL_STOP_THRESHOLD);
+    // Per tool: another tool still runs.
+    expect(parse(await b.runTool('tickets_open_prepare', {})).error.code).toBe('NOT_FOUND');
+  });
+
+  it('timeouts and thrown errors count toward the stop too', async () => {
+    const guard = new ToolStopGuard();
+    const hang = bridge(() => new Promise<ActionResult>(() => {}), { callId: 'cs-mix', timeoutMs: 5, stopGuard: guard });
+    const thrower = bridge(async () => { throw new Error('boom'); }, { callId: 'cs-mix', stopGuard: guard });
+    await hang.runTool('scheduling_book_prepare', {});
+    await thrower.runTool('scheduling_book_prepare', {});
+    expect(parse(await hang.runTool('scheduling_book_prepare', {}))).toMatchObject({ code: 'TOOL_STOPPED' });
+  });
+
+  it('successes and SLOT_MISSING asks (with or without the exit) do not count toward the stop', async () => {
+    const guard = new ToolStopGuard();
+    let n = 0;
+    const b = bridge(async () => {
+      n += 1;
+      if (n % 3 === 0) return actionOk({ services: [] });
+      return actionFail('SLOT_MISSING', 'missing service', { askId: 'ask.service', field: 'service', ...(n % 3 === 2 ? { exit: 'message_ticket' as const } : {}) });
+    }, { callId: 'cs-asks', stopGuard: guard });
+    for (let i = 0; i < TOOL_STOP_THRESHOLD * 3; i++) {
+      expect(parse(await b.runTool('scheduling_book_prepare', {})).code).not.toBe('TOOL_STOPPED');
+    }
+    expect(guard.failureCount('cs-asks', 'scheduling_book_prepare')).toBe(0);
+  });
+
+  it('a rate-limited tool does not run', async () => {
+    const run = vi.fn<ContractActionRunner>(async () => actionOk({}));
+    const b = bridge(run, { checkRateLimit: () => false, stopGuard: new ToolStopGuard() });
+    expect(parse(await b.runTool('scheduling_list_services', {})).error.code).toBe('RATE_LIMITED');
+    expect(run).not.toHaveBeenCalled();
   });
 });
 

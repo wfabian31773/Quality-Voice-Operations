@@ -6,8 +6,9 @@
  *
  * - Tools: exactly the platform actions the selected contracts name (prepare
  *   and commit, or a read contract's one action), as agent tool schemas from
- *   the action registry, plus the runtime's own tools. Nothing else: no
- *   library tool can reach a composed agent.
+ *   the action registry, plus the read actions the template lists (catalog,
+ *   availability; reads only), plus the runtime's own tools. Nothing else:
+ *   no library tool can reach a composed agent.
  * - Prompt: the template persona in the call's language, the tool rules every
  *   contract tool shares, the business's own facts, and the caller-ID line.
  *
@@ -70,13 +71,28 @@ export function contractActionNames(contract: ToolContract): string[] {
   return contract.action ? [contract.action] : [];
 }
 
-function contractTools(contracts: readonly ToolContract[]): { tools: ComposedTool[]; actions: Record<string, string> } {
+/** The template's read actions; throws on one that isn't a registered, agent-permitted read. */
+function templateReads(template: AgentTemplate): readonly string[] {
+  const reads = template.reads ?? [];
+  for (const actionName of reads) {
+    const def = getAction(actionName);
+    if (!def) throw new Error(`Template read ${actionName} is not in the action registry`);
+    if (def.kind !== 'read') throw new Error(`Template read ${actionName} is a ${def.kind} action, not a read`);
+    if (def.permissions.agent !== true) throw new Error(`Template read ${actionName} is not agent-permitted`);
+  }
+  return reads;
+}
+
+function contractTools(
+  contracts: readonly ToolContract[],
+  reads: readonly string[],
+): { tools: ComposedTool[]; actions: Record<string, string> } {
   // Named over the whole registry, as the runtime's invariant checker names
   // them, so both sides agree on every external name.
   const names = assignExternalToolNames(listActions().map((def) => def.name));
   const tools: ComposedTool[] = [];
   const actions: Record<string, string> = {};
-  for (const actionName of [...new Set(contracts.flatMap(contractActionNames))]) {
+  for (const actionName of [...new Set([...contracts.flatMap(contractActionNames), ...reads])]) {
     const def = getAction(actionName);
     if (!def) throw new Error(`Contract action ${actionName} is not in the action registry`);
     if (def.permissions.agent !== true) throw new Error(`Contract action ${actionName} is not agent-permitted`);
@@ -123,7 +139,7 @@ export function compose(
 ): ComposedAgent {
   const lang = templateLanguage(callFacts.language);
   const contracts = selectedContracts(template, tools);
-  const contract = contractTools(contracts);
+  const contract = contractTools(contracts, templateReads(template));
   const givenName = tenantConfig.businessName?.trim() ?? '';
   const businessName = givenName || NAMELESS_BUSINESS[lang];
   const callerIdLine = callFacts.callerIdLine?.trim();

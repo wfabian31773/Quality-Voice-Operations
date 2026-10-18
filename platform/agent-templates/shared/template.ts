@@ -45,6 +45,13 @@ export interface AgentTemplate {
   languages: readonly TemplateLanguage[];
   /** Contracts this template phrases, pinned as 'id@version'. */
   contracts: readonly string[];
+  /**
+   * Read actions its contracts rely on for ids and open times (catalog,
+   * availability), by registry action name. The composer adds them as tools
+   * and refuses any that isn't an agent-permitted read, so no write can skip
+   * its contract.
+   */
+  reads?: readonly string[];
   /** System text: who the agent is and how it talks. */
   persona: Phrase;
   /** Spoken first. `{{businessName}}` is the business's own name. */
