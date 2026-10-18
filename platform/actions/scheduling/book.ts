@@ -1,9 +1,18 @@
 import {
+  BOOKING_BOOK_V1,
+  contractKey,
+  nextMissingSlot,
+  type HeldFacts,
+  type SlotSpec,
+} from '../../callcore/contracts';
+import {
   actionFail,
   actionOk,
   createProposal,
   defineAction,
   isActionFailure,
+  type ActionContext,
+  type ActionResult,
 } from '../core';
 import {
   bookingSource,
@@ -26,6 +35,7 @@ import {
   priceFallback,
   readbackLang,
   spokenWhen,
+  toE164,
 } from './readback';
 import { resolveSlot, slotConflict, slotScope } from './slots';
 import {
@@ -39,6 +49,63 @@ import {
 export const BOOK_PREPARE = 'scheduling.book.prepare';
 export const BOOK_COMMIT = 'scheduling.book.commit';
 
+/** Server-held facts that fill a booking slot without an ask. */
+function heldFactsOf(ctx: ActionContext): HeldFacts {
+  const callerPhone = ctx.callerPhone ? toE164(ctx.callerPhone) : null;
+  return callerPhone ? { callerPhone } : {};
+}
+
+/*
+ * One ask per slot, then an exit. SLOT_MISSING refusals are counted per
+ * (tenant, call, contract, slot) here, never from model arguments. The action
+ * store has no read path for the audit log, so this is an in-process map with
+ * a TTL and a size cap: on more than one instance a call's second refusal can
+ * land on a fresh counter and ask once more before the exit.
+ */
+const SLOT_ASK_TTL_MS = 30 * 60_000;
+const SLOT_ASK_MAX_ENTRIES = 5_000;
+const slotAsks = new Map<string, { count: number; atMs: number }>();
+
+function countSlotAsk(key: string, nowMs: number): number {
+  const prev = slotAsks.get(key);
+  const count = prev && nowMs - prev.atMs < SLOT_ASK_TTL_MS ? prev.count + 1 : 1;
+  slotAsks.delete(key);
+  // Oldest first (re-inserted on each touch): drop expired entries and keep under the cap.
+  for (const [k, v] of slotAsks) {
+    if (slotAsks.size < SLOT_ASK_MAX_ENTRIES && nowMs - v.atMs < SLOT_ASK_TTL_MS) break;
+    slotAsks.delete(k);
+  }
+  slotAsks.set(key, { count, atMs: nowMs });
+  return count;
+}
+
+const SLOT_EXIT_MESSAGE = {
+  en: 'I can take a message so someone can call you back.',
+  es: 'Puedo tomar un mensaje para que alguien le devuelva la llamada.',
+};
+
+function refuseMissingSlot(ctx: ActionContext, slot: SlotSpec): ActionResult<never> {
+  const lang = readbackLang(ctx.locale);
+  const asks = ctx.callId
+    ? countSlotAsk([ctx.tenantId, ctx.callId, contractKey(BOOKING_BOOK_V1), slot.name].join('\0'), ctx.now.getTime())
+    : 1;
+  if (asks > BOOKING_BOOK_V1.ceilings.maxAsksPerSlot) {
+    return actionFail('SLOT_MISSING', `Still missing ${slot.name} after one ask this call; offer to take a message`, {
+      field: slot.name,
+      askId: slot.askId,
+      exit: 'message_ticket',
+      retryable: false,
+      callerSafeMessage: SLOT_EXIT_MESSAGE[lang],
+    });
+  }
+  return actionFail('SLOT_MISSING', `Missing ${slot.name}: ask ${slot.askId}, then call prepare again`, {
+    field: slot.name,
+    askId: slot.askId,
+    retryable: true,
+    callerSafeMessage: slot.defaultAsk[lang],
+  });
+}
+
 export const bookPrepareAction = defineAction({
   name: BOOK_PREPARE,
   tool: 'scheduling',
@@ -50,17 +117,29 @@ export const bookPrepareAction = defineAction({
     'Hold an appointment for 5 minutes and get the readback. Use serviceIds, staffId (a staff id or \'any\') '
     + 'and a start time from check_availability, plus the customer\'s name and phone. Read the returned readback '
     + 'to the caller word for word and call scheduling.book.commit only after an explicit yes. If the caller '
-    + 'changes anything, call prepare again (the earlier hold is released). On CONFLICT, offer the alternatives.',
+    + 'changes anything, call prepare again (the earlier hold is released). On CONFLICT, offer the alternatives. '
+    + 'On SLOT_MISSING, ask the caller the one question in callerSafeMessage; if exit is set, offer to take a message.',
   async run(ctx, input, tx) {
+    // booking.book@1 owns its rule: the next missing slot, in ask order, is the next question.
+    const held = heldFactsOf(ctx);
+    const missing = nextMissingSlot(BOOKING_BOOK_V1, input, held);
+    if (missing) return refuseMissingSlot(ctx, missing);
+    const { serviceIds, staffId } = input;
+    const customerName = input.customer?.name ?? held.verifiedName;
+    const customerPhone = input.customer?.phone ?? held.callerPhone;
+    if (!serviceIds || !staffId || !input.start || !customerName || !customerPhone) {
+      return actionFail('VALIDATION_FAILED', 'Booking details are incomplete');
+    }
+
     const lang = readbackLang(ctx.locale);
     const session = sessionOf(ctx);
     // A correction in the same call releases the earlier hold first, so it
     // never blocks its own replacement and exactly one booking can remain.
     const replacedHoldIds = await releaseSessionHolds(tx, ctx.tenantId, session);
 
-    const scope = await slotScope(tx, ctx, input);
+    const scope = await slotScope(tx, ctx, { serviceIds, staffId });
     if (isActionFailure(scope)) return scope;
-    const resolved = await resolveSlot(tx, ctx, { ...input, start: new Date(input.start) }, scope);
+    const resolved = await resolveSlot(tx, ctx, { serviceIds, staffId, start: new Date(input.start) }, scope);
     if (isActionFailure(resolved)) return resolved;
 
     const { staff, services } = resolved;
@@ -76,14 +155,14 @@ export const bookPrepareAction = defineAction({
         holdExpiresAt,
         providerId: staff.id,
         appointmentTypeId: services[0].id,
-        contactName: input.customer.name,
-        contactPhone: input.customer.phone,
-        contactEmail: input.customer.email ?? '',
+        contactName: customerName,
+        contactPhone: customerPhone,
+        contactEmail: input.customer?.email ?? '',
         notes: input.notes ?? '',
         timezone: ctx.tenantTimezone,
         source: bookingSource(ctx),
         createdBy: ctx.actor.type === 'user' ? ctx.actor.id : null,
-        meta: { serviceIds: input.serviceIds, session },
+        meta: { serviceIds, session },
       }),
     );
     if (!inserted.ok) {
@@ -97,8 +176,8 @@ export const bookPrepareAction = defineAction({
         serviceNames: services.map((s) => s.name),
         staffName: staff.name,
         when: spokenWhen({ startMs: resolved.startMs, nowMs: ctx.now.getTime(), timeZone: ctx.tenantTimezone, locale: ctx.locale }),
-        customerName: input.customer.name,
-        phone: input.customer.phone,
+        customerName,
+        phone: customerPhone,
       },
       price,
       lang,
@@ -109,11 +188,11 @@ export const bookPrepareAction = defineAction({
       action: BOOK_PREPARE,
       payload: {
         holdId,
-        serviceIds: input.serviceIds,
+        serviceIds,
         staffId: staff.id,
         start,
         end,
-        customerName: input.customer.name,
+        customerName,
         locale: ctx.locale ?? null,
       },
       readback,
