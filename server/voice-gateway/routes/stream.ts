@@ -229,7 +229,7 @@ export function attachWebSocket(server: HTTPServer): void {
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
 
         // Every bookkeeping write the call queued (tool rows, state moves,
-        // events) lands before the final state and call_completed (bounded).
+        // events, call_end_outcome) lands before the final state and call_completed (bounded).
         if (sessionResult) await sessionResult.flushBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
@@ -240,6 +240,9 @@ export function attachWebSocket(server: HTTPServer): void {
         } catch (err) {
           slog.error('Error finalizing call session', { error: String(err) });
         }
+        // Ends the queue after the outcome and final rows: safe for provider_failure
+        // where the realtime close ran before this finalizer.
+        if (sessionResult) await sessionResult.releaseBookkeeping();
 
         // Post-call CSAT survey dispatch (fire-and-forget). Only inbound
         // calls where the customer-supplied caller number is a real PSTN
@@ -1029,6 +1032,7 @@ export function attachWebSocket(server: HTTPServer): void {
         } catch (err) {
           slog.error('Error finalizing widget session', { error: String(err) });
         }
+        if (sessionResult) await sessionResult.releaseBookkeeping();
         recordCallUsage(tenantId, 'inbound', durationSeconds).catch((err) => {
           slog.error('Failed to record widget usage', { error: String(err) });
         });

@@ -42,6 +42,7 @@ const h = vi.hoisted(() => {
   const recordCallOutcomeMock = vi.fn((_outcome: string) => true);
   const evaluateFloorMock = vi.fn(async () => 'filed' as const);
   const flushBookkeepingMock = vi.fn(async (_reason?: string) => 'drained' as const);
+  const releaseBookkeepingMock = vi.fn(async () => {});
   const sessionClosedHandlers: Array<() => void> = [];
   const audioHandlers: Array<(audioEvent: { data: ArrayBuffer }) => void> = [];
   const agentAudioDoneHandlers: Array<(markName: string) => void> = [];
@@ -62,6 +63,7 @@ const h = vi.hoisted(() => {
     recordCallOutcomeMock,
     evaluateFloorMock,
     flushBookkeepingMock,
+    releaseBookkeepingMock,
     sessionClosedHandlers,
     audioHandlers,
     agentAudioDoneHandlers,
@@ -95,7 +97,7 @@ vi.mock('../services/openaiSession', () => ({
     onBargeIn: (handler: () => void) => { h.bargeInHandlers.push(handler); },
     evaluateFloor: h.evaluateFloorMock,
     flushBookkeeping: h.flushBookkeepingMock,
-    releaseBookkeeping: vi.fn(async () => {}),
+    releaseBookkeeping: h.releaseBookkeepingMock,
     costTracker: {
       inputTokens: 0,
       outputTokens: 0,
@@ -305,6 +307,7 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     h.recordCallOutcomeMock.mockClear();
     h.evaluateFloorMock.mockClear();
     h.flushBookkeepingMock.mockClear();
+    h.releaseBookkeepingMock.mockClear();
     h.sessionClosedHandlers.length = 0;
     h.audioHandlers.length = 0;
     h.agentAudioDoneHandlers.length = 0;
@@ -473,6 +476,12 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.sessionCloseMock).toHaveBeenCalledTimes(1);
     // Watchdog / budget / provider ends reach the same teardown, so the floor runs for them too.
     expect(h.evaluateFloorMock).toHaveBeenCalledTimes(1);
+    // Outcome is recorded in finalize before release (stand-in P2): flush then release.
+    expect(h.flushBookkeepingMock).toHaveBeenCalledWith('call_completed');
+    expect(h.releaseBookkeepingMock).toHaveBeenCalledTimes(1);
+    const flushedAt = h.flushBookkeepingMock.mock.invocationCallOrder[0];
+    const releasedAt = h.releaseBookkeepingMock.mock.invocationCallOrder[0];
+    expect(flushedAt).toBeLessThan(releasedAt);
   });
 
   it('phone path: sends a Twilio mark after an agent turn\'s last media frame and passes the echo to the session', async () => {

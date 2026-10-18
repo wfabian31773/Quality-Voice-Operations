@@ -1759,8 +1759,10 @@ export async function createRealtimeSession(
       persist('call_state.session_closed', () => updateCallStateWithEvent(tenantId, callSessionId, 'CALL_COMPLETED', {
         type: 'session_closed', from: 'ACTIVE_CONVERSATION', to: 'CALL_COMPLETED',
       }));
-      // Ends once tools still running have queued their last writes and all of them have run.
-      void bookkeeping.release();
+      // Do not release here. Provider-drop and watchdog closes run this handler
+      // before finalizeStream records call_end_outcome; releasing now would drop
+      // those writes (stand-in P2 on 42996a9d). finalizeStream / finalizeWidgetStream
+      // release after the outcome is queued and the queue is flushed.
       lifecycleCoordinator.handleOpenAiSessionEnd(callSessionId);
       sessionManager.unregister(callSessionId);
     });

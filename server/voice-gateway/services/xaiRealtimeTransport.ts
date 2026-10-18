@@ -956,9 +956,18 @@ export class XaiRealtimeTransport extends EventEmitter {
     this.toolCallsRunning += 1;
     try {
       output = await this.onFunctionCall(name, args);
+    } catch (err) {
+      // Hangup flush deferred this entry; log elapsed time even when the
+      // handler rejects (stand-in P3 on 42996a9d / Codex 4308961725).
+      timing.handlerDoneAt = Date.now();
+      if (!this.isOpen() && this.toolTimings.has(callId)) {
+        timing.voiced = 'dropped';
+        this.logToolTiming(callId, timing, null);
+      }
+      throw err;
     } finally {
       this.toolCallsRunning -= 1;
-      timing.handlerDoneAt = Date.now();
+      if (timing.handlerDoneAt === undefined) timing.handlerDoneAt = Date.now();
     }
     // The caller can hang up while a tool runs (Oct 17: record_call_outcome
     // finished after hangup and the send became a critical unhandled
