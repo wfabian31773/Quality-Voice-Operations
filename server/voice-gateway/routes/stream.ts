@@ -797,6 +797,13 @@ export function attachWebSocket(server: HTTPServer): void {
                 ws.send(JSON.stringify({ event: 'mark', streamSid, mark: { name: markName } }));
               });
 
+              // Barge-in: the caller talked over the agent. Twilio drops the
+              // audio it still holds and echoes the pending marks at once.
+              sessionResult.onBargeIn(() => {
+                if (ws.readyState !== WebSocket.OPEN || !streamSid) return;
+                ws.send(JSON.stringify({ event: 'clear', streamSid }));
+              });
+
               const apiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
               if (apiKey) {
                 sessionResult.triggerGreeting();

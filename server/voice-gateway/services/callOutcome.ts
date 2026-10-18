@@ -7,8 +7,11 @@
  * (a disposition object read by analytics) and is never touched here.
  *
  * Recorded today:
- * - `never_heard`      silence watchdog, caller never transcribed (recorded
- *                      at the hang-up, so a call that continues never has it)
+ * - `never_heard`      silence watchdog, caller never heard: no transcript and
+ *                      no VAD utterance of VAD_HEARD_MIN_SPEECH_MS (recorded
+ *                      at the hang-up, so a call that continues never has it).
+ *                      An audible caller who is never transcribed and hangs
+ *                      up gets `caller_hangup`.
  * - `max_duration`     silence watchdog, 10-minute cap
  * - `agent_ended`      runtime ended the call (budget cap, demo hard cap)
  * - `provider_failure` the realtime session closed (or failed to connect)

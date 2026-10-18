@@ -68,6 +68,8 @@ export interface AudioExpect {
   };
   /** A tool result that comes back after the caller barged in starts no response of its own. */
   lateToolResultDropped?: boolean;
+  /** Tool results voiced: responses that speak a tool output (after_tool), each heard in full before the call ended. */
+  toolResultsVoiced?: number;
 }
 
 export interface AudioScenario {
@@ -83,7 +85,11 @@ export interface AudioScenario {
   /** Per-run timing jitter: run r starts each caller step (r - 1) * jitterMs later. */
   jitterMs?: number;
   caller: CallerStep[];
-  agent?: { replies?: AgentReply[] };
+  /**
+   * replies: the scripted model. interruptLatencyMs: the provider's barge-in
+   * cancel lands this long after speech_started (audio keeps streaming until then).
+   */
+  agent?: { replies?: AgentReply[]; interruptLatencyMs?: number };
   /** Database edge: statements matching `match` (regex) take `latencyMs`. */
   db?: { slow?: Array<{ match: string; latencyMs: number }> };
   expect: AudioExpect;
@@ -99,6 +105,7 @@ const SCENARIO_KEYS = new Set([
 const EXPECT_KEYS = new Set([
   'utterances', 'outcome', 'endedBy', 'neverHeardPrompts', 'promptSpacingMs', 'goodbyePlayed', 'heardChecks',
   'heardCheckAfterMs', 'stillUpAtMs', 'floor', 'bookings', 'tickets', 'toolCalls', 'bargeIn', 'lateToolResultDropped',
+  'toolResultsVoiced',
 ]);
 const STEP_KEYS = ['say', 'silence', 'lineNoise', 'waitAgentPlaying', 'waitAgentIdle', 'hangup'];
 

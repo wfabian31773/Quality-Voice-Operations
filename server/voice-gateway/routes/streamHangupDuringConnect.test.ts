@@ -45,6 +45,7 @@ const h = vi.hoisted(() => {
   const audioHandlers: Array<(audioEvent: { data: ArrayBuffer }) => void> = [];
   const agentAudioDoneHandlers: Array<(markName: string) => void> = [];
   const agentPlaybackDoneMock = vi.fn<(markName: string) => boolean>(() => true);
+  const bargeInHandlers: Array<() => void> = [];
 
   const handleTwilioStatusCallbackMock = vi.fn();
   const authorizeHealthcareDeploymentMock = vi.fn(async () => ({ allowed: true, code: 'not_healthcare' }));
@@ -63,6 +64,7 @@ const h = vi.hoisted(() => {
     audioHandlers,
     agentAudioDoneHandlers,
     agentPlaybackDoneMock,
+    bargeInHandlers,
     handleTwilioStatusCallbackMock,
     authorizeHealthcareDeploymentMock,
     dbAgentType: 'general',
@@ -87,6 +89,7 @@ vi.mock('../services/openaiSession', () => ({
     noteCallerText: vi.fn(),
     onAgentAudioDone: (handler: (markName: string) => void) => { h.agentAudioDoneHandlers.push(handler); },
     agentPlaybackDone: h.agentPlaybackDoneMock,
+    onBargeIn: (handler: () => void) => { h.bargeInHandlers.push(handler); },
     evaluateFloor: h.evaluateFloorMock,
     costTracker: {
       inputTokens: 0,
@@ -300,6 +303,7 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     h.audioHandlers.length = 0;
     h.agentAudioDoneHandlers.length = 0;
     h.agentPlaybackDoneMock.mockClear();
+    h.bargeInHandlers.length = 0;
     h.handleTwilioStatusCallbackMock.mockClear();
     h.authorizeHealthcareDeploymentMock.mockReset().mockResolvedValue({ allowed: true, code: 'not_healthcare' });
     h.dbAgentType = 'general';
@@ -464,6 +468,39 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     ws.close();
     // Let this call finalize before the next test starts.
     await waitFor(() => h.finalizeCallSessionMock.mock.calls.length > 0);
+  });
+
+  it('phone path: a barge-in sends Twilio clear for the stream, so queued agent audio stops', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/twilio/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    const received: Array<{ event: string; streamSid?: string }> = [];
+    ws.on('message', (raw) => received.push(JSON.parse(raw.toString())));
+    ws.send(JSON.stringify({
+      event: 'start',
+      start: {
+        streamSid: 'MZ-barge-in',
+        customParameters: {
+          tenantId: 't-1', agentId: 'a-1', agentType: 'general', callSid: 'CA-barge-in',
+          callerNumber: '+15551234567', calledNumber: '+15557654321',
+        },
+      },
+    }));
+    await waitFor(() => h.bargeInHandlers.length === 1 && h.audioHandlers.length === 1);
+
+    h.audioHandlers[0]({ data: new ArrayBuffer(160) });
+    h.bargeInHandlers[0]();
+    await waitFor(() => received.length === 2);
+    expect(received).toEqual([
+      expect.objectContaining({ event: 'media', streamSid: 'MZ-barge-in' }),
+      { event: 'clear', streamSid: 'MZ-barge-in' },
+    ]);
+    ws.close();
+    await waitFor(() => h.finalizeCallSessionMock.mock.calls.length > 0);
+    // After the stream is gone a late barge-in sends nothing (and does not throw).
+    expect(() => h.bargeInHandlers[0]()).not.toThrow();
   });
 
   it('widget path: a realtime close ends the widget socket (1000) and finalize records provider_failure once', async () => {

@@ -16,21 +16,26 @@ import {
   SilenceWatchdog,
   type SilenceWatchdogAction,
   type SilenceWatchdogEndReason,
+  VAD_HEARD_MIN_SPEECH_MS,
 } from './silenceWatchdog';
 
-function makeWatchdog(playbackConfirm?: PlaybackConfirmMode) {
+function makeWatchdog(opts: PlaybackConfirmMode | { playbackConfirm?: PlaybackConfirmMode; vadSilenceDurationMs?: number } = {}) {
+  const { playbackConfirm, vadSilenceDurationMs } = typeof opts === 'string' ? { playbackConfirm: opts, vadSilenceDurationMs: undefined } : opts;
   const said: string[] = [];
   const actions: SilenceWatchdogAction[] = [];
   const endings: SilenceWatchdogEndReason[] = [];
   const hangUps: SilenceWatchdogEndReason[] = [];
   let playbackFallbacks = 0;
+  let bargeIns = 0;
   const watchdog = new SilenceWatchdog({
     say: (instruction) => said.push(instruction),
     onEnding: (reason) => endings.push(reason),
     hangUp: (reason) => hangUps.push(reason),
     onAction: (action) => actions.push(action),
     onPlaybackFallback: () => { playbackFallbacks += 1; },
+    onBargeIn: () => { bargeIns += 1; },
     playbackConfirm,
+    vadSilenceDurationMs,
   });
   const prompts = () => said.filter((s) => s === SILENCE_PROMPT_INSTRUCTION).length;
   // The model answering an instruction: one agent turn.
@@ -38,7 +43,11 @@ function makeWatchdog(playbackConfirm?: PlaybackConfirmMode) {
     watchdog.agentTurnStarted();
     watchdog.agentTurnEnded();
   };
-  return { watchdog, said, actions, endings, hangUps, prompts, agentTurn, playbackFallbacks: () => playbackFallbacks };
+  return {
+    watchdog, said, actions, endings, hangUps, prompts, agentTurn,
+    playbackFallbacks: () => playbackFallbacks,
+    bargeIns: () => bargeIns,
+  };
 }
 
 beforeEach(() => {
@@ -286,7 +295,7 @@ describe('SilenceWatchdog: caller heard during the never-heard goodbye (P1-2)', 
 });
 
 describe('SilenceWatchdog: caller speech (server VAD) pauses the timers', () => {
-  it('a never-heard caller speaking for 30 s gets no prompt and no hang-up; speech_stopped re-arms', () => {
+  it('a caller speaking for 30 s gets no prompt and no hang-up; speech_stopped re-arms (heard: the 15 s check)', () => {
     const w = makeWatchdog();
     w.watchdog.start();
     vi.advanceTimersByTime(NEVER_HEARD_PROMPT_INTERVAL_MS - 2_000);
@@ -295,9 +304,9 @@ describe('SilenceWatchdog: caller speech (server VAD) pauses the timers', () => 
     expect(w.prompts()).toBe(0);
     expect(w.hangUps).toEqual([]);
 
-    w.watchdog.callerSpeechStopped(); // no transcript (yet): still never heard
-    expect(w.watchdog.isHeard).toBe(false);
-    vi.advanceTimersByTime(NEVER_HEARD_PROMPT_INTERVAL_MS - 1);
+    w.watchdog.callerSpeechStopped(); // no transcript, but audible: heard
+    expect(w.watchdog.isHeard).toBe(true);
+    vi.advanceTimersByTime(HEARD_SILENCE_CHECK_MS - 1);
     expect(w.prompts()).toBe(0);
     vi.advanceTimersByTime(1);
     expect(w.prompts()).toBe(1);
@@ -314,33 +323,180 @@ describe('SilenceWatchdog: caller speech (server VAD) pauses the timers', () => 
     expect(w.hangUps).toEqual([]);
   });
 
-  it('a missing speech_stopped never pauses the watchdog forever (CALLER_SPEECH_MAX_PAUSE_MS)', () => {
+  it('a missing speech_stopped never pauses the watchdog forever (CALLER_SPEECH_MAX_PAUSE_MS), and is not "heard"', () => {
     const w = makeWatchdog();
     w.watchdog.start();
     w.watchdog.callerSpeechStarted();
     vi.advanceTimersByTime(CALLER_SPEECH_MAX_PAUSE_MS);
     expect(w.prompts()).toBe(0);
+    expect(w.watchdog.isHeard).toBe(false); // noise holding VAD open is not a caller
     vi.advanceTimersByTime(NEVER_HEARD_PROMPT_INTERVAL_MS);
     expect(w.prompts()).toBe(1);
   });
 
-  it('speech during the never-heard goodbye cancels the hang-up without marking the caller heard', () => {
+  it('a blip during the never-heard goodbye cancels the hang-up without marking the caller heard', () => {
     const w = makeWatchdog();
     w.watchdog.start();
     runNeverHeardLadder(w);
     w.watchdog.callerSpeechStarted();
-    vi.advanceTimersByTime(HANGUP_GRACE_MS + 10_000);
+    vi.advanceTimersByTime(VAD_HEARD_MIN_SPEECH_MS - 100);
     expect(w.hangUps).toEqual([]);
     expect(w.endings).toEqual([]);
-    expect(w.watchdog.isHeard).toBe(false);
 
-    // No transcript ever comes: the never-heard ladder resumes from speech_stopped.
+    // Too short to be a caller and no transcript: the never-heard ladder resumes from speech_stopped.
     w.watchdog.callerSpeechStopped();
+    expect(w.watchdog.isHeard).toBe(false);
     vi.advanceTimersByTime(NEVER_HEARD_PROMPT_INTERVAL_MS);
     expect(w.said.filter((s) => s === NEVER_HEARD_GOODBYE_INSTRUCTION)).toHaveLength(2);
     vi.advanceTimersByTime(HANGUP_GRACE_MS);
     expect(w.hangUps).toEqual(['never_heard']);
     expect(w.endings).toEqual(['never_heard']);
+  });
+
+  it('a caller audible during the never-heard goodbye is heard: no hang-up, the heard ladder from then on', () => {
+    const w = makeWatchdog();
+    w.watchdog.start();
+    runNeverHeardLadder(w);
+    w.watchdog.callerSpeechStarted();
+    vi.advanceTimersByTime(1_500); // "Hello? Yes, I'm here", never transcribed
+    w.watchdog.callerSpeechStopped();
+    expect(w.watchdog.isHeard).toBe(true);
+    vi.advanceTimersByTime(MAX_CALL_DURATION_MS - 60_000);
+    expect(w.hangUps).toEqual([]);
+    expect(w.said.filter((s) => s === NEVER_HEARD_GOODBYE_INSTRUCTION)).toHaveLength(1);
+    expect(w.actions.slice(-2)).toEqual(['never_heard_hangup_cancelled', 'silence_check']);
+  });
+});
+
+describe('SilenceWatchdog: VAD speech marks the caller heard (S17: audible, never transcribed)', () => {
+  /** One server-VAD utterance: speech_started, `ms` later speech_stopped. */
+  const utter = (w: ReturnType<typeof makeWatchdog>, ms: number) => {
+    w.watchdog.callerSpeechStarted();
+    vi.advanceTimersByTime(ms);
+    w.watchdog.callerSpeechStopped();
+  };
+
+  it('VAD_HEARD_MIN_SPEECH_MS is 300 ms', () => {
+    expect(VAD_HEARD_MIN_SPEECH_MS).toBe(300);
+  });
+
+  it('an utterance of at least the minimum, with no transcript: heard ladder (one check at 15 s, then wait to the cap), no never-heard prompts', () => {
+    const w = makeWatchdog();
+    w.watchdog.start();
+    utter(w, VAD_HEARD_MIN_SPEECH_MS);
+    expect(w.watchdog.isHeard).toBe(true);
+    vi.advanceTimersByTime(HEARD_SILENCE_CHECK_MS);
+    expect(w.actions).toEqual(['silence_check']);
+    w.agentTurn(); // the check is spoken
+    vi.advanceTimersByTime(MAX_CALL_DURATION_MS - VAD_HEARD_MIN_SPEECH_MS - HEARD_SILENCE_CHECK_MS - 1);
+    expect(w.actions).toEqual(['silence_check']);
+    expect(w.hangUps).toEqual([]);
+    expect(w.endings).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(w.endings).toEqual(['max_duration']);
+  });
+
+  it('dialler noise stays never heard: blips under the minimum never mark heard, the ladder runs to never_heard', () => {
+    const w = makeWatchdog();
+    w.watchdog.start();
+    for (let i = 0; i < 5; i += 1) utter(w, VAD_HEARD_MIN_SPEECH_MS - 1);
+    expect(w.watchdog.isHeard).toBe(false);
+    vi.advanceTimersByTime(NEVER_HEARD_PROMPT_INTERVAL_MS * (NEVER_HEARD_PROMPTS + 1) + HANGUP_GRACE_MS);
+    expect(w.prompts()).toBe(NEVER_HEARD_PROMPTS);
+    expect(w.hangUps).toEqual(['never_heard']);
+    expect(w.endings).toEqual(['never_heard']);
+  });
+
+  it("the VAD's trailing silence is not speech: a blip plus silence_duration_ms stays never heard", () => {
+    const silenceDurationMs = 500;
+    const w = makeWatchdog({ vadSilenceDurationMs: silenceDurationMs });
+    w.watchdog.start();
+    utter(w, silenceDurationMs + VAD_HEARD_MIN_SPEECH_MS - 1);
+    expect(w.watchdog.isHeard).toBe(false);
+    utter(w, silenceDurationMs + VAD_HEARD_MIN_SPEECH_MS);
+    expect(w.watchdog.isHeard).toBe(true);
+  });
+
+  it('a speech_stopped without its speech_started marks nothing', () => {
+    const w = makeWatchdog();
+    w.watchdog.start();
+    vi.advanceTimersByTime(5_000);
+    w.watchdog.callerSpeechStopped();
+    expect(w.watchdog.isHeard).toBe(false);
+  });
+});
+
+describe("SilenceWatchdog: barge-in ('twilio_mark')", () => {
+  it('caller speech while the last turn is still playing: onBargeIn once, the cleared turn is released, nothing arms until speech_stopped', () => {
+    const w = makeWatchdog({ playbackConfirm: 'twilio_mark' });
+    w.watchdog.start();
+    w.watchdog.callerHeard();
+    w.agentTurn(); // streamed (response.done); Twilio still playing it
+    w.watchdog.callerSpeechStarted();
+    expect(w.bargeIns()).toBe(1);
+    w.watchdog.callerSpeechStarted(); // a second speech_started on the same turn: no second clear
+    expect(w.bargeIns()).toBe(1);
+    // The cleared turn's mark echo finds nothing pending.
+    expect(w.watchdog.agentPlaybackDone()).toBe(false);
+    // Not early: the caller is talking (even past the echo fallback).
+    vi.advanceTimersByTime(PLAYBACK_ECHO_FALLBACK_MS + HEARD_SILENCE_CHECK_MS);
+    expect(w.prompts()).toBe(0);
+    expect(w.playbackFallbacks()).toBe(0);
+    // Not late: silence counts from speech_stopped, not from a fallback.
+    w.watchdog.callerSpeechStopped();
+    vi.advanceTimersByTime(HEARD_SILENCE_CHECK_MS - 1);
+    expect(w.prompts()).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(w.prompts()).toBe(1);
+  });
+
+  it('caller speech while the model is still streaming: onBargeIn; the cancelled turn needs no echo to re-arm', () => {
+    const w = makeWatchdog({ playbackConfirm: 'twilio_mark' });
+    w.watchdog.start();
+    w.watchdog.callerHeard();
+    w.watchdog.agentTurnStarted();
+    w.watchdog.callerSpeechStarted();
+    expect(w.bargeIns()).toBe(1);
+    w.watchdog.agentTurnEnded(); // response.done (cancelled): its audio was dropped, nothing plays
+    expect(w.watchdog.agentPlaybackDone()).toBe(false);
+    w.watchdog.callerSpeechStopped();
+    vi.advanceTimersByTime(HEARD_SILENCE_CHECK_MS);
+    expect(w.prompts()).toBe(1);
+    expect(w.playbackFallbacks()).toBe(0);
+  });
+
+  it('caller speech with no agent audio playing or queued: no barge-in', () => {
+    const w = makeWatchdog({ playbackConfirm: 'twilio_mark' });
+    w.watchdog.start();
+    w.agentTurn();
+    w.watchdog.agentPlaybackDone(); // the turn has played
+    w.watchdog.callerSpeechStarted();
+    w.watchdog.callerSpeechStopped();
+    expect(w.bargeIns()).toBe(0);
+  });
+
+  it('a new agent turn can be barged in on again', () => {
+    const w = makeWatchdog({ playbackConfirm: 'twilio_mark' });
+    w.watchdog.start();
+    w.agentTurn();
+    w.watchdog.callerSpeechStarted();
+    w.watchdog.callerSpeechStopped();
+    w.agentTurn(); // the answer to the barge-in
+    w.watchdog.callerSpeechStarted();
+    expect(w.bargeIns()).toBe(2);
+  });
+
+  it('caller speech over the never-heard goodbye: the goodbye is cleared and the hang-up cancelled', () => {
+    const w = makeWatchdog({ playbackConfirm: 'twilio_mark' });
+    w.watchdog.start();
+    w.agentTurn();
+    w.watchdog.agentPlaybackDone();
+    runNeverHeardLadder(w, () => w.watchdog.agentPlaybackDone());
+    w.agentTurn(); // the goodbye streamed, still playing
+    w.watchdog.callerSpeechStarted();
+    expect(w.bargeIns()).toBe(1);
+    vi.advanceTimersByTime(HANGUP_CEILING_MS);
+    expect(w.hangUps).toEqual([]);
   });
 });
 

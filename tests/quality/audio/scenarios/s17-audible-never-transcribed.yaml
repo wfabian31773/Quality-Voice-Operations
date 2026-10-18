@@ -7,7 +7,7 @@
 id: s17-audible-never-transcribed
 plan: S17
 title: Caller audible but never transcribed
-tags: [audio, flow:never-transcribed, template:barbershop]
+tags: [audio, core, flow:never-transcribed, template:barbershop]
 lang: en
 windowMs: 150000
 jitterMs: 29
@@ -40,7 +40,3 @@ expect:
   tickets: 0
   bookings: 0
   toolCalls: 0
-expectedFail: vad-heard-runtime-gap
-# Today "heard" needs a transcript, so this caller gets the never-heard
-# ladder: 3 prompts at 8 s, then goodbye and hang-up during the 30 s pause.
-pinned: [vad.utterances, outcome, ended_by, ladder.never_heard_prompts, ladder.heard_checks, call.not_cut]

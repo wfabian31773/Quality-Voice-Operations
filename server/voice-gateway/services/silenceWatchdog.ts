@@ -2,8 +2,10 @@
  * Runtime-owned silence watchdog (VA-15). Runs on every call, for every
  * agent, independent of the ReasoningEngine and its shadow/enforce mode.
  *
- * - "Heard" = the caller produced at least one transcribed line this call.
- *   Once heard, always heard (handoffs keep the same session and watchdog).
+ * - "Heard" = the caller produced at least one transcribed line this call, or
+ *   one server-VAD utterance of at least VAD_HEARD_MIN_SPEECH_MS (an audible
+ *   caller the transcriber missed, plan S17). Once heard, always heard
+ *   (handoffs keep the same session and watchdog).
  * - Heard caller: after HEARD_SILENCE_CHECK_MS of mutual silence, one
  *   "are you still there?" check. No further prompt until the caller or the
  *   agent speaks again. A heard caller is never hung up on for silence.
@@ -52,6 +54,14 @@ export const HANGUP_CEILING_MS = PLAYBACK_ECHO_FALLBACK_MS + HANGUP_GRACE_MS;
  * one real utterance this long is very rare on a receptionist line.
  */
 export const CALLER_SPEECH_MAX_PAUSE_MS = 45_000;
+/**
+ * A server-VAD utterance (speech_started → speech_stopped, less the VAD's
+ * trailing silence) at least this long marks the caller heard without a
+ * transcript. Shorter blips (a click, a cough, line noise crossing the VAD
+ * threshold) leave a dialler on the never-heard ladder. A short "yes?" or
+ * "hello?" is 400-600 ms.
+ */
+export const VAD_HEARD_MIN_SPEECH_MS = 300;
 
 // Fixed text only; never caller data. "In the language of the conversation"
 // keeps Spanish calls in Spanish.
@@ -104,9 +114,23 @@ export interface SilenceWatchdogDeps {
   onAction?(action: SilenceWatchdogAction, counts: SilenceWatchdogCounts): void;
   /** 'twilio_mark' mode: no playback echo arrived in time; re-armed anyway. */
   onPlaybackFallback?(counts: SilenceWatchdogCounts): void;
+  /**
+   * Barge-in: the caller started speaking while the agent's audio was being
+   * generated, playing or queued. Stop playback now (Twilio `clear`). At most
+   * once per agent turn.
+   */
+  onBargeIn?(): void;
   /** Default 'response_done'. */
   playbackConfirm?: PlaybackConfirmMode;
+  /**
+   * The server VAD's turn_detection.silence_duration_ms: speech_stopped comes
+   * this long after the caller's last sound, so it is not counted as speech.
+   * Default 0.
+   */
+  vadSilenceDurationMs?: number;
   timers?: SilenceWatchdogTimers;
+  /** Default Date.now. */
+  now?(): number;
 }
 
 const defaultTimers: SilenceWatchdogTimers = {
@@ -128,6 +152,10 @@ export class SilenceWatchdog {
   /** 'twilio_mark': the last agent turn's audio may still be playing. */
   private awaitingPlayback = false;
   private callerSpeaking = false;
+  /** When the current caller utterance's speech_started arrived. */
+  private callerSpeechStartedAt: number | null = null;
+  /** The caller barged in on the current agent turn: its audio was cleared. */
+  private playbackCleared = false;
   private toolsRunning = 0;
   /** Heard-caller checks since the last caller/agent activity. */
   private heardChecks = 0;
@@ -140,9 +168,14 @@ export class SilenceWatchdog {
   private playbackTimer: unknown = null;
   private speechTimer: unknown = null;
 
+  private readonly now: () => number;
+  private readonly vadSilenceDurationMs: number;
+
   constructor(private readonly deps: SilenceWatchdogDeps) {
     this.timers = deps.timers ?? defaultTimers;
     this.playbackConfirm = deps.playbackConfirm ?? 'response_done';
+    this.now = deps.now ?? Date.now;
+    this.vadSilenceDurationMs = deps.vadSilenceDurationMs ?? 0;
   }
 
   /** Session is live (socket open): start the max-duration cap and arm. */
@@ -162,32 +195,46 @@ export class SilenceWatchdog {
   }
 
   /**
-   * Server VAD: the caller started speaking. Pauses the watchdog and cancels
-   * a pending never-heard hang-up, but does not mark the caller heard; that
-   * needs a transcript.
+   * Server VAD: the caller started speaking. Pauses the watchdog, cancels a
+   * pending never-heard hang-up, and stops agent audio the caller is talking
+   * over (onBargeIn). The caller counts as heard at speech_stopped if the
+   * utterance was long enough.
    */
   callerSpeechStarted(): void {
+    // Before a cancelled goodbye releases its playback: that goodbye is cleared too.
+    const agentAudible = this.agentSpeaking || this.awaitingPlayback;
     if (this.ended && !this.cancelNeverHeardHangUp()) return;
     this.callerSpeaking = true;
+    this.callerSpeechStartedAt = this.now();
     this.clearSilenceTimer();
     this.clearTimer('speechTimer');
     this.speechTimer = this.timers.setTimeout(() => {
+      // Lost speech_stopped, or noise holding VAD open: resume, not heard.
       this.speechTimer = null;
-      this.callerSpeechStopped();
+      this.resumeAfterCallerSpeech();
     }, CALLER_SPEECH_MAX_PAUSE_MS);
+    if (agentAudible) this.interruptAgentAudio();
   }
 
-  /** Server VAD: the caller stopped speaking. Count silence again. */
+  /**
+   * Server VAD: the caller stopped speaking. An utterance of at least
+   * VAD_HEARD_MIN_SPEECH_MS marks the caller heard, transcript or not.
+   * Count silence again.
+   */
   callerSpeechStopped(): void {
-    this.callerSpeaking = false;
-    this.clearTimer('speechTimer');
-    this.arm();
+    const startedAt = this.callerSpeechStartedAt;
+    if (startedAt !== null && this.isAudibleSpeech(this.now() - startedAt - this.vadSilenceDurationMs)) {
+      this.heard = true;
+      this.heardChecks = 0;
+    }
+    this.resumeAfterCallerSpeech();
   }
 
   /** The agent started a response (speaking). */
   agentTurnStarted(): void {
     this.agentSpeaking = true;
     this.awaitingPlayback = false;
+    this.playbackCleared = false;
     this.clearTimer('playbackTimer');
     this.clearSilenceTimer();
     if (this.ended) this.goodbyeStarted = true;
@@ -205,7 +252,8 @@ export class SilenceWatchdog {
   agentTurnEnded(): void {
     this.agentSpeaking = false;
     if (this.hungUp) return;
-    if (this.playbackConfirm === 'response_done') {
+    // A turn the caller barged in on was cleared: none of it is left to play.
+    if (this.playbackConfirm === 'response_done' || this.playbackCleared) {
       this.onPlaybackConfirmed();
       return;
     }
@@ -260,6 +308,35 @@ export class SilenceWatchdog {
 
   get counts(): SilenceWatchdogCounts {
     return { heard: this.heard, heardChecks: this.heardChecks, neverHeardPrompts: this.neverHeardPrompts };
+  }
+
+  /** True for an utterance long enough to be a caller, not a blip of noise. */
+  private isAudibleSpeech(speechMs: number): boolean {
+    return speechMs >= VAD_HEARD_MIN_SPEECH_MS;
+  }
+
+  private resumeAfterCallerSpeech(): void {
+    this.callerSpeaking = false;
+    this.callerSpeechStartedAt = null;
+    this.clearTimer('speechTimer');
+    this.arm();
+  }
+
+  /**
+   * The caller started speaking while the agent's turn was being generated,
+   * playing or queued: stop it (once per turn). A cleared turn never counts
+   * as played: its pending playback is released now (the caller is speaking,
+   * so nothing arms until speech_stopped), and Twilio's echo of its mark
+   * finds nothing pending.
+   */
+  private interruptAgentAudio(): void {
+    if (this.playbackCleared) return;
+    this.playbackCleared = true;
+    this.deps.onBargeIn?.();
+    if (this.awaitingPlayback) {
+      this.clearTimer('playbackTimer');
+      this.onPlaybackConfirmed();
+    }
   }
 
   private onPlaybackConfirmed(): void {

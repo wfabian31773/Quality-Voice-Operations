@@ -460,22 +460,119 @@ describe("phone path ('twilio_mark'): silence counts from the end of playback", 
   });
 });
 
+const speechStarted = (transport: { emit: (event: string, ...args: unknown[]) => boolean }) =>
+  transport.emit('input_audio_buffer.speech_started', { type: 'input_audio_buffer.speech_started' });
+const speechStopped = (transport: { emit: (event: string, ...args: unknown[]) => boolean }) =>
+  transport.emit('input_audio_buffer.speech_stopped', { type: 'input_audio_buffer.speech_stopped' });
+
 describe('caller speech (server VAD) pauses the watchdog', () => {
-  it('a never-heard caller speaking for 30 s gets no prompt and no hang-up; speech_stopped re-arms', async () => {
+  it('a caller speaking for 30 s gets no prompt and no hang-up; speech_stopped re-arms on the heard ladder', async () => {
     const { transport, echo, silencePrompts, sessionClosed } = await startCall({ playbackConfirm: 'twilio_mark' });
     echo();
     await vi.advanceTimersByTimeAsync(3_000);
-    transport.emit('input_audio_buffer.speech_started', { type: 'input_audio_buffer.speech_started' });
+    speechStarted(transport);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(silencePrompts()).toBe(0);
     expect(transport.close).not.toHaveBeenCalled();
     expect(sessionClosed).not.toHaveBeenCalled();
 
-    transport.emit('input_audio_buffer.speech_stopped', { type: 'input_audio_buffer.speech_stopped' });
-    await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS - 1);
+    speechStopped(transport);
+    await vi.advanceTimersByTimeAsync(HEARD_SILENCE_CHECK_MS - 1);
     expect(silencePrompts()).toBe(0);
     await vi.advanceTimersByTimeAsync(1);
     expect(silencePrompts()).toBe(1);
+    transport.close();
+  });
+
+  it('audible but never transcribed (S17): the heard ladder, never cut; a hang-up records caller_hangup, not never_heard', async () => {
+    const { result, transport, agentTurn, echo, silencePrompts } = await startCall({ playbackConfirm: 'twilio_mark' });
+    echo();
+    for (const pauseMs of [20_000, 30_000, 5 * 60_000]) {
+      speechStarted(transport);
+      await vi.advanceTimersByTimeAsync(2_000); // an utterance the transcriber returns nothing for
+      speechStopped(transport);
+      agentTurn(); // "Sorry, could you say that again?"
+      echo();
+      await vi.advanceTimersByTimeAsync(pauseMs);
+    }
+    // One check per quiet spell (the agent's own turn re-opens it), never a never-heard prompt or a cut.
+    expect(silencePrompts()).toBe(3);
+    const actions = vi.mocked(writeCallEvent).mock.calls.map((call) => call[2]);
+    expect(actions.filter((a) => a === 'silence_check')).toHaveLength(3);
+    expect(actions.filter((a) => a === 'silence_prompt' || a === 'never_heard_hangup')).toEqual([]);
+    expect(transport.close).not.toHaveBeenCalled();
+    expect(persistCallOutcome).not.toHaveBeenCalled();
+
+    // The caller hangs up: the stream finalizer's default outcome stands.
+    expect(result.recordCallOutcome('caller_hangup')).toBe(true);
+    expect(persistCallOutcome).toHaveBeenCalledWith('t-watchdog', 'cs-watchdog', 'caller_hangup');
+    transport.close();
+  });
+
+  it('a dialler blip under VAD_HEARD_MIN_SPEECH_MS stays never heard: the ladder runs to never_heard', async () => {
+    const { transport, agentTurn, echo, silencePrompts } = await startCall({ playbackConfirm: 'twilio_mark' });
+    echo();
+    speechStarted(transport);
+    await vi.advanceTimersByTimeAsync(100); // a click on the line (VAD trailing silence comes on top in real calls)
+    speechStopped(transport);
+    for (let i = 1; i <= NEVER_HEARD_PROMPTS; i += 1) {
+      await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS);
+      expect(silencePrompts()).toBe(i);
+      agentTurn();
+      echo();
+    }
+    await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS);
+    agentTurn(); // the goodbye
+    echo();
+    await vi.advanceTimersByTimeAsync(HANGUP_PLAYBACK_PAD_MS);
+    expect(transport.close).toHaveBeenCalledTimes(1);
+    expect(persistCallOutcome).toHaveBeenCalledWith('t-watchdog', 'cs-watchdog', 'never_heard');
+  });
+});
+
+describe('barge-in on the phone path', () => {
+  const phone: Partial<SessionContext> = { playbackConfirm: 'twilio_mark' };
+
+  it('caller speech while a turn is still playing: onBargeIn once; that turn\'s mark echo no longer counts as played', async () => {
+    const { result, transport, agentTurn, callerSays, marks, echo, silencePrompts } = await startCall(phone);
+    const clears = vi.fn();
+    result.onBargeIn(clears);
+    echo(); // greeting played
+    callerSays('Are you open right now?');
+    agentTurn(); // "let me check..." streamed; Twilio still playing it
+    speechStarted(transport); // the caller talks over it
+    expect(clears).toHaveBeenCalledTimes(1);
+    speechStarted(transport);
+    expect(clears).toHaveBeenCalledTimes(1);
+    // Twilio echoes the pending mark after the clear: nothing was pending any more.
+    expect(result.agentPlaybackDone(marks.at(-1) ?? '')).toBe(false);
+    await vi.advanceTimersByTimeAsync(PLAYBACK_ECHO_FALLBACK_MS + HEARD_SILENCE_CHECK_MS);
+    expect(silencePrompts()).toBe(0); // not armed while the caller talks
+    speechStopped(transport);
+    await vi.advanceTimersByTimeAsync(HEARD_SILENCE_CHECK_MS);
+    expect(silencePrompts()).toBe(1);
+    transport.close();
+  });
+
+  it('caller speech with nothing playing (the turn\'s echo came back) is no barge-in', async () => {
+    const { result, transport, echo } = await startCall(phone);
+    const clears = vi.fn();
+    result.onBargeIn(clears);
+    echo();
+    speechStarted(transport);
+    speechStopped(transport);
+    expect(clears).not.toHaveBeenCalled();
+    transport.close();
+  });
+
+  it('caller speech while the model is still streaming: onBargeIn', async () => {
+    const { result, transport, echo } = await startCall(phone);
+    const clears = vi.fn();
+    result.onBargeIn(clears);
+    echo();
+    transport.emit('response.created', { type: 'response.created' });
+    speechStarted(transport);
+    expect(clears).toHaveBeenCalledTimes(1);
     transport.close();
   });
 });
