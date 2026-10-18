@@ -461,12 +461,23 @@ describe('XaiRealtimeTransport', () => {
 
     it('a queued tool result is skipped when a response created after its output already carries it', async () => {
       const { transport, finish } = await toolRunning();
+      server({ type: 'response.created', response: { id: 'resp_other' } });
       expect(transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say exactly: "Hi". Do not say anything else.' } })).toBe(true);
-      await finish(); // output sent while our instruction's create is pending: queued
-      expect(creates()).toHaveLength(1);
-      server({ type: 'response.created', response: { id: 'resp_instr' } }); // created after the output: sees it
+      await finish(); // output sent while the instruction waits: both queued
+      server({ type: 'response.done', response: { id: 'resp_other', status: 'completed' } });
+      expect(creates()).toHaveLength(1); // the instruction's create, sent after the output: it sees it
+      server({ type: 'response.created', response: { id: 'resp_instr' } });
       server({ type: 'response.done', response: { id: 'resp_instr', status: 'completed' } });
       expect(creates()).toHaveLength(1);
+    });
+
+    it('an output sent after our response.create, before its response.created, is not taken as carried (Codex 4308809826)', async () => {
+      const { transport, finish } = await toolRunning();
+      expect(transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say exactly: "Hi". Do not say anything else.' } })).toBe(true);
+      await finish(); // output sent after the instruction's create: that response cannot see it
+      server({ type: 'response.created', response: { id: 'resp_instr' } });
+      server({ type: 'response.done', response: { id: 'resp_instr', status: 'completed' } });
+      expect(creates()).toHaveLength(2);
     });
 
     it('sendModelInstruction semantics: cancel the response in flight, then create (cancel first on the socket)', async () => {
@@ -1004,6 +1015,64 @@ describe('XaiRealtimeTransport', () => {
           expect(creates()).toHaveLength(3);
           expect(t.audio).toEqual([]);
           await expectQuietAfterClose(t.transport);
+        });
+
+        describe('the second result and the first result\'s response.created (Codex 4308809826)', () => {
+          /** Each result voiced exactly once, on its own response, never overlapping. */
+          async function expectEachVoicedOnce(t: Awaited<ReturnType<typeof twoToolsRunning>>) {
+            server({ type: 'response.created', response: { id: 'resp_slow' } });
+            server(delta(7));
+            server({ type: 'response.done', response: { id: 'resp_slow', status: 'completed' } });
+            await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS * 4);
+            expect(creates()).toHaveLength(2);
+            expect(t.audio).toEqual([6, 7]);
+            expect(t.kinds).toEqual(['server', 'tool_result', 'tool_result']);
+            expect(t.live).toEqual({ now: 0, max: 1 });
+            await expectQuietAfterClose(t.transport);
+          }
+
+          it('sent between the first\'s response.create and its response.created: its own reply at the first\'s done', async () => {
+            const t = await twoToolsRunning();
+            await t.finish('list_services'); // nothing in flight: its create goes at once
+            await t.finish('check_availability'); // before that create is acknowledged: queued
+            expect(sentTypes()).toEqual(['conversation.item.create', 'response.create', 'conversation.item.create']);
+            server({ type: 'response.created', response: { id: 'resp_fast' } }); // its create went before the slow output
+            server(delta(6));
+            server({ type: 'response.done', response: { id: 'resp_fast', status: 'completed' } });
+            expect(creates()).toHaveLength(2);
+            await expectEachVoicedOnce(t);
+          });
+
+          it('sent after the first\'s response.created: its own reply too, nothing twice', async () => {
+            const t = await twoToolsRunning();
+            await t.finish('list_services');
+            server({ type: 'response.created', response: { id: 'resp_fast' } });
+            await t.finish('check_availability');
+            server(delta(6));
+            server({ type: 'response.done', response: { id: 'resp_fast', status: 'completed' } });
+            expect(creates()).toHaveLength(2);
+            await expectEachVoicedOnce(t);
+          });
+
+          it('both sent while the hold line plays: the one response created after both carries both', async () => {
+            const t = await twoToolsRunning();
+            await vi.advanceTimersByTimeAsync(800);
+            t.transport.requestResponse(holdLine);
+            server({ type: 'response.created', response: { id: 'resp_hold' } });
+            server(delta(5));
+            await t.finish('list_services');
+            await t.finish('check_availability');
+            server({ type: 'response.done', response: { id: 'resp_hold', status: 'completed' } });
+            expect(creates()).toHaveLength(2); // one create, sent after both outputs
+            server({ type: 'response.created', response: { id: 'resp_both' } });
+            server(delta(6));
+            server({ type: 'response.done', response: { id: 'resp_both', status: 'completed' } });
+            await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS * 4);
+            expect(creates()).toHaveLength(2);
+            expect(t.audio).toEqual([5, 6]);
+            expect(t.live).toEqual({ now: 0, max: 1 });
+            await expectQuietAfterClose(t.transport);
+          });
         });
       });
 

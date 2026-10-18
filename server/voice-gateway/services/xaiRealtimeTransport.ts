@@ -128,6 +128,8 @@ interface QueuedRequest {
 interface PendingCreate extends QueuedRequest {
   /** callerSpeechSeq when it was sent. */
   sentAtSpeechSeq: number;
+  /** outputSeq when it was sent: its response sees those outputs, never one sent after it. */
+  sentAtOutputSeq: number;
   /** seenOutputSeq before a withheld_result moved it (restored if the create is rejected). */
   seenBefore: number;
   /** Cancel it as soon as it is created (superseded before it existed). */
@@ -359,7 +361,11 @@ export class XaiRealtimeTransport extends EventEmitter {
       // except after our voicing of a withheld result (it saw those up to the
       // request) and the hold line (told to say its line and nothing else, so
       // it carries no output). A response we cancel at once carries nothing.
-      if (!retired && kind !== 'hold_line' && kind !== 'withheld_result') this.seenOutputSeq = this.outputSeq;
+      // Ours sees only the outputs sent before its response.create: one sent
+      // after it (a concurrent tool) keeps its own queued reply (Codex 4308809826).
+      if (!retired && kind !== 'hold_line' && kind !== 'withheld_result') {
+        this.seenOutputSeq = ours ? Math.max(this.seenOutputSeq, ours.sentAtOutputSeq) : this.outputSeq;
+      }
       this.emit('response.created', event, { kind } satisfies ResponseMeta);
       if (ours?.cancelOnCreated) {
         this.cancelCurrentResponse();
@@ -612,7 +618,7 @@ export class XaiRealtimeTransport extends EventEmitter {
    */
   private sendCreate(entry: QueuedRequest, seenBefore = this.seenOutputSeq): void {
     this.clearPendingCreate();
-    this.pendingCreate = { ...entry, sentAtSpeechSeq: this.callerSpeechSeq, seenBefore, cancelOnCreated: false };
+    this.pendingCreate = { ...entry, sentAtSpeechSeq: this.callerSpeechSeq, sentAtOutputSeq: this.outputSeq, seenBefore, cancelOnCreated: false };
     this.createTimer = setTimeout(() => this.onCreateTimeout(), RESPONSE_CREATED_TIMEOUT_MS);
     const response = entry.request.response;
     this.sendEvent(response ? { type: 'response.create', response } : { type: 'response.create' });

@@ -30,6 +30,14 @@ export const HOLD_LINE_DELAY_MS = 800;
 /** A configured delay is clamped into this range ("about two heartbeats"). */
 export const HOLD_LINE_DELAY_MIN_MS = 700;
 export const HOLD_LINE_DELAY_MAX_MS = 1_000;
+/**
+ * A line the transport refused for now (the caller's reply is due, a create
+ * or cancel is still out) is tried again this often, at most
+ * HOLD_LINE_MAX_RETRIES times per wait: 2 s, past the caller-reply wait
+ * (1.5 s) and a cancel wait, so a refusal that never clears can't spin.
+ */
+export const HOLD_LINE_RETRY_MS = 250;
+export const HOLD_LINE_MAX_RETRIES = 8;
 
 /** One line per language (base code). Fixed text only; never caller data. */
 export const HOLD_LINE_PHRASES: Readonly<Record<string, string>> = {
@@ -143,6 +151,8 @@ interface Wait {
   said: boolean;
   /** The agent spoke after the wait started: no hold line in this wait. */
   agentSpoke: boolean;
+  /** Retries after a refused say so far (at most HOLD_LINE_MAX_RETRIES). */
+  retries: number;
 }
 
 const defaultTimers: HoldLineTimers = {
@@ -175,6 +185,8 @@ export class HoldLine {
   private callerSpeaking = false;
   private stopped = false;
   private timer: unknown = null;
+  /** The timer is a retry: the deadline has passed and the line was refused. */
+  private retrying = false;
 
   constructor(private readonly deps: HoldLineDeps) {
     this.delayMs = deps.delayMs ?? HOLD_LINE_DELAY_MS;
@@ -201,7 +213,7 @@ export class HoldLine {
     this.toolsRunning += 1;
     this.toolSeq += 1;
     if (this.wait) this.wait.tool = tool;
-    else this.wait = { startedAt: this.now(), tool, said: false, agentSpoke: false };
+    else this.wait = { startedAt: this.now(), tool, said: false, agentSpoke: false, retries: 0 };
     this.arm();
   }
 
@@ -255,6 +267,11 @@ export class HoldLine {
 
   callerSpeechStarted(): void {
     this.callerSpeaking = true;
+    if (this.retrying) {
+      // Talked over while a refused line waits for its retry: as at the deadline, this tool call gets none.
+      this.skippedThroughToolSeq = this.toolSeq;
+      this.clearTimer();
+    }
     this.callerTurnStarted();
   }
 
@@ -294,6 +311,7 @@ export class HoldLine {
 
   private onDeadline(): void {
     this.timer = null;
+    this.retrying = false;
     const wait = this.wait;
     if (this.stopped || !wait || wait.said || wait.agentSpoke || this.toolsRunning === 0) return;
     if (this.responding || this.awaitingPlayback) return;
@@ -305,7 +323,16 @@ export class HoldLine {
     const language = this.language;
     // No row for the call's language: silence, never English.
     if (language === null) return;
-    if (!this.deps.say(HOLD_LINE_PHRASES[language], language)) return;
+    if (!this.deps.say(HOLD_LINE_PHRASES[language], language)) {
+      // Refused for now, and the end of a caller-reply wait reaches no one
+      // here: try again shortly, every guard above re-checked (Codex 4308809833).
+      if (wait.retries < HOLD_LINE_MAX_RETRIES) {
+        wait.retries += 1;
+        this.retrying = true;
+        this.timer = this.timers.setTimeout(() => this.onDeadline(), HOLD_LINE_RETRY_MS);
+      }
+      return;
+    }
     wait.said = true;
     this.deps.onSaid?.({ tool: wait.tool, language, delayMs: this.delayMs, waitedMs: this.now() - wait.startedAt });
   }
@@ -313,5 +340,6 @@ export class HoldLine {
   private clearTimer(): void {
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = null;
+    this.retrying = false;
   }
 }

@@ -3,7 +3,9 @@ import {
   HOLD_LINE_DELAY_MAX_MS,
   HOLD_LINE_DELAY_MIN_MS,
   HOLD_LINE_DELAY_MS,
+  HOLD_LINE_MAX_RETRIES,
   HOLD_LINE_PHRASES,
+  HOLD_LINE_RETRY_MS,
   HoldLine,
   holdLineInstruction,
   holdLineLanguage,
@@ -244,6 +246,71 @@ describe('hold line timing (response_done playback)', () => {
     holdLine.agentResponseEnded();
     await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
     expect(onSaid).toHaveBeenCalledTimes(1);
+  });
+
+  describe('a refused line is retried once the refusal clears, with no event (Codex 4308809833)', () => {
+    /** say() refused until `allow` is set (the transport's caller-reply wait), counting every attempt. */
+    function refusedAtFirst() {
+      const gate = { allow: false, attempts: 0 };
+      const h = makeHoldLine({ say: () => { gate.attempts += 1; return gate.allow; } });
+      h.toolCall();
+      return { ...h, gate };
+    }
+
+    it('the wait clears while the tool still runs: said exactly once', async () => {
+      const { holdLine, onSaid, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      expect(gate.attempts).toBe(1);
+      await vi.advanceTimersByTimeAsync(1_000); // still refused (the 1.5 s reply wait)
+      expect(onSaid).not.toHaveBeenCalled();
+      gate.allow = true; // the wait cleared: nothing tells the hold line
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      expect(onSaid).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(5_000);
+      holdLine.toolEnded();
+      expect(onSaid).toHaveBeenCalledTimes(1);
+      expect(gate.attempts).toBe(6);
+    });
+
+    it('the tool finishes before the retry: nothing said', async () => {
+      const { holdLine, onSaid, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      holdLine.toolEnded();
+      gate.allow = true;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onSaid).not.toHaveBeenCalled();
+      expect(gate.attempts).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('the caller starts speaking while it waits for a retry: that tool call gets none, as at the deadline', async () => {
+      const { holdLine, onSaid, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      holdLine.callerSpeechStarted();
+      holdLine.callerSpeechStopped();
+      gate.allow = true;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onSaid).not.toHaveBeenCalled();
+      expect(gate.attempts).toBe(1);
+    });
+
+    it('stopped (hangup): no retries', async () => {
+      const { holdLine, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      holdLine.stop();
+      gate.allow = true;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(gate.attempts).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('a refusal that never clears (a closed socket) stops after HOLD_LINE_MAX_RETRIES', async () => {
+      const { onSaid, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS + 60_000);
+      expect(onSaid).not.toHaveBeenCalled();
+      expect(gate.attempts).toBe(1 + HOLD_LINE_MAX_RETRIES);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   it('stop() clears the timer: nothing after hangup', async () => {

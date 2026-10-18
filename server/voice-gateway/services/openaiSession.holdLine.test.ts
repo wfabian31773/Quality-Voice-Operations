@@ -285,6 +285,36 @@ describe('hold line on the phone path', () => {
     en.transport.close();
   });
 
+  it('refused at the deadline (the caller\'s reply wait), accepted once it clears: one hold line; none after close (Codex 4308809833)', async () => {
+    const { transport, holdLines, toolCall } = await startCall();
+    const refuse = (request: { kind: string }) => request.kind !== 'hold_line';
+    transport.requestResponse.mockImplementationOnce(refuse).mockImplementationOnce(refuse);
+    const run = toolCall();
+    await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS + 250);
+    expect(holdLines()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(holdLines()).toHaveLength(1);
+    expect(holdLineEvents()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    finishTool();
+    await run;
+    expect(holdLines()).toHaveLength(1);
+    expect(transport.requestResponse.mock.calls.filter(([r]) => (r as { kind: string }).kind === 'hold_line')).toHaveLength(3);
+    transport.close();
+    sessionManager.unregister('cs-hold');
+
+    const closed = await startCall();
+    closed.transport.requestResponse.mockImplementation(() => false);
+    const runClosed = closed.toolCall();
+    await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+    closed.transport.close();
+    const asked = closed.transport.requestResponse.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(closed.transport.requestResponse.mock.calls).toHaveLength(asked);
+    finishTool();
+    await runClosed;
+  });
+
   it('the delay is configurable per agent (metadata) and per call (resolved agent/tenant config)', async () => {
     const agent = await startCall({}, { metadata: { businessName: 'Acme', holdLineDelayMs: 950 } });
     const run = agent.toolCall();
