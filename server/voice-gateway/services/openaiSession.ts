@@ -61,6 +61,7 @@ import {
 } from './callPersistence';
 import { SilenceWatchdog, type PlaybackConfirmMode } from './silenceWatchdog';
 import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
+import { CallInvariants, type FloorOutcome } from './callInvariants';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
 
@@ -843,6 +844,11 @@ export interface RealtimeSessionResult {
    * re-arms the watchdog; stale or unknown names are ignored (returns false).
    */
   agentPlaybackDone: (markName: string) => boolean;
+  /**
+   * The hangup floor (tickets.file_floor), at most once per call. Bounded in
+   * time and never rejects. The phone teardown calls it (phoneCallTeardown.ts).
+   */
+  evaluateFloor: () => Promise<FloorOutcome>;
   costTracker: {
     inputTokens: number;
     outputTokens: number;
@@ -1016,6 +1022,22 @@ export async function createRealtimeSession(
 
   const slog = createSessionLogger('OPENAI_SESSION', { tenantId, callId: callSessionId, callSid });
 
+  // RT-04 invariant checker + RT-02 hangup floor for this call (callInvariants.ts).
+  // RUN allows the tools the model is shown. stream.ts adds transfer_to_agent
+  // to agentConfig.tools whenever it sets onHandoff; count it the same way.
+  const exposedTools = (cfg: LoadedAgentConfig): Array<{ name: string }> =>
+    ctx.onHandoff && !cfg.tools.some((tool) => tool.name === 'transfer_to_agent')
+      ? [...cfg.tools, { name: 'transfer_to_agent' }]
+      : cfg.tools;
+  const invariants = new CallInvariants({
+    tenantId,
+    callId: callSessionId,
+    agent: { ...agentConfig, tools: exposedTools(agentConfig) },
+    callerNumber,
+    calledNumber,
+    log: slog,
+  });
+
   const isAzulVision = agentConfig.metadata?.practiceName === 'Azul Vision' || agentConfig.metadata?.practiceName === 'Azul Vision Eye Center';
   if (isAzulVision) {
     wakeUpTicketing().catch(() => {});
@@ -1105,7 +1127,7 @@ export async function createRealtimeSession(
       }
     };
 
-  const toolHandler = trackToolRun(buildToolHandler(ctx, callSessionId));
+  const toolHandler = trackToolRun(invariants.wrapToolHandler(buildToolHandler(ctx, callSessionId)));
   const agentTools = buildRealtimeTools(agentConfig.tools);
 
   let knowledgeAvailable = false;
@@ -1267,6 +1289,7 @@ export async function createRealtimeSession(
           const text = c.text || c.transcript;
           if (text) {
             if (text.trim()) silenceWatchdog.callerHeard();
+            invariants.callerTranscribed(text);
             line = `CALLER: ${text}`;
             if (ctx.callerTurns) ctx.callerTurns.count++;
             costTracker.addUtterance('user', text);
@@ -1479,6 +1502,8 @@ export async function createRealtimeSession(
           if (c.text) {
             line = `AGENT: ${c.text}`;
             costTracker.addUtterance('assistant', c.text);
+            // SAY is observe-only (the audio already played); also marks a pending tool result voiced.
+            invariants.agentTurnCompleted(c.text);
 
             if (pendingCompressionSummary) {
               const summary = pendingCompressionSummary;
@@ -1904,7 +1929,10 @@ export async function createRealtimeSession(
       slog.info('Reasoning mode', { reasoningMode: ctx.reasoningMode, engine: Boolean(reasoningEngine), reason: 'handoff_to_non_salon' });
     }
 
-    const newToolHandler = trackToolRun(buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId));
+    invariants.setExposedTools(exposedTools(newAgentConfig));
+    const newToolHandler = trackToolRun(
+      invariants.wrapToolHandler(buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId)),
+    );
     const newAgentTools = buildRealtimeTools(newAgentConfig.tools);
     const handoffPrompt = buildMasterVoiceAgentInstructions({
       rolePrompt: newAgentConfig.rolePrompt ?? newAgentConfig.systemPrompt,
@@ -2022,6 +2050,7 @@ export async function createRealtimeSession(
     noteCallerText: () => silenceWatchdog.callerHeard(),
     onAgentAudioDone: (handler) => { agentAudioDoneHandlers.push(handler); },
     agentPlaybackDone,
+    evaluateFloor: () => invariants.evaluateFloor(),
     costTracker,
     routedModel: costTracker.activeModel,
     routedTier: costTracker.activeModelTier,

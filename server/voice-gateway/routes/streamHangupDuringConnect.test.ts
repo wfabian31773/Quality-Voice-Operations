@@ -40,6 +40,7 @@ const h = vi.hoisted(() => {
   const finalizeCallSessionMock = vi.fn(async (..._args: unknown[]) => {});
 
   const recordCallOutcomeMock = vi.fn((_outcome: string) => true);
+  const evaluateFloorMock = vi.fn(async () => 'filed' as const);
   const sessionClosedHandlers: Array<() => void> = [];
   const audioHandlers: Array<(audioEvent: { data: ArrayBuffer }) => void> = [];
   const agentAudioDoneHandlers: Array<(markName: string) => void> = [];
@@ -57,6 +58,7 @@ const h = vi.hoisted(() => {
     writeCallEventMock,
     finalizeCallSessionMock,
     recordCallOutcomeMock,
+    evaluateFloorMock,
     sessionClosedHandlers,
     audioHandlers,
     agentAudioDoneHandlers,
@@ -85,6 +87,7 @@ vi.mock('../services/openaiSession', () => ({
     noteCallerText: vi.fn(),
     onAgentAudioDone: (handler: (markName: string) => void) => { h.agentAudioDoneHandlers.push(handler); },
     agentPlaybackDone: h.agentPlaybackDoneMock,
+    evaluateFloor: h.evaluateFloorMock,
     costTracker: {
       inputTokens: 0,
       outputTokens: 0,
@@ -250,6 +253,7 @@ vi.mock('../../../platform/db', () => ({
 import { attachWebSocket } from './stream';
 import { createRealtimeSession } from '../services/openaiSession';
 import { getWidgetConfig, validateWidgetToken } from '../../../platform/widget/WidgetTokenService';
+import { sessionManager } from '../services/sessionManager';
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
@@ -291,6 +295,7 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     h.writeCallEventMock.mockClear();
     h.finalizeCallSessionMock.mockClear();
     h.recordCallOutcomeMock.mockClear();
+    h.evaluateFloorMock.mockClear();
     h.sessionClosedHandlers.length = 0;
     h.audioHandlers.length = 0;
     h.agentAudioDoneHandlers.length = 0;
@@ -378,6 +383,11 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.recordCallOutcomeMock).toHaveBeenCalledTimes(1);
     expect(h.recordCallOutcomeMock).toHaveBeenCalledWith('caller_hangup');
 
+    // RT-12: the phone teardown evaluates the hangup floor once, after the
+    // realtime session is closed, even though finalize ran twice here.
+    expect(h.evaluateFloorMock).toHaveBeenCalledTimes(1);
+    expect(h.sessionCloseMock.mock.invocationCallOrder[0]).toBeLessThan(h.evaluateFloorMock.mock.invocationCallOrder[0]);
+
     ws.close();
   });
 
@@ -410,6 +420,8 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.recordCallOutcomeMock).toHaveBeenCalledTimes(1);
     expect(h.recordCallOutcomeMock).toHaveBeenCalledWith('provider_failure');
     expect(h.sessionCloseMock).toHaveBeenCalledTimes(1);
+    // Watchdog / budget / provider ends reach the same teardown, so the floor runs for them too.
+    expect(h.evaluateFloorMock).toHaveBeenCalledTimes(1);
   });
 
   it('phone path: sends a Twilio mark after an agent turn\'s last media frame and passes the echo to the session', async () => {
@@ -479,6 +491,42 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.recordCallOutcomeMock).toHaveBeenCalledTimes(1);
     expect(h.recordCallOutcomeMock).toHaveBeenCalledWith('provider_failure');
     expect(h.sessionCloseMock).toHaveBeenCalledTimes(1);
+    // The floor is phone-only (RT-12); the widget teardown doesn't evaluate it.
+    expect(h.evaluateFloorMock).not.toHaveBeenCalled();
+  });
+
+  it('phone teardown does its call bookkeeping while the floor is still running', async () => {
+    let releaseFloor!: () => void;
+    h.evaluateFloorMock.mockImplementationOnce(
+      () => new Promise<'filed'>((resolve) => { releaseFloor = () => resolve('filed'); }),
+    );
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/twilio/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    ws.send(JSON.stringify({
+      event: 'start',
+      start: {
+        streamSid: 'MZ-floor-wait',
+        customParameters: {
+          tenantId: 't-1', agentId: 'a-1', agentType: 'general', callSid: 'CA-floor-wait',
+          callerNumber: '+15551234567', calledNumber: '+15557654321',
+        },
+      },
+    }));
+    await waitFor(() => h.updateCallStateMock.mock.calls.some((c) => c[2] === 'ACTIVE_CONVERSATION'));
+    ws.send(JSON.stringify({ event: 'stop' }));
+    // The call is finalized (outcome, call row, Twilio status) while the floor is still running.
+    await waitFor(() => h.handleTwilioStatusCallbackMock.mock.calls.length > 0);
+    expect(h.finalizeCallSessionMock).toHaveBeenCalled();
+    expect(h.evaluateFloorMock).toHaveBeenCalledTimes(1);
+    // A deploy drain counts the running floor until it settles.
+    const heldStreams = sessionManager.getDrainStatus().openStreams;
+    expect(heldStreams).toBeGreaterThan(0);
+    releaseFloor();
+    await waitFor(() => sessionManager.getDrainStatus().openStreams === heldStreams - 1);
+    ws.close();
   });
 
   it('closes a direct Twilio stream before session creation when the database-backed healthcare deployment is unapproved', async () => {

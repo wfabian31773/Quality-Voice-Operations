@@ -231,7 +231,9 @@ describe('salon agent (shadow by default)', () => {
     const { result, callTool } = await start();
     const out = JSON.parse(await callTool('delete_all_bookings', {}));
     expect(out.success).toBe(false);
-    expect(out.message).toMatch(/not available for this agent/);
+    // RT-12: the runtime RUN check (unexposed tool) answers before the shadow allowlist.
+    expect(out.rule).toBe('run.action_not_allowed');
+    expect(out.message).toMatch(/not available/);
     expect(rogue).not.toHaveBeenCalled();
     await result.session.close();
   });
@@ -388,7 +390,7 @@ describe('create_booking readback gate on the voice tool path', () => {
 });
 
 describe('enforce-mode call whose engine failed to start (unchanged)', () => {
-  it('does not apply the shadow allowlist check: a registered tool outside agentConfig.tools still runs', async () => {
+  it('does not apply the shadow allowlist check, but RT-12 RUN blocks a registered tool outside agentConfig.tools', async () => {
     h.failEngine = true;
     const extra = vi.fn(async () => ({ success: true }));
     h.toolHandlers.set('partner_crm_sync', extra);
@@ -400,9 +402,12 @@ describe('enforce-mode call whose engine failed to start (unchanged)', () => {
     expect(ctx.reasoningMode).toBe('enforce');
     expect(ctx.reasoningGate).toBeUndefined();
 
+    // Before RT-12 this ran: the model was never shown the tool, so calling it
+    // is a hard RUN violation (D3) and it no longer executes.
     const out = JSON.parse(await callTool('partner_crm_sync', {}));
-    expect(out.success).toBe(true);
-    expect(extra).toHaveBeenCalledTimes(1);
+    expect(out.success).toBe(false);
+    expect(out.rule).toBe('run.action_not_allowed');
+    expect(extra).not.toHaveBeenCalled();
     await result.session.close();
   });
 
@@ -416,7 +421,8 @@ describe('enforce-mode call whose engine failed to start (unchanged)', () => {
     expect(ctx.reasoningGate).toBeUndefined();
 
     const out = JSON.parse(await callTool('partner_crm_sync', {}));
-    expect(out.message).toMatch(/not available for this agent/);
+    expect(out.rule).toBe('run.action_not_allowed');
+    expect(out.message).toMatch(/not available/);
     expect(extra).not.toHaveBeenCalled();
     await result.session.close();
   });

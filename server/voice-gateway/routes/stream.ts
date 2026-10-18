@@ -6,6 +6,7 @@ import { redactPHI } from '../../../platform/core/phi/redact';
 import { loadAgentConfig } from '../services/agentLoader';
 import { getAgentConfig, getAgentToolOverrides } from '../services/numberLookup';
 import { createRealtimeSession, type RealtimeSessionResult } from '../services/openaiSession';
+import { closeRealtimeForPhoneTeardown } from '../services/phoneCallTeardown';
 import { resolveReasoningMode } from '../../../platform/reasoning/reasoningMode';
 import { writeCallEvent, updateCallState, finalizeCallSession } from '../services/callPersistence';
 import { dispatchSmsCsatSurvey, getTenantCsatSettings } from '../../../platform/analytics/CsatSurveyService';
@@ -205,15 +206,16 @@ export function attachWebSocket(server: HTTPServer): void {
       if (callSessionId && tenantId && !sessionClosed) {
         sessionClosed = true;
 
+        // The hangup floor starts here and is awaited before unregister below.
+        let floor: Promise<unknown> = Promise.resolve();
         if (sessionResult) {
-          // Ignored if the watchdog or budget cap already recorded one.
-          sessionResult.recordCallOutcome(realtimeEndedFirst ? 'provider_failure' : 'caller_hangup');
-          try {
-            await sessionResult.session.close();
-            slog.info('OpenAI realtime session closed');
-          } catch (err) {
-            slog.error('Error closing OpenAI session', { error: String(err) });
-          }
+          // The default outcome is ignored if the watchdog or budget cap already recorded one.
+          ({ floor } = await closeRealtimeForPhoneTeardown(
+            sessionResult,
+            realtimeEndedFirst ? 'provider_failure' : 'caller_hangup',
+            slog,
+            { holdDrain: () => sessionManager.trackConnection() },
+          ));
         }
 
         const durationSeconds = Math.round((Date.now() - streamStartedAt) / 1000);
@@ -374,6 +376,8 @@ export function attachWebSocket(server: HTTPServer): void {
         if (twilioCallSid) {
           coordinator.handleTwilioStatusCallback(twilioCallSid, 'completed');
         }
+        // Bounded (FLOOR_DEADLINE_MS) and never rejects.
+        await floor;
         sessionManager.unregister(callSessionId);
       }
     }
