@@ -9,6 +9,8 @@ interface ProbeDb {
   visibleAsTester: number;
   setRoleError: Error | null;
   testerCountError: Error | null;
+  /** COUNT(*) on this table as the connected role throws this error. */
+  connectedCountError: { table: string; error: Error } | null;
   /** One list of client statements per checked-out connection. */
   connections: string[][];
 }
@@ -37,6 +39,8 @@ function makeClient() {
       }
       if (sql.includes('COUNT(*)')) {
         if (actingAsTester && db.state.testerCountError) throw db.state.testerCountError;
+        const denied = db.state.connectedCountError;
+        if (!actingAsTester && denied && sql.includes(`FROM ${denied.table} WHERE`)) throw denied.error;
         const cnt = actingAsTester ? db.state.visibleAsTester : db.state.visibleAsConnected;
         return { rows: [{ cnt: String(cnt) }] };
       }
@@ -66,9 +70,14 @@ vi.mock('../core/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { CROSS_TENANT_READ_TABLES, runAllIsolationTests } from './TenantIsolationService';
+import { CROSS_TENANT_READ_TABLES, runAllIsolationTests, verifyCrossTenantBlocked } from './TenantIsolationService';
 
 const TENANT = 'tenant-self';
+
+/** What pg raises for a missing grant. */
+function permissionDenied(table: string): Error {
+  return Object.assign(new Error(`permission denied for table ${table}`), { code: '42501' });
+}
 
 async function crossTenantResults() {
   const { results } = await runAllIsolationTests(TENANT, { source: 'scheduled' });
@@ -83,6 +92,7 @@ beforeEach(() => {
     visibleAsTester: 0,
     setRoleError: null,
     testerCountError: null,
+    connectedCountError: null,
     connections: [],
   };
 });
@@ -187,5 +197,42 @@ describe('cross-tenant read probe', () => {
     expect(agents.details).not.toContain('Query blocked by RLS policy');
     expect(agents.details).toContain('evaluated as connected role "postgres"');
     expect(agents.details).toContain('platform_rls_tester could not read agents');
+  });
+
+  it('fails a probe that is denied (42501) instead of reading it as an RLS block; zero-row probes still pass', async () => {
+    db.state.connectedRole = 'qvo_app';
+    db.state.bypassesRls = false;
+    db.state.visibleAsConnected = 0;
+    db.state.connectedCountError = { table: 'bookings', error: permissionDenied('bookings') };
+    const results = await crossTenantResults();
+
+    const bookings = results.find((r) => r.testName === 'Cross-tenant read blocked on bookings');
+    expect(bookings?.passed).toBe(false);
+    expect(bookings?.details).toMatch(/^Probe could not read bookings as "qvo_app" \(permission denied, missing grant\)/);
+    expect(bookings?.details).not.toContain('Query blocked by RLS policy');
+    for (const r of results.filter((x) => x !== bookings)) {
+      expect(r.passed).toBe(true);
+      expect(r.details).toBe('RLS correctly prevents cross-tenant reads (evaluated as qvo_app)');
+    }
+  });
+
+  it('fails when platform_rls_tester is denied, even if the connected-role recount sees no rows', async () => {
+    db.state.testerCountError = permissionDenied('agents');
+    db.state.visibleAsConnected = 0;
+    const [agents] = await crossTenantResults();
+    expect(agents.passed).toBe(false);
+    expect(agents.details).toMatch(/^Probe could not read agents as "platform_rls_tester" \(permission denied/);
+  });
+
+  it('fails the legacy cross-tenant check on a permission error instead of reading it as blocked', async () => {
+    db.state.connectedRole = 'qvo_app';
+    db.state.bypassesRls = false;
+    db.state.visibleAsConnected = 0;
+    db.state.connectedCountError = { table: 'call_sessions', error: permissionDenied('call_sessions') };
+    const [agents, callSessions, auditLogs] = await verifyCrossTenantBlocked(TENANT, 'tenant-other');
+    expect(callSessions.passed).toBe(false);
+    expect(callSessions.details).toMatch(/^Probe could not read call_sessions as the connected role \(permission denied/);
+    expect(agents.passed).toBe(true);
+    expect(auditLogs.passed).toBe(true);
   });
 });
