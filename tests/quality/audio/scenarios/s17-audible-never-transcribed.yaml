@@ -1,0 +1,46 @@
+# S17 (plan F13, Azul 09-08: 77 of 191 non-filings): the caller is audible
+# (VAD hears speech every time) but the transcriber returns nothing. The
+# caller pauses to check a calendar (20 s, then 30 s). An audible caller is a
+# heard caller: one "are you still there?" check at 15 s per quiet spell,
+# never cut before the 10-minute cap, no booking or ticket invented, and the
+# floor files nothing (there are no caller words to file).
+id: s17-audible-never-transcribed
+plan: S17
+title: Caller audible but never transcribed
+tags: [audio, flow:never-transcribed, template:barbershop]
+lang: en
+windowMs: 150000
+jitterMs: 29
+caller:
+  - waitAgentIdle: 700
+  - say: "Hi, I'm calling about getting a haircut this week."
+    transcription: empty
+  - waitAgentIdle: 20000
+  - say: "Yes, sorry, I'm here. Do you have anything Thursday afternoon?"
+    transcription: empty
+  - waitAgentIdle: 30000
+  - say: "Thursday at three would be great, thanks."
+    transcription: empty
+  - waitAgentIdle: 1000
+  - hangup: true
+agent:
+  replies:
+    - say: "Sorry, you're breaking up a little. Could you say that again?"
+    - say: "I'm having trouble hearing you. Could you repeat that?"
+    - say: "Sorry, I still can't make that out."
+expect:
+  utterances: 3
+  outcome: caller_hangup
+  endedBy: caller
+  neverHeardPrompts: 0
+  heardChecks: 2
+  heardCheckAfterMs: { min: 14900, max: 15200 }
+  stillUpAtMs: 80000
+  floor: none
+  tickets: 0
+  bookings: 0
+  toolCalls: 0
+expectedFail: vad-heard-runtime-gap
+# Today "heard" needs a transcript, so this caller gets the never-heard
+# ladder: 3 prompts at 8 s, then goodbye and hang-up during the 30 s pause.
+pinned: [vad.utterances, outcome, ended_by, ladder.never_heard_prompts, ladder.heard_checks, call.not_cut]

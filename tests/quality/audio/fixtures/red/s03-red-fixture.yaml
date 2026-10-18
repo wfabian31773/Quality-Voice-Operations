@@ -1,0 +1,13 @@
+# CLI exit-code fixture (audio.test.ts): S03 with a wrong expectation (two
+# prompts instead of three), so this core flow fails 0/5 and the CLI exits 1.
+id: s03-red-fixture
+plan: S03
+title: Dialler, graded with a wrong prompt count
+tags: [audio, core, flow:never-heard]
+lang: en
+windowMs: 120000
+caller:
+  - lineNoise: 120000
+expect:
+  outcome: never_heard
+  neverHeardPrompts: 2

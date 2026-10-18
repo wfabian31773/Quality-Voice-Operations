@@ -1,0 +1,26 @@
+# S03 (plan F3): a dialler, or a caller who is never heard. The line is open
+# (faint hiss, never loud enough for VAD) and nobody speaks. The runtime's
+# never-heard ladder must give 3 prompts ~8 s apart, counted from when Twilio
+# has played the agent's audio (mark echo), then a goodbye that plays in full,
+# then hang up. Outcome never_heard; no floor ticket, nothing written.
+id: s03-dialler-never-heard
+plan: S03
+title: Dialler / caller never heard
+tags: [audio, core, flow:never-heard, template:barbershop]
+lang: en
+windowMs: 120000
+jitterMs: 37
+caller:
+  - lineNoise: 120000
+expect:
+  utterances: 0
+  outcome: never_heard
+  endedBy: agent
+  neverHeardPrompts: 3
+  promptSpacingMs: { min: 7900, max: 8200 }
+  goodbyePlayed: true
+  heardChecks: 0
+  floor: none
+  tickets: 0
+  bookings: 0
+  toolCalls: 0
