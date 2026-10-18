@@ -72,6 +72,8 @@ function slotAskKey(ctx: ActionContext, callId: string, slot: SlotSpec): string 
   return [ctx.tenantId, callId, contractKey(BOOKING_BOOK_V1), slot.name].join('\0');
 }
 
+// invocationKey must be unique per model tool call (e.g. the provider's tool-call id),
+// never derived from the arguments; otherwise a deliberate repeat would never reach the exit.
 function countSlotAsk(key: string, nowMs: number, invocationKey: string | undefined): number {
   const prev = slotAsks.get(key);
   const live = prev && nowMs - prev.atMs < SLOT_ASK_TTL_MS ? prev : undefined;

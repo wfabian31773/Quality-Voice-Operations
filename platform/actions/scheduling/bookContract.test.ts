@@ -148,6 +148,13 @@ describe('scheduling.book.prepare enforces booking.book@1', () => {
     expect(error).toMatchObject({ code: 'SLOT_MISSING', field: 'staff', askId: 'ask.staff' });
   });
 
+  it('treats a null customer object as not given', async () => {
+    const error = refusal(await prepare({
+      serviceIds: ['svc-cut'], staffId: 'any', start: '2026-10-20T15:30:00-04:00', customer: null,
+    }));
+    expect(error).toMatchObject({ code: 'SLOT_MISSING', field: 'customerName', askId: 'ask.customerName' });
+  });
+
   it('counts expire after the TTL: 31 minutes later is a first ask again', async () => {
     const ctx = agentCtx();
     await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() });

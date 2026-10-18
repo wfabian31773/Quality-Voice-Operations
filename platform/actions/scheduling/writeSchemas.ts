@@ -54,13 +54,13 @@ export const bookPrepareInput = z.object({
   staffId: slot(id),
   /** A start time returned by check_availability. */
   start: slot(instant),
-  customer: z
-    .object({
+  customer: slot(
+    z.object({
       name: slot(z.string().trim().min(1).max(80)),
       phone: slot(phone),
       email: z.string().email().max(255).optional(),
-    })
-    .optional(),
+    }),
+  ),
   notes: z.string().max(1000).optional(),
 });
 export type BookPrepareInput = z.infer<typeof bookPrepareInput>;
