@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { RUNTIME_TOOL_NAMES } from '../../../platform/agent-runtime/composer';
 import { BARBERSHOP_TEMPLATE_V1 } from '../../../platform/agent-templates/barbershop';
+import { isToolDenied } from '../../../platform/agent-templates/toolPermissions';
 import { CALLER_ID_TOKEN } from '../../../platform/reasoning/sessionBinding';
 import { TOOL_LIBRARY_NAMES } from '../../../platform/tools/library/catalog';
 import { COMPOSER_RUNTIME, composerTemplateFor, loadAgentConfig, type AgentLoadContext } from './agentLoader';
@@ -96,6 +97,33 @@ describe('loadAgentConfig with the composer flag on', () => {
     expect(es.rolePrompt.startsWith(BARBERSHOP_TEMPLATE_V1.persona.es)).toBe(true);
     expect(es.greeting).toBe('Gracias por llamar a Sharp Line Barbers. ¿En qué le puedo ayudar?');
     expect(es.systemPrompt).toContain('Begin in Spanish');
+  });
+
+  describe('Codex 4307380020: toolOverrides apply to the composed tools', () => {
+    const disabled = loadAgentConfig({ ...composerCtx(), toolOverrides: [{ toolName: 'tickets_open_commit', enabled: false }] });
+
+    it('a disabled contract tool is not in the session tools nor in the bridge binding', () => {
+      expect(disabled.tools.map((t) => t.name)).toEqual([...CONTRACT_TOOLS.filter((n) => n !== 'tickets_open_commit'), ...RUNTIME_TOOL_NAMES]);
+      expect(Object.keys(disabled.contractTools?.actions ?? {})).toEqual(CONTRACT_TOOLS.filter((n) => n !== 'tickets_open_commit'));
+      // Every bound contract tool is one the session exposes (what CallInvariants allows).
+      const exposed = new Set(disabled.tools.map((t) => t.name));
+      expect(Object.keys(disabled.contractTools?.actions ?? {}).every((n) => exposed.has(n))).toBe(true);
+      // The rest of the binding is unchanged.
+      expect(disabled.contractTools?.asks).toEqual(cfg.contractTools?.asks);
+    });
+
+    it('the same rule the session enforces: isToolDenied with the role package id agrees with the exposed list', () => {
+      const overrides = [{ toolName: 'tickets_open_commit', enabled: false }];
+      for (const name of [...CONTRACT_TOOLS, ...RUNTIME_TOOL_NAMES]) {
+        expect(disabled.tools.some((t) => t.name === name)).toBe(!isToolDenied(name, disabled.rolePackageId, overrides));
+      }
+    });
+
+    it('an enabled override or one for another tool changes nothing', () => {
+      const same = loadAgentConfig({ ...composerCtx(), toolOverrides: [{ toolName: 'tickets_open_commit', enabled: true }, { toolName: 'create_booking', enabled: false }] });
+      expect(same.tools.map((t) => t.name)).toEqual(cfg.tools.map((t) => t.name));
+      expect(same.contractTools).toEqual(cfg.contractTools);
+    });
   });
 
   it('keeps the shop\'s own greeting, and leaves out stock builder copy and a withheld caller ID', () => {

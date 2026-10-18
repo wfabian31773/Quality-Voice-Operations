@@ -11,6 +11,7 @@ import {
   updateInstallation,
 } from '../../../platform/marketplace/InstallationService';
 import { checkEntitlement } from '../../../platform/marketplace/EntitlementService';
+import { guardRuntimeFlag, keepStoredRuntime } from '../services/agentRuntimeFlag';
 import {
   getChecklistState,
   markStepComplete,
@@ -855,6 +856,12 @@ router.post('/marketplace/templates/:id/install', requireAuth, requireRole('mana
   if (welcomeGreeting !== undefined && typeof welcomeGreeting !== 'string') {
     return res.status(400).json({ error: 'welcomeGreeting must be a string' });
   }
+  // The installed agent's metadata: only platform staff may set metadata.runtime in it.
+  const runtimeFlag = metadata === undefined
+    ? undefined
+    : guardRuntimeFlag({ isPlatformAdmin: req.user!.isPlatformAdmin, stored: undefined, requested: metadata });
+  if (runtimeFlag && !runtimeFlag.ok) return res.status(runtimeFlag.status).json({ error: runtimeFlag.error });
+  const installMetadata = runtimeFlag?.ok ? runtimeFlag.metadata : undefined;
 
   try {
     const purchaseCheck = await checkPurchaseAccess(tenantId, templateId);
@@ -872,7 +879,7 @@ router.post('/marketplace/templates/:id/install', requireAuth, requireRole('mana
       name: name?.trim(),
       welcomeGreeting,
       escalationConfig,
-      metadata,
+      metadata: installMetadata,
     });
 
     if (!result.success) {
@@ -1120,7 +1127,7 @@ router.patch('/marketplace/installations/:id/customize', requireAuth, requireRol
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `SELECT tai.id, tai.agent_id, tr.config_schema, a.metadata AS agent_metadata
+      `SELECT tai.id, tai.agent_id, tr.config_schema
        FROM tenant_agent_installations tai
        JOIN template_registry tr ON tr.id = tai.template_id
        JOIN agents a ON a.id = tai.agent_id AND a.tenant_id = tai.tenant_id
@@ -1176,8 +1183,14 @@ router.patch('/marketplace/installations/:id/customize', requireAuth, requireRol
     }
 
     if (hasMetaUpdates) {
-      const existingMeta = (rows[0].agent_metadata as Record<string, unknown>) ?? {};
-      const newMeta = { ...existingMeta, ...metaUpdates };
+      // Locked so a concurrent metadata.runtime change can't be overwritten by the write below.
+      const { rows: metaRows } = await client.query(
+        `SELECT metadata FROM agents WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [agentId, tenantId],
+      );
+      const existingMeta = (metaRows[0]?.metadata as Record<string, unknown>) ?? {};
+      // metadataFields can't carry runtime; this keeps the stored one either way.
+      const newMeta = keepStoredRuntime(existingMeta, { ...existingMeta, ...metaUpdates });
       values.push(JSON.stringify(newMeta));
       updates.push(`metadata = $${values.length}`);
     }

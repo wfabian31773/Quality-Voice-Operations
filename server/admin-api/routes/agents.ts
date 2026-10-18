@@ -17,6 +17,7 @@ import {
   MASTER_VOICE_AGENT_DEFAULT_VOICE,
   MASTER_VOICE_AGENT_MODEL,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
+import { guardRuntimeFlag, keepStoredRuntime } from '../services/agentRuntimeFlag';
 
 const router = Router();
 const logger = createLogger('ADMIN_AGENTS');
@@ -128,6 +129,10 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
   const validationError = validateAgentInput(body, true);
   if (validationError) return res.status(400).json({ error: validationError });
 
+  // Only platform staff may set metadata.runtime (the RT-09 composer switch).
+  const runtimeFlag = guardRuntimeFlag({ isPlatformAdmin: req.user!.isPlatformAdmin, stored: undefined, requested: metadata });
+  if (!runtimeFlag.ok) return res.status(runtimeFlag.status).json({ error: runtimeFlag.error });
+
   if (workflow_definition !== null && workflow_definition !== undefined) {
     const wfError = validateWorkflowDefinition(workflow_definition);
     if (wfError) return res.status(400).json({ error: wfError });
@@ -151,7 +156,7 @@ router.post('/agents', requireAuth, requireRole('manager'), async (req, res) => 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [tenantId, name, type, system_prompt ?? null, welcome_greeting ?? null, voice, model, temperature,
-       JSON.stringify(tools), JSON.stringify(escalation_config), JSON.stringify(metadata),
+       JSON.stringify(tools), JSON.stringify(escalation_config), JSON.stringify(runtimeFlag.metadata),
        scheduling_provider ?? null, normalizeAgentLanguage(language),
        workflow_definition ? JSON.stringify(workflow_definition) : null],
     );
@@ -320,6 +325,8 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
   const allowed = ['name', 'type', 'status', 'system_prompt', 'welcome_greeting', 'voice', 'model', 'temperature', 'tools', 'escalation_config', 'metadata', 'workflow_definition', 'workflow_id', 'scheduling_provider', 'language'];
   const updates: string[] = ['updated_at = NOW()'];
   const values: unknown[] = [id, tenantId];
+  // The metadata value is filled in below, once the stored runtime flag is known.
+  let metadataIndex = -1;
 
   for (const key of allowed) {
     if (key in body) {
@@ -327,6 +334,7 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
         ? JSON.stringify(body[key])
         : body[key];
       values.push(val);
+      if (key === 'metadata') metadataIndex = values.length - 1;
       updates.push(`${key} = $${values.length}`);
     }
   }
@@ -347,6 +355,22 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
     if (modeCheck.length > 0 && modeCheck[0].execution_mode === 'federated') {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Federated agents cannot be modified directly. They are managed by an external system.' });
+    }
+
+    // PATCH replaces the whole metadata object; only platform staff may change metadata.runtime in it.
+    let runtimeChanged = false;
+    if (metadataIndex >= 0) {
+      const { rows: metaRows } = await client.query(
+        `SELECT metadata FROM agents WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [id, tenantId],
+      );
+      const runtimeFlag = guardRuntimeFlag({ isPlatformAdmin: req.user!.isPlatformAdmin, stored: metaRows[0]?.metadata, requested: body.metadata });
+      if (!runtimeFlag.ok) {
+        await client.query('ROLLBACK');
+        return res.status(runtimeFlag.status).json({ error: runtimeFlag.error });
+      }
+      values[metadataIndex] = JSON.stringify(runtimeFlag.metadata);
+      runtimeChanged = runtimeFlag.runtimeChanged;
     }
 
     if ('workflow_id' in body && body.workflow_id !== null && body.workflow_id !== undefined) {
@@ -396,7 +420,7 @@ router.patch('/agents/:id', requireAuth, requireRole('manager'), async (req, res
       action: 'agent.updated',
       resourceType: 'agent',
       resourceId: id,
-      changes: { fields: changedFields },
+      changes: { fields: changedFields, ...(runtimeChanged ? { runtimeChanged: true } : {}) },
       ipAddress: extractIp(req),
       userAgent: req.headers['user-agent'],
     });
@@ -942,8 +966,9 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
+    // Locked so a concurrent metadata.runtime change can't be overwritten by the write below.
     const { rows: agentRows } = await client.query(
-      `SELECT * FROM agents WHERE id = $1 AND tenant_id = $2`,
+      `SELECT * FROM agents WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
       [id, tenantId],
     );
     if (agentRows.length === 0) {
@@ -1012,7 +1037,8 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     const existingMeta = agent.metadata
       ? (typeof agent.metadata === 'string' ? JSON.parse(agent.metadata) : agent.metadata)
       : {};
-    const mergedMeta = { ...existingMeta, language: languageCode, tone, speakingRate: draftSettings.speakingRate || 1.0 };
+    // Publishing never changes metadata.runtime.
+    const mergedMeta = keepStoredRuntime(existingMeta, { ...existingMeta, language: languageCode, tone, speakingRate: draftSettings.speakingRate || 1.0 });
 
     await client.query(
       `UPDATE agents SET name = $1, system_prompt = $2, voice = $3, model = $4, temperature = $5, welcome_greeting = $6, tools = $7,
@@ -1126,9 +1152,19 @@ router.post('/agents/:id/rollback', requireAuth, requireRole('manager'), async (
     const rollbackLanguage = vSettings.language !== undefined
       ? normalizeAgentLanguage(vSettings.language)
       : null;
-    const rollbackMeta = vSettings.language || vSettings.tone
-      ? JSON.stringify({ language: rollbackLanguage ?? vSettings.language, tone: vSettings.tone, speakingRate: vSettings.speakingRate })
-      : null;
+    let rollbackMeta: string | null = null;
+    if (vSettings.language || vSettings.tone) {
+      // The rollback rebuilds metadata from the version; it never changes metadata.runtime.
+      const { rows: metaRows } = await client.query(
+        `SELECT metadata FROM agents WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [id, tenantId],
+      );
+      rollbackMeta = JSON.stringify(keepStoredRuntime(metaRows[0]?.metadata, {
+        language: rollbackLanguage ?? vSettings.language,
+        tone: vSettings.tone,
+        speakingRate: vSettings.speakingRate,
+      }));
+    }
 
     const updateFields = [
       'workflow_definition = $3',

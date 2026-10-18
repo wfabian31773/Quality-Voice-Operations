@@ -195,6 +195,20 @@ describe('install (requireRole manager)', () => {
   it('400 on an empty name', async () => {
     expect((await request(app()).post('/marketplace/templates/tpl1/install').send({ name: '  ' })).status).toBe(400);
   });
+  it('403 when a tenant user sets metadata.runtime; nothing is installed', async () => {
+    a.svc.checkPurchaseAccess.mockResolvedValue({ hasAccess: true });
+    a.svc.installTemplate.mockClear();
+    const res = await request(app()).post('/marketplace/templates/tpl1/install').send({ name: 'My Agent', metadata: { runtime: 'composer' } });
+    expect(res.status).toBe(403);
+    expect(a.svc.installTemplate).not.toHaveBeenCalled();
+  });
+  it('a platform admin may install with metadata.runtime', async () => {
+    a.user.isPlatformAdmin = true;
+    a.svc.checkPurchaseAccess.mockResolvedValue({ hasAccess: true });
+    a.svc.installTemplate.mockResolvedValue({ success: true, installation: { id: 'inst1', agentId: 'ag1', templateVersion: '1.0.0' } });
+    expect((await request(app()).post('/marketplace/templates/tpl1/install').send({ metadata: { runtime: 'composer' } })).status).toBe(201);
+    expect(a.svc.installTemplate).toHaveBeenLastCalledWith(expect.objectContaining({ metadata: { runtime: 'composer' } }));
+  });
 });
 
 describe('purchases', () => {
@@ -234,5 +248,69 @@ describe('platform-admin routes', () => {
     const res = await request(app()).get('/platform/templates/tpl1/versions');
     expect(res.status).toBe(200);
     expect(res.body.versions[0]).toMatchObject({ version: '1.0.0', isLatest: true });
+  });
+});
+
+describe('Codex 4307682356: customize locks the agent row before keeping the stored runtime', () => {
+  /**
+   * A platform admin's runtime change lands while customize runs: an unlocked
+   * read still sees the old metadata, a FOR UPDATE read waits and sees the new one.
+   */
+  function racingDb() {
+    const before = { runtime: 'composer', business_details: { name: 'Old' } };
+    const after = { runtime: 'legacy', business_details: { name: 'Old' } };
+    a.svc.validateCustomizationUpdate.mockReturnValue({ valid: true, rejectedFields: [], valueErrors: [] });
+    a.clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM tenant_agent_installations tai')) {
+        return { rows: [{ id: 'i1', agent_id: 'a1', config_schema: null, agent_metadata: before }] };
+      }
+      if (sql.includes('SELECT metadata FROM agents')) return { rows: [{ metadata: /FOR UPDATE/.test(sql) ? after : before }] };
+      return { rows: [] };
+    });
+  }
+
+  const calls = () => a.clientQueryMock.mock.calls as Array<[string, unknown[]?]>;
+  const order = () => calls().map(([sql]) => sql).filter((sql) =>
+    /^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) || /FROM agents|UPDATE agents/.test(sql));
+  const written = () => {
+    const [sql, values = []] = calls().find(([s]) => /^UPDATE agents/.test(s))!;
+    const n = Number(/metadata = \$(\d+)/.exec(sql)![1]);
+    return JSON.parse(String(values[n - 1])) as Record<string, unknown>;
+  };
+
+  it('the runtime written is the one the locked read returned (a concurrent change survives)', async () => {
+    racingDb();
+    const res = await request(app()).patch('/marketplace/installations/i1/customize').send({ business_details: { name: 'New' } });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true });
+    expect(written()).toEqual({ runtime: 'legacy', business_details: { name: 'New' } });
+  });
+
+  it('BEGIN → SELECT metadata … FOR UPDATE → UPDATE agents → COMMIT', async () => {
+    racingDb();
+    await request(app()).patch('/marketplace/installations/i1/customize').send({ business_details: { name: 'New' } });
+    const seq = order();
+    expect(seq).toHaveLength(4);
+    expect(seq[0]).toBe('BEGIN');
+    expect(seq[1]).toMatch(/SELECT metadata FROM agents .*FOR UPDATE/);
+    expect(seq[2]).toMatch(/^UPDATE agents/);
+    expect(seq[3]).toBe('COMMIT');
+  });
+
+  it('a failed write rolls back and never commits', async () => {
+    racingDb();
+    const base = a.clientQueryMock.getMockImplementation()!;
+    a.clientQueryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (/^UPDATE agents/.test(sql)) throw new Error('db down');
+      return base(sql, values);
+    });
+    const res = await request(app()).patch('/marketplace/installations/i1/customize').send({ business_details: { name: 'New' } });
+    expect(res.status).toBe(500);
+    const seq = order();
+    expect(seq[0]).toBe('BEGIN');
+    expect(seq[1]).toMatch(/FOR UPDATE/);
+    expect(seq.at(-1)).toBe('ROLLBACK');
+    expect(seq).not.toContain('COMMIT');
+    expect(a.releaseMock).toHaveBeenCalled();
   });
 });

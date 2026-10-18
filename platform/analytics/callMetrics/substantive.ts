@@ -12,8 +12,14 @@ import {
 
 export type CallerVerdict = 'never_heard' | 'nothing_substantive' | 'substantive';
 
-/** Stands in for a redacted name when the caller's name isn't known: one name-like word, as most redacted names are. */
+/** One name-like word, standing in for a redacted name word when the caller's name isn't known. */
 export const REDACTED_NAME_STAND_IN = 'Name';
+
+/**
+ * The most words redactPHI takes as one name (its name patterns match one to
+ * three words), so the most a [NAME_REDACTED] can stand for.
+ */
+export const REDACTED_NAME_MAX_WORDS = 3;
 
 /**
  * call_transcripts holds the caller's lines after redactPHI
@@ -21,16 +27,27 @@ export const REDACTED_NAME_STAND_IN = 'Name';
  * live floor judged the raw words. Each placeholder redactPHI emits is put
  * back as something the floor counts the way it counted what was redacted:
  *   [NAME_REDACTED]  → the caller's name when known (dropped, as the raw name
- *                      was), else one name word. "[NAME_REDACTED]" as is
- *                      would be two content words, so "Hi, I'm Luis" would
- *                      turn substantive.
+ *                      was), else REDACTED_NAME_MAX_WORDS name words. The
+ *                      placeholder doesn't say how many words it replaced,
+ *                      and after "I'm" / "I am" that decides the verdict
+ *                      ("I'm Luis": a name; "I'm Marcus Johnson": two content
+ *                      words, substantive). More name words never make the
+ *                      floor's verdict less substantive, so the longest name
+ *                      redactPHI can take gives the most substantive verdict
+ *                      any raw line could have had: a live-substantive call is
+ *                      never dropped from the denominator (which would inflate
+ *                      the rate). The cost: "Hi, I'm Luis" with no name known
+ *                      counts as substantive (a miss in the rate) though the
+ *                      floor saw only a name. After an intro the floor drops
+ *                      ("this is", "my name is", …) three words still drop.
  *   [PHONE_REDACTED] / [SSN_REDACTED] → a 10 / 9 digit token: a callback
  *                      number to the floor (hasLongNumber), as the raw one was.
  *   [DOB_REDACTED]   → a date: three number words, as any matched date was.
  */
 export function unredactForFloor(line: string, callerName: string | undefined): string {
+  const unknownName = Array.from({ length: REDACTED_NAME_MAX_WORDS }, () => REDACTED_NAME_STAND_IN).join(' ');
   return line
-    .replace(/\[NAME_REDACTED\]/g, () => callerName || REDACTED_NAME_STAND_IN)
+    .replace(/\[NAME_REDACTED\]/g, () => callerName || unknownName)
     .replace(/\[PHONE_REDACTED\]/g, '0000000000')
     .replace(/\[SSN_REDACTED\]/g, '000000000')
     .replace(/\[DOB_REDACTED\]/g, '00/00/0000');

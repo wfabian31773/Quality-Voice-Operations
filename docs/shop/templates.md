@@ -19,6 +19,8 @@ A business can enable one tool or all of them; the template sets the defaults.
 
 **Composer (RT-09):** `platform/agent-runtime/composer` compiles an agent from a template, its contracts and the business's settings: the tools are exactly the platform actions the template's contracts name (plus the runtime's clock and language tools, no library tools), and the prompt is the persona in the call's language, the business's own details and the caller-ID line. It runs on live calls only for an agent of type `barbershop` whose `agents.metadata` has `"runtime": "composer"`; every other agent, and a barbershop agent without that value, loads exactly as before. Contract tool calls run through `server/voice-gateway/services/contractToolBridge.ts` (`runAction` as the agent, inside the invariant checker).
 
+**Before the switch goes on (RT-14 prereq):** only QVO platform staff can set, change or clear `metadata.runtime` (`server/admin-api/services/agentRuntimeFlag.ts`; a tenant edit gets 403, and a tenant metadata edit that leaves it out keeps it). Contract tool calls get the same `tool_invocations` rows, call events and metering as every other tool (`toolBookkeeping.ts`). The model never sees an internal id: bookings, staff and services go out as call-scoped handles (`booking-1`) and come back as the real ids; hold and ticket ids are dropped. A timed-out booking, move or cancellation is never described as failed: she says she can't confirm it yet, that the shop will follow up (and a text will follow once texting is enabled), and offers a message.
+
 **This week:** barbershop and nail salon ship. The other rows are specified only (contract now; build later). Product direction: small businesses of 5–20 people, **no healthcare**.
 
 ## Matrix

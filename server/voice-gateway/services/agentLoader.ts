@@ -94,6 +94,12 @@ const COMPOSER_TEMPLATES: Readonly<Record<string, AgentTemplate>> = {
   barbershop: BARBERSHOP_TEMPLATE_V1,
 };
 
+/** The contract tool binding cut to the tools the session exposes: a tool an override disabled is not bound. */
+export function exposedContractTools(binding: ContractToolBinding, tools: ReadonlyArray<{ name: string }>): ContractToolBinding {
+  const exposed = new Set(tools.map((tool) => tool.name));
+  return { ...binding, actions: Object.fromEntries(Object.entries(binding.actions).filter(([tool]) => exposed.has(tool))) };
+}
+
 /** The composer template for this agent, or undefined when the flag is off or its type has none. */
 export function composerTemplateFor(agentType: string, metadata: Record<string, unknown>): AgentTemplate | undefined {
   if (metadata[COMPOSER_RUNTIME_KEY] !== COMPOSER_RUNTIME) return undefined;
@@ -589,6 +595,11 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       ? stripTenantText('greeting', meta.greeting, { builtIn: () => composed.greeting, generic: composed.greeting })
       : composed.greeting;
     const metadata = { ...meta, businessName: businessName ?? null, role: composerTemplate.id, template: composed.templateKey };
+    // toolOverrides, by the rule every other loader path uses, keyed on the
+    // role package id the session checks isToolDenied with (stream.ts passes
+    // rolePackageId as templateKey). The bridge binds only what is exposed.
+    const tools = filterToolsByPermissions(composed.tools, composerTemplate.id, toolOverrides);
+    const contractTools = exposedContractTools(composed.contractTools, tools);
     const compiled = compileRolePackage({
       id: composerTemplate.id,
       version: `${composerTemplate.version}.0.0`,
@@ -597,7 +608,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       voice: dbAgent?.voice,
       preferredLanguage: getAgentLanguageLabel(language),
       timeZone,
-      tools: composed.tools,
+      tools,
       guardrails: [],
       metadata,
     });
@@ -619,7 +630,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       tools: compiled.tools,
       guardrails: compiled.guardrails,
       metadata,
-      contractTools: composed.contractTools,
+      contractTools,
       keyterms: composed.keyterms,
     };
   }

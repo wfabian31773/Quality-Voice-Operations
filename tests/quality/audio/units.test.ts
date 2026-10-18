@@ -12,6 +12,7 @@ import { FRAME_BYTES, FRAME_MS, frameRms, linearToMulaw, MULAW_SILENCE, mulawToL
 import { parseAudioArgs } from '../../../scripts/quality/audio/run';
 import { parseAudioScenario, type AudioScenario } from '../../../scripts/quality/audio/scenario';
 import { DEFAULT_VAD_RMS, EnergyVad, type VadEvent } from '../../../scripts/quality/audio/vad';
+import { CallWorld } from '../../../scripts/quality/audio/world';
 
 describe('μ-law (G.711)', () => {
   it('round-trips within the codec step and encodes silence as 0xff', () => {
@@ -87,6 +88,20 @@ describe('virtual clock', () => {
     // Uninstalled: the real timers are back.
     await new Promise<void>((resolve) => setTimeout(resolve, 1));
     await settle();
+  });
+
+  it('what real work unblocks runs before the clock moves, even when the work settled just before the advance', async () => {
+    // The #131 stress flake: the last call-setup query settled right before a step's advance, and the
+    // fake xAI socket's open (one event-loop turn later) landed after it, so session.update went out at 20.
+    const clock = new VirtualClock();
+    const world = new CallWorld(clock, 'CAunitdrain', {}, { replies: [], transcriptions: [] });
+    clock.quiesce = () => world.drainReal();
+    const opened: number[] = [];
+    const io = world.trackReal(Promise.resolve());
+    void io.then(() => setImmediate(() => opened.push(clock.elapsed)));
+    await io;
+    await clock.advance(FRAME_MS);
+    expect(opened).toEqual([0]);
   });
 });
 

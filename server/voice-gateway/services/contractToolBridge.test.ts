@@ -13,7 +13,7 @@ import {
 import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
 import { TOOL_STOP_THRESHOLD, ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { CallInvariants } from './callInvariants';
-import { CONTRACT_TOOL_TIMEOUT_MS, ContractToolBridge, createContractToolBridge, type ContractActionRunner } from './contractToolBridge';
+import { CONTRACT_TOOL_TIMEOUT_MS, ContractToolBridge, createContractToolBridge, READ_TIMED_OUT, type ContractActionRunner } from './contractToolBridge';
 
 const TEMPLATE = BARBERSHOP_TEMPLATE_V1;
 const composed = compose(TEMPLATE, undefined, { businessName: 'Sharp Line Barbers' }, { language: 'en' });
@@ -269,17 +269,22 @@ describe('contract tool bridge: timeout, repeated-failure stop, rate limit', () 
     expect(CONTRACT_TOOL_TIMEOUT_MS).toBe(DEFAULT_RETRY_CONFIG.timeoutMs);
   });
 
-  it('a hung action times out with a failure that offers a message, and counts as a failure', async () => {
+  it('a hung read times out with a "try again or take a message" line, and counts as a failure', async () => {
     const guard = new ToolStopGuard();
     const b = bridge(() => new Promise<ActionResult>(() => {}), { callId: 'cs-hang', timeoutMs: 20, stopGuard: guard });
     const out = parse(await b.runTool('scheduling_check_availability', { serviceIds: ['s'] }));
     expect(out.ok).toBe(false);
-    expect(out.error).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: false, exit: 'message_ticket' });
+    // Nothing changed on a read: another try is fine, so no exit.
+    expect(out.error).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: true });
+    expect(out.error.exit).toBeUndefined();
+    expect(out.error.callerSafeMessage).toBe(READ_TIMED_OUT.en);
+    expect(out.error.callerSafeMessage).toMatch(/try again/);
     expect(out.error.callerSafeMessage).toMatch(/take a message/);
     expect(guard.failureCount('cs-hang', 'scheduling_check_availability')).toBe(1);
 
     b.observeToolCall('record_language_change', { language: 'es', confidence: 'high' });
     const es = parse(await b.runTool('scheduling_check_availability', { serviceIds: ['s'] }));
+    expect(es.error.callerSafeMessage).toBe(READ_TIMED_OUT.es);
     expect(es.error.callerSafeMessage).toMatch(/tomar un mensaje/);
   });
 
