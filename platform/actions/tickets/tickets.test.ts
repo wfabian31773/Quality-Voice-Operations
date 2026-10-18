@@ -94,7 +94,7 @@ async function prepareAndCommit(
 }
 
 describe('tickets action registry', () => {
-  it('registers the six ticket actions under the tickets tool', () => {
+  it('registers the seven ticket actions under the tickets tool', () => {
     expect(ticketsActions.map((def) => def.name)).toEqual([
       'tickets.open.prepare',
       'tickets.open.commit',
@@ -102,6 +102,7 @@ describe('tickets action registry', () => {
       'tickets.update',
       'tickets.list',
       'tickets.get',
+      'tickets.file_floor',
     ]);
     expect(ticketsActions.every((def) => def.tool === 'tickets')).toBe(true);
   });

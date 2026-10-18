@@ -23,6 +23,10 @@ export interface MemoryTicketsState {
   slaInstances: MemorySlaInstance[];
   members: Map<string, Set<string>>;
   locks: string[];
+  /** `${tenantId}\0${callRef}` of calls that made a booking (bookings.intake_data.qvo.session). */
+  bookedCalls: Set<string>;
+  /** call_sessions.caller_number as stored, by `${tenantId}\0${callRef}`. */
+  callerNumbers: Map<string, string>;
 }
 
 const EMPTY_SETTINGS: TicketSettings = {
@@ -45,6 +49,8 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
     slaInstances: [],
     members: new Map(),
     locks: [],
+    bookedCalls: new Set(),
+    callerNumbers: new Map(),
   };
   let nextNumber = 1000;
 
@@ -117,6 +123,15 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
         return own()
           .filter((ticket) => ticket.sourceCallRef === callRef && ticket.kind === kind)
           .map(strip);
+      },
+      async hasCallArtifact(callRef) {
+        return (
+          own().some((ticket) => ticket.sourceCallRef === callRef || ticket.callId === callRef) ||
+          state.bookedCalls.has(`${tenantId}\0${callRef}`)
+        );
+      },
+      async callerNumber(callRef) {
+        return state.callerNumbers.get(`${tenantId}\0${callRef}`) ?? null;
       },
       async insert(input) {
         nextNumber += 1;

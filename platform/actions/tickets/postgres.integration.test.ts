@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { postgresActionStore, runActionDefinition, type ActionContext, type ActionResult, type TenantTx } from '../core';
 import { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE } from './actions';
+import { FILE_FLOOR, FLOOR_SUBJECT, floorIdempotencyKey } from './floor';
 
 const ADMIN_URL_RAW = process.env.DATABASE_URL ?? process.env.DATABASE_URL_PRIVILEGED ?? 'postgresql://ubuntu@127.0.0.1:5432/postgres';
 
@@ -455,6 +456,80 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
 
     const { rows } = await copyPool.query(`SELECT tenant_id, call_id, source_call_ref FROM tickets WHERE id = $1`, [ticketId]);
     expect(rows[0]).toEqual({ tenant_id: tenantA, call_id: null, source_call_ref: callB });
+  });
+
+  it('files the floor ticket once, in the calling tenant only, under RLS', async () => {
+    const tenantA = await insertTenant(copyPool);
+    const tenantB = await insertTenant(copyPool);
+    const callId = randomUUID();
+    // Legacy plain-text caller number: no decryption needed.
+    await copyPool.query(`INSERT INTO call_sessions (id, tenant_id, caller_number) VALUES ($1, $2, '+15550100142')`, [
+      callId,
+      tenantA,
+    ]);
+
+    const registry = createTicketsActions({
+      decryptCallerNumber: async () => {
+        throw new Error('plain-text caller numbers are not decrypted');
+      },
+    });
+    const floor = registry.find((def) => def.name === FILE_FLOOR)!;
+    const runtime = { store: postgresActionStore, withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withRlsTx(copyPool, id, fn) };
+    const ctxFor = (tenantId: string): ActionContext => ({
+      tenantId,
+      actor: { type: 'system', id: 'voice-runtime' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId,
+      idempotencyKey: floorIdempotencyKey(callId),
+    });
+    const input = { callId, callerLines: ['Hi, this is Luis', 'I need a fade Friday'], callerName: 'Luis' };
+
+    const first = await runActionDefinition(floor, ctxFor(tenantA), input, runtime);
+    if (!first.ok) throw new Error(`${first.error.code}: ${first.error.message}`);
+    const { ticketId } = first.data as { ticketId: string };
+    expect(first.data).toMatchObject({ filed: true, reason: 'filed' });
+    expect(first.effects?.[0]?.type).toBe('ticket.opened');
+
+    // A retry with the same key replays the stored result: still one ticket and one outbox row.
+    expect(await runActionDefinition(floor, ctxFor(tenantA), input, runtime)).toEqual(first);
+    const { rows } = await copyPool.query(
+      `SELECT tenant_id, call_id, source_call_ref, kind, subject, description, contact_phone, source FROM tickets WHERE source_call_ref = $1`,
+      [callId],
+    );
+    expect(rows).toEqual([
+      {
+        tenant_id: tenantA,
+        call_id: callId,
+        source_call_ref: callId,
+        kind: 'message',
+        subject: FLOOR_SUBJECT,
+        description: 'Hi, this is Luis\nI need a fade Friday',
+        contact_phone: '+15550100142',
+        source: 'ai_agent',
+      },
+    ]);
+    const { rows: outbox } = await copyPool.query(
+      `SELECT tenant_id FROM ticket_outbox WHERE event_type = 'ticket.opened' AND payload->>'ticketId' = $1`,
+      [ticketId],
+    );
+    expect(outbox).toEqual([{ tenant_id: tenantA }]);
+
+    // Tenant B cannot see A's floor ticket, and its own floor for the same id is judged and written in B only.
+    await withRlsTx(copyPool, tenantB, async (tx) => {
+      const visible = await tx.query(`SELECT 1 FROM tickets WHERE id = $1`, [ticketId]);
+      expect(visible.rows).toHaveLength(0);
+    });
+    const inB = await runActionDefinition(floor, ctxFor(tenantB), input, runtime);
+    expect(inB.ok && inB.data).toMatchObject({ filed: true, reason: 'filed' });
+    const { rows: both } = await copyPool.query<{ tenant_id: string; call_id: string | null; contact_phone: string }>(
+      `SELECT tenant_id, call_id, contact_phone FROM tickets WHERE source_call_ref = $1 ORDER BY tenant_id = $2 DESC`,
+      [callId, tenantA],
+    );
+    expect(both).toEqual([
+      { tenant_id: tenantA, call_id: callId, contact_phone: '+15550100142' },
+      { tenant_id: tenantB, call_id: null, contact_phone: '' },
+    ]);
   });
 
   it('adds the CHECKs NOT VALID and the ticket.opened outbox index, and re-runs cleanly', async () => {

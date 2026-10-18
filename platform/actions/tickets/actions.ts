@@ -9,10 +9,12 @@ import {
   type ActionContext,
   type AnyActionDefinition,
 } from '../core';
+import { createFloorAction, type CallerNumberDecrypter } from './floor';
 import { validateIntake } from './intake';
 import { intakeSchemaFor } from './intakeSchemas';
 import { buildOpenReadback, normalizePhone } from './readback';
-import { sqlTicketsRepo, type NewActivity, type TicketPatch, type TicketRecord, type TicketsRepo, type TicketsRepoFactory } from './repo';
+import { sqlTicketsRepo, type NewActivity, type TicketPatch, type TicketRecord, type TicketsRepoFactory } from './repo';
+import { priorityFor, resolveSla } from './sla';
 import {
   ACTIVE_STATUSES,
   addNoteInput,
@@ -29,7 +31,6 @@ import {
   ticketSummary,
   updateInput,
   type OpenPrepareInput,
-  type TicketPriority,
   type TicketSummary,
   type TicketUrgency,
 } from './schemas';
@@ -43,6 +44,8 @@ const NOTES_LIMIT = 50;
 
 export interface TicketsActionDeps {
   repo?: TicketsRepoFactory;
+  /** Decrypts call_sessions.caller_number for the floor ticket; tests inject a fake. */
+  decryptCallerNumber?: CallerNumberDecrypter;
 }
 
 function actorUserId(ctx: ActionContext): string | null {
@@ -53,10 +56,6 @@ function sourceFor(ctx: ActionContext): 'manual' | 'api' | 'ai_agent' {
   if (ctx.actor.type === 'agent') return 'ai_agent';
   if (ctx.actor.type === 'user') return 'manual';
   return 'api';
-}
-
-function priorityFor(urgency: TicketUrgency): TicketPriority {
-  return urgency === 'urgent' ? 'urgent' : 'medium';
 }
 
 function isOverdue(ticket: TicketRecord, now: Date): boolean {
@@ -83,25 +82,6 @@ function toSummary(ticket: TicketRecord, now: Date): TicketSummary {
     overdue: isOverdue(ticket, now),
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
-  };
-}
-
-function addMinutes(now: Date, minutes: number): Date {
-  return new Date(now.getTime() + minutes * 60_000);
-}
-
-/**
- * callback_due_at comes only from tenant config: settings first, then an active SLA policy. Never invented.
- * When a policy supplies it, the matching SLA instance uses the same clock, so response_due_at equals it.
- */
-async function resolveSla(repo: TicketsRepo, minutesFromSettings: number | null, priority: TicketPriority, now: Date) {
-  if (minutesFromSettings) return { dueAt: addMinutes(now, minutesFromSettings), instance: null };
-  const policy = await repo.slaPolicy(priority);
-  if (!policy) return { dueAt: null, instance: null };
-  const dueAt = addMinutes(now, policy.firstResponseMinutes);
-  return {
-    dueAt,
-    instance: { policyId: policy.id, responseDueAt: dueAt, resolutionDueAt: addMinutes(now, policy.resolutionMinutes) },
   };
 }
 
@@ -426,5 +406,7 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
     },
   });
 
-  return [openPrepare, openCommit, addNote, update, list, get];
+  const fileFloor = createFloorAction({ repo: repoFor, decryptCallerNumber: deps.decryptCallerNumber });
+
+  return [openPrepare, openCommit, addNote, update, list, get, fileFloor];
 }
