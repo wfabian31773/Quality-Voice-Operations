@@ -224,6 +224,45 @@ describe('cross-tenant read probe', () => {
     expect(agents.details).toMatch(/^Probe could not read agents as "platform_rls_tester" \(permission denied/);
   });
 
+  it('fails every table when the switch to platform_rls_tester is denied (42501), even with a zero count', async () => {
+    db.state.setRoleError = Object.assign(
+      new Error('permission denied to set role "platform_rls_tester"'), { code: '42501' },
+    );
+    db.state.visibleAsConnected = 0;
+    const results = await crossTenantResults();
+
+    expect(results).toHaveLength(CROSS_TENANT_READ_TABLES.length);
+    for (const r of results) {
+      expect(r.passed).toBe(false);
+      expect(r.details).toMatch(
+        /^Could not switch to platform_rls_tester \(permission denied\), so cross-tenant reads were not evaluated under RLS\. /,
+      );
+      expect(r.details).not.toContain('RLS correctly prevents');
+    }
+  });
+
+  it('keeps a non-42501 SET ROLE failure on the existing fallback (zero count passes)', async () => {
+    db.state.setRoleError = Object.assign(new Error('role "platform_rls_tester" does not exist'), { code: '42704' });
+    db.state.visibleAsConnected = 0;
+    const results = await crossTenantResults();
+    for (const r of results) {
+      expect(r.passed).toBe(true);
+      expect(r.details).not.toContain('Could not switch');
+      expect(r.details).toContain('SET ROLE platform_rls_tester failed');
+    }
+  });
+
+  it('names the tester permission error exactly once in details', async () => {
+    const err = permissionDenied('agents');
+    db.state.testerCountError = err;
+    db.state.visibleAsConnected = 0;
+    const [agents] = await crossTenantResults();
+    expect(agents.passed).toBe(false);
+    expect(agents.details.split(err.message).length - 1).toBe(1);
+    expect(agents.details).toContain('evaluated as connected role "postgres"');
+    expect(agents.details).toContain('platform_rls_tester could not read agents');
+  });
+
   it('fails the legacy cross-tenant check on a permission error instead of reading it as blocked', async () => {
     db.state.connectedRole = 'qvo_app';
     db.state.bypassesRls = false;

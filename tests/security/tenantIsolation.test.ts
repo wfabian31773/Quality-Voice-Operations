@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'crypto';
+import { classifyIsolationProbeError } from '../../platform/security/isolationProbeErrors';
 
 const FAKE_TENANT_A = randomUUID();
 const FAKE_TENANT_B = randomUUID();
@@ -56,7 +57,13 @@ describe('Tenant Isolation - RLS Enforcement', () => {
         } catch (err) {
           await client.query('ROLLBACK').catch(() => {});
           const errStr = String(err);
-          isolated = errStr.includes('policy') || errStr.includes('permission denied') || errStr.includes('row_security');
+          const kind = classifyIsolationProbeError(err);
+          if (kind === 'permission_denied') {
+            throw new Error(
+              `Probe could not read ${table} (permission denied, missing grant), so cross-tenant isolation was not proven: ${errStr}`,
+            );
+          }
+          isolated = kind === 'rls_blocked';
           if (!isolated) {
             throw new Error(`Unexpected isolation test error on ${table}: ${errStr}`);
           }
