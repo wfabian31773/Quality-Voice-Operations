@@ -289,8 +289,9 @@ function buildToolHandler(
           tool: toolName,
           reason: sessionBound.reason,
         });
-        await refuse({ success: false, reason: 'session_mismatch', message: sessionBound.reason }, sessionBound.reason);
-        return JSON.stringify({ success: false, message: sessionBound.reason });
+        const mismatch = sessionBound.reason ?? 'session_mismatch';
+        await refuse({ success: false, reason: 'session_mismatch', message: mismatch }, mismatch);
+        return JSON.stringify({ success: false, message: mismatch });
       }
       args = sessionBound.args;
     }
