@@ -26,6 +26,7 @@ import {
   NEVER_HEARD_GOODBYE_INSTRUCTION,
   SILENCE_PROMPT_INSTRUCTION,
 } from '../../../server/voice-gateway/services/silenceWatchdog';
+import { isHoldLineInstruction } from '../../../server/voice-gateway/services/holdLine';
 
 export const FIRST_AUDIO_MS = 300;
 export const FRAMES_PER_TICK = 4;
@@ -37,6 +38,7 @@ export type ResponseKind =
   | 'silence_prompt'
   | 'never_heard_goodbye'
   | 'max_duration_wrap'
+  | 'hold_line'
   | 'instruction'
   | 'reply'
   | 'after_tool'
@@ -58,6 +60,8 @@ export interface ResponseRecord {
   frames: number;
   framesSent: number;
   tool?: { callId: string; name: string; args: Record<string, unknown> };
+  /** When its function call reached the client (response.function_call_arguments.done). */
+  toolCallAt?: number;
   afterTool?: string;
 }
 
@@ -207,6 +211,7 @@ export class FakeXaiServer {
     }
     if (response.framesSent < response.frames) return;
     if (response.tool) {
+      response.toolCallAt = now;
       this.hooks.deliver({
         type: 'response.function_call_arguments.done',
         response_id: response.id,
@@ -303,6 +308,7 @@ export class FakeXaiServer {
     if (instructions === SILENCE_PROMPT_INSTRUCTION) return { kind: 'silence_prompt', trigger: 'client', text: line };
     if (instructions === NEVER_HEARD_GOODBYE_INSTRUCTION) return { kind: 'never_heard_goodbye', trigger: 'client', text: line };
     if (instructions === MAX_DURATION_WRAP_UP_INSTRUCTION) return { kind: 'max_duration_wrap', trigger: 'client', text: line };
+    if (isHoldLineInstruction(instructions)) return { kind: 'hold_line', trigger: 'client', text: line };
     if (instructions.startsWith('The caller just connected.')) return { kind: 'greeting', trigger: 'client', text: line };
     return { kind: 'instruction', trigger: 'client', text: line };
   }
@@ -330,7 +336,8 @@ export class FakeXaiServer {
       utterance: spec.utterance,
       createdAt: this.hooks.now(),
       status: 'in_progress',
-      frames: framesForMs(lineDurationMs(spec.text)),
+      // An empty line is a function call with no words before it (no audio).
+      frames: spec.text.trim() ? framesForMs(lineDurationMs(spec.text)) : 0,
       framesSent: 0,
       tool: spec.reply?.tool ? { callId: `call_${no}`, name: spec.reply.tool.name, args: spec.reply.tool.args ?? {} } : undefined,
       afterTool: spec.reply?.afterTool,

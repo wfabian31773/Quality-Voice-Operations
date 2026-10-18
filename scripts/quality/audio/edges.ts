@@ -100,6 +100,7 @@ export interface RuntimeModules {
   /** For in-memory overrides in mutation tests only. */
   silenceWatchdog: typeof import('../../../server/voice-gateway/services/silenceWatchdog');
   xaiRealtimeTransport: typeof import('../../../server/voice-gateway/services/xaiRealtimeTransport');
+  holdLine: typeof import('../../../server/voice-gateway/services/holdLine');
 }
 
 /** The only env a harness run sees (plus the two dummies installEdges sets). */
@@ -254,6 +255,7 @@ export function installEdges(opts: EdgeOptions = {}): RuntimeModules {
     attachWebSocket: stream.attachWebSocket,
     silenceWatchdog: load<RuntimeModules['silenceWatchdog']>('server/voice-gateway/services/silenceWatchdog'),
     xaiRealtimeTransport: load<RuntimeModules['xaiRealtimeTransport']>('server/voice-gateway/services/xaiRealtimeTransport'),
+    holdLine: load<RuntimeModules['holdLine']>('server/voice-gateway/services/holdLine'),
   };
   return installed;
 }

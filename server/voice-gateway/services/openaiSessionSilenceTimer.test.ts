@@ -18,6 +18,12 @@ vi.mock('./xaiRealtimeTransport', async () => {
   class FakeTransport extends NodeEventEmitter {
     sendAudio = vi.fn();
     sendEvent = vi.fn();
+    // The real transport's one response.create path, without its queue.
+    requestResponse = vi.fn((request: { response?: Record<string, unknown> }) => {
+      this.sendEvent(request.response ? { type: 'response.create', response: request.response } : { type: 'response.create' });
+      return true;
+    });
+    noteHoldLineRequested = vi.fn();
     connect = vi.fn(async (_opts?: { apiKey: string }) => {});
     close = vi.fn(() => {
       this.emit('close');

@@ -1,0 +1,41 @@
+# S18 hold line (RT-HOLD-LINE, Oct 18 test calls): the caller asks what's
+# open; the model says nothing and calls a lookup that takes 2 s (its
+# tool-execution log write is slow, like the cross-country bookkeeping on the
+# real calls). With no agent audio for 800 ms the runtime says its hold line
+# once ("One moment while I check that."), asked for 0.7-1.0 s after the tool
+# call and before the result. The result's answer waits for the hold line's
+# response to finish: never two responses at once, no provider error, and the
+# answer is heard in full.
+id: s18-slow-tool-hold-line
+plan: S18
+title: A slow tool gets one hold line
+tags: [audio, core, flow:hold-line, template:barbershop]
+lang: en
+windowMs: 30000
+jitterMs: 19
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, what do you have open Wednesday morning?"
+  # Quiet while the lookup runs and its answer plays.
+  - silence: 9000
+  - hangup: true
+agent:
+  replies:
+    # No words before the call: the model never spoke before a tool on the real calls.
+    - say: ""
+      tool: { name: get_current_tenant_time }
+      afterTool: "Wednesday morning we have nine and ten thirty open."
+db:
+  slow:
+    - { match: "INSERT INTO tool_invocations", latencyMs: 2000 }
+expect:
+  utterances: 1
+  outcome: caller_hangup
+  endedBy: caller
+  toolCalls: 1
+  toolResultsVoiced: 1
+  holdLine:
+    count: 1
+    requestedAfterToolMs: { min: 700, max: 1000 }
+  noOverlap: true
+  bookings: 0

@@ -1,0 +1,30 @@
+# Timing fixture (RT-HOLD-LINE report, not a gate scenario): the S18 call
+# with realistic per-statement database latency, 250 ms for every statement
+# (one Render virginia → Supabase Oregon round trip is ~65 ms; a
+# BEGIN/set_config/query/COMMIT write ~0.25 s each on the Oct 18 calls). The
+# tool's own action does no DB work, so tool call → result is the
+# bookkeeping alone. audio.test.ts runs it with and without the hold line and
+# prints per-tool timings.
+id: s18-timing-db-250ms
+plan: S18
+title: Tool timing with 250 ms per DB statement
+tags: [audio, timing, flow:hold-line-timing, template:barbershop]
+lang: en
+windowMs: 40000
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, what do you have open Wednesday morning?"
+  - silence: 12000
+  - hangup: true
+agent:
+  replies:
+    - say: ""
+      tool: { name: get_current_tenant_time }
+      afterTool: "Wednesday morning we have nine and ten thirty open."
+db:
+  slow:
+    - { match: ".", latencyMs: 250 }
+expect:
+  utterances: 1
+  toolCalls: 1
+  toolResultsVoiced: 1

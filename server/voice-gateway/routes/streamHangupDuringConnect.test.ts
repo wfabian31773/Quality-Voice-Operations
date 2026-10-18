@@ -87,6 +87,7 @@ vi.mock('../services/openaiSession', () => ({
     recordCallOutcome: h.recordCallOutcomeMock,
     onSessionClosed: (handler: () => void) => { h.sessionClosedHandlers.push(handler); },
     noteCallerText: vi.fn(),
+    sendCallerText: vi.fn(),
     onAgentAudioDone: (handler: (markName: string) => void) => { h.agentAudioDoneHandlers.push(handler); },
     agentPlaybackDone: h.agentPlaybackDoneMock,
     onBargeIn: (handler: () => void) => { h.bargeInHandlers.push(handler); },

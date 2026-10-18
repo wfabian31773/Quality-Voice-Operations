@@ -6,8 +6,9 @@
  * fake Twilio side → routes/stream.ts → openaiSession → XaiRealtimeTransport
  * → fake xAI server, on a virtual clock. Every scenario is core and passes
  * 5/5: S03 (dialler), S12 (barge-in: after the agent's turn has streamed, and
- * mid-stream; a backchannel during a slow tool) and S17 (audible, never
- * transcribed). The mutation block proves
+ * mid-stream; a backchannel during a slow tool), S17 (audible, never
+ * transcribed) and S18 (the runtime hold line: a slow tool gets one, a fast
+ * tool none). The mutation block proves
  * each runtime guard is what keeps its scenario green: removing it (in
  * memory, in the harness process) turns the scenario red.
  */
@@ -24,7 +25,10 @@ const S12 = 's12-barge-in';
 const S12_MID = 's12-barge-in-mid-stream';
 const S12_BACKCHANNEL = 's12-backchannel-during-tool';
 const S17 = 's17-audible-never-transcribed';
-const ALL = [S03, S12, S12_MID, S12_BACKCHANNEL, S17];
+const S18_SLOW = 's18-slow-tool-hold-line';
+const S18_FAST = 's18-fast-tool-no-hold-line';
+const ALL = [S03, S12, S12_MID, S12_BACKCHANNEL, S17, S18_FAST, S18_SLOW];
+const TIMING_FIXTURE_DIR = path.join(__dirname, 'fixtures/timing');
 const TIMEOUT_MS = 60_000;
 
 const scenarios = loadAudioScenarioDir(SCENARIO_DIR);
@@ -36,8 +40,8 @@ function statuses(report: AudioGateReport, id: string): string[] {
 const five = (value: string) => Array.from({ length: 5 }, () => value);
 
 describe('audio pack: shape', () => {
-  it('covers plan S03, S12 (two barge-in interleavings, a backchannel), S17; ids match files; all core, none known red', () => {
-    expect(scenarios.map((s) => s.plan).sort()).toEqual(['S03', 'S12', 'S12', 'S12', 'S17']);
+  it('covers plan S03, S12 (two barge-in interleavings, a backchannel), S17, S18 (hold line: slow, fast); ids match files; all core, none known red', () => {
+    expect(scenarios.map((s) => s.plan).sort()).toEqual(['S03', 'S12', 'S12', 'S12', 'S17', 'S18', 'S18']);
     expect(scenarios.map((s) => s.id).sort()).toEqual([...ALL].sort());
     for (const s of scenarios) {
       expect(s.tags).toEqual(expect.arrayContaining(['audio', 'core', 'template:barbershop']));
@@ -61,7 +65,7 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
     report = run.report;
   }, TIMEOUT_MS);
 
-  it('exits 0: S03, the three S12 flows and S17 are core 5/5; nothing is known red', () => {
+  it('exits 0: S03, the three S12 flows, S17 and the two S18 flows are core 5/5; nothing is known red', () => {
     expect(run.code, run.stdout).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.k).toBe(5);
@@ -148,6 +152,35 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
     }
   });
 
+  it('S18 slow tool: one hold line ~0.8 s after the call, before the result, heard in full; the answer follows it, no overlap', () => {
+    for (const obs of report.observations[S18_SLOW]) {
+      expect(obs.responses.map((r) => `${r.kind}:${r.status}`)).toEqual(['greeting:completed', 'reply:completed', 'hold_line:completed', 'after_tool:completed']);
+      expect(obs.responses[2].text).toBe('One moment while I check that.');
+      const [timing] = obs.toolTimings;
+      expect(obs.toolTimings).toHaveLength(1);
+      const requested = (timing.holdLineAt as number) - timing.callAt;
+      expect(requested).toBeGreaterThanOrEqual(800);
+      expect(requested).toBeLessThanOrEqual(900);
+      expect(timing.holdLineAt as number).toBeLessThan(timing.resultAt as number);
+      // The caller hears it ~0.3 s later (the provider's first-audio latency), and the answer only after it.
+      expect(timing.firstAudioAt).toBe(timing.holdLineHeardAt);
+      expect(timing.answerAudioAt as number).toBeGreaterThan(timing.holdLineHeardAt as number);
+      expect(obs.providerErrors).toEqual([]);
+      expect(obs.clears).toEqual([]);
+    }
+  });
+
+  it('S18 fast tool: no hold line at all; the answer is the first thing heard after the call', () => {
+    for (const obs of report.observations[S18_FAST]) {
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool']);
+      const [timing] = obs.toolTimings;
+      expect(timing.holdLineAt).toBeUndefined();
+      expect((timing.resultAt as number) - timing.callAt).toBeLessThan(800);
+      expect(timing.firstAudioAt).toBe(timing.answerAudioAt);
+      expect(obs.providerErrors).toEqual([]);
+    }
+  });
+
   it('is deterministic: the same status in every run (timing jitter included)', () => {
     for (const id of ALL) expect(new Set(statuses(report, id)).size).toBe(1);
   });
@@ -224,11 +257,14 @@ describe('audio pack: mutation proof (each runtime guard removed in memory, no r
       's12-no-late-result-rule',
       's12-no-deferred-voicing',
       's17-no-vad-heard',
+      's18-no-hold-line-trigger',
+      's18-hold-line-deaf-to-result',
+      'transport-no-in-flight-guard',
     ];
     const run = await runHarness(MUTANTS, [`--mutants=${names.join(',')}`]);
     reports = new Map(run.reports.map((r) => [r.mutant, { code: r.code, report: r.report }]));
     if (reports.size !== names.length) throw new Error(`mutants missing\n${run.stdout}\n${run.stderr}`);
-  }, TIMEOUT_MS);
+  }, TIMEOUT_MS * 2);
 
   const get = (name: string) => reports.get(name) as { code: number; report: AudioGateReport };
 
@@ -270,17 +306,13 @@ describe('audio pack: mutation proof (each runtime guard removed in memory, no r
   it('a tool result the caller spoke over starts its own response → S12 0/5: a stale answer before the real one', () => {
     const { code, report } = get('s12-no-late-result-rule');
     expect(code).toBe(1);
-    onlyRed(report, {
-      [S12]: 'failed:barge_in.answers+barge_in.late_tool_result',
-      // The pre-PR rule: the result's response.create hits the in-flight reply to "thanks" and is rejected.
-      [S12_BACKCHANNEL]: 'failed:tool_result.voiced',
-    });
+    // S12 backchannel stays green since RT-HOLD-LINE §4: the result's create now waits
+    // behind the in-flight reply to "thanks" (one create path) instead of colliding with it.
+    onlyRed(report, { [S12]: 'failed:barge_in.answers+barge_in.late_tool_result' });
     for (const obs of report.observations[S12]) {
       expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool', 'reply']);
     }
-    for (const obs of report.observations[S12_BACKCHANNEL]) {
-      expect(obs.providerErrors).toEqual([expect.stringContaining('response.create while')]);
-    }
+    for (const obs of report.observations[S12_BACKCHANNEL]) expect(obs.providerErrors).toEqual([]);
   });
 
   it('a withheld result never voiced on its own → S12 backchannel 0/5: the confirmation is never spoken; S12 unchanged', () => {
@@ -304,5 +336,76 @@ describe('audio pack: mutation proof (each runtime guard removed in memory, no r
       expect(obs.outcome).toBe('never_heard');
       expect(obs.neverHeardPrompts).toHaveLength(3);
     }
+  });
+
+  it('no hold-line trigger → S18 slow 0/5: the caller sits through the lookup in silence; S18 fast unchanged', () => {
+    const { code, report } = get('s18-no-hold-line-trigger');
+    expect(code).toBe(1);
+    onlyRed(report, { [S18_SLOW]: 'failed:hold_line.count' });
+    for (const obs of report.observations[S18_SLOW]) {
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool']);
+    }
+  });
+
+  it('the hold line deaf to the result → S18 fast 0/5: a hold line after the answer; S18 slow unchanged', () => {
+    const { code, report } = get('s18-hold-line-deaf-to-result');
+    expect(code).toBe(1);
+    onlyRed(report, {
+      [S18_FAST]: 'failed:hold_line.after_result+hold_line.count',
+      // Deaf to agent audio, it also talks while her "let me check" is still playing.
+      [S12_BACKCHANNEL]: 'failed:tool_result.voiced',
+    });
+    for (const obs of report.observations[S18_FAST]) {
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool', 'hold_line']);
+    }
+  });
+
+  it('no one-response-at-a-time guard in the transport → a create on top of a response in flight, rejected by the provider', () => {
+    const { code, report } = get('transport-no-in-flight-guard');
+    expect(code).toBe(1);
+    onlyRed(report, { [S12_BACKCHANNEL]: 'failed:tool_result.voiced' });
+    for (const obs of report.observations[S12_BACKCHANNEL]) {
+      // Rejected, re-sent once, rejected again: never a loop.
+      expect(obs.providerErrors).toEqual([expect.stringContaining('response.create while'), expect.stringContaining('response.create while')]);
+    }
+  });
+});
+
+describe('audio pack: per-tool timing with 250 ms per DB statement (RT-HOLD-LINE report)', () => {
+  type Timing = AudioGateReport['observations'][string][number]['toolTimings'][number];
+  let after: Timing;
+  let before: Timing;
+
+  beforeAll(async () => {
+    const args = [`--dir=${TIMING_FIXTURE_DIR}`, '--pass-k=1'];
+    const [withHoldLine, withoutHoldLine] = await Promise.all([
+      runHarness(CLI, [...args, '--json']),
+      // a3d2a94c's audio path: no hold line (tool call → result is unchanged by this PR).
+      runHarness(MUTANTS, ['--mutants=s18-no-hold-line-trigger', ...args]),
+    ]);
+    after = withHoldLine.report?.observations['s18-timing-db-250ms']?.[0]?.toolTimings[0] as Timing;
+    before = withoutHoldLine.reports[0]?.report.observations['s18-timing-db-250ms']?.[0]?.toolTimings[0] as Timing;
+    if (!after || !before) {
+      throw new Error(`no timing (exit ${withHoldLine.code} / ${withoutHoldLine.code})\n${withHoldLine.stdout.slice(-3000)}\n${withHoldLine.stderr.slice(-3000)}\n${withoutHoldLine.stdout.slice(-3000)}\n${withoutHoldLine.stderr.slice(-3000)}`);
+    }
+    const row = (label: string, t: Timing) => ({
+      label,
+      'call→result sent': (t.resultAt as number) - t.callAt,
+      'call→hold line asked': t.holdLineAt === undefined ? null : t.holdLineAt - t.callAt,
+      'call→first agent audio heard': (t.firstAudioAt as number) - t.callAt,
+      'call→answer audio heard': (t.answerAudioAt as number) - t.callAt,
+    });
+    console.info(`RT-HOLD-LINE harness timings (ms), ${after.tool}, db.slow 250 ms/statement:\n${JSON.stringify([row('before (no hold line)', before), row('after', after)], null, 2)}`);
+  }, TIMEOUT_MS);
+
+  it('the result takes as long as before (bookkeeping is unchanged here); the caller hears something ~1.1 s after the call instead of after the result', () => {
+    // 12 statements at 250 ms (3 BEGIN/set_config/query/COMMIT writes; the harness fakes the call-state/event writes).
+    expect((before.resultAt as number) - before.callAt).toBe(3_000);
+    expect((after.resultAt as number) - after.callAt).toBe((before.resultAt as number) - before.callAt);
+    expect(before.holdLineAt).toBeUndefined();
+    expect(before.firstAudioAt).toBe(before.answerAudioAt);
+    expect((after.holdLineAt as number) - after.callAt).toBeLessThanOrEqual(900);
+    expect((after.firstAudioAt as number) - after.callAt).toBeLessThan(1_300);
+    expect(after.firstAudioAt as number).toBeLessThan(before.firstAudioAt as number);
   });
 });

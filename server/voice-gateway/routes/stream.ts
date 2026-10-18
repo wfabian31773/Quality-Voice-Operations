@@ -8,6 +8,7 @@ import { getAgentConfig, getAgentToolOverrides } from '../services/numberLookup'
 import { createRealtimeSession, type RealtimeSessionResult } from '../services/openaiSession';
 import { closeRealtimeForPhoneTeardown } from '../services/phoneCallTeardown';
 import { resolveReasoningMode } from '../../../platform/reasoning/reasoningMode';
+import { resolveHoldLineDelayMs } from '../services/holdLine';
 import { writeCallEvent, updateCallState, finalizeCallSession } from '../services/callPersistence';
 import { dispatchSmsCsatSurvey, getTenantCsatSettings } from '../../../platform/analytics/CsatSurveyService';
 import { sendSystemSmsOrThrow } from '../../../platform/actions/sms';
@@ -702,6 +703,10 @@ export function attachWebSocket(server: HTTPServer): void {
                 // Silence is counted from when Twilio has played the agent's
                 // audio (mark echo), not from the model's response.done.
                 playbackConfirm: 'twilio_mark',
+                holdLineDelayMs: resolveHoldLineDelayMs({
+                  agentMetadata: dbAgent.metadata,
+                  tenantSettings: dbAgent.tenant_settings,
+                }),
               });
 
               callSessionId = sessionResult.callSessionId;
@@ -1158,6 +1163,10 @@ export function attachWebSocket(server: HTTPServer): void {
                 budgetGuard,
                 callerMemory,
                 outboxService,
+                holdLineDelayMs: resolveHoldLineDelayMs({
+                  agentMetadata: dbAgent.metadata,
+                  tenantSettings: dbAgent.tenant_settings,
+                }),
               });
 
               callSessionId = sessionResult.callSessionId;
@@ -1216,16 +1225,8 @@ export function attachWebSocket(server: HTTPServer): void {
             // Typed text has no audio transcript; it still counts as heard.
             sessionResult.noteCallerText();
             try {
-              const transport = (sessionResult.session as unknown as { transport: { sendEvent: (e: unknown) => void } }).transport;
-              transport.sendEvent({
-                type: 'conversation.item.create',
-                item: {
-                  type: 'message',
-                  role: 'user',
-                  content: [{ type: 'input_text', text: msg.text }],
-                },
-              });
-              transport.sendEvent({ type: 'response.create' });
+              // Its reply waits behind any response in flight (one create path, no overlap).
+              sessionResult.sendCallerText(msg.text);
             } catch (err) {
               slog.error('Failed to send text to OpenAI', { error: String(err) });
             }

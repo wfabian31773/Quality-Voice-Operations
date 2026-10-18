@@ -1,5 +1,12 @@
 import { createLogger } from '../../../platform/core/logger';
-import { XaiRealtimeTransport, XaiVoiceSession, type TransportLayerAudio } from './xaiRealtimeTransport';
+import {
+  XaiRealtimeTransport,
+  XaiVoiceSession,
+  type ResponseMeta,
+  type ToolTiming,
+  type TransportLayerAudio,
+} from './xaiRealtimeTransport';
+import { HoldLine, holdLineInstruction, resolveHoldLineDelayMs } from './holdLine';
 import { buildXaiFunctionTools, buildXaiSessionUpdate } from '../../../platform/agent-runtime/xaiSessionConfig';
 import { redactPHI } from '../../../platform/core/phi/redact';
 import type { TenantId } from '../../../platform/core/types';
@@ -111,6 +118,12 @@ export interface SessionContext {
    * (see onAgentAudioDone / agentPlaybackDone). Default 'response_done'.
    */
   playbackConfirm?: PlaybackConfirmMode;
+  /**
+   * How long a tool call may run with no agent audio before the runtime's
+   * hold line (holdLine.ts). Resolved per agent/tenant by the caller
+   * (resolveHoldLineDelayMs); when omitted, from the agent's metadata.
+   */
+  holdLineDelayMs?: number;
 }
 
 const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
@@ -119,6 +132,8 @@ interface RealtimeMessageItem {
   type: string;
   role?: string;
   content?: Array<{ type: string; text?: string; transcript?: string }>;
+  /** The transport's flag on the runtime hold line's transcript. */
+  holdLine?: boolean;
 }
 
 function buildToolHandler(
@@ -816,6 +831,11 @@ export interface RealtimeSessionResult {
   /** Caller input that has no audio transcript (widget typed text). */
   noteCallerText: () => void;
   /**
+   * Typed caller text (widget): added as a user message, and its reply is
+   * requested behind any response in flight (never on top of it).
+   */
+  sendCallerText: (text: string) => void;
+  /**
    * 'twilio_mark' mode: called once an agent turn's audio has all been
    * handed to the transport, with a unique mark name to send after it.
    */
@@ -1083,6 +1103,8 @@ export async function createRealtimeSession(
     },
     onBargeIn: () => {
       slog.info('Caller barged in: stopping agent playback');
+      // Cleared audio is not playing any more (the hold line's included).
+      holdLine.agentPlaybackDone();
       for (const handler of bargeInHandlers) {
         try {
           handler();
@@ -1118,14 +1140,50 @@ export async function createRealtimeSession(
     },
   });
 
-  // Silence is not counted while a tool runs.
+  // RT-HOLD-LINE: "one moment while I check that" when a tool call runs
+  // with no agent audio for the hold-line delay, in the call's language.
+  // Same playback signal as the watchdog (the Twilio mark echo on the phone).
+  const holdLineDelayMs = ctx.holdLineDelayMs ?? resolveHoldLineDelayMs({ agentMetadata: agentConfig.metadata });
+  const holdLine = new HoldLine({
+    delayMs: holdLineDelayMs,
+    playbackConfirm,
+    language: agentConfig.preferredLanguage ?? agentConfig.language,
+    say: (phrase) => {
+      try {
+        const started = activeTransport.requestResponse({
+          kind: 'hold_line',
+          // No tool_choice (xAI doesn't document it per response): the
+          // instruction keeps it to the line, and the transport ignores a
+          // function call from a hold-line response.
+          response: { instructions: holdLineInstruction(phrase) },
+          onlyIfIdle: true,
+        });
+        if (started) activeTransport.noteHoldLineRequested();
+        return started;
+      } catch (err) {
+        slog.warn('Hold line request failed', { error: String(err) });
+        return false;
+      }
+    },
+    onSaid: ({ tool, language, delayMs, waitedMs }) => {
+      // Tool name, language and timings only: no caller data.
+      slog.info('hold_line', { tool, language, delayMs, waitedMs });
+      writeCallEvent(tenantId, callSessionId, 'hold_line', 'TOOL_EXECUTION', 'TOOL_EXECUTION', { tool, language, delayMs, waitedMs }).catch(() => {});
+    },
+  });
+
+  // Silence is not counted while a tool runs; a slow one gets the hold line.
   const trackToolRun = (handler: (name: string, args: Record<string, unknown>) => Promise<string>) =>
     async (name: string, args: Record<string, unknown>): Promise<string> => {
       silenceWatchdog.toolStarted();
+      holdLine.toolStarted(name);
+      // The call's language for the next hold line (runtime tool, every agent).
+      if (name === 'record_language_change') holdLine.setLanguage(args.language);
       try {
         return await handler(name, args);
       } finally {
         silenceWatchdog.toolEnded();
+        holdLine.toolEnded();
       }
     };
 
@@ -1499,6 +1557,15 @@ export async function createRealtimeSession(
             break;
           }
         }
+      } else if (msg.role === 'assistant' && msg.content && msg.holdLine) {
+        // The runtime's hold line: on the transcript (the caller heard it) and
+        // in TTS cost, but not an agent answer: the invariants, the reasoning
+        // gate and the voiced-result guard never see it.
+        const text = msg.content.find((c) => c.text)?.text;
+        if (text) {
+          line = `AGENT: ${text}`;
+          costTracker.addUtterance('assistant', text);
+        }
       } else if (msg.role === 'assistant' && msg.content) {
         for (const c of msg.content) {
           if (c.text) {
@@ -1541,11 +1608,7 @@ export async function createRealtimeSession(
                   slog.warn('Safety gate blocked assistant response — cancelling and correcting', {
                     violations: criticalViolations,
                   });
-                  try {
-                    sendRealtimeEvent({ type: 'response.cancel' });
-                  } catch (cancelErr) {
-                    slog.warn('Failed to cancel unsafe response', { error: String(cancelErr) });
-                  }
+                  // sendModelInstruction cancels the response in flight first.
                   try {
                     sendModelInstruction(
                       'CRITICAL SAFETY OVERRIDE. Your previous response contained prohibited advice and has been cancelled. You MUST NOT provide medical diagnoses, legal advice, or financial recommendations. Apologize briefly and redirect the caller to a qualified professional. Offer to help with scheduling or taking a message instead.',
@@ -1611,6 +1674,7 @@ export async function createRealtimeSession(
     startedAt: new Date(),
     cleanup: async () => {
       silenceWatchdog.stop();
+      holdLine.stop();
       toolStopGuard.clearCall(callSessionId);
       try {
         await activeSession.close();
@@ -1635,6 +1699,7 @@ export async function createRealtimeSession(
       slog.info('Realtime session closed');
 
       silenceWatchdog.stop();
+      holdLine.stop();
       for (const handler of sessionClosedHandlers) {
         try {
           handler();
@@ -1720,16 +1785,6 @@ export async function createRealtimeSession(
     }
   };
 
-  // Track whether the Realtime server is currently generating a
-  // response. With `turnDetection.createResponse: true` the server
-  // auto-fires a `response.create` at end-of-turn; if we also fire
-  // a `sendModelInstruction(...)` from the `history_added` reasoning
-  // path during that same turn (clarification / continue_workflow /
-  // partial-answer recovery), the two responses stack and the model
-  // double-speaks or re-asks the same question. We cancel the
-  // in-flight one first so our reasoning-engine-augmented
-  // instructions replace it cleanly.
-  let responseInFlight = false;
   // Structural shape of the OpenAI Realtime API's `response.done` event
   // wire payload — what we read tokens out of below. Documented at
   // https://platform.openai.com/docs/api-reference/realtime-server-events/response-done.
@@ -1808,6 +1863,7 @@ export async function createRealtimeSession(
   const agentPlaybackDone = (markName: string): boolean => {
     if (playbackConfirm !== 'twilio_mark' || markName !== pendingPlaybackMark) return false;
     pendingPlaybackMark = null;
+    holdLine.agentPlaybackDone();
     return silenceWatchdog.agentPlaybackDone();
   };
 
@@ -1819,14 +1875,20 @@ export async function createRealtimeSession(
     // watchdog. Agent responses pause it; each finished response re-arms it
     // (at response.done, or at the playback mark echo in 'twilio_mark' mode).
     t.on('session.created', () => { silenceWatchdog.start(); });
-    t.on('response.created', () => {
-      responseInFlight = true;
+    t.on('response.created', (_event: unknown, meta?: unknown) => {
       pendingPlaybackMark = null;
-      silenceWatchdog.agentTurnStarted();
+      // The hold line pauses silence like any agent audio but is not conversation.
+      silenceWatchdog.agentTurnStarted((meta as ResponseMeta | undefined)?.kind !== 'hold_line');
+      holdLine.agentResponseStarted();
+    });
+    t.on('response.audio_started', (meta?: unknown) => {
+      const isHoldLine = (meta as ResponseMeta | undefined)?.kind === 'hold_line';
+      holdLine.agentAudioStarted(isHoldLine);
+      if (isHoldLine) holdLine.holdLineHeard();
     });
     t.on('response.done', (...args: unknown[]) => {
-      responseInFlight = false;
       agentTurnEnded();
+      holdLine.agentResponseEnded();
       // The transport passes the wire payload as the first argument
       // (and the SDK may wrap it; either way the `response.usage`
       // path is the same). Capture it here so the cost tracker sees
@@ -1834,13 +1896,21 @@ export async function createRealtimeSession(
       ingestUsageEvent(args[0]);
     });
     t.on('response.cancelled', () => {
-      responseInFlight = false;
       agentTurnEnded();
+      holdLine.agentResponseEnded();
     });
     // Server VAD: the caller is mid-utterance, so this is not silence; speech
     // over agent audio is a barge-in, and a long enough utterance is heard.
-    t.on('input_audio_buffer.speech_started', () => { silenceWatchdog.callerSpeechStarted(); });
-    t.on('input_audio_buffer.speech_stopped', () => { silenceWatchdog.callerSpeechStopped(); });
+    t.on('input_audio_buffer.speech_started', () => {
+      silenceWatchdog.callerSpeechStarted();
+      holdLine.callerSpeechStarted();
+    });
+    t.on('input_audio_buffer.speech_stopped', () => {
+      silenceWatchdog.callerSpeechStopped();
+      holdLine.callerSpeechStopped();
+    });
+    // One structured timing line per tool call (no PII).
+    t.on('tool_timing', (timing: unknown) => { slog.info('tool_timing', { ...(timing as ToolTiming) }); });
   };
   attachResponseStateListeners(wsTransport);
 
@@ -1857,8 +1927,10 @@ export async function createRealtimeSession(
    *
    * If a response is currently in flight (server-side auto-response
    * from VAD end-of-turn, or a previous instruction still streaming),
-   * we cancel it first — otherwise the two responses stack and the
-   * model speaks twice or re-asks the same question.
+   * it is cancelled first — otherwise the two responses stack and the
+   * model speaks twice or re-asks the same question. The transport's
+   * one create path (requestResponse) does the cancel-then-create and
+   * never puts two responses in flight; nothing is sent after close.
    *
    * The previous implementation used `conversation.item.create` with
    * `role: 'user'` wrapping a "[System: ...]" string. The model
@@ -1866,20 +1938,20 @@ export async function createRealtimeSession(
    * to it, and the resulting fake user turns piled up in history.
    */
   const sendModelInstruction = (instructions: string): void => {
-    if (responseInFlight) {
-      try {
-        sendRealtimeEvent({ type: 'response.cancel' });
-      } catch (cancelErr) {
-        // response.cancel can race with response.done — if the
-        // response just finished, the cancel is rejected. Harmless.
-        slog.debug?.('response.cancel before model instruction failed (likely already done)', { error: String(cancelErr) });
-      }
-      responseInFlight = false;
-    }
+    if (sessionClosed) return;
+    activeTransport.requestResponse({ kind: 'instruction', response: { instructions }, cancelInFlight: true });
+  };
+
+  const sendCallerText = (text: string): void => {
+    if (sessionClosed) return;
+    // A typed turn starts a new wait, like caller speech (widget calls with no audio).
+    holdLine.callerTurnStarted();
     sendRealtimeEvent({
-      type: 'response.create',
-      response: { instructions },
+      type: 'conversation.item.create',
+      item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
     });
+    // Rapid messages share one queued reply (the transport coalesces caller_text).
+    activeTransport.requestResponse({ kind: 'caller_text' });
   };
 
   const triggerGreeting = (): void => {
@@ -2051,6 +2123,7 @@ export async function createRealtimeSession(
     recordCallOutcome: (outcome) => callOutcome.record(outcome),
     onSessionClosed: (handler) => { sessionClosedHandlers.push(handler); },
     noteCallerText: () => silenceWatchdog.callerHeard(),
+    sendCallerText,
     onAgentAudioDone: (handler) => { agentAudioDoneHandlers.push(handler); },
     agentPlaybackDone,
     onBargeIn: (handler) => { bargeInHandlers.push(handler); },
