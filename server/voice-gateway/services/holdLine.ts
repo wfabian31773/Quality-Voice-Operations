@@ -234,7 +234,14 @@ export class HoldLine {
 
   callerSpeechStarted(): void {
     this.callerSpeaking = true;
-    // A new caller turn with nothing running: the next tool call is a new wait.
+    this.callerTurnStarted();
+  }
+
+  /**
+   * A new caller turn (speech, or widget typed text): with nothing running,
+   * the next tool call is a new wait.
+   */
+  callerTurnStarted(): void {
     if (this.toolsRunning === 0) this.wait = null;
   }
 

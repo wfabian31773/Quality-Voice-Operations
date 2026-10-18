@@ -151,7 +151,7 @@ async function startCall(overrides: Partial<SessionContext> = {}, agent: Record<
   result.onAgentAudioDone((name) => marks.push(name));
   const echo = () => result.agentPlaybackDone(marks.at(-1) ?? '');
   const holdLines = () => transport.sendEvent.mock.calls
-    .map(([event]) => event as { type: string; response?: { instructions?: string; tool_choice?: string } })
+    .map(([event]) => event as { type: string; response?: { instructions?: string } })
     .filter((event) => event.type === 'response.create' && Object.values(HOLD_LINE_PHRASES).some((p) => event.response?.instructions === holdLineInstruction(p)));
   /** The model's function-call response: created, the call arrives, done; Twilio echoes its mark. */
   const toolCall = (name = 'lookup_customer', args: Record<string, unknown> = {}) => {
@@ -195,13 +195,13 @@ afterEach(() => {
 const holdLineEvents = () => vi.mocked(writeCallEvent).mock.calls.filter((call) => call[2] === 'hold_line');
 
 describe('hold line on the phone path', () => {
-  it('a tool in flight for 2 s: one hold line ~800 ms after the call\'s mark echo, tool_choice none, one hold_line event', async () => {
+  it('a tool in flight for 2 s: one hold line ~800 ms after the call\'s mark echo, no tool_choice, one hold_line event', async () => {
     const { transport, holdLines, toolCall } = await startCall();
     const run = toolCall();
     await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS - 1);
     expect(holdLines()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1);
-    expect(holdLines()).toEqual([{ type: 'response.create', response: { instructions: holdLineInstruction(HOLD_LINE_PHRASES.en), tool_choice: 'none' } }]);
+    expect(holdLines()).toEqual([{ type: 'response.create', response: { instructions: holdLineInstruction(HOLD_LINE_PHRASES.en) } }]);
     expect(transport.requestResponse).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'hold_line', onlyIfIdle: true }));
     // Its own response plays; the tool runs on to 2 s: still one.
     transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' });
@@ -332,6 +332,29 @@ describe('hold line on the phone path', () => {
     const timing = { tool: 'lookup_customer', tool_call_received_ms: 4_000, action_ms: 2_000, result_sent_ms: 2_000, first_agent_audio_after_result_ms: 350, hold_line_ms: 820, voiced: 'queued' };
     transport.emit('tool_timing', timing);
     expect(h.logs.find((l) => l.message === 'tool_timing')?.extra).toEqual(timing);
+    transport.close();
+  });
+
+  it('widget typed text starts a new wait like caller speech: a hold line on every slow tool turn (review P3 #2)', async () => {
+    const { result, transport, holdLines, toolCall } = await startCall({ playbackConfirm: 'response_done' });
+    const answer = () => {
+      transport.emit('response.created', { type: 'response.created' }, { kind: 'tool_result' });
+      transport.emit('response.audio_started', { kind: 'tool_result' });
+      transport.emit('response.done', { type: 'response.done' }, { kind: 'tool_result' });
+    };
+    for (const text of ['Is Wednesday open?', 'And Friday?']) {
+      result.sendCallerText(text);
+      const run = toolCall();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' });
+      transport.emit('response.audio_started', { kind: 'hold_line' });
+      transport.emit('response.done', { type: 'response.done' }, { kind: 'hold_line' });
+      finishTool();
+      await run;
+      answer(); // she spoke: no more hold lines until the next caller turn
+    }
+    expect(holdLines()).toHaveLength(2);
+    expect(transport.requestResponse).toHaveBeenCalledWith({ kind: 'caller_text' });
     transport.close();
   });
 

@@ -1152,7 +1152,10 @@ export async function createRealtimeSession(
       try {
         const started = activeTransport.requestResponse({
           kind: 'hold_line',
-          response: { instructions: holdLineInstruction(phrase), tool_choice: 'none' },
+          // No tool_choice (xAI doesn't document it per response): the
+          // instruction keeps it to the line, and the transport ignores a
+          // function call from a hold-line response.
+          response: { instructions: holdLineInstruction(phrase) },
           onlyIfIdle: true,
         });
         if (started) activeTransport.noteHoldLineRequested();
@@ -1939,6 +1942,8 @@ export async function createRealtimeSession(
 
   const sendCallerText = (text: string): void => {
     if (sessionClosed) return;
+    // A typed turn starts a new wait, like caller speech (widget calls with no audio).
+    holdLine.callerTurnStarted();
     sendRealtimeEvent({
       type: 'conversation.item.create',
       item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
