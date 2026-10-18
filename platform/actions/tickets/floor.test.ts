@@ -267,6 +267,8 @@ describe('tickets.file_floor rules', () => {
   it.each([
     ['a card number', '4111 1111 1111 1111', NUMBER_MASK, /4111|1111/],
     ['an SSN', '123-45-6789', SSN_MASK, /123-45|6789/],
+    ['a space-separated SSN', '123 45 6789', SSN_MASK, /123 45|6789/],
+    ['a contiguous SSN', '123456789', SSN_MASK, /123456789|6789/],
   ])('a callerName holding %s → filed, the stored contact name and the audit row hold no digits', async (_label, name, mask, digits) => {
     const { store, tickets, floor } = setup();
     const out = data(await floor({ callerLines: ['I need a fade Friday'], callerName: name }));
@@ -278,6 +280,19 @@ describe('tickets.file_floor rules', () => {
     expect(stored).not.toMatch(digits);
     expect(stored).toContain(`"callerName":"${mask}"`);
   });
+
+  it.each([['123 45 6789'], ['123456789']])(
+    'name plus an SSN (%s) → filed, judged on the raw lines, the SSN masked in details and audit',
+    async (ssn) => {
+      const { store, tickets, floor } = setup();
+      const out = data(await floor({ callerLines: ['Hi, this is Luis', ssn], callerName: 'Luis' }));
+      expect(out.reason).toBe('filed');
+      expect(tickets.state.tickets[0].description).toBe(`Hi, this is Luis\n${SSN_MASK}`);
+      const stored = JSON.stringify(store.audits[0].inputRedacted);
+      expect(stored).not.toMatch(/6789/);
+      expect(stored).toContain('"substantive":true');
+    },
+  );
 
   it.each([['Luis Garcia'], ['María José']])('a normal callerName (%s) is stored and audited unchanged', async (name) => {
     const { store, tickets, floor } = setup();
@@ -469,13 +484,21 @@ describe('redactCallerText', () => {
     expect(redactCallerText('my card is 4111 1111\n1111 1111 thanks')).toBe(`my card is ${NUMBER_MASK}\n thanks`);
   });
 
-  it('removes an SSN-shaped number', () => {
-    expect(redactCallerText('my social is 123-45-6789.')).toBe(`my social is ${SSN_MASK}.`);
+  it.each([['123-45-6789'], ['123 45 6789'], ['123.45.6789'], ['123456789']])('removes an SSN-shaped number (%s)', (ssn) => {
+    expect(redactCallerText(ssn)).toBe(SSN_MASK);
+    expect(redactCallerText(`my social is ${ssn}.`)).toBe(`my social is ${SSN_MASK}.`);
+  });
+
+  it.each([['555 010 0142'], ['5550100142'], ['+15550100142']])('masks a phone number (%s) to its last 4, not as an SSN', (phone) => {
+    expect(redactCallerText(phone)).toBe('***0142');
+    expect(redactCallerText(`call me at ${phone} please`)).toBe('call me at ***0142 please');
   });
 
   it('is unchanged when run on its own output', () => {
-    const once = redactCallerText('card 4111 1111 1111 1111, ssn 123-45-6789, call 555-010-0142');
-    expect(once).toBe(`card ${NUMBER_MASK}, ssn ${SSN_MASK}, call ***0142`);
+    const once = redactCallerText(
+      'card 4111 1111 1111 1111, ssn 123-45-6789, ssn 123 45 6789, ssn 123456789, call 555-010-0142, call 5550100142',
+    );
+    expect(once).toBe(`card ${NUMBER_MASK}, ssn ${SSN_MASK}, ssn ${SSN_MASK}, ssn ${SSN_MASK}, call ***0142, call ***0142`);
     expect(redactCallerText(once)).toBe(once);
   });
 });
@@ -516,9 +539,10 @@ describe('tickets.file_floor audit row', () => {
     expect(JSON.stringify(store.audits[0].inputRedacted)).toContain(NUMBER_MASK);
   });
 
+  const cardAndSsns = 'card 4111 1111 1111 1111, ssn 123-45-6789, ssn 123 45 6789, ssn 123456789';
   it.each([
-    ['51 lines', Array.from({ length: 51 }, (_, i) => (i === 7 ? 'card 4111 1111 1111 1111, ssn 123-45-6789' : 'I need a fade'))],
-    ['one line over 500 chars', [`card 4111 1111 1111 1111, ssn 123-45-6789 ${'x'.repeat(500)}`]],
+    ['51 lines', Array.from({ length: 51 }, (_, i) => (i === 7 ? cardAndSsns : 'I need a fade'))],
+    ['one line over 500 chars', [`${cardAndSsns} ${'x'.repeat(500)}`]],
   ])('an oversized payload (%s) → VALIDATION_FAILED, the audit row holds no card or SSN and is capped', async (_label, lines) => {
     const { store, floor } = setup();
     expectFail(await floor({ callerLines: lines }), 'VALIDATION_FAILED');
@@ -527,7 +551,7 @@ describe('tickets.file_floor audit row', () => {
     const stored = JSON.stringify(audited);
     expect(stored).not.toContain('4111');
     expect(stored.replace(/[\s,.-]/g, '')).not.toMatch(/\d{13,19}/);
-    expect(stored).not.toContain('123-45-6789');
+    expect(stored).not.toMatch(/123|6789/);
     expect(stored).toContain(NUMBER_MASK);
     expect(stored).toContain(SSN_MASK);
     expect(audited.callId).toBe(CALL);
@@ -578,15 +602,18 @@ describe('tickets.file_floor audit row', () => {
     expect(store.audits[0].inputRedacted).toEqual({ callId: CALL, callerLines: [`my card is ${NUMBER_MASK}`] });
   });
 
-  it('an over-long callerName holding an SSN → VALIDATION_FAILED, audited redacted, then capped', async () => {
-    const { store, floor } = setup();
-    // The SSN straddles the 255-char cut, so capping first would leave "123" unmasked.
-    const callerName = `${'y'.repeat(250)} 123-45-6789 ${'z'.repeat(20)}`;
-    expectFail(await floor({ callerLines: ['I need a fade'], callerName }), 'VALIDATION_FAILED');
-    const audited = store.audits[0].inputRedacted as { callerName: string };
-    expect(audited.callerName).toBe(`${'y'.repeat(250)} ${SSN_MASK}`.slice(0, FLOOR_MAX_NAME_LENGTH));
-    expect(audited.callerName).not.toMatch(/\d/);
-  });
+  it.each([['123-45-6789'], ['123 45 6789'], ['123456789']])(
+    'an over-long callerName holding an SSN (%s) → VALIDATION_FAILED, audited redacted, then capped',
+    async (ssn) => {
+      const { store, floor } = setup();
+      // The SSN straddles the 255-char cut, so capping first would leave "123" unmasked.
+      const callerName = `${'y'.repeat(250)} ${ssn} ${'z'.repeat(20)}`;
+      expectFail(await floor({ callerLines: ['I need a fade'], callerName }), 'VALIDATION_FAILED');
+      const audited = store.audits[0].inputRedacted as { callerName: string };
+      expect(audited.callerName).toBe(`${'y'.repeat(250)} ${SSN_MASK}`.slice(0, FLOOR_MAX_NAME_LENGTH));
+      expect(audited.callerName).not.toMatch(/\d/);
+    },
+  );
 });
 
 describe('floorAuditRawInput', () => {
@@ -595,11 +622,16 @@ describe('floorAuditRawInput', () => {
       floorAuditRawInput({
         callId: 'CA-1',
         extra: '4111 1111 1111 1111',
-        callerLines: ['ssn 123-45-6789'],
+        callerLines: ['ssn 123-45-6789', 'ssn 123 45 6789', 'ssn 123456789'],
         callerName: 'Luis Garcia',
         language: 'es',
       }),
-    ).toEqual({ callId: 'CA-1', callerLines: [`ssn ${SSN_MASK}`], callerName: 'Luis Garcia', language: 'es' });
+    ).toEqual({
+      callId: 'CA-1',
+      callerLines: [`ssn ${SSN_MASK}`, `ssn ${SSN_MASK}`, `ssn ${SSN_MASK}`],
+      callerName: 'Luis Garcia',
+      language: 'es',
+    });
     expect(floorAuditRawInput({ callId: 'c'.repeat(200) })).toEqual({ callId: 'c'.repeat(FLOOR_MAX_CALL_ID_LENGTH) });
     expect(floorAuditRawInput({ callId: 42, callerLines: { 0: 'x' }, callerName: ['Luis'], language: 'fr' })).toEqual({});
     expect(floorAuditRawInput({ callerLines: 'card 4111 1111 1111 1111' })).toEqual({ callerLines: [`card ${NUMBER_MASK}`] });

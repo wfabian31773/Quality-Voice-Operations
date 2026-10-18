@@ -36,8 +36,12 @@ export function floorIdempotencyKey(callId: string): string {
 const CARD_LIKE = /\b\d(?:[\s,.-]{0,3}\d){12,18}\b/g;
 export const NUMBER_MASK = '[number removed]';
 
-/** US SSN shape (3-2-4 with dashes). */
-const SSN_LIKE = /\b\d{3}-\d{2}-\d{4}\b/g;
+/**
+ * US SSN shape: 3-2-4 split by one dash, space or dot (the same one both times),
+ * or 9 digits in a row as ASR often writes it. Word boundaries keep a 10+ digit
+ * phone number out of it, so the core redactor still masks that to its last 4.
+ */
+const SSN_LIKE = /\b\d{3}([-. ])\d{2}\1\d{4}\b|\b\d{9}\b/g;
 export const SSN_MASK = '[ssn removed]';
 
 /** The mask keeps any line breaks the match spanned, so the caller's line count is unchanged. */
