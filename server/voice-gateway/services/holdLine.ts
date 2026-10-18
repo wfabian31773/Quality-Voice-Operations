@@ -33,8 +33,12 @@ export const HOLD_LINE_DELAY_MAX_MS = 1_000;
 /**
  * A line the transport refused for now (the caller's reply is due, a create
  * or cancel is still out) is tried again this often, at most
- * HOLD_LINE_MAX_RETRIES times per wait: 2 s, past the caller-reply wait
- * (1.5 s) and a cancel wait, so a refusal that never clears can't spin.
+ * HOLD_LINE_MAX_RETRIES times per deadline: 2 s. That outlasts the
+ * caller-reply wait (1.5 s) and a cancel that lands normally, but not a
+ * degraded path (a lost create holds it up to RESPONSE_CREATED_TIMEOUT_MS,
+ * 3 s, then its cancel up to RESPONSE_CANCEL_TIMEOUT_MS, 2 s): there the line
+ * is skipped, unless a response ending re-arms a new deadline. The cap stops a
+ * refusal that never clears (a closed socket) from spinning.
  */
 export const HOLD_LINE_RETRY_MS = 250;
 export const HOLD_LINE_MAX_RETRIES = 8;
@@ -151,7 +155,7 @@ interface Wait {
   said: boolean;
   /** The agent spoke after the wait started: no hold line in this wait. */
   agentSpoke: boolean;
-  /** Retries after a refused say so far (at most HOLD_LINE_MAX_RETRIES). */
+  /** Retries after a refused say at the current deadline (at most HOLD_LINE_MAX_RETRIES; a re-armed deadline starts again). */
   retries: number;
 }
 
@@ -185,8 +189,6 @@ export class HoldLine {
   private callerSpeaking = false;
   private stopped = false;
   private timer: unknown = null;
-  /** The timer is a retry: the deadline has passed and the line was refused. */
-  private retrying = false;
 
   constructor(private readonly deps: HoldLineDeps) {
     this.delayMs = deps.delayMs ?? HOLD_LINE_DELAY_MS;
@@ -266,12 +268,9 @@ export class HoldLine {
   }
 
   callerSpeechStarted(): void {
+    // A pending retry keeps going: as at the deadline, it skips this tool call
+    // only if the caller is still speaking when it fires.
     this.callerSpeaking = true;
-    if (this.retrying) {
-      // Talked over while a refused line waits for its retry: as at the deadline, this tool call gets none.
-      this.skippedThroughToolSeq = this.toolSeq;
-      this.clearTimer();
-    }
     this.callerTurnStarted();
   }
 
@@ -306,12 +305,12 @@ export class HoldLine {
     if (this.toolsRunning === 0 || this.toolSeq <= this.skippedThroughToolSeq) return;
     if (this.responding || this.awaitingPlayback) return;
     const dueAt = Math.max(wait.startedAt, this.quietSince) + this.delayMs;
+    wait.retries = 0;
     this.timer = this.timers.setTimeout(() => this.onDeadline(), Math.max(0, dueAt - this.now()));
   }
 
   private onDeadline(): void {
     this.timer = null;
-    this.retrying = false;
     const wait = this.wait;
     if (this.stopped || !wait || wait.said || wait.agentSpoke || this.toolsRunning === 0) return;
     if (this.responding || this.awaitingPlayback) return;
@@ -328,7 +327,6 @@ export class HoldLine {
       // here: try again shortly, every guard above re-checked (Codex 4308809833).
       if (wait.retries < HOLD_LINE_MAX_RETRIES) {
         wait.retries += 1;
-        this.retrying = true;
         this.timer = this.timers.setTimeout(() => this.onDeadline(), HOLD_LINE_RETRY_MS);
       }
       return;
@@ -340,6 +338,5 @@ export class HoldLine {
   private clearTimer(): void {
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = null;
-    this.retrying = false;
   }
 }

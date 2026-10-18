@@ -1228,6 +1228,83 @@ describe('XaiRealtimeTransport', () => {
       });
     });
 
+    describe('a response retired at creation: its transcript and function calls are ignored (Codex 4308886261)', () => {
+      async function connectedWithTools() {
+        const onFunctionCall = vi.fn(async () => '{"success":true}');
+        const transport = makeTransport(onFunctionCall);
+        await transport.connect({ apiKey: 'xai-test' });
+        const items: Array<{ content: Array<{ transcript: string }> }> = [];
+        transport.on('history_added', (item: { content: Array<{ transcript: string }> }) => items.push(item));
+        const transcripts = () => items.map((i) => i.content[0].transcript);
+        const outputs = () => sockets[0].sent.map((row) => JSON.parse(row) as { type: string; item?: { type?: string; call_id?: string } })
+          .filter((e) => e.type === 'conversation.item.create' && e.item?.type === 'function_call_output')
+          .map((e) => e.item?.call_id);
+        return { transport, onFunctionCall, transcripts, outputs };
+      }
+
+      /** What a response says and calls before its end: a transcript and a side-effecting tool call. */
+      function speaksAndCalls(callId: string, transcript: string) {
+        server({ type: 'response.output_audio_transcript.done', transcript });
+        server({ type: 'response.function_call_arguments.delta', call_id: callId, name: 'book', delta: '{"slot":' });
+        server({ type: 'response.function_call_arguments.delta', call_id: callId, delta: '"9am"}' });
+        server({ type: 'response.function_call_arguments.done', call_id: callId, name: 'book' });
+      }
+
+      /** The next real response still works: its transcript is added, its tool runs, its output is sent. */
+      async function nextResponseWorks(t: Awaited<ReturnType<typeof connectedWithTools>>, id: string) {
+        server({ type: 'response.created', response: { id } });
+        speaksAndCalls('call-real', 'Booked.');
+        await flush();
+        expect(t.onFunctionCall).toHaveBeenCalledTimes(1);
+        expect(t.onFunctionCall).toHaveBeenCalledWith('book', { slot: '9am' });
+        expect(t.outputs()).toEqual(['call-real']);
+        expect(t.transcripts()).toEqual(['Booked.']);
+      }
+
+      it('superseded before it started: created, cancelled, and what it says or calls before its end is ignored', async () => {
+        const t = await connectedWithTools();
+        t.transport.requestResponse({ kind: 'caller_text' });
+        t.transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say: "Sorry"' }, cancelInFlight: true });
+        server({ type: 'response.created', response: { id: 'resp_text' } });
+        expect(sentTypes()).toEqual(['response.create', 'response.cancel']);
+        speaksAndCalls('call-retired', 'Your nine o\'clock is booked.');
+        server({ type: 'response.done', response: { id: 'resp_text', status: 'cancelled' } });
+        await flush();
+        expect(t.onFunctionCall).not.toHaveBeenCalled();
+        expect(t.outputs()).toEqual([]);
+        expect(t.transcripts()).toEqual([]);
+        expect(logged.filter((l) => l.message === 'Ignoring transcript and function calls of a response retired at creation'))
+          .toEqual([{ message: 'Ignoring transcript and function calls of a response retired at creation', context: { kind: 'caller_text' } }]);
+        expect(creates()).toHaveLength(2); // the instruction went at its end, as before
+        await nextResponseWorks(t, 'resp_instr');
+        await expectQuietAfterClose(t.transport);
+      });
+
+      it('a lost create turning up late: retired, and what it says or calls before its end is ignored', async () => {
+        const t = await connectedWithTools();
+        t.transport.requestResponse({ kind: 'caller_text' });
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS); // lost: fenced by a cancel, re-queued once
+        expect(sentTypes()).toEqual(['response.create', 'response.cancel']);
+        server({ type: 'response.created', response: { id: 'resp_late' } });
+        speaksAndCalls('call-retired', 'Your nine o\'clock is booked.');
+        server({ type: 'response.done', response: { id: 'resp_late', status: 'cancelled' } });
+        await flush();
+        expect(t.onFunctionCall).not.toHaveBeenCalled();
+        expect(t.outputs()).toEqual([]);
+        expect(t.transcripts()).toEqual([]);
+        expect(creates()).toHaveLength(2); // the re-queued reply went at its end, as before
+        await nextResponseWorks(t, 'resp_retry');
+        await expectQuietAfterClose(t.transport);
+      });
+
+      it('control: a response that was not retired runs its tool call and adds its transcript', async () => {
+        const t = await connectedWithTools();
+        t.transport.requestResponse({ kind: 'caller_text' });
+        await nextResponseWorks(t, 'resp_text');
+        await expectQuietAfterClose(t.transport);
+      });
+    });
+
     it('timing marks: one tool_timing line per call, with the hold line and the first audio after the result', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
       const { transport, finish, timings } = await toolRunning();

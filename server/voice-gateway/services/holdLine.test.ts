@@ -283,15 +283,41 @@ describe('hold line timing (response_done playback)', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('the caller starts speaking while it waits for a retry: that tool call gets none, as at the deadline', async () => {
+    it('the caller still speaking when the retry fires: that tool call gets none, as at the deadline', async () => {
+      const { holdLine, onSaid, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      holdLine.callerSpeechStarted();
+      gate.allow = true;
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      holdLine.callerSpeechStopped();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onSaid).not.toHaveBeenCalled();
+      expect(gate.attempts).toBe(1);
+    });
+
+    it('a blip that ended before the retry fires does not skip it (the deadline rule, stand-in P3 #3)', async () => {
       const { holdLine, onSaid, gate } = refusedAtFirst();
       await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
       holdLine.callerSpeechStarted();
       holdLine.callerSpeechStopped();
       gate.allow = true;
-      await vi.advanceTimersByTimeAsync(5_000);
-      expect(onSaid).not.toHaveBeenCalled();
-      expect(gate.attempts).toBe(1);
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      expect(onSaid).toHaveBeenCalledTimes(1);
+      expect(gate.attempts).toBe(2);
+    });
+
+    it('a re-armed deadline gets the full retry budget again (stand-in P3 #2)', async () => {
+      const { holdLine, onSaid, gate } = refusedAtFirst();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS + 60_000); // this deadline's retries used up
+      expect(gate.attempts).toBe(1 + HOLD_LINE_MAX_RETRIES);
+      // A function-call-only response ends while the tool still runs: a new deadline.
+      holdLine.agentResponseStarted();
+      holdLine.agentResponseEnded();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(gate.attempts).toBe(2 + HOLD_LINE_MAX_RETRIES); // refused again
+      gate.allow = true;
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      expect(onSaid).toHaveBeenCalledTimes(1);
     });
 
     it('stopped (hangup): no retries', async () => {

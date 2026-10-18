@@ -147,6 +147,14 @@ interface CurrentResponse {
    * before it, restored if the fence turns out to cancel it.
    */
   maybeLateHoldLineSeenBefore?: number;
+  /**
+   * Cancelled as it was created (superseded before it existed, or a lost
+   * create turning up late): never heard, so its transcript and function
+   * calls are ignored until it ends (Codex 4308886261).
+   */
+  retired?: boolean;
+  /** Its ignored events were logged (once per response). */
+  retiredLogged?: boolean;
 }
 
 interface ToolTimingState {
@@ -345,7 +353,7 @@ export class XaiRealtimeTransport extends EventEmitter {
       const kind: ResponseKind = ours?.request.kind ?? late?.request.kind ?? 'server';
       const retired = Boolean(ours?.cancelOnCreated) || late !== null;
       const responseId = responseIdOf(event);
-      this.current = { kind, audioSeen: false, ...(responseId ? { id: responseId } : {}) };
+      this.current = { kind, audioSeen: false, ...(retired ? { retired } : {}), ...(responseId ? { id: responseId } : {}) };
       if (lost && this.cancelTimer !== null && this.cancelTarget === null) {
         // The lost create's cancel is aimed at its late response; the caller's reply ends that wait, untouched by it.
         if (late) this.cancelTarget = this.current;
@@ -453,7 +461,7 @@ export class XaiRealtimeTransport extends EventEmitter {
 
     if (type === 'response.output_audio_transcript.done' || type === 'response.audio_transcript.done') {
       const transcript = String((event.transcript as string | undefined) ?? '');
-      if (transcript) {
+      if (transcript && !this.ignoredFromRetired()) {
         this.emit('history_added', {
           type: 'message',
           role: 'assistant',
@@ -464,7 +472,7 @@ export class XaiRealtimeTransport extends EventEmitter {
       }
     }
 
-    if (type === 'response.function_call_arguments.delta') {
+    if (type === 'response.function_call_arguments.delta' && !this.current?.retired) {
       const callId = String(event.call_id ?? event.item_id ?? '');
       const name = String(event.name ?? this.pendingCalls.get(callId)?.name ?? '');
       const prev = this.pendingCalls.get(callId) ?? { name, callId, arguments: '' };
@@ -478,6 +486,8 @@ export class XaiRealtimeTransport extends EventEmitter {
       const name = String(event.name ?? this.pendingCalls.get(callId)?.name ?? '');
       const argumentText = String(event.arguments ?? this.pendingCalls.get(callId)?.arguments ?? '{}');
       this.pendingCalls.delete(callId);
+      // Never heard: no tool runs, no output, nothing counted.
+      if (this.ignoredFromRetired()) return;
       if (this.current?.kind === 'hold_line') {
         // Told to say its line and nothing else: the hold line never runs a tool.
         logger.warn('Ignoring a function call from the hold line response', { tool: name });
@@ -487,6 +497,17 @@ export class XaiRealtimeTransport extends EventEmitter {
         logger.error('xAI function call failed', { tool: name, error: String(err) });
       });
     }
+  }
+
+  /** The response in flight was retired at creation: its event is ignored (logged once per response, kind only). */
+  private ignoredFromRetired(): boolean {
+    const current = this.current;
+    if (!current?.retired) return false;
+    if (!current.retiredLogged) {
+      current.retiredLogged = true;
+      logger.info('Ignoring transcript and function calls of a response retired at creation', { kind: current.kind });
+    }
+    return true;
   }
 
   /**
