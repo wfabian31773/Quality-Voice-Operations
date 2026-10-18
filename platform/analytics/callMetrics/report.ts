@@ -12,25 +12,31 @@
 //   4. only a name / greetings / filler         → calls.nothingSubstantive
 //   5. otherwise                                → calls.substantive (the denominator)
 // A substantive call lands in one bucket: booked, else filedMessage, else
-// filedOther, else filedFloor (the floor only files when nothing else did),
-// else noArtifactCallIds.
+// filedOther, else filedLegacy, else filedFloor (the floor only files when
+// nothing else did), else noArtifactCallIds.
 
 import { HOLD_EXPIRED_REASON, HOLD_SUPERSEDED_REASON } from '../../actions/scheduling/bookingRows';
 import { METRICS_TIME_ZONE, dayBounds, dayOf } from './nyDay';
 import { callerVerdict } from './substantive';
 
-/** A bookings row whose intake_data.qvo.session is this call. */
+/** A bookings row this call wrote (intake_data.qvo.session, or a library booking tool run). */
 export interface CallBooking {
   id: string;
   status: string;
   cancellationReason: string | null;
 }
 
-/** A tickets row this call created. `floor`: opened by tickets.file_floor. */
+/**
+ * A tickets row this call created. `floor`: opened by tickets.file_floor.
+ * `legacy`: written outside the action layer (library create_ticket, the
+ * escalation auto-ticket, HumanEscalationService), so `kind` is only the
+ * column default and says nothing about the ticket.
+ */
 export interface CallTicket {
   id: string;
   kind: string;
   floor: boolean;
+  legacy?: boolean;
 }
 
 export interface CallRecord {
@@ -61,14 +67,19 @@ export interface BookedOrFiledReport {
   numerator: number;
   /** numerator / denominator exactly, plus basis points rounded half up (null with no denominator). */
   rate: { numerator: number; denominator: number; basisPoints: number | null };
-  breakdown: { booked: number; filedMessage: number; filedFloor: number; filedOther: number };
+  /**
+   * filedMessage / filedOther: action-layer tickets by kind (tickets.message@1
+   * kinds, or any other). filedLegacy: a ticket from a legacy writer, whose
+   * kind is unknown. filedFloor: only the floor's ticket.
+   */
+  breakdown: { booked: number; filedMessage: number; filedLegacy: number; filedFloor: number; filedOther: number };
   /** Substantive calls with no booking and no ticket, by call id only, to listen to. */
   noArtifactCallIds: string[];
   /** Calls left out as not substantive that still have an artifact (explains a gap, not in the rate). */
   artifactOnNonSubstantive: number;
 }
 
-export type CallOutcome = 'booked' | 'filedMessage' | 'filedOther' | 'filedFloor' | 'none';
+export type CallOutcome = 'booked' | 'filedMessage' | 'filedOther' | 'filedLegacy' | 'filedFloor' | 'none';
 
 /** Ticket kinds of the tickets.message@1 contract. */
 const MESSAGE_KINDS: ReadonlySet<string> = new Set(['message', 'callback']);
@@ -82,8 +93,10 @@ export function isWrittenBooking(booking: CallBooking): boolean {
 
 export function callOutcome(call: Pick<CallRecord, 'bookings' | 'tickets'>): CallOutcome {
   if (call.bookings.some(isWrittenBooking)) return 'booked';
-  if (call.tickets.some((t) => !t.floor && MESSAGE_KINDS.has(t.kind))) return 'filedMessage';
-  if (call.tickets.some((t) => !t.floor)) return 'filedOther';
+  const filed = call.tickets.filter((t) => !t.floor && !t.legacy);
+  if (filed.some((t) => MESSAGE_KINDS.has(t.kind))) return 'filedMessage';
+  if (filed.length > 0) return 'filedOther';
+  if (call.tickets.some((t) => !t.floor)) return 'filedLegacy';
   if (call.tickets.length > 0) return 'filedFloor';
   return 'none';
 }
@@ -101,7 +114,7 @@ export function bookedOrFiledReport(input: {
 }): BookedOrFiledReport {
   const { start, end } = dayBounds(input.day);
   const calls = { total: 0, outbound: 0, neverHeard: 0, nothingSubstantive: 0, substantive: 0 };
-  const breakdown = { booked: 0, filedMessage: 0, filedFloor: 0, filedOther: 0 };
+  const breakdown = { booked: 0, filedMessage: 0, filedLegacy: 0, filedFloor: 0, filedOther: 0 };
   const noArtifactCallIds: string[] = [];
   let artifactOnNonSubstantive = 0;
 
@@ -126,7 +139,8 @@ export function bookedOrFiledReport(input: {
     else breakdown[outcome] += 1;
   }
 
-  const numerator = breakdown.booked + breakdown.filedMessage + breakdown.filedFloor + breakdown.filedOther;
+  const numerator =
+    breakdown.booked + breakdown.filedMessage + breakdown.filedLegacy + breakdown.filedFloor + breakdown.filedOther;
   return {
     day: input.day,
     timeZone: METRICS_TIME_ZONE,

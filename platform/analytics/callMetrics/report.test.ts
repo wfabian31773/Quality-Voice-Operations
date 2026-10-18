@@ -47,25 +47,29 @@ const FIXTURE: CallRecord[] = [
   // Name only, yet a booking exists: not in the denominator, counted on the side.
   call('M-name-only-booked', { callerLines: ['Hola, soy Ana'], callerName: 'Ana', bookings: [confirmed] }),
   call('N-other-tenant', { tenantId: T2 }),
+  // A legacy create_ticket / escalation ticket: kind is only the column default.
+  call('L-legacy-ticket', { tickets: [{ id: 't-l', kind: 'message', floor: false, legacy: true }] }),
+  // "Hi, I'm Luis" as call_transcripts stores it (redactPHI), name unknown: the floor saw only a name.
+  call('O-redacted-intro', { callerLines: ["Hi, I'm [NAME_REDACTED]"], callerName: undefined }),
 ];
 
 describe('bookedOrFiledReport: fixture day, one tenant', () => {
   const report = bookedOrFiledReport({ day: DAY, tenantId: T1, calls: FIXTURE });
 
   it('matches the hand-computed numbers', () => {
-    // In the day for T1: A B C D E F G H I J M = 11 (K is the 16th, N is T2).
-    // Excluded: C outbound; B never heard; A and M said only their name.
-    // Substantive: D E F G H I J = 7. Booked or filed: D E F I = 4. 4/7 = 5714.28 bp.
+    // In the day for T1: A B C D E F G H I J L M O = 13 (K is the 16th, N is T2).
+    // Excluded: C outbound; B never heard; A, M and O said only their name.
+    // Substantive: D E F G H I J L = 8. Booked or filed: D E F I L = 5. 5/8 = 6250 bp.
     expect(report).toEqual({
       day: DAY,
       timeZone: 'America/New_York',
       tenantId: T1,
       window: { start: '2026-10-17T04:00:00.000Z', end: '2026-10-18T04:00:00.000Z' },
-      calls: { total: 11, outbound: 1, neverHeard: 1, nothingSubstantive: 2, substantive: 7 },
-      denominator: 7,
-      numerator: 4,
-      rate: { numerator: 4, denominator: 7, basisPoints: 5714 },
-      breakdown: { booked: 1, filedMessage: 1, filedFloor: 1, filedOther: 1 },
+      calls: { total: 13, outbound: 1, neverHeard: 1, nothingSubstantive: 3, substantive: 8 },
+      denominator: 8,
+      numerator: 5,
+      rate: { numerator: 5, denominator: 8, basisPoints: 6250 },
+      breakdown: { booked: 1, filedMessage: 1, filedLegacy: 1, filedFloor: 1, filedOther: 1 },
       noArtifactCallIds: ['G-nothing', 'H-holds-only', 'J-late-night'],
       artifactOnNonSubstantive: 1,
     });
@@ -73,7 +77,7 @@ describe('bookedOrFiledReport: fixture day, one tenant', () => {
 
   it('breakdown adds up to the numerator, and the no-artifact list to the rest', () => {
     const b = report.breakdown;
-    expect(b.booked + b.filedMessage + b.filedFloor + b.filedOther).toBe(report.numerator);
+    expect(b.booked + b.filedMessage + b.filedLegacy + b.filedFloor + b.filedOther).toBe(report.numerator);
     expect(report.numerator + report.noArtifactCallIds.length).toBe(report.denominator);
     const c = report.calls;
     expect(c.outbound + c.neverHeard + c.nothingSubstantive + c.substantive).toBe(c.total);
@@ -110,8 +114,8 @@ describe('bookedOrFiledReport: exclusions and boundaries', () => {
   it('all tenants: counts every tenant together', () => {
     const report = bookedOrFiledReport({ day: DAY, tenantId: null, calls: FIXTURE });
     expect(report.tenantId).toBeNull();
-    expect(report.calls.total).toBe(12);
-    expect(report.denominator).toBe(8);
+    expect(report.calls.total).toBe(14);
+    expect(report.denominator).toBe(9);
     expect(report.noArtifactCallIds).toEqual(['G-nothing', 'H-holds-only', 'J-late-night', 'N-other-tenant']);
   });
 
@@ -129,11 +133,12 @@ describe('bookedOrFiledReport: exclusions and boundaries', () => {
     expect(report.noArtifactCallIds).toEqual(['R']);
   });
 
-  it('a call with several artifacts lands in one bucket: booked, then message, then other, then floor', () => {
+  it('a call with several artifacts lands in one bucket: booked, then message, then other, then legacy, then floor', () => {
     const floor = { id: 't1', kind: 'message', floor: true };
     const message = { id: 't2', kind: 'message', floor: false };
     const callback = { id: 't3', kind: 'callback', floor: false };
     const other = { id: 't4', kind: 'quote_request', floor: false };
+    const legacy = { id: 't5', kind: 'message', floor: false, legacy: true };
     const report = bookedOrFiledReport({
       day: DAY,
       tenantId: T1,
@@ -142,9 +147,20 @@ describe('bookedOrFiledReport: exclusions and boundaries', () => {
         call('floor+message', { tickets: [floor, message] }),
         call('callback', { tickets: [callback] }),
         call('floor+other', { tickets: [floor, other] }),
+        call('legacy+other', { tickets: [legacy, other] }),
+        call('floor+legacy', { tickets: [floor, legacy] }),
       ],
     });
-    expect(report.breakdown).toEqual({ booked: 1, filedMessage: 2, filedFloor: 0, filedOther: 1 });
+    expect(report.breakdown).toEqual({ booked: 1, filedMessage: 2, filedLegacy: 1, filedFloor: 0, filedOther: 2 });
+  });
+
+  it("a legacy ticket's default kind is never counted as a message", () => {
+    const report = bookedOrFiledReport({
+      day: DAY,
+      tenantId: T1,
+      calls: [call('legacy', { tickets: [{ id: 't', kind: 'message', floor: false, legacy: true }] })],
+    });
+    expect(report.breakdown).toEqual({ booked: 0, filedMessage: 0, filedLegacy: 1, filedFloor: 0, filedOther: 0 });
   });
 
   it('rejects a day that is not YYYY-MM-DD', () => {
