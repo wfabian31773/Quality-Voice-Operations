@@ -95,16 +95,9 @@ export const INFRA_COST_PER_MINUTE_CENTS = parseFloat(process.env.INFRA_COST_PER
 
 export type ModelTier = 'economy' | 'standard' | 'premium';
 
-// IMPORTANT: every entry here must be a model that OpenAI's Realtime API
-// accepts. Voice sessions open with this exact string and OpenAI returns
-// `invalid_model` (and the call goes silent until the silence timeout
-// kills it) for any non-realtime model. Pinned to OpenAI's latest GA
-// Realtime release (`gpt-realtime-2`, 2026-05-07) for both standard and
-// premium — this is a quality-voice-ops product, so the default has to
-// be the newest GPT-5-class model. Economy stays on `gpt-realtime-mini`
-// (smaller, ~10× cheaper) for budget-downgrade scenarios; mini hasn't
-// been refreshed in the May 2026 release, so we keep the Aug 2025 GA
-// mini until OpenAI ships a v2 mini.
+// All tiers pin the xAI voice model (grok-voice-3.0; xAI deprecated 2.0 on
+// 2026-10-14). These are used for cost/tier bookkeeping; the realtime socket
+// itself always uses MASTER_VOICE_AGENT_CONTRACT.model.
 export const TIER_MODEL_MAP: Record<ModelTier, string> = {
   economy: 'grok-voice-3.0',
   standard: 'grok-voice-3.0',
