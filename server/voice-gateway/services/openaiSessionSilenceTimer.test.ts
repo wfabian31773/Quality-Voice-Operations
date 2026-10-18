@@ -47,6 +47,7 @@ vi.mock('./callPersistence', () => ({
   writeCallEvent: vi.fn(async () => {}),
   updateCallState: vi.fn(async () => {}),
   createPlatformPersistenceAdapter: vi.fn(() => ({})),
+  persistCallOutcome: vi.fn(async () => {}),
 }));
 
 vi.mock('../../../platform/knowledge/knowledgeContext', () => ({
@@ -79,6 +80,7 @@ vi.mock('../../../platform/reasoning', () => ({
 
 import { createRealtimeSession } from './openaiSession';
 import { sessionManager } from './sessionManager';
+import { SILENCE_PROMPT_INSTRUCTION } from './silenceWatchdog';
 
 function makeCoordinator() {
   return {
@@ -132,31 +134,45 @@ describe('openaiSession silence timer', () => {
     sessionManager.unregister('cs-silence-timer');
   });
 
-  it('arms a silence watchdog that fires when the session stays open', async () => {
-    // Control: without a close, the silence timer must actually fire after
-    // the threshold — proving the timer is real and armed.
+  // The session is open and the greeting turn has finished: the runtime
+  // watchdog is armed from here.
+  async function openSession() {
     const coordinator = makeCoordinator();
     const result = await createRealtimeSession(makeCtx(coordinator));
+    const transport = (result.session as unknown as { transport: EventEmitter & { sendEvent: ReturnType<typeof vi.fn> } }).transport;
+    transport.emit('session.created', {});
+    transport.emit('response.created', {});
+    transport.emit('response.done', {});
+    const silencePrompts = () => transport.sendEvent.mock.calls
+      .filter(([e]) => (e as { response?: { instructions?: string } }).response?.instructions === SILENCE_PROMPT_INSTRUCTION).length;
+    return { result, transport, silencePrompts };
+  }
 
-    expect(h.handleSilenceMock).not.toHaveBeenCalled();
+  it('arms a silence watchdog that fires when the session stays open', async () => {
+    // Control: without a close, the watchdog must actually fire after the
+    // threshold — proving the timer is real and armed.
+    const { result, silencePrompts } = await openSession();
+
+    expect(silencePrompts()).toBe(0);
     await vi.advanceTimersByTimeAsync(16000);
-    expect(h.handleSilenceMock).toHaveBeenCalledTimes(1);
+    expect(silencePrompts()).toBeGreaterThanOrEqual(1);
 
     await result.session.close();
   });
 
   it('clears the silence watchdog when the realtime session closes (hangup teardown)', async () => {
-    const coordinator = makeCoordinator();
-    const result = await createRealtimeSession(makeCtx(coordinator));
+    const { result, transport } = await openSession();
 
     // Simulate the teardown finalizeStream() performs on hangup: close the
-    // realtime session. The close handler must clear the silence timer.
+    // realtime session. The close handler must clear the watchdog.
     await result.session.close();
+    const sentAtClose = transport.sendEvent.mock.calls.length;
 
-    // Advance well past the 15s threshold — the silence watchdog must NOT
-    // fire, because close() cleared it. A regression that leaks the timer
-    // would call handleSilence here.
-    await vi.advanceTimersByTimeAsync(30000);
+    // Advance well past every watchdog threshold — nothing may fire, because
+    // close() cleared it. A regression that leaks the timer would send a
+    // prompt (or call handleSilence) here.
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    expect(transport.sendEvent.mock.calls.length).toBe(sentAtClose);
     expect(h.handleSilenceMock).not.toHaveBeenCalled();
   });
 });
