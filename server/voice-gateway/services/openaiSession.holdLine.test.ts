@@ -257,6 +257,34 @@ describe('hold line on the phone path', () => {
     en.transport.close();
   });
 
+  it('no hold line (never English) for a French agent, or after record_language_change to German (Codex 4308599616)', async () => {
+    const fr = await startCall({}, { language: 'fr', preferredLanguage: 'fr' });
+    const runFr = fr.toolCall();
+    await vi.advanceTimersByTimeAsync(2_000);
+    finishTool();
+    await runFr;
+    expect(fr.holdLines()).toHaveLength(0);
+    expect(fr.transport.requestResponse).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'hold_line' }));
+    fr.transport.close();
+    sessionManager.unregister('cs-hold');
+
+    const en = await startCall();
+    await en.toolCall('record_language_change', { language: 'de', confidence: 0.9 });
+    en.transport.emit('response.created', { type: 'response.created' }, { kind: 'tool_result' });
+    en.transport.emit('response.audio_started', { kind: 'tool_result' });
+    en.transport.emit('response.done', { type: 'response.done' }, { kind: 'tool_result' });
+    en.echo();
+    en.transport.emit('input_audio_buffer.speech_started', { type: 'input_audio_buffer.speech_started' });
+    en.transport.emit('input_audio_buffer.speech_stopped', { type: 'input_audio_buffer.speech_stopped' });
+    const run = en.toolCall();
+    await vi.advanceTimersByTimeAsync(2_000);
+    finishTool();
+    await run;
+    expect(en.holdLines()).toHaveLength(0);
+    expect(holdLineEvents()).toHaveLength(0);
+    en.transport.close();
+  });
+
   it('the delay is configurable per agent (metadata) and per call (resolved agent/tenant config)', async () => {
     const agent = await startCall({}, { metadata: { businessName: 'Acme', holdLineDelayMs: 950 } });
     const run = agent.toolCall();

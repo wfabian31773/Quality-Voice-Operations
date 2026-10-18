@@ -139,6 +139,12 @@ interface CurrentResponse {
   audioSeen: boolean;
   /** The provider's response id, when it gives one. */
   id?: string;
+  /**
+   * A 'server' response created while a lost hold line's fence cancel was
+   * out: the caller's reply, or that hold line created only now. seenOutputSeq
+   * before it, restored if the fence turns out to cancel it.
+   */
+  maybeLateHoldLineSeenBefore?: number;
 }
 
 interface ToolTimingState {
@@ -200,6 +206,8 @@ export class XaiRealtimeTransport extends EventEmitter {
   private seenOutputSeq = 0;
   /** withheldOutputSeq whose voicing the provider rejected once already (it is re-voiced once, not in a loop). */
   private voicingRejectedSeq = 0;
+  /** Tool handlers still running (concurrent calls in one response): a silent hold line stays while any is. */
+  private toolCallsRunning = 0;
   /** Tool calls by call id, from arrival until their timing line is logged. */
   private toolTimings = new Map<string, ToolTimingState>();
   private openedAt = 0;
@@ -339,7 +347,13 @@ export class XaiRealtimeTransport extends EventEmitter {
       if (lost && this.cancelTimer !== null && this.cancelTarget === null) {
         // The lost create's cancel is aimed at its late response; the caller's reply ends that wait, untouched by it.
         if (late) this.cancelTarget = this.current;
-        else if (kind === 'server') this.clearCancelWait();
+        else if (kind === 'server') {
+          // A hold line dropped at speech_started and created only after
+          // speech_stopped looks just like the reply here (stand-in P3):
+          // heard as the reply unless the fence cancels it (see its end).
+          if (lost.request.kind === 'hold_line') this.current.maybeLateHoldLineSeenBefore = this.seenOutputSeq;
+          this.clearCancelWait();
+        }
       }
       // Every output sent so far is in the conversation this response sees,
       // except after our voicing of a withheld result (it saw those up to the
@@ -363,6 +377,14 @@ export class XaiRealtimeTransport extends EventEmitter {
         return;
       }
       const meta: ResponseMeta = { kind: this.current?.kind ?? 'server' };
+      const seenBefore = this.current?.maybeLateHoldLineSeenBefore;
+      if (seenBefore !== undefined && isCancelledEnd(type, event) && !this.callerSpokeSince(this.responseSpeechSeq) && !this.closed) {
+        // Our fence cancelled it (no barge-in did): it was the dropped hold
+        // line, late. It carried no output, and the caller's reply is still due.
+        logger.info('A dropped hold line was created late and cancelled by its fence: the caller\'s reply is still due');
+        this.seenOutputSeq = Math.min(this.seenOutputSeq, seenBefore);
+        this.startCallerReplyWait();
+      }
       this.responseInFlight = false;
       this.current = null;
       // Whatever we cancelled has ended (or the lost create's cancel found it gone).
@@ -390,14 +412,7 @@ export class XaiRealtimeTransport extends EventEmitter {
     }
     if (type === 'input_audio_buffer.speech_stopped' && !this.closed) {
       this.callerSpeaking = false;
-      this.callerReplyPending = true;
-      this.clearCallerReplyTimer();
-      this.callerReplyTimer = setTimeout(() => {
-        this.callerReplyTimer = null;
-        // No reply to that speech: noise, not a caller turn.
-        this.callerReplyPending = false;
-        this.voiceWithheldResult();
-      }, CALLER_REPLY_WAIT_MS);
+      this.startCallerReplyWait();
     }
     // Server VAD: the caller is mid-utterance (the silence watchdog pauses).
     if (type === 'input_audio_buffer.speech_started' || type === 'input_audio_buffer.speech_stopped') this.emit(type, event);
@@ -493,6 +508,18 @@ export class XaiRealtimeTransport extends EventEmitter {
     this.droppedInterruptedDeltas = 0;
   }
 
+  /** The reply to the caller's turn is due: CALLER_REPLY_WAIT_MS for the provider to create it. */
+  private startCallerReplyWait(): void {
+    this.callerReplyPending = true;
+    this.clearCallerReplyTimer();
+    this.callerReplyTimer = setTimeout(() => {
+      this.callerReplyTimer = null;
+      // No reply to that speech: noise, not a caller turn.
+      this.callerReplyPending = false;
+      this.voiceWithheldResult();
+    }, CALLER_REPLY_WAIT_MS);
+  }
+
   private clearCallerReplyTimer(): void {
     if (this.callerReplyTimer !== null) clearTimeout(this.callerReplyTimer);
     this.callerReplyTimer = null;
@@ -562,11 +589,21 @@ export class XaiRealtimeTransport extends EventEmitter {
       return true;
     }
     if (this.responseBusy()) {
-      this.responseQueue.push(entry);
+      // Typed turns coalesce: a queued reply sees every message added before it goes.
+      if (!this.hasQueuedCallerText(request.kind)) this.responseQueue.push(entry);
       return true;
     }
     this.sendCreate(entry);
     return true;
+  }
+
+  /**
+   * A caller_text reply is already queued, not sent yet (Codex 4308599619):
+   * one reply answers all the typed messages before it, never one each. A
+   * message after it was sent gets its own (that create could not see it).
+   */
+  private hasQueuedCallerText(kind: ResponseRequestKind): boolean {
+    return kind === 'caller_text' && this.responseQueue.some((queued) => queued.request.kind === 'caller_text');
   }
 
   /**
@@ -759,8 +796,9 @@ export class XaiRealtimeTransport extends EventEmitter {
         this.seenOutputSeq = Math.min(this.seenOutputSeq, pending.seenBefore);
         this.voicingRejectedSeq = pending.outputSeq;
       }
-    } else if (pending.request.kind !== 'hold_line' && !pending.retried && !pending.cancelOnCreated) {
-      // (One superseded before it existed is not wanted any more: what replaced it is queued.)
+    } else if (pending.request.kind !== 'hold_line' && !pending.retried && !pending.cancelOnCreated && !this.hasQueuedCallerText(pending.request.kind)) {
+      // (One superseded before it existed is not wanted any more: what replaced it is queued.
+      // Nor typed text with a later caller_text reply queued: that one answers it.)
       this.responseQueue.unshift({ request: pending.request, outputSeq: pending.outputSeq, askedAtSpeechSeq: pending.askedAtSpeechSeq, retried: true });
     }
     this.emit('response.rejected', { kind: pending.request.kind } satisfies ResponseMeta);
@@ -769,8 +807,10 @@ export class XaiRealtimeTransport extends EventEmitter {
   }
 
   /**
-   * The tool result landed while the hold line has been asked for but has
-   * not produced audio yet: cancel it and go straight to the result. Once
+   * The last running tool's result landed while the hold line has been asked
+   * for but has not produced audio yet: cancel it and go straight to the
+   * result. (While another tool still runs, the caller is still waiting:
+   * completeFunctionCall does not call this, and the result waits behind it.) Once
    * its audio has started it finishes (never cut mid-word); the result's
    * response waits behind it.
    */
@@ -853,9 +893,11 @@ export class XaiRealtimeTransport extends EventEmitter {
     const timing: ToolTimingState = { tool: name, receivedAt: Date.now() };
     this.toolTimings.set(callId, timing);
     let output: string;
+    this.toolCallsRunning += 1;
     try {
       output = await this.onFunctionCall(name, args);
     } finally {
+      this.toolCallsRunning -= 1;
       timing.handlerDoneAt = Date.now();
     }
     // The caller can hang up while a tool runs (Oct 17: record_call_outcome
@@ -875,7 +917,8 @@ export class XaiRealtimeTransport extends EventEmitter {
     });
     this.outputSeq += 1;
     timing.resultSentAt = Date.now();
-    this.cancelSilentHoldLine();
+    // Another tool still running: the caller still waits, so the hold line stays.
+    if (this.toolCallsRunning === 0) this.cancelSilentHoldLine();
     if (this.callerSpokeSince(askedAtSpeechSeq)) {
       logger.info('Tool result added without a response: the caller spoke over the turn that asked for it', { tool: name });
       timing.voiced = 'withheld';
@@ -888,6 +931,13 @@ export class XaiRealtimeTransport extends EventEmitter {
     timing.voiced = this.responseBusy() || this.responseQueue.length > 0 ? 'queued' : 'now';
     this.requestResponse({ kind: 'tool_result' });
   }
+}
+
+/** A response.cancelled, or a response.done whose status is cancelled. */
+function isCancelledEnd(type: string, event: Record<string, unknown>): boolean {
+  if (type !== 'response.done') return true;
+  const response = event.response;
+  return Boolean(response && typeof response === 'object' && (response as Record<string, unknown>).status === 'cancelled');
 }
 
 /** The provider's response id on a response.created/done/cancelled event, if any. */

@@ -70,9 +70,68 @@ describe('hold line timing (response_done playback)', () => {
     switched.toolCall();
     await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
     expect(switched.said.map((s) => [s.phrase, s.language])).toEqual([['Un momento mientras lo reviso.', 'es']]);
-    // A language the table has no row for keeps the current one.
-    switched.holdLine.setLanguage('tlh');
-    expect(switched.holdLine.currentLanguage).toBe('es');
+  });
+
+  describe('a call language with no phrase row: no hold line, never English (Codex 4308599616)', () => {
+    /** A slow tool (2 s) on a fresh wait; returns the phrases said. */
+    async function slowTool(h: ReturnType<typeof makeHoldLine>) {
+      h.holdLine.callerSpeechStarted();
+      h.holdLine.callerSpeechStopped();
+      h.toolCall();
+      await vi.advanceTimersByTimeAsync(2_000);
+      h.holdLine.toolEnded();
+      return h.said.map((s) => s.phrase);
+    }
+
+    it('fr from the agent config: none', async () => {
+      const fr = makeHoldLine({ language: 'fr' });
+      expect(fr.holdLine.currentLanguage).toBeNull();
+      expect(await slowTool(fr)).toEqual([]);
+      expect(fr.onSaid).not.toHaveBeenCalled();
+    });
+
+    it('en, then record_language_change to de: none after the switch', async () => {
+      const h = makeHoldLine({ language: 'en' });
+      expect(await slowTool(h)).toEqual(['One moment while I check that.']);
+      h.holdLine.setLanguage('de');
+      expect(await slowTool(h)).toEqual(['One moment while I check that.']);
+      expect(h.holdLine.currentLanguage).toBeNull();
+    });
+
+    it('the switch comes in the same tool call (record_language_change itself is slow): none', async () => {
+      const h = makeHoldLine({ language: 'en' });
+      h.toolCall('record_language_change');
+      h.holdLine.setLanguage('pt-BR');
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(h.said).toEqual([]);
+    });
+
+    it('es still gets the Spanish line, and a switch back to a row turns it on again', async () => {
+      const es = makeHoldLine({ language: 'es-US' });
+      expect(await slowTool(es)).toEqual(['Un momento mientras lo reviso.']);
+      const back = makeHoldLine({ language: 'fr' });
+      back.holdLine.setLanguage('Spanish');
+      expect(await slowTool(back)).toEqual(['Un momento mientras lo reviso.']);
+    });
+
+    it('an unrecognised code is a language with no row: none', async () => {
+      const h = makeHoldLine({ language: 'en' });
+      h.holdLine.setLanguage('tlh');
+      expect(h.holdLine.currentLanguage).toBeNull();
+      expect(await slowTool(h)).toEqual([]);
+      expect(makeHoldLine({ language: 'xx' }).holdLine.currentLanguage).toBeNull();
+    });
+
+    it('an empty or missing code: the agent\'s configured language if it has a row (English when none is configured), else none', async () => {
+      const es = makeHoldLine({ language: 'es' });
+      es.holdLine.setLanguage('de');
+      es.holdLine.setLanguage('  ');
+      expect(await slowTool(es)).toEqual(['Un momento mientras lo reviso.']);
+      const fr = makeHoldLine({ language: 'fr' });
+      fr.holdLine.setLanguage(undefined);
+      expect(await slowTool(fr)).toEqual([]);
+      expect([makeHoldLine({}).holdLine.currentLanguage, makeHoldLine({ language: '' }).holdLine.currentLanguage]).toEqual(['en', 'en']);
+    });
   });
 
   it('a tool done at 500 ms gets none (the result arrived first)', async () => {
@@ -237,11 +296,12 @@ describe('phrase table and config', () => {
     expect(JSON.stringify(HOLD_LINE_PHRASES)).not.toMatch(/barber|salon|haircut|appointment|booking/i);
   });
 
-  it('language tags and names map to a row; unknown ones fall back to English', () => {
+  it('language tags and names map to a row; others have no phrase (never an English fallback)', () => {
     expect(['es', 'es-US', 'ES_mx', 'Spanish', 'español'].map(holdLineLanguage)).toEqual(['es', 'es', 'es', 'es', 'es']);
     expect(['en', 'en-US', 'English'].map(holdLineLanguage)).toEqual(['en', 'en', 'en']);
     expect([undefined, '', 'fr', 42].map(holdLineLanguage)).toEqual([undefined, undefined, undefined, undefined]);
-    expect(holdLinePhrase('fr')).toBe(HOLD_LINE_PHRASES.en);
+    expect(holdLinePhrase('fr')).toBeUndefined();
+    expect(holdLinePhrase('es-MX')).toBe(HOLD_LINE_PHRASES.es);
   });
 
   it('delay per agent (metadata), else per tenant (settings), else 800 ms; clamped to 700..1000', () => {

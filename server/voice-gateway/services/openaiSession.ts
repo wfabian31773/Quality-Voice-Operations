@@ -1948,6 +1948,7 @@ export async function createRealtimeSession(
       type: 'conversation.item.create',
       item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
     });
+    // Rapid messages share one queued reply (the transport coalesces caller_text).
     activeTransport.requestResponse({ kind: 'caller_text' });
   };
 

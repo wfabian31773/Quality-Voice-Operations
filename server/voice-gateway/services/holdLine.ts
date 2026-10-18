@@ -18,6 +18,8 @@
  * - Never once every tool has returned (the result arrived first).
  * - Never in a wait where the agent has already spoken after the tool call
  *   started (a reply to "hello?", a line between chained calls).
+ * - Never in a call language the phrase table has no row for (at the start
+ *   or after record_language_change): silence during the tool, never English.
  *
  * Pure: no I/O, timers injectable, effects go through callbacks. The phrase
  * table is runtime-owned and vertical-neutral; a new locale is one row.
@@ -57,8 +59,20 @@ export function holdLineLanguage(language: unknown): string | undefined {
   return base in HOLD_LINE_PHRASES ? base : undefined;
 }
 
-export function holdLinePhrase(language: unknown): string {
-  return HOLD_LINE_PHRASES[holdLineLanguage(language) ?? HOLD_LINE_DEFAULT_LANGUAGE];
+/** The line for a language, or undefined when the table has no row (no hold line: never English to a non-English caller). */
+export function holdLinePhrase(language: unknown): string | undefined {
+  const row = holdLineLanguage(language);
+  return row === undefined ? undefined : HOLD_LINE_PHRASES[row];
+}
+
+/**
+ * The call's phrase-table row: `fallback` when no language is given (missing
+ * or empty), null for any other language without a row (fr, de, an
+ * unrecognised code): that call gets no hold line.
+ */
+function callLanguage(language: unknown, fallback: string | null): string | null {
+  if (typeof language !== 'string' || !language.trim()) return fallback;
+  return holdLineLanguage(language) ?? null;
 }
 
 /** The one-response instruction that speaks a hold line and nothing else. */
@@ -141,7 +155,10 @@ export class HoldLine {
   private readonly playbackConfirm: PlaybackConfirmMode;
   private readonly timers: HoldLineTimers;
   private readonly now: () => number;
-  private language: string;
+  /** The call's phrase-table row; null: a language with no row, so no hold line (silence, as before RT-HOLD-LINE). */
+  private language: string | null;
+  /** The agent's configured language's row (English when none is configured). */
+  private readonly configuredLanguage: string | null;
   private toolsRunning = 0;
   /** Tool calls started so far; a call the caller talked over at its deadline is skipped. */
   private toolSeq = 0;
@@ -164,16 +181,20 @@ export class HoldLine {
     this.playbackConfirm = deps.playbackConfirm ?? 'response_done';
     this.timers = deps.timers ?? defaultTimers;
     this.now = deps.now ?? Date.now;
-    this.language = holdLineLanguage(deps.language) ?? HOLD_LINE_DEFAULT_LANGUAGE;
+    this.configuredLanguage = callLanguage(deps.language, HOLD_LINE_DEFAULT_LANGUAGE);
+    this.language = this.configuredLanguage;
   }
 
-  get currentLanguage(): string {
+  get currentLanguage(): string | null {
     return this.language;
   }
 
-  /** The call switched language (record_language_change); unknown languages keep the current one. */
+  /**
+   * The call switched language (record_language_change). One without a row
+   * turns the hold line off; an empty one goes back to the agent's language.
+   */
   setLanguage(language: unknown): void {
-    this.language = holdLineLanguage(language) ?? this.language;
+    this.language = callLanguage(language, this.configuredLanguage);
   }
 
   toolStarted(tool: string): void {
@@ -281,10 +302,12 @@ export class HoldLine {
       this.skippedThroughToolSeq = this.toolSeq;
       return;
     }
-    const phrase = HOLD_LINE_PHRASES[this.language] ?? HOLD_LINE_PHRASES[HOLD_LINE_DEFAULT_LANGUAGE];
-    if (!this.deps.say(phrase, this.language)) return;
+    const language = this.language;
+    // No row for the call's language: silence, never English.
+    if (language === null) return;
+    if (!this.deps.say(HOLD_LINE_PHRASES[language], language)) return;
     wait.said = true;
-    this.deps.onSaid?.({ tool: wait.tool, language: this.language, delayMs: this.delayMs, waitedMs: this.now() - wait.startedAt });
+    this.deps.onSaid?.({ tool: wait.tool, language, delayMs: this.delayMs, waitedMs: this.now() - wait.startedAt });
   }
 
   private clearTimer(): void {
