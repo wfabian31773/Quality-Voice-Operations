@@ -397,7 +397,7 @@ describe('XaiRealtimeTransport', () => {
 
   describe('one response.create path (RT-HOLD-LINE §4: the #133 review P3s)', () => {
     const server = (event: Record<string, unknown>) => sockets[0].emit('message', JSON.stringify(event));
-    const sent = () => sockets[0].sent.map((row) => JSON.parse(row) as { type: string; event_id?: string; response?: Record<string, unknown> });
+    const sent = () => sockets[0].sent.map((row) => JSON.parse(row) as { type: string; response?: Record<string, unknown> });
     const sentTypes = () => sent().map((e) => e.type).filter((t) => t !== 'session.update');
     const creates = () => sent().filter((e) => e.type === 'response.create');
     const delta = (n: number) => ({ type: 'response.output_audio.delta', delta: Buffer.from([n, n, n]).toString('base64') });
@@ -599,23 +599,24 @@ describe('XaiRealtimeTransport', () => {
     describe('a create or cancel that never lands (review round 1, P2)', () => {
       const cancels = () => sent().filter((e) => e.type === 'response.cancel');
 
-      it('an error echoing our create\'s event_id rejects it whatever it says; one echoing another event does not', async () => {
+      it('no event_id on any response.create or response.cancel (xAI acceptance unconfirmed; review round 2)', async () => {
         const { transport, finish } = await toolRunning();
-        await finish();
-        const [create] = creates();
-        expect(create.event_id).toMatch(/^qvo_create_\d+$/);
-        server({ type: 'error', error: { code: 'invalid_value', message: 'Invalid response', event_id: 'evt_session_update' } });
-        expect(creates()).toHaveLength(1);
-        server({ type: 'error', error: { code: 'invalid_value', message: 'Invalid value', event_id: create.event_id } });
-        expect(creates()).toHaveLength(2); // re-sent once, at once
-        expect(creates()[1].event_id).not.toBe(create.event_id);
+        transport.requestResponse(holdLine);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        await finish(); // silent hold line cancelled
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS); // the result's create is lost: fenced by a cancel
+        const wire = sockets[0].sent.map((row) => JSON.parse(row) as Record<string, unknown>)
+          .filter((e) => e.type === 'response.create' || e.type === 'response.cancel');
+        expect(wire.map((e) => e.type)).toEqual(['response.create', 'response.cancel', 'response.create', 'response.cancel']);
+        expect(wire.filter((e) => 'event_id' in e)).toEqual([]);
         await expectQuietAfterClose(transport);
       });
 
       it('an unrecognised error after the hold-line create: lost at the timeout, the result voiced once, the path free again', async () => {
         const { transport, finish, audio, kinds, live } = await toolRunning();
         transport.requestResponse(holdLine);
-        // Not tied to anything we can recognise (no event_id, no "response").
+        // Not tied to anything we can recognise (no "response").
         server({ type: 'error', error: { code: 'invalid_value', message: 'Invalid value: none' } });
         await finish(); // the result lands behind the hold line's pending create
         expect(creates()).toHaveLength(1);
@@ -626,7 +627,7 @@ describe('XaiRealtimeTransport', () => {
         expect(sentTypes().at(-1)).toBe('response.cancel');
         expect(logged.find((l) => l.message === 'xAI response.create got no response.created in time: treated as lost')?.context)
           .toEqual({ kind: 'hold_line', waitedMs: RESPONSE_CREATED_TIMEOUT_MS, queued: 1, retried: false });
-        server({ type: 'error', error: { code: 'response_cancel_not_active', message: 'no active response to cancel', event_id: cancels()[0].event_id } });
+        server({ type: 'error', error: { code: 'response_cancel_not_active', message: 'no active response to cancel' } });
         expect(creates()).toHaveLength(2);
         expect(creates()[1].response).toBeUndefined(); // the result's own response, not the hold line again
         server({ type: 'response.created', response: { id: 'resp_answer' } });
@@ -761,6 +762,32 @@ describe('XaiRealtimeTransport', () => {
         expect(live.max).toBe(1);
         await expectQuietAfterClose(transport);
       });
+
+      it('the caller\'s reply still playing when a lost create\'s cancel wait runs out: played in full, the result voiced once (review round 2, P2 #2)', async () => {
+        const { transport, finish, audio, kinds, live } = await toolRunning();
+        const ended: string[] = [];
+        transport.on('response.cancelled', (_e: unknown, meta: { kind: string }) => ended.push(meta.kind));
+        await finish();
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS); // the result's create is lost: its cancel goes out
+        expect(cancels()).toHaveLength(1);
+        // "hello?": the provider replies, and never answers our cancel.
+        server({ type: 'input_audio_buffer.speech_started' });
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        server({ type: 'response.created', response: { id: 'resp_reply' } });
+        server(delta(8));
+        await vi.advanceTimersByTimeAsync(RESPONSE_CANCEL_TIMEOUT_MS + 1);
+        server(delta(9));
+        server({ type: 'response.done', response: { id: 'resp_reply', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS * 4);
+        expect(ended).toEqual([]); // never faked-cancelled
+        expect(audio).toEqual([8, 9]);
+        expect(kinds).toEqual(['server', 'server']);
+        // The reply was created after the output, so it carried it: the re-queued result is not sent again.
+        expect(creates()).toHaveLength(1);
+        expect(cancels()).toHaveLength(1);
+        expect(live).toEqual({ now: 0, max: 1 });
+        await expectQuietAfterClose(transport);
+      });
     });
 
     describe('the hold line', () => {
@@ -832,18 +859,53 @@ describe('XaiRealtimeTransport', () => {
         expect(creates()).toHaveLength(1);
       });
 
-      it('the caller starts talking before the hold line is created: it is cancelled once created, never heard (review P3 #1)', async () => {
-        const { transport, finish, audio, live } = await toolRunning();
+      it('the caller starts talking before the hold line is created: dropped at once; created anyway, it is retired unheard (review P3 #1)', async () => {
+        const { transport, finish, audio, kinds, live } = await toolRunning();
         transport.requestResponse(holdLine);
         server({ type: 'input_audio_buffer.speech_started' });
-        server({ type: 'response.created', response: { id: 'resp_hold' } });
-        expect(sentTypes().at(-1)).toBe('response.cancel');
+        expect(sentTypes().at(-1)).toBe('response.cancel'); // its fence, sent right behind the create
+        server({ type: 'response.created', response: { id: 'resp_hold' } }); // mid-utterance: it can only be the hold line
         server(delta(5));
         server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
-        expect(audio).toEqual([]);
         await finish(); // the caller spoke over the asking turn: withheld for their own turn
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        server({ type: 'response.created', response: { id: 'resp_reply' } });
+        server(delta(6));
+        server({ type: 'response.done', response: { id: 'resp_reply', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS * 4);
+        expect(audio).toEqual([6]);
+        expect(kinds).toEqual(['server', 'hold_line', 'server']);
+        expect(sent().filter((e) => e.type === 'response.cancel')).toHaveLength(1);
+        expect(creates()).toHaveLength(1); // the reply carried the result
+        expect(live).toEqual({ now: 0, max: 1 });
+        await expectQuietAfterClose(transport);
+      });
+
+      it('the caller starts talking while the hold-line create is unanswered: the provider\'s reply is theirs, heard, never cancelled (review round 2, P3 #1)', async () => {
+        const { transport, finish, audio, kinds, live } = await toolRunning();
+        const ended: string[] = [];
+        transport.on('response.cancelled', (_e: unknown, meta: { kind: string }) => ended.push(meta.kind));
+        transport.requestResponse(holdLine); // the provider drops it without a word
+        server({ type: 'input_audio_buffer.speech_started' });
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        server({ type: 'response.created', response: { id: 'resp_reply' } });
+        server(delta(7));
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS + RESPONSE_CANCEL_TIMEOUT_MS);
+        server(delta(8));
+        server({ type: 'response.done', response: { id: 'resp_reply', status: 'completed' } });
+        expect(ended).toEqual([]);
+        expect(audio).toEqual([7, 8]);
+        expect(sent().filter((e) => e.type === 'response.cancel')).toHaveLength(1); // only the dropped hold line's fence
         expect(creates()).toHaveLength(1);
-        expect(live.max).toBe(1);
+        await finish(); // after the reply: withheld, then voiced once on its own
+        expect(creates()).toHaveLength(2);
+        expect(creates()[1].response).toBeUndefined();
+        server({ type: 'response.created', response: { id: 'resp_voiced' } });
+        server({ type: 'response.done', response: { id: 'resp_voiced', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(RESPONSE_CREATED_TIMEOUT_MS * 4);
+        expect(creates()).toHaveLength(2);
+        expect(kinds).toEqual(['server', 'server', 'withheld_result']);
+        expect(live).toEqual({ now: 0, max: 1 });
         await expectQuietAfterClose(transport);
       });
 

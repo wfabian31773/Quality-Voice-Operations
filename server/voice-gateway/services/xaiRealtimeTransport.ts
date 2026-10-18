@@ -126,8 +126,6 @@ interface QueuedRequest {
 }
 
 interface PendingCreate extends QueuedRequest {
-  /** The create's client event_id (a provider error that echoes it rejects this create). */
-  eventId: string;
   /** callerSpeechSeq when it was sent. */
   sentAtSpeechSeq: number;
   /** seenOutputSeq before a withheld_result moved it (restored if the create is rejected). */
@@ -183,15 +181,13 @@ export class XaiRealtimeTransport extends EventEmitter {
    * sent at the timeout: it is retired silently, not claimed as anything else.
    */
   private lostCreate: PendingCreate | null = null;
-  /** event_ids of the response.cancel events we sent and have not seen land. */
-  private cancelEventIds = new Set<string>();
   /** A cancel we sent is waiting to land (RESPONSE_CANCEL_TIMEOUT_MS); no create goes meanwhile. */
   private cancelTimer: ReturnType<typeof setTimeout> | null = null;
+  /** What that cancel is aimed at: the response then in flight, or null for a lost create (until its late response turns up). */
+  private cancelTarget: CurrentResponse | null = null;
   /** Responses we stopped waiting for (cancel never landed): their late done/cancelled is ignored. */
   private abandonedResponseIds = new Set<string>();
   private abandonedWithoutId = 0;
-  /** Client event ids (event_id on our response.create / response.cancel). */
-  private clientEventSeq = 0;
   /** Requests waiting for the response in flight (or requested) to finish. */
   private responseQueue: QueuedRequest[] = [];
   /** The response in flight: who asked for it, and whether its audio started. */
@@ -330,15 +326,21 @@ export class XaiRealtimeTransport extends EventEmitter {
       // Our pending create, or one the provider started itself (server VAD).
       const ours = this.pendingCreate;
       this.clearPendingCreate();
-      // Our lost create turning up late, unless the caller has spoken since
-      // it was sent (then this is the provider's reply to them: 'server').
+      // Our lost create turning up late: the caller is mid-utterance (server
+      // VAD replies only after it) or has not spoken since it was sent.
+      // Otherwise this is the provider's reply to them: 'server'.
       const lost = this.lostCreate;
       this.lostCreate = null;
-      const late = !ours && lost !== null && !replyWasDue && !this.callerSpokeSince(lost.sentAtSpeechSeq) ? lost : null;
+      const late = !ours && lost !== null && (this.callerSpeaking || (!replyWasDue && !this.callerSpokeSince(lost.sentAtSpeechSeq))) ? lost : null;
       const kind: ResponseKind = ours?.request.kind ?? late?.request.kind ?? 'server';
       const retired = Boolean(ours?.cancelOnCreated) || late !== null;
       const responseId = responseIdOf(event);
       this.current = { kind, audioSeen: false, ...(responseId ? { id: responseId } : {}) };
+      if (lost && this.cancelTimer !== null && this.cancelTarget === null) {
+        // The lost create's cancel is aimed at its late response; the caller's reply ends that wait, untouched by it.
+        if (late) this.cancelTarget = this.current;
+        else if (kind === 'server') this.clearCancelWait();
+      }
       // Every output sent so far is in the conversation this response sees,
       // except after our voicing of a withheld result (it saw those up to the
       // request) and the hold line (told to say its line and nothing else, so
@@ -377,8 +379,14 @@ export class XaiRealtimeTransport extends EventEmitter {
       this.callerReplyPending = false;
       this.clearCallerReplyTimer();
       this.dropInterruptedAudio();
-      // A hold line asked for and not created yet would start over the caller: cancel it once created.
-      if (this.pendingCreate?.request.kind === 'hold_line') this.pendingCreate.cancelOnCreated = true;
+      // A hold line asked for and not created yet would start over the caller:
+      // dropped, so the provider's reply to them is never taken for it. If it
+      // is created anyway, its fence retires it unheard.
+      const holdLine = this.pendingCreate?.request.kind === 'hold_line' ? this.pendingCreate : null;
+      if (holdLine) {
+        this.clearPendingCreate();
+        this.giveUpCreate(holdLine);
+      }
     }
     if (type === 'input_audio_buffer.speech_stopped' && !this.closed) {
       this.callerSpeaking = false;
@@ -561,23 +569,16 @@ export class XaiRealtimeTransport extends EventEmitter {
     return true;
   }
 
-  private nextEventId(what: 'create' | 'cancel'): string {
-    this.clientEventSeq += 1;
-    return `qvo_${what}_${this.clientEventSeq}`;
-  }
-
   /**
-   * Sends one response.create, tagged with an event_id so a provider error
-   * that echoes it is tied to this create. It waits at most
-   * RESPONSE_CREATED_TIMEOUT_MS for its response.created (onCreateTimeout).
+   * Sends one response.create. It waits at most RESPONSE_CREATED_TIMEOUT_MS
+   * for its response.created (onCreateTimeout).
    */
   private sendCreate(entry: QueuedRequest, seenBefore = this.seenOutputSeq): void {
-    const eventId = this.nextEventId('create');
     this.clearPendingCreate();
-    this.pendingCreate = { ...entry, eventId, sentAtSpeechSeq: this.callerSpeechSeq, seenBefore, cancelOnCreated: false };
+    this.pendingCreate = { ...entry, sentAtSpeechSeq: this.callerSpeechSeq, seenBefore, cancelOnCreated: false };
     this.createTimer = setTimeout(() => this.onCreateTimeout(), RESPONSE_CREATED_TIMEOUT_MS);
     const response = entry.request.response;
-    this.sendEvent(response ? { type: 'response.create', event_id: eventId, response } : { type: 'response.create', event_id: eventId });
+    this.sendEvent(response ? { type: 'response.create', response } : { type: 'response.create' });
   }
 
   private clearPendingCreate(): void {
@@ -590,24 +591,23 @@ export class XaiRealtimeTransport extends EventEmitter {
   private cancelCurrentResponse(): void {
     if (!this.responseInFlight) return;
     this.dropInterruptedAudio();
-    this.sendCancel();
+    this.sendCancel(this.current);
   }
 
   /**
-   * Sends a response.cancel (tagged with an event_id) and holds the create
-   * path until it lands: the response's done/cancelled, the provider's
-   * "nothing to cancel" error when nothing is in flight, or
+   * Sends a response.cancel aimed at `target` (null: a lost create) and
+   * holds the create path until it lands: the response's done/cancelled, the
+   * provider's "nothing to cancel" error when nothing is in flight, or
    * RESPONSE_CANCEL_TIMEOUT_MS (onCancelTimeout).
    */
-  private sendCancel(): void {
-    const eventId = this.nextEventId('cancel');
+  private sendCancel(target: CurrentResponse | null): void {
     try {
-      this.sendEvent({ type: 'response.cancel', event_id: eventId });
+      this.sendEvent({ type: 'response.cancel' });
     } catch (err) {
       logger.debug('response.cancel failed (likely already closed)', { error: String(err) });
       return;
     }
-    this.cancelEventIds.add(eventId);
+    this.cancelTarget = target;
     if (this.cancelTimer !== null) clearTimeout(this.cancelTimer);
     this.cancelTimer = setTimeout(() => this.onCancelTimeout(), RESPONSE_CANCEL_TIMEOUT_MS);
   }
@@ -615,7 +615,7 @@ export class XaiRealtimeTransport extends EventEmitter {
   private clearCancelWait(): void {
     if (this.cancelTimer !== null) clearTimeout(this.cancelTimer);
     this.cancelTimer = null;
-    this.cancelEventIds.clear();
+    this.cancelTarget = null;
   }
 
   private clearAckTimers(): void {
@@ -644,23 +644,30 @@ export class XaiRealtimeTransport extends EventEmitter {
       queued: this.responseQueue.length,
       retried: lost.retried,
     });
+    this.giveUpCreate(lost);
+  }
+
+  /** Our create is given up: fenced by a cancel (a late response.created for it is retired), then recovered. */
+  private giveUpCreate(lost: PendingCreate): void {
     this.lostCreate = lost;
-    this.sendCancel();
+    this.sendCancel(null);
     this.recoverRejectedCreate(lost);
   }
 
   /**
-   * A cancel we sent did not land in RESPONSE_CANCEL_TIMEOUT_MS. A response
-   * still in flight is treated as ended (its late done/cancelled is ignored,
-   * its late deltas dropped until the next response); a lost create's fence
-   * just ends. Then the queue goes on.
+   * A cancel we sent did not land in RESPONSE_CANCEL_TIMEOUT_MS. The
+   * response it was aimed at, if still in flight, is treated as ended (its
+   * late done/cancelled is ignored, its late deltas dropped until the next
+   * response); any other response (the caller's reply, one created after the
+   * cancel) is left alone. Then the queue goes on.
    */
   private onCancelTimeout(): void {
+    const target = this.cancelTarget;
     this.cancelTimer = null;
-    this.cancelEventIds.clear();
+    this.cancelTarget = null;
     if (this.closed) return;
     this.lostCreate = null;
-    if (this.responseInFlight) {
+    if (this.responseInFlight && target !== null && this.current === target) {
       const meta: ResponseMeta = { kind: this.current?.kind ?? 'server' };
       logger.warn('xAI response.cancel not acknowledged in time: response treated as ended', { kind: meta.kind, waitedMs: RESPONSE_CANCEL_TIMEOUT_MS });
       if (this.current?.id) this.abandonedResponseIds.add(this.current.id);
@@ -709,10 +716,9 @@ export class XaiRealtimeTransport extends EventEmitter {
 
   /**
    * A provider `error` event (P3 #2 of the #133 review). Logged with its
-   * code/type only (no message text: it can echo conversation content). It
-   * is tied to our request by the event_id it echoes; without one, an error
-   * about a "response" (and not a cancel) is taken to reject our pending
-   * create. Anything else is only logged: a create it did reject is
+   * code/type only (no message text: it can echo conversation content). An
+   * error about a "response" (and not a cancel) is taken to reject our
+   * pending create. Anything else is only logged: a create it did reject is
    * recovered at RESPONSE_CREATED_TIMEOUT_MS instead. A rejected create is
    * cleared and recovered (recoverRejectedCreate). The "nothing to cancel"
    * answer to a lost create's cancel ends that wait.
@@ -722,18 +728,10 @@ export class XaiRealtimeTransport extends EventEmitter {
     const code = typeof error.code === 'string' ? error.code : undefined;
     const errorType = typeof error.type === 'string' ? error.type : undefined;
     const pending = this.pendingCreate;
-    const echoedId = typeof error.event_id === 'string' && error.event_id ? error.event_id : undefined;
-    let rejectsCreate: boolean;
-    let aboutOurCancel: boolean;
-    if (echoedId !== undefined) {
-      rejectsCreate = pending !== null && echoedId === pending.eventId;
-      aboutOurCancel = this.cancelEventIds.has(echoedId);
-    } else {
-      const detail = `${code ?? ''} ${String(error.param ?? '')} ${String(error.message ?? '')}`;
-      const aboutCancel = /cancel/i.test(detail);
-      rejectsCreate = pending !== null && !aboutCancel && /response/i.test(detail);
-      aboutOurCancel = aboutCancel && this.cancelTimer !== null;
-    }
+    const detail = `${code ?? ''} ${String(error.param ?? '')} ${String(error.message ?? '')}`;
+    const aboutCancel = /cancel/i.test(detail);
+    const rejectsCreate = pending !== null && !aboutCancel && /response/i.test(detail);
+    const aboutOurCancel = aboutCancel && this.cancelTimer !== null;
     logger.warn('xAI realtime provider error', { code, type: errorType, pendingCreate: pending?.request.kind, rejectsCreate });
     if (aboutOurCancel && !this.responseInFlight) {
       // Nothing was in flight to cancel: the lost create is gone for good.
