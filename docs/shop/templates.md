@@ -15,6 +15,8 @@ Customers do not build agents. QVO configures each business's agent from a **use
 
 A business can enable one tool or all of them; the template sets the defaults.
 
+**Runtime phrasing templates (RT-08):** the voice side of a vertical lives in `platform/agent-templates/<vertical>/` as a versioned agent template (first: `barbershop@1`). It holds the persona and the EN/ES phrasing for every `askId` the contracts in `platform/callcore/contracts` return. Booking numbers are texted, never spoken. The composer (RT-09) reads the template; it isn't used on live calls yet.
+
 **This week:** barbershop and nail salon ship. The other rows are specified only (contract now; build later). Product direction: small businesses of 5–20 people, **no healthcare**.
 
 ## Matrix
