@@ -98,7 +98,7 @@ export interface ActionDefinition<I = unknown, O = unknown> {
   agentDescription?: string;
   /** Rewrites the raw input before it is audited; used only on the validation-failure path, must never throw. */
   auditRawInput?: (raw: unknown) => unknown;
-  run:(ctx: ActionContext, input: I, tx: TenantTx) => Promise<ActionResult<O>>;
+  run: (ctx: ActionContext, input: I, tx: TenantTx) => Promise<ActionResult<O>>;
 }
 
 // Registry entries are heterogeneous; `any` keeps assignability from typed defs.

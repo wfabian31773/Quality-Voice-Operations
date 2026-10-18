@@ -65,23 +65,47 @@ export function redactCallerLines(lines: readonly string[]): string[] {
   return lines.length === 0 ? [] : redactCallerText(lines.join('\n')).split('\n');
 }
 
+export const FLOOR_MAX_CALL_ID_LENGTH = 128;
+export const FLOOR_MAX_NAME_LENGTH = 255;
+
 /**
  * The validation-failure audit copy of a raw floor input. runAction audits the
  * raw input when it fails the schema (too many lines, a line too long, a
  * non-string line, an unknown key), and the core redactor masks phones only.
- * So callerLines is replaced by its redacted string entries (non-strings are
- * dropped), then capped to FLOOR_MAX_LINES lines of FLOOR_MAX_LINE_LENGTH chars
- * so the row stays bounded. Every other field passes through unchanged.
+ * So the copy is an allowlist built from the known keys only; anything else is dropped:
+ * - callId: a string, sliced to FLOOR_MAX_CALL_ID_LENGTH chars.
+ * - callerLines: the string entries of an array (non-strings dropped), or a
+ *   single string as one line. Redacted as one text first, then capped to
+ *   FLOOR_MAX_LINES lines of FLOOR_MAX_LINE_LENGTH chars, so a cut never leaves
+ *   part of a number unmasked. Any other shape is omitted.
+ * - callerName: a string, redacted, then sliced to FLOOR_MAX_NAME_LENGTH chars.
+ * - language: kept only when it is 'en' or 'es'.
+ * A non-object input (string, array, number, null) gives {}.
  */
-export function floorAuditRawInput(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+export function floorAuditRawInput(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const input = raw as Record<string, unknown>;
-  if (!Array.isArray(input.callerLines)) return { ...input };
-  const strings = input.callerLines.filter((line): line is string => typeof line === 'string');
-  const callerLines = redactCallerLines(strings)
-    .slice(0, FLOOR_MAX_LINES)
-    .map((line) => line.slice(0, FLOOR_MAX_LINE_LENGTH));
-  return { ...input, callerLines };
+  const copy: Record<string, unknown> = {};
+  if (typeof input.callId === 'string') copy.callId = input.callId.slice(0, FLOOR_MAX_CALL_ID_LENGTH);
+  const lines =
+    typeof input.callerLines === 'string'
+      ? [input.callerLines]
+      : Array.isArray(input.callerLines)
+        ? input.callerLines.filter((line): line is string => typeof line === 'string')
+        : null;
+  if (lines) {
+    copy.callerLines = redactCallerLines(lines)
+      .slice(0, FLOOR_MAX_LINES)
+      .map((line) => line.slice(0, FLOOR_MAX_LINE_LENGTH));
+  }
+  if (typeof input.callerName === 'string') copy.callerName = redactCallerName(input.callerName);
+  if (input.language === 'en' || input.language === 'es') copy.language = input.language;
+  return copy;
+}
+
+/** Redacted like the caller's lines, then cut back to the column size (a mask can be longer than what it hides). */
+function redactCallerName(name: string): string {
+  return redactCallerText(name).slice(0, FLOOR_MAX_NAME_LENGTH);
 }
 
 function nonBlank(lines: readonly string[]): string[] {
@@ -90,15 +114,16 @@ function nonBlank(lines: readonly string[]): string[] {
 
 // Strict: the caller phone comes from call_sessions, so an input phone is rejected, not ignored.
 // It also rejects a caller-supplied `substantive`: only the transform below sets it.
-// The transform judges "substantive" on the raw lines (a spoken callback number
-// counts as content), then replaces callerLines with the redacted lines. So
+// The transform judges "substantive" on the raw lines and raw name (a spoken
+// callback number counts as content, and the name's own tokens are dropped),
+// then replaces callerLines and callerName with their redacted forms. So
 // runAction's audit row and request hash (both built from the parsed input)
-// never see a card number or a full phone number.
+// and the ticket's contact name never see a card number or a full phone number.
 export const fileFloorInput = z
   .object({
-    callId: z.string().trim().min(1).max(128),
+    callId: z.string().trim().min(1).max(FLOOR_MAX_CALL_ID_LENGTH),
     callerLines: z.array(z.string().max(FLOOR_MAX_LINE_LENGTH)).max(FLOOR_MAX_LINES),
-    callerName: z.string().trim().max(255).optional(),
+    callerName: z.string().trim().max(FLOOR_MAX_NAME_LENGTH).optional(),
     language: z.enum(['en', 'es']).optional(),
   })
   .strict()
@@ -106,6 +131,7 @@ export const fileFloorInput = z
     ...input,
     substantive: saidMoreThanTheirOwnName(nonBlank(input.callerLines), input.callerName),
     callerLines: redactCallerLines(input.callerLines),
+    ...(input.callerName === undefined ? {} : { callerName: redactCallerName(input.callerName) }),
   }));
 /** What the runtime sends. */
 export type FileFloorInput = z.input<typeof fileFloorInput>;

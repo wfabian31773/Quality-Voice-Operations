@@ -5,8 +5,10 @@ import { createTicketsActions } from './actions';
 import {
   NUMBER_MASK,
   FILE_FLOOR,
+  FLOOR_MAX_CALL_ID_LENGTH,
   FLOOR_MAX_LINE_LENGTH,
   FLOOR_MAX_LINES,
+  FLOOR_MAX_NAME_LENGTH,
   FLOOR_SUBJECT,
   SSN_MASK,
   floorAuditRawInput,
@@ -42,7 +44,9 @@ function setup(decrypt?: (tenantId: string, stored: string) => Promise<string | 
   const deps = { store, registry, withTenantTx: store.withTenantTx.bind(store) };
   const floor = (input: Record<string, unknown>, ctx: ActionContext = systemCtx(String(input.callId ?? CALL))) =>
     runAction(FILE_FLOOR, ctx, { callId: CALL, ...input }, deps);
-  return { store, tickets, floor };
+  /** Sends `input` exactly as given (no callId added), for shapes that aren't an object. */
+  const floorRaw = (input: unknown) => runAction(FILE_FLOOR, systemCtx(), input, deps);
+  return { store, tickets, floor, floorRaw };
 }
 
 function data(result: ActionResult): FloorData {
@@ -259,6 +263,38 @@ describe('tickets.file_floor rules', () => {
       }
     },
   );
+
+  it.each([
+    ['a card number', '4111 1111 1111 1111', NUMBER_MASK, /4111|1111/],
+    ['an SSN', '123-45-6789', SSN_MASK, /123-45|6789/],
+  ])('a callerName holding %s → filed, the stored contact name and the audit row hold no digits', async (_label, name, mask, digits) => {
+    const { store, tickets, floor } = setup();
+    const out = data(await floor({ callerLines: ['I need a fade Friday'], callerName: name }));
+    expect(out).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets).toHaveLength(1);
+    expect(tickets.state.tickets[0].contactName).toBe(mask);
+    expect(store.audits.map((a) => a.resultCode)).toEqual(['ok']);
+    const stored = JSON.stringify(store.audits[0].inputRedacted);
+    expect(stored).not.toMatch(digits);
+    expect(stored).toContain(`"callerName":"${mask}"`);
+  });
+
+  it.each([['Luis Garcia'], ['María José']])('a normal callerName (%s) is stored and audited unchanged', async (name) => {
+    const { store, tickets, floor } = setup();
+    data(await floor({ callerLines: ['I need a fade Friday'], callerName: name }));
+    expect(tickets.state.tickets[0].contactName).toBe(name);
+    expect((store.audits[0].inputRedacted as { callerName?: string }).callerName).toBe(name);
+  });
+
+  it('the name is dropped from the lines using the raw callerName, before it is redacted', async () => {
+    const { tickets, floor } = setup();
+    // Judged on the redacted name ("[number removed]"), the four digit groups would be content words.
+    expect(data(await floor({ callerLines: ['4111 1111 1111 1111'], callerName: '4111 1111 1111 1111' }))).toEqual({
+      filed: false,
+      reason: 'nothing_substantive',
+    });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
 
   it('name plus a short number ("Luis 42") → nothing_substantive', async () => {
     const { tickets, floor } = setup();
@@ -504,17 +540,78 @@ describe('tickets.file_floor audit row', () => {
     expectFail(await floor({ callerLines: ['my card is 4111 1111 1111 1111', 42, { x: 1 }] }), 'VALIDATION_FAILED');
     expect(store.audits[0].inputRedacted).toEqual({ callId: CALL, callerLines: [`my card is ${NUMBER_MASK}`] });
   });
+
+  // Capping first would cut these cards to 8 or 12 digits, below CARD_LIKE's 13, and store them unmasked.
+  it.each([
+    ['a card across the 500-char cut', [`${'x'.repeat(490)} 4111 1111 1111 1111`]],
+    [
+      'a card split across lines 50 and 51',
+      Array.from({ length: 51 }, (_, i) => (i === 49 ? 'card 4111 1111' : i === 50 ? '1111 1111' : 'I need a fade')),
+    ],
+  ])('%s → VALIDATION_FAILED, redacted before the cap so no 4+ digits of it survive', async (_label, lines) => {
+    const { store, floor } = setup();
+    expectFail(await floor({ callerLines: lines }), 'VALIDATION_FAILED');
+    const audited = store.audits[0].inputRedacted as { callerLines: string[] };
+    expect(audited.callerLines.join('\n')).not.toMatch(/\d{4}/);
+    expect(audited.callerLines.length).toBeLessThanOrEqual(FLOOR_MAX_LINES);
+    for (const line of audited.callerLines) expect(line.length).toBeLessThanOrEqual(FLOOR_MAX_LINE_LENGTH);
+  });
+
+  it('an unknown key holding a card → VALIDATION_FAILED, the audit row drops the key', async () => {
+    const { store, floor } = setup();
+    expectFail(await floor({ callerLines: [], extra: '4111 1111 1111 1111' }), 'VALIDATION_FAILED');
+    expect(store.audits[0].inputRedacted).toEqual({ callId: CALL, callerLines: [] });
+  });
+
+  it.each([
+    ['a string', '4111 1111 1111 1111'],
+    ['an array', ['4111 1111 1111 1111']],
+  ])('%s as the whole input → VALIDATION_FAILED, the audit row is {}', async (_label, input) => {
+    const { store, floorRaw } = setup();
+    expectFail(await floorRaw(input), 'VALIDATION_FAILED');
+    expect(store.audits[0].inputRedacted).toEqual({});
+  });
+
+  it('callerLines sent as one string holding a card → VALIDATION_FAILED, audited as one redacted line', async () => {
+    const { store, floor } = setup();
+    expectFail(await floor({ callerLines: 'my card is 4111 1111 1111 1111' }), 'VALIDATION_FAILED');
+    expect(store.audits[0].inputRedacted).toEqual({ callId: CALL, callerLines: [`my card is ${NUMBER_MASK}`] });
+  });
+
+  it('an over-long callerName holding an SSN → VALIDATION_FAILED, audited redacted, then capped', async () => {
+    const { store, floor } = setup();
+    // The SSN straddles the 255-char cut, so capping first would leave "123" unmasked.
+    const callerName = `${'y'.repeat(250)} 123-45-6789 ${'z'.repeat(20)}`;
+    expectFail(await floor({ callerLines: ['I need a fade'], callerName }), 'VALIDATION_FAILED');
+    const audited = store.audits[0].inputRedacted as { callerName: string };
+    expect(audited.callerName).toBe(`${'y'.repeat(250)} ${SSN_MASK}`.slice(0, FLOOR_MAX_NAME_LENGTH));
+    expect(audited.callerName).not.toMatch(/\d/);
+  });
 });
 
 describe('floorAuditRawInput', () => {
-  it('passes other fields through and leaves a non-object or a missing callerLines alone', () => {
-    expect(floorAuditRawInput({ callId: 'CA-1', extra: 'y', callerLines: ['ssn 123-45-6789'] })).toEqual({
-      callId: 'CA-1',
-      extra: 'y',
-      callerLines: [`ssn ${SSN_MASK}`],
-    });
-    expect(floorAuditRawInput({ callId: 'CA-1', callerLines: 'not a list' })).toEqual({ callId: 'CA-1', callerLines: 'not a list' });
-    expect(floorAuditRawInput(undefined)).toBeUndefined();
-    expect(floorAuditRawInput('text')).toBe('text');
+  it('keeps only the known keys, each in its allowed shape', () => {
+    expect(
+      floorAuditRawInput({
+        callId: 'CA-1',
+        extra: '4111 1111 1111 1111',
+        callerLines: ['ssn 123-45-6789'],
+        callerName: 'Luis Garcia',
+        language: 'es',
+      }),
+    ).toEqual({ callId: 'CA-1', callerLines: [`ssn ${SSN_MASK}`], callerName: 'Luis Garcia', language: 'es' });
+    expect(floorAuditRawInput({ callId: 'c'.repeat(200) })).toEqual({ callId: 'c'.repeat(FLOOR_MAX_CALL_ID_LENGTH) });
+    expect(floorAuditRawInput({ callId: 42, callerLines: { 0: 'x' }, callerName: ['Luis'], language: 'fr' })).toEqual({});
+    expect(floorAuditRawInput({ callerLines: 'card 4111 1111 1111 1111' })).toEqual({ callerLines: [`card ${NUMBER_MASK}`] });
+  });
+
+  it.each([
+    ['a string', '4111 1111 1111 1111'],
+    ['an array', ['4111 1111 1111 1111']],
+    ['a number', 4111111111111111],
+    ['null', null],
+    ['undefined', undefined],
+  ])('returns {} for %s', (_label, raw) => {
+    expect(floorAuditRawInput(raw)).toEqual({});
   });
 });
