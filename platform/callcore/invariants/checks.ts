@@ -65,7 +65,7 @@ function latestMatchingOk(facts: CallFacts, actionSegments: readonly string[]): 
     const c = facts.committed[i];
     if (c.kind === 'transfer') continue;
     if (actionSegments.length === 0) return c.ok;
-    const segments = c.action.toLowerCase().split(/[._]/);
+    const segments = c.action.toLowerCase().replace(/@\d+$/, '').split(/[._]/);
     if (segments.some((s) => actionSegments.includes(s))) return c.ok;
   }
   return false;
@@ -85,7 +85,8 @@ export function checkSay(facts: CallFacts, text: string): CheckResult {
     return block('say.stage_direction');
   }
 
-  const refs = findRefs(text);
+  const speakable = new Set(facts.speakableNumbers.map(canonicalRef).filter((n) => n.length > 0));
+  const refs = findRefs(text).filter((r) => !speakable.has(canonicalRef(r)));
   if (refs.length > 0) {
     if (!facts.voiceRefs) return block('say.ref_not_voiced');
     const known = new Set(facts.committed.filter((c) => c.ok).flatMap((c) => c.refs.map(canonicalRef)));

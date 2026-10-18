@@ -7,6 +7,7 @@ export {
   onExplicitYes,
   onFloorEvaluated,
   onPrepared,
+  onSpeakableNumber,
   onToolResult,
 } from './facts';
 export { INSTRUCTIONS } from './instructions';

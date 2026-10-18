@@ -35,6 +35,12 @@ export interface CallFacts {
   readonly unvoicedToolResult: boolean;
   /** Actions named by the agent's selected contracts. */
   readonly allowedActions: readonly string[];
+  /**
+   * Numbers the agent may read out even though they are ref-shaped: the
+   * business phone, address digits, the confirmed callback number. Compared
+   * by canonicalRef, so spacing, dashes and spoken digits don't matter.
+   */
+  readonly speakableNumbers: readonly string[];
 }
 
 export interface CallFactsInit {
@@ -43,6 +49,8 @@ export interface CallFactsInit {
   voiceRefs: boolean;
   smsEnabled: boolean;
   allowedActions: readonly string[];
+  /** Defaults to none. */
+  speakableNumbers?: readonly string[];
 }
 
 export interface ToolResultInput {

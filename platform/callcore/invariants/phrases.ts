@@ -10,7 +10,8 @@
 
 /**
  * Success claims. Each group is allowed only when the latest committed result
- * whose action name has one of `actionSegments` (split on "." and "_") is ok.
+ * whose action name has one of `actionSegments` (a trailing "@<version>" is
+ * dropped, then the name is split on "." and "_") is ok.
  * An empty `actionSegments` matches any commit/write result (not a transfer).
  */
 export interface SuccessClaimGroup {
@@ -34,8 +35,10 @@ export const SUCCESS_CLAIMS: readonly SuccessClaimGroup[] = [
       "you're rescheduled",
       "i've rescheduled",
       "i've moved your appointment",
-      'está reservada',
-      'está reservado',
+      // Anchored to the booking: a bare "ya está reservado" is how a taken slot is described.
+      'su cita está reservada',
+      'su cita ya está reservada',
+      'ya está reservada su cita',
       'quedó reservada',
       'quedó reservado',
       'ya le reservé',
@@ -55,7 +58,10 @@ export const SUCCESS_CLAIMS: readonly SuccessClaimGroup[] = [
       'your appointment is cancelled',
       'your appointment is canceled',
       'quedó cancelada',
-      'está cancelada',
+      // Anchored to the booking: a bare "está cancelada" also reads out a booking's status.
+      'su cita está cancelada',
+      'su cita ya está cancelada',
+      'ya está cancelada su cita',
       'ya la cancelé',
       'ya le cancelé',
     ],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkSay } from './checks';
-import { createCallFacts, onPrepared, onExplicitYes, onToolResult } from './facts';
+import { createCallFacts, onPrepared, onExplicitYes, onSpeakableNumber, onToolResult } from './facts';
 import { INSTRUCTIONS } from './instructions';
 import { STAGE_DIRECTION_WORDS, SUCCESS_CLAIMS, TEXT_PROMISE_PHRASES, TRANSFER_PHRASES } from './phrases';
 import type { CallFacts, CallFactsInit } from './types';
@@ -71,9 +71,35 @@ describe('checkSay (a) success words need a matching ok commit', () => {
 
   it('normalizes case, curly apostrophes and diacritics; matches whole words only', () => {
     expectBlocked(checkSay(facts(), 'YOU’RE BOOKED'), 'say.success_before_commit');
-    expectBlocked(checkSay(facts(), 'Esta reservada.'), 'say.success_before_commit');
+    expectBlocked(checkSay(facts(), 'Su cita esta reservada.'), 'say.success_before_commit');
     expect(checkSay(facts(), "You're not booked yet. Which day works?")).toEqual({ ok: true });
     expect(checkSay(facts(), 'I have bookings open Friday.')).toEqual({ ok: true });
+  });
+
+  it('ES: "ya está reservado" describing a taken slot is allowed before a commit', () => {
+    expect(checkSay(facts(), 'Lo siento, a las 3 ya está reservado.')).toEqual({ ok: true });
+    expect(checkSay(facts(), 'Ese horario ya está reservado, ¿le sirve a las 4?')).toEqual({ ok: true });
+    expect(checkSay(facts(), 'La cita del martes está cancelada.')).toEqual({ ok: true });
+  });
+
+  it('ES: anchored booking confirmations are still blocked before a commit', () => {
+    for (const line of [
+      'Su cita está reservada para el viernes.',
+      'Su cita ya está reservada.',
+      'Listo, ya está reservada su cita.',
+      'Le quedó reservada para las 3.',
+    ]) {
+      expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
+    }
+    for (const line of ['Su cita está cancelada.', 'Ya está cancelada su cita.']) {
+      expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
+      expect(checkSay(committed(facts(), CANCEL_COMMIT, true), line)).toEqual({ ok: true });
+    }
+  });
+
+  it('a versioned action name (booking.book@1) matches its claim group', () => {
+    expectBlocked(checkSay(committed(facts(), 'booking.book@1', false), "You're booked."), 'say.success_before_commit');
+    expect(checkSay(committed(facts(), 'booking.book@1', true), "You're booked.")).toEqual({ ok: true });
   });
 
   it('every listed success phrase is blocked with no commit', () => {
@@ -114,6 +140,32 @@ describe('checkSay (b) voiceRefs:false blocks every ref-shaped string', () => {
     ).toEqual({ ok: true });
     expect(checkSay(f, 'Quedó reservada el viernes a las 10:30, son 25 dólares.')).toEqual({ ok: true });
     expect(checkSay(f, 'There are 2 openings at 3 and 4.')).toEqual({ ok: true });
+  });
+
+  it('phone readback: "I have your number as 512-555-0199" is allowed when listed, blocked when not', () => {
+    const line = 'I have your number as 512-555-0199.';
+    expect(checkSay(facts({ speakableNumbers: ['512-555-0199'] }), line)).toEqual({ ok: true });
+    expect(checkSay(onSpeakableNumber(facts(), '512 555 0199'), line)).toEqual({ ok: true });
+    expectBlocked(checkSay(facts(), line), 'say.ref_not_voiced');
+    expectBlocked(checkSay(facts({ speakableNumbers: ['512-555-0100'] }), line), 'say.ref_not_voiced');
+    expectBlocked(checkSay(facts({ voiceRefs: true }), line), 'say.ref_not_committed');
+    expect(checkSay(facts({ voiceRefs: true, speakableNumbers: ['5125550199'] }), line)).toEqual({ ok: true });
+  });
+
+  it('phone readback in spoken digits is allowed when the number is listed', () => {
+    const en = 'I have five one two five five five zero one nine nine.';
+    const es = 'Tengo cinco uno dos cinco cinco cinco cero uno nueve nueve.';
+    const f = facts({ speakableNumbers: ['512-555-0199'] });
+    expect(checkSay(f, en)).toEqual({ ok: true });
+    expect(checkSay(f, es)).toEqual({ ok: true });
+    expectBlocked(checkSay(facts(), en), 'say.ref_not_voiced');
+    expectBlocked(checkSay(facts(), es), 'say.ref_not_voiced');
+  });
+
+  it('a listed phone number does not let BK-4712 through', () => {
+    const f = committed(facts({ speakableNumbers: ['512-555-0199'] }), BOOK_COMMIT, true, ['BK-4712']);
+    expectBlocked(checkSay(f, 'Your confirmation is BK-4712.'), 'say.ref_not_voiced');
+    expectBlocked(checkSay(f, 'Your number is 512-555-0199 and your ref is BK-4712.'), 'say.ref_not_voiced');
   });
 
   it('the instruction never echoes the ref', () => {

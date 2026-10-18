@@ -54,7 +54,20 @@ describe('checkRun: commit needs a prepared token and an explicit yes for it', (
     f = onExplicitYes(f, 'tok-1');
     f = onPrepared(f, 'tok-2');
     expect(checkRun(f, commit('tok-2'))).toEqual(blocked('run.commit_without_yes'));
-    expect(checkRun(f, commit('tok-1'))).toEqual({ ok: true });
+    expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_without_yes'));
+  });
+
+  it('a new prepare supersedes a pending yes: yes on tok-1, prepare tok-2, commit tok-1 is blocked', () => {
+    const f = onPrepared(onExplicitYes(onPrepared(facts(), 'tok-1'), 'tok-1'), 'tok-2');
+    expect(f.explicitYesForToken).toBeUndefined();
+    expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_without_yes'));
+  });
+
+  it('after a correction, a yes on the new token allows committing it: yes on tok-2, commit tok-2 is ok', () => {
+    let f = onPrepared(onExplicitYes(onPrepared(facts(), 'tok-1'), 'tok-1'), 'tok-2');
+    f = onExplicitYes(f, 'tok-2');
+    expect(checkRun(f, commit('tok-2'))).toEqual({ ok: true });
+    expect(checkRun(f, commit('tok-1'))).toEqual(blocked('run.commit_without_yes'));
   });
 
   it('prepared + explicit yes for the same token is allowed, and an ok commit retires the token', () => {

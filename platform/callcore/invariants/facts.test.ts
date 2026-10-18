@@ -6,6 +6,7 @@ import {
   onExplicitYes,
   onFloorEvaluated,
   onPrepared,
+  onSpeakableNumber,
   onToolResult,
 } from './facts';
 import { canonicalRef, findRefs, normalizeArgs, normalizeSpeech } from './normalize';
@@ -30,6 +31,17 @@ describe('CallFacts reducers', () => {
     });
     expect(f.explicitYesForToken).toBeUndefined();
     expect(f.preparedTokens.size).toBe(0);
+    expect(f.speakableNumbers).toEqual([]);
+    expect(createCallFacts({ ...init, speakableNumbers: ['512-555-0100'] }).speakableNumbers).toEqual(['512-555-0100']);
+  });
+
+  it('onSpeakableNumber adds a number once and does not mutate', () => {
+    const f0 = createCallFacts({ ...init, speakableNumbers: ['512-555-0100'] });
+    const f1 = onSpeakableNumber(f0, '512-555-0199');
+    expect(f1.speakableNumbers).toEqual(['512-555-0100', '512-555-0199']);
+    expect(f0.speakableNumbers).toEqual(['512-555-0100']);
+    expect(onSpeakableNumber(f1, '512-555-0199')).toBe(f1);
+    expect(onSpeakableNumber(f1, '')).toBe(f1);
   });
 
   it('never mutates its input', () => {

@@ -19,7 +19,14 @@ export function createCallFacts(init: CallFactsInit): CallFacts {
     floorEvaluated: false,
     unvoicedToolResult: false,
     allowedActions: [...init.allowedActions],
+    speakableNumbers: [...(init.speakableNumbers ?? [])],
   };
+}
+
+/** A number the agent may read back from now on (e.g. the callback number the caller confirmed). */
+export function onSpeakableNumber(facts: CallFacts, number: string): CallFacts {
+  if (!number || facts.speakableNumbers.includes(number)) return facts;
+  return { ...facts, speakableNumbers: [...facts.speakableNumbers, number] };
 }
 
 /** The caller was transcribed at least once. */
@@ -56,12 +63,15 @@ export function onToolResult(facts: CallFacts, result: ToolResultInput): CallFac
   return next;
 }
 
-/** A prepare returned this confirmation token. */
+/**
+ * A prepare returned this confirmation token. A new prepare supersedes any
+ * pending yes: after a correction the caller must confirm the new readback.
+ */
 export function onPrepared(facts: CallFacts, token: string): CallFacts {
   if (!token || facts.preparedTokens.has(token)) return facts;
   const preparedTokens = new Set(facts.preparedTokens);
   preparedTokens.add(token);
-  return { ...facts, preparedTokens };
+  return { ...facts, preparedTokens, explicitYesForToken: undefined };
 }
 
 /**
