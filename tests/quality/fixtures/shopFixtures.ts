@@ -42,7 +42,10 @@ type FixtureVariant = {
 
 export type TransferHours = { days: Weekday[] };
 
-/** `bufferMin`: minutes blocked after the service (tools-spec §1 catalog); defaults to 0. */
+/**
+ * `bufferMin`: minutes blocked after the service (tools-spec §1 catalog);
+ * defaults to 0. A booking blocks through end + the largest buffer of its services.
+ */
 export type FixtureService = Service & { bufferMin?: number };
 
 export type ShopFixture = {
@@ -53,7 +56,7 @@ export type ShopFixture = {
   address: string;
   hoursText: string;
   hours: Partial<Record<Weekday, [string, string]>>;
-  /** The booking each slot is sized for: end = start + its durations and buffers. */
+  /** The booking each slot is sized for: end = start + its durations. */
   slotServiceIds: string[];
   openTimes: string[];
   dateRange: { from: string; to: string };
@@ -132,13 +135,17 @@ function eachDate(from: string, to: string): string[] {
   return out;
 }
 
-/** Minutes a booking of `serviceIds` blocks: each service's duration plus its buffer. */
+/**
+ * Minutes a booking of `serviceIds` lasts: the sum of the durations, like the
+ * engine's slot end. The buffer is not part of the end (or of fitting the
+ * hours); `FakeToolProvider` adds it when it checks overlaps.
+ */
 export function bookingMinutes(fixture: ShopFixture, serviceIds: string[]): number {
   if (serviceIds.length === 0) throw new Error(`${fixture.name}: slots need at least one service`);
   return serviceIds.reduce((total, id) => {
     const service = fixture.services.find((row) => row.id === id);
     if (!service) throw new Error(`${fixture.name}: unknown service ${id}`);
-    return total + service.durationMin + (service.bufferMin ?? 0);
+    return total + service.durationMin;
   }, 0);
 }
 
@@ -223,7 +230,8 @@ function expandShopFixture(seedName: string): ShopTenantState {
     address: fixture.address,
     hoursText: fixture.hoursText,
     staff,
-    services: fixture.services.map(({ bufferMin: _bufferMin, ...service }) => service),
+    // bufferMin stays on the service: the fake and the overlap invariant block through it.
+    services: fixture.services.map((service) => ({ ...service, bufferMin: service.bufferMin ?? 0 })),
     slots: buildSlots(fixture, variant.dropSlotsOn, variant.slotServiceIds),
     nextOpenDate: variant.nextOpenDate,
     reasonIfNoneToday: variant.reasonIfNoneToday,

@@ -1,0 +1,43 @@
+# S12 (plan F10): barge-in. The caller asks if the shop is open; the agent
+# starts "let me check" and calls a read tool whose result is slow. 1.5 s
+# into that line the caller talks over the agent. The model streams audio
+# faster than real time, so Twilio still holds seconds of the interrupted
+# line: the gateway must send Twilio `clear` so the caller stops hearing it,
+# the tool result that lands while the caller is talking must not start an
+# answer of its own, and the barge-in gets exactly one answer.
+id: s12-barge-in
+plan: S12
+title: Barge-in while the agent is talking
+tags: [audio, flow:barge-in, template:barbershop]
+lang: en
+windowMs: 60000
+jitterMs: 23
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, are you still open right now?"
+  - waitAgentPlaying: 1500
+  - say: "Actually, can I just book a fade for Friday at nine?"
+  - waitAgentIdle: 800
+  - hangup: true
+agent:
+  replies:
+    - say: "Sure, let me check the time at the shop for you, one second."
+      tool: { name: get_current_tenant_time }
+      afterTool: "Yes, we're open until six today."
+    - say: "Of course. Friday at nine for a fade. Can I get your first name?"
+db:
+  # The lookup is slow (its tool-execution log write takes 2.5 s), so its
+  # result comes back while the caller is still talking over the agent.
+  slow:
+    - { match: "INSERT INTO tool_invocations", latencyMs: 2500 }
+expect:
+  utterances: 2
+  endedBy: caller
+  bargeIn: { clearWithinMs: 300, staleAudioMs: 0, answers: 1 }
+  lateToolResultDropped: true
+  bookings: 0
+# No barge-in handling on the gateway today: no `clear` is sent (the caller
+# keeps hearing ~3 s of the old line) and the late tool result's
+# response.create starts a second answer while the caller is talking.
+expectedFail: barge-in-runtime-gap
+pinned: [barge_in.clear, barge_in.stale_audio, barge_in.answers, barge_in.late_tool_result]

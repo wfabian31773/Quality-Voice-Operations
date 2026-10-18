@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { FakeToolProvider, FIND_LIMIT, formatLocalHm, localDate, resetFakeTokens, slotStartMatches } from './fakeToolProvider';
+import { ShopFixtureStore } from '../../tests/quality/fixtures/shopFixtures';
+import {
+  FakeToolProvider,
+  FIND_LIMIT,
+  formatLocalHm,
+  localDate,
+  resetFakeTokens,
+  slotStartMatches,
+  type CatalogService,
+} from './fakeToolProvider';
 import { buildFixture, snapshotOf } from './seed';
 import type { ToolCallContext } from './types';
 
@@ -359,6 +368,64 @@ describe('FakeToolProvider', () => {
     state.bookings[0].start = '2026-10-20T14:45:00-04:00';
     const adjacent = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
     expect(adjacent.ok).toBe(true);
+  });
+
+  describe('service buffers block like the availability engine (end + largest buffer, both sides)', () => {
+    const at = (hm: string) => `2026-10-22T${hm}:00-04:00`;
+    // Marco's 10:00-10:30 men's cut with a 15-minute buffer blocks him through 10:45.
+    const bufferedShop = (bufferMin = 15) => {
+      resetFakeTokens();
+      const state = buildFixture('barbershop-marco');
+      state.services = state.services.map((service) => (service.id === 'mens-cut' ? { ...service, bufferMin } : service));
+      state.slots = ['09:15', '09:30', '10:30', '10:45'].map((hm) => ({ start: at(hm), end: at(hm), staffId: 'marco' }));
+      state.bookings.push(
+        { id: 'bk_ten', status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut'], start: at('10:00'), startLocal: '10:00', customerName: 'Ana', customerPhone: '+15555550188' },
+        { id: 'bk_fri', status: 'confirmed', staffId: 'marco', staffName: 'Marco', serviceIds: ['mens-cut'], start: '2026-10-23T15:00:00-04:00', startLocal: '15:00', customerName: 'Ana', customerPhone: '+15555550188' },
+      );
+      return { state, tools: new FakeToolProvider(state, ['scheduling']) };
+    };
+    const staffCtx = (): ToolCallContext => ({ ...ctx(), actor: { type: 'user', id: 'u1' } });
+    const starts = (result: Awaited<ReturnType<FakeToolProvider['invoke']>>) =>
+      result.ok ? (result.data as { slots: Array<{ start: string }> }).slots.map((slot) => formatLocalHm(slot.start, 'America/New_York')) : null;
+    const book = (tools: FakeToolProvider, hm: string) =>
+      tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: at(hm), customer: LUIS }, ctx());
+    const move = (tools: FakeToolProvider, hm: string) =>
+      tools.invoke('scheduling.reschedule.prepare', { bookingId: 'bk_fri', newStart: at(hm) }, staffCtx());
+
+    it('check_availability: 10:30 is not offered, 10:45 is; 9:30 is not (its own buffer runs to 10:15)', async () => {
+      const { tools } = bufferedShop();
+      const availability = await tools.invoke('scheduling.check_availability', { serviceIds: ['mens-cut'], staffId: 'marco', date: '2026-10-22' }, ctx());
+      expect(starts(availability)).toEqual(['09:15', '10:45']);
+      // With no buffer the back-to-back starts are free again.
+      const unbuffered = await bufferedShop(0).tools.invoke('scheduling.check_availability', { serviceIds: ['mens-cut'], staffId: 'marco', date: '2026-10-22' }, ctx());
+      expect(starts(unbuffered)).toEqual(['09:15', '09:30', '10:30', '10:45']);
+    });
+
+    it('book.prepare: 10:30 is CONFLICT, 10:45 is held; the read-back end stays duration only', async () => {
+      expect((await book(bufferedShop().tools, '10:30')).ok ? null : 'CONFLICT').toBe('CONFLICT');
+      expect((await book(bufferedShop().tools, '09:30')).ok ? null : 'CONFLICT').toBe('CONFLICT');
+      expect((await book(bufferedShop().tools, '10:45')).ok).toBe(true);
+      const found = await bufferedShop().tools.invoke('scheduling.find_bookings', { phone: '+15555550188' }, staffCtx());
+      expect(found.ok && (found.data as { bookings: Array<{ bookingId: string; end: string }> }).bookings[0]).toMatchObject({
+        bookingId: 'bk_ten',
+        end: new Date(at('10:30')).toISOString(),
+      });
+    });
+
+    it('reschedule.prepare: 10:30 is CONFLICT (no buffered alternative offered), 10:45 is held', async () => {
+      const refused = await move(bufferedShop().tools, '10:30');
+      expect(refused.ok ? null : refused.error).toMatchObject({ code: 'CONFLICT' });
+      const alternatives = refused.ok ? [] : (refused.error.alternatives as Array<{ start: string }>);
+      expect(alternatives.map((slot) => formatLocalHm(slot.start, 'America/New_York'))).toEqual(['09:15', '10:45']);
+      const moved = await move(bufferedShop().tools, '10:45');
+      expect(moved.ok && moved.data).toMatchObject({ start: at('10:45'), end: new Date(at('11:15')).toISOString() });
+    });
+
+    it('the shop fixtures carry each service buffer into the state', () => {
+      const services = new ShopFixtureStore('barbershop-basic').state.services as CatalogService[];
+      expect(services.length).toBeGreaterThan(0);
+      expect(services.every((service) => typeof service.bufferMin === 'number')).toBe(true);
+    });
   });
 
   describe('tickets.message@1 and the hangup floor', () => {

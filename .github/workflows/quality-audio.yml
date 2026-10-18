@@ -1,0 +1,56 @@
+name: Quality audio
+
+# RT-11: synthetic caller audio (offline synthesizer, 8 kHz μ-law) through the
+# real voice transport path (routes/stream.ts → openaiSession →
+# XaiRealtimeTransport) against a scripted fake xAI server, graded on end
+# state, pass^5. No secrets, no network beyond npm ci, no real TTS or model.
+# The whole pack runs in a few seconds, so it also runs on pull requests.
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-audio-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-audio:
+    name: quality:audio (synthetic caller audio, pass^5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies (root)
+        run: bash scripts/ci-npm-ci.sh
+
+      - name: Audio harness tests (pass^5 + mutation proof)
+        run: npx vitest run tests/quality/audio
+
+      # Gate G1 (audio): exits 1 if a core audio flow is below 5/5, or a
+      # known-red scenario stops failing exactly its pinned checks.
+      - name: Audio pack pass^5 gate
+        run: npx tsx scripts/quality/audio/run.ts --pass-k=5 --out=.ci-out/quality-audio-pass5.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-audio-report
+          path: .ci-out/quality-audio-pass5.json
+          if-no-files-found: ignore
+          retention-days: 14

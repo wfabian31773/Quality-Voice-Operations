@@ -1,7 +1,7 @@
 // The real floor's "said more than their own name" rule (pure, no imports), so
 // the sim's floor decision can't drift from production's.
 import { saidMoreThanTheirOwnName } from '../../platform/actions/tickets/floorHeuristics';
-import { isReleasedHold, type TenantState } from './seed';
+import { isReleasedHold, type Service, type TenantState } from './seed';
 import type {
   AgentToolSchema,
   BookingRow,
@@ -141,6 +141,29 @@ function asString(value: unknown): string | undefined {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string');
+}
+
+/** A catalog service; `bufferMin` (services.buffer_minutes) comes from the shop fixtures and defaults to 0. */
+export type CatalogService = Service & { bufferMin?: number };
+
+/**
+ * How the availability engine sizes a booking of `serviceIds` at `start`
+ * (platform/actions/scheduling/availability/engine.ts, slots.ts resolveSlot):
+ * `endMs` = start + the durations (end_time, what is read back) and
+ * `blockedUntilMs` = end + the largest buffer of the services
+ * (bookings.blocked_until). Overlap is checked on [start, blockedUntil).
+ */
+export function bookingSpan(
+  services: CatalogService[],
+  serviceIds: string[],
+  start: string,
+): { startMs: number; endMs: number; blockedUntilMs: number } {
+  const picked = serviceIds.map((id) => services.find((service) => service.id === id));
+  const durationMin = picked.reduce((total, service) => total + (service?.durationMin ?? 0), 0);
+  const bufferMin = picked.reduce((max, service) => Math.max(max, service?.bufferMin ?? 0), 0);
+  const startMs = Date.parse(start);
+  const endMs = startMs + durationMin * 60_000;
+  return { startMs, endMs, blockedUntilMs: endMs + bufferMin * 60_000 };
 }
 
 function staffPerforms(state: TenantState, staffId: string, serviceIds: string[]): boolean {
@@ -339,7 +362,8 @@ export class FakeToolProvider implements ToolProvider {
         if (localDate(slot.start, ctx.tenantTimezone) !== date) return false;
         if (staffId !== 'any' && slot.staffId !== staffId) return false;
         if (!staffPerforms(this.state, slot.staffId, serviceIds)) return false;
-        return this.isFree(slot.staffId, slot.start, serviceIds.length > 0 ? this.endFor(serviceIds, slot.start) : slot.end);
+        // Without services the fake can't size the request's buffer; the seeded slot end stands in.
+        return this.isFree(slot.staffId, slot.start, serviceIds.length > 0 ? this.blockedUntilFor(serviceIds, slot.start) : Date.parse(slot.end));
       })
       .map((slot) => {
         const staff = this.state.staff.find((member) => member.id === slot.staffId);
@@ -406,7 +430,7 @@ export class FakeToolProvider implements ToolProvider {
       });
     }
     const staff = this.state.staff.find((member) => member.id === slot.staffId);
-    if (!this.isFree(slot.staffId, slot.start, this.endFor(serviceIds, slot.start))) {
+    if (!this.isFree(slot.staffId, slot.start, this.blockedUntilFor(serviceIds, slot.start))) {
       return fail('CONFLICT', 'that time is no longer available');
     }
     const services = this.state.services.filter((service) => serviceIds.includes(service.id));
@@ -444,16 +468,14 @@ export class FakeToolProvider implements ToolProvider {
     return serviceIds.map((id) => this.state.services.find((service) => service.id === id)?.name ?? id);
   }
 
-  private endFor(serviceIds: string[], start: string): string {
-    const minutes = serviceIds.reduce(
-      (total, id) => total + (this.state.services.find((service) => service.id === id)?.durationMin ?? 0),
-      0,
-    );
-    return new Date(Date.parse(start) + minutes * 60_000).toISOString();
+  /** The end that is read back (end_time): durations only, no buffer. */
+  private endOf(booking: BookingRow): string {
+    return new Date(bookingSpan(this.state.services, booking.serviceIds, booking.start).endMs).toISOString();
   }
 
-  private endOf(booking: BookingRow): string {
-    return this.endFor(booking.serviceIds, booking.start);
+  /** Where a booking of `serviceIds` at `start` stops blocking its staff member (blocked_until). */
+  private blockedUntilFor(serviceIds: string[], start: string): number {
+    return bookingSpan(this.state.services, serviceIds, start).blockedUntilMs;
   }
 
   /** Counts one miss of a contract slot in this call; returns the call's count (1 = the first ask). */
@@ -578,20 +600,20 @@ export class FakeToolProvider implements ToolProvider {
   }
 
   /**
-   * No held or confirmed booking of this staff member overlaps [start, end):
-   * start < otherEnd && otherStart < end, or starts at the same instant (a
-   * row whose services the fake can't size still blocks its own start).
-   * check_availability, book.prepare and reschedule.prepare all use it. The
-   * booking being rescheduled still occupies its own time until the commit,
-   * like the real action.
+   * No held or confirmed booking of this staff member overlaps [start,
+   * blockedUntil), buffers included on both sides like the engine:
+   * start < otherBlockedUntil && otherStart < blockedUntil, or starts at the
+   * same instant (a row whose services the fake can't size still blocks its
+   * own start). check_availability, book.prepare and reschedule.prepare all
+   * use it. The booking being rescheduled still occupies its own time until
+   * the commit, like the real action.
    */
-  private isFree(staffId: string, start: string, end: string): boolean {
+  private isFree(staffId: string, start: string, blockedUntilMs: number): boolean {
     const startMs = Date.parse(start);
-    const endMs = Date.parse(end);
     return !this.state.bookings.some((row) => {
       if (row.staffId !== staffId || (row.status !== 'held' && row.status !== 'confirmed')) return false;
       const rowStart = Date.parse(row.start);
-      return rowStart === startMs || (startMs < Date.parse(this.endOf(row)) && rowStart < endMs);
+      return rowStart === startMs || (startMs < this.blockedUntilFor(row.serviceIds, row.start) && rowStart < blockedUntilMs);
     });
   }
 
@@ -608,7 +630,7 @@ export class FakeToolProvider implements ToolProvider {
     const fits = (slot: { staffId: string }) =>
       (staffPref === 'any' || slot.staffId === staffPref) && staffPerforms(this.state, slot.staffId, original.serviceIds);
     const free = (candidate: { staffId: string; start: string }) =>
-      this.isFree(candidate.staffId, candidate.start, this.endFor(original.serviceIds, candidate.start));
+      this.isFree(candidate.staffId, candidate.start, this.blockedUntilFor(original.serviceIds, candidate.start));
     const slot = this.state.slots.find((candidate) => fits(candidate) && Date.parse(candidate.start) === Date.parse(newStart));
     if (!slot || !free(slot)) {
       const day = localDate(newStart, tz);
