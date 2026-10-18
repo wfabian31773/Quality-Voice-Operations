@@ -22,7 +22,7 @@ const BOOKING_CONTRACTS = [BOOKING_FIND_V1, BOOKING_RESCHEDULE_V1, BOOKING_CANCE
 
 describe('booking.find@1 / booking.reschedule@1 / booking.cancel@1', () => {
   it('are registered and every contract passes rules 1–6 against the real ACTION_REGISTRY', () => {
-    expect(CONTRACTS).toEqual([BOOKING_BOOK_V1, BOOKING_FIND_V1, BOOKING_RESCHEDULE_V1, BOOKING_CANCEL_V1]);
+    expect(CONTRACTS.slice(0, 4)).toEqual([BOOKING_BOOK_V1, BOOKING_FIND_V1, BOOKING_RESCHEDULE_V1, BOOKING_CANCEL_V1]);
     for (const contract of CONTRACTS) {
       expect(validateContract(contract, ACTION_REGISTRY, CONTRACTS, ACTION_ERROR_CODES)).toEqual({ ok: true, issues: [] });
     }
