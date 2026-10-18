@@ -47,7 +47,7 @@ npm run db:seed       # Seed demo data
 
 ### RLS application role (`qvo_app`)
 
-The app must **not** connect as `postgres`. That role has `rolbypassrls=true`, so every tenant RLS policy is ignored and the daily isolation suite (`runAllIsolationTests`) reports false `Cross-tenant read blocked` failures (foreign rows visible on `agents`, `audit_logs`, etc.).
+The app must **not** connect as `postgres`. That role has `rolbypassrls=true`, so every tenant RLS policy is ignored and the daily isolation suite (`runAllIsolationTests`) fails `Connected role subject to RLS`. That is the only expected failure: the `Cross-tenant read blocked on <table>` probes run as the NOBYPASSRLS `platform_rls_tester` role while the pool bypasses RLS, so they pass unless a policy really leaks. A probe that gets `permission denied` (a missing grant) fails with `Probe could not read <table>`.
 
 | Env var | Role after rollout |
 |---------|--------------------|

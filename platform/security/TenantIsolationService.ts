@@ -85,6 +85,20 @@ export const CROSS_TENANT_READ_TABLES = [
 const RLS_TESTER_ROLE = 'platform_rls_tester';
 
 /**
+ * A missing grant (SQLSTATE 42501). RLS filters rows and never raises on
+ * SELECT, so this means the probe could not read the table at all: the check
+ * must fail, never count as "blocked".
+ */
+function isPermissionDenied(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === '42501' || String(err).includes('permission denied');
+}
+
+function probeCouldNotRead(table: string, asWhom: string, err: unknown): string {
+  return `Probe could not read ${table} as ${asWhom} (permission denied, missing grant), ` +
+    `so cross-tenant reads on it were not checked: ${String(err)}`;
+}
+
+/**
  * Fail loudly when the restricted pool is still a BYPASSRLS / superuser
  * role. Cross-tenant COUNT(*) checks are meaningless on that connection.
  */
@@ -235,10 +249,15 @@ export async function verifyCrossTenantBlocked(tenantIdA: string, tenantIdB: str
       });
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
+      const testName = `Cross-tenant blocked on ${table} (${tenantIdA} -> ${tenantIdB})`;
+      if (isPermissionDenied(err)) {
+        results.push({ testName, passed: false, details: probeCouldNotRead(table, 'the connected role', err) });
+        continue;
+      }
       const errStr = String(err);
-      const isRlsBlock = errStr.includes('row_security') || errStr.includes('policy') || errStr.includes('permission denied');
+      const isRlsBlock = errStr.includes('row_security') || errStr.includes('policy');
       results.push({
-        testName: `Cross-tenant blocked on ${table} (${tenantIdA} -> ${tenantIdB})`,
+        testName,
         passed: isRlsBlock,
         details: isRlsBlock ? `Query blocked by RLS policy: ${errStr}` : `Unexpected error (failing safe): ${errStr}`,
       });
@@ -264,7 +283,8 @@ async function countOtherTenantRows(client: PoolClient, table: string, tenantId:
  * RLS_TESTER_ROLE inside a savepoint. If the switch (or the COUNT as the
  * tester) fails, it rolls back to the savepoint and counts as the connected
  * role, as before, and says so in `details`. A role that does not bypass RLS
- * (qvo_app) is tested as itself.
+ * (qvo_app) is tested as itself. A permission-denied COUNT (as either role)
+ * fails the check: the probe could not read the table, so nothing was proven.
  */
 async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<IsolationTestResult[]> {
   const results: IsolationTestResult[] = [];
@@ -272,6 +292,8 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
 
   for (const table of CROSS_TENANT_READ_TABLES) {
     const client = await pool.connect();
+    let connectedRole = 'unknown';
+    let evaluatedAs = connectedRole;
     try {
       await client.query('BEGIN');
       await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
@@ -281,12 +303,13 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
            FROM pg_roles
           WHERE rolname = CURRENT_USER`,
       );
-      const connectedRole = roleRows[0]?.rolname ?? 'unknown';
+      connectedRole = roleRows[0]?.rolname ?? 'unknown';
       // Unresolvable role: try the switch anyway (it can only make the probe stricter).
       const connectedBypassesRls = roleRows[0]?.bypasses_rls ?? true;
 
-      let evaluatedAs = connectedRole;
+      evaluatedAs = connectedRole;
       let fallbackReason: string | null = null;
+      let testerDenied: string | null = null;
       if (connectedBypassesRls) {
         await client.query('SAVEPOINT rls_probe');
         try {
@@ -308,6 +331,8 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
         await client.query('ROLLBACK TO SAVEPOINT rls_probe');
         evaluatedAs = connectedRole;
         fallbackReason = `${RLS_TESTER_ROLE} could not read ${table}: ${String(err)}`;
+        // A missing grant must fail the check even if the recount sees nothing.
+        if (isPermissionDenied(err)) testerDenied = probeCouldNotRead(table, `"${RLS_TESTER_ROLE}"`, err);
         count = await countOtherTenantRows(client, table, tenantId);
       }
       await client.query('COMMIT');
@@ -325,18 +350,24 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
           ? `RLS correctly prevents cross-tenant reads (evaluated as ${evaluatedAs})`
           : `VIOLATION: ${count} rows from other tenants visible (evaluated as ${evaluatedAs})`;
       }
+      if (testerDenied) details = `${testerDenied}. ${details}`;
 
       results.push({
         testName: `Cross-tenant read blocked on ${table}`,
-        passed: count === 0,
+        passed: count === 0 && !testerDenied,
         details,
       });
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
+      const testName = `Cross-tenant read blocked on ${table}`;
+      if (isPermissionDenied(err)) {
+        results.push({ testName, passed: false, details: probeCouldNotRead(table, `"${evaluatedAs}"`, err) });
+        continue;
+      }
       const errStr = String(err);
-      const isRlsBlock = errStr.includes('row_security') || errStr.includes('policy') || errStr.includes('permission denied');
+      const isRlsBlock = errStr.includes('row_security') || errStr.includes('policy');
       results.push({
-        testName: `Cross-tenant read blocked on ${table}`,
+        testName,
         passed: isRlsBlock,
         details: isRlsBlock ? `Query blocked by RLS policy: ${errStr}` : `Unexpected error (failing safe): ${errStr}`,
       });

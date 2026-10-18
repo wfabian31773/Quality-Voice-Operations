@@ -78,7 +78,10 @@ Do not print or paste secret values into tickets, chat, or logs.
    `qvo-api` with the Render env). Every row passes, including
    `Connected role subject to RLS` (connected as `qvo_app`), every
    `FORCE RLS on <table>`, and `Cross-tenant read blocked on agents / audit_logs /
-   api_keys`. The daily scheduled run then logs `Scheduled tenant isolation tests
+   api_keys / bookings / tickets / action_proposals`. A cross-tenant row whose
+   details start `Probe could not read <table>` means the role got `permission
+   denied` (missing grant; see migrations 120 and 127). The check fails because
+   nothing was proven. The daily scheduled run then logs `Scheduled tenant isolation tests
    passed` and sends **no** `[QVO Security] … FAILED` email. The daily run comes
    from whichever host runs the `tenant-isolation` scheduler (`qvo-worker` once
    `SCHEDULERS_ENABLED` includes it; Replit until cutover — that host must also be
