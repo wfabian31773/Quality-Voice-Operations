@@ -12,8 +12,9 @@
  * scenario going red proves that guard is what keeps it green:
  * - S03: the never-heard ladder and silence counted from the mark echo;
  * - S12: the Twilio `clear` on barge-in, dropping the interrupted turn's
- *   late audio deltas, and no response of its own for a tool result the
- *   caller spoke over;
+ *   late audio deltas, no response of its own for a tool result the
+ *   caller spoke over, and voicing that result once if no caller reply
+ *   carried it (the backchannel);
  * - S17: VAD speech marking the caller heard.
  */
 import { exitWith, RESULT_MARKER, runAudioCli } from '../../../scripts/quality/audio/run';
@@ -63,6 +64,10 @@ export const MUTANTS: Record<string, (rt: RuntimeModules) => Restore> = {
   /** Every tool result starts its own response, even one the caller spoke over (XaiRealtimeTransport.callerSpokeSince). */
   's12-no-late-result-rule': (rt) => patch(transportProto(rt), 'callerSpokeSince', () => function () {
     return false;
+  }),
+  /** A withheld tool result is never voiced on its own, even when no caller reply carried it (XaiRealtimeTransport.voiceWithheldResult). */
+  's12-no-deferred-voicing': (rt) => patch(transportProto(rt), 'voiceWithheldResult', () => function () {
+    return undefined;
   }),
   /** "Heard" needs a transcript again: VAD speech never counts (SilenceWatchdog.isAudibleSpeech). */
   's17-no-vad-heard': (rt) => patch(watchdogProto(rt), 'isAudibleSpeech', () => function () {

@@ -49,6 +49,7 @@ node --import tsx tests/quality/audio/stress.ts [--keep-dynamic-imports] [--load
 | `s03-dialler-never-heard.yaml` | S03 | **core, 5/5**: `never_heard`, 3 prompts ~8 s after each mark echo, goodbye played in full, no floor ticket, nothing written |
 | `s12-barge-in.yaml` | S12 | **core, 5/5**: the caller talks over "let me check" while Twilio still holds ~3 s of it. One Twilio `clear` at the barge-in, nothing of that line audible after it, and the slow tool result that lands meanwhile is handed to the model without a response of its own: one answer, to the barge-in |
 | `s12-barge-in-mid-stream.yaml` | S12 | **core, 5/5**: the caller talks over a long answer the model is still streaming, and the provider's cancel lands 200 ms late (`agent.interruptLatencyMs`), so deltas keep coming after the `clear`. The gateway drops them: nothing of the interrupted turn is audible after the barge-in |
+| `s12-backchannel-during-tool.yaml` | S12 | **core, 5/5**: once "let me check" has played, the caller says "okay, thanks" while a slow lookup runs. Server VAD answers that before the tool output is in the conversation, and the result lands while that reply is in flight. It starts no second response then, and is voiced exactly once after that reply is done (`toolResultsVoiced: 1`, no provider error) |
 | `s17-audible-never-transcribed.yaml` | S17 | **core, 5/5**: VAD hears every utterance, the transcriber returns nothing. The caller is heard anyway (an utterance of at least 300 ms): one check at 15 s per pause, never cut, `caller_hangup`, the floor files nothing |
 
 A scenario the runtime can't pass yet can carry `expectedFail` + `pinned`, like the vertical1 pack. It is not `core`, and every run must fail on exactly the pinned checks. An unexpected pass or any other failure turns the gate red. When the runtime guard lands, drop `expectedFail`/`pinned` and tag it `core`. None is known red today.
@@ -61,5 +62,6 @@ A scenario the runtime can't pass yet can carry `expectedFail` + `pinned`, like 
 - silence counted from `response.done` instead of the mark echo → S03 0/5;
 - no Twilio `clear` on barge-in (`SilenceWatchdog.interruptAgentAudio`) → both S12 scenarios 0/5 on `barge_in.clear` + `barge_in.stale_audio`;
 - the interrupted turn's late deltas not dropped (`XaiRealtimeTransport.dropInterruptedAudio`) → S12 mid-stream 0/5 on `barge_in.stale_audio`;
-- a tool result the caller spoke over starts its own response (`XaiRealtimeTransport.callerSpokeSince`) → S12 0/5 on `barge_in.answers` + `barge_in.late_tool_result`;
+- a tool result the caller spoke over starts its own response (`XaiRealtimeTransport.callerSpokeSince`) → S12 0/5 on `barge_in.answers` + `barge_in.late_tool_result`, and S12 backchannel 0/5 on `tool_result.voiced` (its `response.create` hits the in-flight reply to "thanks" and the provider rejects it);
+- a withheld tool result is never voiced on its own (`XaiRealtimeTransport.voiceWithheldResult`) → S12 backchannel 0/5 on `tool_result.voiced`: the confirmation is never spoken;
 - "heard" needs a transcript again (`SilenceWatchdog.isAudibleSpeech`) → S17 0/5: never-heard prompts every 8 s, cut mid-pause, `never_heard`.

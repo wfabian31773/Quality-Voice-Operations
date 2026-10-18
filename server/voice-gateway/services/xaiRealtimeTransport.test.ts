@@ -1,7 +1,15 @@
 import { EventEmitter } from 'events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sockets: FakeSocket[] = [];
+const logged = vi.hoisted(() => [] as Array<{ message: string; context?: unknown }>);
+
+vi.mock('../../../platform/core/logger', () => {
+  const keep = (message: string, context?: unknown) => {
+    logged.push({ message, context });
+  };
+  return { createLogger: () => ({ debug: keep, info: keep, warn: keep, error: keep }) };
+});
 
 class FakeSocket extends EventEmitter {
   readyState = 1;
@@ -26,12 +34,14 @@ vi.mock('ws', () => ({
   },
 }));
 
-import { XaiRealtimeTransport } from './xaiRealtimeTransport';
+import { CALLER_REPLY_WAIT_MS, XaiRealtimeTransport } from './xaiRealtimeTransport';
+import { HEARD_SILENCE_CHECK_MS } from './silenceWatchdog';
 import { buildXaiSessionUpdate } from '../../../platform/agent-runtime/xaiSessionConfig';
 
 describe('XaiRealtimeTransport', () => {
   beforeEach(() => {
     sockets.length = 0;
+    logged.length = 0;
   });
 
   it('sends session.update on connect and plays function-call results back', async () => {
@@ -150,6 +160,23 @@ describe('XaiRealtimeTransport', () => {
       expect(sentTypes()).not.toContain('conversation.item.truncate');
     });
 
+    it('logs one line with the count when it drops interrupted deltas (counts only, no audio)', async () => {
+      await connected();
+      server({ type: 'response.created', response: { id: 'resp_1' } });
+      server({ type: 'input_audio_buffer.speech_started' });
+      server(delta(2));
+      server(delta(3));
+      server({ type: 'response.done', response: { id: 'resp_1', status: 'cancelled' } });
+      expect(logged.filter((l) => l.message.startsWith('Dropped interrupted'))).toEqual([]);
+      server({ type: 'response.created', response: { id: 'resp_2' } });
+      // A speech_started that dropped nothing logs nothing.
+      server({ type: 'input_audio_buffer.speech_started' });
+      server({ type: 'response.created', response: { id: 'resp_3' } });
+      expect(logged.filter((l) => l.message.startsWith('Dropped interrupted'))).toEqual([
+        { message: 'Dropped interrupted response audio after caller speech_started', context: { deltas: 2 } },
+      ]);
+    });
+
     it('speech with no response in flight drops nothing of the next response', async () => {
       const { audio } = await connected();
       server({ type: 'input_audio_buffer.speech_started' });
@@ -189,6 +216,170 @@ describe('XaiRealtimeTransport', () => {
       finish('{}');
       await vi.waitFor(() => expect(sentTypes()).toContain('response.create'));
       expect(sentTypes().filter((t) => t === 'conversation.item.create')).toHaveLength(1);
+    });
+
+    describe('a withheld tool result is voiced once nobody else will (no silence after a write)', () => {
+      const creates = () => sentTypes().filter((t) => t === 'response.create').length;
+      const outputs = () => sentTypes().filter((t) => t === 'conversation.item.create').length;
+      /** The tool handler's promise and the send after it: microtasks only, no timers. */
+      const flush = async () => {
+        for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      };
+
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      /** "Let me book that": the asking response makes a slow tool call and finishes; returns the tool's resolver. */
+      async function slowToolAsked(n = 1) {
+        const finishers: Array<(value: string) => void> = [];
+        const onFunctionCall = vi.fn(() => new Promise<string>((resolve) => { finishers.push(resolve); }));
+        const { transport } = await connected(onFunctionCall);
+        server({ type: 'response.created', response: { id: 'resp_ask' } });
+        for (let i = 1; i <= n; i += 1) {
+          server({ type: 'response.function_call_arguments.done', call_id: `call-${i}`, name: 'create_booking', arguments: '{}' });
+        }
+        server({ type: 'response.done', response: { id: 'resp_ask', status: 'completed' } });
+        await flush();
+        expect(onFunctionCall).toHaveBeenCalledTimes(n);
+        const finish = async (i = 0) => {
+          finishers[i](JSON.stringify({ success: true }));
+          await flush();
+        };
+        return { transport, finish };
+      }
+
+      it('CALLER_REPLY_WAIT_MS: room for the provider to create its reply, far inside the 15 s heard check', () => {
+        expect(CALLER_REPLY_WAIT_MS).toBe(1_500);
+        expect(CALLER_REPLY_WAIT_MS).toBeLessThan(HEARD_SILENCE_CHECK_MS / 5);
+      });
+
+      it('still speaking: withheld; the caller\'s reply created after it carries it, so nothing more is sent', async () => {
+        const { finish } = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' });
+        await finish();
+        expect([outputs(), creates()]).toEqual([1, 0]);
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(300);
+        server({ type: 'response.created', response: { id: 'resp_reply' } }); // sees the output item
+        server({ type: 'response.done', response: { id: 'resp_reply', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toBe(0);
+      });
+
+      it('still speaking, then that speech gets no reply (noise): voiced once, CALLER_REPLY_WAIT_MS after speech_stopped', async () => {
+        const { finish } = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' });
+        await finish();
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS - 1);
+        expect(creates()).toBe(0);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(creates()).toBe(1);
+        server({ type: 'response.created', response: { id: 'resp_voiced' } });
+        server({ type: 'response.done', response: { id: 'resp_voiced', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toBe(1);
+      });
+
+      it('backchannel: the reply to "thanks" is in flight when the result lands → voiced once, after that reply is done', async () => {
+        const { finish } = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' }); // "great, thanks"
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        server({ type: 'response.created', response: { id: 'resp_thanks' } }); // created before the output item
+        await finish();
+        expect([outputs(), creates()]).toEqual([1, 0]); // never two responses at once
+        server({ type: 'response.done', response: { id: 'resp_thanks', status: 'completed' } });
+        expect(creates()).toBe(1);
+        server({ type: 'response.created', response: { id: 'resp_voiced' } });
+        server({ type: 'response.done', response: { id: 'resp_voiced', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toBe(1);
+      });
+
+      it('backchannel: the reply to "thanks" is already done when the result lands → voiced once, at once', async () => {
+        const { finish } = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' });
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        server({ type: 'response.created', response: { id: 'resp_thanks' } });
+        server({ type: 'response.done', response: { id: 'resp_thanks', status: 'completed' } });
+        await finish();
+        expect([outputs(), creates()]).toEqual([1, 1]);
+        server({ type: 'response.created', response: { id: 'resp_voiced' } });
+        server({ type: 'response.done', response: { id: 'resp_voiced', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toBe(1);
+      });
+
+      it('noise: a speech_started/stopped with no caller response → voiced once after the wait', async () => {
+        const { finish } = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' }); // a cough
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(500);
+        await finish(); // lands during the wait: the reply could still come
+        expect(creates()).toBe(0);
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS - 500);
+        expect(creates()).toBe(1);
+      });
+
+      it('noise long before the result: voiced at once when it lands', async () => {
+        const { finish } = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' });
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS);
+        await finish();
+        expect(creates()).toBe(1);
+      });
+
+      it('several results withheld together: one response.create for the batch', async () => {
+        const { finish } = await slowToolAsked(2);
+        server({ type: 'input_audio_buffer.speech_started' });
+        await finish(0);
+        await finish(1);
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS);
+        expect([outputs(), creates()]).toEqual([2, 1]);
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toBe(1);
+      });
+
+      it('a normal result (no caller speech since its turn): one response.create at once, nothing deferred after it', async () => {
+        const { finish } = await slowToolAsked();
+        await finish();
+        expect([outputs(), creates()]).toEqual([1, 1]);
+        server({ type: 'response.created', response: { id: 'resp_after' } });
+        server({ type: 'response.done', response: { id: 'resp_after', status: 'completed' } });
+        server({ type: 'input_audio_buffer.speech_started' });
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toBe(1);
+      });
+
+      it('hang-up while a result is deferred (caller speaking, or in the noise wait): nothing more is sent', async () => {
+        const first = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' });
+        await first.finish();
+        const sentBefore = sockets[0].sent.length;
+        first.transport.close();
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(sockets[0].sent).toHaveLength(sentBefore);
+        expect(vi.getTimerCount()).toBe(0);
+
+        sockets.length = 0;
+        const second = await slowToolAsked();
+        server({ type: 'input_audio_buffer.speech_started' });
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await second.finish();
+        const sentBefore2 = sockets[0].sent.length;
+        second.transport.close();
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(sockets[0].sent).toHaveLength(sentBefore2);
+        expect(sentTypes().filter((t) => t === 'response.create')).toHaveLength(0);
+      });
     });
   });
 

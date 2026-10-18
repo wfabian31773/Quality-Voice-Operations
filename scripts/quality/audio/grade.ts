@@ -158,6 +158,21 @@ export function grade(scenario: AudioScenario, world: CallWorld): AudioCheckFail
   if (e.tickets !== undefined) check('db.tickets', obs.ticketWrites === e.tickets, 'ticket rows written', e.tickets, obs.ticketWrites);
   if (e.bookings !== undefined) check('db.bookings', obs.bookingWrites === e.bookings, 'booking rows written', e.bookings, obs.bookingWrites);
   if (e.toolCalls !== undefined) check('tools.calls', obs.toolCalls === e.toolCalls, 'tool calls the runtime ran', e.toolCalls, obs.toolCalls);
+  if (e.toolResultsVoiced !== undefined) {
+    const voiced = world.xai.responses.filter((r) => r.kind === 'after_tool').map((r) => {
+      const frames = world.twilio.frames.filter((f) => f.response === r.no && !f.cleared);
+      const heardMs = frames.reduce((sum, f) => sum + (f.end - f.start), 0);
+      const lastEnd = frames.reduce((max, f) => Math.max(max, f.end), 0);
+      return { no: r.no, heard: heardMs >= r.frames * FRAME_MS && lastEnd <= (obs.endedAt ?? Infinity), heardMs, createdAt: r.createdAt };
+    });
+    check(
+      'tool_result.voiced',
+      voiced.length === e.toolResultsVoiced && voiced.every((v) => v.heard),
+      'tool results spoken to the caller (a response of their own, heard in full)',
+      e.toolResultsVoiced,
+      voiced.map((v) => `resp_${v.no} at ${v.createdAt} ms, heard ${Math.round(v.heardMs)} ms${v.heard ? '' : ' (not in full)'}`),
+    );
+  }
 
   if (e.bargeIn || e.lateToolResultDropped !== undefined) failures.push(...gradeBargeIn(scenario, world));
   return failures;

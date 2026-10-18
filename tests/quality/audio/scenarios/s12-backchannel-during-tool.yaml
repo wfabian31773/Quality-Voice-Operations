@@ -1,0 +1,42 @@
+# S12 (plan F10, G5): a backchannel during a slow tool. The agent says "let
+# me check" and calls a tool whose result is slow. Once she has finished
+# talking, the caller says "okay, thanks" (not a barge-in: nothing is
+# playing). Server VAD answers that at once, before the tool output is in
+# the conversation, so that reply can't carry the result. The result lands
+# while that reply is still in flight; it must not start a second response
+# then, and must not be left unspoken either: the agent voices it exactly
+# once, after the reply to "thanks" is done.
+id: s12-backchannel-during-tool
+plan: S12
+title: Backchannel while a slow tool runs
+tags: [audio, core, flow:backchannel, template:barbershop]
+lang: en
+windowMs: 60000
+jitterMs: 17
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, are you open right now?"
+  - waitAgentIdle: 200
+  - say: "Okay, thanks."
+  # Quiet while the lookup finishes and its answer plays (a waitAgentIdle
+  # could end before the result lands: a pending tool is not agent audio).
+  - silence: 9000
+  - hangup: true
+agent:
+  replies:
+    - say: "Sure, let me check the time at the shop for you, one second."
+      tool: { name: get_current_tenant_time }
+      afterTool: "Yes, we're open until six today."
+    - say: "No problem at all, take your time, I'm still checking that for you."
+db:
+  # The lookup's tool-execution log write takes 6.5 s: its result lands
+  # while the reply to "okay, thanks" is being generated.
+  slow:
+    - { match: "INSERT INTO tool_invocations", latencyMs: 6500 }
+expect:
+  utterances: 2
+  outcome: caller_hangup
+  endedBy: caller
+  toolCalls: 1
+  toolResultsVoiced: 1
+  bookings: 0

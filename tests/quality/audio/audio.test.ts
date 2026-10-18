@@ -6,7 +6,8 @@
  * fake Twilio side → routes/stream.ts → openaiSession → XaiRealtimeTransport
  * → fake xAI server, on a virtual clock. Every scenario is core and passes
  * 5/5: S03 (dialler), S12 (barge-in: after the agent's turn has streamed, and
- * mid-stream) and S17 (audible, never transcribed). The mutation block proves
+ * mid-stream; a backchannel during a slow tool) and S17 (audible, never
+ * transcribed). The mutation block proves
  * each runtime guard is what keeps its scenario green: removing it (in
  * memory, in the harness process) turns the scenario red.
  */
@@ -21,8 +22,9 @@ const RED_FIXTURE_DIR = path.join(__dirname, 'fixtures/red');
 const S03 = 's03-dialler-never-heard';
 const S12 = 's12-barge-in';
 const S12_MID = 's12-barge-in-mid-stream';
+const S12_BACKCHANNEL = 's12-backchannel-during-tool';
 const S17 = 's17-audible-never-transcribed';
-const ALL = [S03, S12, S12_MID, S17];
+const ALL = [S03, S12, S12_MID, S12_BACKCHANNEL, S17];
 const TIMEOUT_MS = 60_000;
 
 const scenarios = loadAudioScenarioDir(SCENARIO_DIR);
@@ -34,8 +36,8 @@ function statuses(report: AudioGateReport, id: string): string[] {
 const five = (value: string) => Array.from({ length: 5 }, () => value);
 
 describe('audio pack: shape', () => {
-  it('covers plan S03, S12 (two interleavings), S17; ids match files; all core, none known red', () => {
-    expect(scenarios.map((s) => s.plan).sort()).toEqual(['S03', 'S12', 'S12', 'S17']);
+  it('covers plan S03, S12 (two barge-in interleavings, a backchannel), S17; ids match files; all core, none known red', () => {
+    expect(scenarios.map((s) => s.plan).sort()).toEqual(['S03', 'S12', 'S12', 'S12', 'S17']);
     expect(scenarios.map((s) => s.id).sort()).toEqual([...ALL].sort());
     for (const s of scenarios) {
       expect(s.tags).toEqual(expect.arrayContaining(['audio', 'core', 'template:barbershop']));
@@ -59,7 +61,7 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
     report = run.report;
   }, TIMEOUT_MS);
 
-  it('exits 0: S03, both S12 interleavings and S17 are core 5/5; nothing is known red', () => {
+  it('exits 0: S03, the three S12 flows and S17 are core 5/5; nothing is known red', () => {
     expect(run.code, run.stdout).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.k).toBe(5);
@@ -108,6 +110,25 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
       expect(obs.responses.map((r) => `${r.kind}:${r.status}`)).toEqual(['greeting:completed', 'reply:cancelled', 'reply:completed']);
       expect(obs.outcome).toBe('caller_hangup');
       expect(obs.toolCalls).toBe(0);
+    }
+  });
+
+  it('S12 backchannel: the result lands while the reply to "thanks" is in flight, then is voiced exactly once, after it', () => {
+    for (const obs of report.observations[S12_BACKCHANNEL]) {
+      expect(obs.utterances).toBe(2);
+      expect(obs.clears).toEqual([]);
+      expect(obs.responses.map((r) => `${r.kind}:${r.status}`)).toEqual(['greeting:completed', 'reply:completed', 'reply:completed', 'after_tool:completed']);
+      const [, , thanksReply, voiced] = obs.responses;
+      // The reply to "thanks" was created before the output item existed, so it couldn't carry it.
+      expect(obs.functionOutputs).toHaveLength(1);
+      expect(obs.functionOutputs[0].at).toBeGreaterThan(thanksReply.createdAt);
+      // The output was withheld while that reply was in flight: no response.create right after it...
+      expect(voiced.createdAt).toBeGreaterThan(obs.functionOutputs[0].at);
+      expect(obs.functionOutputs[0].followedBy).toBe(voiced.no);
+      // ...and exactly one, with no "active response" error from the provider.
+      expect(obs.clientEvents.filter((e) => e.endsWith(' response.create'))).toHaveLength(2); // greeting + the voiced result
+      expect(obs.providerErrors).toEqual([]);
+      expect(obs.heardChecks).toEqual([]);
     }
   });
 
@@ -201,6 +222,7 @@ describe('audio pack: mutation proof (each runtime guard removed in memory, no r
       's12-no-clear',
       's12-no-stale-audio-drop',
       's12-no-late-result-rule',
+      's12-no-deferred-voicing',
       's17-no-vad-heard',
     ];
     const run = await runHarness(MUTANTS, [`--mutants=${names.join(',')}`]);
@@ -248,9 +270,27 @@ describe('audio pack: mutation proof (each runtime guard removed in memory, no r
   it('a tool result the caller spoke over starts its own response → S12 0/5: a stale answer before the real one', () => {
     const { code, report } = get('s12-no-late-result-rule');
     expect(code).toBe(1);
-    onlyRed(report, { [S12]: 'failed:barge_in.answers+barge_in.late_tool_result' });
+    onlyRed(report, {
+      [S12]: 'failed:barge_in.answers+barge_in.late_tool_result',
+      // The pre-PR rule: the result's response.create hits the in-flight reply to "thanks" and is rejected.
+      [S12_BACKCHANNEL]: 'failed:tool_result.voiced',
+    });
     for (const obs of report.observations[S12]) {
       expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool', 'reply']);
+    }
+    for (const obs of report.observations[S12_BACKCHANNEL]) {
+      expect(obs.providerErrors).toEqual([expect.stringContaining('response.create while')]);
+    }
+  });
+
+  it('a withheld result never voiced on its own → S12 backchannel 0/5: the confirmation is never spoken; S12 unchanged', () => {
+    const { code, report } = get('s12-no-deferred-voicing');
+    expect(code).toBe(1);
+    onlyRed(report, { [S12_BACKCHANNEL]: 'failed:tool_result.voiced' });
+    for (const obs of report.observations[S12_BACKCHANNEL]) {
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'reply']);
+      expect(obs.functionOutputs).toHaveLength(1);
+      expect(obs.functionOutputs[0].followedBy).toBeUndefined();
     }
   });
 

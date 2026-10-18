@@ -68,6 +68,8 @@ export interface AudioExpect {
   };
   /** A tool result that comes back after the caller barged in starts no response of its own. */
   lateToolResultDropped?: boolean;
+  /** Tool results voiced: responses that speak a tool output (after_tool), each heard in full before the call ended. */
+  toolResultsVoiced?: number;
 }
 
 export interface AudioScenario {
@@ -103,6 +105,7 @@ const SCENARIO_KEYS = new Set([
 const EXPECT_KEYS = new Set([
   'utterances', 'outcome', 'endedBy', 'neverHeardPrompts', 'promptSpacingMs', 'goodbyePlayed', 'heardChecks',
   'heardCheckAfterMs', 'stillUpAtMs', 'floor', 'bookings', 'tickets', 'toolCalls', 'bargeIn', 'lateToolResultDropped',
+  'toolResultsVoiced',
 ]);
 const STEP_KEYS = ['say', 'silence', 'lineNoise', 'waitAgentPlaying', 'waitAgentIdle', 'hangup'];
 

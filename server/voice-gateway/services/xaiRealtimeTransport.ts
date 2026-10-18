@@ -12,6 +12,18 @@ import {
 
 const logger = createLogger('XAI_REALTIME');
 
+/**
+ * After the caller's speech_stopped, how long the provider's server VAD has
+ * to create its reply to that turn before the speech counts as noise (a
+ * cough, line noise, echo: no caller turn). A withheld tool result waits
+ * this long at most for a caller reply that could carry it, then is voiced
+ * on its own. Realtime replies are created within a few hundred ms of
+ * speech_stopped (the silence was already waited out); 1.5 s leaves room for
+ * a slow provider without a reply colliding with ours, and is still far
+ * inside the 15 s heard-caller check.
+ */
+export const CALLER_REPLY_WAIT_MS = 1_500;
+
 export interface TransportLayerAudio {
   data: ArrayBuffer;
 }
@@ -40,6 +52,23 @@ export class XaiRealtimeTransport extends EventEmitter {
   private responseSpeechSeq = 0;
   /** The caller spoke over the current response: drop its remaining audio until the next one. */
   private droppingInterruptedAudio = false;
+  /** Audio deltas dropped since the drop started (logged once when it ends). */
+  private droppedInterruptedDeltas = 0;
+  /** Server VAD: speech_started and no speech_stopped yet. */
+  private callerSpeaking = false;
+  /** speech_stopped, and the reply to that turn not created yet (at most CALLER_REPLY_WAIT_MS). */
+  private callerReplyPending = false;
+  private callerReplyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** response.created (or our response.create) and no response.done yet. */
+  private responseInFlight = false;
+  /** Our response.create for a withheld result, until its response.created. */
+  private voicingRequested = false;
+  /** function_call_output items sent so far. */
+  private outputSeq = 0;
+  /** outputSeq of the latest output sent without a response.create. */
+  private withheldOutputSeq = 0;
+  /** Outputs a response has been created after (it can use them), or that we voiced. */
+  private seenOutputSeq = 0;
   private readonly model: string;
   private sessionUpdate: XaiSessionUpdate;
   private onFunctionCall: XaiRealtimeTransportOptions['onFunctionCall'];
@@ -76,6 +105,7 @@ export class XaiRealtimeTransport extends EventEmitter {
 
       this.ws.on('close', () => {
         this.closed = true;
+        this.clearCallerReplyTimer();
         this.emit('close');
       });
     });
@@ -121,6 +151,8 @@ export class XaiRealtimeTransport extends EventEmitter {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.clearCallerReplyTimer();
+    this.endInterruptedAudioDrop();
     try {
       this.ws?.close();
     } catch {
@@ -139,24 +171,53 @@ export class XaiRealtimeTransport extends EventEmitter {
     const type = String(event.type ?? '');
 
     if (type === 'response.created') {
-      this.droppingInterruptedAudio = false;
+      this.endInterruptedAudioDrop();
       this.responseSpeechSeq = this.callerSpeechSeq;
+      this.responseInFlight = true;
+      this.callerReplyPending = false;
+      this.clearCallerReplyTimer();
+      // Every output sent so far is in the conversation this response sees,
+      // except after our own response.create (it saw those up to the request).
+      if (this.voicingRequested) this.voicingRequested = false;
+      else this.seenOutputSeq = this.outputSeq;
       this.emit('response.created', event);
     }
     if (type === 'response.done') this.emit('response.done', event);
     if (type === 'response.cancelled' || type === 'response.canceled') this.emit('response.cancelled', event);
+    if (type === 'response.done' || type === 'response.cancelled' || type === 'response.canceled') {
+      this.responseInFlight = false;
+      this.voiceWithheldResult();
+    }
     if (type === 'input_audio_buffer.speech_started') {
       this.callerSpeechSeq += 1;
+      this.callerSpeaking = true;
+      this.callerReplyPending = false;
+      this.clearCallerReplyTimer();
       this.dropInterruptedAudio();
+    }
+    if (type === 'input_audio_buffer.speech_stopped' && !this.closed) {
+      this.callerSpeaking = false;
+      this.callerReplyPending = true;
+      this.clearCallerReplyTimer();
+      this.callerReplyTimer = setTimeout(() => {
+        this.callerReplyTimer = null;
+        // No reply to that speech: noise, not a caller turn.
+        this.callerReplyPending = false;
+        this.voiceWithheldResult();
+      }, CALLER_REPLY_WAIT_MS);
     }
     // Server VAD: the caller is mid-utterance (the silence watchdog pauses).
     if (type === 'input_audio_buffer.speech_started' || type === 'input_audio_buffer.speech_stopped') this.emit(type, event);
 
     if (type === 'response.output_audio.delta' || type === 'response.audio.delta' || type === 'response.output_audio_transcript.delta') {
       const delta = typeof event.delta === 'string' ? event.delta : '';
-      if (type !== 'response.output_audio_transcript.delta' && delta && !this.droppingInterruptedAudio) {
-        const data = Buffer.from(delta, 'base64');
-        this.emit('audio', { data: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) } satisfies TransportLayerAudio);
+      if (type !== 'response.output_audio_transcript.delta' && delta) {
+        if (this.droppingInterruptedAudio) {
+          this.droppedInterruptedDeltas += 1;
+        } else {
+          const data = Buffer.from(delta, 'base64');
+          this.emit('audio', { data: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) } satisfies TransportLayerAudio);
+        }
       }
     }
 
@@ -214,18 +275,58 @@ export class XaiRealtimeTransport extends EventEmitter {
     this.droppingInterruptedAudio = true;
   }
 
+  /**
+   * One log line per drop with what it dropped, so a provider that did not
+   * cancel the response on speech_started (the rest of it silently lost, no
+   * Twilio `clear`) shows up on real calls. Counts only, no audio.
+   */
+  private endInterruptedAudioDrop(): void {
+    if (this.droppedInterruptedDeltas > 0) {
+      logger.info('Dropped interrupted response audio after caller speech_started', { deltas: this.droppedInterruptedDeltas });
+    }
+    this.droppingInterruptedAudio = false;
+    this.droppedInterruptedDeltas = 0;
+  }
+
+  private clearCallerReplyTimer(): void {
+    if (this.callerReplyTimer !== null) clearTimeout(this.callerReplyTimer);
+    this.callerReplyTimer = null;
+  }
+
   /** The caller started an utterance after the given point (a callerSpeechSeq). */
   private callerSpokeSince(speechSeq: number): boolean {
     return this.callerSpeechSeq !== speechSeq;
   }
 
   /**
+   * Voices a withheld tool result that no response has been created after:
+   * the caller's reply was already under way without it (a backchannel
+   * "thanks" during a slow write), or their speech got no reply at all
+   * (noise). Waits while that would double-answer: the caller is speaking,
+   * the reply to their turn is in flight or due (CALLER_REPLY_WAIT_MS), or
+   * any response is in flight. One response.create covers every output
+   * withheld so far; nothing after hangup.
+   */
+  private voiceWithheldResult(): void {
+    if (this.withheldOutputSeq <= this.seenOutputSeq) return;
+    if (this.callerSpeaking || this.callerReplyPending || this.responseInFlight || !this.isOpen()) return;
+    this.seenOutputSeq = this.withheldOutputSeq;
+    this.responseInFlight = true;
+    this.voicingRequested = true;
+    logger.info('Voicing a withheld tool result: no caller reply carried it');
+    this.sendEvent({ type: 'response.create' });
+  }
+
+  /**
    * Runs the tool and hands its output to the model. The output starts a
-   * response of its own only if the caller has not spoken since the turn
-   * that asked for it was created: once they talk over that turn, the answer
-   * to them comes from their own turn (server VAD), which can use the output
-   * item. Two answers, a stale one then the real one, is the barge-in race
-   * (plan F10, S12). The tool handler (invariants, floor bookkeeping) runs
+   * response of its own at once only if the caller has not spoken since the
+   * turn that asked for it was created. Once they talk over that turn, the
+   * answer to them comes from their own turn (server VAD), which can use the
+   * output item: two answers, a stale one then the real one, is the barge-in
+   * race (plan F10, S12). If no response is created after the item (the
+   * caller's reply had already started, or their speech was noise), it is
+   * voiced once things are quiet (voiceWithheldResult), so a write is never
+   * left unspoken. The tool handler (invariants, floor bookkeeping) runs
    * either way.
    */
   private async completeFunctionCall(
@@ -256,8 +357,11 @@ export class XaiRealtimeTransport extends EventEmitter {
         output,
       },
     });
+    this.outputSeq += 1;
     if (this.callerSpokeSince(askedAtSpeechSeq)) {
       logger.info('Tool result added without a response: the caller spoke over the turn that asked for it', { tool: name });
+      this.withheldOutputSeq = this.outputSeq;
+      this.voiceWithheldResult();
       return;
     }
     this.sendEvent({ type: 'response.create' });
