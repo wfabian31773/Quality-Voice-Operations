@@ -8,7 +8,7 @@
 id: s12-barge-in
 plan: S12
 title: Barge-in while the agent is talking
-tags: [audio, flow:barge-in, template:barbershop]
+tags: [audio, core, flow:barge-in, template:barbershop]
 lang: en
 windowMs: 60000
 jitterMs: 23
@@ -36,8 +36,3 @@ expect:
   bargeIn: { clearWithinMs: 300, staleAudioMs: 0, answers: 1 }
   lateToolResultDropped: true
   bookings: 0
-# No barge-in handling on the gateway today: no `clear` is sent (the caller
-# keeps hearing ~3 s of the old line) and the late tool result's
-# response.create starts a second answer while the caller is talking.
-expectedFail: barge-in-runtime-gap
-pinned: [barge_in.clear, barge_in.stale_audio, barge_in.answers, barge_in.late_tool_result]

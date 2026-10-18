@@ -34,6 +34,12 @@ export class XaiRealtimeTransport extends EventEmitter {
   private pendingCalls = new Map<string, FunctionCallState>();
   private connectPromise: Promise<void> | null = null;
   private droppedAudioFrames = 0;
+  /** Server-VAD speech_started events so far (caller utterances). */
+  private callerSpeechSeq = 0;
+  /** callerSpeechSeq when the current response was created. */
+  private responseSpeechSeq = 0;
+  /** The caller spoke over the current response: drop its remaining audio until the next one. */
+  private droppingInterruptedAudio = false;
   private readonly model: string;
   private sessionUpdate: XaiSessionUpdate;
   private onFunctionCall: XaiRealtimeTransportOptions['onFunctionCall'];
@@ -132,15 +138,23 @@ export class XaiRealtimeTransport extends EventEmitter {
     }
     const type = String(event.type ?? '');
 
-    if (type === 'response.created') this.emit('response.created', event);
+    if (type === 'response.created') {
+      this.droppingInterruptedAudio = false;
+      this.responseSpeechSeq = this.callerSpeechSeq;
+      this.emit('response.created', event);
+    }
     if (type === 'response.done') this.emit('response.done', event);
     if (type === 'response.cancelled' || type === 'response.canceled') this.emit('response.cancelled', event);
+    if (type === 'input_audio_buffer.speech_started') {
+      this.callerSpeechSeq += 1;
+      this.dropInterruptedAudio();
+    }
     // Server VAD: the caller is mid-utterance (the silence watchdog pauses).
     if (type === 'input_audio_buffer.speech_started' || type === 'input_audio_buffer.speech_stopped') this.emit(type, event);
 
     if (type === 'response.output_audio.delta' || type === 'response.audio.delta' || type === 'response.output_audio_transcript.delta') {
       const delta = typeof event.delta === 'string' ? event.delta : '';
-      if (type !== 'response.output_audio_transcript.delta' && delta) {
+      if (type !== 'response.output_audio_transcript.delta' && delta && !this.droppingInterruptedAudio) {
         const data = Buffer.from(delta, 'base64');
         this.emit('audio', { data: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) } satisfies TransportLayerAudio);
       }
@@ -182,13 +196,44 @@ export class XaiRealtimeTransport extends EventEmitter {
       const name = String(event.name ?? this.pendingCalls.get(callId)?.name ?? '');
       const argumentText = String(event.arguments ?? this.pendingCalls.get(callId)?.arguments ?? '{}');
       this.pendingCalls.delete(callId);
-      this.completeFunctionCall(callId, name, argumentText).catch((err) => {
+      this.completeFunctionCall(callId, name, argumentText, this.responseSpeechSeq).catch((err) => {
         logger.error('xAI function call failed', { tool: name, error: String(err) });
       });
     }
   }
 
-  private async completeFunctionCall(callId: string, name: string, argumentText: string): Promise<void> {
+  /**
+   * Barge-in: the caller started speaking. With interrupt_response the
+   * provider cancels the response, but deltas it already produced can still
+   * arrive; drop them, so nothing of the interrupted turn is queued on Twilio
+   * after its `clear`. The next response.created ends the drop.
+   * (`conversation.item.truncate` to the played length is not sent: xAI's
+   * realtime API does not document it.)
+   */
+  private dropInterruptedAudio(): void {
+    this.droppingInterruptedAudio = true;
+  }
+
+  /** The caller started an utterance after the given point (a callerSpeechSeq). */
+  private callerSpokeSince(speechSeq: number): boolean {
+    return this.callerSpeechSeq !== speechSeq;
+  }
+
+  /**
+   * Runs the tool and hands its output to the model. The output starts a
+   * response of its own only if the caller has not spoken since the turn
+   * that asked for it was created: once they talk over that turn, the answer
+   * to them comes from their own turn (server VAD), which can use the output
+   * item. Two answers, a stale one then the real one, is the barge-in race
+   * (plan F10, S12). The tool handler (invariants, floor bookkeeping) runs
+   * either way.
+   */
+  private async completeFunctionCall(
+    callId: string,
+    name: string,
+    argumentText: string,
+    askedAtSpeechSeq = this.callerSpeechSeq,
+  ): Promise<void> {
     let args: Record<string, unknown> = {};
     try {
       args = argumentText ? JSON.parse(argumentText) as Record<string, unknown> : {};
@@ -211,6 +256,10 @@ export class XaiRealtimeTransport extends EventEmitter {
         output,
       },
     });
+    if (this.callerSpokeSince(askedAtSpeechSeq)) {
+      logger.info('Tool result added without a response: the caller spoke over the turn that asked for it', { tool: name });
+      return;
+    }
     this.sendEvent({ type: 'response.create' });
   }
 }

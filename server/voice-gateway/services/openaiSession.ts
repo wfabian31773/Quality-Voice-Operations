@@ -826,6 +826,13 @@ export interface RealtimeSessionResult {
    */
   agentPlaybackDone: (markName: string) => boolean;
   /**
+   * Barge-in: the caller started speaking (server VAD) while the agent's
+   * audio was being generated, playing or queued. The phone path sends
+   * Twilio `clear` so the caller stops hearing the interrupted turn. At most
+   * once per agent turn; the transport drops the rest of that turn's audio.
+   */
+  onBargeIn: (handler: () => void) => void;
+  /**
    * The hangup floor (tickets.file_floor), at most once per call. Bounded in
    * time and never rejects. The phone teardown calls it (phoneCallTeardown.ts).
    */
@@ -1066,10 +1073,23 @@ export async function createRealtimeSession(
   // reasoning mode. It owns the "are you still there?" prompt; the reasoning
   // gate is only asked for its shadow log line.
   const playbackConfirm: PlaybackConfirmMode = ctx.playbackConfirm ?? 'response_done';
+  // Barge-in: the phone path sends Twilio `clear` (routes/stream.ts).
+  const bargeInHandlers: Array<() => void> = [];
   const silenceWatchdog = new SilenceWatchdog({
     playbackConfirm,
+    vadSilenceDurationMs: MASTER_VOICE_AGENT_CONTRACT.session.turnDetection.silenceDurationMs,
     onPlaybackFallback: (counts) => {
       slog.info('silence_watchdog', { action: 'playback_echo_fallback', ...counts });
+    },
+    onBargeIn: () => {
+      slog.info('Caller barged in: stopping agent playback');
+      for (const handler of bargeInHandlers) {
+        try {
+          handler();
+        } catch (err) {
+          slog.warn('Barge-in handler failed', { error: String(err) });
+        }
+      }
     },
     say: (instruction) => {
       try {
@@ -1817,7 +1837,8 @@ export async function createRealtimeSession(
       responseInFlight = false;
       agentTurnEnded();
     });
-    // Server VAD: the caller is mid-utterance, so this is not silence.
+    // Server VAD: the caller is mid-utterance, so this is not silence; speech
+    // over agent audio is a barge-in, and a long enough utterance is heard.
     t.on('input_audio_buffer.speech_started', () => { silenceWatchdog.callerSpeechStarted(); });
     t.on('input_audio_buffer.speech_stopped', () => { silenceWatchdog.callerSpeechStopped(); });
   };
@@ -2032,6 +2053,7 @@ export async function createRealtimeSession(
     noteCallerText: () => silenceWatchdog.callerHeard(),
     onAgentAudioDone: (handler) => { agentAudioDoneHandlers.push(handler); },
     agentPlaybackDone,
+    onBargeIn: (handler) => { bargeInHandlers.push(handler); },
     evaluateFloor: () => invariants.evaluateFloor(),
     costTracker,
     routedModel: costTracker.activeModel,

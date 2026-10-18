@@ -1,0 +1,32 @@
+# S12 (plan F10), second interleaving: the caller talks over a long answer
+# while the model is still streaming it, and the provider's cancel
+# (interrupt_response) lands 200 ms after speech_started, so audio deltas of
+# the interrupted turn keep arriving after the Twilio `clear`. The gateway
+# must clear Twilio and drop those deltas: none of the interrupted turn is
+# audible after the barge-in, and the barge-in gets exactly one answer.
+id: s12-barge-in-mid-stream
+plan: S12
+title: Barge-in while the model is still streaming the answer
+tags: [audio, core, flow:barge-in-mid-stream, template:barbershop]
+lang: en
+windowMs: 60000
+jitterMs: 31
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, what are your hours this week?"
+  - waitAgentPlaying: 400
+  - say: "Sorry, are you open on Saturday?"
+  - waitAgentIdle: 800
+  - hangup: true
+agent:
+  interruptLatencyMs: 200
+  replies:
+    - say: "We're open Monday through Friday from nine in the morning until six in the evening, Saturday from ten in the morning until four in the afternoon, and we're closed on Sundays, but you can always leave a message and the team will call you back."
+    - say: "Yes, we're open Saturday from ten until four."
+expect:
+  utterances: 2
+  outcome: caller_hangup
+  endedBy: caller
+  bargeIn: { clearWithinMs: 300, staleAudioMs: 0, answers: 1 }
+  toolCalls: 0
+  bookings: 0

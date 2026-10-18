@@ -4,11 +4,11 @@
  * The harness runs in a child process the way production loads code
  * (`node --import tsx`, CJS; see spawn.ts and scripts/quality/audio/edges.ts):
  * fake Twilio side → routes/stream.ts → openaiSession → XaiRealtimeTransport
- * → fake xAI server, on a virtual clock. On today's runtime S03 passes 5/5;
- * S12 (barge-in) and S17 (audible, never transcribed) are known red, pinned
- * to the exact checks the missing guards fail. The mutation block proves each
- * check is live: breaking a guard turns S03 red, and emulating the missing
- * guards (in memory, in this test process) turns S12/S17 green.
+ * → fake xAI server, on a virtual clock. Every scenario is core and passes
+ * 5/5: S03 (dialler), S12 (barge-in: after the agent's turn has streamed, and
+ * mid-stream) and S17 (audible, never transcribed). The mutation block proves
+ * each runtime guard is what keeps its scenario green: removing it (in
+ * memory, in the harness process) turns the scenario red.
  */
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -20,7 +20,9 @@ const SCENARIO_DIR = path.join(__dirname, 'scenarios');
 const RED_FIXTURE_DIR = path.join(__dirname, 'fixtures/red');
 const S03 = 's03-dialler-never-heard';
 const S12 = 's12-barge-in';
+const S12_MID = 's12-barge-in-mid-stream';
 const S17 = 's17-audible-never-transcribed';
+const ALL = [S03, S12, S12_MID, S17];
 const TIMEOUT_MS = 60_000;
 
 const scenarios = loadAudioScenarioDir(SCENARIO_DIR);
@@ -32,12 +34,14 @@ function statuses(report: AudioGateReport, id: string): string[] {
 const five = (value: string) => Array.from({ length: 5 }, () => value);
 
 describe('audio pack: shape', () => {
-  it('covers plan S03, S12, S17; ids match files; core iff not known red', () => {
-    expect(scenarios.map((s) => s.plan).sort()).toEqual(['S03', 'S12', 'S17']);
+  it('covers plan S03, S12 (two interleavings), S17; ids match files; all core, none known red', () => {
+    expect(scenarios.map((s) => s.plan).sort()).toEqual(['S03', 'S12', 'S12', 'S17']);
+    expect(scenarios.map((s) => s.id).sort()).toEqual([...ALL].sort());
     for (const s of scenarios) {
-      expect(s.tags).toEqual(expect.arrayContaining(['audio', 'template:barbershop']));
+      expect(s.tags).toEqual(expect.arrayContaining(['audio', 'core', 'template:barbershop']));
       expect(s.tags.some((tag) => tag.startsWith('flow:'))).toBe(true);
-      expect(s.tags.includes('core')).toBe(!s.expectedFail);
+      expect(s.expectedFail).toBeUndefined();
+      expect(s.pinned).toBeUndefined();
       // Graded on end state: every scenario pins the outcome/ended-by or the barge-in result, plus DB writes.
       expect(s.expect.bookings).toBe(0);
       expect(s.expect.outcome ?? s.expect.bargeIn).toBeDefined();
@@ -55,14 +59,16 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
     report = run.report;
   }, TIMEOUT_MS);
 
-  it('exits 0: S03 5/5, S12 and S17 red 5/5 on exactly their pinned checks', () => {
+  it('exits 0: S03, both S12 interleavings and S17 are core 5/5; nothing is known red', () => {
     expect(run.code, run.stdout).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.k).toBe(5);
     expect(report.passK.coreBelowK).toEqual([]);
-    expect(report.passK.flows.map((f) => `${f.id} ${f.passes}/${f.k}`)).toEqual([`${S03} 5/5`]);
-    expect(report.knownRed.map((red) => `${red.id} ${red.pinnedRuns}/${red.k}`)).toEqual([`${S12} 5/5`, `${S17} 5/5`]);
-    expect(run.stdout).toContain('ok   core 5/5  never-heard  s03-dialler-never-heard');
+    expect(report.passK.flows.map((f) => `${f.id} ${f.passes}/${f.k}`).sort()).toEqual(ALL.map((id) => `${id} 5/5`).sort());
+    expect(report.knownRed).toEqual([]);
+    for (const id of ALL) expect(statuses(report, id)).toEqual(five('passed:'));
+    for (const id of ALL) expect(run.stdout).toMatch(new RegExp(`ok {3}core 5/5 {2}\\S+ +${id}\\n`));
+    expect(run.stdout).not.toContain('known red');
   });
 
   it('S03: never heard → 3 prompts ~8 s after playback, a goodbye played in full, never_heard, no floor', () => {
@@ -80,37 +86,49 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
     }
   });
 
-  it('S12: the barge-in reached the provider VAD while the agent was playing; no clear, stale audio, a double answer', () => {
-    const red = report.knownRed.find((r) => r.id === S12);
-    expect(red?.pinned).toEqual(['barge_in.clear', 'barge_in.stale_audio', 'barge_in.answers', 'barge_in.late_tool_result']);
-    expect(statuses(report, S12)).toEqual(five('expected_fail:barge_in.answers+barge_in.clear+barge_in.late_tool_result+barge_in.stale_audio'));
+  it('S12: one Twilio clear at the barge-in, the late tool result is handed over without a response, one answer', () => {
     for (const obs of report.observations[S12]) {
       expect(obs.utterances).toBe(2);
-      expect(obs.clears).toEqual([]);
-      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool', 'reply']);
+      // Only the barge-in clears; the first caller turn starts after the greeting has played.
+      expect(obs.clears).toHaveLength(1);
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'reply']);
+      // The slow lookup still ran and its output reached the model, after the caller started talking.
+      expect(obs.functionOutputs).toHaveLength(1);
+      expect(obs.functionOutputs[0].followedBy).toBeUndefined();
+      expect(obs.functionOutputs[0].at).toBeGreaterThan(obs.clears[0]);
+      expect(obs.clientEvents.filter((e) => e.endsWith(' conversation.item.create'))).toHaveLength(1);
       expect(obs.bookingWrites).toBe(0);
     }
-    expect(red?.example).toMatch(/interrupted turn \(response 2\) still audible after the barge-in \(ms\)\n\s+expected: "<= 0"\n\s+actual:\s+\d{4}/);
   });
 
-  it('S17: audible but never transcribed is treated as never heard today: prompted at 8 s and cut', () => {
-    expect(statuses(report, S17)).toEqual(
-      five('expected_fail:call.not_cut+ended_by+ladder.heard_checks+ladder.never_heard_prompts+outcome+vad.utterances'),
-    );
+  it('S12 mid-stream: the interrupted answer is cancelled, its late deltas dropped, one clear, one answer', () => {
+    for (const obs of report.observations[S12_MID]) {
+      expect(obs.utterances).toBe(2);
+      expect(obs.clears).toHaveLength(1);
+      expect(obs.responses.map((r) => `${r.kind}:${r.status}`)).toEqual(['greeting:completed', 'reply:cancelled', 'reply:completed']);
+      expect(obs.outcome).toBe('caller_hangup');
+      expect(obs.toolCalls).toBe(0);
+    }
+  });
+
+  it('S17: an audible caller with no transcript gets the heard ladder: 2 checks at 15 s, never cut, caller_hangup, floor files nothing', () => {
     for (const obs of report.observations[S17]) {
-      expect(obs.outcome).toBe('never_heard');
-      expect(obs.neverHeardPrompts).toHaveLength(3);
-      expect(obs.heardChecks).toEqual([]);
-      // Nothing invented: no tool call, no booking or ticket row, no floor ticket.
+      expect(obs.utterances).toBe(3);
+      expect(obs.outcome).toBe('caller_hangup');
+      expect(obs.endedBy).toBe('caller');
+      expect(obs.neverHeardPrompts).toEqual([]);
+      expect(obs.heardChecks).toHaveLength(2);
+      expect(obs.clears).toEqual([]);
+      // Nothing invented: no tool call, no booking or ticket row.
       expect(obs.toolCalls).toBe(0);
       expect(obs.ticketWrites + obs.bookingWrites).toBe(0);
-      // The floor's "heard" is transcript-based too, so it skips; with no caller words there is nothing to file anyway.
+      // The floor is unchanged: its "heard" is transcript-based, and with no caller words there is nothing to file.
       expect(obs.floor).toEqual(['never_heard']);
     }
   });
 
-  it('is deterministic: the same failure signature in every run (timing jitter included)', () => {
-    for (const id of [S03, S12, S17]) expect(new Set(statuses(report, id)).size).toBe(1);
+  it('is deterministic: the same status in every run (timing jitter included)', () => {
+    for (const id of ALL) expect(new Set(statuses(report, id)).size).toBe(1);
   });
 });
 
@@ -137,19 +155,24 @@ describe('audio pack: the same result on a loaded box and in any env', () => {
   it('stressed (slow loader thread, starved event loop, real I/O in the DB edge): pass^5 unchanged, every observation identical to idle', () => {
     expect(stressed.code, stressed.stdout).toBe(0);
     const [a, b] = [idle.report as AudioGateReport, stressed.report as AudioGateReport];
-    for (const id of [S03, S12, S17]) expect(statuses(b, id)).toEqual(statuses(a, id));
+    for (const id of ALL) expect(statuses(b, id)).toEqual(statuses(a, id));
     expect(b.observations).toEqual(a.observations);
   });
 
-  it('control: the same stress on the old harness (runtime import() left to the loader) reproduces the flake: no late-tool double answer, pinned mismatch', () => {
+  it('control: the same stress on the old harness (runtime import() left to the loader) reproduces the flake: the slow tool result never lands during the call', () => {
     const report = oldHarness.report as AudioGateReport;
     expect(oldHarness.code).toBe(1);
-    // Which keys go missing depends on how late the import lands (at 300 ms it was the orchestrator's exact
-    // [clear, stale_audio]); in every run the late tool result never answers.
-    expect(oldHarness.stdout).toContain('pinned mismatch: expected exactly [barge_in.clear, barge_in.stale_audio, barge_in.answers, barge_in.late_tool_result], got [');
-    for (const obs of report.observations[S12]) expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'reply']);
-    // S03 and S17 make no tool call, so they never hit the import: same as idle.
-    for (const id of [S03, S17]) expect(report.observations[id]).toEqual((idle.report as AudioGateReport).observations[id]);
+    // The 1 s loader delay pushes the tool result past the hangup, so S12 no longer exercises the late-result rule.
+    for (const run of report.runs[S12]) {
+      expect(run.status).toBe('failed');
+      expect(run.keys).toContain('barge_in.late_tool_result');
+    }
+    for (const obs of report.observations[S12]) {
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'reply']);
+      expect(obs.functionOutputs).toEqual([]);
+    }
+    // The other scenarios make no tool call, so they never hit the import: same as idle.
+    for (const id of [S03, S12_MID, S17]) expect(report.observations[id]).toEqual((idle.report as AudioGateReport).observations[id]);
   });
 
   it('a polluted env (TZ, CI, NODE_ENV, the test process env) gives the identical report: the harness clears its env first', () => {
@@ -168,18 +191,17 @@ describe('audio pack: the CLI exits non-zero when a core flow fails', () => {
   }, TIMEOUT_MS);
 });
 
-describe('audio pack: mutation proof (in-memory overrides, no runtime edit)', () => {
+describe('audio pack: mutation proof (each runtime guard removed in memory, no runtime edit)', () => {
   let reports: Map<string, { code: number; report: AudioGateReport }>;
 
   beforeAll(async () => {
     const names = [
       's03-ladder-skips-a-prompt',
       's03-silence-from-response-done',
-      's12-reference-fix',
-      's12-reference-fix-without-clear',
-      's12-reference-fix-without-late-result-drop',
-      's17-reference-fix',
-      'all-reference-fixes',
+      's12-no-clear',
+      's12-no-stale-audio-drop',
+      's12-no-late-result-rule',
+      's17-no-vad-heard',
     ];
     const run = await runHarness(MUTANTS, [`--mutants=${names.join(',')}`]);
     reports = new Map(run.reports.map((r) => [r.mutant, { code: r.code, report: r.report }]));
@@ -201,38 +223,46 @@ describe('audio pack: mutation proof (in-memory overrides, no runtime edit)', ()
     expect(statuses(report, S03)).toEqual(five('failed:ladder.prompt_spacing'));
   });
 
-  it('S12 passes 5/5 with a reference barge-in guard (clear + drop the interrupted turn and its late result): the gate flags the unexpected pass', () => {
-    const { code, report } = get('s12-reference-fix');
+  /** Only the named scenarios fail; every other one still passes 5/5. */
+  const onlyRed = (report: AudioGateReport, red: Record<string, string>) => {
+    for (const id of ALL) expect(statuses(report, id), id).toEqual(five(red[id] ?? 'passed:'));
+  };
+
+  it('no Twilio clear on barge-in → both S12 interleavings 0/5: no clear, the interrupted turn stays audible', () => {
+    const { code, report } = get('s12-no-clear');
     expect(code).toBe(1);
-    expect(statuses(report, S12)).toEqual(five('unexpected_pass:'));
-    expect(statuses(report, S03)).toEqual(five('passed:'));
-    // The reference guard clears on every caller speech_started: one per caller turn.
-    for (const obs of report.observations[S12]) expect(obs.clears).toHaveLength(2);
+    onlyRed(report, {
+      [S12]: 'failed:barge_in.clear+barge_in.stale_audio',
+      [S12_MID]: 'failed:barge_in.clear+barge_in.stale_audio',
+    });
+    for (const obs of report.observations[S12]) expect(obs.clears).toEqual([]);
   });
 
-  it('each S12 check is live on its own: no clear → clear + stale audio; no late-result drop → double answer', () => {
-    expect(statuses(get('s12-reference-fix-without-clear').report, S12)).toEqual(five('failed:barge_in.clear+barge_in.stale_audio'));
-    expect(statuses(get('s12-reference-fix-without-late-result-drop').report, S12)).toEqual(
-      five('failed:barge_in.answers+barge_in.late_tool_result'),
-    );
+  it('interrupted turn\'s late deltas not dropped → S12 mid-stream 0/5 on stale audio alone (the clear is still sent)', () => {
+    const { code, report } = get('s12-no-stale-audio-drop');
+    expect(code).toBe(1);
+    onlyRed(report, { [S12_MID]: 'failed:barge_in.stale_audio' });
+    for (const obs of report.observations[S12_MID]) expect(obs.clears).toHaveLength(1);
   });
 
-  it('S17 passes 5/5 when VAD speech marks the caller heard (one check at 15 s per pause, never cut); S03 still passes', () => {
-    const { code, report } = get('s17-reference-fix');
+  it('a tool result the caller spoke over starts its own response → S12 0/5: a stale answer before the real one', () => {
+    const { code, report } = get('s12-no-late-result-rule');
     expect(code).toBe(1);
-    expect(statuses(report, S17)).toEqual(five('unexpected_pass:'));
-    expect(statuses(report, S03)).toEqual(five('passed:'));
-    for (const obs of report.observations[S17]) {
-      expect(obs.outcome).toBe('caller_hangup');
-      expect(obs.heardChecks).toHaveLength(2);
-      expect(obs.neverHeardPrompts).toEqual([]);
+    onlyRed(report, { [S12]: 'failed:barge_in.answers+barge_in.late_tool_result' });
+    for (const obs of report.observations[S12]) {
+      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'after_tool', 'reply']);
     }
   });
 
-  it('with every reference guard in place, all three audio flows pass 5/5', () => {
-    const { report } = get('all-reference-fixes');
-    expect(statuses(report, S03)).toEqual(five('passed:'));
-    expect(statuses(report, S12)).toEqual(five('unexpected_pass:'));
-    expect(statuses(report, S17)).toEqual(five('unexpected_pass:'));
+  it('"heard" from a transcript only → S17 0/5: never-heard prompts every 8 s and cut mid-pause; S03 unchanged', () => {
+    const { code, report } = get('s17-no-vad-heard');
+    expect(code).toBe(1);
+    onlyRed(report, {
+      [S17]: 'failed:call.not_cut+ended_by+ladder.heard_checks+ladder.never_heard_prompts+outcome+vad.utterances',
+    });
+    for (const obs of report.observations[S17]) {
+      expect(obs.outcome).toBe('never_heard');
+      expect(obs.neverHeardPrompts).toHaveLength(3);
+    }
   });
 });

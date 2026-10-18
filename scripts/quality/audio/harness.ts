@@ -131,6 +131,7 @@ export async function runAudioCall(
     {
       replies: scenario.agent?.replies ?? [],
       transcriptions: sayIndexes.map((step) => ({ text: step.say, transcription: step.transcription ?? 'ok' })),
+      interruptLatencyMs: scenario.agent?.interruptLatencyMs,
     },
     scenario.db?.slow,
   );

@@ -83,7 +83,11 @@ export interface AudioScenario {
   /** Per-run timing jitter: run r starts each caller step (r - 1) * jitterMs later. */
   jitterMs?: number;
   caller: CallerStep[];
-  agent?: { replies?: AgentReply[] };
+  /**
+   * replies: the scripted model. interruptLatencyMs: the provider's barge-in
+   * cancel lands this long after speech_started (audio keeps streaming until then).
+   */
+  agent?: { replies?: AgentReply[]; interruptLatencyMs?: number };
   /** Database edge: statements matching `match` (regex) take `latencyMs`. */
   db?: { slow?: Array<{ match: string; latencyMs: number }> };
   expect: AudioExpect;

@@ -8,7 +8,8 @@
  * VAD does: energy VAD on the caller audio the transport appends, an
  * automatic response at the end of each caller turn (create_response), and
  * a cancelled in-flight response when the caller starts talking
- * (interrupt_response).
+ * (interrupt_response; at once, or after the script's interruptLatencyMs with
+ * audio deltas still arriving meanwhile).
  *
  * "The model" is a script: the k-th caller utterance gets the scenario's
  * k-th reply (or a transcript of nothing, for S17). Instructions the runtime
@@ -79,6 +80,11 @@ export interface FakeXaiScript {
   replies: AgentReply[];
   /** Per caller utterance: what the transcriber returns. */
   transcriptions: Array<{ text: string; transcription: Transcription }>;
+  /**
+   * interrupt_response takes effect this long after speech_started; the
+   * response keeps streaming audio deltas until then (default 0: at once).
+   */
+  interruptLatencyMs?: number;
 }
 
 export interface FakeXaiHooks {
@@ -236,7 +242,20 @@ export class FakeXaiServer {
       transcript: scripted?.text ?? '',
     });
     this.hooks.deliver({ type: 'input_audio_buffer.speech_started', audio_start_ms: audioMs, item_id: `item_caller_${index}` });
-    if (this.interruptResponse && this.active) this.finish(this.active, 'cancelled', 'barge_in');
+    const interrupted = this.active;
+    if (!this.interruptResponse || !interrupted) return;
+    const latency = this.script.interruptLatencyMs ?? 0;
+    if (latency <= 0) {
+      this.finish(interrupted, 'cancelled', 'barge_in');
+      return;
+    }
+    // Deltas already on their way: the response streams on until the cancel lands.
+    this.scheduled.push({
+      at: this.hooks.now() + latency,
+      run: () => {
+        if (this.active === interrupted) this.finish(interrupted, 'cancelled', 'barge_in');
+      },
+    });
   }
 
   private onSpeechStopped(audioMs: number): void {
