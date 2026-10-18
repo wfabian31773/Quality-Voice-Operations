@@ -10,7 +10,7 @@
 // runAction's idempotency store replays the first result for a retry, and the
 // already_filed check stops a second ticket even if the store entry is gone.
 
-import { z } from 'zod';
+import { z, type ZodType } from 'zod';
 import { actionFail, actionOk, defineAction, redactInput, type AnyActionDefinition } from '../core';
 import { decryptSensitiveField } from '../../security/FieldEncryption';
 import { saidMoreThanTheirOwnName } from './floorHeuristics';
@@ -29,9 +29,12 @@ export function floorIdempotencyKey(callId: string): string {
   return `call-${callId}-floor`;
 }
 
-/** 13 to 19 digits, grouped by up to 3 spaces, commas, dots, dashes or line breaks: card-number shaped. */
+/**
+ * 13 to 19 digits, grouped by up to 3 spaces, commas, dots, dashes or line breaks: card-number shaped.
+ * Two phone numbers in a row match too, so the mask label doesn't say "card".
+ */
 const CARD_LIKE = /\b\d(?:[\s,.-]{0,3}\d){12,18}\b/g;
-export const CARD_MASK = '[card number removed]';
+export const NUMBER_MASK = '[number removed]';
 
 /** US SSN shape (3-2-4 with dashes). */
 const SSN_LIKE = /\b\d{3}-\d{2}-\d{4}\b/g;
@@ -49,7 +52,7 @@ function maskKeepingLines(mask: string): (match: string) => string {
  * Safe to run twice: the masks hold no card, SSN or phone shapes.
  */
 export function redactCallerText(text: string): string {
-  const masked = text.replace(CARD_LIKE, maskKeepingLines(CARD_MASK)).replace(SSN_LIKE, SSN_MASK);
+  const masked = text.replace(CARD_LIKE, maskKeepingLines(NUMBER_MASK)).replace(SSN_LIKE, SSN_MASK);
   return String(redactInput(masked));
 }
 
@@ -62,21 +65,33 @@ export function redactCallerLines(lines: readonly string[]): string[] {
   return lines.length === 0 ? [] : redactCallerText(lines.join('\n')).split('\n');
 }
 
+function nonBlank(lines: readonly string[]): string[] {
+  return lines.map((line) => line.trim()).filter(Boolean);
+}
+
 // Strict: the caller phone comes from call_sessions, so an input phone is rejected, not ignored.
-// callerLines are redacted while parsing, so runAction's audit row and request
-// hash (both built from the parsed input) never see a card number.
+// It also rejects a caller-supplied `substantive`: only the transform below sets it.
+// The transform judges "substantive" on the raw lines (a spoken callback number
+// counts as content), then replaces callerLines with the redacted lines. So
+// runAction's audit row and request hash (both built from the parsed input)
+// never see a card number or a full phone number.
 export const fileFloorInput = z
   .object({
     callId: z.string().trim().min(1).max(128),
-    callerLines: z
-      .array(z.string().max(FLOOR_MAX_LINE_LENGTH))
-      .max(FLOOR_MAX_LINES)
-      .transform(redactCallerLines),
+    callerLines: z.array(z.string().max(FLOOR_MAX_LINE_LENGTH)).max(FLOOR_MAX_LINES),
     callerName: z.string().trim().max(255).optional(),
     language: z.enum(['en', 'es']).optional(),
   })
-  .strict();
-export type FileFloorInput = z.infer<typeof fileFloorInput>;
+  .strict()
+  .transform((input) => ({
+    ...input,
+    substantive: saidMoreThanTheirOwnName(nonBlank(input.callerLines), input.callerName),
+    callerLines: redactCallerLines(input.callerLines),
+  }));
+/** What the runtime sends. */
+export type FileFloorInput = z.input<typeof fileFloorInput>;
+/** The parsed input `run()` sees: redacted lines plus the raw-line `substantive` verdict. */
+type FileFloorParsed = z.output<typeof fileFloorInput>;
 
 export const FLOOR_REASONS = ['filed', 'nothing_substantive', 'already_filed', 'never_heard'] as const;
 
@@ -118,11 +133,13 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
     }
   }
 
-  return defineAction({
+  return defineAction<FileFloorParsed, FileFloorOutput>({
     name: FILE_FLOOR,
     tool: 'tickets',
     kind: 'write',
-    input: fileFloorInput,
+    // Core types `input` as ZodType<I>, which assumes the parsed shape equals the
+    // sent shape. This transform adds `substantive`, so widen it here (core is out of scope).
+    input: fileFloorInput as unknown as ZodType<FileFloorParsed>,
     output: fileFloorOutput,
     // No roles, no agent, no MCP scope: only a system actor passes checkPermission.
     permissions: { roles: [], agent: false },
@@ -137,11 +154,9 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
         });
       }
 
-      const lines = input.callerLines.map((line) => line.trim()).filter(Boolean);
+      const lines = nonBlank(input.callerLines);
       if (lines.length === 0) return actionOk({ filed: false, reason: 'never_heard' as const });
-      if (!saidMoreThanTheirOwnName(lines, input.callerName)) {
-        return actionOk({ filed: false, reason: 'nothing_substantive' as const });
-      }
+      if (!input.substantive) return actionOk({ filed: false, reason: 'nothing_substantive' as const });
 
       const repo = deps.repo(tx, ctx.tenantId);
       if (await repo.hasCallArtifact(input.callId)) return actionOk({ filed: false, reason: 'already_filed' as const });

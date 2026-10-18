@@ -3,7 +3,7 @@ import { createMemoryStore, runAction, type ActionContext, type ActionResult } f
 import { createMemoryTicketsRepo } from './__fixtures__/memoryRepo';
 import { createTicketsActions } from './actions';
 import {
-  CARD_MASK,
+  NUMBER_MASK,
   FILE_FLOOR,
   FLOOR_SUBJECT,
   SSN_MASK,
@@ -209,9 +209,42 @@ describe('tickets.file_floor rules', () => {
     await floor({ callerLines: ['I want to pay with my card 4111 1111 1111 1111', 'or call me at 555-010-0142'] });
     const { description } = tickets.state.tickets[0];
     expect(description).not.toMatch(/4111/);
-    expect(description).toContain(CARD_MASK);
+    expect(description).toContain(NUMBER_MASK);
     expect(description).not.toContain('010-0142');
     expect(description).toContain('***0142');
+  });
+
+  it('"hi, this is Luis, my number is 555 201 3344" → filed, the number masked in the details', async () => {
+    const { store, tickets, floor } = setup();
+    const out = data(await floor({ callerLines: ['hi, this is Luis, my number is 555 201 3344'], callerName: 'Luis' }));
+    expect(out.reason).toBe('filed');
+    const { description } = tickets.state.tickets[0];
+    expect(description).toBe('hi, this is Luis, my number is ***3344');
+    for (const audit of store.audits) {
+      const stored = JSON.stringify(audit.inputRedacted);
+      expect(stored).not.toMatch(/\d{13,19}/);
+      expect(stored.replace(/[\s,.-]/g, '')).not.toContain('5552013344');
+      expect(stored).not.toContain('555 201');
+      expect(stored).toContain('***3344');
+    }
+  });
+
+  it('name plus a bare callback number → filed, judged on the raw lines', async () => {
+    const { store, tickets, floor } = setup();
+    // Masked, the number would be one token ("3344") and the call would read as name only.
+    const out = data(await floor({ callerLines: ['Hi, this is Luis', '555 201 3344'], callerName: 'Luis' }));
+    expect(out.reason).toBe('filed');
+    expect(tickets.state.tickets[0].description).toBe('Hi, this is Luis\n***3344');
+    const stored = JSON.stringify(store.audits[0].inputRedacted);
+    expect(stored).not.toContain('555 201');
+    expect(stored).toContain('"substantive":true');
+  });
+
+  it('a caller-supplied substantive flag → VALIDATION_FAILED', async () => {
+    const { tickets, floor } = setup();
+    expectFail(await floor({ callerLines: ['Hi, this is Luis'], callerName: 'Luis', substantive: true }), 'VALIDATION_FAILED');
+    expectFail(await floor({ callerLines: ['I need a fade Friday'], substantive: false }), 'VALIDATION_FAILED');
+    expect(tickets.state.tickets).toHaveLength(0);
   });
 
   it('writes the ticket in the calling tenant only', async () => {
@@ -289,30 +322,30 @@ describe('tickets.file_floor rules', () => {
 
 describe('redactCallerText', () => {
   it('removes card-shaped digit runs and masks phones, leaving words and short numbers', () => {
-    expect(redactCallerText('card 4111111111111111 exp 12/27')).toBe(`card ${CARD_MASK} exp 12/27`);
-    expect(redactCallerText('4111-1111-1111-1111')).toBe(CARD_MASK);
+    expect(redactCallerText('card 4111111111111111 exp 12/27')).toBe(`card ${NUMBER_MASK} exp 12/27`);
+    expect(redactCallerText('4111-1111-1111-1111')).toBe(NUMBER_MASK);
     expect(redactCallerText('call 555.010.0142')).toBe('call ***0142');
     expect(redactCallerText('a fade Friday at 9, two of us')).toBe('a fade Friday at 9, two of us');
   });
 
   it('removes a space-grouped card number', () => {
-    expect(redactCallerText('my card is 4111 1111 1111 1111 ok')).toBe(`my card is ${CARD_MASK} ok`);
+    expect(redactCallerText('my card is 4111 1111 1111 1111 ok')).toBe(`my card is ${NUMBER_MASK} ok`);
   });
 
   it('removes a comma-grouped card number (ASR style)', () => {
-    expect(redactCallerText('it is 4111, 1111, 1111, 1111.')).toBe(`it is ${CARD_MASK}.`);
+    expect(redactCallerText('it is 4111, 1111, 1111, 1111.')).toBe(`it is ${NUMBER_MASK}.`);
   });
 
   it('removes a dot-grouped card number', () => {
-    expect(redactCallerText('4111.1111.1111.1111 thanks')).toBe(`${CARD_MASK} thanks`);
+    expect(redactCallerText('4111.1111.1111.1111 thanks')).toBe(`${NUMBER_MASK} thanks`);
   });
 
   it('removes a dash-grouped card number with spaced dashes', () => {
-    expect(redactCallerText('4111 - 1111 - 1111 - 1111')).toBe(CARD_MASK);
+    expect(redactCallerText('4111 - 1111 - 1111 - 1111')).toBe(NUMBER_MASK);
   });
 
   it('removes a card number split across two lines and keeps the line break', () => {
-    expect(redactCallerText('my card is 4111 1111\n1111 1111 thanks')).toBe(`my card is ${CARD_MASK}\n thanks`);
+    expect(redactCallerText('my card is 4111 1111\n1111 1111 thanks')).toBe(`my card is ${NUMBER_MASK}\n thanks`);
   });
 
   it('removes an SSN-shaped number', () => {
@@ -321,15 +354,24 @@ describe('redactCallerText', () => {
 
   it('is unchanged when run on its own output', () => {
     const once = redactCallerText('card 4111 1111 1111 1111, ssn 123-45-6789, call 555-010-0142');
-    expect(once).toBe(`card ${CARD_MASK}, ssn ${SSN_MASK}, call ***0142`);
+    expect(once).toBe(`card ${NUMBER_MASK}, ssn ${SSN_MASK}, call ***0142`);
     expect(redactCallerText(once)).toBe(once);
   });
 });
 
 describe('redactCallerLines', () => {
   it('catches a card split across two lines and keeps the line count', () => {
-    expect(redactCallerLines(['my card is 4111 1111', '1111 1111 thanks'])).toEqual([`my card is ${CARD_MASK}`, ' thanks']);
+    expect(redactCallerLines(['my card is 4111 1111', '1111 1111 thanks'])).toEqual([`my card is ${NUMBER_MASK}`, ' thanks']);
     expect(redactCallerLines([])).toEqual([]);
+  });
+
+  it('labels two adjacent phone numbers as [number removed], not as a card', () => {
+    expect(NUMBER_MASK).toBe('[number removed]');
+    expect(redactCallerLines(['My number is 305 555 0142', '305 555 0142'])).toEqual([
+      `My number is ${NUMBER_MASK}`,
+      ' 0142',
+    ]);
+    expect(redactCallerText('305 555 0142, 305 555 0142')).toBe(`${NUMBER_MASK} 0142`);
   });
 });
 
@@ -350,6 +392,6 @@ describe('tickets.file_floor audit row', () => {
       expect(stored).not.toContain('4111');
       expect(stored).not.toContain('5500');
     }
-    expect(JSON.stringify(store.audits[0].inputRedacted)).toContain(CARD_MASK);
+    expect(JSON.stringify(store.audits[0].inputRedacted)).toContain(NUMBER_MASK);
   });
 });
