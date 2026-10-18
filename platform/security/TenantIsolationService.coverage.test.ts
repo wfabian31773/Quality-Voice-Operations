@@ -53,3 +53,23 @@ describe('RLS_TABLES coverage', () => {
     for (const table of CROSS_TENANT_READ_TABLES) expect(RLS_TABLES).toContain(table);
   });
 });
+
+describe('platform_rls_tester grants', () => {
+  // 015 granted the tester only the tables that existed then, so every probed
+  // table needs an explicit grant in a later migration (121/122/127), or the
+  // probe silently falls back to the connected role on a fresh database.
+  it('every cross-tenant probe table gets SELECT for the tester in a migration', () => {
+    const dir = join(process.cwd(), 'migrations');
+    const granted = new Set<string>();
+    const re = /GRANT\s+([A-Z,\s]+?)\s+ON\s+(?:TABLE\s+)?([\w\s,."]+?)\s+TO\s+platform_rls_tester/gi;
+    for (const file of readdirSync(dir).sort()) {
+      if (!/^\d+_.*\.sql$/.test(file)) continue;
+      const sql = readFileSync(join(dir, file), 'utf8');
+      for (const m of sql.matchAll(re)) {
+        if (!/\bSELECT\b/i.test(m[1]) || /\bALL\s+TABLES\b/i.test(m[2])) continue;
+        for (const t of m[2].split(',')) granted.add(t.trim().replace(/^public\./, '').replace(/"/g, ''));
+      }
+    }
+    expect(CROSS_TENANT_READ_TABLES.filter((t) => !granted.has(t))).toEqual([]);
+  });
+});
