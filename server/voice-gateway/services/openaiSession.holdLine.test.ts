@@ -287,7 +287,7 @@ describe('hold line on the phone path', () => {
   });
 
   it('refused at the deadline (the caller\'s reply wait), accepted once it clears: one hold line; none after close (Codex 4308809833)', async () => {
-    const { transport, holdLines, toolCall } = await startCall();
+    const { transport, holdLines, toolCall, result } = await startCall();
     const refuse = (request: { kind: string }) => request.kind !== 'hold_line';
     transport.requestResponse.mockImplementationOnce(refuse).mockImplementationOnce(refuse);
     const run = toolCall();
@@ -297,6 +297,8 @@ describe('hold line on the phone path', () => {
     expect(holdLines()).toHaveLength(1);
     transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' });
     transport.emit('response.audio_started', { kind: 'hold_line' });
+    // hold_line is queued behind tool_start (part 2); drain before asserting.
+    await result.flushBookkeeping();
     expect(holdLineEvents()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(2_000);
     finishTool();
