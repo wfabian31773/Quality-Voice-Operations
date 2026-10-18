@@ -106,31 +106,47 @@ const INTRO_TOKENS = INTRO_PHRASES.map(normalizeTokens);
 
 const isNameToken = (token: string) => !NOT_NAME_WORDS.has(token) && !/\d/.test(token);
 
+/** A name token, or a single-letter middle initial ("Luis A. Garcia"), even "a". */
+const isNameTokenAt = (name: string[], j: number) =>
+  isNameToken(name[j]) || (name[j].length === 1 && j > 0 && j < name.length - 1);
+
 /** Drops an intro phrase and the name after it when 1–3 name-like tokens end the line ("Hi, this is Luis Garcia"). */
 function withoutIntroducedName(tokens: string[]): string[] {
   for (let i = 0; i < tokens.length; i += 1) {
     const intro = INTRO_TOKENS.find((p) => p.every((word, j) => tokens[i + j] === word));
     if (!intro) continue;
     const name = tokens.slice(i + intro.length);
-    if (name.length >= 1 && name.length <= MAX_INTRO_NAME_TOKENS && name.every(isNameToken)) return tokens.slice(0, i);
+    if (name.length >= 1 && name.length <= MAX_INTRO_NAME_TOKENS && name.every((_, j) => isNameTokenAt(name, j))) {
+      return tokens.slice(0, i);
+    }
   }
   return tokens;
 }
 
-/** Punctuation that ends a clause. A name never crosses it, so "This is Luis, cancel Friday" keeps "cancel friday". */
-const CLAUSE_BREAK = /[,;:.!?¿¡]+/;
+/**
+ * Punctuation that ends a clause, including dashes, "…" and a spaced hyphen ("Garcia-Lopez" stays whole).
+ * A name never crosses it, so "This is Luis, cancel Friday" keeps "cancel friday".
+ */
+const CLAUSE_BREAK = /[,;:.!?¿¡…–—]+|\s-+\s/;
+
+/** A title or a single-letter initial whose period is part of the name ("Dr. Patel", "Luis A. Garcia"). */
+const NAME_ABBREVIATION = /(?<![\p{L}\p{N}])(mr|mrs|ms|dr|sr|sra|srta|\p{L})\./giu;
 
 /** The words left once the caller's name, greetings and filler are removed. */
 export function contentWords(lines: readonly string[], callerName?: string): string[] {
   const nameTokens = new Set(callerName ? normalizeTokens(callerName) : []);
   return lines
     .flatMap((line) => {
-      const clauses = line.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean);
-      const last = clauses.length - 1;
-      // Only the last clause can end in an introduced name; earlier clauses lose filler phrases only.
-      return clauses.flatMap((c, k) =>
-        withoutPhrases(k === last ? withoutIntroducedName(normalizeTokens(c)) : normalizeTokens(c)),
-      );
+      const clauses = line
+        .replace(NAME_ABBREVIATION, '$1')
+        .split(CLAUSE_BREAK)
+        .map(normalizeTokens)
+        .filter((tokens) => tokens.length > 0);
+      let last = clauses.length - 1;
+      // A closing "thanks" / "gracias" / "bye" doesn't end the introduction.
+      while (last > 0 && withoutPhrases(clauses[last]).every((t) => FILLER_WORDS.has(t))) last -= 1;
+      // Only that clause can end in an introduced name; the others lose filler phrases only.
+      return clauses.flatMap((c, k) => withoutPhrases(k === last ? withoutIntroducedName(c) : c));
     })
     .filter((token) => !FILLER_WORDS.has(token) && !nameTokens.has(token));
 }

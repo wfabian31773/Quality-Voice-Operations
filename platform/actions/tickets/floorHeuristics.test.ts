@@ -118,18 +118,49 @@ describe('saidMoreThanTheirOwnName', () => {
       expect(saidMoreThanTheirOwnName(['Hola, habla María José López'])).toBe(false);
       expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia.'])).toBe(false);
       expect(saidMoreThanTheirOwnName(['Hi, this is Luis'])).toBe(false);
+      expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia-Lopez'])).toBe(false);
+    });
+
+    describe('still drops a name that ends the last clause', () => {
+      it.each([
+        'Hi, this is Luis Garcia, thanks',
+        'Hola, habla Ana Ruiz, gracias',
+        'Hi, this is Luis Garcia. Bye.',
+        'Hi, this is Luis Garcia."',
+        'Hi, this is Dr. Patel',
+        'This is Luis A. Garcia',
+      ])('"%s" is not substantive with no callerName', (line) => {
+        expect(saidMoreThanTheirOwnName([line])).toBe(false);
+      });
+
+      it.each([
+        // A closing "thanks" is skipped, so the request clause is the last one.
+        'Hi, this is Ana, running late, thanks',
+        // "Ana." is not an abbreviation, so the period still breaks the clause.
+        'This is Ana. Cancel Friday',
+      ])('"%s" is substantive with callerName "Ana"', (line) => {
+        expect(saidMoreThanTheirOwnName([line], 'Ana')).toBe(true);
+      });
     });
 
     it.each([
       ['This is Luis, cancel Friday', 'Luis'],
       ['Hi, this is Ana, running late', 'Ana'],
       ['Soy Ana, quiero cita', 'Ana'],
-      // With callerName "Ana" only "cancelo" is left (one word), as at 412e33c3.
-      ['Buenas tardes, habla Ana, cancelo', undefined],
-      ['soy cliente nuevo, quiero una cita', undefined],
+      ['This is Luis — cancel Friday', 'Luis'],
+      ['Soy Ana… quiero cita', 'Ana'],
+      ['Hi, this is Ana - running late', 'Ana'],
     ])('"%s" is substantive, with no callerName and with callerName %s', (line, callerName) => {
       expect(saidMoreThanTheirOwnName([line])).toBe(true);
       expect(saidMoreThanTheirOwnName([line], callerName)).toBe(true);
+    });
+
+    it.each([
+      // With callerName "Ana" only "cancelo" is left (one word), as at 412e33c3.
+      'Buenas tardes, habla Ana, cancelo',
+      'soy cliente nuevo, quiero una cita',
+    ])('"%s" is substantive with no callerName', (line) => {
+      expect(saidMoreThanTheirOwnName([line])).toBe(true);
     });
 
     it('keeps the request after the name in the content words', () => {
