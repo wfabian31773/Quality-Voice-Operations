@@ -173,6 +173,12 @@ export async function runAudioCall(
     for (let t = 0; t < TEARDOWN_MS && !(world.finalized.length > 0 && world.floorSettled.length > 0); t += FRAME_MS) {
       await step(world);
     }
+    // A floor still waiting on slow (virtual-time) DB statements needs the
+    // clock to keep moving; one that settles at once takes no extra step.
+    let floorDone = false;
+    void Promise.all(world.floorSettled).then(() => { floorDone = true; });
+    await settle(8);
+    for (let t = 0; t < TEARDOWN_MS && !floorDone; t += FRAME_MS) await step(world);
     await Promise.all(world.floorSettled);
     await settle(8);
     await world.drainReal();

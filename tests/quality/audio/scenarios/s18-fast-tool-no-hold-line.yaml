@@ -1,0 +1,34 @@
+# S18 hold line (RT-HOLD-LINE), the other side: the same question, but the
+# lookup takes 300 ms. The result comes back well inside the 800 ms hold-line
+# delay, so the caller hears the answer and no hold line, ever (not before
+# the answer, not after it).
+id: s18-fast-tool-no-hold-line
+plan: S18
+title: A fast tool gets no hold line
+tags: [audio, core, flow:no-hold-line, template:barbershop]
+lang: en
+windowMs: 30000
+jitterMs: 19
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, what do you have open Wednesday morning?"
+  - silence: 9000
+  - hangup: true
+agent:
+  replies:
+    - say: ""
+      tool: { name: get_current_tenant_time }
+      afterTool: "Wednesday morning we have nine and ten thirty open."
+db:
+  slow:
+    - { match: "INSERT INTO tool_invocations", latencyMs: 300 }
+expect:
+  utterances: 1
+  outcome: caller_hangup
+  endedBy: caller
+  toolCalls: 1
+  toolResultsVoiced: 1
+  holdLine:
+    count: 0
+  noOverlap: true
+  bookings: 0

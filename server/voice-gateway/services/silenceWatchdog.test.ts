@@ -257,6 +257,24 @@ function runNeverHeardLadder(
   expect(w.said.at(-1)).toBe(NEVER_HEARD_GOODBYE_INSTRUCTION);
 }
 
+describe('SilenceWatchdog: the runtime hold line (RT-HOLD-LINE) is not conversation', () => {
+  it('a hold-line turn pauses silence but resets no check count: the heard ladder is unchanged', () => {
+    const { watchdog, prompts, agentTurn } = makeWatchdog();
+    watchdog.start();
+    watchdog.callerHeard();
+    vi.advanceTimersByTime(HEARD_SILENCE_CHECK_MS);
+    expect(prompts()).toBe(1);
+    agentTurn(); // the check is spoken; the caller stays quiet
+    watchdog.toolStarted();
+    watchdog.agentTurnStarted(false); // "One moment while I check that."
+    vi.advanceTimersByTime(2_000);
+    watchdog.agentTurnEnded();
+    watchdog.toolEnded();
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(prompts()).toBe(1);
+  });
+});
+
 describe('SilenceWatchdog: caller heard during the never-heard goodbye (P1-2)', () => {
   it('never-heard → goodbye → caller heard within the grace: no hang-up, no outcome, back on the heard path', () => {
     const w = makeWatchdog();

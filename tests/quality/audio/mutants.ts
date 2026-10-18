@@ -15,7 +15,10 @@
  *   late audio deltas, no response of its own for a tool result the
  *   caller spoke over, and voicing that result once if no caller reply
  *   carried it (the backchannel);
- * - S17: VAD speech marking the caller heard.
+ * - S17: VAD speech marking the caller heard;
+ * - S18: the hold line's trigger (slow tool), and its knowing the result
+ *   came back first (fast tool); the transport's one-response-at-a-time
+ *   guard (RT-HOLD-LINE §4).
  */
 import { exitWith, RESULT_MARKER, runAudioCli } from '../../../scripts/quality/audio/run';
 import type { RuntimeModules } from '../../../scripts/quality/audio/edges';
@@ -39,6 +42,14 @@ function watchdogProto(rt: RuntimeModules): Proto {
 function transportProto(rt: RuntimeModules): Proto {
   return rt.xaiRealtimeTransport.XaiRealtimeTransport.prototype as unknown as Proto;
 }
+
+function holdLineProto(rt: RuntimeModules): Proto {
+  return rt.holdLine.HoldLine.prototype as unknown as Proto;
+}
+
+const noop = () => function () {
+  return undefined;
+};
 
 export const MUTANTS: Record<string, (rt: RuntimeModules) => Restore> = {
   /** The never-heard ladder skips its second prompt. */
@@ -73,18 +84,36 @@ export const MUTANTS: Record<string, (rt: RuntimeModules) => Restore> = {
   's17-no-vad-heard': (rt) => patch(watchdogProto(rt), 'isAudibleSpeech', () => function () {
     return false;
   }),
+  /** The hold line's deadline does nothing (HoldLine.onDeadline): a slow tool is silence again. */
+  's18-no-hold-line-trigger': (rt) => patch(holdLineProto(rt), 'onDeadline', noop),
+  /**
+   * The hold line no longer knows the result came back first. It learns it
+   * two ways, and each alone keeps a fast tool quiet, so both go: the tool's
+   * end (HoldLine.toolEnded) and the agent starting to speak the answer
+   * (HoldLine.agentAudioStarted).
+   */
+  's18-hold-line-deaf-to-result': (rt) => {
+    const restores = [patch(holdLineProto(rt), 'toolEnded', noop), patch(holdLineProto(rt), 'agentAudioStarted', noop)];
+    return () => restores.forEach((restore) => restore());
+  },
+  /** The transport's one-response-at-a-time guard is gone (XaiRealtimeTransport.responseBusy): creates go on top of a response in flight. */
+  'transport-no-in-flight-guard': (rt) => patch(transportProto(rt), 'responseBusy', () => function () {
+    return false;
+  }),
 };
 
 async function main(argv: string[]): Promise<number> {
   const names = (argv.find((a) => a.startsWith('--mutants='))?.slice('--mutants='.length) ?? '').split(',').filter(Boolean);
   if (names.length === 0) throw new Error(`--mutants=<name>[,...] from: ${Object.keys(MUTANTS).join(', ')}`);
+  // Anything else goes to the runner (e.g. --dir=<fixtures> --pass-k=1 for a timing run).
+  const runnerArgs = ['--pass-k=5', ...argv.filter((a) => !a.startsWith('--mutants='))];
   for (const name of names) {
     const apply = MUTANTS[name];
     if (!apply) throw new Error(`unknown mutant ${name}`);
     let restore: Restore = () => {};
     process.stdout.write(`\n=== mutant ${name}\n`);
     try {
-      const { code, report } = await runAudioCli(['--pass-k=5'], { beforeRun: (rt) => { restore = apply(rt); } });
+      const { code, report } = await runAudioCli(runnerArgs, { beforeRun: (rt) => { restore = apply(rt); } });
       process.stdout.write(`${RESULT_MARKER}${JSON.stringify({ mutant: name, code, ...report })}\n`);
     } finally {
       restore();

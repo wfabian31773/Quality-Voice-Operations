@@ -214,7 +214,11 @@ describe('XaiRealtimeTransport', () => {
       server({ type: 'response.function_call_arguments.done', call_id: 'call-2', name: 'get_current_tenant_time', arguments: '{}' });
       await vi.waitFor(() => expect(onFunctionCall).toHaveBeenCalled());
       finish('{}');
-      await vi.waitFor(() => expect(sentTypes()).toContain('response.create'));
+      await vi.waitFor(() => expect(sentTypes()).toContain('conversation.item.create'));
+      // The asking response is still in flight: its create waits for response.done (never two at once).
+      expect(sentTypes()).not.toContain('response.create');
+      server({ type: 'response.done', response: { id: 'resp_1', status: 'completed' } });
+      expect(sentTypes().filter((t) => t === 'response.create')).toHaveLength(1);
       expect(sentTypes().filter((t) => t === 'conversation.item.create')).toHaveLength(1);
     });
 
@@ -380,6 +384,333 @@ describe('XaiRealtimeTransport', () => {
         expect(sockets[0].sent).toHaveLength(sentBefore2);
         expect(sentTypes().filter((t) => t === 'response.create')).toHaveLength(0);
       });
+    });
+  });
+
+  describe('one response.create path (RT-HOLD-LINE §4: the #133 review P3s)', () => {
+    const server = (event: Record<string, unknown>) => sockets[0].emit('message', JSON.stringify(event));
+    const sent = () => sockets[0].sent.map((row) => JSON.parse(row) as { type: string; response?: Record<string, unknown> });
+    const sentTypes = () => sent().map((e) => e.type).filter((t) => t !== 'session.update');
+    const creates = () => sent().filter((e) => e.type === 'response.create');
+    const delta = (n: number) => ({ type: 'response.output_audio.delta', delta: Buffer.from([n, n, n]).toString('base64') });
+    const flush = async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    };
+    const holdLine = { kind: 'hold_line' as const, response: { instructions: 'Say exactly: "One moment while I check that.". Nothing else.', tool_choice: 'none' }, onlyIfIdle: true };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** Connected, with a slow tool asked for by a response that has finished; returns its resolver. */
+    async function toolRunning() {
+      const finishers: Array<(value: string) => void> = [];
+      const onFunctionCall = vi.fn(() => new Promise<string>((resolve) => { finishers.push(resolve); }));
+      const transport = makeTransport(onFunctionCall);
+      await transport.connect({ apiKey: 'xai-test' });
+      const audio: number[] = [];
+      transport.on('audio', (a: { data: ArrayBuffer }) => audio.push(new Uint8Array(a.data)[0]));
+      const kinds: string[] = [];
+      transport.on('response.created', (_e: unknown, meta: { kind: string }) => kinds.push(meta.kind));
+      const timings: Array<Record<string, unknown>> = [];
+      transport.on('tool_timing', (t: Record<string, unknown>) => timings.push(t));
+      server({ type: 'response.created', response: { id: 'resp_ask' } });
+      server({ type: 'response.function_call_arguments.done', call_id: 'call-1', name: 'check_availability', arguments: '{}' });
+      server({ type: 'response.done', response: { id: 'resp_ask', status: 'completed' } });
+      await flush();
+      const finish = async () => {
+        finishers.shift()?.(JSON.stringify({ success: true }));
+        await flush();
+      };
+      return { transport, finish, audio, kinds, timings };
+    }
+
+    it('normal tool path: a result landing while a server reply is in flight waits for its response.done', async () => {
+      const { finish } = await toolRunning();
+      server({ type: 'response.created', response: { id: 'resp_other' } }); // e.g. a reply the provider started
+      await finish();
+      expect(sentTypes()).toEqual(['conversation.item.create']);
+      server({ type: 'response.done', response: { id: 'resp_other', status: 'completed' } });
+      // That reply was created before the output item, so it could not carry it: voiced now, once.
+      expect(creates()).toHaveLength(1);
+    });
+
+    it('a queued tool result is skipped when a response created after its output already carries it', async () => {
+      const { transport, finish } = await toolRunning();
+      expect(transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say exactly: "Hi". Do not say anything else.' } })).toBe(true);
+      await finish(); // output sent while our instruction's create is pending: queued
+      expect(creates()).toHaveLength(1);
+      server({ type: 'response.created', response: { id: 'resp_instr' } }); // created after the output: sees it
+      server({ type: 'response.done', response: { id: 'resp_instr', status: 'completed' } });
+      expect(creates()).toHaveLength(1);
+    });
+
+    it('sendModelInstruction semantics: cancel the response in flight, then create (cancel first on the socket)', async () => {
+      const transport = makeTransport(async () => '{}');
+      await transport.connect({ apiKey: 'xai-test' });
+      server({ type: 'response.created', response: { id: 'resp_vad' } });
+      transport.requestResponse({ kind: 'instruction', response: { instructions: 'Ask: "Which day?"' }, cancelInFlight: true });
+      expect(sentTypes()).toEqual(['response.cancel', 'response.create']);
+      server(delta(1)); // late delta of the cancelled response: dropped
+      server({ type: 'response.done', response: { id: 'resp_vad', status: 'cancelled' } });
+      expect(creates()).toHaveLength(1);
+      server({ type: 'response.created', response: { id: 'resp_instr' } });
+      // A second instruction replaces the first the same way: cancel, then create.
+      transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say: "Two"' }, cancelInFlight: true });
+      expect(sentTypes().slice(-2)).toEqual(['response.cancel', 'response.create']);
+      server({ type: 'response.done', response: { id: 'resp_instr', status: 'cancelled' } });
+      expect(creates()).toHaveLength(2);
+    });
+
+    it('an instruction while our create is still pending: that one is cancelled once created, then the instruction goes', async () => {
+      const transport = makeTransport(async () => '{}');
+      await transport.connect({ apiKey: 'xai-test' });
+      transport.requestResponse({ kind: 'caller_text' });
+      transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say: "Sorry"' }, cancelInFlight: true });
+      expect(sentTypes()).toEqual(['response.create']);
+      server({ type: 'response.created', response: { id: 'resp_text' } });
+      expect(sentTypes()).toEqual(['response.create', 'response.cancel']);
+      server({ type: 'response.done', response: { id: 'resp_text', status: 'cancelled' } });
+      expect(sentTypes()).toEqual(['response.create', 'response.cancel', 'response.create']);
+      expect(creates()[1].response).toEqual({ instructions: 'Say: "Sorry"' });
+    });
+
+    it('widget caller text: queued behind a response in flight, not sent on top of it', async () => {
+      const transport = makeTransport(async () => '{}');
+      await transport.connect({ apiKey: 'xai-test' });
+      server({ type: 'response.created', response: { id: 'resp_1' } });
+      expect(transport.requestResponse({ kind: 'caller_text' })).toBe(true);
+      expect(creates()).toHaveLength(0);
+      server({ type: 'response.done', response: { id: 'resp_1', status: 'completed' } });
+      expect(creates()).toHaveLength(1);
+    });
+
+    it('nothing is sent after close; queued requests are dropped', async () => {
+      const transport = makeTransport(async () => '{}');
+      await transport.connect({ apiKey: 'xai-test' });
+      server({ type: 'response.created', response: { id: 'resp_1' } });
+      transport.requestResponse({ kind: 'caller_text' });
+      transport.close();
+      const before = sockets[0].sent.length;
+      expect(transport.requestResponse({ kind: 'instruction', response: { instructions: 'x' }, cancelInFlight: true })).toBe(false);
+      server({ type: 'response.done', response: { id: 'resp_1', status: 'completed' } });
+      expect(sockets[0].sent).toHaveLength(before);
+    });
+
+    describe('provider error events (P3 #2)', () => {
+      it('the provider\'s own reply wins the race with our voicing: it carries the result, the rejection is only logged', async () => {
+        const { transport, finish } = await toolRunning();
+        server({ type: 'input_audio_buffer.speech_started' });
+        await finish(); // withheld: the caller spoke over the asking turn
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS); // no reply yet: voiced
+        expect(creates()).toHaveLength(1);
+        // On the wire: the provider's own response.created, then the error for ours.
+        server({ type: 'response.created', response: { id: 'resp_provider' } });
+        server({ type: 'error', error: { code: 'conversation_already_has_active_response', message: 'Conversation already has an active response' } });
+        server({ type: 'response.done', response: { id: 'resp_provider', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        // Created after the output, so it carried it: not voiced twice, and nothing left stuck in flight.
+        expect(creates()).toHaveLength(1);
+        expect(logged.find((l) => l.message === 'xAI realtime provider error')?.context).toEqual({
+          code: 'conversation_already_has_active_response', type: undefined, pendingCreate: undefined, rejectsCreate: false,
+        });
+        expect(transport.requestResponse({ kind: 'caller_text' })).toBe(true);
+        expect(creates()).toHaveLength(2);
+      });
+
+      it('a rejected voicing with no carrier is voiced again (later voicing is not blocked)', async () => {
+        const { finish } = await toolRunning();
+        server({ type: 'input_audio_buffer.speech_started' });
+        await finish();
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS);
+        expect(creates()).toHaveLength(1);
+        server({ type: 'error', error: { code: 'conversation_already_has_active_response' } });
+        // Not stuck "in flight": voiced again at once.
+        expect(creates()).toHaveLength(2);
+        server({ type: 'response.created', response: { id: 'resp_voiced' } });
+        server({ type: 'response.done', response: { id: 'resp_voiced', status: 'completed' } });
+        expect(creates()).toHaveLength(2);
+      });
+
+      it('a voicing the provider keeps rejecting is re-sent once, never in a loop', async () => {
+        const { finish } = await toolRunning();
+        server({ type: 'input_audio_buffer.speech_started' });
+        await finish();
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS);
+        server({ type: 'error', error: { code: 'conversation_already_has_active_response' } });
+        server({ type: 'error', error: { code: 'conversation_already_has_active_response' } });
+        server({ type: 'response.done', response: { id: 'resp_unknown', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toHaveLength(2);
+      });
+
+      it('a rejected tool-result create is re-queued once and sent at the next response.done', async () => {
+        const { finish } = await toolRunning();
+        await finish();
+        expect(creates()).toHaveLength(1);
+        server({ type: 'error', error: { code: 'conversation_already_has_active_response' } });
+        expect(creates()).toHaveLength(2); // nothing in flight on our side: re-sent at once
+        server({ type: 'error', error: { code: 'conversation_already_has_active_response' } });
+        expect(creates()).toHaveLength(2); // only once
+      });
+
+      it('an error about a cancel (or with no pending create) is only logged', async () => {
+        const transport = makeTransport(async () => '{}');
+        await transport.connect({ apiKey: 'xai-test' });
+        transport.requestResponse({ kind: 'caller_text' });
+        server({ type: 'error', error: { code: 'response_cancel_not_active', message: 'no active response to cancel' } });
+        server({ type: 'response.created', response: { id: 'resp_text' } });
+        server({ type: 'response.done', response: { id: 'resp_text', status: 'completed' } });
+        transport.requestResponse({ kind: 'caller_text' });
+        expect(creates()).toHaveLength(2);
+        server({ type: 'error', error: { code: 'invalid_value', message: 'secret caller words' } });
+        // Logged with code/type only, never the message text.
+        expect(JSON.stringify(logged)).not.toContain('secret caller words');
+      });
+    });
+
+    describe('the hold line', () => {
+      it('only if idle: refused while a response is in flight, the caller is speaking, or their reply is due', async () => {
+        const { transport } = await toolRunning();
+        server({ type: 'response.created', response: { id: 'resp_x' } });
+        expect(transport.requestResponse(holdLine)).toBe(false);
+        server({ type: 'response.done', response: { id: 'resp_x', status: 'completed' } });
+        server({ type: 'input_audio_buffer.speech_started' });
+        expect(transport.requestResponse(holdLine)).toBe(false);
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        expect(transport.requestResponse(holdLine)).toBe(false); // reply due
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS);
+        expect(transport.requestResponse(holdLine)).toBe(true);
+        expect(creates().at(-1)?.response).toEqual(holdLine.response);
+      });
+
+      it('result lands while the hold line is playing: it is not cut; the result response waits for its done', async () => {
+        const { transport, finish, audio, kinds } = await toolRunning();
+        transport.requestResponse(holdLine);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        server(delta(5));
+        await finish();
+        expect(sentTypes()).not.toContain('response.cancel');
+        expect(creates()).toHaveLength(1);
+        server(delta(6));
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'completed' } });
+        expect(creates()).toHaveLength(2);
+        expect(audio).toEqual([5, 6]);
+        expect(kinds).toEqual(['server', 'hold_line']);
+      });
+
+      it('result lands before the hold line made a sound: cancelled, its late deltas dropped, straight to the result', async () => {
+        const { transport, finish, audio } = await toolRunning();
+        transport.requestResponse(holdLine);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        await finish();
+        expect(sentTypes()).toEqual(['response.create', 'conversation.item.create', 'response.cancel']);
+        server(delta(5));
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
+        expect(creates()).toHaveLength(2);
+        expect(audio).toEqual([]);
+      });
+
+      it('result lands while the hold line is requested but not created: cancelled as soon as it is', async () => {
+        const { transport, finish } = await toolRunning();
+        transport.requestResponse(holdLine);
+        await finish();
+        expect(sentTypes()).toEqual(['response.create', 'conversation.item.create']);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        expect(sentTypes().at(-1)).toBe('response.cancel');
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
+        expect(creates()).toHaveLength(2);
+      });
+
+      it('barge-in on the hold line: the queued result starts no response of its own (the caller\'s turn answers)', async () => {
+        const { transport, finish } = await toolRunning();
+        transport.requestResponse(holdLine);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        server(delta(5));
+        await finish(); // queued behind the hold line
+        server({ type: 'input_audio_buffer.speech_started' }); // "hello?" over the hold line
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
+        expect(creates()).toHaveLength(1);
+        server({ type: 'input_audio_buffer.speech_stopped' });
+        server({ type: 'response.created', response: { id: 'resp_reply' } }); // server VAD reply carries the output
+        server({ type: 'response.done', response: { id: 'resp_reply', status: 'completed' } });
+        await vi.advanceTimersByTimeAsync(CALLER_REPLY_WAIT_MS * 4);
+        expect(creates()).toHaveLength(1);
+      });
+
+      it('a provider that rejects tool_choice: the hold line is re-sent once without it, and later ones go without it', async () => {
+        const { transport, finish } = await toolRunning();
+        transport.requestResponse(holdLine);
+        server({ type: 'error', error: { code: 'unknown_parameter', param: 'response.tool_choice', message: "Unknown parameter: 'response.tool_choice'." } });
+        expect(creates().map((c) => c.response)).toEqual([holdLine.response, { instructions: holdLine.response.instructions }]);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        server(delta(1));
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'completed' } });
+        await finish();
+        server({ type: 'response.created', response: { id: 'resp_answer' } });
+        server({ type: 'response.done', response: { id: 'resp_answer', status: 'completed' } });
+        transport.requestResponse(holdLine);
+        expect(creates().at(-1)?.response).toEqual({ instructions: holdLine.response.instructions });
+      });
+
+      it('tool_choice rejected after the result already came back: the hold line is dropped, not sent late', async () => {
+        const { transport, finish } = await toolRunning();
+        transport.requestResponse(holdLine);
+        await finish(); // result lands while the hold line's create is pending
+        server({ type: 'error', error: { code: 'unknown_parameter', param: 'response.tool_choice' } });
+        // Only the result's own response goes out.
+        expect(creates().map((c) => c.response)).toEqual([holdLine.response, undefined]);
+      });
+
+      it('its transcript is flagged (not an answer), and a function call from it is ignored', async () => {
+        const onFunctionCall = vi.fn(async () => '{}');
+        const transport = makeTransport(onFunctionCall);
+        await transport.connect({ apiKey: 'xai-test' });
+        const items: Array<Record<string, unknown>> = [];
+        transport.on('history_added', (item: Record<string, unknown>) => items.push(item));
+        transport.requestResponse(holdLine);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        server({ type: 'response.function_call_arguments.done', call_id: 'c9', name: 'book', arguments: '{}' });
+        server({ type: 'response.output_audio_transcript.done', transcript: 'One moment while I check that.' });
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'completed' } });
+        server({ type: 'response.created', response: { id: 'resp_next' } });
+        server({ type: 'response.output_audio_transcript.done', transcript: 'Dee is free at nine.' });
+        await flush();
+        expect(onFunctionCall).not.toHaveBeenCalled();
+        expect(items.map((i) => i.holdLine ?? false)).toEqual([true, false]);
+      });
+    });
+
+    it('timing marks: one tool_timing line per call, with the hold line and the first audio after the result', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      const { transport, finish, timings } = await toolRunning();
+      await vi.advanceTimersByTimeAsync(800);
+      transport.requestResponse(holdLine);
+      transport.noteHoldLineRequested();
+      server({ type: 'response.created', response: { id: 'resp_hold' } });
+      server(delta(1));
+      await vi.advanceTimersByTimeAsync(1_200);
+      server({ type: 'response.done', response: { id: 'resp_hold', status: 'completed' } });
+      await finish();
+      server({ type: 'response.created', response: { id: 'resp_answer' } });
+      await vi.advanceTimersByTimeAsync(300);
+      expect(timings).toEqual([]);
+      server(delta(2));
+      expect(timings).toEqual([{
+        tool: 'check_availability',
+        tool_call_received_ms: 0,
+        action_ms: 2_000,
+        result_sent_ms: 2_000,
+        first_agent_audio_after_result_ms: 300,
+        hold_line_ms: 800,
+        voiced: 'now',
+      }]);
     });
   });
 

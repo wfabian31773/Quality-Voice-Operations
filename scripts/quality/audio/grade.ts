@@ -6,6 +6,7 @@
  * expectedFail scenario pins the exact keys that must fail.
  */
 import type { CheckFailure } from '../types';
+import { HOLD_LINE_PHRASES } from '../../../server/voice-gateway/services/holdLine';
 import type { ResponseRecord } from './fakeXai';
 import { FRAME_MS } from './mulaw';
 import type { AudioScenario, Range } from './scenario';
@@ -53,6 +54,50 @@ export interface AudioObservation {
   providerErrors: string[];
   /** Last runtime error log lines (synthetic call data only). */
   runtimeErrors: string[];
+  /** Per tool call, on the call's timeline (ms): what the caller waited through. */
+  toolTimings: ToolTimingObservation[];
+}
+
+export interface ToolTimingObservation {
+  tool: string;
+  /** The model's function call reached the runtime. */
+  callAt: number;
+  /** Its function_call_output reached the provider. */
+  resultAt?: number;
+  /** A hold line covering this call was asked for / first heard. */
+  holdLineAt?: number;
+  holdLineHeardAt?: number;
+  /** First agent audio the caller heard after the call (any response). */
+  firstAudioAt?: number;
+  /** First audio of the response that voiced the result. */
+  answerAudioAt?: number;
+}
+
+/** First audible (not cleared) frame of a response. */
+function firstHeard(world: CallWorld, response: number): number | undefined {
+  return world.twilio.frames.find((f) => f.response === response && !f.cleared)?.start;
+}
+
+function toolTimings(world: CallWorld): ToolTimingObservation[] {
+  const responses = world.xai.responses;
+  return responses.filter((r) => r.tool && r.toolCallAt !== undefined).map((asked, index, calls) => {
+    const callAt = asked.toolCallAt as number;
+    const nextCallAt = calls[index + 1]?.toolCallAt ?? Infinity;
+    const output = world.xai.functionOutputs.find((o) => o.callId === asked.tool?.callId);
+    const holdLine = responses.find((r) => r.kind === 'hold_line' && r.createdAt >= callAt && r.createdAt < nextCallAt);
+    const answer = output?.followedBy !== undefined
+      ? responses.find((r) => r.no === output.followedBy)
+      : responses.find((r) => output !== undefined && r.createdAt >= output.at && r.kind !== 'hold_line');
+    return {
+      tool: asked.tool?.name ?? '',
+      callAt,
+      resultAt: output?.at,
+      holdLineAt: holdLine?.createdAt,
+      holdLineHeardAt: holdLine ? firstHeard(world, holdLine.no) : undefined,
+      firstAudioAt: world.twilio.frames.find((f) => !f.cleared && f.start >= callAt)?.start,
+      answerAudioAt: answer ? firstHeard(world, answer.no) : undefined,
+    };
+  });
 }
 
 const WATCHDOG_KINDS = new Set(['silence_prompt', 'never_heard_goodbye', 'max_duration_wrap']);
@@ -91,6 +136,7 @@ export function observe(world: CallWorld): AudioObservation {
     clientEvents: world.xai.clientEvents.map((c) => `${c.at} ${c.type}`),
     providerErrors: [...world.xai.errors],
     runtimeErrors: world.logs.filter((line) => line.startsWith('error')).slice(-10).map((line) => line.slice(0, 300)),
+    toolTimings: toolTimings(world),
   };
 }
 
@@ -174,7 +220,50 @@ export function grade(scenario: AudioScenario, world: CallWorld): AudioCheckFail
     );
   }
 
+  if (e.holdLine) failures.push(...gradeHoldLine(scenario, world, obs));
+  if (e.noOverlap) {
+    const spans = world.xai.responses.map((r) => ({ id: r.id, from: r.createdAt, to: r.doneAt ?? Infinity }));
+    const overlaps = spans.flatMap((a, i) => spans.slice(i + 1).filter((b) => b.from < a.to && a.from < b.to).map((b) => `${a.id}+${b.id}`));
+    check('responses.overlap', overlaps.length === 0 && obs.providerErrors.length === 0, 'never two responses in flight at once', 'none', [...overlaps, ...obs.providerErrors]);
+  }
+
   if (e.bargeIn || e.lateToolResultDropped !== undefined) failures.push(...gradeBargeIn(scenario, world));
+  return failures;
+}
+
+function gradeHoldLine(scenario: AudioScenario, world: CallWorld, obs: AudioObservation): AudioCheckFailure[] {
+  const e = scenario.expect.holdLine as NonNullable<AudioScenario['expect']['holdLine']>;
+  const failures: AudioCheckFailure[] = [];
+  const holdLines = world.xai.responses.filter((r) => r.kind === 'hold_line');
+  if (holdLines.length !== e.count) {
+    failures.push({ key: 'hold_line.count', message: 'hold lines the runtime spoke', expected: e.count, actual: holdLines.map((r) => `${r.id} at ${r.createdAt} ms`) });
+  }
+  // Each hold line covers the latest tool call before it.
+  const covered = holdLines.map((r) => ({ r, timing: [...obs.toolTimings].reverse().find((t) => t.callAt <= r.createdAt) }));
+  const late = covered.filter(({ r, timing }) => !timing || (timing.resultAt !== undefined && r.createdAt >= timing.resultAt));
+  if (late.length > 0) {
+    failures.push({
+      key: 'hold_line.after_result',
+      message: 'a hold line asked for after its tool result came back (or with no tool call)',
+      expected: 'before the result',
+      actual: late.map(({ r, timing }) => `${r.id} at ${r.createdAt} ms, result at ${timing?.resultAt ?? 'none'} ms`),
+    });
+  }
+  if (e.requestedAfterToolMs) {
+    const range = e.requestedAfterToolMs;
+    const gaps = covered.filter(({ timing }) => timing).map(({ r, timing }) => r.createdAt - (timing as ToolTimingObservation).callAt);
+    if (!gaps.every((gap) => inRange(gap, range))) {
+      failures.push({ key: 'hold_line.timing', message: 'hold line asked for this long after the tool call (ms)', expected: range, actual: gaps });
+    }
+  }
+  const phrase = HOLD_LINE_PHRASES[scenario.lang];
+  const wrong = holdLines.filter((r) => {
+    const heardMs = world.twilio.frames.filter((f) => f.response === r.no && !f.cleared).reduce((sum, f) => sum + (f.end - f.start), 0);
+    return r.text !== phrase || heardMs < r.frames * FRAME_MS;
+  });
+  if (wrong.length > 0) {
+    failures.push({ key: 'hold_line.heard', message: `hold line heard in full, in the call's language ("${phrase}")`, expected: phrase, actual: wrong.map((r) => `${r.id}: "${r.text}" ${r.status}`) });
+  }
   return failures;
 }
 

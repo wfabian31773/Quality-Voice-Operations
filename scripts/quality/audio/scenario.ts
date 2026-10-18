@@ -70,11 +70,19 @@ export interface AudioExpect {
   lateToolResultDropped?: boolean;
   /** Tool results voiced: responses that speak a tool output (after_tool), each heard in full before the call ended. */
   toolResultsVoiced?: number;
+  /**
+   * The runtime's hold line ("one moment while I check that"): how many,
+   * each asked for this long after the tool call it covers, each before that
+   * tool's result came back, heard in full and in the call's language.
+   */
+  holdLine?: { count: number; requestedAfterToolMs?: Range };
+  /** Never two responses in flight at once (no overlapping response, no provider "active response" error). */
+  noOverlap?: boolean;
 }
 
 export interface AudioScenario {
   id: string;
-  /** Plan scenario id (S03, S12, S17). */
+  /** Plan scenario id (S03, S12, S17, S18). */
   plan: string;
   title: string;
   tags: string[];
@@ -105,7 +113,7 @@ const SCENARIO_KEYS = new Set([
 const EXPECT_KEYS = new Set([
   'utterances', 'outcome', 'endedBy', 'neverHeardPrompts', 'promptSpacingMs', 'goodbyePlayed', 'heardChecks',
   'heardCheckAfterMs', 'stillUpAtMs', 'floor', 'bookings', 'tickets', 'toolCalls', 'bargeIn', 'lateToolResultDropped',
-  'toolResultsVoiced',
+  'toolResultsVoiced', 'holdLine', 'noOverlap',
 ]);
 const STEP_KEYS = ['say', 'silence', 'lineNoise', 'waitAgentPlaying', 'waitAgentIdle', 'hangup'];
 

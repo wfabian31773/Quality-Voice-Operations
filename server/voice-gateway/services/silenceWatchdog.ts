@@ -230,13 +230,19 @@ export class SilenceWatchdog {
     this.resumeAfterCallerSpeech();
   }
 
-  /** The agent started a response (speaking). */
-  agentTurnStarted(): void {
+  /**
+   * The agent started a response (speaking). `activity` false: the runtime's
+   * hold line during a tool run. It pauses silence like any agent audio, but
+   * it is not conversation: it resets no check count, isn't the watchdog's
+   * own prompt, and can't start a goodbye.
+   */
+  agentTurnStarted(activity = true): void {
     this.agentSpeaking = true;
     this.awaitingPlayback = false;
     this.playbackCleared = false;
     this.clearTimer('playbackTimer');
     this.clearSilenceTimer();
+    if (!activity) return;
     if (this.ended) this.goodbyeStarted = true;
     if (this.ownPromptPending) {
       this.ownPromptPending = false;
