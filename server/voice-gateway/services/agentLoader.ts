@@ -462,17 +462,16 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       .trim();
     // Tenant DB prompts can carry stage directions grok-voice reads aloud
     // ("(file the ticket quietly)", "*pauses*"). Repo prompts are lint-clean,
-    // so they pass through unchanged. Log rule counts only: the matched text
-    // is tenant-authored and may hold PHI.
-    const { text: rolePrompt, hits: stageDirectionHits } = stripStageDirections(extractedRolePrompt);
+    // so they pass through unchanged. Warn only when something was removed;
+    // hits that were kept (narration words, emphasis) are debug noise. Log rule
+    // counts only: the matched text is tenant-authored and may hold PHI.
+    const { text: rolePrompt, hits: stageDirectionHits, removed } = stripStageDirections(extractedRolePrompt);
     if (stageDirectionHits.length > 0) {
       const counts: Partial<Record<StageDirectionRule, number>> = {};
       for (const hit of stageDirectionHits) counts[hit.rule] = (counts[hit.rule] ?? 0) + 1;
-      logger.warn('Stage directions found in agent role prompt; bracketed and asterisk ones were removed', {
-        tenantId,
-        agentId,
-        counts,
-      });
+      const payload = { tenantId, agentId, counts, removed };
+      if (removed > 0) logger.warn('Stage directions removed from agent role prompt', payload);
+      else logger.debug('Possible stage directions in agent role prompt; nothing removed', payload);
     }
     const rolePackageVersion = lockedRoleIdentity?.version ?? (typeof meta.rolePackageVersion === 'string'
       ? meta.rolePackageVersion

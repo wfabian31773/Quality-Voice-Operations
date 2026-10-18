@@ -61,8 +61,13 @@ describe('findStageDirections fixtures', () => {
     ['[pause]', 'bracketed-narration'],
     ['[whispers]', 'bracketed-narration'],
     ['(checking the calendar)', 'bracketed-narration'],
+    ['(one moment, checking the calendar)', 'bracketed-narration'],
+    ['(still typing)', 'bracketed-narration'],
+    ['(now filing the ticket)', 'bracketed-narration'],
+    ['(aside from holidays)', 'bracketed-narration'],
     ['*sighs*', 'asterisk-action'],
     ['*files the ticket*', 'asterisk-action'],
+    ['Hours 9–7. *Closed Sundays.*', 'asterisk-action'],
     ['Call create_ticket silently.', 'narration-word'],
     ['Then quietly record the outcome.', 'narration-word'],
     ['Say the total sotto voce.', 'narration-word'],
@@ -98,8 +103,9 @@ describe('stripStageDirections', () => {
       'Do not silently hang up.',
     ].join('\n');
 
-    const { text, hits } = stripStageDirections(sample);
+    const { text, hits, removed } = stripStageDirections(sample);
 
+    expect(removed).toBe(3);
     expect(text).toBe([
       'Book the cut, then call create_ticket.',
       'Confirm the time with the caller.',
@@ -117,6 +123,49 @@ describe('stripStageDirections', () => {
 
   it('returns a clean prompt unchanged', () => {
     const clean = createSalonRolePackage({ businessName: 'Sharp Line Barbers' }).prompt;
-    expect(stripStageDirections(clean)).toEqual({ text: clean, hits: [] });
+    expect(stripStageDirections(clean)).toEqual({ text: clean, hits: [], removed: 0 });
+  });
+
+  it('keeps asterisk emphasis on a business fact and still reports it', () => {
+    const sample = 'Hours 9–7. *Closed Sundays.* Payment: *cash only*.';
+    const { text, hits, removed } = stripStageDirections(sample);
+
+    expect(text).toBe(sample);
+    expect(removed).toBe(0);
+    expect(hits.map((hit) => [hit.rule, hit.match])).toEqual([
+      ['asterisk-action', '*Closed Sundays.*'],
+      ['asterisk-action', '*cash only*'],
+    ]);
+  });
+
+  it.each(['*pauses*', '*sighs*'])('still removes the asterisk action %s', (action) => {
+    const { text, removed } = stripStageDirections(`Say the total ${action} and wait for a yes.`);
+    expect(text).toBe('Say the total and wait for a yes.');
+    expect(removed).toBe(1);
+  });
+
+  it.each([
+    'Open Mon–Sat (aside from holidays).',
+    'Price match (we\'ll beat any price).',
+  ])('keeps "aside"/"beat" brackets, which are business content: %s', (sample) => {
+    const { text, removed } = stripStageDirections(sample);
+    expect(text).toBe(sample);
+    expect(removed).toBe(0);
+  });
+
+  it.each([
+    '(one moment, checking the calendar)',
+    '(still typing)',
+    '(now filing the ticket)',
+  ])('removes the mid-bracket activity direction %s', (direction) => {
+    const { text, hits, removed } = stripStageDirections(`Book it ${direction} and confirm.`);
+    expect(hits.map((hit) => [hit.rule, hit.match])).toEqual([['bracketed-narration', direction]]);
+    expect(text).toBe('Book it and confirm.');
+    expect(removed).toBe(1);
+  });
+
+  it('leaves the legal deadline line unflagged and unchanged', () => {
+    const legal = '- Imminent court deadlines (hearing or filing within 24-48 hours)';
+    expect(stripStageDirections(legal)).toEqual({ text: legal, hits: [], removed: 0 });
   });
 });

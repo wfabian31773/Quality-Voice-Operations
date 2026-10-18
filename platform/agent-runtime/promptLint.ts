@@ -23,12 +23,19 @@ export interface StageDirectionHit {
   index: number;
 }
 
-const NARRATION_CUE = /\b(?:quietly|silently|softly|sotto\s+voce|whisper\w*|paus(?:e|es|ed|ing)|beat|aside|sigh\w*|laugh\w*|chuckl\w*|smil(?:e|es|ed|ing)|nod(?:s|ded|ding)?|mutter\w*|under\s+(?:your|her|his|my)\s+breath|to\s+(?:yourself|herself|himself)|internally|off[-\s]?mic)\b/i;
+const REMOVABLE_CUES = String.raw`quietly|silently|softly|sotto\s+voce|whisper\w*|paus(?:e|es|ed|ing)|typing|sigh\w*|laugh\w*|chuckl\w*|smil(?:e|es|ed|ing)|nod(?:s|ded|ding)?|mutter\w*|under\s+(?:your|her|his|my)\s+breath|to\s+(?:yourself|herself|himself)|internally|off[-\s]?mic`;
 
-// Activity cues count only when they open the bracket ("(checking the
-// calendar)"); elsewhere they are content ("(hearing or filing within 24-48
-// hours)" in the legal template).
-const LEADING_ACTIVITY_CUE = /^\s*(?:typing|filing|checking)\b/i;
+const NARRATION_CUE = new RegExp(String.raw`\b(?:${REMOVABLE_CUES}|beat|aside)\b`, 'i');
+
+// "aside" and "beat" have plain business meanings ("(aside from holidays)",
+// "(we'll beat any price)"), so the strip doesn't treat them as cues.
+const REMOVABLE_NARRATION_CUE = new RegExp(String.raw`\b(?:${REMOVABLE_CUES})\b`, 'i');
+
+// "filing"/"checking" count only within the first three words of the bracket
+// ("(one moment, checking the calendar)", "(now filing the ticket)"), and not
+// after "or"/"and": "(hearing or filing within 24-48 hours)" in the legal
+// template is content.
+const LEADING_ACTIVITY_CUE = /^\s*(?:(?!(?:or|and)\b)\w+[,\s]+){0,2}(?:filing|checking)\b/i;
 
 const NARRATION_WORD = /\b(?:quietly|silently|sotto\s+voce|whisper\w*)\b/gi;
 
@@ -69,26 +76,35 @@ export function findStageDirections(text: string): StageDirectionHit[] {
   return hits.sort((a, b) => a.index - b.index);
 }
 
-const REMOVABLE_RULES: ReadonlySet<StageDirectionRule> = new Set(['bracketed-narration', 'asterisk-action']);
+// Bracketed and asterisk hits are removed only when their inner text has a
+// narration cue. Other asterisk spans are usually emphasis on a business fact
+// ("*Closed Sundays.*"), and "aside"/"beat" are usually content.
+function isRemovable(hit: StageDirectionHit): boolean {
+  if (hit.rule === 'narration-word') return false;
+  const inner = hit.match.slice(1, -1);
+  return REMOVABLE_NARRATION_CUE.test(inner) || LEADING_ACTIVITY_CUE.test(inner);
+}
 
 /**
- * Removes bracketed narration and *action* spans, for prompt text we don't
- * author (tenant DB prompts). Narration words such as "silently" can be real
- * instructions ("Do not silently hang up."), so they are only reported in
- * `hits`, never removed. Text with no removable hit is returned unchanged.
+ * Removes bracketed and *action* spans that hold a narration cue, for prompt
+ * text we don't author (tenant DB prompts). It never deletes anything else:
+ * narration words such as "silently" can be real instructions ("Do not
+ * silently hang up."), and other asterisk spans are emphasis, so both are only
+ * reported in `hits`. `removed` counts the spans taken out. Text with no
+ * removable hit is returned unchanged.
  */
-export function stripStageDirections(text: string): { text: string; hits: StageDirectionHit[] } {
+export function stripStageDirections(text: string): { text: string; hits: StageDirectionHit[]; removed: number } {
   const hits = findStageDirections(text);
   const spans: Array<{ start: number; end: number }> = [];
   for (const hit of hits) {
-    if (!REMOVABLE_RULES.has(hit.rule)) continue;
+    if (!isRemovable(hit)) continue;
     const start = hit.index;
     const end = hit.index + hit.match.length;
     const last = spans[spans.length - 1];
     if (last && start <= last.end) last.end = Math.max(last.end, end);
     else spans.push({ start, end });
   }
-  if (spans.length === 0) return { text, hits };
+  if (spans.length === 0) return { text, hits, removed: 0 };
 
   let out = '';
   let cursor = 0;
@@ -104,5 +120,5 @@ export function stripStageDirections(text: string): { text: string; hits: StageD
     out = keepSpace ? `${left} ` : left;
     cursor = text.length - right.length;
   }
-  return { text: out + text.slice(cursor), hits };
+  return { text: out + text.slice(cursor), hits, removed: spans.length };
 }

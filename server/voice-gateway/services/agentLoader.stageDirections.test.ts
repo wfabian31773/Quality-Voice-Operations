@@ -12,7 +12,8 @@ vi.mock('../../../platform/agent-runtime/promptLint', async (importOriginal) => 
   return { ...actual, stripStageDirections: stripSpy };
 });
 
-const STAGE_DIRECTION_LOG = 'Stage directions found in agent role prompt; bracketed and asterisk ones were removed';
+const STAGE_DIRECTION_LOG = 'Stage directions removed from agent role prompt';
+const STAGE_DIRECTION_DEBUG_LOG = 'Possible stage directions in agent role prompt; nothing removed';
 
 function ctx(over: Partial<AgentLoadContext> = {}): AgentLoadContext {
   return { tenantId: 't1' as never, agentId: 'ag1', agentType: 'answering_service', ...over };
@@ -22,16 +23,23 @@ function stageDirectionWarnings(warn: ReturnType<typeof vi.spyOn>) {
   return warn.mock.calls.filter(([message]: unknown[]) => message === STAGE_DIRECTION_LOG);
 }
 
+function stageDirectionDebugs(debug: ReturnType<typeof vi.spyOn>) {
+  return debug.mock.calls.filter(([message]: unknown[]) => message === STAGE_DIRECTION_DEBUG_LOG);
+}
+
 describe('loadAgentConfig strips stage directions from tenant prompts', () => {
   let warn: ReturnType<typeof vi.spyOn>;
+  let debug: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     stripSpy.mockClear();
     warn = vi.spyOn(StructuredLogger.prototype, 'warn');
+    debug = vi.spyOn(StructuredLogger.prototype, 'debug');
   });
 
   afterEach(() => {
     warn.mockRestore();
+    debug.mockRestore();
   });
 
   it('removes bracketed and asterisk directions from salon business details and keeps the details', () => {
@@ -57,8 +65,43 @@ describe('loadAgentConfig strips stage directions from tenant prompts', () => {
       tenantId: 't1',
       agentId: 'ag1',
       counts: { 'bracketed-narration': 1, 'asterisk-action': 1 },
+      removed: 2,
     });
     expect(JSON.stringify(warnings[0])).not.toMatch(/quietly|pauses|Haircut/);
+  });
+
+  it('keeps tenant emphasis and "aside" content, and logs the kept hits at debug only', () => {
+    const businessDetails = 'Hours Tue–Sat 9–7. *Closed Sundays.* Open Mon–Sat (aside from holidays).';
+    const cfg = loadAgentConfig(ctx({
+      agentType: 'salon',
+      dbAgent: { name: 'Front Desk', system_prompt: businessDetails, metadata: { businessName: 'Sharp Line Barbers' } },
+    }));
+
+    expect(cfg.systemPrompt).toContain(businessDetails);
+    expect(stageDirectionWarnings(warn)).toEqual([]);
+    const debugs = stageDirectionDebugs(debug);
+    expect(debugs).toHaveLength(1);
+    expect(debugs[0][1]).toEqual({
+      tenantId: 't1',
+      agentId: 'ag1',
+      counts: { 'asterisk-action': 1, 'bracketed-narration': 1 },
+      removed: 0,
+    });
+    expect(JSON.stringify(debugs[0])).not.toMatch(/Sundays|holidays/);
+  });
+
+  it('does not warn for a tenant prompt holding only a narration word', () => {
+    const cfg = loadAgentConfig(ctx({
+      agentType: 'salon',
+      dbAgent: { name: 'Front Desk', system_prompt: 'Do not silently hang up.', metadata: { businessName: 'Sharp Line Barbers' } },
+    }));
+
+    expect(cfg.systemPrompt).toContain('Do not silently hang up.');
+    expect(stageDirectionWarnings(warn)).toEqual([]);
+    const debugs = stageDirectionDebugs(debug);
+    expect(debugs).toHaveLength(1);
+    expect(debugs[0][1]).toEqual({ tenantId: 't1', agentId: 'ag1', counts: { 'narration-word': 1 }, removed: 0 });
+    expect(JSON.stringify(debugs[0])).not.toMatch(/silently|hang up/);
   });
 
   it('loads a core-receptionist agent with no tenant prompt byte-identically', () => {
@@ -70,8 +113,8 @@ describe('loadAgentConfig strips stage directions from tenant prompts', () => {
 
     expect(stripSpy).toHaveBeenCalledTimes(1);
     const [input] = stripSpy.mock.calls[0] as [string];
-    const result = stripSpy.mock.results[0].value as { text: string; hits: unknown[] };
-    expect(result).toEqual({ text: input, hits: [] });
+    const result = stripSpy.mock.results[0].value as { text: string; hits: unknown[]; removed: number };
+    expect(result).toEqual({ text: input, hits: [], removed: 0 });
     expect(cfg.rolePrompt).toBe(createCoreReceptionistRolePackage({ businessName }).prompt.trim());
     expect(cfg.systemPrompt).toContain(cfg.rolePrompt);
     expect(stageDirectionWarnings(warn)).toEqual([]);
@@ -87,5 +130,6 @@ describe('loadAgentConfig strips stage directions from tenant prompts', () => {
     const [input] = stripSpy.mock.calls[0] as [string];
     expect((stripSpy.mock.results[0].value as { text: string }).text).toBe(input);
     expect(stageDirectionWarnings(warn)).toEqual([]);
+    expect(stageDirectionDebugs(debug)).toEqual([]);
   });
 });
