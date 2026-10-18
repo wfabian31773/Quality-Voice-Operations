@@ -4,9 +4,21 @@
 // because a floor that needs a captured intent skips the calls it exists for.
 
 /** Multi-word fillers, removed as whole token runs before single tokens. */
-export const FILLER_PHRASES: readonly string[] = ['my name is', 'this is', 'thank you', 'me llamo'];
+export const FILLER_PHRASES: readonly string[] = [
+  'my name is',
+  'this is',
+  'i am',
+  'thank you',
+  'good morning',
+  'good afternoon',
+  'me llamo',
+  'mi nombre es',
+  'buenos dias',
+  'buenas tardes',
+  'buenas noches',
+];
 
-/** Single-token greetings and filler (EN/ES), after normalization ("sí" → "si", "it's" → "its"). */
+/** Single-token greetings and filler (EN/ES), after normalization ("sí" → "si", "it's" → "its", "I'm" → "im"). */
 export const FILLER_WORDS: ReadonlySet<string> = new Set([
   'hi',
   'hello',
@@ -23,24 +35,28 @@ export const FILLER_WORDS: ReadonlySet<string> = new Set([
   'thanks',
   'bye',
   'its',
+  'im',
+  'here',
+  'speaking',
   'hola',
   'si',
   'bueno',
   'gracias',
   'adios',
   'soy',
+  'habla',
 ]);
 
 /** Content words needed, across all lines, to count as more than a name. */
 export const MIN_CONTENT_WORDS = 2;
 
-/** Lowercase, fold diacritics, drop apostrophes, and split on everything that isn't a letter or digit. */
+/** Lowercase, fold diacritics, drop apostrophes (' ’ ‘ ʼ), and split on everything that isn't a letter or digit. */
 export function normalizeTokens(text: string): string[] {
   return text
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
-    .replace(/['’]/g, '')
+    .replace(/['’‘ʼ]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .split(' ')

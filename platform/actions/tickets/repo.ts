@@ -392,11 +392,13 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
       [tenantId, callRef],
     );
     if (tickets.length > 0) return true;
+    // Agent bookings store the call_sessions.id as session; map a CallSid the same way as above.
     const { rows: bookings } = await tx.query(
       `SELECT 1
          FROM bookings
         WHERE tenant_id = $1
-          AND intake_data -> 'qvo' ->> 'session' = $2
+          AND (intake_data -> 'qvo' ->> 'session' = $2
+               OR intake_data -> 'qvo' ->> 'session' IN (SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2))
           AND status <> 'held'
           AND COALESCE(cancellation_reason, '') NOT IN ($3, $4)
         LIMIT 1`,

@@ -197,6 +197,21 @@ describe('tickets.file_floor on pg-mem (sqlTicketsRepo)', () => {
     });
   });
 
+  it('counts a booking stored under the session id when the floor is called with the CallSid', async () => {
+    // Agent bookings store session = ctx.callId = call_sessions.id; the runtime may pass the Twilio CallSid.
+    await tx.query(`INSERT INTO call_sessions (id, tenant_id, call_sid) VALUES ('sess-x', $1, 'CA-x')`, [TENANT]);
+    await tx.query(`INSERT INTO bookings (tenant_id, status, intake_data) VALUES ($1, 'confirmed', $2::jsonb)`, [
+      TENANT,
+      JSON.stringify({ qvo: { session: 'sess-x', serviceIds: [] } }),
+    ]);
+    expect(ok(await floor('CA-x', { callerLines: ['I need a fade Friday'] }))).toEqual({
+      filed: false,
+      reason: 'already_filed',
+    });
+    const { rows } = await tx.query(`SELECT 1 FROM tickets WHERE source_call_ref = 'CA-x'`);
+    expect(rows).toHaveLength(0);
+  });
+
   it("ignores another tenant's tickets, bookings and call row for the same call id", async () => {
     await tx.query(
       `INSERT INTO call_sessions (id, tenant_id, call_sid, caller_number) VALUES ('sess-b', $1, 'CA-shared', '+1 555 010 9999')`,

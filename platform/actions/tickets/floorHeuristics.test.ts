@@ -5,6 +5,11 @@ describe('normalizeTokens', () => {
   it('lowercases, folds diacritics and strips punctuation', () => {
     expect(normalizeTokens('¡Sí! Adiós, José… it’s OK?')).toEqual(['si', 'adios', 'jose', 'its', 'ok']);
   });
+
+  it('drops the U+2018 and U+02BC apostrophes too, so "it‘s" and "Iʼm" stay one token', () => {
+    expect(normalizeTokens('it‘s')).toEqual(['its']);
+    expect(normalizeTokens('Iʼm Luis')).toEqual(['im', 'luis']);
+  });
 });
 
 describe('saidMoreThanTheirOwnName', () => {
@@ -38,7 +43,26 @@ describe('saidMoreThanTheirOwnName', () => {
   });
 
   it('removes name tokens wherever they appear, accent-insensitively', () => {
-    expect(contentWords(['José here, José Pérez'], 'Jose Perez')).toEqual(['here']);
+    expect(contentWords(['José speaking, José Pérez, call me'], 'Jose Perez')).toEqual(['call', 'me']);
+  });
+
+  it('is false for common self-introductions and greetings without a supplied name', () => {
+    expect(saidMoreThanTheirOwnName(["Hi, I'm Luis"])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Hi, I‘m Luis'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['I am Luis'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['mi nombre es Ana'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Luis here'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Luis speaking'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['habla Ana'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['buenos días'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Good morning', 'good afternoon'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Buenas tardes', 'buenas noches'])).toBe(false);
+  });
+
+  it('is true for a self-introduction followed by a request ("Hi, I\'m Luis, I need a fade")', () => {
+    expect(contentWords(["Hi, I'm Luis, I need a fade"])).toEqual(['luis', 'i', 'need', 'a', 'fade']);
+    expect(saidMoreThanTheirOwnName(["Hi, I'm Luis, I need a fade"])).toBe(true);
+    expect(saidMoreThanTheirOwnName(["Hi, I'm Luis, I need a fade"], 'Luis')).toBe(true);
   });
 
   it('removes filler phrases only as whole runs', () => {

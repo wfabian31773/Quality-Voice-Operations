@@ -25,6 +25,8 @@ export interface MemoryTicketsState {
   locks: string[];
   /** `${tenantId}\0${callRef}` of calls that made a booking (bookings.intake_data.qvo.session). */
   bookedCalls: Set<string>;
+  /** call_sessions.id by `${tenantId}\0${callSid}`, so a CallSid finds the session's tickets and bookings. */
+  callSessions: Map<string, string>;
   /** call_sessions.caller_number as stored, by `${tenantId}\0${callRef}`. */
   callerNumbers: Map<string, string>;
 }
@@ -50,6 +52,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
     members: new Map(),
     locks: [],
     bookedCalls: new Set(),
+    callSessions: new Map(),
     callerNumbers: new Map(),
   };
   let nextNumber = 1000;
@@ -125,9 +128,11 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
           .map(strip);
       },
       async hasCallArtifact(callRef) {
+        const session = state.callSessions.get(`${tenantId}\0${callRef}`);
+        const sessions = session ? [callRef, session] : [callRef];
         return (
-          own().some((ticket) => ticket.sourceCallRef === callRef || ticket.callId === callRef) ||
-          state.bookedCalls.has(`${tenantId}\0${callRef}`)
+          own().some((ticket) => ticket.sourceCallRef === callRef || sessions.includes(ticket.callId ?? '')) ||
+          sessions.some((id) => state.bookedCalls.has(`${tenantId}\0${id}`))
         );
       },
       async callerNumber(callRef) {

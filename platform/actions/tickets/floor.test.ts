@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryStore, runAction, type ActionContext, type ActionResult } from '../core';
 import { createMemoryTicketsRepo } from './__fixtures__/memoryRepo';
 import { createTicketsActions } from './actions';
-import { CARD_MASK, FILE_FLOOR, FLOOR_SUBJECT, floorIdempotencyKey, redactCallerText } from './floor';
+import {
+  CARD_MASK,
+  FILE_FLOOR,
+  FLOOR_SUBJECT,
+  SSN_MASK,
+  floorIdempotencyKey,
+  redactCallerLines,
+  redactCallerText,
+} from './floor';
 import { ticketsActions } from './index';
 
 const NOW = new Date('2026-10-17T15:00:00.000Z');
@@ -169,6 +177,18 @@ describe('tickets.file_floor rules', () => {
     expect(tickets.state.tickets).toHaveLength(0);
   });
 
+  it('a booking made on the call, found through its CallSid → already_filed', async () => {
+    const { tickets, floor } = setup();
+    tickets.state.callSessions.set(`${TENANT}\0CA-x`, 'sess-x');
+    tickets.state.bookedCalls.add(`${TENANT}\0sess-x`);
+    const ctx = systemCtx('CA-x', { callId: undefined });
+    expect(data(await floor({ callId: 'CA-x', callerLines: ['I need a fade Friday'] }, ctx))).toEqual({
+      filed: false,
+      reason: 'already_filed',
+    });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
+
   it('a non-system actor → FORBIDDEN', async () => {
     const { tickets, floor } = setup();
     const input = { callerLines: ['I need a fade Friday'] };
@@ -273,5 +293,63 @@ describe('redactCallerText', () => {
     expect(redactCallerText('4111-1111-1111-1111')).toBe(CARD_MASK);
     expect(redactCallerText('call 555.010.0142')).toBe('call ***0142');
     expect(redactCallerText('a fade Friday at 9, two of us')).toBe('a fade Friday at 9, two of us');
+  });
+
+  it('removes a space-grouped card number', () => {
+    expect(redactCallerText('my card is 4111 1111 1111 1111 ok')).toBe(`my card is ${CARD_MASK} ok`);
+  });
+
+  it('removes a comma-grouped card number (ASR style)', () => {
+    expect(redactCallerText('it is 4111, 1111, 1111, 1111.')).toBe(`it is ${CARD_MASK}.`);
+  });
+
+  it('removes a dot-grouped card number', () => {
+    expect(redactCallerText('4111.1111.1111.1111 thanks')).toBe(`${CARD_MASK} thanks`);
+  });
+
+  it('removes a dash-grouped card number with spaced dashes', () => {
+    expect(redactCallerText('4111 - 1111 - 1111 - 1111')).toBe(CARD_MASK);
+  });
+
+  it('removes a card number split across two lines and keeps the line break', () => {
+    expect(redactCallerText('my card is 4111 1111\n1111 1111 thanks')).toBe(`my card is ${CARD_MASK}\n thanks`);
+  });
+
+  it('removes an SSN-shaped number', () => {
+    expect(redactCallerText('my social is 123-45-6789.')).toBe(`my social is ${SSN_MASK}.`);
+  });
+
+  it('is unchanged when run on its own output', () => {
+    const once = redactCallerText('card 4111 1111 1111 1111, ssn 123-45-6789, call 555-010-0142');
+    expect(once).toBe(`card ${CARD_MASK}, ssn ${SSN_MASK}, call ***0142`);
+    expect(redactCallerText(once)).toBe(once);
+  });
+});
+
+describe('redactCallerLines', () => {
+  it('catches a card split across two lines and keeps the line count', () => {
+    expect(redactCallerLines(['my card is 4111 1111', '1111 1111 thanks'])).toEqual([`my card is ${CARD_MASK}`, ' thanks']);
+    expect(redactCallerLines([])).toEqual([]);
+  });
+});
+
+describe('tickets.file_floor audit row', () => {
+  it('holds no 13–19-digit run when a line carries a card number', async () => {
+    const { store, floor } = setup();
+    const lines = ['I want to pay with my card 4111 1111 1111 1111', 'the rest is 4111', '1111 1111 1111 and 4111.1111.1111.1111'];
+    // A filed run, a replay of the same input, and a reuse of the key with other lines: each writes an audit row.
+    data(await floor({ callerLines: lines }));
+    data(await floor({ callerLines: lines }));
+    expectFail(await floor({ callerLines: [...lines, 'also 5500 0000 0000 0004'] }), 'IDEMPOTENCY_KEY_REUSED');
+    expect(store.audits.map((a) => a.resultCode)).toEqual(['ok', 'ok', 'IDEMPOTENCY_KEY_REUSED']);
+    const digitsOnly = (text: string) => text.replace(/[\s,.-]/g, '');
+    for (const audit of store.audits) {
+      const stored = JSON.stringify(audit.inputRedacted);
+      expect(stored).not.toMatch(/\d{13,19}/);
+      expect(digitsOnly(stored)).not.toMatch(/\d{13,19}/);
+      expect(stored).not.toContain('4111');
+      expect(stored).not.toContain('5500');
+    }
+    expect(JSON.stringify(store.audits[0].inputRedacted)).toContain(CARD_MASK);
   });
 });

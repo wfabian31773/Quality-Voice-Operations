@@ -29,11 +29,49 @@ export function floorIdempotencyKey(callId: string): string {
   return `call-${callId}-floor`;
 }
 
+/** 13 to 19 digits, grouped by up to 3 spaces, commas, dots, dashes or line breaks: card-number shaped. */
+const CARD_LIKE = /\b\d(?:[\s,.-]{0,3}\d){12,18}\b/g;
+export const CARD_MASK = '[card number removed]';
+
+/** US SSN shape (3-2-4 with dashes). */
+const SSN_LIKE = /\b\d{3}-\d{2}-\d{4}\b/g;
+export const SSN_MASK = '[ssn removed]';
+
+/** The mask keeps any line breaks the match spanned, so the caller's line count is unchanged. */
+function maskKeepingLines(mask: string): (match: string) => string {
+  return (match) => mask + '\n'.repeat(match.split('\n').length - 1);
+}
+
+/**
+ * Caller free text: card-like and SSN-like numbers are removed, then the core
+ * action redactor masks phone-shaped numbers to their last 4 digits. The core
+ * redactor has no card or SSN rule today, so those masks live here (see PR notes).
+ * Safe to run twice: the masks hold no card, SSN or phone shapes.
+ */
+export function redactCallerText(text: string): string {
+  const masked = text.replace(CARD_LIKE, maskKeepingLines(CARD_MASK)).replace(SSN_LIKE, SSN_MASK);
+  return String(redactInput(masked));
+}
+
+/**
+ * Redacts the lines as one text, so a card split across two lines is still
+ * caught, then splits it back into lines. A line that itself holds a line
+ * break comes back as two lines.
+ */
+export function redactCallerLines(lines: readonly string[]): string[] {
+  return lines.length === 0 ? [] : redactCallerText(lines.join('\n')).split('\n');
+}
+
 // Strict: the caller phone comes from call_sessions, so an input phone is rejected, not ignored.
+// callerLines are redacted while parsing, so runAction's audit row and request
+// hash (both built from the parsed input) never see a card number.
 export const fileFloorInput = z
   .object({
     callId: z.string().trim().min(1).max(128),
-    callerLines: z.array(z.string().max(FLOOR_MAX_LINE_LENGTH)).max(FLOOR_MAX_LINES),
+    callerLines: z
+      .array(z.string().max(FLOOR_MAX_LINE_LENGTH))
+      .max(FLOOR_MAX_LINES)
+      .transform(redactCallerLines),
     callerName: z.string().trim().max(255).optional(),
     language: z.enum(['en', 'es']).optional(),
   })
@@ -55,19 +93,6 @@ export type CallerNumberDecrypter = (tenantId: string, stored: string) => Promis
 
 /** Legacy plain-text caller_number (same shape scheduling/identity.ts accepts). */
 const PLAIN_PHONE = /^\+?[0-9 ().-]{7,24}$/;
-
-/** 13 to 19 digits, optionally grouped by single spaces or dashes: card-number shaped. */
-const CARD_LIKE = /\b\d(?:[ -]?\d){12,18}\b/g;
-export const CARD_MASK = '[card number removed]';
-
-/**
- * Caller free text for the ticket: card-like numbers are removed, then the core
- * action redactor masks phone-shaped numbers to their last 4 digits. The core
- * redactor has no card rule today, so the card mask lives here (see PR notes).
- */
-export function redactCallerText(text: string): string {
-  return String(redactInput(text.replace(CARD_LIKE, CARD_MASK)));
-}
 
 function phoneOrNull(value: string | null | undefined): string | null {
   if (!value) return null;
