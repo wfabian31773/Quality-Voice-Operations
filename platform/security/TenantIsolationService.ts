@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { getPlatformPool, getPrivilegedPool, withPrivilegedClient } from '../db';
 import { runWithRestrictedScope } from '../db/tenantScope';
 import { createLogger } from '../core/logger';
@@ -54,13 +55,34 @@ export async function pickActiveTenantForIsolationTest(): Promise<string | null>
   }
 }
 
-const RLS_TABLES = [
+/**
+ * Tables checked for RLS enabled + FORCE. Every table that migrations 121+
+ * put under RLS must be listed (TenantIsolationService.coverage.test.ts).
+ */
+export const RLS_TABLES = [
   'agents', 'phone_numbers', 'call_sessions', 'integrations',
   'connector_configs', 'campaigns', 'campaign_contacts',
   'audit_logs', 'api_keys', 'user_roles', 'analytics_metrics',
   'encryption_keys', 'encrypted_fields', 'gdpr_requests', 'tickets',
   'ticket_activity_log',
+  // 121 action layer
+  'action_idempotency', 'action_proposals', 'action_audit_log',
+  // 048 bookings (FORCE from 120) and 122 scheduling v2
+  'bookings', 'scheduling_provider_services', 'scheduling_business_hours',
 ];
+
+/** Tables probed by the cross-tenant read check (fixed list, never input). */
+export const CROSS_TENANT_READ_TABLES = [
+  'agents', 'audit_logs', 'api_keys', 'bookings', 'tickets', 'action_proposals',
+];
+
+/**
+ * NOBYPASSRLS role from migration 015. When the pool connects as a role that
+ * bypasses RLS (postgres today), the cross-tenant read probe switches to it so
+ * the COUNT is evaluated against the real policies. Fixed literal: it is the
+ * only identifier interpolated into the SET ROLE statement.
+ */
+const RLS_TESTER_ROLE = 'platform_rls_tester';
 
 /**
  * Fail loudly when the restricted pool is still a BYPASSRLS / superuser
@@ -228,30 +250,86 @@ export async function verifyCrossTenantBlocked(tenantIdA: string, tenantIdB: str
   return results;
 }
 
+async function countOtherTenantRows(client: PoolClient, table: string, tenantId: string): Promise<number> {
+  const { rows } = await client.query(
+    `SELECT COUNT(*) as cnt FROM ${table} WHERE tenant_id != $1`,
+    [tenantId],
+  );
+  return parseInt(rows[0]?.cnt as string ?? '0');
+}
+
+/**
+ * Cross-tenant COUNT(*) under `app.tenant_id = tenantId`. A connection that
+ * bypasses RLS sees every row, so in that case the probe runs as
+ * RLS_TESTER_ROLE inside a savepoint. If the switch (or the COUNT as the
+ * tester) fails, it rolls back to the savepoint and counts as the connected
+ * role, as before, and says so in `details`. A role that does not bypass RLS
+ * (qvo_app) is tested as itself.
+ */
 async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<IsolationTestResult[]> {
   const results: IsolationTestResult[] = [];
   const pool = getPlatformPool();
-  const testTables = ['agents', 'audit_logs', 'api_keys'];
 
-  for (const table of testTables) {
+  for (const table of CROSS_TENANT_READ_TABLES) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
 
-      const { rows } = await client.query(
-        `SELECT COUNT(*) as cnt FROM ${table} WHERE tenant_id != $1`,
-        [tenantId],
+      const { rows: roleRows } = await client.query<{ rolname: string; bypasses_rls: boolean }>(
+        `SELECT rolname, (rolbypassrls OR rolsuper) AS bypasses_rls
+           FROM pg_roles
+          WHERE rolname = CURRENT_USER`,
       );
-      const count = parseInt(rows[0]?.cnt as string ?? '0');
+      const connectedRole = roleRows[0]?.rolname ?? 'unknown';
+      // Unresolvable role: try the switch anyway (it can only make the probe stricter).
+      const connectedBypassesRls = roleRows[0]?.bypasses_rls ?? true;
+
+      let evaluatedAs = connectedRole;
+      let fallbackReason: string | null = null;
+      if (connectedBypassesRls) {
+        await client.query('SAVEPOINT rls_probe');
+        try {
+          await client.query(`SET LOCAL ROLE ${RLS_TESTER_ROLE}`);
+          evaluatedAs = RLS_TESTER_ROLE;
+        } catch (err) {
+          await client.query('ROLLBACK TO SAVEPOINT rls_probe');
+          fallbackReason = `SET ROLE ${RLS_TESTER_ROLE} failed: ${String(err)}`;
+        }
+      }
+
+      let count: number;
+      try {
+        count = await countOtherTenantRows(client, table, tenantId);
+      } catch (err) {
+        if (evaluatedAs !== RLS_TESTER_ROLE) throw err;
+        // RLS filters rows, it never raises, so an error here (e.g. no SELECT
+        // grant for the tester) is not an RLS block. Count as the connected role.
+        await client.query('ROLLBACK TO SAVEPOINT rls_probe');
+        evaluatedAs = connectedRole;
+        fallbackReason = `${RLS_TESTER_ROLE} could not read ${table}: ${String(err)}`;
+        count = await countOtherTenantRows(client, table, tenantId);
+      }
       await client.query('COMMIT');
+
+      let details: string;
+      if (fallbackReason) {
+        const asConnected =
+          `evaluated as connected role "${connectedRole}", which bypasses RLS, so this result cannot detect leaks; ` +
+          fallbackReason;
+        details = count === 0
+          ? `No rows from other tenants visible (${asConnected})`
+          : `VIOLATION: ${count} rows from other tenants visible (${asConnected})`;
+      } else {
+        details = count === 0
+          ? `RLS correctly prevents cross-tenant reads (evaluated as ${evaluatedAs})`
+          : `VIOLATION: ${count} rows from other tenants visible (evaluated as ${evaluatedAs})`;
+      }
 
       results.push({
         testName: `Cross-tenant read blocked on ${table}`,
         passed: count === 0,
-        details: count === 0
-          ? 'RLS correctly prevents cross-tenant reads'
-          : `VIOLATION: ${count} rows from other tenants visible`,
+        details,
       });
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
