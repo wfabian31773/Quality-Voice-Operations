@@ -1,0 +1,60 @@
+id: bb-book-anyone
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:book-anyone, template:barbershop, lang:en]
+# "Anyone's fine": the agent asks for any barber and books the first open
+# Saturday-morning slot. Any barber who does the service is a correct result.
+seed: barbershop-basic
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, I need a men's cut Saturday morning, anyone's fine. Name's Luis."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            date: "2026-10-24"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: any
+            start: "2026-10-24T10:00:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're all set for Saturday at 10."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: any
+    - name: scheduling.book.prepare
+      input:
+        staffId: any
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          date: "2026-10-24"
+          startLocal: "10:00"
+          serviceIds: [mens-cut]
+          customerName: Luis
+    tickets:
+      count: 0
+  readbackRequired: true

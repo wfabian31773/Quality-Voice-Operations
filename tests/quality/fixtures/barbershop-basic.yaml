@@ -127,6 +127,10 @@ variants:
         start: "2026-10-24T10:00:00-04:00"
         customerName: Luis Garcia Jr.
         customerPhone: "+15555550142"
+  # Saturday Oct 24 is fully booked for everyone; Sunday is the next open day.
+  saturday-fully-booked:
+    dropSlotsOn: ["2026-10-24"]
+    nextOpenDate: "2026-10-25"
   # These callers texted STOP last month.
   sms-opted-out:
     sms:

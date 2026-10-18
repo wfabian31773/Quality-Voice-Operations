@@ -1,0 +1,71 @@
+id: bb-no-availability-alternative
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:no-availability-alternative, template:barbershop, lang:en]
+# Marco is fully booked Saturday: the agent offers his next open day and the
+# caller takes Sunday at 1.
+seed: barbershop-basic:saturday-fully-booked
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Can I get a cut with Marco on Saturday? This is Luis."
+  - text: "Sunday at 1 works."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            date: "2026-10-24"
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            date: "{{nextOpenDate}}"
+      - say: "Marco is fully booked Saturday. On Sunday he has 10:00, 1:00 or 3:30."
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            start: "2026-10-25T13:00:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "You're all set with Marco on Sunday at 1."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        date: "2026-10-24"
+    - name: scheduling.check_availability
+      input:
+        date: "2026-10-25"
+    - name: scheduling.book.prepare
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: marco
+          date: "2026-10-25"
+          startLocal: "13:00"
+          serviceIds: [mens-cut]
+    tickets:
+      count: 0
+  readbackRequired: true

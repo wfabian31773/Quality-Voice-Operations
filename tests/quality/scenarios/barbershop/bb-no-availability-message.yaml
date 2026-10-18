@@ -1,0 +1,64 @@
+id: bb-no-availability-message
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:no-availability-message, template:barbershop, lang:en]
+# Marco is fully booked Saturday and Sunday doesn't suit: the caller leaves a
+# message instead. Nothing is booked; one message ticket carries the caller ID.
+seed: barbershop-basic:saturday-fully-booked
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Can I get a cut with Marco on Saturday? This is Luis."
+  - text: "Sunday doesn't work. Can you ask Marco to call me if something opens up Saturday?"
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            date: "2026-10-24"
+      - say: "Marco is fully booked Saturday; his next opening is Sunday. Would Sunday work, or should I take a message for him?"
+  - on: 1
+    steps:
+      # The callback number is held from caller ID: no ask.
+      - call:
+          name: tickets.open.prepare
+          input:
+            kind: message
+            subject: Wants a Saturday cut with Marco if anything opens up
+            customer:
+              name: Luis
+      - say: "{{readback}}. Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: tickets.open.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Done. Marco will get your message."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        date: "2026-10-24"
+    - name: tickets.open.prepare
+      input:
+        kind: message
+    - name: tickets.open.commit
+  endState:
+    bookings:
+      count: 0
+    tickets:
+      count: 1
+      items:
+        - kind: message
+          status: open
+          floor: false
+          phone: "+15555550142"
+  toolAttempts:
+    tickets.open.prepare: 1
+  readbackRequired: true

@@ -37,6 +37,8 @@ export type TenantState = {
   callerNumber?: string | null;
   /** scheduling_booking_rules.cancellation_window_hours; defaults to 24 like the column. */
   cancellationWindowHours?: number;
+  /** Booking ids scheduling.find_bookings returned verified to the agent, in order (set by the fake). */
+  disclosed?: string[];
 };
 
 export interface TenantStore {
@@ -161,6 +163,7 @@ export function snapshotOf(state: TenantState): EndSnapshot {
     tickets: state.tickets.map((row) => ({ ...row })),
     transfers: state.transfers.map((row) => ({ ...row })),
     waitlist: state.waitlist.map((row) => ({ ...row })),
+    disclosed: [...new Set(state.disclosed ?? [])],
   };
 }
 

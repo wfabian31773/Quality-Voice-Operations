@@ -1,4 +1,7 @@
-import type { TenantState } from './seed';
+// The real floor's "said more than their own name" rule (pure, no imports), so
+// the sim's floor decision can't drift from production's.
+import { saidMoreThanTheirOwnName } from '../../platform/actions/tickets/floorHeuristics';
+import { isReleasedHold, type TenantState } from './seed';
 import type {
   AgentToolSchema,
   BookingRow,
@@ -23,7 +26,7 @@ const GENERIC_SAFE: Record<string, string> = {
 function fail(
   code: string,
   message: string,
-  extra?: { field?: string; alternatives?: unknown[]; callerSafeMessage?: string },
+  extra?: { field?: string; alternatives?: unknown[]; callerSafeMessage?: string; askId?: string; exit?: 'message_ticket' },
 ): ToolResult {
   return {
     ok: false,
@@ -41,6 +44,34 @@ function fail(
 const UNKNOWN_BOOKING = "I couldn't find that appointment.";
 const SLOT_UNAVAILABLE = "That time isn't available. I can offer the closest open times.";
 const PAST_APPOINTMENT = "That appointment has already started or passed, so I can't change it. I can take a message for the shop.";
+
+/**
+ * booking.find@1's asks (platform/callcore/contracts/bookingFind.ts) and the
+ * exit line (platform/actions/scheduling/slotAsks.ts SLOT_EXIT_MESSAGE).
+ */
+type FindSlot = 'name' | 'date' | 'time';
+const FIND_ASKS: Record<FindSlot, { askId: string; ask: string }> = {
+  name: { askId: 'ask.bookingName', ask: 'What name is the appointment under?' },
+  date: { askId: 'ask.bookingDate', ask: 'What day is the appointment?' },
+  time: { askId: 'ask.bookingTime', ask: 'What time is the appointment?' },
+};
+const SLOT_EXIT_MESSAGE = 'I can take a message so someone can call you back.';
+
+/** tickets.message@1 (platform/callcore/contracts/ticketsMessage.ts) for the agent's messages and callbacks. */
+const MESSAGE_KINDS = new Set(['message', 'callback']);
+const MESSAGE_ASKS = {
+  subject: { askId: 'ask.messageSubject', ask: 'What would you like me to pass along?' },
+  callbackNumber: { askId: 'ask.callbackNumber', ask: 'What number should they call you back on?' },
+};
+/** What the agent says when the subject is still missing after one ask (platform/actions/tickets/actions.ts). */
+const MESSAGE_EXIT = "I'll let the team know you called.";
+
+/** One ask per slot per call (contract ceilings.maxAsksPerSlot). */
+const MAX_ASKS_PER_SLOT = 1;
+
+/** The system-only hangup floor (platform/actions/tickets/floor.ts). */
+export const FILE_FLOOR = 'tickets.file_floor';
+export const FLOOR_SUBJECT = 'Caller hung up before finishing';
 
 function cancellationPolicyText(hours: number): string {
   return `The shop's policy needs at least ${hours} ${hours === 1 ? "hour's" : "hours'"} notice to change or cancel an appointment. I can take a message for the shop.`;
@@ -231,6 +262,13 @@ export class FakeToolProvider implements ToolProvider {
    * were verified against (the real action records them per tenant + call).
    */
   private readonly verified = new Map<string, Map<string, string>>();
+  /**
+   * Contract misses per (call, contract, slot), counted here like slotAsks.ts
+   * and never from agent input. The real counter treats a retry of the same
+   * tool call as one miss; the fake has no idempotency key, so its asks are
+   * not retryable (the sim's retry wrapper would otherwise re-count them).
+   */
+  private readonly asks = new Map<string, number>();
 
   constructor(
     private readonly state: TenantState,
@@ -244,6 +282,8 @@ export class FakeToolProvider implements ToolProvider {
   }
 
   async invoke(name: string, input: Record<string, unknown>, ctx: ToolCallContext): Promise<ToolResult> {
+    // Not an agent tool (never listed): the runtime calls it at teardown.
+    if (name === FILE_FLOOR) return this.fileFloor(asRecord(input), ctx);
     const tool = name.split('.')[0] as ToolName;
     if (!this.enabled.includes(tool)) return fail('TOOL_NOT_ENABLED', `${tool} is not enabled for this template`);
     if (!HANDLED.has(name)) return fail('NOT_FOUND', `unknown action ${name}`);
@@ -269,7 +309,7 @@ export class FakeToolProvider implements ToolProvider {
       case 'scheduling.cancel.commit':
         return this.commit('cancel', asRecord(input), ctx);
       case 'tickets.open.prepare':
-        return this.ticketPrepare(asRecord(input));
+        return this.ticketPrepare(asRecord(input), ctx);
       case 'tickets.open.commit':
         return this.commit('ticket', asRecord(input), ctx);
       case 'calls.transfer_to_human.prepare':
@@ -299,10 +339,7 @@ export class FakeToolProvider implements ToolProvider {
         if (localDate(slot.start, ctx.tenantTimezone) !== date) return false;
         if (staffId !== 'any' && slot.staffId !== staffId) return false;
         if (!staffPerforms(this.state, slot.staffId, serviceIds)) return false;
-        const held = this.state.bookings.some(
-          (row) => row.staffId === slot.staffId && row.start === slot.start && (row.status === 'held' || row.status === 'confirmed'),
-        );
-        return !held;
+        return this.isFree(slot.staffId, slot.start, serviceIds.length > 0 ? this.endFor(serviceIds, slot.start) : slot.end);
       })
       .map((slot) => {
         const staff = this.state.staff.find((member) => member.id === slot.staffId);
@@ -369,10 +406,7 @@ export class FakeToolProvider implements ToolProvider {
       });
     }
     const staff = this.state.staff.find((member) => member.id === slot.staffId);
-    const taken = this.state.bookings.some(
-      (row) => row.staffId === slot.staffId && row.start === slot.start && (row.status === 'held' || row.status === 'confirmed'),
-    );
-    if (taken) {
+    if (!this.isFree(slot.staffId, slot.start, this.endFor(serviceIds, slot.start))) {
       return fail('CONFLICT', 'that time is no longer available');
     }
     const services = this.state.services.filter((service) => serviceIds.includes(service.id));
@@ -390,6 +424,7 @@ export class FakeToolProvider implements ToolProvider {
       startLocal: formatLocalHm(slot.start, ctx.tenantTimezone),
       customerName: name,
       customerPhone: phone,
+      callId: ctx.callId,
     };
     this.state.bookings.push(booking);
     this.state.holds[token] = { kind: 'booking', payload: { bookingId: booking.id }, readback, callId: ctx.callId };
@@ -421,12 +456,39 @@ export class FakeToolProvider implements ToolProvider {
     return this.endFor(booking.serviceIds, booking.start);
   }
 
+  /** Counts one miss of a contract slot in this call; returns the call's count (1 = the first ask). */
+  private countAsk(callId: string, contract: string, slot: string): number {
+    const key = `${callId}\0${contract}\0${slot}`;
+    const count = (this.asks.get(key) ?? 0) + 1;
+    this.asks.set(key, count);
+    return count;
+  }
+
+  private askCount(callId: string, contract: string, slot: string): number {
+    return this.asks.get(`${callId}\0${contract}\0${slot}`) ?? 0;
+  }
+
+  /** The unverified result: the next ask, or the message offer once the slot was missed twice. */
+  private findRefusal(needs: 'name' | 'name_date_time', slot: FindSlot, exit: boolean): ToolResult {
+    const { askId, ask } = FIND_ASKS[slot];
+    return exit
+      ? ok({ verified: false, bookings: [], needs, askId, callerSafeMessage: SLOT_EXIT_MESSAGE, exit: 'message_ticket' })
+      : ok({ verified: false, bookings: [], needs, askId, callerSafeMessage: ask });
+  }
+
+  private findMiss(callId: string, needs: 'name' | 'name_date_time', slot: FindSlot): ToolResult {
+    return this.findRefusal(needs, slot, this.countAsk(callId, 'booking.find', slot) > MAX_ASKS_PER_SLOT);
+  }
+
   /**
-   * Like scheduling.find_bookings (spec §0.2.6). The trusted caller ID is
-   * `state.callerNumber` (call_sessions in the real action), never input.
-   * Caller-ID match: the name on the booking is enough. No match: name, date
-   * and time must all match. Anything else returns the same empty refusal,
-   * whether or not the number has bookings.
+   * Like scheduling.find_bookings (spec §0.2.6, booking.find@1). The trusted
+   * caller ID is `state.callerNumber` (call_sessions in the real action),
+   * never input. A caller-ID match is only a candidate: the first name on the
+   * booking confirms it. No match: name, date and time must all match. Until
+   * then the result carries no booking and no count, only the next ask
+   * (askId + callerSafeMessage); a missing or wrong name is one ask, and the
+   * second miss in the call exits to a message (exit: 'message_ticket'),
+   * after which nothing more is matched.
    */
   private findBookings(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const phone = toE164(asString(input.phone) ?? '');
@@ -463,19 +525,25 @@ export class FakeToolProvider implements ToolProvider {
       const verified = this.verified.get(ctx.callId) ?? new Map<string, string>();
       for (const row of rows) verified.set(row.id, identityOf(row));
       this.verified.set(ctx.callId, verified);
+      this.state.disclosed = [...(this.state.disclosed ?? []), ...rows.map((row) => row.id)];
       return ok({ verified: true, bookings: present(rows) });
     };
 
     if (ctx.actor.type !== 'agent') return ok({ verified: true, bookings: present(matching()) });
     const callerId = this.state.callerNumber ? toE164(this.state.callerNumber) : null;
-    if (callerId === phone) {
-      if (!name) return ok({ verified: false, bookings: [], needs: 'name', matchCount: upcoming.length });
-      const found = matching();
-      return found.length > 0 ? verify(found) : ok({ verified: false, bookings: [], needs: 'name' });
-    }
-    if (!name || !date || !time) return ok({ verified: false, bookings: [], needs: 'name_date_time' });
+    const callerMatch = callerId === phone;
+    const needs = callerMatch ? 'name' : 'name_date_time';
+    const exited = (Object.keys(FIND_ASKS) as FindSlot[]).some(
+      (slot) => this.askCount(ctx.callId, 'booking.find', slot) > MAX_ASKS_PER_SLOT,
+    );
+    if (exited) return this.findRefusal(needs, 'name', true);
+    const given: Record<FindSlot, string | undefined> = { name, date, time };
+    const required: FindSlot[] = callerMatch ? ['name'] : ['name', 'date', 'time'];
+    const missing = required.find((slot) => !given[slot]);
+    if (missing) return this.findMiss(ctx.callId, needs, missing);
     const found = matching();
-    return found.length > 0 ? verify(found) : ok({ verified: false, bookings: [], needs: 'name_date_time' });
+    // A wrong name (or, without a caller-ID match, a wrong date/time) is a miss of the name check.
+    return found.length > 0 ? verify(found) : this.findMiss(ctx.callId, needs, 'name');
   }
 
   /**
@@ -511,19 +579,20 @@ export class FakeToolProvider implements ToolProvider {
 
   /**
    * No held or confirmed booking of this staff member overlaps [start, end):
-   * start < otherEnd && otherStart < end. The booking being rescheduled still
-   * occupies its own time until the commit, like the real action.
+   * start < otherEnd && otherStart < end, or starts at the same instant (a
+   * row whose services the fake can't size still blocks its own start).
+   * check_availability, book.prepare and reschedule.prepare all use it. The
+   * booking being rescheduled still occupies its own time until the commit,
+   * like the real action.
    */
   private isFree(staffId: string, start: string, end: string): boolean {
     const startMs = Date.parse(start);
     const endMs = Date.parse(end);
-    return !this.state.bookings.some(
-      (row) =>
-        row.staffId === staffId &&
-        (row.status === 'held' || row.status === 'confirmed') &&
-        startMs < Date.parse(this.endOf(row)) &&
-        Date.parse(row.start) < endMs,
-    );
+    return !this.state.bookings.some((row) => {
+      if (row.staffId !== staffId || (row.status !== 'held' && row.status !== 'confirmed')) return false;
+      const rowStart = Date.parse(row.start);
+      return rowStart === startMs || (startMs < Date.parse(this.endOf(row)) && rowStart < endMs);
+    });
   }
 
   private reschedulePrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
@@ -565,6 +634,7 @@ export class FakeToolProvider implements ToolProvider {
       startLocal: formatLocalHm(slot.start, tz),
       customerName: original.customerName,
       customerPhone: original.customerPhone,
+      callId: ctx.callId,
     };
     this.state.bookings.push(hold);
     this.state.holds[token] = {
@@ -603,23 +673,106 @@ export class FakeToolProvider implements ToolProvider {
     return ok({ confirmationToken: token, expiresAt: new Date(ctx.now.getTime() + 5 * 60 * 1000).toISOString(), readback }, readback);
   }
 
-  private ticketPrepare(input: Record<string, unknown>): ToolResult {
+  /**
+   * tickets.message@1 for the agent's messages and callbacks, like the real
+   * tickets.open.prepare: a missing subject is asked once, then exits; the
+   * callback number is held from caller ID, and without one it is asked once
+   * and the message is then prepared anyway, filed with no number. A filled
+   * slot's count is cleared; a declined callback number stays counted.
+   */
+  private messageContract(
+    input: Record<string, unknown>,
+    ctx: ToolCallContext,
+  ): { subject: string; phone: string } | ToolResult {
+    const subject = asString(input.subject)?.trim() ?? '';
+    const given = asString(((input.customer ?? {}) as Record<string, unknown>).phone)?.trim() ?? '';
+    const held = this.state.callerNumber ? toE164(this.state.callerNumber) : null;
+    const key = (slot: string) => `${ctx.callId}\0tickets.message\0${slot}`;
+    if (!subject) {
+      const exit = this.countAsk(ctx.callId, 'tickets.message', 'subject') > MAX_ASKS_PER_SLOT;
+      return fail('SLOT_MISSING', exit ? 'Still missing subject after one ask this call; do not ask again' : 'Missing subject', {
+        field: 'subject',
+        askId: MESSAGE_ASKS.subject.askId,
+        callerSafeMessage: exit ? MESSAGE_EXIT : MESSAGE_ASKS.subject.ask,
+        ...(exit ? { exit: 'message_ticket' as const } : {}),
+      });
+    }
+    this.asks.delete(key('subject'));
+    const phone = given || held || '';
+    if (phone) {
+      this.asks.delete(key('callbackNumber'));
+    } else if (this.countAsk(ctx.callId, 'tickets.message', 'callbackNumber') <= MAX_ASKS_PER_SLOT) {
+      return fail('SLOT_MISSING', 'Missing callbackNumber', {
+        field: 'callbackNumber',
+        askId: MESSAGE_ASKS.callbackNumber.askId,
+        callerSafeMessage: MESSAGE_ASKS.callbackNumber.ask,
+      });
+    }
+    return { subject, phone };
+  }
+
+  private ticketPrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const kind = asString(input.kind) ?? 'message';
-    const subject = asString(input.subject) ?? 'Message';
     const customer = (input.customer ?? {}) as Record<string, unknown>;
+    let subject = asString(input.subject) ?? 'Message';
+    let phone = asString(customer.phone) ?? '';
+    if (ctx.actor.type === 'agent' && MESSAGE_KINDS.has(kind)) {
+      const filled = this.messageContract(input, ctx);
+      if ('ok' in filled) return filled;
+      ({ subject, phone } = filled);
+    }
     const name = asString(customer.name) ?? 'the caller';
-    const phone = asString(customer.phone) ?? '';
-    const readback = `I'll pass this to ${this.state.transferTarget}: you'd like a ${kind} about ${subject}, for ${name}, at ${phone || 'the number on caller ID'}`;
+    const readback = `I'll pass this to ${this.state.transferTarget}: you'd like a ${kind} about ${subject}, for ${name}, ${phone ? `at ${phone}` : 'with no callback number'}`;
     const token = nextToken();
     const ticket = {
       id: `tkt_${token}`,
       status: 'held' as const,
       kind,
       subject,
+      callId: ctx.callId,
+      phone,
     };
     this.state.tickets.push(ticket);
     this.state.holds[token] = { kind: 'ticket', payload: { ticketId: ticket.id }, readback };
     return ok({ confirmationToken: token, ticketId: ticket.id, readback }, readback);
+  }
+
+  /**
+   * tickets.file_floor (platform/actions/tickets/floor.ts), system actor only:
+   * never_heard → nothing_substantive → already_filed → filed. Files one
+   * message ticket with the caller-ID number (call_sessions), or none.
+   */
+  private fileFloor(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
+    if (ctx.actor.type !== 'system') return fail('FORBIDDEN', 'Only the runtime can file the floor ticket');
+    const callId = asString(input.callId);
+    if (!callId || callId !== ctx.callId) {
+      return fail('VALIDATION_FAILED', 'callId does not match the call in context', { field: 'callId' });
+    }
+    const lines = asStringArray(input.callerLines).map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) return ok({ filed: false, reason: 'never_heard' });
+    if (!saidMoreThanTheirOwnName(lines, asString(input.callerName))) return ok({ filed: false, reason: 'nothing_substantive' });
+    if (this.hasCallArtifact(callId)) return ok({ filed: false, reason: 'already_filed' });
+    const ticket = {
+      id: `tkt_floor_${callId}`,
+      status: 'open' as const,
+      kind: 'message',
+      subject: FLOOR_SUBJECT,
+      callId,
+      phone: (this.state.callerNumber && toE164(this.state.callerNumber)) || '',
+      floor: true,
+    };
+    this.state.tickets.push(ticket);
+    return ok({ filed: true, reason: 'filed', ticketId: ticket.id });
+  }
+
+  /** Like TicketsRepo.hasCallArtifact: a ticket filed on the call, or a booking it made that isn't a hold. */
+  private hasCallArtifact(callId: string): boolean {
+    return (
+      this.state.tickets.some((row) => row.callId === callId && row.status === 'open') ||
+      this.state.bookings.some(
+        (row) => row.callId === callId && row.status !== 'held' && !isReleasedHold(row),
+      )
+    );
   }
 
   private transferPrepare(input: Record<string, unknown>): ToolResult {

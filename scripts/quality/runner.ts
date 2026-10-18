@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { FakeToolProvider, localDate, resetFakeTokens } from './fakeToolProvider';
+import { FakeToolProvider, FILE_FLOOR, localDate, resetFakeTokens } from './fakeToolProvider';
+import { checkInvariants } from './invariants';
 import { loadScenarioYaml } from './loadScenario';
 import { evaluateExpect, formatDiff } from './matcher';
 import { createTenantStore, type TenantStore } from './seed';
@@ -28,6 +29,33 @@ export type RunOptions = {
   /** Force the reasoning mode of scenarios that set `reasoning` (e.g. replay a shadow scenario in enforce). */
   reasoningMode?: ReasoningObservation['mode'];
 };
+
+/** Top-level tool-argument keys the runtime takes the caller's name from (callInvariants.ts NAME_ARG_KEYS). */
+const NAME_ARG_KEYS = ['callerName', 'customerName', 'customer_name', 'contactName', 'contact_name'];
+
+/**
+ * The live teardown (server/voice-gateway/services/callInvariants.ts): skip
+ * when a write, commit or transfer returned ok on the call; otherwise run
+ * tickets.file_floor once, as the system actor, with the caller's lines.
+ */
+async function runFloor(fake: FakeToolProvider, trace: TraceEvent[], ctx: ToolCallContext): Promise<void> {
+  const tools = trace.filter((event): event is Extract<TraceEvent, { type: 'tool' }> => event.type === 'tool');
+  if (tools.some((event) => event.result.ok && event.name.endsWith('.commit'))) return;
+  let callerName: string | undefined;
+  for (const event of tools) {
+    for (const key of NAME_ARG_KEYS) {
+      const value = event.input[key];
+      if (typeof value === 'string' && value.trim()) callerName = value.trim();
+    }
+  }
+  const input = {
+    callId: ctx.callId,
+    callerLines: trace.flatMap((event) => (event.type === 'caller' && event.turn.text ? [event.turn.text] : [])),
+    ...(callerName ? { callerName } : {}),
+  };
+  const result = await fake.invoke(FILE_FLOOR, input, { ...ctx, actor: { type: 'system', id: 'voice-runtime' } });
+  trace.push({ type: 'tool', name: FILE_FLOOR, input, result });
+}
 
 function classify(scenario: Scenario, failures: ReturnType<typeof evaluateExpect>): ScenarioStatus {
   const passed = failures.length === 0;
@@ -75,16 +103,20 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
       const output = await agent.handleTurn(i, tools, ctx);
       trace.push(...output.events);
     }
+    if (scenario.floor) await runFloor(fake, trace, ctx);
     if (store.flush) await store.flush();
     const snapshot = store.snapshot();
     const timeZone = store.state.timezone;
-    const failures = evaluateExpect(
-      scenario.expect,
-      trace,
-      snapshot,
-      { date: localDate(now.toISOString(), timeZone), timeZone },
-      { reasoning: reasoning?.observation, toolAttempts: tools.attempts, scenario },
-    );
+    const failures = [
+      ...evaluateExpect(
+        scenario.expect,
+        trace,
+        snapshot,
+        { date: localDate(now.toISOString(), timeZone), timeZone },
+        { reasoning: reasoning?.observation, toolAttempts: tools.attempts, scenario },
+      ),
+      ...checkInvariants({ callId, trace, snapshot, state: store.state }),
+    ];
     const status = classify(scenario, failures);
     return {
       id: scenario.id,

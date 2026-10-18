@@ -1,0 +1,54 @@
+id: bb-hangup-mid-request
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:hangup-mid-request, template:barbershop, lang:en]
+# Luis asks for a beard trim, hears the readback, and hangs up before saying
+# yes. Nothing is booked (the hold is never confirmed) and the hangup floor
+# files exactly one message ticket with the caller ID.
+seed: barbershop-basic
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, I need a beard trim with Marco Friday afternoon."
+  - text: "3:30. It's Luis."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [beard-trim]
+            staffId: marco
+            date: "2026-10-23"
+      - say: "Marco has 1:00, 3:30 or 4:30 on Friday. Which works, and what name should I put it under?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [beard-trim]
+            staffId: marco
+            start: "2026-10-23T15:30:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "{{readback}}. Is that right?"
+  # The caller hangs up here.
+expect:
+  actions:
+    - name: scheduling.book.prepare
+    - name: tickets.file_floor
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: held
+          staffId: marco
+    tickets:
+      count: 1
+      items:
+        - kind: message
+          status: open
+          floor: true
+          phone: "+15555550142"

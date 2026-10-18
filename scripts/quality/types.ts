@@ -48,6 +48,19 @@ export type ExpectedBooking = {
   date?: string;
   staffId?: string;
   staffName?: string;
+  /** The booking's services, as a set (order-insensitive). */
+  serviceIds?: string[];
+  customerName?: string;
+};
+
+/** One ticket the end state must hold. */
+export type ExpectedTicket = {
+  kind?: string;
+  status?: string;
+  /** Filed by the hangup floor (tickets.file_floor), not by the agent. */
+  floor?: boolean;
+  /** The callback number on the ticket; null = filed without one. */
+  phone?: string | null;
 };
 
 export type TimeMatchContext = {
@@ -65,6 +78,11 @@ export type EndStateExpect = {
     count?: number;
     kind?: string;
     status?: string;
+    items?: ExpectedTicket[];
+  };
+  /** Bookings scheduling.find_bookings disclosed to the agent (read back) in this call. */
+  disclosed?: {
+    count: number;
   };
   transfers?: {
     count?: number;
@@ -134,6 +152,12 @@ export type Scenario = {
   callerId?: string | null;
   reasoning?: ReasoningSetup;
   toolFaults?: Record<string, ToolFault>;
+  /**
+   * End the call like a live teardown: after the last caller turn the runtime
+   * runs the hangup floor (tickets.file_floor) once, unless a write, commit or
+   * transfer returned ok on the call.
+   */
+  floor?: boolean;
 };
 
 export type Actor = {
@@ -161,6 +185,10 @@ export type ToolError = {
   retryable: boolean;
   field?: string;
   alternatives?: unknown[];
+  /** A contract's next ask (SLOT_MISSING). */
+  askId?: string;
+  /** Set when the contract stops asking: offer a message instead. */
+  exit?: 'message_ticket';
 };
 
 export type ToolResult =
@@ -200,6 +228,8 @@ export type BookingRow = {
   customerPhone: string;
   /** Set when a hold is released (bookings.cancellation_reason: 'hold_superseded' | 'hold_expired'). */
   cancellationReason?: string;
+  /** The call whose prepare created the row (bookings.intake_data.qvo.session); absent on seeded rows. */
+  callId?: string;
 };
 
 export type TicketRow = {
@@ -207,6 +237,12 @@ export type TicketRow = {
   status: 'held' | 'open';
   kind: string;
   subject: string;
+  /** The call that filed it (tickets.source_call_ref). */
+  callId?: string;
+  /** The callback number; '' = filed without one (contact_phone ''). */
+  phone?: string;
+  /** Filed by the hangup floor (tickets.file_floor). */
+  floor?: boolean;
 };
 
 export type TransferRow = {
@@ -225,9 +261,19 @@ export type EndSnapshot = {
   tickets: TicketRow[];
   transfers: TransferRow[];
   waitlist: WaitlistRow[];
+  /** Booking ids scheduling.find_bookings handed the agent (verified results only); absent = none. */
+  disclosed?: string[];
 };
 
-export type CheckName = 'actions' | 'endState' | 'mustSay' | 'mustNotSay' | 'readbackRequired' | 'reasoning' | 'toolAttempts';
+export type CheckName =
+  | 'actions'
+  | 'endState'
+  | 'mustSay'
+  | 'mustNotSay'
+  | 'readbackRequired'
+  | 'reasoning'
+  | 'toolAttempts'
+  | 'invariant';
 
 export type CheckFailure = {
   check: CheckName;

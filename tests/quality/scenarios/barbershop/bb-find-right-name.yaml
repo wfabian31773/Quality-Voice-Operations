@@ -1,0 +1,63 @@
+id: bb-find-right-name
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:find-right-name, template:barbershop, lang:en]
+# Luis (caller ID matches) asks when his appointment is. The phone match is
+# only a candidate: find_bookings asks for the name first and lists nothing
+# until "Luis" matches. Nothing is changed.
+#
+# Production today: no write ran on this call, so the hangup floor files its
+# message ticket at teardown even though the question was answered. This pins
+# that behavior; change the ticket expectation if the floor learns to skip an
+# answered read-only call (see PR notes, follow-ups).
+seed: barbershop-basic:existing-booking
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, can you tell me when my next appointment is?"
+  - text: "Luis."
+  - text: "Great, thanks."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.find_bookings
+          input:
+            phone: "+15555550142"
+      - say: "{{callerSafeMessage}}"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.find_bookings
+          input:
+            phone: "+15555550142"
+            name: Luis
+      - say: "You have a men's cut with Marco on Thursday, October 22 at 10:00 AM."
+  - on: 2
+    steps:
+      - say: "See you Thursday."
+expect:
+  actions:
+    - name: scheduling.find_bookings
+      input:
+        phone: "+15555550142"
+    - name: scheduling.find_bookings
+      input:
+        name: Luis
+  endState:
+    disclosed:
+      count: 1
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: marco
+          date: "2026-10-22"
+          startLocal: "10:00"
+    tickets:
+      count: 1
+      items:
+        - kind: message
+          floor: true
+  toolAttempts:
+    scheduling.find_bookings: 2

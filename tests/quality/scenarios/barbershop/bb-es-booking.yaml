@@ -1,0 +1,61 @@
+id: bb-es-booking
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:es-booking, template:barbershop, lang:es]
+# A Spanish caller books a men's cut with Tony. Graded on the booking only:
+# the fake's readbacks are English, so readbackRequired can't pass for an
+# all-Spanish agent yet (vertical1 follow-up matcher-es-readback).
+seed: barbershop-basic
+callerId: "+15555550142"
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hola, quiero un corte de caballero con Tony el viernes a las 10. Me llamo Luis."
+  - text: "Sí, correcto."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: tony
+            date: "2026-10-23"
+      - call:
+          name: scheduling.book.prepare
+          input:
+            serviceIds: [mens-cut]
+            staffId: tony
+            start: "2026-10-23T10:00:00-04:00"
+            customer:
+              name: Luis
+              phone: "+15555550142"
+      - say: "Le confirmo: corte de caballero con Tony, el viernes 23 de octubre a las 10:00, a nombre de Luis. ¿Es correcto?"
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.book.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Listo, lo esperamos el viernes a las 10 con Tony."
+expect:
+  actions:
+    - name: scheduling.check_availability
+      input:
+        staffId: tony
+    - name: scheduling.book.prepare
+      input:
+        staffId: tony
+    - name: scheduling.book.commit
+  endState:
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: tony
+          date: "2026-10-23"
+          startLocal: "10:00"
+          serviceIds: [mens-cut]
+          customerName: Luis
+    tickets:
+      count: 0

@@ -289,6 +289,10 @@ function localMatches(
   return false;
 }
 
+function sameSet(expected: string[], actual: string[]): boolean {
+  return expected.length === actual.length && expected.every((id) => actual.includes(id));
+}
+
 export function matchEndState(
   expected: EndStateExpect | undefined,
   snapshot: EndSnapshot,
@@ -318,7 +322,9 @@ export function matchEndState(
           (!item.staffId || row.staffId === item.staffId) &&
           (!item.staffName || row.staffName === item.staffName) &&
           (!item.startLocal || localMatches(item.startLocal, row, ctx, item.date)) &&
-          (!item.date || (ctx ? localDate(row.start, ctx.timeZone) === item.date : false)),
+          (!item.date || (ctx ? localDate(row.start, ctx.timeZone) === item.date : false)) &&
+          (!item.serviceIds || sameSet(item.serviceIds, row.serviceIds)) &&
+          (!item.customerName || row.customerName === item.customerName),
       );
       if (!match) {
         failures.push({
@@ -355,6 +361,27 @@ export function matchEndState(
         actual: snapshot.tickets,
       });
     }
+    for (const item of expected.tickets.items ?? []) {
+      const match = snapshot.tickets.find(
+        (row) =>
+          (!item.kind || row.kind === item.kind) &&
+          (!item.status || row.status === item.status) &&
+          (item.floor === undefined || Boolean(row.floor) === item.floor) &&
+          (item.phone === undefined || (row.phone ?? '') === (item.phone ?? '')),
+      );
+      if (!match) {
+        failures.push({ check: 'endState', message: 'no ticket matched', expected: item, actual: snapshot.tickets });
+      }
+    }
+  }
+  const disclosed = snapshot.disclosed ?? [];
+  if (expected.disclosed && disclosed.length !== expected.disclosed.count) {
+    failures.push({
+      check: 'endState',
+      message: 'bookings disclosed to the agent (find_bookings) count',
+      expected: expected.disclosed.count,
+      actual: disclosed,
+    });
   }
   if (expected.transfers) {
     if (expected.transfers.count !== undefined && snapshot.transfers.length !== expected.transfers.count) {

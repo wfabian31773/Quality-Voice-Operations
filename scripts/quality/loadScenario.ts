@@ -31,7 +31,8 @@ function hasRealAssertion(value: {
   actions?: unknown[];
   endState?: {
     bookings?: { count?: number; items?: unknown[] };
-    tickets?: { count?: number; kind?: string; status?: string };
+    tickets?: { count?: number; kind?: string; status?: string; items?: unknown[] };
+    disclosed?: { count: number };
     transfers?: { count?: number; to?: string; status?: string };
     waitlist?: { count?: number };
   };
@@ -40,9 +41,16 @@ function hasRealAssertion(value: {
   const end = value.endState;
   if (!end) return false;
   if (end.bookings && (end.bookings.count !== undefined || (end.bookings.items?.length ?? 0) > 0)) return true;
-  if (end.tickets && (end.tickets.count !== undefined || Boolean(end.tickets.kind) || Boolean(end.tickets.status))) {
+  if (
+    end.tickets &&
+    (end.tickets.count !== undefined ||
+      Boolean(end.tickets.kind) ||
+      Boolean(end.tickets.status) ||
+      (end.tickets.items?.length ?? 0) > 0)
+  ) {
     return true;
   }
+  if (end.disclosed) return true;
   if (end.transfers && (end.transfers.count !== undefined || Boolean(end.transfers.to) || Boolean(end.transfers.status))) {
     return true;
   }
@@ -57,6 +65,17 @@ const expectedBookingSchema = z
     date: z.string().optional(),
     staffId: z.string().optional(),
     staffName: z.string().optional(),
+    serviceIds: z.array(z.string()).min(1).optional(),
+    customerName: z.string().optional(),
+  })
+  .strict();
+
+const expectedTicketSchema = z
+  .object({
+    kind: z.string().optional(),
+    status: z.string().optional(),
+    floor: z.boolean().optional(),
+    phone: z.string().nullable().optional(),
   })
   .strict();
 
@@ -109,13 +128,16 @@ const scenarioSchema = z
                 count: z.number().int().nonnegative().optional(),
                 kind: z.string().optional(),
                 status: z.string().optional(),
+                items: z.array(expectedTicketSchema).optional(),
               })
               .strict()
               .refine(
-                (value) => value.count !== undefined || Boolean(value.kind) || Boolean(value.status),
-                { message: 'tickets requires count, kind, and/or status' },
+                (value) =>
+                  value.count !== undefined || Boolean(value.kind) || Boolean(value.status) || (value.items?.length ?? 0) > 0,
+                { message: 'tickets requires count, kind, status, and/or items' },
               )
               .optional(),
+            disclosed: z.object({ count: z.number().int().nonnegative() }).strict().optional(),
             transfers: z
               .object({
                 count: z.number().int().nonnegative().optional(),
@@ -177,6 +199,7 @@ const scenarioSchema = z
           .strict(),
       )
       .optional(),
+    floor: z.boolean().optional(),
   })
   .strict();
 

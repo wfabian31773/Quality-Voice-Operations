@@ -1,0 +1,68 @@
+id: bb-reschedule
+template: barbershop
+tools: [scheduling, sms, tickets, business, calls]
+tags: [barbershop, core, flow:reschedule, template:barbershop, lang:en]
+# Luis (caller ID + first name) moves Thursday 10:00 with Marco to Friday 1:00.
+# One live booking remains: the Friday one; the Thursday one is superseded.
+seed: barbershop-basic:existing-booking
+now: "2026-10-20T14:00:00-04:00"
+floor: true
+caller:
+  - text: "Hi, this is Luis. I need to move my Thursday cut with Marco to Friday."
+  - text: "1:00 on Friday."
+  - text: "Yes, that's right."
+script:
+  - on: 0
+    steps:
+      - call:
+          name: scheduling.find_bookings
+          input:
+            phone: "+15555550142"
+            name: Luis
+      - call:
+          name: scheduling.check_availability
+          input:
+            serviceIds: [mens-cut]
+            staffId: marco
+            date: "2026-10-23"
+      - say: "I see your Thursday at 10 with Marco. On Friday he has 10:00, 1:00, 3:30 or 4:30."
+  - on: 1
+    steps:
+      - call:
+          name: scheduling.reschedule.prepare
+          input:
+            bookingId: bk_luis_thu
+            newStart: "2026-10-23T13:00:00-04:00"
+            staffId: marco
+      - say: "{{readback}} Is that right?"
+  - on: 2
+    steps:
+      - call:
+          name: scheduling.reschedule.commit
+          input:
+            confirmationToken: "{{confirmationToken}}"
+      - say: "Done. See you Friday at 1."
+expect:
+  actions:
+    - name: scheduling.find_bookings
+      input:
+        name: Luis
+    - name: scheduling.reschedule.prepare
+      input:
+        bookingId: bk_luis_thu
+    - name: scheduling.reschedule.commit
+  endState:
+    disclosed:
+      count: 1
+    bookings:
+      count: 1
+      items:
+        - status: confirmed
+          staffId: marco
+          date: "2026-10-23"
+          startLocal: "13:00"
+          serviceIds: [mens-cut]
+          customerName: Luis
+    tickets:
+      count: 0
+  readbackRequired: true
