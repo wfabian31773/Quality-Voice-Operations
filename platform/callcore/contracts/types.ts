@@ -24,6 +24,18 @@ export interface SlotSpec {
   /** Fallback phrasing when the template has none for this askId. */
   defaultAsk: { en: string; es: string };
   heldFrom?: HeldFact;
+  /**
+   * Required only when the caller ID doesn't vouch for the caller (it doesn't
+   * match, is withheld, or there is no call): the action steps up its check.
+   * Such a slot is declared `required: false`.
+   */
+  requiredWhen?: 'callerIdMismatch';
+  /**
+   * The value must come from a verified result of this contract id in the
+   * same call (e.g. a booking id that booking.find verified); the action
+   * refuses any other value exactly like an unknown one.
+   */
+  verifiedBy?: string;
 }
 
 export type FailureStep =
@@ -51,13 +63,19 @@ export interface ToolContract {
   intents: string[];
   /** Array order is ask order. */
   slots: SlotSpec[];
+  /**
+   * A read contract's one action (it has no confirm block): slot paths are in
+   * its input and sayBack fields in its output.
+   */
+  action?: string;
   confirm?: ConfirmSpec;
   sideEffect: 'read' | 'write';
   outbound: 'none' | 'sms' | 'call';
   outboundDestination?: 'callerPhone' | 'confirmedNumber' | 'configNumber';
   identity: 'none' | 'callerIdCandidate' | 'verified';
-  idempotency: 'proposalToken' | { fixedKey: string };
-  /** Commit output fields that may be voiced. */
+  /** 'none': a read, safe to repeat. */
+  idempotency: 'proposalToken' | 'none' | { fixedKey: string };
+  /** Commit (or read action) output fields that may be voiced; dotted, through arrays too. */
   sayBack: string[];
   /** false = refs are texted, never spoken. */
   voiceRefs: boolean;

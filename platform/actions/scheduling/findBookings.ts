@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { BOOKING_FIND_V1, nextMissingSlot, type SlotSpec, type ToolContract } from '../../callcore/contracts';
 import { actionOk, defineAction, type ActionContext, type TenantTx } from '../core';
 import { isRealIsoDate, localDateOf, localMinuteOf } from './availability';
 import { FIND_LIMIT, serviceNames, upcomingByPhone, type BookingRecord } from './bookingRows';
 import { callerIdMatches, FIND_BOOKINGS, namesMatch, recordVerified } from './identity';
 import { foundBookingLine, readbackLang, spokenWhen } from './readback';
+import { countSlotAsk, SLOT_EXIT_MESSAGE, slotAskCount } from './slotAsks';
 import { phone } from './writeSchemas';
 
 const input = z.object({
@@ -39,10 +41,26 @@ const output = z.object({
   ),
   /** What the agent must ask for before anything can be found. */
   needs: z.enum(NEEDS).optional(),
-  /** Upcoming bookings on the number; only when it is the caller's own (caller ID) and no name was given. */
-  matchCount: z.number().int().nonnegative().optional(),
+  /** Unverified agent result: booking.find@1's askId to ask next. */
+  askId: z.string().optional(),
+  /** Unverified agent result: the one line to say (the ask, or the message offer at the exit). */
+  callerSafeMessage: z.string().optional(),
+  /** Second miss in the call: don't ask again, offer to take a message. */
+  exit: z.literal('message_ticket').optional(),
 });
 type FindOutput = z.infer<typeof output>;
+
+/** booking.find@1 for a caller the caller ID doesn't vouch for: name, date and time all required. */
+const STEPPED_UP: Pick<ToolContract, 'slots'> = {
+  slots: BOOKING_FIND_V1.slots.map((s) => (s.requiredWhen === 'callerIdMismatch' ? { ...s, required: true } : s)),
+};
+
+/** The slot a non-matching name (or date/time) counts against: the first-name check. */
+const NAME_SLOT: SlotSpec = (() => {
+  const slot = BOOKING_FIND_V1.slots.find((s) => s.name === 'name');
+  if (!slot) throw new Error('booking.find@1 has no name slot');
+  return slot;
+})();
 
 function hhmm(minuteOfDay: number): string {
   return `${String(Math.floor(minuteOfDay / 60)).padStart(2, '0')}:${String(minuteOfDay % 60).padStart(2, '0')}`;
@@ -80,11 +98,27 @@ async function present(tx: TenantTx, ctx: ActionContext, bookings: BookingRecord
 
 /**
  * The refusal. It is the same whether the number has no bookings, the name
- * is wrong, or the date/time are: an unverified caller learns nothing.
- * (No NOT_FOUND either: absence must look exactly like a refusal.)
+ * is wrong, or the date/time are: an unverified caller learns nothing, not
+ * even how many bookings the number has. (No NOT_FOUND either: absence must
+ * look exactly like a refusal.)
  */
-function refused(needs: (typeof NEEDS)[number], matchCount?: number): FindOutput {
-  return { verified: false, bookings: [], needs, ...(matchCount === undefined ? {} : { matchCount }) };
+function refused(ctx: ActionContext, needs: (typeof NEEDS)[number], slot: SlotSpec, exit: boolean): FindOutput {
+  const lang = readbackLang(ctx.locale);
+  if (exit) {
+    return { verified: false, bookings: [], needs, askId: slot.askId, callerSafeMessage: SLOT_EXIT_MESSAGE[lang], exit: 'message_ticket' };
+  }
+  return { verified: false, bookings: [], needs, askId: slot.askId, callerSafeMessage: slot.defaultAsk[lang] };
+}
+
+/** One ask per slot: counts the miss server-side and exits on the second one in the call. */
+function miss(ctx: ActionContext, needs: (typeof NEEDS)[number], slot: SlotSpec): FindOutput {
+  const asks = countSlotAsk(ctx, BOOKING_FIND_V1, slot);
+  return refused(ctx, needs, slot, asks > BOOKING_FIND_V1.ceilings.maxAsksPerSlot);
+}
+
+/** After the exit, find matches nothing more in this call (no name guessing on a shared phone). */
+function exited(ctx: ActionContext): boolean {
+  return BOOKING_FIND_V1.slots.some((s) => slotAskCount(ctx, BOOKING_FIND_V1, s.name) > BOOKING_FIND_V1.ceilings.maxAsksPerSlot);
 }
 
 export const findBookingsAction = defineAction({
@@ -96,41 +130,45 @@ export const findBookingsAction = defineAction({
   permissions: { agent: true, mcpScope: 'qvo:read' },
   agentDescription:
     'Find the caller\'s upcoming appointments before any reschedule or cancel. Send the phone the caller '
-    + 'gives (or their caller ID number) and the name on the booking. Caller ID is checked on the server. '
-    + 'If needs is "name", ask whose name the appointment is under. If needs is "name_date_time", ask for the '
-    + 'name, date (YYYY-MM-DD) and time (HH:MM) of the appointment and never suggest a date or time yourself; '
-    + 'if the caller doesn\'t know them, offer to take a message. Only a verified result lists bookings: read '
-    + 'their spoken text, and if there is more than one, ask which. Never say whether an unverified number has appointments.',
+    + 'gives (or their caller ID number) and the name on the booking. Caller ID is checked on the server, and a '
+    + 'phone match alone lists nothing: the first name on the booking must match too. Until it does, verified is '
+    + 'false: ask the one question in callerSafeMessage (askId), then call again. If needs is "name_date_time", '
+    + 'also ask the date (YYYY-MM-DD) and time (HH:MM) of the appointment and never suggest a date or time yourself. '
+    + 'If exit is set, do not ask again: offer to take a message. Only a verified result lists bookings: read '
+    + 'their spoken text, and if there is more than one, ask which. Never say whether an unverified number has '
+    + 'appointments, and never read a booking id aloud.',
   async run(ctx, args, tx) {
     // Date and time filter in SQL; the name matcher (authoritative, and the
     // JS date/time check alongside it) runs over every scanned row before the
     // result is capped at FIND_LIMIT.
-    const upcoming = await upcomingByPhone(tx, ctx.tenantId, args.phone, ctx.now, {
-      timeZone: ctx.tenantTimezone,
-      date: args.date,
-      time: args.time,
-    });
-    const matching = () => upcoming.filter((b) => matches(ctx, b, args)).slice(0, FIND_LIMIT);
+    const lookup = async () => {
+      const upcoming = await upcomingByPhone(tx, ctx.tenantId, args.phone, ctx.now, {
+        timeZone: ctx.tenantTimezone,
+        date: args.date,
+        time: args.time,
+      });
+      return upcoming.filter((b) => matches(ctx, b, args)).slice(0, FIND_LIMIT);
+    };
 
     // Staff, UI and MCP callers are trusted: a plain lookup by phone, with
     // optional name/date/time filters.
     if (ctx.actor.type !== 'agent') {
-      return actionOk({ verified: true, bookings: await present(tx, ctx, matching()) });
+      return actionOk({ verified: true, bookings: await present(tx, ctx, await lookup()) });
     }
 
-    // The agent (spec §0.2.6). Caller ID comes from call_sessions, never from input.
-    if (await callerIdMatches(tx, ctx, args.phone)) {
-      if (!args.name) return actionOk(refused('name', upcoming.length));
-      const found = matching();
-      if (found.length === 0) return actionOk(refused('name'));
-      await recordVerified(tx, ctx, found);
-      return actionOk({ verified: true, bookings: await present(tx, ctx, found) });
-    }
+    // The agent (spec §0.2.6, booking.find@1). A caller-ID match is only a
+    // candidate; the first name on the booking confirms it. Caller ID comes
+    // from call_sessions, never from input. Everything up to a confirmed
+    // match is decided before any booking is read.
+    const callerMatch = await callerIdMatches(tx, ctx, args.phone);
+    const needs = callerMatch ? 'name' : 'name_date_time';
+    if (exited(ctx)) return actionOk(refused(ctx, needs, NAME_SLOT, true));
+    const missing = nextMissingSlot(callerMatch ? BOOKING_FIND_V1 : STEPPED_UP, args);
+    if (missing) return actionOk(miss(ctx, needs, missing));
 
-    // Blocked or different caller ID: name, date and time must all match.
-    if (!args.name || !args.date || !args.time) return actionOk(refused('name_date_time'));
-    const found = matching();
-    if (found.length === 0) return actionOk(refused('name_date_time'));
+    const found = await lookup();
+    // A wrong name (or, without a caller-ID match, a wrong date/time) is a miss of the name check.
+    if (found.length === 0) return actionOk(miss(ctx, needs, NAME_SLOT));
     await recordVerified(tx, ctx, found);
     return actionOk({ verified: true, bookings: await present(tx, ctx, found) });
   },

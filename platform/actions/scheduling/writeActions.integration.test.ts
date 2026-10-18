@@ -616,11 +616,17 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
     const agentIn = (shop: Shop, callId: string | undefined, extra: Partial<ActionContext> = {}) =>
       ctx(shop.tenantId, { callId, ...extra });
 
-    type Found = { verified: boolean; bookings: Array<Record<string, unknown>>; needs?: string; matchCount?: number };
+    type Found = { verified: boolean; bookings: Array<Record<string, unknown>>; needs?: string; askId?: string; exit?: string };
     const find = async (c: ActionContext, input: Record<string, unknown>) => data<Found>(await act('scheduling.find_bookings', c, input));
     const ids = (found: Found) => found.bookings.map((b) => b.bookingId);
+    // RT-06: a refusal also carries the next askId (and exit after the second miss); never a count.
     const REFUSED_NAME = { verified: false, bookings: [], needs: 'name' };
     const REFUSED_NDT = { verified: false, bookings: [], needs: 'name_date_time' };
+    const FIRST_NAME_ASK = { ...REFUSED_NAME, askId: 'ask.bookingName', callerSafeMessage: 'What name is the appointment under?' };
+    const refusedWithoutCount = (found: Found, base: Record<string, unknown>) => {
+      expect(found).toMatchObject(base);
+      expect(found).not.toHaveProperty('matchCount');
+    };
 
     it('caller-ID match plus the name on the booking returns it verified, with a spoken line', async () => {
       const shop = await seedShop('find-ok');
@@ -641,17 +647,20 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       });
     });
 
-    it('caller-ID match with a wrong name or no name reveals nothing but what to ask for', async () => {
+    it('caller-ID match with a wrong name or no name reveals nothing but what to ask for; the second miss exits', async () => {
       const shop = await seedShop('find-name');
       await booking(shop, edt(22, '10:00'));
       const c = agentIn(shop, await call(shop.tenantId, PHONE));
-      expect(await find(c, { phone: PHONE, name: 'Ana' })).toEqual(REFUSED_NAME);
-      expect(await find(c, { phone: PHONE, name: 'Ana', date: '2026-10-22', time: '10:00' })).toEqual(REFUSED_NAME);
-      // No name: the caller's own number may hear how many there are, nothing more.
-      expect(await find(c, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 1 });
+      expect(await find(c, { phone: PHONE, name: 'Ana' })).toEqual(FIRST_NAME_ASK);
+      // No count either (RT-06), and the second miss in the call is the exit.
+      expect(await find(c, { phone: PHONE })).toEqual({
+        ...REFUSED_NAME, askId: 'ask.bookingName', callerSafeMessage: 'I can take a message so someone can call you back.', exit: 'message_ticket',
+      });
+      // After the exit even the right name finds nothing in this call.
+      refusedWithoutCount(await find(c, { phone: PHONE, name: 'Luis' }), { ...REFUSED_NAME, exit: 'message_ticket' });
       // A wrong name looks exactly like a number with no bookings at all.
       const empty = agentIn(shop, await call(shop.tenantId, '+15555550199'));
-      expect(await find(empty, { phone: '+15555550199', name: 'Ana' })).toEqual(REFUSED_NAME);
+      expect(await find(empty, { phone: '+15555550199', name: 'Ana' })).toEqual(FIRST_NAME_ASK);
     });
 
     it('a different, blocked or missing caller ID needs name + date + time; any one wrong or missing reveals nothing', async () => {
@@ -675,7 +684,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       ];
       for (const c of contexts) {
         expect(ids(await find(c, full))).toEqual([id]);
-        for (const partial of partials) expect(await find(c, partial)).toEqual(REFUSED_NDT);
+        for (const partial of partials) refusedWithoutCount(await find(c, partial), REFUSED_NDT);
       }
     });
 
@@ -690,7 +699,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
         const c = agentIn(shop, await call(shop.tenantId, 'enc:v1:opaque', hashed(mine)));
         expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([id]);
         const d = agentIn(shop, await call(shop.tenantId, 'enc:v1:opaque', hashed(other)));
-        expect(await find(d, { phone: PHONE, name: 'Luis' })).toEqual(REFUSED_NDT);
+        refusedWithoutCount(await find(d, { phone: PHONE, name: 'Luis' }), REFUSED_NDT);
       } finally {
         vi.unstubAllEnvs();
       }
@@ -708,7 +717,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       expect(ids(await find(staff, { phone: PHONE }))).toEqual([upcoming]);
       const c = agentIn(shop, await call(shop.tenantId, PHONE));
       expect(ids(await find(c, { phone: PHONE, name: 'Luis' }))).toEqual([upcoming]);
-      expect(await find(c, { phone: PHONE })).toMatchObject({ matchCount: 1 });
+      refusedWithoutCount(await find(c, { phone: PHONE }), REFUSED_NAME);
     });
 
     it('two family members on one phone: the first name finds both, the full name one (spec §1.6 #12)', async () => {
@@ -724,7 +733,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       ]);
       expect(ids(await find(c, { phone: PHONE, name: 'luis garcia jr' }))).toEqual([son]);
       expect(ids(await find(c, { phone: PHONE, name: 'ana garcia' }))).toEqual([ana]);
-      expect(await find(c, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 3 });
+      refusedWithoutCount(await find(c, { phone: PHONE }), REFUSED_NAME);
     });
 
     it('filters by name, date and time before the result cap: the 25th upcoming booking on one phone is found', async () => {
@@ -746,10 +755,10 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       const c = agentIn(shop, await call(shop.tenantId, '+15555550199'));
       expect(ids(await find(c, exact))).toEqual([last]);
       expect(data(await act('scheduling.cancel.prepare', c, { bookingId: last }))).toMatchObject({ confirmationToken: expect.any(String) });
-      // Agent, caller ID matches: the name alone finds it; the count covers every upcoming booking.
+      // Agent, caller ID matches: the name alone finds it; without a name, nothing (not even a count).
       const mine = agentIn(shop, await call(shop.tenantId, PHONE));
       expect(ids(await find(mine, { phone: PHONE, name: 'Mateo Ruiz' }))).toEqual([last]);
-      expect(await find(mine, { phone: PHONE })).toEqual({ ...REFUSED_NAME, matchCount: 25 });
+      refusedWithoutCount(await find(mine, { phone: PHONE }), REFUSED_NAME);
     });
 
     it("tenant A never sees tenant B's bookings on the same phone, nor acts on them", async () => {
@@ -762,7 +771,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       expect(ids(await find(agentIn(a, aCall), { phone: PHONE, name: 'Luis' }))).toEqual([mine]);
       expect(ids(await find(ctx(a.tenantId, { actor: STAFF }), { phone: PHONE }))).toEqual([mine]);
       // B's call is not A's caller ID.
-      expect(await find(agentIn(a, bCall), { phone: PHONE, name: 'Luis' })).toEqual(REFUSED_NDT);
+      refusedWithoutCount(await find(agentIn(a, bCall), { phone: PHONE, name: 'Luis' }), REFUSED_NDT);
       // B verified its own booking in its own call; A can't act on it with either callId.
       expect(ids(await find(agentIn(b, bCall), { phone: PHONE, name: 'Luis' }))).toEqual([theirs]);
       for (const callId of [aCall, bCall]) {
@@ -835,7 +844,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
         // Guessed: this call never found it, and an unverified find records nothing.
         const guess = agentIn(shop, await call(shop.tenantId, PHONE));
         await refusedBoth(guess);
-        expect(await find(guess, { phone: PHONE, name: 'Ana' })).toEqual(REFUSED_NAME);
+        expect(await find(guess, { phone: PHONE, name: 'Ana' })).toEqual(FIRST_NAME_ASK);
         await refusedBoth(guess);
 
         // Verified in call 1; call 2 (same caller, same tenant) and no callId can't use it.

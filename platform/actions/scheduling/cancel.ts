@@ -135,6 +135,9 @@ export const cancelCommitAction = defineAction({
     ) {
       return actionFail('CONFLICT', 'The booking changed since the prepare', { callerSafeMessage: callerMessage('bookingChanged', lang) });
     }
+    // The find's verification (first name confirmed) must still hold at the commit.
+    const unverified = await agentBookingBlock(tx, ctx, booking.id);
+    if (unverified) return unverified;
     const blocked = await policyBlock(tx, ctx, booking);
     if (blocked) return blocked;
 
