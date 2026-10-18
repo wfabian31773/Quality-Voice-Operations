@@ -56,6 +56,13 @@ export interface AudioObservation {
   runtimeErrors: string[];
   /** Per tool call, on the call's timeline (ms): what the caller waited through. */
   toolTimings: ToolTimingObservation[];
+  /** tool_invocations rows inserted, and when each was completed (the queued bookkeeping landing). */
+  toolRows: number;
+  toolRowsCompletedAt: number[];
+  /** Catalog reads that reached the database (a call-stable read served from the call cache doesn't). */
+  catalogReads: number;
+  /** When teardown wrote the final call state (finalizeCallSession). */
+  finalizedAt?: number;
 }
 
 export interface ToolTimingObservation {
@@ -137,6 +144,10 @@ export function observe(world: CallWorld): AudioObservation {
     providerErrors: [...world.xai.errors],
     runtimeErrors: world.logs.filter((line) => line.startsWith('error')).slice(-10).map((line) => line.slice(0, 300)),
     toolTimings: toolTimings(world),
+    toolRows: writes(world, 'tool_invocations'),
+    toolRowsCompletedAt: world.db.filter((s) => /^UPDATE tool_invocations\b/i.test(s.sql)).map((s) => s.at),
+    catalogReads: world.db.filter((s) => /\bFROM scheduling_appointment_types\b/i.test(s.sql)).length,
+    finalizedAt: world.finalized[0]?.at,
   };
 }
 

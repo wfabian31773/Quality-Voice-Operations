@@ -18,7 +18,9 @@
  * - S17: VAD speech marking the caller heard;
  * - S18: the hold line's trigger (slow tool), and its knowing the result
  *   came back first (fast tool); the transport's one-response-at-a-time
- *   guard (RT-HOLD-LINE §4).
+ *   guard (RT-HOLD-LINE §4);
+ * - RT-HOLD-LINE part 2: bookkeeping off the critical path (the timing
+ *   fixture's < 1000 ms tool call → result goes red without it).
  */
 import { exitWith, RESULT_MARKER, runAudioCli } from '../../../scripts/quality/audio/run';
 import type { RuntimeModules } from '../../../scripts/quality/audio/edges';
@@ -46,6 +48,22 @@ function transportProto(rt: RuntimeModules): Proto {
 function holdLineProto(rt: RuntimeModules): Proto {
   return rt.holdLine.HoldLine.prototype as unknown as Proto;
 }
+
+function bookkeepingProto(rt: RuntimeModules): Proto {
+  return rt.bookkeepingQueue.BookkeepingQueue.prototype as unknown as Proto;
+}
+
+/** A tool call waits for every bookkeeping write it queued, as before the queue (31996d53's critical path). */
+const bookkeepingInline = (rt: RuntimeModules): Restore =>
+  patch(bookkeepingProto(rt), 'onCriticalPath', () => function (this: { settled(): Promise<void> }) {
+    return this.settled();
+  });
+
+/** No call-stable read is cached (ContractToolBridge.readCacheKey): every repeat reads the database again. */
+const noReadCache = (rt: RuntimeModules): Restore =>
+  patch(rt.contractToolBridge.ContractToolBridge.prototype as unknown as Proto, 'readCacheKey', noop);
+
+const all = (...restores: Restore[]): Restore => () => restores.forEach((restore) => restore());
 
 const noop = () => function () {
   return undefined;
@@ -100,6 +118,18 @@ export const MUTANTS: Record<string, (rt: RuntimeModules) => Restore> = {
   'transport-no-in-flight-guard': (rt) => patch(transportProto(rt), 'responseBusy', () => function () {
     return false;
   }),
+  /**
+   * RT-HOLD-LINE part 2: the bookkeeping queue removed from the critical path's
+   * point of view (BookkeepingQueue.onCriticalPath awaits the writes, as the
+   * inline path did): tool call → result is the bookkeeping again.
+   */
+  'bookkeeping-inline': bookkeepingInline,
+  /** The call cache of call-stable reads removed: the catalog fixture reads the database twice. */
+  'no-read-cache': noReadCache,
+  /** 31996d53's path for the timing table (part 1): bookkeeping inline, no read cache, the hold line on. */
+  'part1-path': (rt) => all(bookkeepingInline(rt), noReadCache(rt)),
+  /** a3d2a94c's path for the timing table: bookkeeping inline, no read cache, no hold line. */
+  'a3d2a94c-path': (rt) => all(bookkeepingInline(rt), noReadCache(rt), patch(holdLineProto(rt), 'onDeadline', noop)),
 };
 
 async function main(argv: string[]): Promise<number> {

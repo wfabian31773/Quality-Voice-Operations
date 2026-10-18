@@ -22,6 +22,7 @@ import { hasKnowledgeArticles } from '../../../platform/knowledge/knowledgeConte
 import { isToolDenied, type ToolOverride } from '../../../platform/agent-templates/toolPermissions';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { createToolExecution, completeToolExecution } from '../../../platform/tools/ToolExecutionService';
+import { BookkeepingQueue, type FlushResult } from './bookkeepingQueue';
 import {
   executeWithRetry,
   getToolRetryConfig,
@@ -65,13 +66,14 @@ import {
   updateCallState,
   createPlatformPersistenceAdapter,
   persistCallOutcome,
+  updateCallStateWithEvent,
 } from './callPersistence';
 import { SilenceWatchdog, type PlaybackConfirmMode } from './silenceWatchdog';
 import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
 import { CallInvariants, type FloorOutcome } from './callInvariants';
 import { createContractToolBridge } from './contractToolBridge';
 import { engineSuccessToolName, engineToolCall, engineToolNames, engineVertical } from './reasoningToolNames';
-import { beginToolRun, finishToolRun, runContractTool, type ToolRunCall } from './toolBookkeeping';
+import { beginToolRun, finishToolRun, recordRefusedToolRun, runContractTool, type ToolRunCall } from './toolBookkeeping';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
 
@@ -136,28 +138,37 @@ interface RealtimeMessageItem {
   holdLine?: boolean;
 }
 
+/** How one tool call's bookkeeping went, for its tool_timing line. */
+export interface ToolRunNote {
+  cacheHit: boolean;
+  /** Writes already in the call's bookkeeping queue when this call's first one was enqueued. */
+  queueDepthAtEnqueue: number;
+}
+
 function buildToolHandler(
   ctx: SessionContext,
   callSessionId: string,
+  queue: BookkeepingQueue,
+  /** This tool call was answered from the call cache (its tool_timing cache_hit). */
+  markCacheHit: (toolName: string) => void = () => {},
 ) {
   // RT-09: a composer agent's contract tools run as platform actions (undefined for every other agent).
   const contractTools = createContractToolBridge({ tenantId: ctx.tenantId, callId: callSessionId, callerNumber: ctx.callerNumber, agent: ctx.agentConfig });
   return async (toolName: string, args: Record<string, unknown>): Promise<string> => {
     const { tenantId, callSid, outboxService, agentConfig, onEscalation } = ctx;
     const startTime = Date.now();
+    const bookkeeping: ToolRunCall = {
+      tenantId, callSessionId, agentId: agentConfig.agentId, toolName, args, workflow: Boolean(ctx.workflowEngine), isTrial: ctx.isTrial,
+    };
+    /** One failed tool_invocations row for a call refused before anything ran, queued like every write. */
+    const refuse = async (result: Record<string, unknown>, errorMessage: string): Promise<void> => {
+      recordRefusedToolRun({ ...bookkeeping, args }, { result, errorMessage, durationMs: Date.now() - startTime }, queue);
+      await queue.onCriticalPath();
+    };
 
     if (ctx.templateKey && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName) && isToolDenied(toolName, ctx.templateKey, ctx.toolOverrides)) {
       logger.warn('Denied tool invocation blocked', { tenantId, callId: callSessionId, tool: toolName });
-      const deniedId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-      await completeToolExecution({
-        tenantId,
-        executionId: deniedId,
-        callSessionId,
-        result: { success: false, reason: 'denied' },
-        status: 'failed',
-        errorMessage: 'Tool denied by template permissions',
-        durationMs: Date.now() - startTime
-      });
+      await refuse({ success: false, reason: 'denied' }, 'Tool denied by template permissions');
       return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
     }
 
@@ -168,16 +179,7 @@ function buildToolHandler(
       const allowlist = checkAgentToolAllowlist(toolName, agentConfig.tools.map((tool) => tool.name), INTERNAL_ORCHESTRATION_TOOLS);
       if (!allowlist.allowed) {
         logger.warn('Tool not in agent allowlist blocked', { tenantId, callId: callSessionId, tool: toolName });
-        const alId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({
-          tenantId,
-          executionId: alId,
-          callSessionId,
-          result: { success: false, reason: 'unauthorized_tool' },
-          status: 'failed',
-          errorMessage: 'Tool not in agent allowlist',
-          durationMs: Date.now() - startTime,
-        });
+        await refuse({ success: false, reason: 'unauthorized_tool' }, 'Tool not in agent allowlist');
         return JSON.stringify({ success: false, message: 'This tool is not available for this agent. Please use the tools that are enabled for your current session.' });
       }
     }
@@ -202,30 +204,17 @@ function buildToolHandler(
         if (authorization.allowed) return undefined;
         const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
         logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
-        const sgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({
-          tenantId,
-          executionId: sgId,
-          callSessionId,
-          result: { success: false, reason: 'safety_blocked', violations: criticalViolations.map((v) => v.description) },
-          status: 'failed',
-          errorMessage: `Safety gate: ${criticalViolations.map((v) => v.description).join('; ')}`,
-          durationMs: Date.now() - startTime
-        });
-        await writeCallEvent(tenantId, callSessionId, 'safety_gate_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, violations: criticalViolations.map((v) => ({ type: v.type, description: v.description })) });
+        await refuse(
+          { success: false, reason: 'safety_blocked', violations: criticalViolations.map((v) => v.description) },
+          `Safety gate: ${criticalViolations.map((v) => v.description).join('; ')}`,
+        );
+        const violations = criticalViolations.map((v) => ({ type: v.type, description: v.description }));
+        void queue.enqueue('call_event.safety_gate_blocked', () =>
+          writeCallEvent(tenantId, callSessionId, 'safety_gate_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, violations }));
         return JSON.stringify({ success: false, message: `This action was blocked by policy: ${criticalViolations.map((v) => v.description).join('. ')}` });
       } catch (safetyErr) {
         logger.error('Reasoning authorization failed, blocking tool execution (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(safetyErr) });
-        const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({
-          tenantId,
-          executionId: fgId,
-          callSessionId,
-          result: { success: false, reason: 'safety_gate_error' },
-          status: 'failed',
-          errorMessage: `Reasoning authorization error: ${String(safetyErr)}`,
-          durationMs: Date.now() - startTime
-        });
+        await refuse({ success: false, reason: 'safety_gate_error' }, `Reasoning authorization error: ${String(safetyErr)}`);
         return JSON.stringify({ success: false, message: 'Unable to verify this action safely. Please try again.' });
       }
     };
@@ -257,51 +246,32 @@ function buildToolHandler(
     };
 
     contractTools?.observeToolCall(toolName, args);
-    const bookkeeping: ToolRunCall = {
-      tenantId, callSessionId, agentId: agentConfig.agentId, toolName, args, workflow: Boolean(ctx.workflowEngine), isTrial: ctx.isTrial,
-    };
     if (contractTools?.handles(toolName)) {
       // The same reasoning authorization as every other tool, before anything runs.
       const blocked = await reasoningBlock();
       if (blocked !== undefined) return blocked;
       // Same tool_invocations row, call events and metering as every other tool.
       return runContractTool(contractTools, bookkeeping, (run) => {
+        if (run.cacheHit) markCacheHit(toolName);
         if (run.rateLimited) return;
         // An ask (SLOT_MISSING) is neither: nothing ran to completion, nothing failed.
         if (run.status === 'success' && run.ok) reasoningToolSucceeded();
         else if (run.status !== 'success') reasoningToolFailed();
-      });
+      }, queue);
     }
 
     const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
     const validation = unifiedToolRegistry.validateToolInput(toolName, args, activeRoleSchema);
     if (!validation.valid) {
       logger.warn('Tool input validation failed', { tenantId, callId: callSessionId, tool: toolName, errors: validation.errors });
-      const valId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-      await completeToolExecution({
-        tenantId,
-        executionId: valId,
-        callSessionId,
-        result: { success: false, reason: 'validation_failed' },
-        status: 'failed',
-        errorMessage: `Validation failed: ${validation.errors.join(', ')}`,
-        durationMs: Date.now() - startTime
-      });
+      await refuse({ success: false, reason: 'validation_failed' }, `Validation failed: ${validation.errors.join(', ')}`);
       return JSON.stringify({ success: false, message: `Invalid input: ${validation.errors.join(', ')}` });
     }
 
+    // In memory (per tenant and tool), decided before the action: nothing the queue writes can change it.
     if (!unifiedToolRegistry.checkRateLimit(tenantId, toolName)) {
       logger.warn('Tool rate limit exceeded', { tenantId, callId: callSessionId, tool: toolName });
-      const rlId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-      await completeToolExecution({
-        tenantId,
-        executionId: rlId,
-        callSessionId,
-        result: { success: false, reason: 'rate_limited' },
-        status: 'failed',
-        errorMessage: 'Rate limit exceeded',
-        durationMs: Date.now() - startTime
-      });
+      await refuse({ success: false, reason: 'rate_limited' }, 'Rate limit exceeded');
       return JSON.stringify({ success: false, message: 'Rate limit exceeded for this tool. Please wait a moment before trying again.' });
     }
 
@@ -319,17 +289,9 @@ function buildToolHandler(
           tool: toolName,
           reason: sessionBound.reason,
         });
-        const bindId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({
-          tenantId,
-          executionId: bindId,
-          callSessionId,
-          result: { success: false, reason: 'session_mismatch', message: sessionBound.reason },
-          status: 'failed',
-          errorMessage: sessionBound.reason,
-          durationMs: Date.now() - startTime,
-        });
-        return JSON.stringify({ success: false, message: sessionBound.reason });
+        const mismatch = sessionBound.reason ?? 'session_mismatch';
+        await refuse({ success: false, reason: 'session_mismatch', message: mismatch }, mismatch);
+        return JSON.stringify({ success: false, message: mismatch });
       }
       args = sessionBound.args;
     }
@@ -353,6 +315,9 @@ function buildToolHandler(
       const intent = (args.intent as string) ?? 'general';
       const context = (args.conversation_summary as string) ?? '';
       logger.info('Workforce handoff tool invoked', { tenantId, callId: callSessionId, intent });
+      // A handoff swaps the session and writes as it goes (as before): the
+      // call's earlier queued writes land first, so the order is unchanged.
+      await queue.flush('handoff');
       const execId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
       await updateCallState(tenantId, callSessionId, 'HANDOFF');
       await writeCallEvent(tenantId, callSessionId, 'handoff_start', 'ACTIVE_CONVERSATION', 'HANDOFF', { intent, fromAgent: agentConfig.agentId });
@@ -438,29 +403,29 @@ function buildToolHandler(
 
     const demoResult = handleDemoToolCall(tenantId, toolName, args);
     if (demoResult !== null) {
+      // The demo tenant's canned result: the same writes in the same order, queued.
       const demoStartTime = Date.now();
-      const demoExecId = await createToolExecution({
-        tenantId,
-        callSessionId,
-        agentId: agentConfig.agentId,
-        agentSlug: agentConfig.agentId,
-        toolName,
-        parameters: args,
+      const demoArgs = args;
+      let resolveDemoId: (id: string) => void = () => {};
+      const demoExecId = new Promise<string>((resolve) => { resolveDemoId = resolve; });
+      void queue.enqueue('tool_invocations.create', async () => {
+        resolveDemoId(await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: demoArgs }));
       });
-      await updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION');
-      await writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
+      void queue.enqueue('call_state.tool_execution', () => updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION'));
+      void queue.enqueue('call_event.tool_start', async () => writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
         tool: toolName,
         demo: true,
-        executionId: demoExecId,
-      });
-      await completeToolExecution({
+        executionId: await demoExecId,
+      }));
+      const demoDurationMs = Date.now() - demoStartTime;
+      void queue.enqueue('tool_invocations.complete', async () => completeToolExecution({
         tenantId,
         callSessionId,
-        executionId: demoExecId,
+        executionId: await demoExecId,
         result: (() => { try { return JSON.parse(demoResult); } catch { return { raw: demoResult }; } })(),
         status: 'success',
-        durationMs: Date.now() - demoStartTime,
-      });
+        durationMs: demoDurationMs,
+      }));
       if (ctx.reasoningEngine) {
         const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
         if (stepTool === toolName) {
@@ -468,18 +433,20 @@ function buildToolHandler(
           logger.debug('Advanced workflow step after tool execution', { tenantId, callId: callSessionId, tool: toolName });
         }
       }
-      await writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
+      void queue.enqueue('call_event.tool_end', async () => writeCallEvent(tenantId, callSessionId, 'tool_end', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', {
         tool: toolName,
         demo: true,
-        executionId: demoExecId,
-      });
-      await updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION');
+        executionId: await demoExecId,
+      }));
+      void queue.enqueue('call_state.active_conversation', () => updateCallState(tenantId, callSessionId, 'ACTIVE_CONVERSATION'));
+      await queue.onCriticalPath();
       return demoResult;
     }
 
     // Session binding may have rewritten args since the bookkeeping record was built.
     bookkeeping.args = args;
-    const executionId = await beginToolRun(bookkeeping);
+    const opened = beginToolRun(bookkeeping, queue);
+    await queue.onCriticalPath();
 
     let result: string;
     let executionStatus: 'success' | 'failed' = 'success';
@@ -496,11 +463,9 @@ function buildToolHandler(
           break;
         }
         case 'record_language_change': {
-          await writeCallEvent(tenantId, callSessionId, 'language_changed', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-            language: args.language,
-            confidence: args.confidence,
-            source: 'master_voice_agent',
-          });
+          const languagePayload = { language: args.language, confidence: args.confidence, source: 'master_voice_agent' };
+          void queue.enqueue('call_event.language_changed', () =>
+            writeCallEvent(tenantId, callSessionId, 'language_changed', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', languagePayload));
           rawResult = JSON.stringify({ success: true, recorded: true });
           break;
         }
@@ -578,13 +543,14 @@ function buildToolHandler(
             throw new NonRetryableToolError('ToolExecutionFailed: escalation transfer not started');
           }
 
-          await updateCallState(tenantId, callSessionId, 'ESCALATED', {
+          const escalationReason = (args as Record<string, string>).urgentConcern;
+          void queue.enqueue('call_state.escalated', () => updateCallState(tenantId, callSessionId, 'ESCALATED', {
             escalationTarget: transferNumber,
-            escalationReason: (args as Record<string, string>).urgentConcern,
-          });
-          await writeCallEvent(tenantId, callSessionId, 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', {
+            escalationReason,
+          }));
+          void queue.enqueue('call_event.escalation_active', () => writeCallEvent(tenantId, callSessionId, 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', {
             target: transferNumber,
-          });
+          }));
 
           return JSON.stringify(escalateResult);
         }
@@ -752,14 +718,15 @@ function buildToolHandler(
       && isPendingBookingChallenge(parsedResult as Record<string, unknown>);
     if (executionStatus === 'success' && !pendingChallenge) reasoningToolSucceeded();
 
-    await finishToolRun(bookkeeping, {
-      executionId,
+    finishToolRun(bookkeeping, {
+      run: opened,
       startTime,
       result: parsedResult,
       status: executionStatus,
       errorMessage: executionError,
       recoveryAction: executionStatus === 'failed' ? unifiedToolRegistry.getRecoveryInstructions(toolName) : undefined,
-    });
+    }, queue);
+    await queue.onCriticalPath();
 
     return result;
   };
@@ -857,6 +824,17 @@ export interface RealtimeSessionResult {
    * time and never rejects. The phone teardown calls it (phoneCallTeardown.ts).
    */
   evaluateFloor: () => Promise<FloorOutcome>;
+  /**
+   * Waits for every bookkeeping write queued so far (tool rows, state moves,
+   * call events), bounded by BOOKKEEPING_FLUSH_TIMEOUT_MS. Teardown calls it
+   * before call_completed and the final call-state write. Never rejects.
+   */
+  flushBookkeeping: (reason?: string) => Promise<FlushResult>;
+  /**
+   * Ends the call's bookkeeping queue once its open tool runs have queued
+   * their last writes and those have run (bounded); nothing runs after it.
+   */
+  releaseBookkeeping: () => Promise<void>;
   costTracker: {
     inputTokens: number;
     outputTokens: number;
@@ -1030,6 +1008,13 @@ export async function createRealtimeSession(
 
   const slog = createSessionLogger('OPENAI_SESSION', { tenantId, callId: callSessionId, callSid });
 
+  // RT-HOLD-LINE part 2: this call's bookkeeping writes (tool rows, state
+  // moves, call events), one at a time in order, off the tool's critical
+  // path. Flushed before the floor and teardown read the rows; released
+  // with the session.
+  const bookkeeping = new BookkeepingQueue({ log: slog });
+  const persist = (label: string, write: () => Promise<unknown>): void => { void bookkeeping.enqueue(label, write); };
+
   // RT-04 invariant checker + RT-02 hangup floor for this call (callInvariants.ts).
   // RUN allows the tools the model is shown. stream.ts adds transfer_to_agent
   // to agentConfig.tools whenever it sets onHandoff; count it the same way.
@@ -1045,6 +1030,8 @@ export async function createRealtimeSession(
     calledNumber,
     direction: ctx.direction ?? 'inbound',
     log: slog,
+    // Every write a tool queued lands before the floor decides.
+    beforeFloor: () => bookkeeping.flush('floor'),
   });
 
   const isAzulVision = agentConfig.metadata?.practiceName === 'Azul Vision' || agentConfig.metadata?.practiceName === 'Azul Vision Eye Center';
@@ -1083,10 +1070,10 @@ export async function createRealtimeSession(
   // One outcome per call; the first writer wins (see callOutcome.ts).
   const callOutcome = new CallOutcomeRecorder((outcome) => {
     slog.info('call_end_outcome', { outcome });
-    persistCallOutcome(tenantId, callSessionId, outcome).catch((err) => {
+    persist('call_outcome', () => persistCallOutcome(tenantId, callSessionId, outcome).catch((err) => {
       slog.warn('Failed to persist call outcome', { outcome, error: String(err) });
-    });
-    writeCallEvent(tenantId, callSessionId, 'call_end_outcome', null, null, { outcome }).catch(() => {});
+    }));
+    persist('call_event.call_end_outcome', () => writeCallEvent(tenantId, callSessionId, 'call_end_outcome', null, null, { outcome }));
   });
 
   // Runtime-owned silence watchdog: acts for every agent, whatever the
@@ -1129,7 +1116,8 @@ export async function createRealtimeSession(
     },
     onAction: (action, counts) => {
       slog.info('silence_watchdog', { action, ...counts });
-      writeCallEvent(tenantId, callSessionId, action, 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', { ...counts }).catch(() => {});
+      const payload = { ...counts };
+      persist(`call_event.${action}`, () => writeCallEvent(tenantId, callSessionId, action, 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', payload));
       if ((action === 'silence_check' || action === 'silence_prompt') && reasoningGate && !enforceEffects) {
         try {
           reasoningGate.handleSilence();
@@ -1168,26 +1156,50 @@ export async function createRealtimeSession(
     onSaid: ({ tool, language, delayMs, waitedMs }) => {
       // Tool name, language and timings only: no caller data.
       slog.info('hold_line', { tool, language, delayMs, waitedMs });
-      writeCallEvent(tenantId, callSessionId, 'hold_line', 'TOOL_EXECUTION', 'TOOL_EXECUTION', { tool, language, delayMs, waitedMs }).catch(() => {});
+      // Behind the tool's tool_start in the queue, as when tool_start was awaited first.
+      persist('call_event.hold_line', () => writeCallEvent(tenantId, callSessionId, 'hold_line', 'TOOL_EXECUTION', 'TOOL_EXECUTION', { tool, language, delayMs, waitedMs }));
     },
   });
 
   // Silence is not counted while a tool runs; a slow one gets the hold line.
+  // An open run holds the bookkeeping queue's release until its writes are queued.
   const trackToolRun = (handler: (name: string, args: Record<string, unknown>) => Promise<string>) =>
     async (name: string, args: Record<string, unknown>): Promise<string> => {
       silenceWatchdog.toolStarted();
       holdLine.toolStarted(name);
+      noteToolRun(name);
+      const closeRun = bookkeeping.openRun();
       // The call's language for the next hold line (runtime tool, every agent).
       if (name === 'record_language_change') holdLine.setLanguage(args.language);
       try {
         return await handler(name, args);
       } finally {
+        closeRun();
         silenceWatchdog.toolEnded();
         holdLine.toolEnded();
       }
     };
 
-  const toolHandler = trackToolRun(invariants.wrapToolHandler(buildToolHandler(ctx, callSessionId)));
+  // Per tool name, in call order (every call, a blocked one included): what
+  // the next tool_timing line for it adds (cache hit, queue depth).
+  const toolRunNotes = new Map<string, ToolRunNote[]>();
+  const noteToolRun = (name: string): void => {
+    const notes = toolRunNotes.get(name) ?? [];
+    notes.push({ cacheHit: false, queueDepthAtEnqueue: bookkeeping.depth });
+    toolRunNotes.set(name, notes);
+  };
+  const markCacheHit = (name: string): void => {
+    const notes = toolRunNotes.get(name);
+    if (notes && notes.length > 0) notes[notes.length - 1].cacheHit = true;
+  };
+  const takeToolRunNote = (name: string): ToolRunNote | undefined => {
+    const notes = toolRunNotes.get(name);
+    const note = notes?.shift();
+    if (notes && notes.length === 0) toolRunNotes.delete(name);
+    return note;
+  };
+
+  const toolHandler = trackToolRun(invariants.wrapToolHandler(buildToolHandler(ctx, callSessionId, bookkeeping, markCacheHit)));
   const agentTools = buildRealtimeTools(agentConfig.tools);
 
   let knowledgeAvailable = false;
@@ -1411,7 +1423,7 @@ export async function createRealtimeSession(
                   classifiedIntent,
                   classifiedConfidence,
                 );
-                writeCallEvent(tenantId, callSessionId, 'reasoning_decision', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                const decision = {
                   turn: reasoningResult.traceEntry.turn,
                   intent: reasoningResult.traceEntry.selectedIntent,
                   confidence: reasoningResult.confidence.overall,
@@ -1420,7 +1432,9 @@ export async function createRealtimeSession(
                   tool: reasoningResult.toolToExecute,
                   missingSlots: reasoningResult.traceEntry.missingSlots,
                   escalation: reasoningResult.escalation?.trigger,
-                }).catch(() => {});
+                };
+                persist('call_event.reasoning_decision', () =>
+                  writeCallEvent(tenantId, callSessionId, 'reasoning_decision', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', decision));
 
                 if (enforceEffects && reasoningResult.action === 'escalate_to_human') {
                   const escalationReason = reasoningResult.escalation?.reason ?? reasoningResult.reasoning;
@@ -1436,20 +1450,21 @@ export async function createRealtimeSession(
                     reason: escalationReason,
                   }).then((resolved) => {
                     if (resolved.route === 'phone') {
-                      updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }).catch(() => {});
-                      writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', {
+                      persist('call_state.escalated', () => updateCallState(tenantId, callSessionId, 'ESCALATED', { escalationReason }));
+                      const escalation = {
                         trigger: reasoningResult.escalation?.trigger,
                         output: reasoningResult.escalation?.output,
                         reason: escalationReason,
-                      }).catch(() => {});
+                      };
+                      persist('call_event.reasoning_escalation', () =>
+                        writeCallEvent(tenantId, callSessionId, 'reasoning_escalation', 'ACTIVE_CONVERSATION', 'ESCALATED', escalation));
                       return;
                     }
                     if (resolved.route === 'handoff') {
-                      updateCallState(tenantId, callSessionId, 'HANDOFF', { escalationReason }).catch(() => {});
-                      writeCallEvent(tenantId, callSessionId, 'reasoning_handoff', 'ACTIVE_CONVERSATION', 'HANDOFF', {
-                        trigger: reasoningResult.escalation?.trigger,
-                        reason: escalationReason,
-                      }).catch(() => {});
+                      persist('call_state.handoff', () => updateCallState(tenantId, callSessionId, 'HANDOFF', { escalationReason }));
+                      const handoff = { trigger: reasoningResult.escalation?.trigger, reason: escalationReason };
+                      persist('call_event.reasoning_handoff', () =>
+                        writeCallEvent(tenantId, callSessionId, 'reasoning_handoff', 'ACTIVE_CONVERSATION', 'HANDOFF', handoff));
                       if (resolved.handoff?.targetAgentConfig && ctx.onSessionSwapRequired) {
                         void ctx.onSessionSwapRequired(
                           resolved.handoff.targetAgentConfig,
@@ -1469,10 +1484,9 @@ export async function createRealtimeSession(
                       }
                       return;
                     }
-                    writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                      trigger: reasoningResult.escalation?.trigger,
-                      reason: 'no_live_transfer',
-                    }).catch(() => {});
+                    const fallback = { trigger: reasoningResult.escalation?.trigger, reason: 'no_live_transfer' };
+                    persist('call_event.escalation_message_fallback', () =>
+                      writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', fallback));
                     try {
                       sendModelInstruction(
                         buildMessageFallbackInstruction('create_ticket'),
@@ -1494,10 +1508,9 @@ export async function createRealtimeSession(
                   && reasoningResult.fallbackStep === 'create_ticket'
                   && reasoningResult.escalation?.output === 'take_message'
                 ) {
-                  writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                    trigger: reasoningResult.escalation.trigger,
-                    tool: reasoningResult.toolToExecute,
-                  }).catch(() => {});
+                  const fallback = { trigger: reasoningResult.escalation.trigger, tool: reasoningResult.toolToExecute };
+                  persist('call_event.escalation_message_fallback', () =>
+                    writeCallEvent(tenantId, callSessionId, 'escalation_message_fallback', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', fallback));
                   try {
                     sendModelInstruction(
                       buildMessageFallbackInstruction(reasoningResult.toolToExecute ?? 'create_ticket'),
@@ -1508,11 +1521,13 @@ export async function createRealtimeSession(
                 }
 
                 if (enforceEffects && reasoningResult.action === 'ask_clarifying_question' && reasoningResult.clarifyingQuestion) {
-                  writeCallEvent(tenantId, callSessionId, 'reasoning_clarification', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                  const clarification = {
                     question: reasoningResult.clarifyingQuestion,
                     missingSlots: reasoningResult.traceEntry.missingSlots,
                     fallbackStep: reasoningResult.fallbackStep,
-                  }).catch(() => {});
+                  };
+                  persist('call_event.reasoning_clarification', () =>
+                    writeCallEvent(tenantId, callSessionId, 'reasoning_clarification', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', clarification));
 
                   try {
                     sendModelInstruction(
@@ -1534,9 +1549,9 @@ export async function createRealtimeSession(
                 }
 
                 if (reasoningResult.action === 'complete_interaction') {
-                  writeCallEvent(tenantId, callSessionId, 'reasoning_complete', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                    reason: reasoningResult.reasoning,
-                  }).catch(() => {});
+                  const complete = { reason: reasoningResult.reasoning };
+                  persist('call_event.reasoning_complete', () =>
+                    writeCallEvent(tenantId, callSessionId, 'reasoning_complete', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', complete));
                 }
 
                 // The gate ran handlePartialAnswer for an unclear turn
@@ -1602,9 +1617,10 @@ export async function createRealtimeSession(
                   const criticalViolations = responseSafety.violations
                     .filter((v) => v.severity === 'critical')
                     .map((v) => v.description);
-                  writeCallEvent(tenantId, callSessionId, 'safety_response_blocked', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-                    violations: criticalViolations,
-                  }).catch(() => {});
+                  persist('call_event.safety_response_blocked', () =>
+                    writeCallEvent(tenantId, callSessionId, 'safety_response_blocked', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+                      violations: criticalViolations,
+                    }));
                   slog.warn('Safety gate blocked assistant response — cancelling and correcting', {
                     violations: criticalViolations,
                   });
@@ -1726,10 +1742,9 @@ export async function createRealtimeSession(
       if (reasoningEngine) {
         try {
           const reasoningSummary = reasoningEngine.getCallSummary();
-          writeCallEvent(tenantId, callSessionId, 'reasoning_trace', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
-            reasoningTrace: reasoningEngine.getTraceEntries(),
-            callSummary: reasoningSummary,
-          }).catch(() => {});
+          const trace = { reasoningTrace: reasoningEngine.getTraceEntries(), callSummary: reasoningSummary };
+          persist('call_event.reasoning_trace', () =>
+            writeCallEvent(tenantId, callSessionId, 'reasoning_trace', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', trace));
           slog.info('Reasoning trace persisted', {
             totalTurns: (reasoningSummary as Record<string, unknown>).totalTurns,
             escalationCount: (reasoningSummary as Record<string, unknown>).escalationCount,
@@ -1739,8 +1754,15 @@ export async function createRealtimeSession(
         }
       }
 
-      updateCallState(tenantId, callSessionId, 'CALL_COMPLETED').catch(() => {});
-      writeCallEvent(tenantId, callSessionId, 'session_closed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED').catch(() => {});
+      // Behind every tool write already queued, so a tool's ACTIVE_CONVERSATION
+      // never lands after the call's CALL_COMPLETED.
+      persist('call_state.session_closed', () => updateCallStateWithEvent(tenantId, callSessionId, 'CALL_COMPLETED', {
+        type: 'session_closed', from: 'ACTIVE_CONVERSATION', to: 'CALL_COMPLETED',
+      }));
+      // Do not release here. Provider-drop and watchdog closes run this handler
+      // before finalizeStream records call_end_outcome; releasing now would drop
+      // those writes (stand-in P2 on 42996a9d). finalizeStream / finalizeWidgetStream
+      // release after the outcome is queued and the queue is flushed.
       lifecycleCoordinator.handleOpenAiSessionEnd(callSessionId);
       sessionManager.unregister(callSessionId);
     });
@@ -1909,8 +1931,12 @@ export async function createRealtimeSession(
       silenceWatchdog.callerSpeechStopped();
       holdLine.callerSpeechStopped();
     });
-    // One structured timing line per tool call (no PII).
-    t.on('tool_timing', (timing: unknown) => { slog.info('tool_timing', { ...(timing as ToolTiming) }); });
+    // One structured timing line per tool call (no PII), with how its bookkeeping went.
+    t.on('tool_timing', (timing: unknown) => {
+      const line = timing as ToolTiming;
+      const note = takeToolRunNote(line.tool);
+      slog.info('tool_timing', { ...line, cache_hit: note?.cacheHit ?? false, queue_depth_at_enqueue: note?.queueDepthAtEnqueue ?? null });
+    });
   };
   attachResponseStateListeners(wsTransport);
 
@@ -2006,7 +2032,7 @@ export async function createRealtimeSession(
 
     invariants.setExposedTools(exposedTools(newAgentConfig));
     const newToolHandler = trackToolRun(
-      invariants.wrapToolHandler(buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId)),
+      invariants.wrapToolHandler(buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId, bookkeeping, markCacheHit)),
     );
     const newAgentTools = buildRealtimeTools(newAgentConfig.tools);
     const handoffPrompt = buildMasterVoiceAgentInstructions({
@@ -2083,20 +2109,20 @@ export async function createRealtimeSession(
           model: activeModel,
           coreVersion: MASTER_VOICE_AGENT_CONTRACT.coreVersion,
         });
-        writeCallEvent(tenantId, callSessionId, 'model_lock_retained', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
+        const retained = {
           model: activeModel,
           coreVersion: MASTER_VOICE_AGENT_CONTRACT.coreVersion,
           reason: 'budget_threshold',
           percentUsed: budgetResult.percentUsed,
-        }).catch(() => {});
+        };
+        persist('call_event.model_lock_retained', () =>
+          writeCallEvent(tenantId, callSessionId, 'model_lock_retained', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', retained));
       }
 
       if (budgetResult.shouldAlert) {
-        writeCallEvent(tenantId, callSessionId, 'budget_alert', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-          currentCostCents,
-          budgetCents: budgetResult.budgetCents,
-          percentUsed: budgetResult.percentUsed,
-        }).catch(() => {});
+        const alert = { currentCostCents, budgetCents: budgetResult.budgetCents, percentUsed: budgetResult.percentUsed };
+        persist('call_event.budget_alert', () =>
+          writeCallEvent(tenantId, callSessionId, 'budget_alert', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', alert));
       }
     } catch (budgetErr) {
       slog.warn('Budget check failed', { error: String(budgetErr) });
@@ -2128,6 +2154,8 @@ export async function createRealtimeSession(
     agentPlaybackDone,
     onBargeIn: (handler) => { bargeInHandlers.push(handler); },
     evaluateFloor: () => invariants.evaluateFloor(),
+    flushBookkeeping: (reason = 'teardown') => bookkeeping.flush(reason),
+    releaseBookkeeping: () => bookkeeping.release(),
     costTracker,
     routedModel: costTracker.activeModel,
     routedTier: costTracker.activeModelTier,

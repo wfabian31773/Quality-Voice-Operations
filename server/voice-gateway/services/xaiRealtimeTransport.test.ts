@@ -111,6 +111,39 @@ describe('XaiRealtimeTransport', () => {
     }
   });
 
+  it('Codex 4308961725: a tool still running at hangup logs elapsed time when it settles, not 0 ms', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      let finish!: (value: string) => void;
+      const onFunctionCall = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+      const transport = makeTransport(onFunctionCall);
+      const timings: Array<Record<string, unknown>> = [];
+      transport.on('tool_timing', (t: Record<string, unknown>) => timings.push(t));
+      await transport.connect({ apiKey: 'xai-test' });
+      sockets[0].emit('message', JSON.stringify({
+        type: 'response.function_call_arguments.done', call_id: 'call-slow', name: 'check_availability', arguments: '{}',
+      }));
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      expect(onFunctionCall).toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2_500);
+      transport.close(); // hangup mid-handler: must not emit a 0 ms line
+      expect(timings).toEqual([]);
+      finish(JSON.stringify({ success: true }));
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      expect(timings).toEqual([{
+        tool: 'check_availability',
+        tool_call_received_ms: 0,
+        action_ms: 2_500,
+        result_sent_ms: 2_500,
+        first_agent_audio_after_result_ms: null,
+        hold_line_ms: null,
+        voiced: 'dropped',
+      }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('catches a rejected tool handler instead of leaking it', async () => {
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
@@ -914,6 +947,23 @@ describe('XaiRealtimeTransport', () => {
         server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
         expect(creates()).toHaveLength(2);
         expect(audio).toEqual([]);
+      });
+
+      it('Codex 4309040117: a silently cancelled hold line\'s late transcript is not history_added', async () => {
+        const { transport, finish } = await toolRunning();
+        const items: Array<Record<string, unknown>> = [];
+        transport.on('history_added', (item: Record<string, unknown>) => items.push(item));
+        transport.requestResponse(holdLine);
+        server({ type: 'response.created', response: { id: 'resp_hold' } });
+        await finish(); // cancelSilentHoldLine: retires + cancels before audio
+        expect(sentTypes()).toContain('response.cancel');
+        // Provider may still emit transcript.done before acknowledging cancel.
+        server({ type: 'response.output_audio_transcript.done', transcript: 'One moment while I check that.' });
+        server({ type: 'response.done', response: { id: 'resp_hold', status: 'cancelled' } });
+        await flush();
+        expect(items).toEqual([]);
+        expect(logged.filter((l) => l.message === 'Ignoring transcript and function calls of a response retired at creation'))
+          .toEqual([{ message: 'Ignoring transcript and function calls of a response retired at creation', context: { kind: 'hold_line' } }]);
       });
 
       it('result lands while the hold line is requested but not created: cancelled as soon as it is', async () => {

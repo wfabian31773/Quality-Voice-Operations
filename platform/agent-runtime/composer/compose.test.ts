@@ -96,6 +96,22 @@ describe('compose: tools', () => {
     expect(all.contractTools.callerIdPaths['scheduling.find_bookings']).toEqual(['phone']);
   });
 
+  it('marks call-stable reads cacheable from the read data; availability and every write stay uncached', () => {
+    expect(composed.contractTools.cacheable).toEqual({});
+    const catalog = compose({ ...FIXTURE, reads: ['scheduling.list_services', 'scheduling.list_staff', 'scheduling.check_availability'] }, undefined, TENANT, {});
+    expect(catalog.contractTools.cacheable).toEqual({ 'scheduling.list_services': 'call', 'scheduling.list_staff': 'call' });
+    for (const action of Object.keys(catalog.contractTools.cacheable)) expect(getAction(action)?.kind).toBe('read');
+  });
+
+  it('a read contract\'s own cacheable flag flows to the binding (never for a write)', () => {
+    const findKey = 'booking.find@1';
+    const find = getContract(findKey)!;
+    expect(find.cacheable).toBeUndefined();
+    const all = compose({ ...FIXTURE, contracts: CONTRACTS.map((c) => `${c.id}@${c.version}`) }, undefined, TENANT, {});
+    // Identity reads are not call-stable: none of the shipped contracts is cacheable.
+    expect(Object.keys(all.contractTools.cacheable)).toEqual([]);
+  });
+
   it('the tool list is pinned', () => {
     expect(composed.tools).toMatchSnapshot();
   });

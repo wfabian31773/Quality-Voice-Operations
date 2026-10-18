@@ -41,6 +41,8 @@ const h = vi.hoisted(() => {
 
   const recordCallOutcomeMock = vi.fn((_outcome: string) => true);
   const evaluateFloorMock = vi.fn(async () => 'filed' as const);
+  const flushBookkeepingMock = vi.fn(async (_reason?: string) => 'drained' as const);
+  const releaseBookkeepingMock = vi.fn(async () => {});
   const sessionClosedHandlers: Array<() => void> = [];
   const audioHandlers: Array<(audioEvent: { data: ArrayBuffer }) => void> = [];
   const agentAudioDoneHandlers: Array<(markName: string) => void> = [];
@@ -60,6 +62,8 @@ const h = vi.hoisted(() => {
     finalizeCallSessionMock,
     recordCallOutcomeMock,
     evaluateFloorMock,
+    flushBookkeepingMock,
+    releaseBookkeepingMock,
     sessionClosedHandlers,
     audioHandlers,
     agentAudioDoneHandlers,
@@ -92,6 +96,8 @@ vi.mock('../services/openaiSession', () => ({
     agentPlaybackDone: h.agentPlaybackDoneMock,
     onBargeIn: (handler: () => void) => { h.bargeInHandlers.push(handler); },
     evaluateFloor: h.evaluateFloorMock,
+    flushBookkeeping: h.flushBookkeepingMock,
+    releaseBookkeeping: h.releaseBookkeepingMock,
     costTracker: {
       inputTokens: 0,
       outputTokens: 0,
@@ -300,6 +306,8 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     h.finalizeCallSessionMock.mockClear();
     h.recordCallOutcomeMock.mockClear();
     h.evaluateFloorMock.mockClear();
+    h.flushBookkeepingMock.mockClear();
+    h.releaseBookkeepingMock.mockClear();
     h.sessionClosedHandlers.length = 0;
     h.audioHandlers.length = 0;
     h.agentAudioDoneHandlers.length = 0;
@@ -393,6 +401,47 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.evaluateFloorMock).toHaveBeenCalledTimes(1);
     expect(h.sessionCloseMock.mock.invocationCallOrder[0]).toBeLessThan(h.evaluateFloorMock.mock.invocationCallOrder[0]);
 
+    // RT-HOLD-LINE part 2: the call's queued bookkeeping is flushed before the
+    // final call state and call_completed are written.
+    expect(h.flushBookkeepingMock).toHaveBeenCalledTimes(1);
+    expect(h.flushBookkeepingMock).toHaveBeenCalledWith('call_completed');
+    const flushedAt = h.flushBookkeepingMock.mock.invocationCallOrder[0];
+    expect(flushedAt).toBeLessThan(h.finalizeCallSessionMock.mock.invocationCallOrder[0]);
+    const completedAt = h.writeCallEventMock.mock.invocationCallOrder[h.writeCallEventMock.mock.calls.findIndex((c) => c[2] === 'call_completed')];
+    expect(flushedAt).toBeLessThan(completedAt);
+
+    ws.close();
+  });
+
+  it('a flush still running holds the final call state and call_completed until it settles', async () => {
+    let settleFlush!: () => void;
+    h.flushBookkeepingMock.mockImplementationOnce(
+      () => new Promise<'drained'>((resolve) => { settleFlush = () => resolve('drained'); }),
+    );
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/twilio/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    ws.send(JSON.stringify({
+      event: 'start',
+      start: {
+        streamSid: 'MZ-flush-first',
+        customParameters: {
+          tenantId: 't-1', agentId: 'a-1', agentType: 'general', callSid: 'CA-flush-first',
+          callerNumber: '+15551234567', calledNumber: '+15557654321',
+        },
+      },
+    }));
+    await waitFor(() => h.updateCallStateMock.mock.calls.some((c) => c[2] === 'ACTIVE_CONVERSATION'));
+    ws.send(JSON.stringify({ event: 'stop' }));
+    await waitFor(() => h.flushBookkeepingMock.mock.calls.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(h.finalizeCallSessionMock).not.toHaveBeenCalled();
+    expect(h.writeCallEventMock.mock.calls.some((c) => c[2] === 'call_completed')).toBe(false);
+    settleFlush();
+    await waitFor(() => h.finalizeCallSessionMock.mock.calls.length > 0);
+    await waitFor(() => h.writeCallEventMock.mock.calls.some((c) => c[2] === 'call_completed'));
     ws.close();
   });
 
@@ -427,6 +476,12 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     expect(h.sessionCloseMock).toHaveBeenCalledTimes(1);
     // Watchdog / budget / provider ends reach the same teardown, so the floor runs for them too.
     expect(h.evaluateFloorMock).toHaveBeenCalledTimes(1);
+    // Outcome is recorded in finalize before release (stand-in P2): flush then release.
+    expect(h.flushBookkeepingMock).toHaveBeenCalledWith('call_completed');
+    expect(h.releaseBookkeepingMock).toHaveBeenCalledTimes(1);
+    const flushedAt = h.flushBookkeepingMock.mock.invocationCallOrder[0];
+    const releasedAt = h.releaseBookkeepingMock.mock.invocationCallOrder[0];
+    expect(flushedAt).toBeLessThan(releasedAt);
   });
 
   it('phone path: sends a Twilio mark after an agent turn\'s last media frame and passes the echo to the session', async () => {

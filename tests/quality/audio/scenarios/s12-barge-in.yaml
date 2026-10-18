@@ -22,14 +22,14 @@ caller:
 agent:
   replies:
     - say: "Sure, let me check the time at the shop for you, one second."
-      tool: { name: get_current_tenant_time }
+      tool: { name: scheduling_list_services }
       afterTool: "Yes, we're open until six today."
     - say: "Of course. Friday at nine for a fade. Can I get your first name?"
 db:
-  # The lookup is slow (its tool-execution log write takes 2.5 s), so its
-  # result comes back while the caller is still talking over the agent.
+  # The lookup is slow (its catalog query takes 2.5 s), so its result comes
+  # back while the caller is still talking over the agent.
   slow:
-    - { match: "INSERT INTO tool_invocations", latencyMs: 2500 }
+    - { match: "FROM scheduling_appointment_types", latencyMs: 2500 }
 expect:
   utterances: 2
   endedBy: caller

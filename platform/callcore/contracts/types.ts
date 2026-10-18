@@ -43,7 +43,25 @@ export interface SlotSpec {
    * is filed without a callback number rather than lost).
    */
   afterAsk?: 'proceed';
+  /** How the value is written: 'date' is DATE_SLOT_FORMAT. */
+  format?: SlotFormat;
 }
+
+export type SlotFormat = 'date';
+
+/**
+ * What every date slot takes, as tool descriptions word it. The action's
+ * date validator also accepts unambiguous variants (a full ISO datetime,
+ * YYYY/MM/DD, a weekday name next to an ISO date) and turns them into this.
+ */
+export const DATE_SLOT_FORMAT = "YYYY-MM-DD, the date in the tenant's timezone; get_current_tenant_time gives today's date";
+
+/**
+ * How long a read's result holds within one call. 'call': the same arguments
+ * give the same result for the whole call (a catalog), so the runtime may
+ * answer a repeat from the call's own cache. Unset: read again every time.
+ */
+export type ReadCachePolicy = 'call';
 
 export type FailureStep =
   | { step: 'offer_alternatives' }
@@ -75,6 +93,8 @@ export interface ToolContract {
    * its input and sayBack fields in its output.
    */
   action?: string;
+  /** A read contract's action is call-stable (ReadCachePolicy). Never set on a write. */
+  cacheable?: ReadCachePolicy;
   confirm?: ConfirmSpec;
   sideEffect: 'read' | 'write';
   outbound: 'none' | 'sms' | 'call';

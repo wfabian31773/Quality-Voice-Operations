@@ -58,6 +58,40 @@ describe('pool URL helpers', () => {
   });
 });
 
+describe('pool settings (RT-HOLD-LINE part 2: warm connections between call turns)', () => {
+  it('pins idle timeout, keepalive, min and max for both pools', async () => {
+    const { POOL_SETTINGS, getPoolConfig } = await import('./index');
+    // Before: { max: 8, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 } (no keepalive, no min).
+    expect(POOL_SETTINGS).toEqual({
+      max: 8,
+      min: 2,
+      idleTimeoutMillis: 300_000,
+      connectionTimeoutMillis: 5_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+      allowExitOnIdle: true,
+    });
+    // Longer than any normal gap between a caller's turns.
+    expect(POOL_SETTINGS.idleTimeoutMillis).toBeGreaterThan(30_000);
+    expect(getPoolConfig('postgresql://qvo_app@localhost:5432/qvo')).toEqual({ connectionString: 'postgresql://qvo_app@localhost:5432/qvo', ...POOL_SETTINGS });
+  });
+
+  it('the restricted pool is built with them (TLS outside development)', async () => {
+    process.env.APP_ENV = 'production';
+    const { POOL_SETTINGS, getPoolConfig } = await import('./index');
+    expect(getPoolConfig('postgresql://qvo_app@db.example.com:6543/postgres')).toEqual({
+      connectionString: 'postgresql://qvo_app@db.example.com:6543/postgres',
+      ...POOL_SETTINGS,
+      ssl: { rejectUnauthorized: false },
+    });
+    process.env.DATABASE_URL = 'postgresql://qvo_app@127.0.0.1:1/none';
+    process.env.APP_ENV = 'development';
+    const { getPlatformPool } = await import('./index');
+    const pool = getPlatformPool() as unknown as { options: Record<string, unknown> };
+    expect(pool.options).toMatchObject({ max: 8, min: 2, idleTimeoutMillis: 300_000, keepAlive: true, allowExitOnIdle: true });
+  });
+});
+
 describe('bindPoolQueriesToTenantScope', () => {
   function fakePool() {
     const clientQuery = vi.fn(async (sql: unknown, _values?: unknown[]) => (String(sql).startsWith('SELECT t') ? { rows: [{ id: 'r1' }] } : { rows: [] }));

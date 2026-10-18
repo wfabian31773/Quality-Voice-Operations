@@ -869,7 +869,13 @@ export class XaiRealtimeTransport extends EventEmitter {
       this.pendingCreate.cancelOnCreated = true;
       return;
     }
-    if (this.current?.kind === 'hold_line' && !this.current.audioSeen) this.cancelCurrentResponse();
+    if (this.current?.kind === 'hold_line' && !this.current.audioSeen) {
+      // Retire before cancel so a late transcript.done cannot be recorded as
+      // heard / TTS cost (Codex 4309040117). cancelOnCreated already retires
+      // the pending-create path at response.created.
+      this.current.retired = true;
+      this.cancelCurrentResponse();
+    }
   }
 
   // ---------------------------------------------------------------- timing marks
@@ -895,6 +901,10 @@ export class XaiRealtimeTransport extends EventEmitter {
   private flushToolTimings(onlySent = false): void {
     for (const [callId, timing] of this.toolTimings) {
       if (onlySent && timing.resultSentAt === undefined) continue;
+      // Still running at hangup: leave the entry so completeFunctionCall can
+      // log elapsed time when the handler settles (Codex 4308961725). Logging
+      // now would emit action_ms/result_sent_ms = 0 and lose the correction.
+      if (timing.handlerDoneAt === undefined && timing.resultSentAt === undefined) continue;
       this.logToolTiming(callId, timing, null);
     }
   }
@@ -946,15 +956,28 @@ export class XaiRealtimeTransport extends EventEmitter {
     this.toolCallsRunning += 1;
     try {
       output = await this.onFunctionCall(name, args);
+    } catch (err) {
+      // Hangup flush deferred this entry; log elapsed time even when the
+      // handler rejects (stand-in P3 on 42996a9d / Codex 4308961725).
+      timing.handlerDoneAt = Date.now();
+      if (!this.isOpen() && this.toolTimings.has(callId)) {
+        timing.voiced = 'dropped';
+        this.logToolTiming(callId, timing, null);
+      }
+      throw err;
     } finally {
       this.toolCallsRunning -= 1;
-      timing.handlerDoneAt = Date.now();
+      if (timing.handlerDoneAt === undefined) timing.handlerDoneAt = Date.now();
     }
     // The caller can hang up while a tool runs (Oct 17: record_call_outcome
     // finished after hangup and the send became a critical unhandled
     // rejection). Nobody is left to hear the result, so drop it.
     if (!this.isOpen()) {
       logger.info('Dropping tool result: xAI socket closed before it was sent', { tool: name });
+      // Hangup flush deferred this entry; log elapsed time with voiced dropped
+      // instead of the old 0 ms line (Codex 4308961725).
+      timing.voiced = 'dropped';
+      if (this.toolTimings.has(callId)) this.logToolTiming(callId, timing, null);
       return;
     }
     this.sendEvent({

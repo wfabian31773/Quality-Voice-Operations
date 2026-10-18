@@ -36,6 +36,12 @@
  *   doesn't count;
  * - the per-tenant tool rate limit (unifiedToolRegistry.checkRateLimit).
  *
+ * A call-stable read (binding.cacheable, e.g. a catalog) asked again on the
+ * same call with the same normalized arguments is answered from this call's
+ * cache: the same output and handles, no DB read. It still counts against
+ * the rate limit and still gets its own bookkeeping (a success row, events,
+ * the meter), so billing and logs stay truthful.
+ *
  * The model never sees an internal id: results go out through CallHandles
  * (contractToolHandles.ts) and handles come back in through it. An ok commit
  * is cut down first to its contract's sayBack fields plus what a later tool
@@ -139,6 +145,18 @@ export interface ContractToolRun {
   errorMessage?: string;
   /** Refused by the rate limit before anything ran (legacy records those without call events or metering). */
   rateLimited: boolean;
+  /** Answered from the call's cache of call-stable reads: the same output (and handles) as the first run, no DB read. */
+  cacheHit?: boolean;
+}
+
+/** Key order and undefined values don't make two calls' arguments different. */
+function normalizedArgs(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizedArgs);
+  const record = asRecord(value);
+  if (!record) return typeof value === 'string' ? value.trim() : value;
+  return Object.fromEntries(
+    Object.keys(record).sort().filter((key) => record[key] !== undefined).map((key) => [key, normalizedArgs(record[key])]),
+  );
 }
 
 /** Action → the refs (ticketNumber, …) its contract's sayBack lets the model see. */
@@ -243,6 +261,12 @@ export class ContractToolBridge {
   private readonly idHandles = new CallHandles();
   /** Tools with a prepare or write that timed out on this call (it may still have landed). */
   private readonly uncertainWrites = new Map<string, Exclude<TimeoutClass, 'read'>>();
+  /**
+   * This call's ok results of call-stable reads (binding.cacheable), by action
+   * and normalized arguments. One bridge per call session, so nothing here is
+   * shared across calls or tenants, and it goes with the call.
+   */
+  private readonly readCache = new Map<string, ContractToolRun>();
   private readonly run: ContractActionRunner;
 
   constructor(private readonly init: ContractToolBridgeInit) {
@@ -289,6 +313,25 @@ export class ContractToolBridge {
     const { callId } = this.init;
     if (guard.isStopped(callId, toolName)) return this.finish(action, this.stopResult(guard, toolName), 'failed');
 
+    // A call-stable read already answered on this call: the same output, so
+    // the same handles (CallHandles keeps them for the whole call).
+    const cacheKey = this.readCacheKey(action, args);
+    const cached = cacheKey === undefined ? undefined : this.readCache.get(cacheKey);
+    if (cached) return { ...cached, cacheHit: true };
+    const run = await this.runAction(toolName, action, args, guard);
+    if (cacheKey !== undefined && run.status === 'success' && run.ok) this.readCache.set(cacheKey, run);
+    return run;
+  }
+
+  /** The call cache's key for a call-stable read (binding.cacheable) and its normalized arguments; undefined for every other action. */
+  private readCacheKey(action: string, args: Record<string, unknown>): string | undefined {
+    if (this.init.binding.cacheable[action] !== 'call' || getAction(action)?.kind !== 'read') return undefined;
+    return `${action}\u0000${JSON.stringify(normalizedArgs(args))}`;
+  }
+
+  /** One real run of the action behind a contract tool (after the rate limit, the hook, the stop check and the cache). */
+  private async runAction(toolName: string, action: string, args: Record<string, unknown>, guard: ToolStopGuard): Promise<ContractToolRun> {
+    const { binding, callId } = this.init;
     const kind = getAction(action)?.kind;
     const lang = this.language;
     const ctx: ActionContext = {

@@ -83,6 +83,7 @@ vi.mock('./callPersistence', () => ({
   createCallSession: vi.fn(async () => 'cs-hold'),
   writeCallEvent: vi.fn(async () => {}),
   updateCallState: vi.fn(async () => {}),
+  updateCallStateWithEvent: vi.fn(async () => {}),
   createPlatformPersistenceAdapter: vi.fn(() => ({})),
   persistCallOutcome: vi.fn(async () => {}),
 }));
@@ -286,7 +287,7 @@ describe('hold line on the phone path', () => {
   });
 
   it('refused at the deadline (the caller\'s reply wait), accepted once it clears: one hold line; none after close (Codex 4308809833)', async () => {
-    const { transport, holdLines, toolCall } = await startCall();
+    const { transport, holdLines, toolCall, result } = await startCall();
     const refuse = (request: { kind: string }) => request.kind !== 'hold_line';
     transport.requestResponse.mockImplementationOnce(refuse).mockImplementationOnce(refuse);
     const run = toolCall();
@@ -296,6 +297,8 @@ describe('hold line on the phone path', () => {
     expect(holdLines()).toHaveLength(1);
     transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' });
     transport.emit('response.audio_started', { kind: 'hold_line' });
+    // hold_line is queued behind tool_start (part 2); drain before asserting.
+    await result.flushBookkeeping();
     expect(holdLineEvents()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(2_000);
     finishTool();
@@ -391,7 +394,21 @@ describe('hold line on the phone path', () => {
     const { transport } = await startCall();
     const timing = { tool: 'lookup_customer', tool_call_received_ms: 4_000, action_ms: 2_000, result_sent_ms: 2_000, first_agent_audio_after_result_ms: 350, hold_line_ms: 820, voiced: 'queued' };
     transport.emit('tool_timing', timing);
-    expect(h.logs.find((l) => l.message === 'tool_timing')?.extra).toEqual(timing);
+    // RT-HOLD-LINE part 2 adds how the bookkeeping went (no tool call ran here, so no note).
+    expect(h.logs.find((l) => l.message === 'tool_timing')?.extra).toEqual({ ...timing, cache_hit: false, queue_depth_at_enqueue: null });
+    transport.close();
+  });
+
+  it('a tool call\'s tool_timing line carries cache_hit and the queue depth its first write saw', async () => {
+    const { transport, toolCall } = await startCall();
+    h.slowTool.mockImplementation(async () => ({ success: true }));
+    await toolCall();
+    transport.emit('tool_timing', { tool: 'lookup_customer', tool_call_received_ms: 1, action_ms: 1, result_sent_ms: 1, first_agent_audio_after_result_ms: null, hold_line_ms: null, voiced: 'now' });
+    expect(h.logs.filter((l) => l.message === 'tool_timing').map((l) => l.extra)).toEqual([
+      expect.objectContaining({ tool: 'lookup_customer', cache_hit: false, queue_depth_at_enqueue: expect.any(Number) }),
+    ]);
+    // The writes drain later and say how long they took (no caller data).
+    await vi.advanceTimersByTimeAsync(10);
     transport.close();
   });
 

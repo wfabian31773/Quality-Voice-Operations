@@ -126,6 +126,22 @@ export async function createCallSession(
   return id;
 }
 
+async function insertCallEvent(
+  client: DbClient,
+  tenantId: string,
+  callSessionId: string,
+  eventType: string,
+  fromState: LifecycleState | null,
+  toState: LifecycleState | null,
+  payload?: Record<string, unknown>,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+    [randomUUID(), tenantId, callSessionId, eventType, fromState, toState, JSON.stringify(payload ?? {})],
+  );
+}
+
 export async function writeCallEvent(
   tenantId: string,
   callSessionId: string,
@@ -134,78 +150,107 @@ export async function writeCallEvent(
   toState: LifecycleState | null,
   payload?: Record<string, unknown>,
 ): Promise<void> {
-  await withTenant(tenantId, async (client) => {
-    await client.query(
-      `INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [randomUUID(), tenantId, callSessionId, eventType, fromState, toState, JSON.stringify(payload ?? {})],
-    );
-  });
+  await withTenant(tenantId, (client) => insertCallEvent(client, tenantId, callSessionId, eventType, fromState, toState, payload));
 }
+
+type CallStateExtra = Partial<{
+  escalationTarget: string;
+  escalationReason: string;
+  workflowId: string;
+  context: Record<string, unknown>;
+  agentId: string;
+}>;
 
 export async function updateCallState(
   tenantId: string,
   callSessionId: string,
   newState: LifecycleState,
-  extra?: Partial<{
-    escalationTarget: string;
-    escalationReason: string;
-    workflowId: string;
-    context: Record<string, unknown>;
-    agentId: string;
-  }>,
+  extra?: CallStateExtra,
+): Promise<void> {
+  await withTenant(tenantId, (client) => applyCallState(client, tenantId, callSessionId, newState, extra));
+}
+
+export interface CallEventSpec {
+  type: string;
+  from: LifecycleState | null;
+  to: LifecycleState | null;
+  payload?: Record<string, unknown>;
+}
+
+/**
+ * updateCallState then writeCallEvent, the same two statements in one
+ * transaction (one BEGIN / set_config / COMMIT instead of two): the tool
+ * bookkeeping's state + event pairs. If either statement fails, neither row
+ * is written.
+ */
+export async function updateCallStateWithEvent(
+  tenantId: string,
+  callSessionId: string,
+  newState: LifecycleState,
+  event: CallEventSpec,
 ): Promise<void> {
   await withTenant(tenantId, async (client) => {
-    const sets = ['lifecycle_state = $3', 'updated_at = NOW()'];
-    const values: unknown[] = [tenantId, callSessionId, newState];
-    let idx = 4;
-
-    if (extra?.escalationTarget) {
-      sets.push(`escalation_target = $${idx++}`);
-      values.push(extra.escalationTarget);
-    }
-    if (extra?.escalationReason) {
-      sets.push(`escalation_reason = $${idx++}`);
-      values.push(extra.escalationReason);
-    }
-    if (extra?.workflowId) {
-      sets.push(`workflow_id = $${idx++}`);
-      values.push(extra.workflowId);
-    }
-    if (extra?.context) {
-      sets.push(`context = $${idx++}`);
-      values.push(JSON.stringify(extra.context));
-    }
-    if (extra?.agentId) {
-      sets.push(`agent_id = $${idx++}`);
-      values.push(extra.agentId);
-    }
-
-    await client.query(
-      `UPDATE call_sessions SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2`,
-      values,
-    );
-
-    if (newState === 'ESCALATED') {
-      try {
-        const { rows: existingTickets } = await client.query(
-          `SELECT id FROM tickets WHERE tenant_id = $1 AND call_id = $2 LIMIT 1`,
-          [tenantId, callSessionId],
-        );
-        if (existingTickets.length === 0) {
-          const reason = extra?.escalationReason || 'Call escalated';
-          await client.query(
-            `INSERT INTO tickets (id, tenant_id, call_id, subject, description, status, priority)
-             VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'open', 'high')`,
-            [tenantId, callSessionId, `Escalated call: ${reason}`, `Auto-created from escalated call ${callSessionId}. Reason: ${reason}`],
-          );
-          logger.info('Auto-created ticket for escalated call', { tenantId, callSessionId });
-        }
-      } catch (ticketErr) {
-        logger.error('Failed to auto-create ticket for escalated call', { tenantId, callSessionId, error: String(ticketErr) });
-      }
-    }
+    await applyCallState(client, tenantId, callSessionId, newState);
+    await insertCallEvent(client, tenantId, callSessionId, event.type, event.from, event.to, event.payload);
   });
+}
+
+async function applyCallState(
+  client: DbClient,
+  tenantId: string,
+  callSessionId: string,
+  newState: LifecycleState,
+  extra?: CallStateExtra,
+): Promise<void> {
+  const sets = ['lifecycle_state = $3', 'updated_at = NOW()'];
+  const values: unknown[] = [tenantId, callSessionId, newState];
+  let idx = 4;
+
+  if (extra?.escalationTarget) {
+    sets.push(`escalation_target = $${idx++}`);
+    values.push(extra.escalationTarget);
+  }
+  if (extra?.escalationReason) {
+    sets.push(`escalation_reason = $${idx++}`);
+    values.push(extra.escalationReason);
+  }
+  if (extra?.workflowId) {
+    sets.push(`workflow_id = $${idx++}`);
+    values.push(extra.workflowId);
+  }
+  if (extra?.context) {
+    sets.push(`context = $${idx++}`);
+    values.push(JSON.stringify(extra.context));
+  }
+  if (extra?.agentId) {
+    sets.push(`agent_id = $${idx++}`);
+    values.push(extra.agentId);
+  }
+
+  await client.query(
+    `UPDATE call_sessions SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2`,
+    values,
+  );
+
+  if (newState === 'ESCALATED') {
+    try {
+      const { rows: existingTickets } = await client.query(
+        `SELECT id FROM tickets WHERE tenant_id = $1 AND call_id = $2 LIMIT 1`,
+        [tenantId, callSessionId],
+      );
+      if (existingTickets.length === 0) {
+        const reason = extra?.escalationReason || 'Call escalated';
+        await client.query(
+          `INSERT INTO tickets (id, tenant_id, call_id, subject, description, status, priority)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'open', 'high')`,
+          [tenantId, callSessionId, `Escalated call: ${reason}`, `Auto-created from escalated call ${callSessionId}. Reason: ${reason}`],
+        );
+        logger.info('Auto-created ticket for escalated call', { tenantId, callSessionId });
+      }
+    } catch (ticketErr) {
+      logger.error('Failed to auto-create ticket for escalated call', { tenantId, callSessionId, error: String(ticketErr) });
+    }
+  }
 }
 
 export async function finalizeCallSession(

@@ -511,8 +511,25 @@ describe('caller speech (server VAD) pauses the watchdog', () => {
 
     // The caller hangs up: the stream finalizer's default outcome stands.
     expect(result.recordCallOutcome('caller_hangup')).toBe(true);
+    // Written through the call's bookkeeping queue, behind everything queued before it.
+    expect(await result.flushBookkeeping()).toBe('drained');
     expect(persistCallOutcome).toHaveBeenCalledWith('t-watchdog', 'cs-watchdog', 'caller_hangup');
     transport.close();
+  });
+
+  it('provider drop: realtime closes first, then finalize records provider_failure — outcome is not dropped by release (stand-in P2)', async () => {
+    const { result, transport } = await startCall({ playbackConfirm: 'twilio_mark' });
+    // Realtime closes first (provider / transport). Close queues session_closed but must not release yet.
+    transport.close();
+    expect(persistCallOutcome).not.toHaveBeenCalled();
+    // finalizeStream records the outcome after the close handler ran.
+    expect(result.recordCallOutcome('provider_failure')).toBe(true);
+    expect(await result.flushBookkeeping('call_completed')).toBe('drained');
+    expect(persistCallOutcome).toHaveBeenCalledWith('t-watchdog', 'cs-watchdog', 'provider_failure');
+    expect(outcomeEvents().map((c) => c[5])).toEqual([{ outcome: 'provider_failure' }]);
+    await result.releaseBookkeeping();
+    // A late write after release is still dropped (queue ended after finalize).
+    expect(result.recordCallOutcome('caller_hangup')).toBe(false); // first writer already won
   });
 
   it('a dialler blip under VAD_HEARD_MIN_SPEECH_MS stays never heard: the ladder runs to never_heard', async () => {

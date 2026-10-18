@@ -1,0 +1,566 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`bookkeeping golden (statements recorded on 31996d53, inline writes) > contract tool on a workflow trial call: workflow_execution_start first, the trial check after the meter 1`] = `
+[
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "scheduling_list_staff",
+      "{"query":"fade"}",
+      "{"query":"fade"}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "WORKFLOW_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id2>",
+      "t-shop",
+      "cs-golden",
+      "workflow_execution_start",
+      "ACTIVE_CONVERSATION",
+      "WORKFLOW_EXECUTION",
+      "{"tool":"scheduling_list_staff"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "TOOL_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id3>",
+      "t-shop",
+      "cs-golden",
+      "tool_start",
+      "WORKFLOW_EXECUTION",
+      "TOOL_EXECUTION",
+      "{"tool":"scheduling_list_staff","executionId":"<id1>"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "{"ok":true,"data":[]}",
+      "success",
+      null,
+      null,
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "ACTIVE_CONVERSATION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id4>",
+      "t-shop",
+      "cs-golden",
+      "tool_end",
+      "TOOL_EXECUTION",
+      "ACTIVE_CONVERSATION",
+      "{"tool":"scheduling_list_staff","executionId":"<id1>","durationMs":0,"status":"success"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "args": [
+      "t-shop",
+      1,
+    ],
+    "effect": "meter",
+  },
+  {
+    "args": [
+      "t-shop",
+    ],
+    "effect": "trial_check",
+  },
+]
+`;
+
+exports[`bookkeeping golden (statements recorded on 31996d53, inline writes) > contract tool, failed: a failed completion, has_tool_failure, one observability error 1`] = `
+[
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "scheduling_book_prepare",
+      "{"query":"fade"}",
+      "{"query":"fade"}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "TOOL_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id2>",
+      "t-shop",
+      "cs-golden",
+      "tool_start",
+      "WORKFLOW_EXECUTION",
+      "TOOL_EXECUTION",
+      "{"tool":"scheduling_book_prepare","executionId":"<id1>"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "{"ok":false,"error":{"code":"CONFLICT","message":"slot taken","callerSafeMessage":"That time or record is no longer available.","retryable":false}}",
+      "failed",
+      "CONFLICT: slot taken",
+      "Tool execution failed. Please try again or proceed without this action.",
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "cs-golden",
+      "t-shop",
+    ],
+    "sql": "UPDATE call_sessions SET has_tool_failure = true WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "args": [
+      "t-shop",
+      "error",
+      "Tool "scheduling_book_prepare" failed: CONFLICT: slot taken",
+    ],
+    "effect": "observability_error",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "ACTIVE_CONVERSATION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id3>",
+      "t-shop",
+      "cs-golden",
+      "tool_end",
+      "TOOL_EXECUTION",
+      "ACTIVE_CONVERSATION",
+      "{"tool":"scheduling_book_prepare","executionId":"<id1>","durationMs":0,"status":"failed"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "args": [
+      "t-shop",
+      1,
+    ],
+    "effect": "meter",
+  },
+]
+`;
+
+exports[`bookkeeping golden (statements recorded on 31996d53, inline writes) > contract tool, rate-limited: the single failed row, no call events, no meter 1`] = `
+[
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "scheduling_list_services",
+      "{"query":"fade"}",
+      "{"query":"fade"}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "{"success":false,"reason":"rate_limited"}",
+      "failed",
+      "Rate limit exceeded",
+      null,
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "cs-golden",
+      "t-shop",
+    ],
+    "sql": "UPDATE call_sessions SET has_tool_failure = true WHERE id = $1 AND tenant_id = $2",
+  },
+]
+`;
+
+exports[`bookkeeping golden (statements recorded on 31996d53, inline writes) > contract tool, success: invocation row, TOOL_EXECUTION + tool_start, completion, ACTIVE_CONVERSATION + tool_end, one meter 1`] = `
+[
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "scheduling_list_services",
+      "{"query":"fade"}",
+      "{"query":"fade"}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "TOOL_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id2>",
+      "t-shop",
+      "cs-golden",
+      "tool_start",
+      "WORKFLOW_EXECUTION",
+      "TOOL_EXECUTION",
+      "{"tool":"scheduling_list_services","executionId":"<id1>"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "{"ok":true,"data":[]}",
+      "success",
+      null,
+      null,
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "ACTIVE_CONVERSATION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id3>",
+      "t-shop",
+      "cs-golden",
+      "tool_end",
+      "TOOL_EXECUTION",
+      "ACTIVE_CONVERSATION",
+      "{"tool":"scheduling_list_services","executionId":"<id1>","durationMs":0,"status":"success"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "args": [
+      "t-shop",
+      1,
+    ],
+    "effect": "meter",
+  },
+]
+`;
+
+exports[`bookkeeping golden (statements recorded on 31996d53, inline writes) > contract tool, timeout: a timeout completion, has_tool_failure, one observability error 1`] = `
+[
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "scheduling_book_commit",
+      "{"query":"fade"}",
+      "{"query":"fade"}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "TOOL_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id2>",
+      "t-shop",
+      "cs-golden",
+      "tool_start",
+      "WORKFLOW_EXECUTION",
+      "TOOL_EXECUTION",
+      "{"tool":"scheduling_book_commit","executionId":"<id1>"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "{"ok":false,"error":{"code":"UPSTREAM_UNAVAILABLE","message":"The action timed out and may still have gone through. Do not call it again, do not say it failed and do not offer to do it again: say the callerSafeMessage, then offer to take a message.","callerSafeMessage":"I'm still waiting on the system, so I can't confirm that right now. The shop will follow up with you to confirm it. A text will follow once texting is enabled. I can also take a message for them.","retryable":false,"exit":"message_ticket"}}",
+      "timeout",
+      "UPSTREAM_UNAVAILABLE: The action timed out and may still have gone through. Do not call it again, do not say it failed and do not offer to do it again: say the callerSafeMessage, then offer to take a message.",
+      null,
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "cs-golden",
+      "t-shop",
+    ],
+    "sql": "UPDATE call_sessions SET has_tool_failure = true WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "args": [
+      "t-shop",
+      "error",
+      "Tool "scheduling_book_commit" failed: UPSTREAM_UNAVAILABLE: The action timed out and may still have gone through. Do not call it again, do not say it failed and do not offer to do it again: say the callerSafeMessage, then offer to take a message.",
+    ],
+    "effect": "observability_error",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "ACTIVE_CONVERSATION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id3>",
+      "t-shop",
+      "cs-golden",
+      "tool_end",
+      "TOOL_EXECUTION",
+      "ACTIVE_CONVERSATION",
+      "{"tool":"scheduling_book_commit","executionId":"<id1>","durationMs":0,"status":"timeout"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "args": [
+      "t-shop",
+      1,
+    ],
+    "effect": "meter",
+  },
+]
+`;
+
+exports[`bookkeeping golden (statements recorded on 31996d53, inline writes) > legacy tool path (beginToolRun → finishToolRun), success then failed, in that order 1`] = `
+[
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "get_current_tenant_time",
+      "{}",
+      "{}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "TOOL_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id2>",
+      "t-shop",
+      "cs-golden",
+      "tool_start",
+      "WORKFLOW_EXECUTION",
+      "TOOL_EXECUTION",
+      "{"tool":"get_current_tenant_time","executionId":"<id1>"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "<id1>",
+      "t-shop",
+      "{"success":true}",
+      "success",
+      null,
+      null,
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "ACTIVE_CONVERSATION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id3>",
+      "t-shop",
+      "cs-golden",
+      "tool_end",
+      "TOOL_EXECUTION",
+      "ACTIVE_CONVERSATION",
+      "{"tool":"get_current_tenant_time","executionId":"<id1>","durationMs":0,"status":"success"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "args": [
+      "t-shop",
+      1,
+    ],
+    "effect": "meter",
+  },
+  {
+    "params": [
+      "<id4>",
+      "t-shop",
+      "cs-golden",
+      "ag-shop",
+      "ag-shop",
+      "lookup_customer",
+      "{"phone":"x"}",
+      "{"phone":"x"}",
+    ],
+    "sql": "INSERT INTO tool_invocations (id, tenant_id, call_session_id, agent_id, agent_slug, tool_name, input, parameters_redacted, status, invoked_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running', NOW())",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "TOOL_EXECUTION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id5>",
+      "t-shop",
+      "cs-golden",
+      "tool_start",
+      "WORKFLOW_EXECUTION",
+      "TOOL_EXECUTION",
+      "{"tool":"lookup_customer","executionId":"<id4>"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "params": [
+      "<id4>",
+      "t-shop",
+      "{"success":false}",
+      "failed",
+      "not found",
+      "ask again",
+      "<ms>",
+    ],
+    "sql": "UPDATE tool_invocations SET output = $3, result = $3, status = $4, error_message = $5, recovery_action = $6, duration_ms = $7, completed_at = NOW() WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "params": [
+      "cs-golden",
+      "t-shop",
+    ],
+    "sql": "UPDATE call_sessions SET has_tool_failure = true WHERE id = $1 AND tenant_id = $2",
+  },
+  {
+    "args": [
+      "t-shop",
+      "error",
+      "Tool "lookup_customer" failed: not found",
+    ],
+    "effect": "observability_error",
+  },
+  {
+    "params": [
+      "t-shop",
+      "cs-golden",
+      "ACTIVE_CONVERSATION",
+    ],
+    "sql": "UPDATE call_sessions SET lifecycle_state = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2",
+  },
+  {
+    "params": [
+      "<id6>",
+      "t-shop",
+      "cs-golden",
+      "tool_end",
+      "TOOL_EXECUTION",
+      "ACTIVE_CONVERSATION",
+      "{"tool":"lookup_customer","executionId":"<id4>","durationMs":0,"status":"failed"}",
+    ],
+    "sql": "INSERT INTO call_events (id, tenant_id, call_session_id, event_type, from_state, to_state, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+  },
+  {
+    "args": [
+      "t-shop",
+      1,
+    ],
+    "effect": "meter",
+  },
+]
+`;

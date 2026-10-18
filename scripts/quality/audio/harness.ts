@@ -120,7 +120,7 @@ export async function runAudioCall(
   run: number,
   opts: CallRunOptions = {},
 ): Promise<CallWorld> {
-  clock.reset();
+  clock.startRun();
   const voice = opts.voice ?? new OfflineCallerVoice();
   const callSid = `CArt11${scenario.id.replace(/[^A-Za-z0-9]/g, '')}r${run}`;
   const sayIndexes = scenario.caller.flatMap((step) => ('say' in step ? [step] : []));
