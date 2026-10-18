@@ -208,9 +208,14 @@ export function mapDbCall(row: Record<string, unknown>): DbCallRow | null {
 export function createDbCallSource(query: QueryFn): DbCallSource {
   return {
     async fetchCalls(window) {
-      // Read the local day plus an hour each side; ./reconcile owns the cut.
-      const from = new Date(window.startMs - 3_600_000).toISOString();
-      const to = new Date(window.endMs + 3_600_000).toISOString();
+      // Read the same UTC dates the Twilio adapter asks for (the dates the
+      // local day touches, padded by a day each side, inclusive), so a call
+      // that started before midnight and is still billing after it is seen
+      // as a known other-day call even when Twilio has no row for it.
+      // ./reconcile owns the cut.
+      const dates = utcDatesCovering(window);
+      const from = `${previousDate(dates[0])}T00:00:00.000Z`;
+      const to = `${shiftDate(dates[dates.length - 1], 2)}T00:00:00.000Z`;
       const { rows } = await query(DB_CALLS_SQL, [toDbTimestamp(from), toDbTimestamp(to)]);
       return rows.map(mapDbCall).filter((row): row is DbCallRow => row !== null);
     },

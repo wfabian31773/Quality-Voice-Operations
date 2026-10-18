@@ -94,7 +94,8 @@ describe('DB adapter', () => {
       };
     });
     const rows = await source.fetchCalls(window);
-    expect(seen[0]).toEqual(['2026-10-15 03:00:00.000', '2026-10-16 05:00:00.000']);
+    // Same padded UTC dates as the Twilio filters: 10-14 through the end of 10-17.
+    expect(seen[0]).toEqual(['2026-10-14 00:00:00.000', '2026-10-18 00:00:00.000']);
     expect(rows).toEqual([
       { callSid: 'CA1', callSessionId: 's1', tenantId: 't', startedAt: '2026-10-15T14:00:00.000Z', durationSeconds: 180, estimate: { xaiCents: 12, twilioMicros: 25_500 } },
       { callSid: 'CA2', callSessionId: 's2', tenantId: 't', startedAt: '2026-10-15T15:00:00.000Z', durationSeconds: null, estimate: null },

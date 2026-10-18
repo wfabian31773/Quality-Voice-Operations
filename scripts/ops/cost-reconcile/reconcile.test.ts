@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { fixtureInput } from './__fixtures__/fixtureDay';
+import {
+  fixtureInput,
+  fixtureMidnightRecordings,
+  fixtureMidnightTwilioCalls,
+  fixtureMidnightXaiUsage,
+} from './__fixtures__/fixtureDay';
 import { reconcileDay, xaiUsageMicros } from './reconcile';
 import type { ReconcileInput } from './types';
 
@@ -95,6 +100,67 @@ describe('reconcileDay — fixture day', () => {
     });
     expect(bySid.CA_A).toMatchObject({ estimateCents: 15, deltaCents: 12 });
     expect(bySid.CA_C).toMatchObject({ estimateCents: null, deltaCents: null });
+  });
+});
+
+describe('reconcileDay — a call that spans midnight is costed once', () => {
+  // CA_D starts 23:59:59 on the 15th; XU_D (00:00:29) and the midnight rows
+  // (CA_D_LEG, RE_D, RE_D_LEG) all land after midnight. XU_STRAY names no call.
+  const withMidnight: ReconcileInput = {
+    ...fixtureInput,
+    xaiUsage: [...fixtureInput.xaiUsage, ...fixtureMidnightXaiUsage],
+    twilioCalls: [...fixtureInput.twilioCalls, ...fixtureMidnightTwilioCalls],
+    twilioRecordings: [...fixtureInput.twilioRecordings, ...fixtureMidnightRecordings],
+  };
+  const day15 = reconcileDay(withMidnight);
+  const day16 = reconcileDay({ ...withMidnight, date: '2026-10-16' });
+
+  it('does not charge XU_D again on the 16th as unknown_call', () => {
+    const report = reconcileDay({ ...fixtureInput, date: '2026-10-16' });
+    expect(report.calls.map((c) => c.callSid)).toEqual(['CA_E']);
+    expect(report.unmatched.xaiUsageWithoutCall).toEqual([]);
+    expect(report.totals.micros).toMatchObject({ unattributed: 0, total: 177_000 });
+    expect(report.outOfWindowIgnored).toEqual({ xaiUsage: 4, twilioCalls: 6, recordings: 2, dbCalls: 5 });
+  });
+
+  it('counts the post-midnight leg and recordings on the start day', () => {
+    expect(day15.calls.find((c) => c.callSid === 'CA_D')).toMatchObject({
+      twilioChildLegSids: ['CA_D_LEG'],
+      recordingSids: ['RE_D', 'RE_D_LEG'],
+      xaiUsageIds: ['XU_D'],
+      micros: { xai: 40_000, twilioVoice: 12_500, recording: 4_000, total: 56_500 },
+    });
+    expect(day15.outOfWindowIgnored).toEqual({ xaiUsage: 2, twilioCalls: 2, recordings: 1, dbCalls: 2 });
+  });
+
+  it('ignores them on the next day instead of listing them as unattributed', () => {
+    expect(day16.calls.map((c) => c.callSid)).toEqual(['CA_E']);
+    expect(day16.unmatched.twilioChildLegsWithoutCall).toEqual([]);
+    expect(day16.unmatched.recordingsWithoutCall).toEqual([]);
+    expect(day16.unmatched.xaiUsageWithoutCall.map((u) => u.usageId)).not.toContain('XU_D');
+    expect(day16.outOfWindowIgnored).toEqual({ xaiUsage: 4, twilioCalls: 7, recordings: 4, dbCalls: 5 });
+  });
+
+  it('still lists a next-day row naming a truly unknown call as unattributed', () => {
+    expect(day16.unmatched.xaiUsageWithoutCall).toEqual([
+      { usageId: 'XU_STRAY', callSid: 'CA_NOWHERE', occurredAt: '2026-10-16T05:00:00.000Z', reason: 'unknown_call', costCents: 1 },
+    ]);
+    expect(day16.totals.micros).toMatchObject({ attributed: 177_000, unattributed: 7_000, total: 184_000 });
+  });
+
+  it('sums two consecutive days to each row costed exactly once', () => {
+    // Every priced row except CA_F and RE_F, which belong to the 14th.
+    const previousDay = new Set(['CA_F', 'RE_F']);
+    const twilio = withMidnight.twilioCalls.filter((c) => !previousDay.has(c.callSid)).map((c) => c.priceMicros ?? 0);
+    const recordings = withMidnight.twilioRecordings.filter((r) => !previousDay.has(r.recordingSid)).map((r) => r.priceMicros ?? 0);
+    const xai = withMidnight.xaiUsage.map((u) => xaiUsageMicros(u) ?? 0);
+    const everyRowOnce = [...twilio, ...recordings, ...xai].reduce((sum, m) => sum + m, 0);
+    expect(everyRowOnce).toBe(934_845);
+    expect(day15.totals.micros.total + day16.totals.micros.total).toBe(everyRowOnce);
+
+    const sids15 = day15.calls.map((c) => c.callSid);
+    const sids16 = day16.calls.map((c) => c.callSid);
+    expect(sids15.filter((sid) => sids16.includes(sid))).toEqual([]);
   });
 });
 

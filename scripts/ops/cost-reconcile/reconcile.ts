@@ -11,10 +11,15 @@
 //   3. A recording goes to the call its `callSid` names, or to that leg's
 //      parent when the recording was made on a child leg.
 //   4. An xAI usage row goes to the call its `callSid` names.
-// Rows that reach no in-day call are listed under `unmatched` (and their
-// cost counted as unattributed) when their own timestamp is inside the day,
-// and only counted under `outOfWindowIgnored` when it is not, so a call that
-// spans midnight is costed once, on the day it started.
+// A row that names a known call (a root seen in Twilio or the DB) that
+// started outside the day, or a child leg of one, is only counted under
+// `outOfWindowIgnored`, whatever its own timestamp: it is costed on that
+// call's start day. Both fetchers over-fetch by a day or more, so the root
+// of a call that spans midnight is seen on both days. Any other row that
+// reaches no in-day call is listed under `unmatched` (and its cost counted
+// as unattributed) when its own timestamp is inside the day, and only
+// counted under `outOfWindowIgnored` when it is not. A call that spans
+// midnight is therefore costed once, on the day it started.
 
 import { dayWindow, isInWindow } from './dayWindow';
 import {
@@ -131,6 +136,8 @@ export function reconcileDay(input: ReconcileInput): ReconciliationReport {
 
   // 1. The day's calls.
   const calls = new Map<string, CallAccumulator>();
+  // Known calls that started on another day; rows naming them are theirs.
+  const outOfWindowRoots = new Set<string>();
   const candidateSids = new Set<string>([...dbBySid.keys(), ...twilioRootBySid.keys()]);
   for (const sid of candidateSids) {
     const db = dbBySid.get(sid) ?? null;
@@ -139,6 +146,7 @@ export function reconcileDay(input: ReconcileInput): ReconciliationReport {
     if (!isInWindow(startedAt, window)) {
       if (db) outOfWindowIgnored.dbCalls += 1;
       if (twilio) outOfWindowIgnored.twilioCalls += 1;
+      outOfWindowRoots.add(sid);
       continue;
     }
     const acc: CallAccumulator = {
@@ -159,6 +167,7 @@ export function reconcileDay(input: ReconcileInput): ReconciliationReport {
 
   // 2. Twilio child legs → parent call.
   const childToParent = new Map<string, string>();
+  const outOfWindowLegs = new Set<string>();
   const unmatchedChildLegs: UnmatchedChildLeg[] = [];
   let unmatchedChildMicros = 0;
   for (const leg of twilioChildren) {
@@ -168,6 +177,9 @@ export function reconcileDay(input: ReconcileInput): ReconciliationReport {
       childToParent.set(leg.callSid, parentSid);
       parent.childLegSids.push(leg.callSid);
       parent.twilioMicros.push(usdMicros(leg.priceMicros, leg.priceUnit, leg.callSid, incomplete.twilioPricePending));
+    } else if (outOfWindowRoots.has(parentSid)) {
+      outOfWindowLegs.add(leg.callSid);
+      outOfWindowIgnored.twilioCalls += 1;
     } else if (isInWindow(leg.startTime, window)) {
       const micros = usdMicros(leg.priceMicros, leg.priceUnit, leg.callSid, incomplete.twilioPricePending);
       unmatchedChildMicros += micros;
@@ -190,6 +202,8 @@ export function reconcileDay(input: ReconcileInput): ReconciliationReport {
     if (owner) {
       owner.recordingSids.push(rec.recordingSid);
       owner.recordingMicros.push(usdMicros(rec.priceMicros, rec.priceUnit, rec.recordingSid, incomplete.recordingPricePending));
+    } else if (outOfWindowRoots.has(rec.callSid) || outOfWindowLegs.has(rec.callSid)) {
+      outOfWindowIgnored.recordings += 1;
     } else if (isInWindow(rec.createdAt, window)) {
       const micros = usdMicros(rec.priceMicros, rec.priceUnit, rec.recordingSid, incomplete.recordingPricePending);
       unmatchedRecordingMicros += micros;
@@ -209,7 +223,8 @@ export function reconcileDay(input: ReconcileInput): ReconciliationReport {
   let unmatchedXaiMicros = 0;
   for (const usage of input.xaiUsage) {
     const owner = usage.callSid === null ? undefined : calls.get(usage.callSid);
-    if (!owner && !isInWindow(usage.occurredAt, window)) {
+    const otherDayCall = usage.callSid !== null && outOfWindowRoots.has(usage.callSid);
+    if (!owner && (otherDayCall || !isInWindow(usage.occurredAt, window))) {
       outOfWindowIgnored.xaiUsage += 1;
       continue;
     }

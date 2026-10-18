@@ -53,3 +53,21 @@ export const fixtureInput = {
   twilioRecordings: fixtureTwilioRecordings,
   dbCalls: fixtureDbCalls,
 };
+
+// Post-midnight rows, added on top of fixtureInput by the midnight tests:
+//   CA_D_LEG  transfer leg of CA_D starting 00:00:10 local on the 16th, $0.00400
+//   RE_D      recording on CA_D created when it ended, 00:00:31 on the 16th, $0.00250
+//   RE_D_LEG  recording on CA_D_LEG, 00:00:31 on the 16th, $0.00150
+//   XU_STRAY  xAI usage for CA_NOWHERE (no such call) at 01:00 on the 16th, $0.007
+export const fixtureMidnightTwilioCalls: TwilioCallRow[] = [
+  { callSid: 'CA_D_LEG', parentCallSid: 'CA_D', startTime: '2026-10-16T04:00:10.000Z', durationSeconds: 20, priceMicros: 4_000, priceUnit: 'USD', status: 'completed' },
+];
+
+export const fixtureMidnightRecordings: TwilioRecordingRow[] = [
+  { recordingSid: 'RE_D', callSid: 'CA_D', createdAt: '2026-10-16T04:00:31.000Z', durationSeconds: 30, priceMicros: 2_500, priceUnit: 'USD' },
+  { recordingSid: 'RE_D_LEG', callSid: 'CA_D_LEG', createdAt: '2026-10-16T04:00:31.000Z', durationSeconds: 20, priceMicros: 1_500, priceUnit: 'USD' },
+];
+
+export const fixtureMidnightXaiUsage: XaiUsageRow[] = [
+  { usageId: 'XU_STRAY', callSid: 'CA_NOWHERE', occurredAt: '2026-10-16T05:00:00.000Z', model: 'grok-voice-3.0', audioSeconds: null, costMicros: 7_000 },
+];
