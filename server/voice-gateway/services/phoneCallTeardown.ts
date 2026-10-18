@@ -33,6 +33,13 @@ export interface PhoneTeardownOptions {
    * last call to end during a drain could lose its floor to process exit.
    */
   holdDrain?: () => () => void;
+  /**
+   * The floor protects a caller's lost request, so an outbound call (a
+   * campaign callee who answered) skips it: evaluateFloor is never called
+   * and the floor resolves to 'skipped_outbound'. Defaults to inbound, the
+   * same default finalizeStream's callDirection starts from.
+   */
+  direction?: 'inbound' | 'outbound';
 }
 
 export async function closeRealtimeForPhoneTeardown(
@@ -48,6 +55,11 @@ export async function closeRealtimeForPhoneTeardown(
     log.info('OpenAI realtime session closed');
   } catch (err) {
     log.error('Error closing OpenAI session', { error: String(err) });
+  }
+  if (opts.direction === 'outbound') {
+    const skipped: FloorOutcome = 'skipped_outbound';
+    log.info('floor_evaluated', { outcome: skipped });
+    return { floor: Promise.resolve(skipped).finally(release) };
   }
   let floor: Promise<FloorOutcome>;
   try {

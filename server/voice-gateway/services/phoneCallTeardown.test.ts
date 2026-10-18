@@ -52,4 +52,24 @@ describe('closeRealtimeForPhoneTeardown', () => {
     await expect(floor).resolves.toBe('filed');
     expect(release).toHaveBeenCalledTimes(1);
   });
+
+  it('outbound: never evaluates the floor, still records the outcome, closes the session and releases the drain hold', async () => {
+    const { session, log, order } = fakeSession();
+    const release = vi.fn(() => { order.push('release'); });
+    const holdDrain = vi.fn(() => { order.push('hold'); return release; });
+    const { floor } = await closeRealtimeForPhoneTeardown(session, 'caller_hangup', log, { holdDrain, direction: 'outbound' });
+    await expect(floor).resolves.toBe('skipped_outbound');
+    expect(session.evaluateFloor).not.toHaveBeenCalled();
+    expect(session.recordCallOutcome).toHaveBeenCalledWith('caller_hangup');
+    expect(order).toEqual(['hold', 'outcome', 'close', 'release']);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(log.info).toHaveBeenCalledWith('floor_evaluated', { outcome: 'skipped_outbound' });
+  });
+
+  it('inbound: evaluates the floor once', async () => {
+    const { session, log } = fakeSession();
+    const { floor } = await closeRealtimeForPhoneTeardown(session, 'caller_hangup', log, { direction: 'inbound' });
+    await expect(floor).resolves.toBe('filed');
+    expect(session.evaluateFloor).toHaveBeenCalledTimes(1);
+  });
 });

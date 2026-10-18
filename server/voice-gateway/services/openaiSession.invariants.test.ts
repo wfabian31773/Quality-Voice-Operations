@@ -246,4 +246,12 @@ describe('floor through the session', () => {
     expect(input).toEqual({ callId: 'cs-invariants', callerLines: ['Hi, this is Dana, I need a fade Friday at nine'], language: 'en' });
     expect(consoleLines.some((line) => line.includes('floor_evaluated') && line.includes('filed'))).toBe(true);
   });
+
+  it('an outbound call never runs tickets.file_floor', async () => {
+    const { result, callerSays } = await startCall({ direction: 'outbound' });
+    callerSays("No thanks, I'm not interested, take me off your list");
+    result.session.close();
+    await expect(result.evaluateFloor()).resolves.toBe('skipped_outbound');
+    expect(h.runAction).not.toHaveBeenCalled();
+  });
 });

@@ -185,6 +185,7 @@ export type FloorOutcome =
   | FileFloorOutput['reason']
   | 'skipped_tool_write'
   | 'skipped_tool_in_flight'
+  | 'skipped_outbound'
   | 'action_failed'
   | 'timeout'
   | 'error';
@@ -214,6 +215,11 @@ export interface CallInvariantsInit {
   agent: CallInvariantsAgent;
   callerNumber?: string;
   calledNumber?: string;
+  /**
+   * The floor protects a caller's lost request, so it only runs on inbound
+   * calls; an outbound callee never gets a floor ticket. Defaults to inbound.
+   */
+  direction?: 'inbound' | 'outbound';
   log: InvariantLogger;
   /** Tests inject a fake; production runs the action through platform/actions. */
   runFloorAction?: FloorActionRunner;
@@ -446,6 +452,8 @@ export class CallInvariants {
   }
 
   private async floorSteps(): Promise<FloorOutcome> {
+    // Covers both teardown and a model-initiated END on an outbound call.
+    if (this.init.direction === 'outbound') return 'skipped_outbound';
     if (this.inFlight.size > 0) {
       const settle = sleep(this.init.toolSettleMs ?? FLOOR_TOOL_SETTLE_MS);
       await Promise.race([Promise.all([...this.inFlight.keys()]), settle.promise]);

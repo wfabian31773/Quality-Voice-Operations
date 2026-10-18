@@ -214,7 +214,8 @@ export function attachWebSocket(server: HTTPServer): void {
             sessionResult,
             realtimeEndedFirst ? 'provider_failure' : 'caller_hangup',
             slog,
-            { holdDrain: () => sessionManager.trackConnection() },
+            // Inbound only, like the CSAT survey below: the floor is for a caller's lost request.
+            { holdDrain: () => sessionManager.trackConnection(), direction: callDirection },
           ));
         }
 

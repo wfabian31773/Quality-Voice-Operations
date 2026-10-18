@@ -251,9 +251,34 @@ describe('END (model-initiated end-call tool)', () => {
     await expect(inv.beforeAgentEnd()).resolves.toEqual({ ok: true });
     expect(runFloorAction).not.toHaveBeenCalled();
   });
+
+  it('outbound call: a model-initiated end files no floor ticket', async () => {
+    const { inv, tool, handler, runFloorAction, log } = make({ direction: 'outbound' });
+    inv.callerTranscribed("No thanks, I'm not interested, take me off your list");
+    inv.agentTurnCompleted('Understood, goodbye.');
+    expect(blockedRule(await tool('end_call', {}))).toBeUndefined();
+    expect(handler).toHaveBeenCalledWith('end_call', {});
+    expect(runFloorAction).not.toHaveBeenCalled();
+    expect(inv.facts.floorEvaluated).toBe(true);
+    expect(log.info).toHaveBeenCalledWith('floor_evaluated', { outcome: 'skipped_outbound' });
+  });
 });
 
 describe('floor at teardown', () => {
+  it('outbound call: skipped without running the action; inbound (the default) runs it', async () => {
+    const outbound = make({ direction: 'outbound' });
+    outbound.inv.callerTranscribed('Take me off your list');
+    await expect(outbound.inv.evaluateFloor()).resolves.toBe('skipped_outbound');
+    expect(outbound.runFloorAction).not.toHaveBeenCalled();
+    expect(outbound.inv.facts.floorEvaluated).toBe(true);
+    expect(JSON.stringify(outbound.log.info.mock.calls)).not.toMatch(/list/);
+
+    const inbound = make({ direction: 'inbound' });
+    inbound.inv.callerTranscribed('I need a fade Friday');
+    await expect(inbound.inv.evaluateFloor()).resolves.toBe('filed');
+    expect(inbound.runFloorAction).toHaveBeenCalledTimes(1);
+  });
+
   it('runs tickets.file_floor as the system actor with the floor key, the caller lines only and the language', async () => {
     const { inv, runFloorAction } = make({ agent: { tools: [{ name: 'create_ticket' }], language: 'es-MX', timeZone: 'America/Chicago' } });
     inv.agentTurnCompleted('Gracias por llamar.');

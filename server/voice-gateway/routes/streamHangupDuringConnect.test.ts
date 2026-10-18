@@ -529,6 +529,33 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     ws.close();
   });
 
+  it('outbound call: teardown closes the session but never evaluates the floor', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/twilio/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    ws.send(JSON.stringify({
+      event: 'start',
+      start: {
+        streamSid: 'MZ-outbound',
+        customParameters: {
+          tenantId: 't-1', agentId: 'a-1', agentType: 'general', direction: 'outbound', callSid: 'CA-outbound',
+          callerNumber: '+15551234567', calledNumber: '+15557654321',
+        },
+      },
+    }));
+    await waitFor(() => h.updateCallStateMock.mock.calls.some((c) => c[2] === 'ACTIVE_CONVERSATION'));
+    // The session's own floor gate (END path) gets the direction too.
+    expect(vi.mocked(createRealtimeSession).mock.calls.at(-1)?.[0].direction).toBe('outbound');
+    ws.send(JSON.stringify({ event: 'stop' }));
+    await waitFor(() => h.handleTwilioStatusCallbackMock.mock.calls.length > 0);
+    expect(h.recordCallOutcomeMock).toHaveBeenCalledWith('caller_hangup');
+    expect(h.sessionCloseMock).toHaveBeenCalledTimes(1);
+    expect(h.evaluateFloorMock).not.toHaveBeenCalled();
+    ws.close();
+  });
+
   it('closes a direct Twilio stream before session creation when the database-backed healthcare deployment is unapproved', async () => {
     h.dbAgentType = 'healthcare-receptionist';
     h.authorizeHealthcareDeploymentMock.mockResolvedValue({ allowed: false, code: 'approval_missing' });

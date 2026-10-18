@@ -1035,6 +1035,7 @@ export async function createRealtimeSession(
     agent: { ...agentConfig, tools: exposedTools(agentConfig) },
     callerNumber,
     calledNumber,
+    direction: ctx.direction ?? 'inbound',
     log: slog,
   });
 
