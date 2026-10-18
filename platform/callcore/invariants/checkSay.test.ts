@@ -112,7 +112,7 @@ describe('checkSay (a) success words need a matching ok commit', () => {
 });
 
 describe('checkSay (b) voiceRefs:false blocks every ref-shaped string', () => {
-  it('barbershop: "your confirmation is BK-4712" is blocked even though the tool returned BK-4712', () => {
+  it('voiceRefs:false: "your confirmation is BK-4712" is blocked even though the tool returned BK-4712', () => {
     const f = committed(facts({ voiceRefs: false }), BOOK_COMMIT, true, ['BK-4712']);
     expectBlocked(checkSay(f, 'You are booked, your confirmation is BK-4712.'), 'say.ref_not_voiced');
   });

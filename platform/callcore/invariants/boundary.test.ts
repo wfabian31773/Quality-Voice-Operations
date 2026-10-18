@@ -1,7 +1,7 @@
 /**
  * G3 boundary: the invariant checker is pure and vertical-agnostic. Source
- * files (not tests) may import only siblings in this folder and `zod`, touch
- * no I/O, clock or randomness, and name no vertical.
+ * files (not tests) may import only siblings in this folder and `zod`, and
+ * touch no I/O, clock or randomness.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,7 +18,7 @@ const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
 const FORBIDDEN_GLOBALS =
   /\b(?:Date|Math\.random|process|setTimeout|setInterval|setImmediate|queueMicrotask|fetch|XMLHttpRequest|WebSocket|crypto|performance|console|globalThis|require)\b/;
-const VERTICAL_NAMES = /barber|salon|restaurant|lawyer|dispatch/i;
+// The vertical-name scan for all of platform/callcore/** lives in platform/callcore/boundary.test.ts (RT-01, #116).
 
 describe('callcore/invariants boundary', () => {
   it('finds the module sources', () => {
@@ -42,16 +42,9 @@ describe('callcore/invariants boundary', () => {
     }
   });
 
-  it('names no vertical (code or comments)', () => {
-    for (const { file, text } of sources) {
-      expect(text, file).not.toMatch(VERTICAL_NAMES);
-    }
-  });
-
   it('the scanners catch what they should (fixture)', () => {
-    const bad = "import { pool } from '../../db/pool';\nconst t = Date.now(); // barbershop";
-    expect([...bad.matchAll(IMPORT_RE)].map((m) => m[1])).toEqual(['../../db/pool']);
+    const bad = "import type { X } from '../contracts/types';\nconst t = Date.now();";
+    expect([...bad.matchAll(IMPORT_RE)].map((m) => m[1])).toEqual(['../contracts/types']);
     expect(stripComments(bad)).toMatch(FORBIDDEN_GLOBALS);
-    expect(bad).toMatch(VERTICAL_NAMES);
   });
 });
