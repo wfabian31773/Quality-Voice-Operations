@@ -231,6 +231,24 @@ export async function finalizeCallSession(
   });
 }
 
+// Merges `callOutcome` into context (other keys kept) and never overwrites an
+// outcome that is already stored, so the row keeps the first one.
+export const PERSIST_CALL_OUTCOME_SQL = `UPDATE call_sessions
+   SET context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('callOutcome', $3::text),
+       updated_at = NOW()
+ WHERE tenant_id = $1 AND id = $2
+   AND NOT (COALESCE(context, '{}'::jsonb) ? 'callOutcome')`;
+
+export async function persistCallOutcome(
+  tenantId: string,
+  callSessionId: string,
+  outcome: string,
+): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    await client.query(PERSIST_CALL_OUTCOME_SQL, [tenantId, callSessionId, outcome]);
+  });
+}
+
 export function createPlatformPersistenceAdapter(tenantId: string): CallPersistenceAdapter {
   return {
     async updateTranscript(_tid: string, callLogId: string, transcript: string): Promise<void> {

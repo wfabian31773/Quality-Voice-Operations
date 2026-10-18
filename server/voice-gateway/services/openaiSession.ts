@@ -57,7 +57,10 @@ import {
   writeCallEvent,
   updateCallState,
   createPlatformPersistenceAdapter,
+  persistCallOutcome,
 } from './callPersistence';
+import { SilenceWatchdog } from './silenceWatchdog';
+import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
 
@@ -818,6 +821,12 @@ export interface RealtimeSessionResult {
   triggerGreeting: () => void;
   sendSystemMessage: (message: string) => void;
   rebuildForHandoff: (newAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
+  /** Record the call outcome; the first writer wins. Returns true if this one did. */
+  recordCallOutcome: (outcome: CallOutcome) => boolean;
+  /** Called when the realtime session closes, whoever closed it. */
+  onSessionClosed: (handler: () => void) => void;
+  /** Caller input that has no audio transcript (widget typed text). */
+  noteCallerText: () => void;
   costTracker: {
     inputTokens: number;
     outputTokens: number;
@@ -1024,7 +1033,58 @@ export async function createRealtimeSession(
   let enforceEffects = reasoningGate?.enforcing ?? false;
   slog.info('Reasoning mode', { reasoningMode, engine: Boolean(reasoningEngine) });
 
-  const toolHandler = buildToolHandler(ctx, callSessionId);
+  // One outcome per call; the first writer wins (see callOutcome.ts).
+  const callOutcome = new CallOutcomeRecorder((outcome) => {
+    slog.info('call_outcome', { outcome });
+    persistCallOutcome(tenantId, callSessionId, outcome).catch((err) => {
+      slog.warn('Failed to persist call outcome', { outcome, error: String(err) });
+    });
+    writeCallEvent(tenantId, callSessionId, 'call_outcome', null, null, { outcome }).catch(() => {});
+  });
+
+  // Runtime-owned silence watchdog: acts for every agent, whatever the
+  // reasoning mode. It owns the "are you still there?" prompt; the reasoning
+  // gate is only asked for its shadow log line.
+  const silenceWatchdog = new SilenceWatchdog({
+    say: (instruction) => {
+      try {
+        sendModelInstruction(instruction);
+      } catch (err) {
+        slog.warn('Silence watchdog instruction failed', { error: String(err) });
+      }
+    },
+    onEnding: (reason) => {
+      callOutcome.record(reason);
+    },
+    hangUp: (reason) => {
+      slog.info('Silence watchdog ending call', { reason });
+      try { activeSession.close(); } catch {}
+    },
+    onAction: (action, counts) => {
+      slog.info('silence_watchdog', { action, ...counts });
+      writeCallEvent(tenantId, callSessionId, action, 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', { ...counts }).catch(() => {});
+      if ((action === 'silence_check' || action === 'silence_prompt') && reasoningGate && !enforceEffects) {
+        try {
+          reasoningGate.handleSilence();
+        } catch (silenceErr) {
+          slog.warn('Reasoning shadow silence log failed', { error: String(silenceErr) });
+        }
+      }
+    },
+  });
+
+  // Silence is not counted while a tool runs.
+  const trackToolRun = (handler: (name: string, args: Record<string, unknown>) => Promise<string>) =>
+    async (name: string, args: Record<string, unknown>): Promise<string> => {
+      silenceWatchdog.toolStarted();
+      try {
+        return await handler(name, args);
+      } finally {
+        silenceWatchdog.toolEnded();
+      }
+    };
+
+  const toolHandler = trackToolRun(buildToolHandler(ctx, callSessionId));
   const agentTools = buildRealtimeTools(agentConfig.tools);
 
   let knowledgeAvailable = false;
@@ -1175,43 +1235,17 @@ export async function createRealtimeSession(
     };
   }
 
-  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-  const SILENCE_THRESHOLD_MS = 15000;
-
-  const resetSilenceTimer = (): void => {
-    if (silenceTimer) clearTimeout(silenceTimer);
-    silenceTimer = setTimeout(() => {
-      if (reasoningGate) {
-        try {
-          // null in shadow mode (logged as would_inject silence_recovery).
-          const recoveryPrompt = reasoningGate.handleSilence();
-          if (recoveryPrompt) {
-            sendModelInstruction(recoveryPrompt);
-            writeCallEvent(tenantId, callSessionId, 'silence_recovery', 'ACTIVE_CONVERSATION', 'ACTIVE_CONVERSATION', {
-              prompt: recoveryPrompt,
-            }).catch(() => {});
-          }
-        } catch (silenceErr) {
-          slog.warn('Silence recovery handler failed', { error: String(silenceErr) });
-        }
-      }
-    }, SILENCE_THRESHOLD_MS);
-  };
-
-  resetSilenceTimer();
-
   const attachSessionListeners = (targetSession: XaiVoiceSession): void => {
     targetSession.on('history_added', (item: unknown) => {
       const msg = item as RealtimeMessageItem;
       if (msg.type !== 'message') return;
-
-      resetSilenceTimer();
 
       let line: string | null = null;
       if (msg.role === 'user' && msg.content) {
         for (const c of msg.content) {
           const text = c.text || c.transcript;
           if (text) {
+            if (text.trim()) silenceWatchdog.callerHeard();
             line = `CALLER: ${text}`;
             if (ctx.callerTurns) ctx.callerTurns.count++;
             costTracker.addUtterance('user', text);
@@ -1528,7 +1562,7 @@ export async function createRealtimeSession(
     callSid,
     startedAt: new Date(),
     cleanup: async () => {
-      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceWatchdog.stop();
       toolStopGuard.clearCall(callSessionId);
       try {
         await activeSession.close();
@@ -1544,6 +1578,7 @@ export async function createRealtimeSession(
   // the WS closed will otherwise hit "WebSocket is not connected"
   // and log a scary (but benign) warn.
   let sessionClosed = false;
+  const sessionClosedHandlers: Array<() => void> = [];
 
   const attachCloseHandler = (targetSession: XaiVoiceSession): void => {
     const emitter = targetSession as unknown as { on(event: string, listener: (...args: unknown[]) => void): void };
@@ -1551,7 +1586,14 @@ export async function createRealtimeSession(
       sessionClosed = true;
       slog.info('Realtime session closed');
 
-      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceWatchdog.stop();
+      for (const handler of sessionClosedHandlers) {
+        try {
+          handler();
+        } catch (err) {
+          slog.warn('Session-closed handler failed', { error: String(err) });
+        }
+      }
       toolStopGuard.clearCall(callSessionId);
       // Clear the per-call budget-check interval here too. Without this, the
       // hangup teardown path (finalizeStream -> session.close() ->
@@ -1699,16 +1741,26 @@ export async function createRealtimeSession(
     transport: { on(event: string, listener: (...args: unknown[]) => void): void },
   ): void => {
     const t = transport as unknown as { on(e: string, l: (...args: unknown[]) => void): void };
-    t.on('response.created', () => { responseInFlight = true; });
+    // Socket open (the greeting is sent on the same event): start the
+    // watchdog. Agent responses pause it; each finished response re-arms it.
+    t.on('session.created', () => { silenceWatchdog.start(); });
+    t.on('response.created', () => {
+      responseInFlight = true;
+      silenceWatchdog.agentTurnStarted();
+    });
     t.on('response.done', (...args: unknown[]) => {
       responseInFlight = false;
+      silenceWatchdog.agentTurnEnded();
       // The transport passes the wire payload as the first argument
       // (and the SDK may wrap it; either way the `response.usage`
       // path is the same). Capture it here so the cost tracker sees
       // real OpenAI token counts instead of our char/4 estimate.
       ingestUsageEvent(args[0]);
     });
-    t.on('response.cancelled', () => { responseInFlight = false; });
+    t.on('response.cancelled', () => {
+      responseInFlight = false;
+      silenceWatchdog.agentTurnEnded();
+    });
   };
   attachResponseStateListeners(wsTransport);
 
@@ -1800,7 +1852,7 @@ export async function createRealtimeSession(
       slog.info('Reasoning mode', { reasoningMode: ctx.reasoningMode, engine: Boolean(reasoningEngine), reason: 'handoff_to_non_salon' });
     }
 
-    const newToolHandler = buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId);
+    const newToolHandler = trackToolRun(buildToolHandler({ ...ctx, agentConfig: newAgentConfig }, callSessionId));
     const newAgentTools = buildRealtimeTools(newAgentConfig.tools);
     const handoffPrompt = buildMasterVoiceAgentInstructions({
       rolePrompt: newAgentConfig.rolePrompt ?? newAgentConfig.systemPrompt,
@@ -1860,6 +1912,7 @@ export async function createRealtimeSession(
           budgetCents: budgetResult.budgetCents,
           percentUsed: budgetResult.percentUsed,
         });
+        callOutcome.record('agent_ended');
         sendSystemMessage('I appreciate your time, but I need to wrap up our conversation now. Is there anything else urgent I can help you with before we end?');
         setTimeout(() => {
           try { activeSession.close(); } catch {}
@@ -1912,6 +1965,9 @@ export async function createRealtimeSession(
     triggerGreeting,
     sendSystemMessage,
     rebuildForHandoff,
+    recordCallOutcome: (outcome) => callOutcome.record(outcome),
+    onSessionClosed: (handler) => { sessionClosedHandlers.push(handler); },
+    noteCallerText: () => silenceWatchdog.callerHeard(),
     costTracker,
     routedModel: costTracker.activeModel,
     routedTier: costTracker.activeModelTier,

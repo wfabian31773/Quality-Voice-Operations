@@ -178,6 +178,9 @@ export function attachWebSocket(server: HTTPServer): void {
     // fires forever and whose lifecycle_state never reaches a terminal
     // state (so the demo live-call UI never ends).
     let streamEnded = false;
+    // Set when the realtime session closed (or failed to connect) while the
+    // Twilio stream was still up: the default outcome is then provider_failure.
+    let realtimeEndedFirst = false;
     const streamStartedAt = Date.now();
     const upgradeAuthenticated = queryTokenAuthenticated(request);
     let startAccepted = !STREAM_AUTH_TOKEN;
@@ -203,6 +206,8 @@ export function attachWebSocket(server: HTTPServer): void {
         sessionClosed = true;
 
         if (sessionResult) {
+          // Ignored if the watchdog or budget cap already recorded one.
+          sessionResult.recordCallOutcome(realtimeEndedFirst ? 'provider_failure' : 'caller_hangup');
           try {
             await sessionResult.session.close();
             slog.info('OpenAI realtime session closed');
@@ -712,6 +717,18 @@ export function attachWebSocket(server: HTTPServer): void {
                 return;
               }
 
+              // Closing the realtime session alone leaves the phone call up.
+              // When it closes first (watchdog / budget hang-up, provider
+              // drop), close the Twilio stream: <Connect><Stream> has no verb
+              // after it, so Twilio ends the call, and ws 'close' runs
+              // finalizeStream().
+              sessionResult.onSessionClosed(() => {
+                if (streamEnded) return;
+                realtimeEndedFirst = true;
+                slog.info('Realtime session ended before the caller stream — closing the Twilio stream');
+                if (ws.readyState === WebSocket.OPEN) ws.close();
+              });
+
               sessionResult.onOpenAIAudio((audioEvent) => {
                 if (ws.readyState !== WebSocket.OPEN || !streamSid) return;
                 if (!audioEvent.data) return;
@@ -810,6 +827,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 const demoTerminateHandler = async (evt: { callLogId: string; twilioCallSid?: string }) => {
                   if (evt.callLogId === callSessionId) {
                     slog.info('Demo hard cap reached — terminating call', { callSessionId });
+                    sessionResult?.recordCallOutcome('agent_ended');
                     if (evt.twilioCallSid) {
                       try {
                         const { createTwilioAdapterFromEnv } = await import('../services/twilioAdapter');
@@ -856,6 +874,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 latencies: { session_setup: liveStartFrameAt ? Date.now() - liveStartFrameAt : undefined },
                 correlationId: callSessionId,
               });
+              realtimeEndedFirst = true;
               ws.close();
             }
             break;
@@ -902,6 +921,7 @@ export function attachWebSocket(server: HTTPServer): void {
     let callSessionId: string | undefined;
     let sessionResult: RealtimeSessionResult | undefined;
     let sessionClosed = false;
+    let realtimeEndedFirst = false;
     const startedAt = Date.now();
     let slog: SessionLogger = widgetLogger;
 
@@ -950,6 +970,8 @@ export function attachWebSocket(server: HTTPServer): void {
       if (callSessionId && tenantId && !sessionClosed) {
         sessionClosed = true;
         if (sessionResult) {
+          // Ignored if the watchdog or budget cap already recorded one.
+          sessionResult.recordCallOutcome(realtimeEndedFirst ? 'provider_failure' : 'caller_hangup');
           try {
             await sessionResult.session.close();
             slog.info('Widget OpenAI session closed');
@@ -1116,6 +1138,13 @@ export function attachWebSocket(server: HTTPServer): void {
                 callSid: 'widget',
               });
 
+              // Same as the phone path: a realtime close ends the widget session.
+              sessionResult.onSessionClosed(() => {
+                if (sessionClosed) return;
+                realtimeEndedFirst = true;
+                if (ws.readyState === WebSocket.OPEN) ws.close(1000, 'Session ended');
+              });
+
               sessionResult.onOpenAIAudio((audioEvent) => {
                 if (ws.readyState !== WebSocket.OPEN) return;
                 if (!audioEvent.data) return;
@@ -1138,6 +1167,7 @@ export function attachWebSocket(server: HTTPServer): void {
               slog.info('Widget stream established');
             } catch (err) {
               slog.error('Failed to create widget session', { error: String(err) });
+              realtimeEndedFirst = true;
               ws.send(JSON.stringify({ type: 'error', message: 'Failed to start session' }));
               ws.close(4005, 'Session creation failed');
             }
@@ -1153,6 +1183,8 @@ export function attachWebSocket(server: HTTPServer): void {
 
           case 'text': {
             if (!sessionResult || !msg.text) break;
+            // Typed text has no audio transcript; it still counts as heard.
+            sessionResult.noteCallerText();
             try {
               const transport = (sessionResult.session as unknown as { transport: { sendEvent: (e: unknown) => void } }).transport;
               transport.sendEvent({

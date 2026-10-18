@@ -39,6 +39,9 @@ const h = vi.hoisted(() => {
   const writeCallEventMock = vi.fn(async (..._args: unknown[]) => {});
   const finalizeCallSessionMock = vi.fn(async (..._args: unknown[]) => {});
 
+  const recordCallOutcomeMock = vi.fn((_outcome: string) => true);
+  const sessionClosedHandlers: Array<() => void> = [];
+
   const handleTwilioStatusCallbackMock = vi.fn();
   const authorizeHealthcareDeploymentMock = vi.fn(async () => ({ allowed: true, code: 'not_healthcare' }));
 
@@ -50,6 +53,8 @@ const h = vi.hoisted(() => {
     updateCallStateMock,
     writeCallEventMock,
     finalizeCallSessionMock,
+    recordCallOutcomeMock,
+    sessionClosedHandlers,
     handleTwilioStatusCallbackMock,
     authorizeHealthcareDeploymentMock,
     dbAgentType: 'general',
@@ -69,6 +74,9 @@ vi.mock('../services/openaiSession', () => ({
     sendAudioToOpenAI: vi.fn(),
     sendSystemMessage: vi.fn(),
     rebuildForHandoff: vi.fn(),
+    recordCallOutcome: h.recordCallOutcomeMock,
+    onSessionClosed: (handler: () => void) => { h.sessionClosedHandlers.push(handler); },
+    noteCallerText: vi.fn(),
     costTracker: {
       inputTokens: 0,
       outputTokens: 0,
@@ -271,6 +279,8 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     h.updateCallStateMock.mockClear();
     h.writeCallEventMock.mockClear();
     h.finalizeCallSessionMock.mockClear();
+    h.recordCallOutcomeMock.mockClear();
+    h.sessionClosedHandlers.length = 0;
     h.handleTwilioStatusCallbackMock.mockClear();
     h.authorizeHealthcareDeploymentMock.mockReset().mockResolvedValue({ allowed: true, code: 'not_healthcare' });
     h.dbAgentType = 'general';
@@ -350,7 +360,42 @@ describe('Twilio stream — caller hangs up during session.connect()', () => {
     // Twilio call is marked completed downstream.
     expect(h.handleTwilioStatusCallbackMock).toHaveBeenCalledWith('CA-test-call', 'completed');
 
+    // Finalize records exactly one outcome: the caller side ended first.
+    expect(h.recordCallOutcomeMock).toHaveBeenCalledTimes(1);
+    expect(h.recordCallOutcomeMock).toHaveBeenCalledWith('caller_hangup');
+
     ws.close();
+  });
+
+  it('realtime session closes first (watchdog / budget hang-up, provider drop): the Twilio stream is closed and finalize records provider_failure once', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/twilio/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    const closed = new Promise<void>((resolve) => ws.on('close', () => resolve()));
+    ws.send(JSON.stringify({
+      event: 'start',
+      start: {
+        streamSid: 'MZ-realtime-first',
+        customParameters: {
+          tenantId: 't-1', agentId: 'a-1', agentType: 'general', callSid: 'CA-realtime-first',
+          callerNumber: '+15551234567', calledNumber: '+15557654321',
+        },
+      },
+    }));
+    await waitFor(() => h.updateCallStateMock.mock.calls.some((c) => c[2] === 'ACTIVE_CONVERSATION'));
+    expect(h.sessionClosedHandlers).toHaveLength(1);
+
+    // The realtime session closes on its own (e.g. activeSession.close()).
+    h.sessionClosedHandlers[0]();
+
+    // The server closes the Twilio media stream, which ends <Connect><Stream>.
+    await closed;
+    await waitFor(() => h.finalizeCallSessionMock.mock.calls.length > 0);
+    expect(h.recordCallOutcomeMock).toHaveBeenCalledTimes(1);
+    expect(h.recordCallOutcomeMock).toHaveBeenCalledWith('provider_failure');
+    expect(h.sessionCloseMock).toHaveBeenCalledTimes(1);
   });
 
   it('closes a direct Twilio stream before session creation when the database-backed healthcare deployment is unapproved', async () => {
