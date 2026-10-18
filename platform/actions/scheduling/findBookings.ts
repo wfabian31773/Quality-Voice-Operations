@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { BOOKING_FIND_V1, nextMissingSlot, type SlotSpec, type ToolContract } from '../../callcore/contracts';
+import { BOOKING_FIND_V1, DATE_SLOT_FORMAT, nextMissingSlot, type SlotSpec, type ToolContract } from '../../callcore/contracts';
 import { actionOk, defineAction, type ActionContext, type TenantTx } from '../core';
-import { isRealIsoDate, localDateOf, localMinuteOf } from './availability';
+import { localDateOf, localMinuteOf } from './availability';
 import { FIND_LIMIT, serviceNames, upcomingByPhone, type BookingRecord } from './bookingRows';
+import { dateSlot, toTenantDate } from './dateSlot';
 import { callerIdMatches, FIND_BOOKINGS, namesMatch, recordVerified } from './identity';
 import { foundBookingLine, readbackLang, spokenWhen } from './readback';
 import { countSlotAsk, SLOT_EXIT_MESSAGE, slotAskCount } from './slotAsks';
@@ -12,12 +13,8 @@ const input = z.object({
   phone,
   /** The name on the booking, as the caller says it. */
   name: z.string().trim().min(1).max(80).optional(),
-  /** Local date of the appointment (tenant timezone), YYYY-MM-DD. */
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date')
-    .refine(isRealIsoDate, 'Not a real calendar date')
-    .optional(),
+  /** Local date of the appointment (tenant timezone), YYYY-MM-DD; dateSlot's variants are accepted. */
+  date: dateSlot.optional(),
   /** Local start time of the appointment (tenant timezone), 24-hour HH:MM. */
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour HH:MM time').optional(),
 });
@@ -133,11 +130,13 @@ export const findBookingsAction = defineAction({
     + 'gives (or their caller ID number) and the name on the booking. Caller ID is checked on the server, and a '
     + 'phone match alone lists nothing: the first name on the booking must match too. Until it does, verified is '
     + 'false: ask the one question in callerSafeMessage (askId), then call again. If needs is "name_date_time", '
-    + 'also ask the date (YYYY-MM-DD) and time (HH:MM) of the appointment and never suggest a date or time yourself. '
+    + `also ask the date (send it as ${DATE_SLOT_FORMAT}) and time (HH:MM) of the appointment and never suggest a date or time yourself. `
     + 'If exit is set, do not ask again: offer to take a message. Only a verified result lists bookings: read '
     + 'their spoken text, and if there is more than one, ask which. Never say whether an unverified number has '
     + 'appointments, and never read a booking id aloud.',
-  async run(ctx, args, tx) {
+  async run(ctx, rawArgs, tx) {
+    // An accepted date variant becomes the tenant's YYYY-MM-DD (dateSlot.ts).
+    const args = { ...rawArgs, date: rawArgs.date === undefined ? undefined : toTenantDate(rawArgs.date, ctx.tenantTimezone) };
     // Date and time filter in SQL; the name matcher (authoritative, and the
     // JS date/time check alongside it) runs over every scanned row before the
     // result is capped at FIND_LIMIT.

@@ -1,4 +1,5 @@
 import type { AgentTemplate, Phrase, TemplateLanguage } from '../../agent-templates/shared';
+import type { ReadCachePolicy } from '../../callcore/contracts';
 
 export type { AgentTemplate, Phrase, TemplateLanguage };
 
@@ -39,6 +40,12 @@ export interface ContractToolBinding {
   textWillFollow: Phrase;
   /** Action → input paths of slots held from caller ID (a caller-ID reference there is left for the server to fill). */
   callerIdPaths: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Read action → its cache policy ('call': the same arguments give the same
+   * result for the whole call), from the contract or the read's own data.
+   * Reads not listed are run every time.
+   */
+  cacheable: Readonly<Record<string, ReadCachePolicy>>;
 }
 
 export interface ComposedAgent {

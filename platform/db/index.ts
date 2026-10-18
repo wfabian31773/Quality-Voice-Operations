@@ -68,12 +68,33 @@ export function getPrivilegedPoolUrl(): string {
   return getRestrictedPoolUrl();
 }
 
-function getPoolConfig(connectionString: string): ConstructorParameters<typeof Pool>[0] {
+/**
+ * Settings both pools use (restricted and privileged; every process role).
+ * A live call's DB work comes in bursts (one tool call: about six
+ * transactions) with 5-30 s and more between turns. A connection that idles
+ * out between turns makes the next turn's first query pay a new TLS + pooler
+ * handshake (about +0.8 s per first tool call of a turn on the Oct 18 calls,
+ * Render virginia → Supabase us-west-2). So:
+ * - idle connections live 5 min instead of 30 s;
+ * - `min` keeps two per pool from being reaped at all once opened;
+ * - TCP keepalive stops a NAT/load balancer from silently dropping the idle
+ *   socket in between;
+ * - allowExitOnIdle: idle connections don't hold a script's process open.
+ */
+export const POOL_SETTINGS = {
+  max: 8,
+  min: 2,
+  idleTimeoutMillis: 300_000,
+  connectionTimeoutMillis: 5_000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
+  allowExitOnIdle: true,
+} as const;
+
+export function getPoolConfig(connectionString: string): ConstructorParameters<typeof Pool>[0] {
   const config: ConstructorParameters<typeof Pool>[0] = {
     connectionString,
-    max: 8,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    ...POOL_SETTINGS,
   };
 
   if (!isDevelopmentEnv()) {

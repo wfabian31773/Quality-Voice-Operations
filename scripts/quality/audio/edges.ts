@@ -64,8 +64,18 @@ function load<T>(rel: string): T {
   return req(abs(rel)) as T;
 }
 
-/** The barbershop agent every synthetic call talks to (shape of LoadedAgentConfig). */
+/**
+ * The barbershop agent every synthetic call talks to (shape of
+ * LoadedAgentConfig): a composed agent, so a scenario can call a real
+ * DB-backed contract read (scheduling_list_services) whose own query
+ * `db.slow` makes slow, as well as the runtime's get_current_tenant_time.
+ * Called only after installEdges (the composer loads platform/actions, which
+ * must see the database edge).
+ */
 export function agentConfig(greeting: string): Record<string, unknown> {
+  const { compose } = load<typeof import('../../../platform/agent-runtime/composer')>('platform/agent-runtime/composer');
+  const { BARBERSHOP_TEMPLATE_V1 } = load<typeof import('../../../platform/agent-templates/barbershop')>('platform/agent-templates/barbershop');
+  const composed = compose(BARBERSHOP_TEMPLATE_V1, undefined, { businessName: 'Sharp Line Barbers' }, { language: 'en' });
   return {
     agentId: AGENT_ID,
     tenantId: TENANT_ID,
@@ -80,14 +90,10 @@ export function agentConfig(greeting: string): Record<string, unknown> {
     language: 'en',
     preferredLanguage: 'en',
     timeZone: 'America/New_York',
-    tools: [
-      // A runtime built-in read tool (no tenant data needed), so a scenario can make one tool call.
-      {
-        name: 'get_current_tenant_time',
-        description: "The shop's current local date and time.",
-        parameters: { type: 'object', properties: {}, required: [] },
-      },
-    ],
+    // The composed tools: the contract actions, the catalog/availability reads and the runtime's
+    // get_current_tenant_time (a read with no DB work in its action).
+    tools: composed.tools,
+    contractTools: composed.contractTools,
     guardrails: [],
     metadata: { businessName: 'Sharp Line Barbers' },
   };
@@ -101,6 +107,8 @@ export interface RuntimeModules {
   silenceWatchdog: typeof import('../../../server/voice-gateway/services/silenceWatchdog');
   xaiRealtimeTransport: typeof import('../../../server/voice-gateway/services/xaiRealtimeTransport');
   holdLine: typeof import('../../../server/voice-gateway/services/holdLine');
+  bookkeepingQueue: typeof import('../../../server/voice-gateway/services/bookkeepingQueue');
+  contractToolBridge: typeof import('../../../server/voice-gateway/services/contractToolBridge');
 }
 
 /** The only env a harness run sees (plus the two dummies installEdges sets). */
@@ -188,6 +196,12 @@ export function installEdges(opts: EdgeOptions = {}): RuntimeModules {
     updateCallState: record((world, _tenant, _call, state) => {
       world.states.push({ at: world.elapsed, state: String(state) });
     }),
+    // The state + event pair (one transaction in production): recorded as its two writes.
+    updateCallStateWithEvent: record((world, _tenant, _call, state, event) => {
+      const { type, payload } = event as { type: string; payload?: Record<string, unknown> };
+      world.states.push({ at: world.elapsed, state: String(state) });
+      world.events.push({ at: world.elapsed, type, payload });
+    }),
     finalizeCallSession: record((world, _tenant, _call, status) => {
       world.finalized.push({ at: world.elapsed, status: String(status) });
     }),
@@ -256,6 +270,8 @@ export function installEdges(opts: EdgeOptions = {}): RuntimeModules {
     silenceWatchdog: load<RuntimeModules['silenceWatchdog']>('server/voice-gateway/services/silenceWatchdog'),
     xaiRealtimeTransport: load<RuntimeModules['xaiRealtimeTransport']>('server/voice-gateway/services/xaiRealtimeTransport'),
     holdLine: load<RuntimeModules['holdLine']>('server/voice-gateway/services/holdLine'),
+    bookkeepingQueue: load<RuntimeModules['bookkeepingQueue']>('server/voice-gateway/services/bookkeepingQueue'),
+    contractToolBridge: load<RuntimeModules['contractToolBridge']>('server/voice-gateway/services/contractToolBridge'),
   };
   return installed;
 }

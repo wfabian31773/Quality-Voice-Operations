@@ -39,6 +39,7 @@ export const BOOKING_FIND_V1: ToolContract = {
       requiredWhen: 'callerIdMismatch',
       askId: 'ask.bookingDate',
       defaultAsk: { en: 'What day is the appointment?', es: '¿Qué día es la cita?' },
+      format: 'date',
     },
     {
       name: 'time',

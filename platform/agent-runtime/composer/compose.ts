@@ -15,7 +15,7 @@
  * Pure: no I/O, and no vertical name. A vertical is only ever a template.
  */
 import { assignExternalToolNames, getAction, listActions, toAgentToolSchema } from '../../actions';
-import { getContract, type ToolContract } from '../../callcore/contracts';
+import { getContract, readCachePolicy, type ReadCachePolicy, type ToolContract } from '../../callcore/contracts';
 import {
   AFTER_WRITE_BY_INTENT,
   fillPlaceholders,
@@ -117,7 +117,18 @@ function binding(template: AgentTemplate, contracts: readonly ToolContract[], ac
     const key = contract.intents.map((intent) => AFTER_WRITE_BY_INTENT[intent]).find(Boolean);
     if (key && contract.confirm) afterWrite[contract.confirm.commit] = template.afterWrite[key];
   }
-  return { actions, asks, afterWrite, textWillFollow: template.afterWrite.textWillFollow, callerIdPaths };
+  return { actions, asks, afterWrite, textWillFollow: template.afterWrite.textWillFollow, callerIdPaths, cacheable: cachePolicies(contracts, actions) };
+}
+
+/** The exposed reads a call may answer again from its cache: a read contract's flag, else the read's own data. Never a write. */
+function cachePolicies(contracts: readonly ToolContract[], actions: Record<string, string>): Record<string, ReadCachePolicy> {
+  const policies: Record<string, ReadCachePolicy> = {};
+  for (const actionName of new Set(Object.values(actions))) {
+    if (getAction(actionName)?.kind !== 'read') continue;
+    const policy = contracts.find((c) => c.action === actionName && c.sideEffect === 'read')?.cacheable ?? readCachePolicy(actionName);
+    if (policy) policies[actionName] = policy;
+  }
+  return policies;
 }
 
 function businessSection(tenant: ComposerTenantConfig, name: string, lang: TemplateLanguage): string {

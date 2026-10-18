@@ -228,6 +228,12 @@ export interface CallInvariantsInit {
   now?: () => Date;
   floorDeadlineMs?: number;
   toolSettleMs?: number;
+  /**
+   * Runs once the tools in flight have settled, before the floor decides:
+   * the session flushes its bookkeeping queue here (bounded, never rejects),
+   * so every row a tool queued is written before the floor reads the call.
+   */
+  beforeFloor?: () => Promise<unknown>;
 }
 
 /** Process-wide SAY observations by rule, for metrics. */
@@ -459,6 +465,7 @@ export class CallInvariants {
       await Promise.race([Promise.all([...this.inFlight.keys()]), settle.promise]);
       settle.cancel();
     }
+    await this.init.beforeFloor?.();
     if (this.filedByTool) return 'skipped_tool_write';
     if ([...this.inFlight.values()].some((kind) => kind !== 'read')) return 'skipped_tool_in_flight';
 

@@ -376,6 +376,38 @@ describe('floor at teardown', () => {
     expect(runFloorAction).not.toHaveBeenCalled();
   });
 
+  it('beforeFloor (the bookkeeping flush) runs after the tools in flight settle and before the floor decides', async () => {
+    const order: string[] = [];
+    let flushed!: () => void;
+    const beforeFloor = vi.fn(() => new Promise<void>((resolve) => { flushed = () => { order.push('flushed'); resolve(); }; }));
+    const { inv, handler, tool, runFloorAction } = make({ beforeFloor });
+    runFloorAction.mockImplementationOnce(async () => { order.push('floor'); return filed(); });
+    let finish!: () => void;
+    handler.mockImplementationOnce(() => new Promise<string>((resolve) => { finish = () => { order.push('tool done'); resolve(OK); }; }));
+    inv.callerTranscribed('I need a fade Friday');
+    const running = tool('lookup_customer', {});
+    const floor = inv.evaluateFloor();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(beforeFloor).not.toHaveBeenCalled();
+    finish();
+    await running;
+    await vi.waitFor(() => expect(beforeFloor).toHaveBeenCalledTimes(1));
+    expect(runFloorAction).not.toHaveBeenCalled();
+    flushed();
+    await expect(floor).resolves.toBe('filed');
+    expect(order).toEqual(['tool done', 'flushed', 'floor']);
+  });
+
+  it('beforeFloor does not change what the floor decides: an ok write still skips it, outbound never flushes', async () => {
+    const beforeFloor = vi.fn(async () => {});
+    const write = make({ beforeFloor });
+    await write.tool('create_ticket', { subject: 'fade' });
+    await expect(write.inv.evaluateFloor()).resolves.toBe('skipped_tool_write');
+    expect(beforeFloor).toHaveBeenCalledTimes(1);
+    const outbound = make({ beforeFloor: vi.fn(async () => {}), direction: 'outbound' });
+    await expect(outbound.inv.evaluateFloor()).resolves.toBe('skipped_outbound');
+  });
+
   it('a write that is still running after the settle wait skips the floor (no double filing)', async () => {
     const { inv, handler, tool, runFloorAction } = make({ toolSettleMs: 10 });
     handler.mockImplementationOnce(() => new Promise<string>(() => {}));

@@ -180,6 +180,27 @@ describe('scheduling.check_availability', () => {
     });
   });
 
+  it.each([
+    ['a full ISO datetime with a zone', '2026-10-20T14:00:00Z'],
+    ['a datetime late enough to be the next UTC day', '2026-10-21T02:00:00Z'],
+    ['a datetime without a zone', '2026-10-20T10:00:00'],
+    ['YYYY/MM/DD', '2026/10/20'],
+    ['a weekday next to the date', 'Tuesday 2026-10-20'],
+  ])('accepts %s as the tenant\'s date: the same slots as 2026-10-20', async (_label, date) => {
+    const plain = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'any', date: '2026-10-20' });
+    const variant = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'any', date });
+    expect(variant.result.ok).toBe(true);
+    expect(variant.result).toEqual(plain.result);
+  });
+
+  it('a window given in variants is checked on the tenant\'s dates', async () => {
+    const { result } = await run('scheduling.check_availability', { serviceIds: ['cut'], window: { from: '2026/10/20', to: '2026-10-21T15:00:00-04:00' } });
+    expect(result.ok).toBe(true);
+    // A zoned end that lands before the start in the tenant timezone is refused after normalizing.
+    const backwards = await run('scheduling.check_availability', { serviceIds: ['cut'], window: { from: '2026-10-21', to: '2026-10-21T02:00:00Z' } });
+    expect(errorOf(backwards.result)).toMatchObject({ code: 'VALIDATION_FAILED', field: 'window.to', message: 'window.to is before window.from' });
+  });
+
   it('reports a closed day with the next open date', async () => {
     const { result } = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'marco', date: '2026-10-25' });
     expect(result.ok && result.data).toEqual({ slots: [], reasonIfNone: 'closed', nextOpenDate: '2026-10-26' });
@@ -207,7 +228,10 @@ describe('scheduling.check_availability', () => {
   it.each([
     ['an impossible date', { serviceIds: ['cut'], date: '2026-02-30' }, 'date'],
     ['a relative word', { serviceIds: ['cut'], date: 'tomorrow' }, 'date'],
-    ['a datetime', { serviceIds: ['cut'], date: '2026-10-20T10:00:00Z' }, 'date'],
+    // RT-HOLD-LINE part 2: a full ISO datetime is now accepted (see below); ambiguous forms are not.
+    ['a month/day date', { serviceIds: ['cut'], date: '10/20' }, 'date'],
+    ['a day/month/year date', { serviceIds: ['cut'], date: '20/10/2026' }, 'date'],
+    ['a weekday alone', { serviceIds: ['cut'], date: 'Tuesday' }, 'date'],
     ['a reversed window', { serviceIds: ['cut'], window: { from: '2026-10-22', to: '2026-10-20' } }, 'window.to'],
     ['a window over 14 days', { serviceIds: ['cut'], window: { from: '2026-10-20', to: '2026-11-03' } }, 'window.to'],
     ['date and window together', { serviceIds: ['cut'], date: '2026-10-20', window: { from: '2026-10-20', to: '2026-10-21' } }, 'window'],

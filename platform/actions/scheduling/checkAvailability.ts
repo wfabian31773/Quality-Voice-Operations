@@ -1,9 +1,9 @@
 import { z } from 'zod';
+import { DATE_SLOT_FORMAT } from '../../callcore/contracts';
 import { actionFail, actionOk, defineAction } from '../core';
 import {
   addDays,
   computeAvailability,
-  isRealIsoDate,
   loadAvailabilityData,
   loadBookingRuleRows,
   loadCatalog,
@@ -15,22 +15,25 @@ import {
   searchPlan,
   type CatalogService,
 } from './availability';
+import { dateSlot, toTenantDate, writtenDate } from './dateSlot';
 
 /** Longest date window a caller can ask about in one check. */
 export const MAX_WINDOW_DAYS = 14;
 
-const isoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date')
-  .refine(isRealIsoDate, 'Not a real calendar date');
+/** What is wrong with a window (both ends real YYYY-MM-DD dates), or undefined. */
+function windowIssue(from: string, to: string): string | undefined {
+  if (to < from) return 'window.to is before window.from';
+  if (addDays(from, MAX_WINDOW_DAYS - 1) < to) return `A window covers at most ${MAX_WINDOW_DAYS} days`;
+  return undefined;
+}
 
 const input = z
   .object({
     serviceIds: z.array(z.string().min(1).max(255)).min(1).max(3),
     /** A staff id from list_staff, or 'any'. */
     staffId: z.string().min(1).max(255).optional(),
-    date: isoDate.optional(),
-    window: z.object({ from: isoDate, to: isoDate }).optional(),
+    date: dateSlot.optional(),
+    window: z.object({ from: dateSlot, to: dateSlot }).optional(),
     partOfDay: z.enum(PARTS_OF_DAY).optional(),
     limit: z.number().int().min(1).max(MAX_LIMIT).optional(),
   })
@@ -42,12 +45,9 @@ const input = z
       issue.addIssue({ code: z.ZodIssueCode.custom, path: ['window'], message: 'Send either date or window, not both' });
     }
     if (value.window) {
-      const { from, to } = value.window;
-      if (to < from) {
-        issue.addIssue({ code: z.ZodIssueCode.custom, path: ['window', 'to'], message: 'window.to is before window.from' });
-      } else if (isRealIsoDate(from) && isRealIsoDate(to) && addDays(from, MAX_WINDOW_DAYS - 1) < to) {
-        issue.addIssue({ code: z.ZodIssueCode.custom, path: ['window', 'to'], message: `A window covers at most ${MAX_WINDOW_DAYS} days` });
-      }
+      const [from, to] = [writtenDate(value.window.from), writtenDate(value.window.to)];
+      const problem = from && to ? windowIssue(from, to) : undefined;
+      if (problem) issue.addIssue({ code: z.ZodIssueCode.custom, path: ['window', 'to'], message: problem });
     }
   });
 
@@ -74,12 +74,23 @@ export const checkAvailabilityAction = defineAction({
   permissions: { agent: true, mcpScope: 'qvo:read' },
   agentDescription:
     'Find open appointment times for 1 to 3 services done back-to-back by one staff member. '
-    + "staffId is a staff id or 'any'. Give date (YYYY-MM-DD, resolved from the tenant's current time) "
-    + 'or window {from,to}; with neither it finds the first available day. Optional partOfDay '
+    + `staffId is a staff id or 'any'. Give date (${DATE_SLOT_FORMAT}) `
+    + 'or window {from,to} in the same format; with neither it finds the first available day. Optional partOfDay '
     + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. '
     + 'With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.',
-  async run(ctx, args, tx) {
+  async run(ctx, rawArgs, tx) {
     const tz = ctx.tenantTimezone;
+    // Accepted date variants become the tenant's YYYY-MM-DD here (dateSlot.ts).
+    const args = {
+      ...rawArgs,
+      date: rawArgs.date === undefined ? undefined : toTenantDate(rawArgs.date, tz),
+      window: rawArgs.window && { from: toTenantDate(rawArgs.window.from, tz), to: toTenantDate(rawArgs.window.to, tz) },
+    };
+    if (args.window) {
+      // A zoned datetime can land a day off its written date: check the window again.
+      const problem = windowIssue(args.window.from, args.window.to);
+      if (problem) return actionFail('VALIDATION_FAILED', problem, { field: 'window.to' });
+    }
     const today = localDateOf(ctx.now.getTime(), tz);
     const firstDay = args.date ?? args.window?.from;
     if (firstDay && firstDay < today) {

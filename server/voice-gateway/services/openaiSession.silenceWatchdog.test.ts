@@ -511,6 +511,8 @@ describe('caller speech (server VAD) pauses the watchdog', () => {
 
     // The caller hangs up: the stream finalizer's default outcome stands.
     expect(result.recordCallOutcome('caller_hangup')).toBe(true);
+    // Written through the call's bookkeeping queue, behind everything queued before it.
+    expect(await result.flushBookkeeping()).toBe('drained');
     expect(persistCallOutcome).toHaveBeenCalledWith('t-watchdog', 'cs-watchdog', 'caller_hangup');
     transport.close();
   });

@@ -82,13 +82,22 @@ vi.mock('./xaiRealtimeTransport', async () => {
   }
   return { XaiRealtimeTransport: FakeTransport, XaiVoiceSession: FakeSession };
 });
-vi.mock('./callPersistence', () => ({
-  createCallSession: vi.fn(async () => 'cs-composer'),
-  writeCallEvent: vi.fn(async () => {}),
-  updateCallState: vi.fn(async () => {}),
-  createPlatformPersistenceAdapter: vi.fn(() => ({})),
-  persistCallOutcome: vi.fn(async () => {}),
-}));
+vi.mock('./callPersistence', () => {
+  const writeCallEvent = vi.fn(async (..._args: unknown[]) => {});
+  const updateCallState = vi.fn(async (..._args: unknown[]) => {});
+  return {
+    createCallSession: vi.fn(async () => 'cs-composer'),
+    writeCallEvent,
+    updateCallState,
+    // The state + event pair in one transaction, recorded as its two writes.
+    updateCallStateWithEvent: vi.fn(async (t: string, c: string, state: string, e: { type: string; from: unknown; to: unknown; payload?: unknown }) => {
+      await updateCallState(t, c, state);
+      await writeCallEvent(t, c, e.type, e.from, e.to, e.payload);
+    }),
+    createPlatformPersistenceAdapter: vi.fn(() => ({})),
+    persistCallOutcome: vi.fn(async () => {}),
+  };
+});
 vi.mock('../../../platform/knowledge/knowledgeContext', () => ({ hasKnowledgeArticles: vi.fn(async () => false) }));
 vi.mock('../../../platform/billing/cost', () => ({
   checkConversationBudget: vi.fn(async () => ({ shouldEndCall: false, shouldDowngrade: false, shouldAlert: false, budgetCents: 1000, percentUsed: 0 })),
@@ -150,7 +159,12 @@ async function startCall(language = 'en', over: Partial<SessionContext> = {}) {
   const result = await createRealtimeSession(ctx);
   const transport = h.transports[h.transports.length - 1];
   transport.emit('session.created', { type: 'session.created' });
-  const callTool = async (name: string, args: Record<string, unknown> = {}) => JSON.parse(await transport.opts.onFunctionCall(name, args));
+  // The output comes back before the bookkeeping is written; these checks read the rows, so wait for them.
+  const callTool = async (name: string, args: Record<string, unknown> = {}) => {
+    const out = JSON.parse(await transport.opts.onFunctionCall(name, args));
+    expect(await result.flushBookkeeping()).toBe('drained');
+    return out;
+  };
   const callerSays = (text: string) =>
     transport.emit('history_added', { type: 'message', role: 'user', content: [{ type: 'input_text', text }] });
   const agentSays = (text: string) =>
@@ -284,6 +298,28 @@ describe('composer agent in a live session', () => {
     // CallViewDigestScheduler: EXISTS tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id [AND ti.status IN ('failed','timeout')]
     expect(vi.mocked(createToolExecution).mock.calls).toEqual([[expect.objectContaining({ tenantId: 't-shop', callSessionId: 'cs-composer', toolName: 'scheduling_check_availability' })]]);
     expect(vi.mocked(completeToolExecution).mock.calls).toEqual([[expect.objectContaining({ tenantId: 't-shop', callSessionId: 'cs-composer', status: 'failed' })]]);
+    result.session.close();
+  });
+
+  it('RT-HOLD-LINE part 2: list_services twice in a call is one action run, two rows; the repeat\'s tool_timing says cache_hit', async () => {
+    h.runAction.mockImplementation(async () => ({ ok: true, data: [{ id: 'svc-cut', name: 'Cut', durationMin: 30, priceText: '$30', staffIds: [] }] }));
+    const { result, callTool } = await startCall();
+    const transport = h.transports[h.transports.length - 1];
+    vi.mocked(createToolExecution).mockClear();
+    vi.mocked(completeToolExecution).mockClear();
+    const first = await callTool('scheduling_list_services', { query: 'cut' });
+    const second = await callTool('scheduling_list_services', { query: 'cut' });
+    expect(second).toEqual(first);
+    expect(h.runAction).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createToolExecution)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(completeToolExecution).mock.calls.map((c) => c[0].status)).toEqual(['success', 'success']);
+    const timing = { tool: 'scheduling_list_services', tool_call_received_ms: 1, action_ms: 1, result_sent_ms: 1, first_agent_audio_after_result_ms: null, hold_line_ms: null, voiced: 'now' };
+    transport.emit('tool_timing', timing);
+    transport.emit('tool_timing', timing);
+    const lines = vi.mocked(console.info).mock.calls.map((c) => c.map(String).join(' ')).filter((line) => line.includes('tool_timing'));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('"cache_hit":false');
+    expect(lines[1]).toContain('"cache_hit":true');
     result.session.close();
   });
 

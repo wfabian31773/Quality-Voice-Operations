@@ -1,7 +1,8 @@
 # S18 hold line (RT-HOLD-LINE, Oct 18 test calls): the caller asks what's
-# open; the model says nothing and calls a lookup that takes 2 s (its
-# tool-execution log write is slow, like the cross-country bookkeeping on the
-# real calls). With no agent audio for 800 ms the runtime says its hold line
+# open; the model says nothing and calls a lookup that takes 2 s (the
+# catalog read's own query is slow; since part 2 the bookkeeping writes are
+# off the tool's critical path, so the action itself is what's slow). With
+# no agent audio for 800 ms the runtime says its hold line
 # once ("One moment while I check that."), asked for 0.7-1.0 s after the tool
 # call and before the result. The result's answer waits for the hold line's
 # response to finish: never two responses at once, no provider error, and the
@@ -23,11 +24,11 @@ agent:
   replies:
     # No words before the call: the model never spoke before a tool on the real calls.
     - say: ""
-      tool: { name: get_current_tenant_time }
+      tool: { name: scheduling_list_services }
       afterTool: "Wednesday morning we have nine and ten thirty open."
 db:
   slow:
-    - { match: "INSERT INTO tool_invocations", latencyMs: 2000 }
+    - { match: "FROM scheduling_appointment_types", latencyMs: 2000 }
 expect:
   utterances: 1
   outcome: caller_hangup

@@ -1,0 +1,37 @@
+# Timing fixture (RT-HOLD-LINE part 2 report, not a gate scenario): a real
+# DB-backed read, scheduling_list_services, asked twice in one call (the
+# Spanish Oct 18 call repeated it), with 250 ms for every DB statement. The
+# first call runs the action's own catalog queries; the second, with the same
+# arguments, is served from the call's cache of call-stable reads: no DB
+# read, its own tool_invocations row all the same. audio.test.ts prints the
+# per-call timings and the catalog reads that reached the database.
+id: s18-catalog-cache-db-250ms
+plan: S18
+title: A repeated catalog read with 250 ms per DB statement
+tags: [audio, timing, flow:catalog-cache-timing, template:barbershop]
+lang: en
+windowMs: 60000
+caller:
+  - waitAgentIdle: 600
+  - say: "Hi, what services do you have?"
+  # Quiet through the lookup and its answer on every path (a waitAgentIdle
+  # could end between the hold line and the answer).
+  - silence: 14000
+  - say: "Sorry, what was the first one again?"
+  - silence: 14000
+  - hangup: true
+agent:
+  replies:
+    - say: ""
+      tool: { name: scheduling_list_services }
+      afterTool: "We do cuts, fades and beard trims."
+    - say: ""
+      tool: { name: scheduling_list_services }
+      afterTool: "The first one was a cut."
+db:
+  slow:
+    - { match: ".", latencyMs: 250 }
+expect:
+  utterances: 2
+  toolCalls: 2
+  toolResultsVoiced: 2

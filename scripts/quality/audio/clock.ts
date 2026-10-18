@@ -75,17 +75,44 @@ export async function settle(turns = 4): Promise<void> {
   for (let i = 0; i < turns; i += 1) await new Promise<void>((resolve) => realSetImmediate(resolve));
 }
 
+/**
+ * How far apart on the wall clock two runs start. Every synthetic call is its
+ * own call: the runtime's per-tenant windows (the tool rate limit: 30 a
+ * minute, 300 an hour, per tenant and tool, process-wide) must not carry
+ * over from the previous runs of the same process, as they never would
+ * between real calls minutes apart. Observations are relative to each run's
+ * start, so they don't change.
+ */
+export const RUN_SPACING_MS = 2 * 60 * 60_000;
+
 export class VirtualClock {
   private current: number;
   private readonly timers = new Map<number, TimerEntry>();
   private nextId = 1;
   private seq = 0;
   private saved: Saved | null = null;
+  private runEpochMs: number;
+  /** Runs started in this process, over every clock (a mutant run builds its own): the rate-limit windows are process-wide too. */
+  private static runsInProcess = 0;
   /** Waits out real (non-virtual) work before time moves on; set per call by the harness. */
   quiesce: () => Promise<void> = async () => {};
 
-  constructor(readonly epochMs = Date.parse('2026-10-20T14:00:00.000Z')) {
-    this.current = epochMs;
+  constructor(readonly baseEpochMs = Date.parse('2026-10-20T14:00:00.000Z')) {
+    this.runEpochMs = baseEpochMs;
+    this.current = baseEpochMs;
+  }
+
+  /** When the current run started (wall-clock ms). */
+  get epochMs(): number {
+    return this.runEpochMs;
+  }
+
+  /** A new run: no timers, and a wall-clock start RUN_SPACING_MS after the last run's. */
+  startRun(): void {
+    this.reset();
+    this.runEpochMs = this.baseEpochMs + VirtualClock.runsInProcess * RUN_SPACING_MS;
+    VirtualClock.runsInProcess += 1;
+    this.current = this.runEpochMs;
   }
 
   /** Wall-clock milliseconds (epoch-based, like Date.now()). */

@@ -573,6 +573,8 @@ describe('repeated-tool stop on the voice tool path (every mode)', () => {
       expect(triageEscalate).toHaveBeenCalledTimes(1);
       expect(onEscalation).toHaveBeenCalledTimes(1);
       expect(toolStopGuard.failureCount('cs-shadow-voice', 'triageEscalate')).toBe(0);
+      // The state move and event are queued behind the tool's output (RT-HOLD-LINE part 2).
+      expect(await result.flushBookkeeping()).toBe('drained');
       expect(updateCallState).toHaveBeenCalledWith('t-shadow', 'cs-shadow-voice', 'ESCALATED', expect.objectContaining({ escalationTarget: '+15555550111' }));
       expect(writeCallEvent).toHaveBeenCalledWith('t-shadow', 'cs-shadow-voice', 'escalation_active', 'TOOL_EXECUTION', 'ESCALATED', { target: '+15555550111' });
       await result.session.close();

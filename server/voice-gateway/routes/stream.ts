@@ -228,6 +228,9 @@ export function attachWebSocket(server: HTTPServer): void {
         // defaults if the resolver fails — see `estimateCallCostWithLiveRate`.
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
 
+        // Every bookkeeping write the call queued (tool rows, state moves,
+        // events) lands before the final state and call_completed (bounded).
+        if (sessionResult) await sessionResult.flushBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
           await writeCallEvent(tenantId, callSessionId, 'call_completed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
@@ -1019,6 +1022,8 @@ export function attachWebSocket(server: HTTPServer): void {
         // negotiated tenant's widget call drilldown matches what Stripe
         // will invoice (instead of quoting the catalog AI rate).
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
+        // Same as the phone path: the queued bookkeeping lands before the final state.
+        if (sessionResult) await sessionResult.flushBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
         } catch (err) {

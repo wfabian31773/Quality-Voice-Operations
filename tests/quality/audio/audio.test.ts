@@ -213,17 +213,16 @@ describe('audio pack: the same result on a loaded box and in any env', () => {
     expect(b.observations).toEqual(a.observations);
   });
 
-  it('control: the same stress on the old harness (runtime import() left to the loader) reproduces the flake: the slow tool result never lands during the call', () => {
+  it('control: the same stress on the old harness (runtime import() left to the loader) still bites, now in the queued bookkeeping', () => {
     const report = oldHarness.report as AudioGateReport;
-    expect(oldHarness.code).toBe(1);
-    // The 1 s loader delay pushes the tool result past the hangup, so S12 no longer exercises the late-result rule.
-    for (const run of report.runs[S12]) {
-      expect(run.status).toBe('failed');
-      expect(run.keys).toContain('barge_in.late_tool_result');
-    }
-    for (const obs of report.observations[S12]) {
-      expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'reply']);
-      expect(obs.functionOutputs).toEqual([]);
+    const timedOut = (obs: AudioGateReport['observations'][string][number]) => obs.runtimeErrors.some((line) => line.includes('Bookkeeping write timed out'));
+    // Before RT-HOLD-LINE part 2 the tool path awaited the meter's import(), so the 1 s loader delay pushed
+    // S12's tool result past the hangup. The meter is now a queued write: the tool result no longer waits on
+    // it (S12 stays green), but its import still waits on real time while the virtual clock runs past the
+    // write's bound, so every tool call's meter write times out. The synced harness never does.
+    for (const id of [S12, S12_BACKCHANNEL, S18_SLOW, S18_FAST]) {
+      for (const obs of report.observations[id]) expect(timedOut(obs), id).toBe(true);
+      for (const obs of (idle.report as AudioGateReport).observations[id]) expect(timedOut(obs), id).toBe(false);
     }
     // The other scenarios make no tool call, so they never hit the import: same as idle.
     for (const id of [S03, S12_MID, S17]) expect(report.observations[id]).toEqual((idle.report as AudioGateReport).observations[id]);
@@ -372,40 +371,102 @@ describe('audio pack: mutation proof (each runtime guard removed in memory, no r
 });
 
 describe('audio pack: per-tool timing with 250 ms per DB statement (RT-HOLD-LINE report)', () => {
-  type Timing = AudioGateReport['observations'][string][number]['toolTimings'][number];
-  let after: Timing;
-  let before: Timing;
+  type Observation = AudioGateReport['observations'][string][number];
+  type Timing = Observation['toolTimings'][number];
+  const BOOKKEEPING = 's18-timing-db-250ms';
+  const CATALOG = 's18-catalog-cache-db-250ms';
+  /**
+   * Each path's observation per fixture: this PR; the PR with only the queue
+   * taken off (bookkeeping-inline, the mutation proof); 31996d53 (part 1:
+   * hold line, bookkeeping inline, no read cache); a3d2a94c (inline, no
+   * cache, no hold line).
+   */
+  let paths: Record<'after' | 'inline' | 'part1' | 'a3d2a94c', Record<string, Observation>>;
+
+  /** The PR's timing assertion, as a function so the mutation proof can show it fails without the queue. */
+  const resultSentMs = (t: Timing) => (t.resultAt as number) - t.callAt;
+  const RESULT_SENT_BUDGET_MS = 1_000;
 
   beforeAll(async () => {
     const args = [`--dir=${TIMING_FIXTURE_DIR}`, '--pass-k=1'];
-    const [withHoldLine, withoutHoldLine] = await Promise.all([
+    const [after, mutants] = await Promise.all([
       runHarness(CLI, [...args, '--json']),
-      // a3d2a94c's audio path: no hold line (tool call → result is unchanged by this PR).
-      runHarness(MUTANTS, ['--mutants=s18-no-hold-line-trigger', ...args]),
+      runHarness(MUTANTS, ['--mutants=bookkeeping-inline,part1-path,a3d2a94c-path', ...args]),
     ]);
-    after = withHoldLine.report?.observations['s18-timing-db-250ms']?.[0]?.toolTimings[0] as Timing;
-    before = withoutHoldLine.reports[0]?.report.observations['s18-timing-db-250ms']?.[0]?.toolTimings[0] as Timing;
-    if (!after || !before) {
-      throw new Error(`no timing (exit ${withHoldLine.code} / ${withoutHoldLine.code})\n${withHoldLine.stdout.slice(-3000)}\n${withHoldLine.stderr.slice(-3000)}\n${withoutHoldLine.stdout.slice(-3000)}\n${withoutHoldLine.stderr.slice(-3000)}`);
+    const pick = (report: AudioGateReport | undefined) =>
+      Object.fromEntries([BOOKKEEPING, CATALOG].map((id) => [id, report?.observations[id]?.[0] as Observation]));
+    const mutant = (name: string) => mutants.reports.find((r) => r.mutant === name)?.report;
+    paths = { after: pick(after.report), inline: pick(mutant('bookkeeping-inline')), part1: pick(mutant('part1-path')), a3d2a94c: pick(mutant('a3d2a94c-path')) };
+    for (const [name, byId] of Object.entries(paths)) {
+      for (const id of [BOOKKEEPING, CATALOG]) {
+        if (!byId[id]?.toolTimings?.length) {
+          throw new Error(`no timing for ${name} ${id} (exit ${after.code} / ${mutants.code})\n${after.stdout.slice(-3000)}\n${after.stderr.slice(-3000)}\n${mutants.stdout.slice(-3000)}\n${mutants.stderr.slice(-3000)}`);
+        }
+      }
     }
     const row = (label: string, t: Timing) => ({
       label,
-      'call→result sent': (t.resultAt as number) - t.callAt,
+      tool: t.tool,
+      'call→result sent': resultSentMs(t),
       'call→hold line asked': t.holdLineAt === undefined ? null : t.holdLineAt - t.callAt,
       'call→first agent audio heard': (t.firstAudioAt as number) - t.callAt,
       'call→answer audio heard': (t.answerAudioAt as number) - t.callAt,
     });
-    console.info(`RT-HOLD-LINE harness timings (ms), ${after.tool}, db.slow 250 ms/statement:\n${JSON.stringify([row('before (no hold line)', before), row('after', after)], null, 2)}`);
-  }, TIMEOUT_MS);
+    const LABELS = { a3d2a94c: 'a3d2a94c (inline, no hold line)', part1: '31996d53 (part 1: hold line, inline)', after: 'after (part 2: queued)' } as const;
+    const rows = (id: string) => (['a3d2a94c', 'part1', 'after'] as const).flatMap((p) =>
+      paths[p][id].toolTimings.map((t, i) => row(`${LABELS[p]}${paths[p][id].toolTimings.length > 1 ? ` call ${i + 1}` : ''}`, t)));
+    console.info(`RT-HOLD-LINE harness timings (ms), db.slow 250 ms/statement:\n${JSON.stringify({
+      [BOOKKEEPING]: rows(BOOKKEEPING),
+      [CATALOG]: rows(CATALOG),
+      catalogReadsReachingTheDb: Object.fromEntries((['a3d2a94c', 'part1', 'after'] as const).map((p) => [p, paths[p][CATALOG].catalogReads])),
+    }, null, 2)}`);
+  }, TIMEOUT_MS * 2);
 
-  it('the result takes as long as before (bookkeeping is unchanged here); the caller hears something ~1.1 s after the call instead of after the result', () => {
-    // 12 statements at 250 ms (3 BEGIN/set_config/query/COMMIT writes; the harness fakes the call-state/event writes).
-    expect((before.resultAt as number) - before.callAt).toBe(3_000);
-    expect((after.resultAt as number) - after.callAt).toBe((before.resultAt as number) - before.callAt);
-    expect(before.holdLineAt).toBeUndefined();
-    expect(before.firstAudioAt).toBe(before.answerAudioAt);
-    expect((after.holdLineAt as number) - after.callAt).toBeLessThanOrEqual(900);
-    expect((after.firstAudioAt as number) - after.callAt).toBeLessThan(1_300);
-    expect(after.firstAudioAt as number).toBeLessThan(before.firstAudioAt as number);
+  it(`tool call → result sent is under ${RESULT_SENT_BUDGET_MS} ms (from 3000): the bookkeeping writes no longer sit on the critical path`, () => {
+    const [after] = paths.after[BOOKKEEPING].toolTimings;
+    expect(resultSentMs(after)).toBeLessThan(RESULT_SENT_BUDGET_MS);
+    // The answer follows straight away: no hold line was needed.
+    expect(after.holdLineAt).toBeUndefined();
+    expect(after.firstAudioAt).toBe(after.answerAudioAt);
+    expect((after.answerAudioAt as number) - after.callAt).toBeLessThan(RESULT_SENT_BUDGET_MS);
+  });
+
+  it('mutation proof: with the writes awaited inline again (bookkeeping-inline) the same assertion fails: 3000 ms, as on 31996d53 and a3d2a94c', () => {
+    // 12 statements at 250 ms: the row insert, its completion and the meter (the harness fakes the state/event writes).
+    for (const path of ['inline', 'part1', 'a3d2a94c'] as const) {
+      const [timing] = paths[path][BOOKKEEPING].toolTimings;
+      expect(resultSentMs(timing), path).toBe(3_000);
+      expect(resultSentMs(timing) < RESULT_SENT_BUDGET_MS, path).toBe(false);
+    }
+    // Part 1's hold line covered the wait; a3d2a94c's caller sat through it.
+    expect(paths.part1[BOOKKEEPING].toolTimings[0].holdLineAt).toBeDefined();
+    expect(paths.a3d2a94c[BOOKKEEPING].toolTimings[0].holdLineAt).toBeUndefined();
+  });
+
+  it('the same rows are still written, after the result went back and before teardown wrote the final call state', () => {
+    for (const path of ['after', 'part1'] as const) {
+      const obs = paths[path][BOOKKEEPING];
+      expect(obs.toolRows, path).toBe(1);
+      expect(obs.toolRowsCompletedAt, path).toHaveLength(1);
+      expect(obs.toolRowsCompletedAt[0], path).toBeLessThan(obs.finalizedAt as number);
+    }
+    const after = paths.after[BOOKKEEPING];
+    expect(after.toolRowsCompletedAt[0]).toBeGreaterThan(after.toolTimings[0].resultAt as number);
+  });
+
+  it('a repeated catalog read: one DB read, two tool rows; the repeat comes back at once', () => {
+    const obs = paths.after[CATALOG];
+    expect(obs.toolTimings.map((t) => t.tool)).toEqual(['scheduling_list_services', 'scheduling_list_services']);
+    expect(obs.catalogReads).toBe(1);
+    expect(obs.toolRows).toBe(2);
+    expect(obs.toolRowsCompletedAt).toHaveLength(2);
+    const [first, repeat] = obs.toolTimings;
+    // The first read is the action's own queries (slow at 250 ms each); the repeat is the call cache.
+    expect(resultSentMs(repeat)).toBeLessThan(RESULT_SENT_BUDGET_MS);
+    expect(resultSentMs(repeat)).toBeLessThan(resultSentMs(first));
+    // Without the cache (31996d53, a3d2a94c) both reads reached the database.
+    expect(paths.part1[CATALOG].catalogReads).toBe(2);
+    expect(paths.a3d2a94c[CATALOG].catalogReads).toBe(2);
+    expect(paths.part1[CATALOG].toolRows).toBe(2);
   });
 });

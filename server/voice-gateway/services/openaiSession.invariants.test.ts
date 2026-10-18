@@ -83,6 +83,7 @@ vi.mock('./callPersistence', () => ({
   createCallSession: vi.fn(async () => 'cs-invariants'),
   writeCallEvent: vi.fn(async () => {}),
   updateCallState: vi.fn(async () => {}),
+  updateCallStateWithEvent: vi.fn(async () => {}),
   createPlatformPersistenceAdapter: vi.fn(() => ({})),
   persistCallOutcome: vi.fn(async () => {}),
 }));
@@ -98,7 +99,8 @@ vi.mock('../../../platform/core/observability/traceLogger', () => ({ recordTrace
 
 import { createRealtimeSession, type SessionContext } from './openaiSession';
 import { sessionManager } from './sessionManager';
-import { createToolExecution } from '../../../platform/tools/ToolExecutionService';
+import { updateCallStateWithEvent } from './callPersistence';
+import { completeToolExecution, createToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { INSTRUCTIONS } from '../../../platform/callcore/invariants';
 
 const TOOL = (name: string) => ({ name, description: name, parameters: { type: 'object', properties: {}, required: [] } });
@@ -251,6 +253,43 @@ describe('floor through the session', () => {
     });
     expect(input).toEqual({ callId: 'cs-invariants', callerLines: ['Hi, this is Dana, I need a fade Friday at nine'], language: 'en' });
     expect(consoleLines.some((line) => line.includes('floor_evaluated') && line.includes('filed'))).toBe(true);
+  });
+
+  it('a tool that finishes right before the hangup: its rows are written before the floor reads the call', async () => {
+    const order: string[] = [];
+    let writeRows!: () => void;
+    const rowsHeld = new Promise<void>((resolve) => { writeRows = resolve; });
+    // The tool's completion and tool_end are slow to write (a slow DB), but they are queued, not awaited.
+    vi.mocked(completeToolExecution).mockImplementationOnce(async () => { await rowsHeld; order.push('tool_invocations.complete'); });
+    vi.mocked(updateCallStateWithEvent).mockImplementation(async (_t, _c, state, event) => { order.push(`${state} + ${event.type}`); });
+    h.runAction.mockImplementationOnce(async () => {
+      order.push('floor');
+      return { ok: true, data: { filed: true, reason: 'filed' } };
+    });
+    h.registryTools.set('lookup_customer', vi.fn(async () => ({ success: true, customer: null })));
+    const { result, callTool, callerSays, agentSays } = await startCall();
+    agentSays('Thanks for calling Sharp Line Barbers.');
+    callerSays('Hi, this is Dana, I need a fade Friday at nine');
+    // The output is back while the rows are still queued.
+    expect(JSON.parse(await callTool('lookup_customer', { phoneNumber: '+15555550100' }))).toEqual({ success: true, customer: null });
+    expect(order).not.toContain('tool_invocations.complete');
+
+    // The caller hangs up straight away: the floor waits for the queued rows.
+    result.session.close();
+    const floor = result.evaluateFloor();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(order).not.toContain('floor');
+    writeRows();
+    await expect(floor).resolves.toBe('filed');
+    expect(order).toEqual([
+      'TOOL_EXECUTION + tool_start',
+      'tool_invocations.complete',
+      'ACTIVE_CONVERSATION + tool_end',
+      // The session's close queued its final state behind them.
+      'CALL_COMPLETED + session_closed',
+      'floor',
+    ]);
+    vi.mocked(updateCallStateWithEvent).mockReset();
   });
 
   it('an outbound call never runs tickets.file_floor', async () => {

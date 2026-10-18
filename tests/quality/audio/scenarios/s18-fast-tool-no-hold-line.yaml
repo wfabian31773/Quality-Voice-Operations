@@ -17,11 +17,12 @@ caller:
 agent:
   replies:
     - say: ""
-      tool: { name: get_current_tenant_time }
+      tool: { name: scheduling_list_services }
       afterTool: "Wednesday morning we have nine and ten thirty open."
 db:
   slow:
-    - { match: "INSERT INTO tool_invocations", latencyMs: 300 }
+    # The catalog read's own query.
+    - { match: "FROM scheduling_appointment_types", latencyMs: 300 }
 expect:
   utterances: 1
   outcome: caller_hangup
