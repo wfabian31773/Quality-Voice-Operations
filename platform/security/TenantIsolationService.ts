@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { getPlatformPool, getPrivilegedPool, withPrivilegedClient } from '../db';
 import { runWithRestrictedScope } from '../db/tenantScope';
 import { createLogger } from '../core/logger';
+import { isPermissionDenied } from './isolationProbeErrors';
 
 const logger = createLogger('TENANT_ISOLATION');
 
@@ -83,15 +84,6 @@ export const CROSS_TENANT_READ_TABLES = [
  * only identifier interpolated into the SET ROLE statement.
  */
 const RLS_TESTER_ROLE = 'platform_rls_tester';
-
-/**
- * A missing grant (SQLSTATE 42501). RLS filters rows and never raises on
- * SELECT, so this means the probe could not read the table at all: the check
- * must fail, never count as "blocked".
- */
-function isPermissionDenied(err: unknown): boolean {
-  return (err as { code?: unknown } | null)?.code === '42501' || String(err).includes('permission denied');
-}
 
 function probeCouldNotRead(table: string, asWhom: string, err: unknown): string {
   return `Probe could not read ${table} as ${asWhom} (permission denied, missing grant), ` +
@@ -283,8 +275,8 @@ async function countOtherTenantRows(client: PoolClient, table: string, tenantId:
  * RLS_TESTER_ROLE inside a savepoint. If the switch (or the COUNT as the
  * tester) fails, it rolls back to the savepoint and counts as the connected
  * role, as before, and says so in `details`. A role that does not bypass RLS
- * (qvo_app) is tested as itself. A permission-denied COUNT (as either role)
- * fails the check: the probe could not read the table, so nothing was proven.
+ * (qvo_app) is tested as itself. A permission-denied COUNT (as either role) or
+ * a permission-denied SET ROLE fails the check: nothing was proven.
  */
 async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<IsolationTestResult[]> {
   const results: IsolationTestResult[] = [];
@@ -318,6 +310,11 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
         } catch (err) {
           await client.query('ROLLBACK TO SAVEPOINT rls_probe');
           fallbackReason = `SET ROLE ${RLS_TESTER_ROLE} failed: ${String(err)}`;
+          // A refused switch (42501) means RLS was never evaluated: fail, even on a zero count.
+          if (isPermissionDenied(err)) {
+            testerDenied = `Could not switch to ${RLS_TESTER_ROLE} (permission denied), ` +
+              'so cross-tenant reads were not evaluated under RLS';
+          }
         }
       }
 
@@ -330,9 +327,14 @@ async function verifyCrossTenantAccessBlocked(tenantId: string): Promise<Isolati
         // grant for the tester) is not an RLS block. Count as the connected role.
         await client.query('ROLLBACK TO SAVEPOINT rls_probe');
         evaluatedAs = connectedRole;
-        fallbackReason = `${RLS_TESTER_ROLE} could not read ${table}: ${String(err)}`;
         // A missing grant must fail the check even if the recount sees nothing.
-        if (isPermissionDenied(err)) testerDenied = probeCouldNotRead(table, `"${RLS_TESTER_ROLE}"`, err);
+        // testerDenied already carries the error text, so it is not repeated here.
+        if (isPermissionDenied(err)) {
+          testerDenied = probeCouldNotRead(table, `"${RLS_TESTER_ROLE}"`, err);
+          fallbackReason = `${RLS_TESTER_ROLE} could not read ${table}`;
+        } else {
+          fallbackReason = `${RLS_TESTER_ROLE} could not read ${table}: ${String(err)}`;
+        }
         count = await countOtherTenantRows(client, table, tenantId);
       }
       await client.query('COMMIT');
