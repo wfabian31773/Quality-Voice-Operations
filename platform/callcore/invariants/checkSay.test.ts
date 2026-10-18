@@ -109,6 +109,39 @@ describe('checkSay (a) success words need a matching ok commit', () => {
       }
     }
   });
+
+  it('readback labels "Confirmed:" / "Confirmado:" are blocked before a commit, allowed after an ok booking commit', () => {
+    for (const line of [
+      "Confirmed: Men's cut with Marco, Friday at 3, for Ana.",
+      'Confirmado: corte con Marco, el viernes a las 3, para Ana.',
+      'Perfect. Confirmed: Friday at 3 with Marco.',
+      'CONFIRMADO : corte con Marco.',
+    ]) {
+      expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
+      expectBlocked(checkSay(committed(facts(), BOOK_COMMIT, false), line), 'say.success_before_commit');
+      expect(checkSay(committed(facts(), BOOK_COMMIT, true), line), line).toEqual({ ok: true });
+    }
+  });
+
+  it('confirm-words that are not an opening label are allowed before a commit', () => {
+    for (const line of [
+      'Just to confirm: Friday at 3 with Marco, is that right?',
+      'I confirmed your phone number.',
+      '¿Me confirma su nombre?',
+      'Marco confirmed: Friday works.',
+      'Once it is confirmed, I will let you know.',
+    ]) {
+      expect(checkSay(facts(), line), line).toEqual({ ok: true });
+    }
+  });
+
+  it('every listed label is blocked with no commit', () => {
+    for (const group of SUCCESS_CLAIMS) {
+      for (const label of group.labels ?? []) {
+        expect(checkSay(facts(), `${label}: Friday at 3.`), label).toMatchObject({ ok: false, rule: 'say.success_before_commit' });
+      }
+    }
+  });
 });
 
 describe('checkSay (b) voiceRefs:false blocks every ref-shaped string', () => {
@@ -140,6 +173,41 @@ describe('checkSay (b) voiceRefs:false blocks every ref-shaped string', () => {
     ).toEqual({ ok: true });
     expect(checkSay(f, 'Quedó reservada el viernes a las 10:30, son 25 dólares.')).toEqual({ ok: true });
     expect(checkSay(f, 'There are 2 openings at 3 and 4.')).toEqual({ ok: true });
+  });
+
+  it('allows dates in every common written form, EN and ES', () => {
+    for (const date of [
+      'October 17 2026',
+      'Oct 17, 2026',
+      'Oct. 17th 2026',
+      '17 October 2026',
+      '10 17 2026',
+      '10/17/2026',
+      '10-17-2026',
+      '17/10/2026',
+      '2026-10-17',
+      '17 de octubre de 2026',
+      '17 oct 2026',
+    ]) {
+      expect(checkSay(facts(), `Your visit is on ${date} at 3.`), date).toEqual({ ok: true });
+    }
+  });
+
+  it('still blocks real refs, alone and next to a date', () => {
+    const f = facts({ speakableNumbers: ['512-555-0199'] });
+    for (const line of [
+      'Your ref is BK-4712.',
+      'Your code is A1B2C3.',
+      'Your number is 48213.',
+      'Your code is four eight two one three.',
+      'Su código es cuatro ocho dos uno tres.',
+      'Call us at 512-555-0100.',
+      'On October 17 2026 your ref is 48213.',
+      'Your ref is 48213, 10/17/2026.',
+      'Call 555 10 17 2026.',
+    ]) {
+      expectBlocked(checkSay(f, line), 'say.ref_not_voiced');
+    }
   });
 
   it('phone readback: "I have your number as 512-555-0199" is allowed when listed, blocked when not', () => {

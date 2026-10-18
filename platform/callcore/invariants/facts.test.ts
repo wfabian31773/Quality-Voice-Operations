@@ -9,7 +9,7 @@ import {
   onSpeakableNumber,
   onToolResult,
 } from './facts';
-import { canonicalRef, findRefs, normalizeArgs, normalizeSpeech } from './normalize';
+import { canonicalRef, findRefs, leadingLabels, normalizeArgs, normalizeSpeech } from './normalize';
 
 const init = {
   callId: 'CA-test',
@@ -95,6 +95,19 @@ describe('normalize helpers', () => {
     expect(findRefs('At 9:30 on 10/17, $25, room 101, is 4712.')).toEqual([]);
     // A full phone number is ref-shaped too (documented false positive).
     expect(findRefs('Call 555-1234.')).toEqual(['555-1234']);
+  });
+
+  it('findRefs skips date spans but keeps refs beside them', () => {
+    expect(findRefs('October 17 2026, 10 17 2026, 10/17/2026, 10-17-2026, 2026-10-17, 17 de octubre de 2026')).toEqual([]);
+    expect(findRefs('Oct 17 2026 ref 48213 code A1B2C3')).toEqual(['48213', 'A1B2C3']);
+    expect(findRefs('13 13 2026 and 555 10 17 2026')).toEqual(['13 13 2026', '555 10 17 2026']);
+  });
+
+  it('leadingLabels returns the normalized text before an opening colon of each sentence', () => {
+    expect(leadingLabels('Confirmed: Friday at 3.')).toEqual(['confirmed']);
+    expect(leadingLabels('Great. Confirmado: corte. ¿Algo más?')).toEqual(['confirmado']);
+    expect(leadingLabels('Just to confirm: Friday at 3, is that right?')).toEqual(['just to confirm']);
+    expect(leadingLabels('I confirmed your phone number.')).toEqual([]);
   });
 
   it('canonicalRef ignores case, spaces and dashes', () => {

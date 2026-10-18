@@ -13,17 +13,24 @@
  * whose action name has one of `actionSegments` (a trailing "@<version>" is
  * dropped, then the name is split on "." and "_") is ok.
  * An empty `actionSegments` matches any commit/write result (not a transfer).
+ *
+ * `labels` are claims only as a label: the whole text before a colon that opens
+ * the line or a sentence, as in the app's own post-commit readback
+ * ("Confirmed: …", "Confirmado: …"). "Just to confirm: …" and "I confirmed
+ * your phone number" are not claims.
  */
 export interface SuccessClaimGroup {
   readonly effect: string;
   readonly actionSegments: readonly string[];
   readonly phrases: readonly string[];
+  readonly labels?: readonly string[];
 }
 
 export const SUCCESS_CLAIMS: readonly SuccessClaimGroup[] = [
   {
     effect: 'appointment',
     actionSegments: ['book', 'reschedule'],
+    labels: ['Confirmed', 'Confirmado'],
     phrases: [
       "you're booked",
       'you are booked',

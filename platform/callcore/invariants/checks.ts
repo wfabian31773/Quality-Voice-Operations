@@ -6,7 +6,15 @@
  * question and never writes speech for the caller.
  */
 import { INSTRUCTIONS } from './instructions';
-import { canonicalRef, findPhrase, findRefs, normalizeArgs, normalizePhrases, normalizeSpeech } from './normalize';
+import {
+  canonicalRef,
+  findPhrase,
+  findRefs,
+  leadingLabels,
+  normalizeArgs,
+  normalizePhrases,
+  normalizeSpeech,
+} from './normalize';
 import {
   SMS_OFF_QUALIFIERS,
   STAGE_DIRECTION_PATTERNS,
@@ -29,7 +37,11 @@ function block(rule: RuleId): CheckResult {
   return { ok: false, rule, instruction: INSTRUCTIONS[rule] };
 }
 
-const SUCCESS = SUCCESS_CLAIMS.map((g) => ({ actionSegments: g.actionSegments, phrases: normalizePhrases(g.phrases) }));
+const SUCCESS = SUCCESS_CLAIMS.map((g) => ({
+  actionSegments: g.actionSegments,
+  phrases: normalizePhrases(g.phrases),
+  labels: normalizePhrases(g.labels ?? []),
+}));
 const TRANSFER = normalizePhrases(TRANSFER_PHRASES);
 const STAGE_WORDS = normalizePhrases(STAGE_DIRECTION_WORDS);
 const TEXT_PROMISES = normalizePhrases(TEXT_PROMISE_PHRASES);
@@ -93,8 +105,10 @@ export function checkSay(facts: CallFacts, text: string): CheckResult {
     if (refs.some((r) => !known.has(canonicalRef(r)))) return block('say.ref_not_committed');
   }
 
+  const labels = leadingLabels(text);
   for (const group of SUCCESS) {
-    if (findPhrase(norm, group.phrases) && !latestMatchingOk(facts, group.actionSegments)) {
+    const claimed = findPhrase(norm, group.phrases) || labels.some((l) => group.labels.includes(l));
+    if (claimed && !latestMatchingOk(facts, group.actionSegments)) {
       return block('say.success_before_commit');
     }
   }
