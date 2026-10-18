@@ -117,21 +117,31 @@ function withoutIntroducedName(tokens: string[]): string[] {
   return tokens;
 }
 
+/** Punctuation that ends a clause. A name never crosses it, so "This is Luis, cancel Friday" keeps "cancel friday". */
+const CLAUSE_BREAK = /[,;:.!?¿¡]+/;
+
 /** The words left once the caller's name, greetings and filler are removed. */
 export function contentWords(lines: readonly string[], callerName?: string): string[] {
   const nameTokens = new Set(callerName ? normalizeTokens(callerName) : []);
   return lines
-    .flatMap((line) => withoutPhrases(withoutIntroducedName(normalizeTokens(line))))
+    .flatMap((line) => {
+      const clauses = line.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean);
+      const last = clauses.length - 1;
+      // Only the last clause can end in an introduced name; earlier clauses lose filler phrases only.
+      return clauses.flatMap((c, k) =>
+        withoutPhrases(k === last ? withoutIntroducedName(normalizeTokens(c)) : normalizeTokens(c)),
+      );
+    })
     .filter((token) => !FILLER_WORDS.has(token) && !nameTokens.has(token));
 }
 
-/** Digits a token must hold, once + - . ( ) are stripped, to count as a callback number on its own. */
+/** Digits a whitespace-separated token must hold to count as a callback number on its own. */
 export const MIN_NUMBER_DIGITS = 7;
 
-/** True when a whitespace-separated token holds a phone-length digit run ("5552013344", "+15552013344"). */
+/** True when a token holding 7+ digits appears ("5552013344", "+15552013344"). */
 export function hasLongNumber(lines: readonly string[]): boolean {
   return lines.some((line) =>
-    line.split(/\s+/).some((token) => (token.replace(/[+\-.()]/g, '').match(/\d/g)?.length ?? 0) >= MIN_NUMBER_DIGITS),
+    line.split(/\s+/).some((token) => (token.match(/\d/g)?.length ?? 0) >= MIN_NUMBER_DIGITS),
   );
 }
 

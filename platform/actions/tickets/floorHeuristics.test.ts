@@ -111,4 +111,30 @@ describe('saidMoreThanTheirOwnName', () => {
     expect(saidMoreThanTheirOwnName(["I'm running late today"], callerName)).toBe(true);
     expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia'], callerName)).toBe(false);
   });
+
+  describe('never swallows a request as a name', () => {
+    it('still drops a name that ends the last clause', () => {
+      expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia'])).toBe(false);
+      expect(saidMoreThanTheirOwnName(['Hola, habla María José López'])).toBe(false);
+      expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia.'])).toBe(false);
+      expect(saidMoreThanTheirOwnName(['Hi, this is Luis'])).toBe(false);
+    });
+
+    it.each([
+      ['This is Luis, cancel Friday', 'Luis'],
+      ['Hi, this is Ana, running late', 'Ana'],
+      ['Soy Ana, quiero cita', 'Ana'],
+      // With callerName "Ana" only "cancelo" is left (one word), as at 412e33c3.
+      ['Buenas tardes, habla Ana, cancelo', undefined],
+      ['soy cliente nuevo, quiero una cita', undefined],
+    ])('"%s" is substantive, with no callerName and with callerName %s', (line, callerName) => {
+      expect(saidMoreThanTheirOwnName([line])).toBe(true);
+      expect(saidMoreThanTheirOwnName([line], callerName)).toBe(true);
+    });
+
+    it('keeps the request after the name in the content words', () => {
+      expect(contentWords(['This is Luis, cancel Friday'], 'Luis')).toEqual(['cancel', 'friday']);
+      expect(contentWords(['Soy Ana, quiero cita'], 'Ana')).toEqual(['quiero', 'cita']);
+    });
+  });
 });

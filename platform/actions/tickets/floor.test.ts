@@ -276,6 +276,13 @@ describe('tickets.file_floor rules', () => {
     expect(tickets.state.tickets).toHaveLength(0);
   });
 
+  it('"This is Luis, cancel Friday" with callerName "Luis" → filed (a name never crosses a comma)', async () => {
+    const { tickets, floor } = setup();
+    const out = data(await floor({ callerLines: ['This is Luis, cancel Friday'], callerName: 'Luis' }));
+    expect(out).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets).toHaveLength(1);
+  });
+
   it('a booking stored under the CallSid, floor called with the session id → already_filed', async () => {
     const { tickets, floor } = setup();
     tickets.state.callSessions.set(`${TENANT}\0CA-y`, 'sess-y');
