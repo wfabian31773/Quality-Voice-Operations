@@ -71,6 +71,7 @@ import {
   compileRolePackage,
   normalizeTimeZone,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
+import { stripStageDirections, type StageDirectionRule } from '../../../platform/agent-runtime/promptLint';
 import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
 import { buildCallerIdPromptLine, createSalonRolePackage } from '../../../platform/agent-templates/salon';
 import { isTemplateOrDefaultSystemPrompt } from '../../../client-app/src/lib/agentBuilderI18n';
@@ -280,161 +281,170 @@ type LoadedAgentConfigWithoutLanguage = Pick<
   'agentId' | 'tenantId' | 'systemPrompt' | 'greeting' | 'voice' | 'model' | 'tools' | 'guardrails' | 'metadata'
 >;
 
+/** What the agent says and does when the tenant has set nothing. */
+interface BuiltInDefaults {
+  greeting?: () => string;
+  systemPrompt?: () => string;
+}
+
+const GENERIC_GREETING = 'Hello, how can I help you today?';
+const GENERIC_ROLE_PROMPT = 'You are a helpful voice assistant. Be polite, clear, and concise.';
+
 function buildTemplateConfig(
   templateKey: string,
   ctx: AgentLoadContext,
   meta: Record<string, unknown>,
   dbTools: AgentToolDef[],
   language: string,
-): LoadedAgentConfigWithoutLanguage | null {
+): (LoadedAgentConfigWithoutLanguage & { builtIn: BuiltInDefaults }) | null {
   const { tenantId, agentId, callerPhone, callerMemorySummary, dbAgent, toolOverrides } = ctx;
 
   switch (templateKey) {
     case 'dental': {
       const practiceName = (meta.practiceName as string) ?? 'our dental practice';
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildDentalSystemPrompt({ practiceName, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildDentalSystemPrompt({ practiceName, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getDentalGreeting(practiceName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getDentalGreeting(practiceName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(DENTAL_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: DENTAL_SAFETY_GUARDRAILS,
         metadata: { practiceName },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'property-management': {
       const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our property management office';
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildPropertyManagementSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildPropertyManagementSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getPropertyManagementGreeting(companyName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getPropertyManagementGreeting(companyName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(PROPERTY_MANAGEMENT_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: PROPERTY_MANAGEMENT_GUARDRAILS,
         metadata: { companyName },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'home-services': {
       const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our home services company';
       const serviceTypes = (meta.serviceTypes as string[]) ?? undefined;
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildHomeServicesSystemPrompt({ companyName, serviceTypes, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildHomeServicesSystemPrompt({ companyName, serviceTypes, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getHomeServicesGreeting(companyName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getHomeServicesGreeting(companyName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(HOME_SERVICES_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: HOME_SERVICES_GUARDRAILS,
         metadata: { companyName, serviceTypes },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'legal': {
       const firmName = (meta.firmName as string) ?? (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our law firm';
       const practiceAreas = (meta.practiceAreas as string[]) ?? undefined;
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildLegalSystemPrompt({ firmName, practiceAreas, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildLegalSystemPrompt({ firmName, practiceAreas, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getLegalGreeting(firmName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getLegalGreeting(firmName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergeTools(LEGAL_TOOLS, dbTools), templateKey, toolOverrides),
         guardrails: LEGAL_SAFETY_GUARDRAILS,
         metadata: { firmName, practiceAreas },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'customer-support': {
       const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our company';
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildCustomerSupportSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildCustomerSupportSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getCustomerSupportGreeting(companyName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getCustomerSupportGreeting(companyName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(CUSTOMER_SUPPORT_TOOLS, dbTools),
         guardrails: CUSTOMER_SUPPORT_GUARDRAILS,
         metadata: { companyName },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'outbound-sales': {
       const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our company';
       const productOrService = (meta.productOrService as string) ?? undefined;
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildOutboundSalesSystemPrompt({ companyName, productOrService, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildOutboundSalesSystemPrompt({ companyName, productOrService, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getOutboundSalesGreeting(companyName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getOutboundSalesGreeting(companyName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(OUTBOUND_SALES_TOOLS, dbTools),
         guardrails: OUTBOUND_SALES_GUARDRAILS,
         metadata: { companyName, productOrService },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'technical-support': {
       const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our company';
       const productName = (meta.productName as string) ?? undefined;
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildTechnicalSupportSystemPrompt({ companyName, productName, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildTechnicalSupportSystemPrompt({ companyName, productName, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getTechnicalSupportGreeting(companyName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getTechnicalSupportGreeting(companyName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(TECHNICAL_SUPPORT_TOOLS, dbTools),
         guardrails: TECHNICAL_SUPPORT_GUARDRAILS,
         metadata: { companyName, productName },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
     case 'collections': {
       const companyName = (meta.companyName as string) ?? (meta.practiceName as string) ?? 'our collections office';
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildCollectionsSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      const builtInPrompt = () => buildCollectionsSystemPrompt({ companyName, callerPhone, callerMemorySummary });
+      const builtInGreeting = () => getCollectionsGreeting(companyName, language);
       return {
         agentId,
         tenantId,
-        systemPrompt,
-        greeting: (meta.greeting as string) ?? getCollectionsGreeting(companyName, language),
+        systemPrompt: dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt(),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: mergeTools(COLLECTIONS_TOOLS, dbTools),
         guardrails: COLLECTIONS_GUARDRAILS,
         metadata: { companyName },
+        builtIn: { systemPrompt: builtInPrompt, greeting: builtInGreeting },
       };
     }
 
@@ -451,14 +461,56 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   const dbTools: AgentToolDef[] = Array.isArray(dbAgent?.tools) ? (dbAgent.tools as AgentToolDef[]) : [];
   const language = normalizeAgentLanguage(dbAgent?.language ?? (meta as Record<string, unknown>).language);
   const timeZone = normalizeTimeZone(dbAgent?.tenant_timezone ?? meta.timeZone);
+  const extractRolePrompt = (systemPrompt: string): string => {
+    const rolePromptMatch = systemPrompt.match(/^===== ROLE PACKAGE =====\n([\s\S]*?)(?:\n\n=====|$)/);
+    return (rolePromptMatch?.[1]?.trim() || systemPrompt)
+      .replace(MASTER_VOICE_CONVERSATION_POLICY, '')
+      .trim();
+  };
+  // Tenant DB prompts and greetings can carry stage directions grok-voice
+  // reads aloud ("(file the ticket quietly)", "*pauses*"). Repo prompts and
+  // greetings are lint-clean, so they pass through unchanged. Warn only when
+  // something was removed; hits that were kept (narration words, emphasis)
+  // are debug noise. Log rule counts only: the matched text is
+  // tenant-authored and may hold PHI. If the strip leaves nothing to say, fall
+  // back to the built-in text (or a generic line) rather than fail the call.
+  const stripTenantText = (
+    subject: 'role prompt' | 'greeting',
+    text: string,
+    fallback: { builtIn?: () => string; generic: string },
+  ): string => {
+    const { text: stripped, hits, removed } = stripStageDirections(text);
+    if (hits.length === 0) return stripped;
+    const counts: Partial<Record<StageDirectionRule, number>> = {};
+    for (const hit of hits) counts[hit.rule] = (counts[hit.rule] ?? 0) + 1;
+    const payload = { tenantId, agentId, counts, removed };
+    if (removed === 0) {
+      logger.debug(`Possible stage directions in agent ${subject}; nothing removed`, payload);
+      return stripped;
+    }
+    if (/[\p{L}\p{N}]/u.test(stripped)) {
+      logger.warn(`Stage directions removed from agent ${subject}`, payload);
+      return stripped;
+    }
+    const builtInText = fallback.builtIn?.();
+    logger.warn(`Stage directions removed from agent ${subject}`, {
+      ...payload,
+      fallback: builtInText ? 'built-in' : 'generic',
+    });
+    return builtInText || fallback.generic;
+  };
   const finalize = (
     cfg: LoadedAgentConfigWithoutLanguage,
     lockedRoleIdentity?: { id: string; version: string },
+    builtIn: BuiltInDefaults = {},
   ): LoadedAgentConfig => {
-    const rolePromptMatch = cfg.systemPrompt.match(/^===== ROLE PACKAGE =====\n([\s\S]*?)(?:\n\n=====|$)/);
-    const rolePrompt = (rolePromptMatch?.[1]?.trim() || cfg.systemPrompt)
-      .replace(MASTER_VOICE_CONVERSATION_POLICY, '')
-      .trim();
+    const rolePrompt = stripTenantText('role prompt', extractRolePrompt(cfg.systemPrompt), {
+      builtIn: builtIn.systemPrompt && (() => extractRolePrompt(builtIn.systemPrompt!())),
+      generic: GENERIC_ROLE_PROMPT,
+    });
+    const greeting = typeof cfg.greeting === 'string'
+      ? stripTenantText('greeting', cfg.greeting, { builtIn: builtIn.greeting, generic: GENERIC_GREETING })
+      : cfg.greeting;
     const rolePackageVersion = lockedRoleIdentity?.version ?? (typeof meta.rolePackageVersion === 'string'
       ? meta.rolePackageVersion
       : '1.0.0');
@@ -466,7 +518,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       id: (lockedRoleIdentity?.id ?? templateKey) || 'generic',
       version: rolePackageVersion,
       prompt: rolePrompt,
-      greeting: cfg.greeting,
+      greeting,
       voice: cfg.voice,
       preferredLanguage: getAgentLanguageLabel(language),
       timeZone,
@@ -476,6 +528,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
     });
     return {
       ...cfg,
+      greeting,
       coreVersion: compiled.coreVersion,
       rolePackageId: compiled.rolePackageId,
       rolePackageVersion: compiled.rolePackageVersion,
@@ -493,13 +546,8 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
   switch (templateKey) {
     case 'core-receptionist': {
       const businessName = (meta.businessName as string) ?? (meta.practiceName as string) ?? (meta.companyName as string) ?? 'the business';
-      const role = createCoreReceptionistRolePackage({
-        businessName,
-        greeting: meta.greeting as string | undefined,
-        preferredLanguage: language,
-        timeZone,
-        voice: dbAgent?.voice,
-      });
+      const roleInput = { businessName, preferredLanguage: language, timeZone, voice: dbAgent?.voice };
+      const role = createCoreReceptionistRolePackage({ ...roleInput, greeting: meta.greeting as string | undefined });
       return finalize({
         agentId,
         tenantId,
@@ -510,18 +558,15 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tools: filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides),
         guardrails: role.guardrails,
         metadata: { ...meta, businessName, role: 'core-receptionist' },
-      }, { id: role.id, version: role.version });
+      }, { id: role.id, version: role.version }, {
+        greeting: () => createCoreReceptionistRolePackage(roleInput).greeting,
+      });
     }
 
     case 'salon': {
       const businessName = (meta.businessName as string) ?? (meta.practiceName as string) ?? (meta.companyName as string) ?? 'the salon';
-      const role = createSalonRolePackage({
-        businessName,
-        greeting: meta.greeting as string | undefined,
-        preferredLanguage: language,
-        timeZone,
-        voice: dbAgent?.voice,
-      });
+      const roleInput = { businessName, preferredLanguage: language, timeZone, voice: dbAgent?.voice };
+      const role = createSalonRolePackage({ ...roleInput, greeting: meta.greeting as string | undefined });
       // The package prompt is the base (identity, tool rules, message
       // consent). The tenant's own prompt (services, durations, hours) is
       // added as business details below it, unless it is the stock
@@ -543,7 +588,9 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         tools: filterToolsByPermissions(mergeTools(role.tools, dbTools), templateKey, toolOverrides),
         guardrails: role.guardrails,
         metadata: { ...meta, businessName, role: 'salon' },
-      }, { id: role.id, version: role.version });
+      }, { id: role.id, version: role.version }, {
+        greeting: () => createSalonRolePackage(roleInput).greeting,
+      });
     }
 
     case 'healthcare-receptionist': {
@@ -596,14 +643,14 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       const isAzulVision = practiceName === 'Azul Vision' || practiceName === 'Azul Vision Eye Center';
       const onCallNumber = (meta.onCallTransferNumber as string)
         || (isAzulVision ? (process.env.AZUL_VISION_ONCALL_NUMBER ?? '') : '');
-      const systemPrompt = dbAgent?.system_prompt
-        ? dbAgent.system_prompt
-        : buildAfterHoursSystemPrompt({
-            practiceName,
-            callerPhone,
-            callerMemorySummary,
-            onCallTransferNumber: onCallNumber,
-          });
+      const builtInPrompt = () => buildAfterHoursSystemPrompt({
+        practiceName,
+        callerPhone,
+        callerMemorySummary,
+        onCallTransferNumber: onCallNumber,
+      });
+      const builtInGreeting = () => getAfterHoursGreeting(practiceName, language);
+      const systemPrompt = dbAgent?.system_prompt ? dbAgent.system_prompt : builtInPrompt();
       const baseTools = isAzulVision
         ? [...AFTER_HOURS_TOOLS, LOOKUP_SCHEDULE_TOOL]
         : AFTER_HOURS_TOOLS;
@@ -612,18 +659,21 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
         agentId,
         tenantId,
         systemPrompt,
-        greeting: (meta.greeting as string) ?? getAfterHoursGreeting(practiceName, language),
+        greeting: (meta.greeting as string) ?? builtInGreeting(),
         voice: dbAgent?.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: dbAgent?.model ?? MASTER_VOICE_AGENT_MODEL,
         tools: filterToolsByPermissions(mergedTools, templateKey, toolOverrides),
         guardrails: MEDICAL_SAFETY_GUARDRAILS,
         metadata: { practiceName, onCallTransferNumber: onCallNumber },
-      });
+      }, undefined, { systemPrompt: builtInPrompt, greeting: builtInGreeting });
     }
 
     default: {
-      const verticalConfig = buildTemplateConfig(templateKey, ctx, meta, dbTools, language);
-      if (verticalConfig) return finalize(verticalConfig);
+      const vertical = buildTemplateConfig(templateKey, ctx, meta, dbTools, language);
+      if (vertical) {
+        const { builtIn, ...verticalConfig } = vertical;
+        return finalize(verticalConfig, undefined, builtIn);
+      }
 
       if (dbAgent?.system_prompt) {
         logger.info('Loading DB-configured agent (no matching template)', { tenantId, agentId, agentType });
@@ -631,7 +681,7 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
           agentId,
           tenantId,
           systemPrompt: dbAgent.system_prompt,
-          greeting: (meta.greeting as string) ?? 'Hello, how can I help you today?',
+          greeting: (meta.greeting as string) ?? GENERIC_GREETING,
           voice: dbAgent.voice ?? MASTER_VOICE_AGENT_DEFAULT_VOICE,
           model: dbAgent.model ?? MASTER_VOICE_AGENT_MODEL,
           tools: filterToolsByPermissions(dbTools, templateKey, toolOverrides),
@@ -643,8 +693,8 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       return finalize({
         agentId,
         tenantId,
-        systemPrompt: `You are a helpful voice assistant. Be polite, clear, and concise.`,
-        greeting: 'Hello, how can I help you today?',
+        systemPrompt: GENERIC_ROLE_PROMPT,
+        greeting: GENERIC_GREETING,
         voice: MASTER_VOICE_AGENT_DEFAULT_VOICE,
         model: MASTER_VOICE_AGENT_MODEL,
         tools: [],

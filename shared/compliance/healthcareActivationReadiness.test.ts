@@ -14,7 +14,7 @@ function readiness(overrides: Partial<HealthcareActivationReadinessRecord> = {})
     agentId: 'agent-1',
     targetEnvironment: 'production',
     coreVersion: '2.0.0',
-    model: 'grok-voice-think-fast-2.0',
+    model: 'grok-voice-3.0',
     rolePackageId: 'healthcare-receptionist',
     rolePackageVersion: '1.0.0',
     recordingPolicy: 'disabled',

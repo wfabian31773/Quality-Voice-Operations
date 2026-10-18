@@ -12,15 +12,19 @@ import {
 
 describe('xAI session contract', () => {
   it('pins the realtime URL and production model', () => {
+    expect(MASTER_VOICE_AGENT_MODEL).toBe('grok-voice-3.0');
+    expect(buildXaiRealtimeUrl()).toBe('wss://api.x.ai/v1/realtime?model=grok-voice-3.0');
     expect(buildXaiRealtimeUrl()).toBe(`wss://api.x.ai/v1/realtime?model=${encodeURIComponent(MASTER_VOICE_AGENT_MODEL)}`);
     expect(MASTER_VOICE_AGENT_CONTRACT.provider).toBe('xai');
   });
 
-  it('maps legacy OpenAI voices onto the xAI roster', () => {
+  it('maps legacy OpenAI voices onto the xAI roster and defaults to ara', () => {
     expect(resolveXaiVoice('sage')).toBe('eve');
     expect(resolveXaiVoice('alloy')).toBe('ara');
     expect(resolveXaiVoice('eve')).toBe('eve');
-    expect(resolveXaiVoice('unknown-voice')).toBe('eve');
+    expect(resolveXaiVoice('unknown-voice')).toBe('ara');
+    expect(resolveXaiVoice(undefined)).toBe('ara');
+    expect(resolveXaiVoice('  ')).toBe('ara');
   });
 
   it('builds a locked session.update payload with function tools', () => {
@@ -35,6 +39,12 @@ describe('xAI session contract', () => {
     expect(session.voice).toBe('eve');
     expect(session.audio.input.format.type).toBe('audio/pcmu');
     expect(session.tools[0]).toMatchObject({ type: 'function', name: 'send_sms' });
+    expect(session.reasoning.effort).toBe('none');
+  });
+
+  it('defaults the session voice to ara and keeps reasoning off when no voice is set', () => {
+    const session = buildXaiSessionUpdate({ instructions: 'You are the receptionist.' });
+    expect(session.voice).toBe('ara');
     expect(session.reasoning.effort).toBe('none');
   });
 });

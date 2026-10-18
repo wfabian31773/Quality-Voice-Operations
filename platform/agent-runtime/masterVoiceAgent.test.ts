@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   MASTER_VOICE_AGENT_CONTRACT,
+  MASTER_VOICE_AGENT_DEFAULT_VOICE,
+  MASTER_VOICE_AGENT_MODEL,
   buildMasterVoiceAgentInstructions,
   buildTenantTimeContext,
   compileRolePackage,
 } from './masterVoiceAgent';
+import { MODEL_RATES, TIER_MODEL_MAP, modelSupportsReasoningEffort } from '../billing/cost/providerRates';
 
 const baseRole = {
   id: 'healthcare-receptionist',
@@ -23,7 +26,7 @@ describe('Master Voice Agent contract', () => {
     expect(MASTER_VOICE_AGENT_CONTRACT).toMatchObject({
       coreVersion: '2.0.0',
       provider: 'xai',
-      model: 'grok-voice-think-fast-2.0',
+      model: 'grok-voice-3.0',
       reasoningEffort: 'none',
       session: {
         inputFormat: 'audio/pcmu',
@@ -42,6 +45,14 @@ describe('Master Voice Agent contract', () => {
     expect(Object.isFrozen(MASTER_VOICE_AGENT_CONTRACT)).toBe(true);
   });
 
+  it('pins grok-voice-3.0 with voice ara, and every tier routes to a priced model', () => {
+    expect(MASTER_VOICE_AGENT_MODEL).toBe('grok-voice-3.0');
+    expect(MASTER_VOICE_AGENT_DEFAULT_VOICE).toBe('ara');
+    expect(Object.values(TIER_MODEL_MAP)).toEqual([MASTER_VOICE_AGENT_MODEL, MASTER_VOICE_AGENT_MODEL, MASTER_VOICE_AGENT_MODEL]);
+    expect(MODEL_RATES[MASTER_VOICE_AGENT_MODEL]).toEqual(MODEL_RATES['grok-voice-think-fast-2.0']);
+    expect(modelSupportsReasoningEffort(MASTER_VOICE_AGENT_MODEL)).toBe(true);
+  });
+
   it('rejects role packages that try to override core runtime settings', () => {
     expect(() => compileRolePackage({ ...baseRole, model: 'another-model' } as never)).toThrow(/core setting.*model/i);
     expect(() => compileRolePackage({ ...baseRole, turnDetection: { type: 'none' } } as never)).toThrow(/core setting.*turnDetection/i);
@@ -53,7 +64,7 @@ describe('Master Voice Agent contract', () => {
       coreVersion: '2.0.0',
       rolePackageId: 'healthcare-receptionist',
       rolePackageVersion: '1.0.0',
-      model: 'grok-voice-think-fast-2.0',
+      model: 'grok-voice-3.0',
       preferredLanguage: 'en',
       timeZone: 'America/Los_Angeles',
     });

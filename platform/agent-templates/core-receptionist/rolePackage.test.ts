@@ -15,7 +15,8 @@ describe('core-receptionist role package', () => {
     }));
 
     expect(compiled.coreVersion).toBe('2.0.0');
-    expect(compiled.model).toBe('grok-voice-think-fast-2.0');
+    expect(compiled.model).toBe('grok-voice-3.0');
+    expect(compiled.voice).toBe('ara');
     expect(compiled.rolePackageId).toBe(CORE_RECEPTIONIST_ROLE_ID);
     expect(compiled.greeting).toContain('Harbor Locksmith');
     expect(compiled.tools.map((tool) => tool.name)).toEqual(

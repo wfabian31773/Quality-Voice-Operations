@@ -21,7 +21,7 @@ function approval(overrides: Partial<HealthcareDeploymentApprovalRecord> = {}): 
     agentId: 'agent-1',
     approvalKind: 'synthetic_test',
     coreVersion: '2.0.0',
-    model: 'grok-voice-think-fast-2.0',
+    model: 'grok-voice-3.0',
     rolePackageId: 'healthcare-receptionist',
     rolePackageVersion: '1.0.0',
     recordingPolicy: 'disabled',
