@@ -119,6 +119,8 @@ export class CallWorld {
   }
 
   private readonly realWork = new Set<Promise<unknown>>();
+  /** Tracked real work settled since the last drainReal; what it unblocked hasn't been given its turns yet. */
+  private realSettled = false;
 
   /**
    * Real (non-virtual) async work an edge awaits, e.g. real I/O. The clock
@@ -127,14 +129,24 @@ export class CallWorld {
    */
   trackReal<T>(work: Promise<T>): Promise<T> {
     this.realWork.add(work);
-    const done = () => this.realWork.delete(work);
+    const done = () => {
+      this.realWork.delete(work);
+      this.realSettled = true;
+    };
     work.then(done, done);
     return work;
   }
 
-  /** Wait until no tracked real work is pending, letting what it unblocks run too. */
+  /**
+   * Wait until no tracked real work is pending, letting what it unblocks run
+   * too. That includes work that settled just before this call: its
+   * continuation may still be an event-loop turn away (e.g. the fake xAI
+   * socket's open after the last call-setup query), and it gets the same
+   * turns as work that settles in here, wherever the real time put it.
+   */
   async drainReal(): Promise<void> {
-    while (this.realWork.size > 0) {
+    while (this.realWork.size > 0 || this.realSettled) {
+      this.realSettled = false;
       await Promise.allSettled([...this.realWork]);
       await settle(2);
     }
