@@ -1,7 +1,10 @@
 import { BOOKING_BOOK_V1 } from './bookingBook';
+import { BOOKING_CANCEL_V1 } from './bookingCancel';
+import { BOOKING_FIND_V1 } from './bookingFind';
+import { BOOKING_RESCHEDULE_V1 } from './bookingReschedule';
 import { contractKey, type ToolContract } from './types';
 
-export const CONTRACTS: readonly ToolContract[] = [BOOKING_BOOK_V1];
+export const CONTRACTS: readonly ToolContract[] = [BOOKING_BOOK_V1, BOOKING_FIND_V1, BOOKING_RESCHEDULE_V1, BOOKING_CANCEL_V1];
 
 const byKey = new Map(CONTRACTS.map((c) => [contractKey(c), c]));
 
@@ -13,6 +16,9 @@ export function getContract(id: string): ToolContract | undefined {
 }
 
 export { BOOKING_BOOK_V1 } from './bookingBook';
+export { BOOKING_CANCEL_V1 } from './bookingCancel';
+export { BOOKING_FIND_V1 } from './bookingFind';
+export { BOOKING_RESCHEDULE_V1 } from './bookingReschedule';
 export { isEmptySlotValue, nextMissingSlot, valueAtPath } from './enforce';
 export {
   schemaHasPath,

@@ -58,11 +58,15 @@ function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
   }
 }
 
-/** True when a dotted path names a field of a (possibly nested) Zod object. */
+/**
+ * True when a dotted path names a field of a (possibly nested) Zod object.
+ * An array steps into its element ('bookings.spoken').
+ */
 export function schemaHasPath(schema: ZodTypeAny, path: string): boolean {
   let cur: ZodTypeAny = schema;
   for (const key of path.split('.')) {
-    const obj = unwrapSchema(cur);
+    let obj = unwrapSchema(cur);
+    if (String(obj._def.typeName) === 'ZodArray') obj = unwrapSchema(obj._def.type as ZodTypeAny);
     if (String(obj._def.typeName) !== 'ZodObject') return false;
     const shape = (obj as unknown as { shape: Record<string, ZodTypeAny> }).shape;
     if (!Object.prototype.hasOwnProperty.call(shape, key)) return false;
@@ -75,16 +79,19 @@ export function schemaHasPath(schema: ZodTypeAny, path: string): boolean {
  * Checks one contract against the action registry. `peers` is the full
  * contract list, used for the id@version uniqueness rule.
  *
- * 1. Named actions exist and are open to the agent.
+ * 1. Named actions exist and are open to the agent. A read contract without
+ *    a confirm block names its one action.
  * 2. A write contract has a confirm block.
  * 3. Outbound other than 'none' names its destination source.
- * 4. Every sayBack field exists in the commit action's output schema.
+ * 4. Every sayBack field exists in the commit action's output schema (a read
+ *    contract's: its action's output).
  * 5. onFailure has a 'default' chain, and every chain ends in message_ticket
  *    or scripted_close. When `errorCodes` is given (the action runtime's code
  *    list, passed in so this folder never imports it), every onFailure key is
  *    one of them or 'default'.
  * 6. id@version appears at most once in `peers` (which includes the contract
- *    itself), and every slot inputPath exists in the prepare input.
+ *    itself), every slot inputPath exists in the prepare (or read action)
+ *    input, and a slot's verifiedBy names a peer contract with identity 'verified'.
  */
 export function validateContract(
   contract: ToolContract,
@@ -97,6 +104,10 @@ export function validateContract(
   const key = contractKey(contract);
 
   const named = contract.confirm ? [contract.confirm.prepare, contract.confirm.commit] : [];
+  if (contract.action) named.push(contract.action);
+  if (contract.sideEffect === 'read' && named.length === 0) {
+    issues.push({ rule: 1, message: `${key}: a read contract names its action` });
+  }
   for (const name of named) {
     const def = actions.get(name);
     if (!def) issues.push({ rule: 1, message: `${key}: action ${name} is not registered` });
@@ -111,7 +122,8 @@ export function validateContract(
     issues.push({ rule: 3, message: `${key}: outbound '${contract.outbound}' needs an outboundDestination` });
   }
 
-  const commit = contract.confirm ? actions.get(contract.confirm.commit) : undefined;
+  const readAction = contract.action ? actions.get(contract.action) : undefined;
+  const commit = contract.confirm ? actions.get(contract.confirm.commit) : readAction;
   for (const field of contract.sayBack) {
     if (!commit) {
       issues.push({ rule: 4, message: `${key}: sayBack '${field}' has no commit action output to come from` });
@@ -142,12 +154,15 @@ export function validateContract(
   if (peers.filter((other) => contractKey(other) === key).length > 1) {
     issues.push({ rule: 6, message: `${key}: id@version is not unique` });
   }
-  const prepare = contract.confirm ? actions.get(contract.confirm.prepare) : undefined;
+  const prepare = contract.confirm ? actions.get(contract.confirm.prepare) : readAction;
   for (const slot of contract.slots) {
     if (!prepare) {
       issues.push({ rule: 6, message: `${key}: slot '${slot.name}' has no prepare action input to map to` });
     } else if (!schemaHasPath(prepare.input, slot.inputPath)) {
       issues.push({ rule: 6, message: `${key}: slot '${slot.name}' inputPath '${slot.inputPath}' is not in ${prepare.name} input` });
+    }
+    if (slot.verifiedBy && !peers.some((other) => other.id === slot.verifiedBy && other.identity === 'verified')) {
+      issues.push({ rule: 6, message: `${key}: slot '${slot.name}' verifiedBy '${slot.verifiedBy}' is not a contract with identity 'verified'` });
     }
   }
 

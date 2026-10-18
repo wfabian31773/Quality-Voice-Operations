@@ -1,6 +1,5 @@
 import {
   BOOKING_BOOK_V1,
-  contractKey,
   nextMissingSlot,
   type HeldFacts,
   type SlotSpec,
@@ -37,6 +36,7 @@ import {
   spokenWhen,
   toE164,
 } from './readback';
+import { clearSlotAsks, countSlotAsk, SLOT_EXIT_MESSAGE } from './slotAsks';
 import { resolveSlot, slotConflict, slotScope } from './slots';
 import {
   bookCommitOutput,
@@ -56,58 +56,14 @@ function heldFactsOf(ctx: ActionContext): HeldFacts {
 }
 
 /*
- * One ask per slot, then an exit. SLOT_MISSING refusals are counted per
- * (tenant, session, contract, slot) here, never from model arguments. The
- * session is the one holds use (callId, else conversationId); with neither,
- * nothing is counted and every refusal is a first ask. The action
- * store has no read path for the audit log, so this is an in-process map with
- * a TTL and a size cap: on more than one instance a call's second refusal can
- * land on a fresh counter and ask once more before the exit. A retry of the
- * same tool call (same idempotency key) counts once, and a complete payload
- * clears the call's counts so a later booking in the call asks again.
+ * One ask per slot, then an exit (slotAsks.ts counts per tenant, session,
+ * contract and slot, never from model arguments). A complete payload clears
+ * the call's counts so a later booking in the call asks again.
  */
-const SLOT_ASK_TTL_MS = 30 * 60_000;
-const SLOT_ASK_MAX_ENTRIES = 5_000;
-const slotAsks = new Map<string, { count: number; atMs: number; lastKey?: string }>();
-
-function slotAskKey(ctx: ActionContext, session: string, slot: SlotSpec): string {
-  return [ctx.tenantId, session, contractKey(BOOKING_BOOK_V1), slot.name].join('\0');
-}
-
-// invocationKey must be unique per model tool call (e.g. the provider's tool-call id),
-// never derived from the arguments; otherwise a deliberate repeat would never reach the exit.
-function countSlotAsk(key: string, nowMs: number, invocationKey: string | undefined): number {
-  const prev = slotAsks.get(key);
-  const live = prev && nowMs - prev.atMs < SLOT_ASK_TTL_MS ? prev : undefined;
-  const sameInvocation = live !== undefined && invocationKey !== undefined && live.lastKey === invocationKey;
-  const count = !live ? 1 : sameInvocation ? live.count : live.count + 1;
-  slotAsks.delete(key);
-  // Oldest first (re-inserted on each touch): drop expired entries and keep under the cap.
-  for (const [k, v] of slotAsks) {
-    if (slotAsks.size < SLOT_ASK_MAX_ENTRIES && nowMs - v.atMs < SLOT_ASK_TTL_MS) break;
-    slotAsks.delete(k);
-  }
-  slotAsks.set(key, { count, atMs: nowMs, lastKey: invocationKey });
-  return count;
-}
-
-function clearSlotAsks(ctx: ActionContext): void {
-  const session = sessionOf(ctx);
-  if (!session) return;
-  for (const slot of BOOKING_BOOK_V1.slots) slotAsks.delete(slotAskKey(ctx, session, slot));
-}
-
-const SLOT_EXIT_MESSAGE = {
-  en: 'I can take a message so someone can call you back.',
-  es: 'Puedo tomar un mensaje para que alguien le devuelva la llamada.',
-};
 
 function refuseMissingSlot(ctx: ActionContext, slot: SlotSpec): ActionResult<never> {
   const lang = readbackLang(ctx.locale);
-  const session = sessionOf(ctx);
-  const asks = session
-    ? countSlotAsk(slotAskKey(ctx, session, slot), ctx.now.getTime(), ctx.idempotencyKey)
-    : 1;
+  const asks = countSlotAsk(ctx, BOOKING_BOOK_V1, slot);
   if (asks > BOOKING_BOOK_V1.ceilings.maxAsksPerSlot) {
     return actionFail('SLOT_MISSING', `Still missing ${slot.name} after one ask this call; offer to take a message`, {
       field: slot.name,
@@ -143,7 +99,7 @@ export const bookPrepareAction = defineAction({
     const held = heldFactsOf(ctx);
     const missing = nextMissingSlot(BOOKING_BOOK_V1, input, held);
     if (missing) return refuseMissingSlot(ctx, missing);
-    clearSlotAsks(ctx);
+    clearSlotAsks(ctx, BOOKING_BOOK_V1);
     const { serviceIds, staffId } = input;
     const customerName = input.customer?.name ?? held.verifiedName;
     const customerPhone = input.customer?.phone ?? held.callerPhone;

@@ -211,6 +211,9 @@ export const rescheduleCommitAction = defineAction({
         callerSafeMessage: callerMessage('bookingChanged', lang),
       });
     }
+    // The find's verification (first name confirmed) must still hold at the commit.
+    const unverified = await agentBookingBlock(tx, ctx, original.id);
+    if (unverified) return unverified;
     const blocked = await policyBlock(tx, ctx, original);
     if (blocked) return blocked;
 
