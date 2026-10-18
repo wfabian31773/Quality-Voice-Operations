@@ -33,7 +33,13 @@ function makeHoldLine(overrides: Partial<HoldLineDeps> = {}) {
     holdLine.toolStarted(name);
     holdLine.agentResponseEnded();
   };
-  return { holdLine, said, onSaid, toolCall };
+  /** The hold line's response is created and its audio starts (the caller hears it). */
+  const heard = () => {
+    holdLine.agentResponseStarted();
+    holdLine.agentAudioStarted(true);
+    holdLine.holdLineHeard();
+  };
+  return { holdLine, said, onSaid, toolCall, heard };
 }
 
 beforeEach(() => {
@@ -45,15 +51,14 @@ afterEach(() => {
 
 describe('hold line timing (response_done playback)', () => {
   it('a tool in flight for 2 s gets exactly one hold line, at 800 ms', async () => {
-    const { holdLine, said, onSaid, toolCall } = makeHoldLine();
+    const { holdLine, said, onSaid, toolCall, heard } = makeHoldLine();
     toolCall();
     await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS - 1);
     expect(said).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(said).toEqual([{ phrase: 'One moment while I check that.', language: 'en', at: 800 }]);
     // Its own response plays and ends; the tool still runs: nothing more.
-    holdLine.agentResponseStarted();
-    holdLine.agentAudioStarted(true);
+    heard();
     holdLine.agentResponseEnded();
     await vi.advanceTimersByTimeAsync(1_200);
     holdLine.toolEnded();
@@ -181,13 +186,20 @@ describe('hold line timing (response_done playback)', () => {
   });
 
   it('a chain of 3 tool calls (one wait) gets one hold line', async () => {
-    const { holdLine, said, toolCall } = makeHoldLine();
-    for (const tool of ['list_services', 'check_availability', 'check_availability']) {
+    const { holdLine, said, onSaid, toolCall, heard } = makeHoldLine();
+    toolCall('list_services');
+    await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+    heard(); // the hold line plays during the first call
+    holdLine.agentResponseEnded();
+    await vi.advanceTimersByTimeAsync(700);
+    holdLine.toolEnded();
+    for (const tool of ['check_availability', 'check_availability']) {
       toolCall(tool);
       await vi.advanceTimersByTimeAsync(1_500);
       holdLine.toolEnded(); // result → the model's next call, no audio in between
     }
     expect(said).toHaveLength(1);
+    expect(onSaid).toHaveBeenCalledTimes(1);
   });
 
   it('once the agent has spoken in the turn, no hold line until the caller\'s next turn', async () => {
@@ -236,7 +248,7 @@ describe('hold line timing (response_done playback)', () => {
 
   it('nothing when say() is refused (a response is due); the wait stays open', async () => {
     let allow = false;
-    const { holdLine, onSaid, toolCall } = makeHoldLine({ say: () => allow });
+    const { holdLine, onSaid, toolCall, heard } = makeHoldLine({ say: () => allow });
     toolCall();
     await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
     expect(onSaid).not.toHaveBeenCalled();
@@ -245,6 +257,7 @@ describe('hold line timing (response_done playback)', () => {
     holdLine.agentResponseStarted();
     holdLine.agentResponseEnded();
     await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+    heard();
     expect(onSaid).toHaveBeenCalledTimes(1);
   });
 
@@ -258,13 +271,14 @@ describe('hold line timing (response_done playback)', () => {
     }
 
     it('the wait clears while the tool still runs: said exactly once', async () => {
-      const { holdLine, onSaid, gate } = refusedAtFirst();
+      const { holdLine, onSaid, gate, heard } = refusedAtFirst();
       await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
       expect(gate.attempts).toBe(1);
       await vi.advanceTimersByTimeAsync(1_000); // still refused (the 1.5 s reply wait)
       expect(onSaid).not.toHaveBeenCalled();
       gate.allow = true; // the wait cleared: nothing tells the hold line
       await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      heard();
       expect(onSaid).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(5_000);
       holdLine.toolEnded();
@@ -296,18 +310,19 @@ describe('hold line timing (response_done playback)', () => {
     });
 
     it('a blip that ended before the retry fires does not skip it (the deadline rule, stand-in P3 #3)', async () => {
-      const { holdLine, onSaid, gate } = refusedAtFirst();
+      const { holdLine, onSaid, gate, heard } = refusedAtFirst();
       await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
       holdLine.callerSpeechStarted();
       holdLine.callerSpeechStopped();
       gate.allow = true;
       await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      heard();
       expect(onSaid).toHaveBeenCalledTimes(1);
       expect(gate.attempts).toBe(2);
     });
 
     it('a re-armed deadline gets the full retry budget again (stand-in P3 #2)', async () => {
-      const { holdLine, onSaid, gate } = refusedAtFirst();
+      const { holdLine, onSaid, gate, heard } = refusedAtFirst();
       await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS + 60_000); // this deadline's retries used up
       expect(gate.attempts).toBe(1 + HOLD_LINE_MAX_RETRIES);
       // A function-call-only response ends while the tool still runs: a new deadline.
@@ -317,6 +332,7 @@ describe('hold line timing (response_done playback)', () => {
       expect(gate.attempts).toBe(2 + HOLD_LINE_MAX_RETRIES); // refused again
       gate.allow = true;
       await vi.advanceTimersByTimeAsync(HOLD_LINE_RETRY_MS);
+      heard();
       expect(onSaid).toHaveBeenCalledTimes(1);
     });
 
@@ -336,6 +352,54 @@ describe('hold line timing (response_done playback)', () => {
       expect(onSaid).not.toHaveBeenCalled();
       expect(gate.attempts).toBe(1 + HOLD_LINE_MAX_RETRIES);
       expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('said only once its audio starts (Codex 4308961724)', () => {
+    it('cancelled silent when the only tool returns: the chain\'s next slow tool still gets one, heard and logged once', async () => {
+      const { holdLine, said, onSaid, toolCall, heard } = makeHoldLine();
+      toolCall('list_services');
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      expect(said).toHaveLength(1);
+      holdLine.agentResponseStarted(); // the hold line is created; first-audio latency
+      holdLine.toolEnded(); // the result lands: the transport cancels the silent hold line
+      holdLine.agentResponseEnded();
+      expect(onSaid).not.toHaveBeenCalled();
+      // The result's response is a function call only: a slow tool in the same chain (same wait).
+      toolCall('check_availability');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(said).toHaveLength(2);
+      heard();
+      holdLine.agentResponseEnded();
+      await vi.advanceTimersByTimeAsync(5_000);
+      holdLine.toolEnded();
+      expect(said).toHaveLength(2);
+      expect(onSaid).toHaveBeenCalledTimes(1);
+      expect(onSaid).toHaveBeenCalledWith(expect.objectContaining({ tool: 'check_availability' }));
+    });
+
+    it('asked for and not heard yet: not asked again while it is in flight', async () => {
+      const { holdLine, said, onSaid, toolCall } = makeHoldLine();
+      toolCall();
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      holdLine.toolStarted('lookup_customer'); // a concurrent call re-arms
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(said).toHaveLength(1);
+      expect(onSaid).not.toHaveBeenCalled();
+    });
+
+    it('its audio started: never again in the wait, even for a later slow tool in the chain', async () => {
+      const { holdLine, said, onSaid, toolCall, heard } = makeHoldLine();
+      toolCall('list_services');
+      await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+      heard();
+      holdLine.toolEnded(); // the result lands after its audio started: it plays out
+      holdLine.agentResponseEnded();
+      toolCall('check_availability');
+      await vi.advanceTimersByTimeAsync(5_000);
+      holdLine.toolEnded();
+      expect(said).toHaveLength(1);
+      expect(onSaid).toHaveBeenCalledTimes(1);
     });
   });
 

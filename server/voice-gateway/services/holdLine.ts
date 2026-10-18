@@ -152,7 +152,10 @@ interface Wait {
   startedAt: number;
   /** Latest tool call in the wait (the one the line covers). */
   tool: string;
+  /** The line's audio started (heard): never again in this wait. */
   said: boolean;
+  /** The line was asked for and its audio has not started: not asked again while in flight. */
+  requested: HoldLineSaid | null;
   /** The agent spoke after the wait started: no hold line in this wait. */
   agentSpoke: boolean;
   /** Retries after a refused say at the current deadline (at most HOLD_LINE_MAX_RETRIES; a re-armed deadline starts again). */
@@ -215,7 +218,7 @@ export class HoldLine {
     this.toolsRunning += 1;
     this.toolSeq += 1;
     if (this.wait) this.wait.tool = tool;
-    else this.wait = { startedAt: this.now(), tool, said: false, agentSpoke: false, retries: 0 };
+    else this.wait = { startedAt: this.now(), tool, said: false, requested: null, agentSpoke: false, retries: 0 };
     this.arm();
   }
 
@@ -243,6 +246,16 @@ export class HoldLine {
     this.wait.agentSpoke = true;
   }
 
+  /** The hold line's own audio started: only now is it said (and logged), once per wait (Codex 4308961724). */
+  holdLineHeard(): void {
+    const wait = this.wait;
+    const heard = wait?.requested;
+    if (!wait || !heard) return;
+    wait.requested = null;
+    wait.said = true;
+    this.deps.onSaid?.(heard);
+  }
+
   /**
    * The response finished (done or cancelled). One with audio: quiet from
    * now ('response_done') or from its playback echo ('twilio_mark'). One
@@ -251,6 +264,8 @@ export class HoldLine {
   agentResponseEnded(): void {
     this.responding = false;
     if (!this.responseHadAudio) {
+      // A hold line cancelled before any audio (the result came first) was never heard.
+      if (this.wait) this.wait.requested = null;
       this.arm();
       return;
     }
@@ -301,7 +316,7 @@ export class HoldLine {
   private arm(): void {
     this.clearTimer();
     const wait = this.wait;
-    if (this.stopped || !wait || wait.said || wait.agentSpoke) return;
+    if (this.stopped || !wait || wait.said || wait.requested || wait.agentSpoke) return;
     if (this.toolsRunning === 0 || this.toolSeq <= this.skippedThroughToolSeq) return;
     if (this.responding || this.awaitingPlayback) return;
     const dueAt = Math.max(wait.startedAt, this.quietSince) + this.delayMs;
@@ -312,7 +327,7 @@ export class HoldLine {
   private onDeadline(): void {
     this.timer = null;
     const wait = this.wait;
-    if (this.stopped || !wait || wait.said || wait.agentSpoke || this.toolsRunning === 0) return;
+    if (this.stopped || !wait || wait.said || wait.requested || wait.agentSpoke || this.toolsRunning === 0) return;
     if (this.responding || this.awaitingPlayback) return;
     if (this.callerSpeaking) {
       // Talked over at the deadline: this tool call gets none.
@@ -331,8 +346,8 @@ export class HoldLine {
       }
       return;
     }
-    wait.said = true;
-    this.deps.onSaid?.({ tool: wait.tool, language, delayMs: this.delayMs, waitedMs: this.now() - wait.startedAt });
+    // Said (and logged) only once its audio starts: a line cancelled silent can be asked for again.
+    wait.requested = { tool: wait.tool, language, delayMs: this.delayMs, waitedMs: this.now() - wait.startedAt };
   }
 
   private clearTimer(): void {

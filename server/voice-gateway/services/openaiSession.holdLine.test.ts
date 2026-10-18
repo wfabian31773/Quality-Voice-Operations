@@ -294,6 +294,8 @@ describe('hold line on the phone path', () => {
     expect(holdLines()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(250);
     expect(holdLines()).toHaveLength(1);
+    transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' });
+    transport.emit('response.audio_started', { kind: 'hold_line' });
     expect(holdLineEvents()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(2_000);
     finishTool();
@@ -413,6 +415,32 @@ describe('hold line on the phone path', () => {
     }
     expect(holdLines()).toHaveLength(2);
     expect(transport.requestResponse).toHaveBeenCalledWith({ kind: 'caller_text' });
+    transport.close();
+  });
+
+  it('a hold line cancelled silent by the only tool\'s result: the chain\'s next slow tool still gets one, one hold_line event for the heard one (Codex 4308961724)', async () => {
+    const { transport, echo, holdLines, toolCall } = await startCall();
+    const first = toolCall();
+    await vi.advanceTimersByTimeAsync(HOLD_LINE_DELAY_MS);
+    expect(holdLines()).toHaveLength(1);
+    transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' }); // no audio yet
+    finishTool();
+    await first;
+    transport.emit('response.cancelled', { type: 'response.cancelled' }, { kind: 'hold_line' }); // cancelled silent
+    expect(holdLineEvents()).toHaveLength(0);
+    // The result's response is a function call only: a slow tool in the same chain.
+    const second = toolCall();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(holdLines()).toHaveLength(2);
+    transport.emit('response.created', { type: 'response.created' }, { kind: 'hold_line' });
+    transport.emit('response.audio_started', { kind: 'hold_line' });
+    transport.emit('response.done', { type: 'response.done' }, { kind: 'hold_line' });
+    echo();
+    await vi.advanceTimersByTimeAsync(2_000);
+    finishTool();
+    await second;
+    expect(holdLines()).toHaveLength(2);
+    expect(holdLineEvents()).toHaveLength(1);
     transport.close();
   });
 

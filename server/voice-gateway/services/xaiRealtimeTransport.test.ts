@@ -1243,11 +1243,12 @@ describe('XaiRealtimeTransport', () => {
       }
 
       /** What a response says and calls before its end: a transcript and a side-effecting tool call. */
-      function speaksAndCalls(callId: string, transcript: string) {
-        server({ type: 'response.output_audio_transcript.done', transcript });
-        server({ type: 'response.function_call_arguments.delta', call_id: callId, name: 'book', delta: '{"slot":' });
-        server({ type: 'response.function_call_arguments.delta', call_id: callId, delta: '"9am"}' });
-        server({ type: 'response.function_call_arguments.done', call_id: callId, name: 'book' });
+      function speaksAndCalls(callId: string, transcript: string, responseId?: string) {
+        const of = responseId ? { response_id: responseId } : {};
+        server({ type: 'response.output_audio_transcript.done', transcript, ...of });
+        server({ type: 'response.function_call_arguments.delta', call_id: callId, name: 'book', delta: '{"slot":', ...of });
+        server({ type: 'response.function_call_arguments.delta', call_id: callId, delta: '"9am"}', ...of });
+        server({ type: 'response.function_call_arguments.done', call_id: callId, name: 'book', ...of });
       }
 
       /** The next real response still works: its transcript is added, its tool runs, its output is sent. */
@@ -1295,6 +1296,48 @@ describe('XaiRealtimeTransport', () => {
         expect(creates()).toHaveLength(2); // the re-queued reply went at its end, as before
         await nextResponseWorks(t, 'resp_retry');
         await expectQuietAfterClose(t.transport);
+      });
+
+      describe('its cancel never acknowledged: abandoned at the cancel timeout, its late events stay ignored (stand-in P3 b)', () => {
+        /** Superseded (retired at creation), and the provider never answers the cancel. */
+        async function abandonedRetired() {
+          const t = await connectedWithTools();
+          t.transport.requestResponse({ kind: 'caller_text' });
+          t.transport.requestResponse({ kind: 'instruction', response: { instructions: 'Say: "Sorry"' }, cancelInFlight: true });
+          server({ type: 'response.created', response: { id: 'resp_text' } });
+          await vi.advanceTimersByTimeAsync(RESPONSE_CANCEL_TIMEOUT_MS);
+          expect(creates()).toHaveLength(2); // the instruction went at the timeout
+          return t;
+        }
+
+        it('without a response_id: ignored until the next response.created', async () => {
+          const t = await abandonedRetired();
+          speaksAndCalls('call-retired', 'Your nine o\'clock is booked.');
+          await flush();
+          expect(t.onFunctionCall).not.toHaveBeenCalled();
+          expect(t.outputs()).toEqual([]);
+          expect(t.transcripts()).toEqual([]);
+          await nextResponseWorks(t, 'resp_instr');
+          await expectQuietAfterClose(t.transport);
+        });
+
+        it('with its response_id: ignored after the next response.created too, until its end', async () => {
+          const t = await abandonedRetired();
+          server({ type: 'response.created', response: { id: 'resp_instr' } });
+          speaksAndCalls('call-retired', 'Your nine o\'clock is booked.', 'resp_text');
+          await flush();
+          expect(t.onFunctionCall).not.toHaveBeenCalled();
+          expect(t.outputs()).toEqual([]);
+          expect(t.transcripts()).toEqual([]);
+          server({ type: 'response.done', response: { id: 'resp_text', status: 'cancelled' } }); // its late end: ignored
+          speaksAndCalls('call-real', 'Booked.', 'resp_instr');
+          await flush();
+          expect(t.onFunctionCall).toHaveBeenCalledTimes(1);
+          expect(t.onFunctionCall).toHaveBeenCalledWith('book', { slot: '9am' });
+          expect(t.outputs()).toEqual(['call-real']);
+          expect(t.transcripts()).toEqual(['Booked.']);
+          await expectQuietAfterClose(t.transport);
+        });
       });
 
       it('control: a response that was not retired runs its tool call and adds its transcript', async () => {

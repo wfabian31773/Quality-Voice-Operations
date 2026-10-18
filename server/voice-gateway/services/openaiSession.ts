@@ -1882,7 +1882,9 @@ export async function createRealtimeSession(
       holdLine.agentResponseStarted();
     });
     t.on('response.audio_started', (meta?: unknown) => {
-      holdLine.agentAudioStarted((meta as ResponseMeta | undefined)?.kind === 'hold_line');
+      const isHoldLine = (meta as ResponseMeta | undefined)?.kind === 'hold_line';
+      holdLine.agentAudioStarted(isHoldLine);
+      if (isHoldLine) holdLine.holdLineHeard();
     });
     t.on('response.done', (...args: unknown[]) => {
       agentTurnEnded();

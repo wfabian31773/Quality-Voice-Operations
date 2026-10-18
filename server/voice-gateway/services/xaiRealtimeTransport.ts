@@ -204,6 +204,13 @@ export class XaiRealtimeTransport extends EventEmitter {
   /** Responses we stopped waiting for (cancel never landed): their late done/cancelled is ignored. */
   private abandonedResponseIds = new Set<string>();
   private abandonedWithoutId = 0;
+  /**
+   * Of those, the ones retired at creation: their late transcript and function
+   * calls stay ignored (stand-in P3 b), by response_id until their end, and
+   * without one until the next response.created (a real reply starts with one).
+   */
+  private abandonedRetiredIds = new Set<string>();
+  private abandonedRetiredUntilCreated = false;
   /** Requests waiting for the response in flight (or requested) to finish. */
   private responseQueue: QueuedRequest[] = [];
   /** The response in flight: who asked for it, and whether its audio started. */
@@ -336,6 +343,7 @@ export class XaiRealtimeTransport extends EventEmitter {
 
     if (type === 'response.created') {
       this.endInterruptedAudioDrop();
+      this.abandonedRetiredUntilCreated = false;
       const replyWasDue = this.callerSpeaking || this.callerReplyPending;
       this.responseSpeechSeq = this.callerSpeechSeq;
       this.responseInFlight = true;
@@ -461,7 +469,7 @@ export class XaiRealtimeTransport extends EventEmitter {
 
     if (type === 'response.output_audio_transcript.done' || type === 'response.audio_transcript.done') {
       const transcript = String((event.transcript as string | undefined) ?? '');
-      if (transcript && !this.ignoredFromRetired()) {
+      if (transcript && !this.ignoredFromRetired(event)) {
         this.emit('history_added', {
           type: 'message',
           role: 'assistant',
@@ -472,7 +480,7 @@ export class XaiRealtimeTransport extends EventEmitter {
       }
     }
 
-    if (type === 'response.function_call_arguments.delta' && !this.current?.retired) {
+    if (type === 'response.function_call_arguments.delta' && !this.current?.retired && !this.fromAbandonedRetired(event)) {
       const callId = String(event.call_id ?? event.item_id ?? '');
       const name = String(event.name ?? this.pendingCalls.get(callId)?.name ?? '');
       const prev = this.pendingCalls.get(callId) ?? { name, callId, arguments: '' };
@@ -487,7 +495,7 @@ export class XaiRealtimeTransport extends EventEmitter {
       const argumentText = String(event.arguments ?? this.pendingCalls.get(callId)?.arguments ?? '{}');
       this.pendingCalls.delete(callId);
       // Never heard: no tool runs, no output, nothing counted.
-      if (this.ignoredFromRetired()) return;
+      if (this.ignoredFromRetired(event)) return;
       if (this.current?.kind === 'hold_line') {
         // Told to say its line and nothing else: the hold line never runs a tool.
         logger.warn('Ignoring a function call from the hold line response', { tool: name });
@@ -500,7 +508,8 @@ export class XaiRealtimeTransport extends EventEmitter {
   }
 
   /** The response in flight was retired at creation: its event is ignored (logged once per response, kind only). */
-  private ignoredFromRetired(): boolean {
+  private ignoredFromRetired(event: Record<string, unknown>): boolean {
+    if (this.fromAbandonedRetired(event)) return true;
     const current = this.current;
     if (!current?.retired) return false;
     if (!current.retiredLogged) {
@@ -508,6 +517,13 @@ export class XaiRealtimeTransport extends EventEmitter {
       logger.info('Ignoring transcript and function calls of a response retired at creation', { kind: current.kind });
     }
     return true;
+  }
+
+  /** A late event of a retired response abandoned at its cancel timeout: never heard, ignored too. */
+  private fromAbandonedRetired(event: Record<string, unknown>): boolean {
+    const id = event.response_id;
+    if (typeof id === 'string' && this.abandonedRetiredIds.has(id)) return true;
+    return this.current === null && this.abandonedRetiredUntilCreated;
   }
 
   /**
@@ -736,6 +752,10 @@ export class XaiRealtimeTransport extends EventEmitter {
       logger.warn('xAI response.cancel not acknowledged in time: response treated as ended', { kind: meta.kind, waitedMs: RESPONSE_CANCEL_TIMEOUT_MS });
       if (this.current?.id) this.abandonedResponseIds.add(this.current.id);
       else this.abandonedWithoutId += 1;
+      if (this.current?.retired) {
+        if (this.current.id) this.abandonedRetiredIds.add(this.current.id);
+        this.abandonedRetiredUntilCreated = true;
+      }
       this.dropInterruptedAudio();
       this.responseInFlight = false;
       this.current = null;
@@ -748,7 +768,10 @@ export class XaiRealtimeTransport extends EventEmitter {
   /** A done/cancelled for a response we already treated as ended (onCancelTimeout). */
   private isAbandonedResponseEnd(event: Record<string, unknown>): boolean {
     const id = responseIdOf(event);
-    if (id && this.abandonedResponseIds.delete(id)) return true;
+    if (id && this.abandonedResponseIds.delete(id)) {
+      this.abandonedRetiredIds.delete(id);
+      return true;
+    }
     if (!id && !this.responseInFlight && this.abandonedWithoutId > 0) {
       this.abandonedWithoutId -= 1;
       return true;
