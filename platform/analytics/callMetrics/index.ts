@@ -28,4 +28,4 @@ export {
   type CallTicket,
 } from './report';
 export { BOOKING_TOOLS, bookingFromToolRun, sqlCallMetricsSource, type CallMetricsDb, type CallMetricsSource } from './source';
-export { REDACTED_NAME_STAND_IN, callerVerdict, floorCallerLines, unredactForFloor, type CallerVerdict } from './substantive';
+export { REDACTED_NAME_MAX_WORDS, REDACTED_NAME_STAND_IN, callerVerdict, floorCallerLines, unredactForFloor, type CallerVerdict } from './substantive';

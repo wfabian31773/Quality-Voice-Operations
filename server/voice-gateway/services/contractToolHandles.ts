@@ -32,6 +32,9 @@ const KIND_BY_KEY: Readonly<Record<string, string>> = {
   serviceIds: 'service',
 };
 
+/** Fields a later tool call takes back in: the confirmation token and the handle fields. */
+export const NEXT_CALL_KEYS: ReadonlySet<string> = new Set(['confirmationToken', ...Object.keys(KIND_BY_KEY)]);
+
 /** The kind of an `id` field, by the list it sits in. */
 const KIND_BY_LIST: Readonly<Record<string, string>> = { bookings: 'booking', staff: 'staff', services: 'service' };
 

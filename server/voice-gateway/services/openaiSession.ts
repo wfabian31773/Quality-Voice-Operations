@@ -166,12 +166,88 @@ function buildToolHandler(
       }
     }
 
+    /**
+     * The reasoning gate's verdict on this call: the JSON to return when it
+     * blocks (or its check throws: fail closed), undefined to go ahead.
+     */
+    const reasoningBlock = async (): Promise<string | undefined> => {
+      if (!ctx.reasoningGate || INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) return undefined;
+      try {
+        // Enforce: the engine's verdict. Shadow: logged only; just the
+        // allowlist can block, and an engine error never does.
+        const authorization = ctx.reasoningGate.authorizeTool(toolName, args, agentConfig.tools.map((tool) => tool.name));
+        if (authorization.allowed) return undefined;
+        const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
+        logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
+        const sgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+        await completeToolExecution({
+          tenantId,
+          executionId: sgId,
+          callSessionId,
+          result: { success: false, reason: 'safety_blocked', violations: criticalViolations.map((v) => v.description) },
+          status: 'failed',
+          errorMessage: `Safety gate: ${criticalViolations.map((v) => v.description).join('; ')}`,
+          durationMs: Date.now() - startTime
+        });
+        await writeCallEvent(tenantId, callSessionId, 'safety_gate_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, violations: criticalViolations.map((v) => ({ type: v.type, description: v.description })) });
+        return JSON.stringify({ success: false, message: `This action was blocked by policy: ${criticalViolations.map((v) => v.description).join('. ')}` });
+      } catch (safetyErr) {
+        logger.error('Reasoning authorization failed, blocking tool execution (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(safetyErr) });
+        const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
+        await completeToolExecution({
+          tenantId,
+          executionId: fgId,
+          callSessionId,
+          result: { success: false, reason: 'safety_gate_error' },
+          status: 'failed',
+          errorMessage: `Reasoning authorization error: ${String(safetyErr)}`,
+          durationMs: Date.now() - startTime
+        });
+        return JSON.stringify({ success: false, message: 'Unable to verify this action safely. Please try again.' });
+      }
+    };
+
+    /** A tool ran and succeeded: the engine resets its fallback and advances a workflow step on this tool. */
+    const reasoningToolSucceeded = (): void => {
+      if (!ctx.reasoningEngine) return;
+      try {
+        ctx.reasoningEngine.handleToolSuccess(toolName);
+        const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
+        if (stepTool === toolName) {
+          ctx.reasoningEngine.advanceWorkflowStep();
+          logger.debug('Advanced workflow step after tool execution', { tenantId, callId: callSessionId, tool: toolName });
+        }
+      } catch (successErr) {
+        logger.warn('Reasoning handleToolSuccess error', { tenantId, callId: callSessionId, error: String(successErr) });
+      }
+    };
+
+    /** A tool ran and failed: the engine counts it toward its fallback. */
+    const reasoningToolFailed = (): void => {
+      if (!ctx.reasoningEngine) return;
+      try {
+        ctx.reasoningEngine.handleToolFailure();
+      } catch (failErr) {
+        logger.warn('Reasoning handleToolFailure error', { tenantId, callId: callSessionId, error: String(failErr) });
+      }
+    };
+
     contractTools?.observeToolCall(toolName, args);
     const bookkeeping: ToolRunCall = {
       tenantId, callSessionId, agentId: agentConfig.agentId, toolName, args, workflow: Boolean(ctx.workflowEngine), isTrial: ctx.isTrial,
     };
-    // Same tool_invocations row, call events and metering as every other tool.
-    if (contractTools?.handles(toolName)) return runContractTool(contractTools, bookkeeping);
+    if (contractTools?.handles(toolName)) {
+      // The same reasoning authorization as every other tool, before anything runs.
+      const blocked = await reasoningBlock();
+      if (blocked !== undefined) return blocked;
+      // Same tool_invocations row, call events and metering as every other tool.
+      return runContractTool(contractTools, bookkeeping, (run) => {
+        if (run.rateLimited) return;
+        // An ask (SLOT_MISSING) is neither: nothing ran to completion, nothing failed.
+        if (run.status === 'success' && run.ok) reasoningToolSucceeded();
+        else if (run.status !== 'success') reasoningToolFailed();
+      });
+    }
 
     const activeRoleSchema = agentConfig.tools.find((tool) => tool.name === toolName)?.parameters;
     const validation = unifiedToolRegistry.validateToolInput(toolName, args, activeRoleSchema);
@@ -234,42 +310,8 @@ function buildToolHandler(
       args = sessionBound.args;
     }
 
-    if (ctx.reasoningGate && !INTERNAL_ORCHESTRATION_TOOLS.includes(toolName)) {
-      try {
-        // Enforce: the engine's verdict. Shadow: logged only; just the
-        // allowlist can block, and an engine error never does.
-        const authorization = ctx.reasoningGate.authorizeTool(toolName, args, agentConfig.tools.map((tool) => tool.name));
-        if (!authorization.allowed) {
-          const criticalViolations = authorization.violations.filter((v) => v.severity === 'critical');
-          logger.warn('Reasoning authorization blocked tool', { tenantId, callId: callSessionId, tool: toolName, violations: criticalViolations.map((v) => v.type) });
-          const sgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-          await completeToolExecution({
-            tenantId,
-            executionId: sgId,
-            callSessionId,
-            result: { success: false, reason: 'safety_blocked', violations: criticalViolations.map((v) => v.description) },
-            status: 'failed',
-            errorMessage: `Safety gate: ${criticalViolations.map((v) => v.description).join('; ')}`,
-            durationMs: Date.now() - startTime
-          });
-          await writeCallEvent(tenantId, callSessionId, 'safety_gate_blocked', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', { tool: toolName, violations: criticalViolations.map((v) => ({ type: v.type, description: v.description })) });
-          return JSON.stringify({ success: false, message: `This action was blocked by policy: ${criticalViolations.map((v) => v.description).join('. ')}` });
-        }
-      } catch (safetyErr) {
-        logger.error('Reasoning authorization failed, blocking tool execution (fail-closed)', { tenantId, callId: callSessionId, tool: toolName, error: String(safetyErr) });
-        const fgId = await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: args });
-        await completeToolExecution({
-          tenantId,
-          executionId: fgId,
-          callSessionId,
-          result: { success: false, reason: 'safety_gate_error' },
-          status: 'failed',
-          errorMessage: `Reasoning authorization error: ${String(safetyErr)}`,
-          durationMs: Date.now() - startTime
-        });
-        return JSON.stringify({ success: false, message: 'Unable to verify this action safely. Please try again.' });
-      }
-    }
+    const blocked = await reasoningBlock();
+    if (blocked !== undefined) return blocked;
 
     if (toolName === 'transfer_to_agent' && ctx.onHandoff) {
       // This branch bypasses executeWithRetry, so it applies the repeated-tool
@@ -668,13 +710,7 @@ function buildToolHandler(
         logger.warn('Failed to create escalation task for tool failure', { error: String(escErr) });
       });
 
-      if (ctx.reasoningEngine) {
-        try {
-          ctx.reasoningEngine.handleToolFailure();
-        } catch (failErr) {
-          logger.warn('Reasoning handleToolFailure error', { tenantId, callId: callSessionId, error: String(failErr) });
-        }
-      }
+      reasoningToolFailed();
     }
 
     let parsedResult: unknown;
@@ -688,22 +724,9 @@ function buildToolHandler(
       }
     }
 
-    if (ctx.reasoningEngine) {
-      try {
-        const pendingChallenge = parsedResult && typeof parsedResult === 'object'
-          && isPendingBookingChallenge(parsedResult as Record<string, unknown>);
-        if (executionStatus === 'success' && !pendingChallenge) {
-          ctx.reasoningEngine.handleToolSuccess(toolName);
-          const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
-          if (stepTool === toolName) {
-            ctx.reasoningEngine.advanceWorkflowStep();
-            logger.debug('Advanced workflow step after tool execution', { tenantId, callId: callSessionId, tool: toolName });
-          }
-        }
-      } catch (successErr) {
-        logger.warn('Reasoning handleToolSuccess error', { tenantId, callId: callSessionId, error: String(successErr) });
-      }
-    }
+    const pendingChallenge = parsedResult && typeof parsedResult === 'object'
+      && isPendingBookingChallenge(parsedResult as Record<string, unknown>);
+    if (executionStatus === 'success' && !pendingChallenge) reasoningToolSucceeded();
 
     await finishToolRun(bookkeeping, {
       executionId,

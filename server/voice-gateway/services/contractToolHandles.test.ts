@@ -177,7 +177,7 @@ describe('contract tool bridge: no internal ids reach the model', () => {
 
     const done = await b.runTool(toolFor('scheduling.reschedule.commit'), { confirmationToken: JSON.parse(prep).data.confirmationToken });
     expectNoInternalIds(done, be.all);
-    expect(JSON.parse(done).data.bookingId).toBe('booking-2');
+    expect(JSON.parse(done).data).toEqual({ bookingId: 'booking-2', staffId: 'staff-1', readback: 'Moved to Friday at 3:30 PM.' });
   });
 
   it('find_bookings → cancel with the handle reaches the action with the real id', async () => {
@@ -193,7 +193,7 @@ describe('contract tool bridge: no internal ids reach the model', () => {
 
     const done = await b.runTool(toolFor('scheduling.cancel.commit'), { confirmationToken: JSON.parse(prep).data.confirmationToken });
     expectNoInternalIds(done, be.all);
-    expect(JSON.parse(done).data).toEqual({ bookingId: 'booking-1', status: 'cancelled', readback: 'Cancelled: Friday at 3:30 PM.' });
+    expect(JSON.parse(done).data).toEqual({ bookingId: 'booking-1', readback: 'Cancelled: Friday at 3:30 PM.' });
   });
 
   it('an error message naming an internal id reaches the model with the handle, not the id', async () => {
@@ -212,7 +212,38 @@ describe('contract tool bridge: no internal ids reach the model', () => {
     expect(JSON.parse(prep).data.payloadHash).toBe('a'.repeat(64));
     const done = await b.runTool(toolFor('tickets.open.commit'), { confirmationToken: JSON.parse(prep).data.confirmationToken, payloadHash: 'a'.repeat(64) });
     expectNoInternalIds(done, be.all);
-    expect(JSON.parse(done)).toEqual({ ok: true, data: { dueAt: null, deduped: false } });
+    expect(JSON.parse(done)).toEqual({ ok: true, data: {} });
+  });
+
+  describe('Codex 4307380016: an ok commit returns only its sayBack fields plus what a later call needs', () => {
+    /** A commit that returns every field the real actions can, plus effects and a speakable-looking ticket number. */
+    const LOUD = (be: ReturnType<typeof fakeBackend>): ContractActionRunner => async (name, ctx, input) => {
+      const real = await be.runner(name, ctx, input);
+      if (!name.endsWith('.commit') || !real.ok) return real;
+      return {
+        ...real,
+        data: { ...(real.data as Record<string, unknown>), previousBookingId: be.ids.booking, ticketId: be.ids.ticket, ticketNumber: 1042, status: 'confirmed', internalNote: 'x' },
+        effects: [{ type: 'sms', bookingId: be.ids.booking }],
+      } as never;
+    };
+
+    it.each([
+      ['scheduling.book.commit', ['bookingId', 'readback', 'staffId', 'staffName']],
+      ['scheduling.reschedule.commit', ['bookingId', 'readback', 'staffId']],
+      ['scheduling.cancel.commit', ['bookingId', 'readback']],
+      // tickets.message@1 says back only the prepare's readback: no ticket id or number, nothing else.
+      ['tickets.open.commit', []],
+    ])('%s: the model gets data keys %j and no effects', async (action, keys) => {
+      const be = fakeBackend();
+      const b = bridge(LOUD(be));
+      const out = JSON.parse(await b.runTool(toolFor(action), { confirmationToken: randomUUID() }));
+      expect(out.ok).toBe(true);
+      expect(Object.keys(out.data).sort()).toEqual(keys);
+      expect(out.effects).toBeUndefined();
+      // bookingId is the call-scoped handle a later move or cancel takes back in.
+      if (keys.includes('bookingId')) expect(out.data.bookingId).toMatch(/^booking-\d+$/);
+      expectNoInternalIds(JSON.stringify(out), be.all);
+    });
   });
 
   it('an unknown handle reaches the real action unchanged and gets its normal not-found', async () => {

@@ -116,7 +116,18 @@ const REDACTION_DRIFT: ReadonlyMap<number, string> = new Map([
   // survives after a clause-breaking period, which the stored text can't tell
   // from "This is Ana. Cancel Friday". Live: nothing substantive; stored: substantive.
   [34, 'title redacted instead of the name'],
+  // Codex 4307374365: a [NAME_REDACTED] with no known name stands for the
+  // longest name redactPHI takes (unredactForFloor), so it can never turn a
+  // live-substantive call into nothing_substantive. These lines were name-only
+  // live and count as substantive stored (the safe direction: a miss, not a drop).
+  [15, '"Hi, I\'m Luis": the placeholder may have been "Marcus Johnson"'],
+  // Stored "This is [NAME_REDACTED] A. Garcia": three stand-ins plus "a garcia"
+  // is more than the three name words the floor drops after "this is".
+  [35, 'initial and surname left after the placeholder'],
 ]);
+
+/** Codex 4307374365: names redactPHI replaces with one placeholder, after an intro the floor doesn't drop. */
+const MULTI_WORD_NAMES = ["I'm Marcus Johnson", 'I am Marcus Johnson', "Hi, I'm Marcus Johnson", "I'm Marcus Johnson, thanks"];
 
 describe('callerVerdict on stored transcripts (after redactPHI) is the live floor on the raw lines', () => {
   it.each(FLOOR_FIXTURES.map((fixture, i) => [i, ...fixture] as const).filter(([i]) => !REDACTION_DRIFT.has(i)))(
@@ -137,11 +148,46 @@ describe('callerVerdict on stored transcripts (after redactPHI) is the live floo
     expect(redactPHI('Hi, this is Dr. Patel')).toBe('Hi, this is [NAME_REDACTED]. Patel');
   });
 
-  it('the review case: "Hi, I\'m Luis" is stored as a placeholder and is still only a name', () => {
-    expect(redactPHI("Hi, I'm Luis")).toBe("Hi, I'm [NAME_REDACTED]");
-    expect(callerVerdict(["Hi, I'm [NAME_REDACTED]"], undefined)).toBe('nothing_substantive');
-    expect(callerVerdict(['I am [NAME_REDACTED]'], 'Marcus Johnson')).toBe('nothing_substantive');
-    expect(callerVerdict(["I'm [NAME_REDACTED], thanks"], undefined)).toBe('nothing_substantive');
+  it('never turns a live-substantive call into nothing_substantive (the rate can only be understated)', async () => {
+    const cases: Array<[string[], string | undefined]> = [...FLOOR_FIXTURES, ...MULTI_WORD_NAMES.map((line): [string[], undefined] => [[line], undefined])];
+    for (const [i, [lines, callerName]] of cases.entries()) {
+      const live = FLOOR_TO_VERDICT[await floorReason(`CA-never-drop-${i}`, lines, callerName)];
+      if (live === 'substantive') expect(callerVerdict(lines.map(redactPHI), callerName)).toBe('substantive');
+    }
+  });
+
+  describe('Codex 4307374365: a multi-word name redacted to one placeholder', () => {
+    it.each(MULTI_WORD_NAMES)(
+      '"%s": live substantive, and still substantive stored with no name known',
+      async (line) => {
+        expect(await floorReason(`CA-marcus-${line.length}`, [line], undefined)).toBe('filed');
+        expect(redactPHI(line)).toContain('[NAME_REDACTED]');
+        expect(redactPHI(line)).not.toContain('Marcus');
+        expect(callerVerdict([redactPHI(line)], undefined)).toBe('substantive');
+      },
+    );
+
+    it('a redacted name that came after "this is" / "my name is" still drops, up to the three words redactPHI takes', async () => {
+      for (const line of ['Hi, this is Marcus Johnson', 'My name is Ana Maria Ruiz', 'this is Luis']) {
+        expect(await floorReason(`CA-intro-${line.length}`, [line], undefined)).toBe('nothing_substantive');
+        expect(callerVerdict([redactPHI(line)], undefined)).toBe('nothing_substantive');
+      }
+      // redactPHI never takes a fourth word, so three stand-ins are the most a placeholder can be.
+      expect(redactPHI('my name is ana maria lopez ruiz')).toBe('my name is [NAME_REDACTED] ruiz');
+    });
+
+    it('"Hi, I\'m Luis" stays name-only on the raw line and with the name known', async () => {
+      expect(await floorReason('CA-luis-raw', ["Hi, I'm Luis"], undefined)).toBe('nothing_substantive');
+      expect(callerVerdict(["Hi, I'm Luis"], undefined)).toBe('nothing_substantive');
+      expect(redactPHI("Hi, I'm Luis")).toBe("Hi, I'm [NAME_REDACTED]");
+      expect(callerVerdict(["Hi, I'm [NAME_REDACTED]"], 'Luis')).toBe('nothing_substantive');
+      expect(callerVerdict(['I am [NAME_REDACTED]'], 'Marcus Johnson')).toBe('nothing_substantive');
+      expect(callerVerdict(["I'm [NAME_REDACTED], thanks"], 'Luis')).toBe('nothing_substantive');
+    });
+
+    it('with no name known, "Hi, I\'m [NAME_REDACTED]" is counted substantive: it may have been "Marcus Johnson" (see PR_NOTES)', () => {
+      expect(callerVerdict(["Hi, I'm [NAME_REDACTED]"], undefined)).toBe('substantive');
+    });
   });
 
   it('a redacted phone, SSN or date still counts as the caller giving a number', () => {

@@ -18,7 +18,7 @@ import type { TenantId } from '../../../platform/core/types';
 import { completeToolExecution, createToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { updateCallState, writeCallEvent } from './callPersistence';
-import type { ContractToolBridge } from './contractToolBridge';
+import type { ContractToolBridge, ContractToolRun } from './contractToolBridge';
 
 const logger = createLogger('OPENAI_SESSION');
 
@@ -131,8 +131,14 @@ function parseResult(output: string): unknown {
 /**
  * A contract tool call with the same bookkeeping as every other tool. The row
  * stores what the model got (internal ids already swapped for handles).
+ * `onRun` sees how the run ended (openaiSession's reasoning-engine
+ * notifications), before the bookkeeping writes.
  */
-export async function runContractTool(bridge: Pick<ContractToolBridge, 'execute'>, call: ToolRunCall): Promise<string> {
+export async function runContractTool(
+  bridge: Pick<ContractToolBridge, 'execute'>,
+  call: ToolRunCall,
+  onRun?: (run: ContractToolRun) => void,
+): Promise<string> {
   const startTime = Date.now();
   let executionId: string | undefined;
   const run = await bridge.execute(call.toolName, call.args, {
@@ -140,6 +146,7 @@ export async function runContractTool(bridge: Pick<ContractToolBridge, 'execute'
       executionId = await beginToolRun(call);
     },
   });
+  onRun?.(run);
 
   if (run.rateLimited) {
     logger.warn('Tool rate limit exceeded', { tenantId: call.tenantId, callId: call.callSessionId, tool: call.toolName });

@@ -95,6 +95,9 @@ vi.mock('../../../platform/core/observability/traceLogger', () => ({ recordTrace
 
 import { BARBERSHOP_TEMPLATE_V1 } from '../../../platform/agent-templates/barbershop';
 import { recordToolExecution } from '../../../platform/billing/usage/UsageRecorder';
+import { ReasoningEngine } from '../../../platform/reasoning';
+import { ReasoningCallGate } from '../../../platform/reasoning/reasoningShadow';
+import type { SafetyCheckResult } from '../../../platform/reasoning/types';
 import { completeToolExecution, createToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { loadAgentConfig } from './agentLoader';
 import { writeCallEvent } from './callPersistence';
@@ -119,9 +122,10 @@ function composerAgent(language = 'en') {
   });
 }
 
-async function startCall(language = 'en') {
+async function startCall(language = 'en', over: Partial<SessionContext> = {}) {
   const agentConfig = composerAgent(language);
   const ctx = {
+    ...over,
     tenantId: 't-shop' as never,
     agentConfig,
     callerNumber: CALLER,
@@ -145,7 +149,7 @@ async function startCall(language = 'en') {
     transport.emit('history_added', { type: 'message', role: 'user', content: [{ type: 'input_text', text }] });
   const agentSays = (text: string) =>
     transport.emit('history_added', { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] });
-  return { result, callTool, callerSays, agentSays };
+  return { ctx, result, callTool, callerSays, agentSays };
 }
 
 /** A fake scheduling backend: commit readbacks speak the prepare's locale. */
@@ -261,6 +265,22 @@ describe('composer agent in a live session', () => {
     result.session.close();
   });
 
+  it('Codex 4307380008: a failed contract call is a failed row on this call (what tool_failures_only / has_tool_executions read)', async () => {
+    h.runAction.mockImplementation(async () => ({
+      ok: false,
+      error: { code: 'CONFLICT', message: 'Slot taken', callerSafeMessage: 'That time was just taken.', retryable: false },
+    }));
+    const { result, callTool } = await startCall();
+    vi.mocked(createToolExecution).mockClear();
+    vi.mocked(completeToolExecution).mockClear();
+
+    await callTool('scheduling_check_availability', { serviceIds: ['service-1'], staffId: 'any' });
+    // CallViewDigestScheduler: EXISTS tool_invocations ti WHERE ti.call_session_id = cs.id AND ti.tenant_id = cs.tenant_id [AND ti.status IN ('failed','timeout')]
+    expect(vi.mocked(createToolExecution).mock.calls).toEqual([[expect.objectContaining({ tenantId: 't-shop', callSessionId: 'cs-composer', toolName: 'scheduling_check_availability' })]]);
+    expect(vi.mocked(completeToolExecution).mock.calls).toEqual([[expect.objectContaining({ tenantId: 't-shop', callSessionId: 'cs-composer', status: 'failed' })]]);
+    result.session.close();
+  });
+
   it('a legacy library tool is not reachable, even when registered', async () => {
     fakeActions();
     const legacy = vi.fn(async () => ({ success: true }));
@@ -269,6 +289,113 @@ describe('composer agent in a live session', () => {
     expect(await callTool('create_booking', { title: 'Fade' })).toMatchObject({ rule: 'run.action_not_allowed' });
     expect(legacy).not.toHaveBeenCalled();
     expect(h.runAction).not.toHaveBeenCalled();
+    result.session.close();
+  });
+});
+
+/**
+ * Codex 4307380011: contract tools go through the same reasoning gate as every
+ * other tool (enforce: the engine's verdict, fail closed on an error), and
+ * their outcome feeds the engine's success/failure notifications.
+ */
+describe('composer agent: reasoning authorization and notifications', () => {
+  const DENIED: SafetyCheckResult = {
+    allowed: false,
+    violations: [{ type: 'policy_violation', severity: 'critical', description: 'Not during this step' }],
+  };
+
+  it('enforce: an engine deny blocks a contract action; runAction is never called', async () => {
+    fakeActions();
+    vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest').mockReturnValue(DENIED);
+    const { ctx, result, callTool } = await startCall('en', { reasoningMode: 'enforce' });
+    expect(ctx.reasoningMode).toBe('enforce');
+    expect(ctx.reasoningGate?.enforcing).toBe(true);
+    vi.mocked(completeToolExecution).mockClear();
+
+    const out = await callTool('scheduling_book_prepare', { serviceIds: ['service-1'], staffId: 'any', start: '2026-10-23T15:30:00-04:00', customer: { name: 'Luis' } });
+    expect(out).toEqual({ success: false, message: 'This action was blocked by policy: Not during this step' });
+    expect(h.runAction).not.toHaveBeenCalled();
+    expect(vi.mocked(completeToolExecution).mock.calls).toEqual([[expect.objectContaining({ status: 'failed', result: expect.objectContaining({ reason: 'safety_blocked' }) })]]);
+    expect(vi.mocked(writeCallEvent).mock.calls.some((c) => c[2] === 'safety_gate_blocked')).toBe(true);
+    result.session.close();
+  });
+
+  it('enforce: an authorization error fails closed; runAction is never called', async () => {
+    fakeActions();
+    vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest').mockImplementation(() => {
+      throw new Error('engine broke');
+    });
+    const { result, callTool } = await startCall('en', { reasoningMode: 'enforce' });
+    vi.mocked(completeToolExecution).mockClear();
+
+    const out = await callTool('scheduling_list_services');
+    expect(out).toEqual({ success: false, message: 'Unable to verify this action safely. Please try again.' });
+    expect(h.runAction).not.toHaveBeenCalled();
+    expect(vi.mocked(completeToolExecution).mock.calls).toEqual([[expect.objectContaining({ status: 'failed', result: { success: false, reason: 'safety_gate_error' } })]]);
+    result.session.close();
+  });
+
+  it('enforce: an allowed contract action is authorized once with the agent\'s tools, then runs', async () => {
+    fakeActions();
+    const authorize = vi.spyOn(ReasoningCallGate.prototype, 'authorizeTool');
+    vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest').mockReturnValue({ allowed: true, violations: [] });
+    const { ctx, result, callTool } = await startCall('en', { reasoningMode: 'enforce' });
+    await callTool('scheduling_list_services');
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(authorize).toHaveBeenCalledWith('scheduling_list_services', {}, ctx.agentConfig.tools.map((t) => t.name));
+    expect(h.runAction).toHaveBeenCalledTimes(1);
+    result.session.close();
+  });
+
+  it('a successful contract call notifies the engine of success; a failure of failure; an ask of neither', async () => {
+    const success = vi.spyOn(ReasoningEngine.prototype, 'handleToolSuccess');
+    const failure = vi.spyOn(ReasoningEngine.prototype, 'handleToolFailure');
+    h.runAction.mockImplementation(async (...args: unknown[]) => {
+      const [name, , input] = args as [string, unknown, Record<string, unknown>];
+      if (name === 'scheduling.list_services') return { ok: true, data: [] };
+      if (name === 'scheduling.book.prepare' && !input.serviceIds) {
+        return { ok: false, error: { code: 'SLOT_MISSING', askId: 'ask.service', field: 'service', message: 'Missing service', callerSafeMessage: 'What service?', retryable: true } };
+      }
+      return { ok: false, error: { code: 'CONFLICT', message: 'Slot taken', callerSafeMessage: 'That time was just taken.', retryable: false } };
+    });
+    const { result, callTool } = await startCall();
+
+    await callTool('scheduling_list_services');
+    expect(success.mock.calls).toEqual([['scheduling_list_services']]);
+    expect(failure).not.toHaveBeenCalled();
+
+    await callTool('scheduling_book_prepare', { customer: { name: 'Luis' } });
+    expect(success).toHaveBeenCalledTimes(1);
+    expect(failure).not.toHaveBeenCalled();
+
+    await callTool('scheduling_check_availability', { serviceIds: ['service-1'], staffId: 'any' });
+    expect(success).toHaveBeenCalledTimes(1);
+    expect(failure).toHaveBeenCalledTimes(1);
+    result.session.close();
+  });
+
+  it('shadow (the barbershop default): an engine deny or error is logged only and the contract action runs', async () => {
+    fakeActions();
+    const engine = vi.spyOn(ReasoningEngine.prototype, 'authorizeToolRequest').mockReturnValue(DENIED);
+    const { ctx, result, callTool } = await startCall();
+    expect(ctx.reasoningMode).toBe('shadow');
+    expect((await callTool('scheduling_list_services')).ok).toBe(true);
+    expect(engine).toHaveBeenCalledTimes(1);
+    engine.mockImplementation(() => {
+      throw new Error('engine broke');
+    });
+    expect((await callTool('scheduling_list_staff')).ok).toBe(true);
+    expect(h.runAction).toHaveBeenCalledTimes(2);
+    result.session.close();
+  });
+
+  it('no engine (it failed to start): no gate, the contract action runs as before', async () => {
+    fakeActions();
+    vi.spyOn(ReasoningEngine.prototype, 'initialize').mockRejectedValue(new Error('no engine'));
+    const { ctx, result, callTool } = await startCall('en', { reasoningMode: 'enforce' });
+    expect(ctx.reasoningGate).toBeUndefined();
+    expect((await callTool('scheduling_list_services')).ok).toBe(true);
+    expect(h.runAction).toHaveBeenCalledTimes(1);
     result.session.close();
   });
 });

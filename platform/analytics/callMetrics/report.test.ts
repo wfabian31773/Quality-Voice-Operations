@@ -49,7 +49,8 @@ const FIXTURE: CallRecord[] = [
   call('N-other-tenant', { tenantId: T2 }),
   // A legacy create_ticket / escalation ticket: kind is only the column default.
   call('L-legacy-ticket', { tickets: [{ id: 't-l', kind: 'message', floor: false, legacy: true }] }),
-  // "Hi, I'm Luis" as call_transcripts stores it (redactPHI), name unknown: the floor saw only a name.
+  // "Hi, I'm <name>" as call_transcripts stores it (redactPHI), name unknown. It may have been
+  // "Hi, I'm Marcus Johnson", which the floor counts as substantive, so it is never left out (Codex 4307374365).
   call('O-redacted-intro', { callerLines: ["Hi, I'm [NAME_REDACTED]"], callerName: undefined }),
 ];
 
@@ -58,19 +59,19 @@ describe('bookedOrFiledReport: fixture day, one tenant', () => {
 
   it('matches the hand-computed numbers', () => {
     // In the day for T1: A B C D E F G H I J L M O = 13 (K is the 16th, N is T2).
-    // Excluded: C outbound; B never heard; A, M and O said only their name.
-    // Substantive: D E F G H I J L = 8. Booked or filed: D E F I L = 5. 5/8 = 6250 bp.
+    // Excluded: C outbound; B never heard; A and M said only their name.
+    // Substantive: D E F G H I J L O = 9. Booked or filed: D E F I L = 5. 5/9 = 5556 bp.
     expect(report).toEqual({
       day: DAY,
       timeZone: 'America/New_York',
       tenantId: T1,
       window: { start: '2026-10-17T04:00:00.000Z', end: '2026-10-18T04:00:00.000Z' },
-      calls: { total: 13, outbound: 1, neverHeard: 1, nothingSubstantive: 3, substantive: 8 },
-      denominator: 8,
+      calls: { total: 13, outbound: 1, neverHeard: 1, nothingSubstantive: 2, substantive: 9 },
+      denominator: 9,
       numerator: 5,
-      rate: { numerator: 5, denominator: 8, basisPoints: 6250 },
+      rate: { numerator: 5, denominator: 9, basisPoints: 5556 },
       breakdown: { booked: 1, filedMessage: 1, filedLegacy: 1, filedFloor: 1, filedOther: 1 },
-      noArtifactCallIds: ['G-nothing', 'H-holds-only', 'J-late-night'],
+      noArtifactCallIds: ['G-nothing', 'H-holds-only', 'J-late-night', 'O-redacted-intro'],
       artifactOnNonSubstantive: 1,
     });
   });
@@ -115,8 +116,8 @@ describe('bookedOrFiledReport: exclusions and boundaries', () => {
     const report = bookedOrFiledReport({ day: DAY, tenantId: null, calls: FIXTURE });
     expect(report.tenantId).toBeNull();
     expect(report.calls.total).toBe(14);
-    expect(report.denominator).toBe(9);
-    expect(report.noArtifactCallIds).toEqual(['G-nothing', 'H-holds-only', 'J-late-night', 'N-other-tenant']);
+    expect(report.denominator).toBe(10);
+    expect(report.noArtifactCallIds).toEqual(['G-nothing', 'H-holds-only', 'J-late-night', 'N-other-tenant', 'O-redacted-intro']);
   });
 
   it('a booking cancelled later, or moved by a reschedule, still counts as written', () => {

@@ -37,7 +37,9 @@
  * - the per-tenant tool rate limit (unifiedToolRegistry.checkRateLimit).
  *
  * The model never sees an internal id: results go out through CallHandles
- * (contractToolHandles.ts) and handles come back in through it. execute()
+ * (contractToolHandles.ts) and handles come back in through it. An ok commit
+ * is cut down first to its contract's sayBack fields plus what a later tool
+ * call needs (commitView). execute()
  * also says how the run ended, for openaiSession's tool bookkeeping
  * (tool_invocations, call events, metering).
  */
@@ -51,7 +53,7 @@ import { isCallerIdReference } from '../../../platform/reasoning/sessionBinding'
 import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { toolStopGuard, TOOL_STOPPED_CODE, type ToolStopGuard, type ToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
-import { CallHandles, REF_KEYS } from './contractToolHandles';
+import { CallHandles, NEXT_CALL_KEYS, REF_KEYS } from './contractToolHandles';
 
 /** Production runs platform/actions' runAction; tests inject a fake. */
 export type ContractActionRunner = (name: string, ctx: ActionContext, input: unknown) => Promise<ActionResult>;
@@ -131,6 +133,8 @@ export interface ContractToolRun {
   output: string;
   /** tool_invocations status: an ask (SLOT_MISSING) is a success, like an ok result; a timeout is 'timeout'. */
   status: 'success' | 'failed' | 'timeout';
+  /** The action returned ok (an ask, a failure or a stop did not). */
+  ok: boolean;
   /** "<code>: <message>" from the model's view (no internal ids), for a run that isn't a success. */
   errorMessage?: string;
   /** Refused by the rate limit before anything ran (legacy records those without call events or metering). */
@@ -144,6 +148,26 @@ const SPEAKABLE_REFS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
     return contractActionNames(contract).map((action) => [action, refs] as const);
   }),
 );
+
+/** Commit action → its contract's sayBack fields (the top-level key of each, as the commit outputs it). */
+const COMMIT_SAY_BACK: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  CONTRACTS.flatMap((contract) =>
+    contract.confirm ? [[contract.confirm.commit, new Set(contract.sayBack.map((field) => field.split('.')[0]))] as const] : []),
+);
+
+/**
+ * An ok commit as the model gets it: the contract's sayBack fields, plus what
+ * a later tool call takes back in (the confirmation token, and the call-scoped
+ * handle fields, e.g. the booking a later move or cancel names). Everything
+ * else the action returned (status, times, previousBookingId, ticket ids and
+ * numbers, effects) stays on the server: these contracts have voiceRefs false.
+ */
+function commitView(action: string, result: Extract<ActionResult, { ok: true }>): Extract<ActionResult, { ok: true }> {
+  const sayBack = COMMIT_SAY_BACK.get(action) ?? new Set<string>();
+  const data = asRecord(result.data) ?? {};
+  const kept = Object.fromEntries(Object.entries(data).filter(([key]) => sayBack.has(key) || NEXT_CALL_KEYS.has(key)));
+  return { ok: true, data: kept, ...(result.readback ? { readback: result.readback } : {}) };
+}
 
 function errorMessageOf(view: unknown): string | undefined {
   const record = asRecord(view);
@@ -307,7 +331,8 @@ export class ContractToolBridge {
     }
     if (kind === 'commit') {
       const say = this.afterWrite(action, args, result.readback ?? (typeof data?.readback === 'string' ? data.readback : ''));
-      if (say) return this.finish(action, { ...result, say }, status);
+      const view = commitView(action, result);
+      return this.finish(action, say ? { ...view, say } : view, status);
     }
     return this.finish(action, result, status);
   }
@@ -316,7 +341,8 @@ export class ContractToolBridge {
   private finish(action: string, value: unknown, status: ContractToolRun['status']): ContractToolRun {
     const view = this.idHandles.toModel(value, action, SPEAKABLE_REFS.get(action));
     const errorMessage = status === 'success' ? undefined : errorMessageOf(view);
-    return { output: JSON.stringify(view), status, rateLimited: false, ...(errorMessage ? { errorMessage } : {}) };
+    const ok = asRecord(value)?.ok === true;
+    return { output: JSON.stringify(view), status, ok, rateLimited: false, ...(errorMessage ? { errorMessage } : {}) };
   }
 
   /**
