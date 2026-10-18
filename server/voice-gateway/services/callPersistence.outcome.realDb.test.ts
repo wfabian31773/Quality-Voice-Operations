@@ -39,7 +39,7 @@ describe.skipIf(!client)('persistCallOutcome SQL (real Postgres)', () => {
     await client?.end().catch(() => {});
   });
 
-  it('adds callOutcome, keeps other context keys, and the first outcome wins', async () => {
+  it('adds callEndOutcome, keeps other context keys, and the first outcome wins', async () => {
     await client!.query(
       `INSERT INTO call_sessions (id, tenant_id, context) VALUES ('cs-1', 't-1', $1), ('cs-2', 't-1', NULL), ('cs-3', 't-2', '{}')`,
       [JSON.stringify({ recordingPolicy: { policy: 'disabled' }, transcript: 'enc:abc' })],
@@ -54,7 +54,7 @@ describe.skipIf(!client)('persistCallOutcome SQL (real Postgres)', () => {
     expect(rows[0].context).toEqual({
       recordingPolicy: { policy: 'disabled' },
       transcript: 'enc:abc',
-      callOutcome: 'never_heard',
+      callEndOutcome: 'never_heard',
     });
 
     // NULL context is handled; another tenant's row is never touched.
@@ -62,8 +62,21 @@ describe.skipIf(!client)('persistCallOutcome SQL (real Postgres)', () => {
     await client!.query(PERSIST_CALL_OUTCOME_SQL, ['t-1', 'cs-3', 'max_duration']);
     const rest = await client!.query(`SELECT id, context FROM call_sessions WHERE id IN ('cs-2', 'cs-3') ORDER BY id`);
     expect(rest.rows).toEqual([
-      { id: 'cs-2', context: { callOutcome: 'max_duration' } },
+      { id: 'cs-2', context: { callEndOutcome: 'max_duration' } },
       { id: 'cs-3', context: {} },
     ]);
+  });
+
+  it('leaves the record_call_outcome tool object in context.callOutcome untouched', async () => {
+    const toolOutcome = { disposition: 'booked', notes: 'Fade Friday 9am', followUpRequired: false };
+    await client!.query(
+      `INSERT INTO call_sessions (id, tenant_id, context) VALUES ('cs-tool', 't-1', $1)`,
+      [JSON.stringify({ callOutcome: toolOutcome })],
+    );
+
+    const res = await client!.query(PERSIST_CALL_OUTCOME_SQL, ['t-1', 'cs-tool', 'caller_hangup']);
+    expect(res.rowCount).toBe(1);
+    const { rows } = await client!.query(`SELECT context FROM call_sessions WHERE id = 'cs-tool'`);
+    expect(rows[0].context).toEqual({ callOutcome: toolOutcome, callEndOutcome: 'caller_hangup' });
   });
 });

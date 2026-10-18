@@ -112,6 +112,17 @@ describe('XaiRealtimeTransport', () => {
     }
   });
 
+  it('surfaces server-VAD speech_started / speech_stopped', async () => {
+    const transport = makeTransport(async () => '{}');
+    await transport.connect({ apiKey: 'xai-test' });
+    const seen: string[] = [];
+    transport.on('input_audio_buffer.speech_started', () => seen.push('started'));
+    transport.on('input_audio_buffer.speech_stopped', () => seen.push('stopped'));
+    sockets[0].emit('message', JSON.stringify({ type: 'input_audio_buffer.speech_started', audio_start_ms: 10 }));
+    sockets[0].emit('message', JSON.stringify({ type: 'input_audio_buffer.speech_stopped', audio_end_ms: 900 }));
+    expect(seen).toEqual(['started', 'stopped']);
+  });
+
   it('drops caller audio quietly before the socket opens and after it closes', async () => {
     const transport = makeTransport(async () => '{}');
     expect(() => transport.sendAudio(new ArrayBuffer(160))).not.toThrow();

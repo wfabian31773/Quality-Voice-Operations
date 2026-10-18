@@ -1,10 +1,14 @@
 /**
- * One call outcome per call (VA-15). The first writer wins; later attempts
+ * One call end outcome per call (VA-15). The first writer wins; later attempts
  * are ignored, so the watchdog's `never_heard` beats the stream finalizer's
- * default that runs when the hang-up closes the stream.
+ * default that runs when the hang-up closes the stream. Persisted as
+ * `call_sessions.context.callEndOutcome` (a string) plus a `call_end_outcome`
+ * call event. `context.callOutcome` belongs to the record_call_outcome tool
+ * (a disposition object read by analytics) and is never touched here.
  *
  * Recorded today:
- * - `never_heard`      silence watchdog, caller never transcribed
+ * - `never_heard`      silence watchdog, caller never transcribed (recorded
+ *                      at the hang-up, so a call that continues never has it)
  * - `max_duration`     silence watchdog, 10-minute cap
  * - `agent_ended`      runtime ended the call (budget cap, demo hard cap)
  * - `provider_failure` the realtime session closed (or failed to connect)

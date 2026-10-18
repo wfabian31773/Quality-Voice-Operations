@@ -87,7 +87,9 @@ import { persistCallOutcome, writeCallEvent } from './callPersistence';
 import { clearToolRetryConfig, setToolRetryConfig } from '../../../platform/tools/RetryOrchestrator';
 import {
   HANGUP_GRACE_MS,
+  HANGUP_PLAYBACK_PAD_MS,
   HEARD_SILENCE_CHECK_MS,
+  PLAYBACK_ECHO_FALLBACK_MS,
   MAX_CALL_DURATION_MS,
   MAX_DURATION_WRAP_UP_INSTRUCTION,
   NEVER_HEARD_GOODBYE_INSTRUCTION,
@@ -139,6 +141,11 @@ async function startCall(overrides: Partial<SessionContext> = {}) {
   const transport = h.transports[h.transports.length - 1];
   const sessionClosed = vi.fn();
   result.onSessionClosed(sessionClosed);
+  // 'twilio_mark' mode: the mark names the phone path would send to Twilio.
+  const marks: string[] = [];
+  result.onAgentAudioDone((name) => marks.push(name));
+  /** Twilio echoes the latest mark: that turn's audio has played. */
+  const echo = () => result.agentPlaybackDone(marks.at(-1) ?? '');
   const agentTurn = () => {
     transport.emit('response.created', { type: 'response.created' });
     transport.emit('response.done', { type: 'response.done' });
@@ -153,7 +160,7 @@ async function startCall(overrides: Partial<SessionContext> = {}) {
 
   transport.emit('session.created', { type: 'session.created' });
   agentTurn(); // greeting
-  return { ctx, result, transport, agentTurn, callerSays, instructions, silencePrompts, sessionClosed };
+  return { ctx, result, transport, agentTurn, callerSays, instructions, silencePrompts, sessionClosed, marks, echo };
 }
 
 beforeEach(() => {
@@ -172,7 +179,7 @@ afterEach(() => {
   sessionManager.unregister('cs-watchdog');
 });
 
-const outcomeEvents = () => vi.mocked(writeCallEvent).mock.calls.filter((call) => call[2] === 'call_outcome');
+const outcomeEvents = () => vi.mocked(writeCallEvent).mock.calls.filter((call) => call[2] === 'call_end_outcome');
 
 describe('silence watchdog on a salon/barber agent in shadow mode', () => {
   it('sends "Are you still there?" to a silent caller even though the reasoning gate returns null', async () => {
@@ -343,4 +350,132 @@ describe('silence watchdog in enforce mode', () => {
       transport.close();
     });
   }
+});
+
+describe('caller heard during the never-heard goodbye (P1-2)', () => {
+  it('never-heard → goodbye → caller speaks within the grace: no hang-up, no outcome, then a single heard check', async () => {
+    const { transport, agentTurn, callerSays, instructions, silencePrompts, sessionClosed } = await startCall();
+    for (let i = 1; i <= NEVER_HEARD_PROMPTS; i += 1) {
+      await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS);
+      agentTurn();
+    }
+    await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS);
+    expect(instructions().at(-1)).toBe(NEVER_HEARD_GOODBYE_INSTRUCTION);
+    agentTurn(); // the goodbye plays
+    await vi.advanceTimersByTimeAsync(HANGUP_GRACE_MS - 2_000);
+
+    callerSays("Hello? Yes, I'm here.");
+    agentTurn(); // the agent answers
+    await vi.advanceTimersByTimeAsync(HANGUP_GRACE_MS);
+    expect(transport.close).not.toHaveBeenCalled();
+    expect(sessionClosed).not.toHaveBeenCalled();
+    expect(persistCallOutcome).not.toHaveBeenCalled();
+    expect(outcomeEvents()).toHaveLength(0);
+    expect(vi.mocked(writeCallEvent).mock.calls.filter((c) => c[2] === 'never_heard_hangup_cancelled')).toHaveLength(1);
+
+    const before = silencePrompts();
+    await vi.advanceTimersByTimeAsync(HEARD_SILENCE_CHECK_MS - HANGUP_GRACE_MS);
+    expect(silencePrompts()).toBe(before + 1);
+    agentTurn();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(silencePrompts()).toBe(before + 1);
+    expect(transport.close).not.toHaveBeenCalled();
+    transport.close();
+  });
+});
+
+describe("phone path ('twilio_mark'): silence counts from the end of playback", () => {
+  const phone: Partial<SessionContext> = { playbackConfirm: 'twilio_mark' };
+
+  it('does not fire while playback is unconfirmed, even 15 s after response.done; fires 8 s after the echo', async () => {
+    const { transport, marks, echo, silencePrompts } = await startCall(phone);
+    expect(marks).toEqual(['agent-turn-1']); // the greeting's mark
+    await vi.advanceTimersByTimeAsync(HEARD_SILENCE_CHECK_MS);
+    expect(silencePrompts()).toBe(0);
+
+    expect(echo()).toBe(true);
+    await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS - 1);
+    expect(silencePrompts()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(silencePrompts()).toBe(1);
+    transport.close();
+  });
+
+  it('heard caller: the check fires 15 s after the echo of the agent\'s reply, not after its response.done', async () => {
+    const { transport, agentTurn, callerSays, echo, silencePrompts } = await startCall(phone);
+    echo();
+    callerSays('Do you have anything Friday?');
+    agentTurn();
+    await vi.advanceTimersByTimeAsync(HEARD_SILENCE_CHECK_MS + 1_000);
+    expect(silencePrompts()).toBe(0);
+    echo();
+    await vi.advanceTimersByTimeAsync(HEARD_SILENCE_CHECK_MS - 1);
+    expect(silencePrompts()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(silencePrompts()).toBe(1);
+    transport.close();
+  });
+
+  it('stale and unknown mark names are ignored; the fallback re-arms when no echo arrives', async () => {
+    const { result, transport, agentTurn, marks, silencePrompts } = await startCall(phone);
+    agentTurn();
+    expect(marks).toEqual(['agent-turn-1', 'agent-turn-2']);
+    expect(result.agentPlaybackDone('agent-turn-1')).toBe(false);
+    expect(result.agentPlaybackDone('not-ours')).toBe(false);
+    // The latest mark echoed after a new response started is stale too.
+    transport.emit('response.created', { type: 'response.created' });
+    expect(result.agentPlaybackDone('agent-turn-2')).toBe(false);
+    transport.emit('response.done', { type: 'response.done' });
+
+    await vi.advanceTimersByTimeAsync(PLAYBACK_ECHO_FALLBACK_MS - 1);
+    expect(silencePrompts()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1 + NEVER_HEARD_PROMPT_INTERVAL_MS);
+    expect(silencePrompts()).toBe(1);
+    transport.close();
+  });
+
+  it('goodbye grace starts at the goodbye\'s echo (+ pad); the call closes with outcome never_heard', async () => {
+    const { transport, agentTurn, echo, instructions, sessionClosed } = await startCall(phone);
+    echo();
+    for (let i = 1; i <= NEVER_HEARD_PROMPTS; i += 1) {
+      await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS);
+      agentTurn();
+      echo();
+    }
+    await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS);
+    expect(instructions().at(-1)).toBe(NEVER_HEARD_GOODBYE_INSTRUCTION);
+    agentTurn(); // goodbye streamed, still playing on the phone
+    await vi.advanceTimersByTimeAsync(HANGUP_GRACE_MS - 1);
+    expect(transport.close).not.toHaveBeenCalled();
+    expect(persistCallOutcome).not.toHaveBeenCalled();
+
+    echo(); // the goodbye has played
+    await vi.advanceTimersByTimeAsync(HANGUP_PLAYBACK_PAD_MS - 1);
+    expect(transport.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(transport.close).toHaveBeenCalledTimes(1);
+    expect(sessionClosed).toHaveBeenCalled();
+    expect(persistCallOutcome).toHaveBeenCalledWith('t-watchdog', 'cs-watchdog', 'never_heard');
+    expect(outcomeEvents()).toHaveLength(1);
+  });
+});
+
+describe('caller speech (server VAD) pauses the watchdog', () => {
+  it('a never-heard caller speaking for 30 s gets no prompt and no hang-up; speech_stopped re-arms', async () => {
+    const { transport, echo, silencePrompts, sessionClosed } = await startCall({ playbackConfirm: 'twilio_mark' });
+    echo();
+    await vi.advanceTimersByTimeAsync(3_000);
+    transport.emit('input_audio_buffer.speech_started', { type: 'input_audio_buffer.speech_started' });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(silencePrompts()).toBe(0);
+    expect(transport.close).not.toHaveBeenCalled();
+    expect(sessionClosed).not.toHaveBeenCalled();
+
+    transport.emit('input_audio_buffer.speech_stopped', { type: 'input_audio_buffer.speech_stopped' });
+    await vi.advanceTimersByTimeAsync(NEVER_HEARD_PROMPT_INTERVAL_MS - 1);
+    expect(silencePrompts()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(silencePrompts()).toBe(1);
+    transport.close();
+  });
 });

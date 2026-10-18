@@ -59,7 +59,7 @@ import {
   createPlatformPersistenceAdapter,
   persistCallOutcome,
 } from './callPersistence';
-import { SilenceWatchdog } from './silenceWatchdog';
+import { SilenceWatchdog, type PlaybackConfirmMode } from './silenceWatchdog';
 import { CallOutcomeRecorder, type CallOutcome } from './callOutcome';
 import { sessionManager } from './sessionManager';
 import { createSessionLogger, type SessionLogContext } from './sessionLogger';
@@ -101,6 +101,12 @@ export interface SessionContext {
    * never started. An object so handoff copies of ctx share the count.
    */
   callerTurns?: { count: number };
+  /**
+   * When an agent turn counts as finished for the silence watchdog.
+   * 'twilio_mark': the transport echoes a playback mark after the turn's audio
+   * (see onAgentAudioDone / agentPlaybackDone). Default 'response_done'.
+   */
+  playbackConfirm?: PlaybackConfirmMode;
 }
 
 const INTERNAL_ORCHESTRATION_TOOLS = ['transfer_to_agent', 'record_language_change', 'get_current_tenant_time'];
@@ -827,6 +833,16 @@ export interface RealtimeSessionResult {
   onSessionClosed: (handler: () => void) => void;
   /** Caller input that has no audio transcript (widget typed text). */
   noteCallerText: () => void;
+  /**
+   * 'twilio_mark' mode: called once an agent turn's audio has all been
+   * handed to the transport, with a unique mark name to send after it.
+   */
+  onAgentAudioDone: (handler: (markName: string) => void) => void;
+  /**
+   * 'twilio_mark' mode: the transport echoed a mark. Only the latest mark
+   * re-arms the watchdog; stale or unknown names are ignored (returns false).
+   */
+  agentPlaybackDone: (markName: string) => boolean;
   costTracker: {
     inputTokens: number;
     outputTokens: number;
@@ -1035,17 +1051,22 @@ export async function createRealtimeSession(
 
   // One outcome per call; the first writer wins (see callOutcome.ts).
   const callOutcome = new CallOutcomeRecorder((outcome) => {
-    slog.info('call_outcome', { outcome });
+    slog.info('call_end_outcome', { outcome });
     persistCallOutcome(tenantId, callSessionId, outcome).catch((err) => {
       slog.warn('Failed to persist call outcome', { outcome, error: String(err) });
     });
-    writeCallEvent(tenantId, callSessionId, 'call_outcome', null, null, { outcome }).catch(() => {});
+    writeCallEvent(tenantId, callSessionId, 'call_end_outcome', null, null, { outcome }).catch(() => {});
   });
 
   // Runtime-owned silence watchdog: acts for every agent, whatever the
   // reasoning mode. It owns the "are you still there?" prompt; the reasoning
   // gate is only asked for its shadow log line.
+  const playbackConfirm: PlaybackConfirmMode = ctx.playbackConfirm ?? 'response_done';
   const silenceWatchdog = new SilenceWatchdog({
+    playbackConfirm,
+    onPlaybackFallback: (counts) => {
+      slog.info('silence_watchdog', { action: 'playback_echo_fallback', ...counts });
+    },
     say: (instruction) => {
       try {
         sendModelInstruction(instruction);
@@ -1737,20 +1758,48 @@ export async function createRealtimeSession(
     costTracker.outputTokens += outputTokens;
     costTracker.cachedInputTokens += cachedTokens;
   };
+  // 'twilio_mark' mode: each finished agent turn gets a unique mark name that
+  // the phone path sends after the turn's last audio frame. Only the latest
+  // one, echoed back by Twilio, confirms playback.
+  let playbackMarkSeq = 0;
+  let pendingPlaybackMark: string | null = null;
+  const agentAudioDoneHandlers: Array<(markName: string) => void> = [];
+  const agentTurnEnded = (): void => {
+    silenceWatchdog.agentTurnEnded();
+    if (playbackConfirm !== 'twilio_mark') return;
+    playbackMarkSeq += 1;
+    const markName = `agent-turn-${playbackMarkSeq}`;
+    pendingPlaybackMark = markName;
+    for (const handler of agentAudioDoneHandlers) {
+      try {
+        handler(markName);
+      } catch (err) {
+        slog.warn('Agent-audio-done handler failed', { error: String(err) });
+      }
+    }
+  };
+  const agentPlaybackDone = (markName: string): boolean => {
+    if (playbackConfirm !== 'twilio_mark' || markName !== pendingPlaybackMark) return false;
+    pendingPlaybackMark = null;
+    return silenceWatchdog.agentPlaybackDone();
+  };
+
   const attachResponseStateListeners = (
     transport: { on(event: string, listener: (...args: unknown[]) => void): void },
   ): void => {
     const t = transport as unknown as { on(e: string, l: (...args: unknown[]) => void): void };
     // Socket open (the greeting is sent on the same event): start the
-    // watchdog. Agent responses pause it; each finished response re-arms it.
+    // watchdog. Agent responses pause it; each finished response re-arms it
+    // (at response.done, or at the playback mark echo in 'twilio_mark' mode).
     t.on('session.created', () => { silenceWatchdog.start(); });
     t.on('response.created', () => {
       responseInFlight = true;
+      pendingPlaybackMark = null;
       silenceWatchdog.agentTurnStarted();
     });
     t.on('response.done', (...args: unknown[]) => {
       responseInFlight = false;
-      silenceWatchdog.agentTurnEnded();
+      agentTurnEnded();
       // The transport passes the wire payload as the first argument
       // (and the SDK may wrap it; either way the `response.usage`
       // path is the same). Capture it here so the cost tracker sees
@@ -1759,8 +1808,11 @@ export async function createRealtimeSession(
     });
     t.on('response.cancelled', () => {
       responseInFlight = false;
-      silenceWatchdog.agentTurnEnded();
+      agentTurnEnded();
     });
+    // Server VAD: the caller is mid-utterance, so this is not silence.
+    t.on('input_audio_buffer.speech_started', () => { silenceWatchdog.callerSpeechStarted(); });
+    t.on('input_audio_buffer.speech_stopped', () => { silenceWatchdog.callerSpeechStopped(); });
   };
   attachResponseStateListeners(wsTransport);
 
@@ -1913,7 +1965,7 @@ export async function createRealtimeSession(
           percentUsed: budgetResult.percentUsed,
         });
         callOutcome.record('agent_ended');
-        sendSystemMessage('I appreciate your time, but I need to wrap up our conversation now. Is there anything else urgent I can help you with before we end?');
+        sendSystemMessage('I appreciate your time, but I need to end our call now. Thank you for calling. Goodbye.');
         setTimeout(() => {
           try { activeSession.close(); } catch {}
         }, 10000);
@@ -1968,6 +2020,8 @@ export async function createRealtimeSession(
     recordCallOutcome: (outcome) => callOutcome.record(outcome),
     onSessionClosed: (handler) => { sessionClosedHandlers.push(handler); },
     noteCallerText: () => silenceWatchdog.callerHeard(),
+    onAgentAudioDone: (handler) => { agentAudioDoneHandlers.push(handler); },
+    agentPlaybackDone,
     costTracker,
     routedModel: costTracker.activeModel,
     routedTier: costTracker.activeModelTier,

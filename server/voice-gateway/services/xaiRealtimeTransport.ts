@@ -135,6 +135,8 @@ export class XaiRealtimeTransport extends EventEmitter {
     if (type === 'response.created') this.emit('response.created', event);
     if (type === 'response.done') this.emit('response.done', event);
     if (type === 'response.cancelled' || type === 'response.canceled') this.emit('response.cancelled', event);
+    // Server VAD: the caller is mid-utterance (the silence watchdog pauses).
+    if (type === 'input_audio_buffer.speech_started' || type === 'input_audio_buffer.speech_stopped') this.emit(type, event);
 
     if (type === 'response.output_audio.delta' || type === 'response.audio.delta' || type === 'response.output_audio_transcript.delta') {
       const delta = typeof event.delta === 'string' ? event.delta : '';

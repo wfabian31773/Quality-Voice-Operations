@@ -99,13 +99,15 @@ describe('updateCallState', () => {
 });
 
 describe('persistCallOutcome', () => {
-  it('merges context.callOutcome in a tenant transaction, keeping other keys and any existing outcome', async () => {
+  it('merges context.callEndOutcome in a tenant transaction, keeping other keys and any existing outcome', async () => {
     await persistCallOutcome('t1', 'cs1', 'never_heard');
     const upd = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('UPDATE call_sessions'));
     expect(upd?.[0]).toBe(PERSIST_CALL_OUTCOME_SQL);
     expect(upd?.[1]).toEqual(['t1', 'cs1', 'never_heard']);
-    expect(PERSIST_CALL_OUTCOME_SQL).toContain("COALESCE(context, '{}'::jsonb) || jsonb_build_object('callOutcome'");
-    expect(PERSIST_CALL_OUTCOME_SQL).toContain("NOT (COALESCE(context, '{}'::jsonb) ? 'callOutcome')");
+    expect(PERSIST_CALL_OUTCOME_SQL).toContain("COALESCE(context, '{}'::jsonb) || jsonb_build_object('callEndOutcome'");
+    expect(PERSIST_CALL_OUTCOME_SQL).toContain("NOT (COALESCE(context, '{}'::jsonb) ? 'callEndOutcome')");
+    // The record_call_outcome tool's key is never written or tested here.
+    expect(PERSIST_CALL_OUTCOME_SQL).not.toMatch(/'callOutcome'/);
     expect(a.clientQueryMock.mock.calls.map(([s]) => s)).toEqual(expect.arrayContaining(['BEGIN', 'COMMIT']));
   });
 });

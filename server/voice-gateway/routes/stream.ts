@@ -694,6 +694,9 @@ export function attachWebSocket(server: HTTPServer): void {
                 onHandoff,
                 onSessionSwapRequired,
                 isTrial: budgetResult.isTrial,
+                // Silence is counted from when Twilio has played the agent's
+                // audio (mark echo), not from the model's response.done.
+                playbackConfirm: 'twilio_mark',
               });
 
               callSessionId = sessionResult.callSessionId;
@@ -779,6 +782,14 @@ export function attachWebSocket(server: HTTPServer): void {
                     });
                   }
                 }
+              });
+
+              // The agent turn's audio has all been sent as media frames:
+              // queue a mark behind it. Twilio echoes the mark once that audio
+              // has played, which re-arms the silence watchdog.
+              sessionResult.onAgentAudioDone((markName) => {
+                if (ws.readyState !== WebSocket.OPEN || !streamSid) return;
+                ws.send(JSON.stringify({ event: 'mark', streamSid, mark: { name: markName } }));
               });
 
               const apiKey = process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
@@ -884,6 +895,13 @@ export function attachWebSocket(server: HTTPServer): void {
             if (!sessionResult || !msg.media?.payload) break;
             const audioBuffer = base64ToArrayBuffer(msg.media.payload);
             sessionResult.sendAudioToOpenAI(audioBuffer);
+            break;
+          }
+
+          case 'mark': {
+            // Playback reached one of our marks. Stale names are ignored.
+            if (!sessionResult || typeof msg.mark?.name !== 'string') break;
+            sessionResult.agentPlaybackDone(msg.mark.name);
             break;
           }
 

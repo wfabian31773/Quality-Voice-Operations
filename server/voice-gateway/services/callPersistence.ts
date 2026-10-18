@@ -231,13 +231,15 @@ export async function finalizeCallSession(
   });
 }
 
-// Merges `callOutcome` into context (other keys kept) and never overwrites an
-// outcome that is already stored, so the row keeps the first one.
+// Merges the runtime end outcome into context as `callEndOutcome` (other keys
+// kept) and never overwrites one that is already stored, so the row keeps the
+// first. Not `callOutcome`: the record_call_outcome tool writes its
+// disposition object there and analytics read it.
 export const PERSIST_CALL_OUTCOME_SQL = `UPDATE call_sessions
-   SET context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('callOutcome', $3::text),
+   SET context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('callEndOutcome', $3::text),
        updated_at = NOW()
  WHERE tenant_id = $1 AND id = $2
-   AND NOT (COALESCE(context, '{}'::jsonb) ? 'callOutcome')`;
+   AND NOT (COALESCE(context, '{}'::jsonb) ? 'callEndOutcome')`;
 
 export async function persistCallOutcome(
   tenantId: string,
