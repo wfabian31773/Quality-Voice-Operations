@@ -7,6 +7,7 @@ import type { CallFacts, CallFactsInit } from './types';
 
 const BOOK_COMMIT = 'scheduling.book.commit';
 const CANCEL_COMMIT = 'scheduling.cancel.commit';
+const RESCHEDULE_COMMIT = 'scheduling.reschedule.commit';
 const TICKET_COMMIT = 'tickets.create.commit';
 const SMS_SEND = 'sms.send';
 const TRANSFER = 'call.transfer';
@@ -115,6 +116,9 @@ describe('checkSay (a) success words need a matching ok commit', () => {
       "Confirmed: Men's cut with Marco, Friday at 3, for Ana.",
       'Confirmado: corte con Marco, el viernes a las 3, para Ana.',
       'Perfect. Confirmed: Friday at 3 with Marco.',
+      'Perfect, confirmed: Friday at 3 with Marco.',
+      'Marco, confirmed: Friday at 3.',
+      'Ana, confirmado: el viernes a las 3.',
       'CONFIRMADO : corte con Marco.',
     ]) {
       expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
@@ -130,6 +134,36 @@ describe('checkSay (a) success words need a matching ok commit', () => {
       '¿Me confirma su nombre?',
       'Marco confirmed: Friday works.',
       'Once it is confirmed, I will let you know.',
+    ]) {
+      expect(checkSay(facts(), line), line).toEqual({ ok: true });
+    }
+  });
+
+  it('readback labels "Cancelled:" / "Cancelada:" need an ok cancel commit; a booking commit does not count', () => {
+    for (const line of ["Cancelled: Ana's men's cut with Marco, Friday at 3.", 'Cancelada: la cita de Ana, corte con Marco, el viernes.']) {
+      expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
+      expectBlocked(checkSay(committed(facts(), BOOK_COMMIT, true), line), 'say.success_before_commit');
+      expect(checkSay(committed(facts(), CANCEL_COMMIT, true), line), line).toEqual({ ok: true });
+    }
+  });
+
+  it('readback labels "Done:" / "Listo:" are blocked before a commit, allowed after an ok reschedule or booking commit', () => {
+    for (const line of [
+      "Done: Ana's men's cut is now Friday at 3 with Marco.",
+      'Listo: la cita de Ana, corte, ahora es el viernes con Marco.',
+    ]) {
+      expectBlocked(checkSay(facts(), line), 'say.success_before_commit');
+      expect(checkSay(committed(facts(), RESCHEDULE_COMMIT, true), line), line).toEqual({ ok: true });
+      expect(checkSay(committed(facts(), BOOK_COMMIT, true), line), line).toEqual({ ok: true });
+    }
+  });
+
+  it('"done" / "listo" that are not an opening label are allowed before a commit', () => {
+    for (const line of [
+      'Once we are done: Friday at 3 works.',
+      'Let me know when you are done, then I can check Friday.',
+      '¿Está listo para reservar?',
+      '¿Está listo para reservar? Opciones: viernes a las 3.',
     ]) {
       expect(checkSay(facts(), line), line).toEqual({ ok: true });
     }
@@ -205,6 +239,7 @@ describe('checkSay (b) voiceRefs:false blocks every ref-shaped string', () => {
       'On October 17 2026 your ref is 48213.',
       'Your ref is 48213, 10/17/2026.',
       'Call 555 10 17 2026.',
+      'Your code is 4 8 2 1 3 may I help you?',
     ]) {
       expectBlocked(checkSay(f, line), 'say.ref_not_voiced');
     }

@@ -15,8 +15,8 @@
  * An empty `actionSegments` matches any commit/write result (not a transfer).
  *
  * `labels` are claims only as a label: the whole text before a colon that opens
- * the line or a sentence, as in the app's own post-commit readback
- * ("Confirmed: …", "Confirmado: …"). "Just to confirm: …" and "I confirmed
+ * the line or a sentence, as in the app's own post-commit readbacks
+ * ("Confirmed: …", "Done: …", "Cancelada: …"). "Just to confirm: …" and "I confirmed
  * your phone number" are not claims.
  */
 export interface SuccessClaimGroup {
@@ -30,7 +30,7 @@ export const SUCCESS_CLAIMS: readonly SuccessClaimGroup[] = [
   {
     effect: 'appointment',
     actionSegments: ['book', 'reschedule'],
-    labels: ['Confirmed', 'Confirmado'],
+    labels: ['Confirmed', 'Confirmado', 'Done', 'Listo'],
     phrases: [
       "you're booked",
       'you are booked',
@@ -57,6 +57,7 @@ export const SUCCESS_CLAIMS: readonly SuccessClaimGroup[] = [
   {
     effect: 'cancellation',
     actionSegments: ['cancel'],
+    labels: ['Cancelled', 'Canceled', 'Cancelada'],
     phrases: [
       "i've cancelled",
       "i've canceled",

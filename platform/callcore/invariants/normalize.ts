@@ -27,11 +27,11 @@ export function findPhrase(normalizedText: string, normalizedPhrases: readonly s
 
 /**
  * Normalized text before a colon that opens the line or a sentence:
- * "Great. Confirmed: Friday at 3" → ["confirmed"]. Sentences end at . ! ? ; ¡ ¿ or a newline.
+ * "Great. Confirmed: Friday at 3" → ["confirmed"]. Sentences end at . , ! ? ; ¡ ¿ or a newline.
  */
 export function leadingLabels(text: string): string[] {
   return text
-    .split(/[.!?;¡¿\n]+/)
+    .split(/[.,!?;¡¿\n]+/)
     .map((sentence) => {
       const colon = sentence.search(/[:：]/);
       return colon < 0 ? '' : normalizeSpeech(sentence.slice(0, colon));
@@ -53,11 +53,12 @@ const YEAR = '(?:19|20)\\d{2}';
  *   - day + month name + optional year: "17 October 2026", "17 de octubre de 2026";
  *   - ISO "2026-10-17";
  *   - numeric M/D/YYYY or D/M/YYYY with one separator (/, - or space), checked in
- *     dateParts. A digit group next to it ("555 12 12 2026") means it isn't a date.
+ *     dateParts.
+ * A digit group next to any of them ("555 12 12 2026", "4 8 2 1 3 may") means it isn't a date.
  */
 const DATE_RES: readonly RegExp[] = [
-  new RegExp(`(?<![\\p{L}\\p{N}])${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+${YEAR})?(?![\\p{L}\\p{N}])`, 'giu'),
-  new RegExp(`(?<![\\p{L}\\p{N}])\\d{1,2}\\s+(?:de\\s+)?${MONTH}(?:,?\\s+(?:del?\\s+)?${YEAR})?(?![\\p{L}\\p{N}])`, 'giu'),
+  new RegExp(`(?<![\\p{L}\\p{N}])${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+${YEAR})?(?![\\p{L}\\p{N}]|[ -]\\p{N})`, 'giu'),
+  new RegExp(`(?<![\\p{L}\\p{N}]|\\p{N}[ -])\\d{1,2}\\s+(?:de\\s+)?${MONTH}(?:,?\\s+(?:del?\\s+)?${YEAR})?(?![\\p{L}\\p{N}])`, 'giu'),
   new RegExp(`(?<![\\p{L}\\p{N}]|\\p{N}[ -])${YEAR}-(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\\d|3[01])(?![\\p{L}\\p{N}]|[ -]\\p{N})`, 'gu'),
 ];
 const NUMERIC_DATE_RE = new RegExp(`(?<![\\p{L}\\p{N}]|\\p{N}[ -])(\\d{1,2})([/ -])(\\d{1,2})\\2${YEAR}(?![\\p{L}\\p{N}]|[ -]\\p{N})`, 'gu');
