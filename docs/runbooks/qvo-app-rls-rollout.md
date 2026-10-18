@@ -40,7 +40,13 @@ Do not print or paste secret values into tickets, chat, or logs.
    `qvo_app` with `LOGIN NOBYPASSRLS`, grants, `FORCE ROW LEVEL SECURITY`). It
    still runs as `postgres` from `PLATFORM_DB_POOL_URL`. The app keeps working
    because `postgres` bypasses RLS (FORCE included). The isolation suite stays
-   red (`Connected role subject to RLS` fails) — expected.
+   red (`Connected role subject to RLS` fails) — expected. That should be the
+   only failure: while the pool is a BYPASSRLS role, each `Cross-tenant read
+   blocked on <table>` probe runs as `platform_rls_tester` (migration 015) inside
+   a savepoint, and its details say which role evaluated it. If the switch fails,
+   the details say it ran as the connected role and cannot detect leaks. The
+   nightly `Scheduled tenant isolation tests detected failures` log line lists
+   the failing check names in `failedChecks`.
 2. **Supabase: set the `qvo_app` password.** Supabase dashboard → SQL editor,
    QVO project:
    ```sql

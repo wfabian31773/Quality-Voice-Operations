@@ -371,6 +371,7 @@ export async function runTenantIsolationScheduledCycle(): Promise<IsolationSched
         logger.error('Tenant isolation failures detected but no tenant available for audit log', {
           runId: runResult.runId,
           failures: failures.length,
+          failedChecks: failures.map((f) => f.testName),
         });
       }
 
@@ -383,6 +384,8 @@ export async function runTenantIsolationScheduledCycle(): Promise<IsolationSched
         runId: runResult.runId,
         failed: runResult.failed,
         passed: runResult.passed,
+        // Check names only (no details, tenant ids or row data).
+        failedChecks: failures.map((f) => f.testName),
         emailsDelivered: notify.emailsDelivered,
         inAppDelivered: notify.inAppDelivered,
       });
