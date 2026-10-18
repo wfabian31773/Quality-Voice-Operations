@@ -6,7 +6,7 @@
  * world, so every run starts from nothing.
  */
 import { EventEmitter } from 'node:events';
-import type { VirtualClock } from './clock';
+import { settle, type VirtualClock } from './clock';
 import { FakeTwilioCall } from './fakeTwilio';
 import { FakeXaiServer, type FakeXaiScript } from './fakeXai';
 
@@ -116,6 +116,28 @@ export class CallWorld {
 
   get elapsed(): number {
     return this.clock.elapsed;
+  }
+
+  private readonly realWork = new Set<Promise<unknown>>();
+
+  /**
+   * Real (non-virtual) async work an edge awaits, e.g. real I/O. The clock
+   * doesn't advance until it settles (drainReal), so how long it takes in
+   * real time can't move it on the virtual timeline.
+   */
+  trackReal<T>(work: Promise<T>): Promise<T> {
+    this.realWork.add(work);
+    const done = () => this.realWork.delete(work);
+    work.then(done, done);
+    return work;
+  }
+
+  /** Wait until no tracked real work is pending, letting what it unblocks run too. */
+  async drainReal(): Promise<void> {
+    while (this.realWork.size > 0) {
+      await Promise.allSettled([...this.realWork]);
+      await settle(2);
+    }
   }
 
   event(type: string): CallEventRecord[] {

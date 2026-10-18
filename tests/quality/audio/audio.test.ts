@@ -14,7 +14,7 @@ import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { AudioGateReport } from '../../../scripts/quality/audio/gate';
 import { loadAudioScenarioDir } from '../../../scripts/quality/audio/scenario';
-import { CLI, MUTANTS, runHarness, type HarnessRun } from './spawn';
+import { CLI, MUTANTS, runHarness, STRESS, type HarnessRun } from './spawn';
 
 const SCENARIO_DIR = path.join(__dirname, 'scenarios');
 const RED_FIXTURE_DIR = path.join(__dirname, 'fixtures/red');
@@ -111,6 +111,50 @@ describe('audio pack: pass^5 on the real stream/session code', () => {
 
   it('is deterministic: the same failure signature in every run (timing jitter included)', () => {
     for (const id of [S03, S12, S17]) expect(new Set(statuses(report, id)).size).toBe(1);
+  });
+});
+
+describe('audio pack: the same result on a loaded box and in any env', () => {
+  let idle: HarnessRun;
+  let stressed: HarnessRun;
+  let oldHarness: HarnessRun;
+  let pollutedEnv: HarnessRun;
+
+  beforeAll(async () => {
+    // All four at once: the parallel children add real CPU load on top of the stress entry's own.
+    [idle, stressed, oldHarness, pollutedEnv] = await Promise.all([
+      runHarness(CLI, ['--pass-k=5', '--json']),
+      runHarness(STRESS, []),
+      runHarness(STRESS, ['--keep-dynamic-imports']),
+      // A runner-like env: another TZ, CI and NODE_ENV set, and whatever this vitest process has.
+      runHarness(CLI, ['--pass-k=5', '--json'], { ...process.env, TZ: 'Pacific/Kiritimati', CI: 'true', NODE_ENV: 'production' }),
+    ]);
+    for (const [name, run] of Object.entries({ idle, stressed, oldHarness, pollutedEnv })) {
+      if (!run.report) throw new Error(`${name}: no report\n${run.stdout}\n${run.stderr}`);
+    }
+  }, TIMEOUT_MS);
+
+  it('stressed (slow loader thread, starved event loop, real I/O in the DB edge): pass^5 unchanged, every observation identical to idle', () => {
+    expect(stressed.code, stressed.stdout).toBe(0);
+    const [a, b] = [idle.report as AudioGateReport, stressed.report as AudioGateReport];
+    for (const id of [S03, S12, S17]) expect(statuses(b, id)).toEqual(statuses(a, id));
+    expect(b.observations).toEqual(a.observations);
+  });
+
+  it('control: the same stress on the old harness (runtime import() left to the loader) reproduces the flake: no late-tool double answer, pinned mismatch', () => {
+    const report = oldHarness.report as AudioGateReport;
+    expect(oldHarness.code).toBe(1);
+    // Which keys go missing depends on how late the import lands (at 300 ms it was the orchestrator's exact
+    // [clear, stale_audio]); in every run the late tool result never answers.
+    expect(oldHarness.stdout).toContain('pinned mismatch: expected exactly [barge_in.clear, barge_in.stale_audio, barge_in.answers, barge_in.late_tool_result], got [');
+    for (const obs of report.observations[S12]) expect(obs.responses.map((r) => r.kind)).toEqual(['greeting', 'reply', 'reply']);
+    // S03 and S17 make no tool call, so they never hit the import: same as idle.
+    for (const id of [S03, S17]) expect(report.observations[id]).toEqual((idle.report as AudioGateReport).observations[id]);
+  });
+
+  it('a polluted env (TZ, CI, NODE_ENV, the test process env) gives the identical report: the harness clears its env first', () => {
+    expect(pollutedEnv.code, pollutedEnv.stdout).toBe(0);
+    expect((pollutedEnv.report as AudioGateReport).observations).toEqual((idle.report as AudioGateReport).observations);
   });
 });
 

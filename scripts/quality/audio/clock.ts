@@ -1,10 +1,13 @@
 /**
  * Virtual clock for the audio harness. Installed over the global timer
- * functions and Date.now, so the runtime's own timers (silence watchdog,
+ * functions, Date.now and `new Date()`, so the runtime's own timers (silence watchdog,
  * playback fallback, budget interval) run on harness time: a 10-minute
  * ladder takes milliseconds and every run fires the same timers in the
  * same order. setImmediate / process.nextTick stay real: the harness uses
- * them to let the runtime's promise chains settle between steps.
+ * them to let the runtime's promise chains settle between steps. They only
+ * order work, they don't measure time, so a loaded box runs the same turns.
+ * Anything that waits on real I/O must finish before the clock moves: the
+ * `quiesce` hook (CallWorld.drainReal) runs before every advance.
  */
 
 type TimerFn = (...args: unknown[]) => void;
@@ -45,6 +48,23 @@ interface Saved {
   setInterval: typeof globalThis.setInterval;
   clearInterval: typeof globalThis.clearInterval;
   dateNow: typeof Date.now;
+  Date: DateConstructor;
+}
+
+/**
+ * `Date` whose no-argument form (`new Date()`, `Date()`) reads the virtual
+ * clock; with arguments it is the real Date. Instances are real Dates (same
+ * prototype), so `instanceof Date` and subclasses keep working.
+ */
+function virtualDate(RealDate: DateConstructor, now: () => number): DateConstructor {
+  function VirtualDate(this: unknown, ...args: unknown[]): unknown {
+    if (!new.target) return new RealDate(now()).toString();
+    return Reflect.construct(RealDate, args.length === 0 ? [now()] : args, new.target);
+  }
+  Object.setPrototypeOf(VirtualDate, RealDate);
+  VirtualDate.prototype = RealDate.prototype;
+  (VirtualDate as unknown as { now: () => number }).now = now;
+  return VirtualDate as unknown as DateConstructor;
 }
 
 /** Real setImmediate, captured before anything is installed. */
@@ -61,6 +81,8 @@ export class VirtualClock {
   private nextId = 1;
   private seq = 0;
   private saved: Saved | null = null;
+  /** Waits out real (non-virtual) work before time moves on; set per call by the harness. */
+  quiesce: () => Promise<void> = async () => {};
 
   constructor(readonly epochMs = Date.parse('2026-10-20T14:00:00.000Z')) {
     this.current = epochMs;
@@ -104,6 +126,7 @@ export class VirtualClock {
   /** Advance to `elapsed + ms`, firing due timers in time order, settling after each. */
   async advance(ms: number, settleTurns = 4): Promise<void> {
     const target = this.current + ms;
+    await this.quiesce();
     for (;;) {
       const next = this.nextDue(target);
       if (!next) break;
@@ -116,6 +139,7 @@ export class VirtualClock {
       }
       next.fn(...next.args);
       await settle(settleTurns);
+      await this.quiesce();
     }
     this.current = target;
   }
@@ -128,13 +152,16 @@ export class VirtualClock {
       setInterval: globalThis.setInterval,
       clearInterval: globalThis.clearInterval,
       dateNow: Date.now,
+      Date: globalThis.Date,
     };
     const g = globalThis as unknown as Record<string, unknown>;
     g.setTimeout = (fn: TimerFn, ms?: number, ...args: unknown[]) => this.setTimeout(fn, ms, ...args);
     g.clearTimeout = (handle: unknown) => this.clear(handle);
     g.setInterval = (fn: TimerFn, ms?: number, ...args: unknown[]) => this.setInterval(fn, ms, ...args);
     g.clearInterval = (handle: unknown) => this.clear(handle);
-    Date.now = () => this.current;
+    // Date.now on the real Date too, for code that kept a reference to it.
+    this.saved.Date.now = () => this.current;
+    g.Date = virtualDate(this.saved.Date, () => this.current);
   }
 
   uninstall(): void {
@@ -144,7 +171,8 @@ export class VirtualClock {
     g.clearTimeout = this.saved.clearTimeout;
     g.setInterval = this.saved.setInterval;
     g.clearInterval = this.saved.clearInterval;
-    Date.now = this.saved.dateNow;
+    g.Date = this.saved.Date;
+    this.saved.Date.now = this.saved.dateNow;
     this.saved = null;
   }
 
@@ -152,6 +180,7 @@ export class VirtualClock {
   reset(): void {
     this.timers.clear();
     this.current = this.epochMs;
+    this.quiesce = async () => {};
   }
 
   private add(fn: TimerFn, ms: number | undefined, args: unknown[], repeat = false): VirtualTimer {

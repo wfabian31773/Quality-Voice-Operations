@@ -135,6 +135,7 @@ export async function runAudioCall(
     scenario.db?.slow,
   );
   setCurrentWorld(world);
+  clock.quiesce = () => world.drainReal();
   try {
     const server = new EventEmitter();
     rt.attachWebSocket(server);
@@ -173,6 +174,7 @@ export async function runAudioCall(
     }
     await Promise.all(world.floorSettled);
     await settle(8);
+    await world.drainReal();
     return world;
   } finally {
     setCurrentWorld(null);

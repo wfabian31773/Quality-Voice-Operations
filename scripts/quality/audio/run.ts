@@ -12,7 +12,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { installEdges, REPO_ROOT, type RuntimeModules } from './edges';
+import { type EdgeOptions, installEdges, REPO_ROOT, type RuntimeModules } from './edges';
 import { formatAudioGate, runAudioGate, type AudioGateReport } from './gate';
 import { captureConsole } from './harness';
 import { loadAudioScenarioDir } from './scenario';
@@ -56,12 +56,14 @@ export function parseAudioArgs(argv: string[]): AudioCliArgs {
 export interface AudioCliHooks {
   /** Runs after the edges are in and the runtime is loaded, before any call (mutation tests). */
   beforeRun?: (rt: RuntimeModules) => void;
+  /** Edge options (the stress test's control run only). */
+  edges?: EdgeOptions;
 }
 
 export async function runAudioCli(argv: string[], hooks: AudioCliHooks = {}): Promise<{ code: number; report: AudioGateReport }> {
   const args = parseAudioArgs(argv);
   const scenarios = loadAudioScenarioDir(args.dir);
-  const rt = installEdges();
+  const rt = installEdges(hooks.edges);
   captureConsole();
   hooks.beforeRun?.(rt);
   const report = await runAudioGate(rt, scenarios, { k: args.k, only: args.only });

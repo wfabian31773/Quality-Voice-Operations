@@ -58,6 +58,20 @@ describe('invariants', () => {
     expect(rules(input({ bookings: [{ ...a, status: 'cancelled' }, b] }))).toEqual([]);
   });
 
+  it('booking.overlap: a booking inside the previous one\'s service buffer overlaps (blocked_until)', () => {
+    // 15:00-15:30 men's cut + 15-minute buffer blocks Marco through 15:45.
+    const buffered = (bookings: BookingRow[]) => {
+      const value = input({ bookings });
+      value.state.services = value.state.services.map((service) => (service.id === 'mens-cut' ? { ...service, bufferMin: 15 } : service));
+      return value;
+    };
+    const a = booking({ id: 'seeded', callId: undefined, start: '2026-10-20T15:00:00-04:00' });
+    expect(rules(buffered([a, booking({ status: 'held' })]))).toEqual(['booking.overlap']);
+    expect(rules(buffered([a, booking({ id: 'later', callId: undefined, start: '2026-10-20T15:45:00-04:00' })]))).toEqual([]);
+    // Without the buffer, back to back at 15:30 is fine.
+    expect(rules(input({ bookings: [a, booking({ status: 'held' })] }))).toEqual([]);
+  });
+
   it('floor.more_than_one and floor.with_artifact', () => {
     const floor: TicketRow = { id: 'f1', status: 'open', kind: 'message', subject: 's', callId: CALL, floor: true, phone: '' };
     expect(rules(input({ tickets: [floor] }))).toEqual([]);

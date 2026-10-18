@@ -22,7 +22,25 @@ CI: `.github/workflows/quality-audio.yml`, nightly at 07:00 UTC, on demand, and 
 - **Caller audio:** `OfflineCallerVoice` (`scripts/quality/audio/callerVoice.ts`) makes deterministic 8 kHz μ-law frames, 20 ms per Twilio `media` event: a band-limited voiced buzz with a syllable envelope, as long as the line. Silence and faint line hiss are there for diallers. `CallerVoice.synthesize(line, lang)` is where a real TTS would plug in. Only the offline voice exists: no network, no key, no env.
 - **Fake xAI server** (`fakeXai.ts`): runs energy VAD on the audio the transport appends and honours the session's `turn_detection` (end of turn after `silence_duration_ms`, auto-response, interrupt). It maps the k-th caller utterance to the scenario's k-th reply, with the transcript the scenario gives, an empty one, or none. It says the quoted line of runtime instructions (greeting, silence prompt, goodbye), and streams audio 4x faster than real time, like the real model.
 - **Fake Twilio** (`fakeTwilio.ts`): models the playback buffer. Agent audio plays in real time, a `mark` is echoed once the audio before it has played, and `clear` drops unplayed audio and echoes pending marks. So "what the caller heard" is graded.
-- **Time:** a virtual clock replaces the global timers and `Date.now`, so the 8 s, 15 s and 10-minute ladders run in milliseconds and every run is identical. Run r shifts the caller's timing by (r - 1) × `jitterMs`.
+- **Time:** a virtual clock replaces the global timers, `Date.now` and `new Date()`, so the 8 s, 15 s and 10-minute ladders run in milliseconds and every run is identical. Run r shifts the caller's timing by (r - 1) × `jitterMs`.
+
+## Determinism on a loaded box
+
+Nothing on a call's timeline may wait on real time:
+
+- **Runtime `import()`.** The tool path (`await import('…/UsageRecorder')`) and stream.ts's DNC check use dynamic imports. Under `node --import tsx` these resolve asynchronously on the loader thread, in real time, while the clock keeps stepping. On a busy box S12's late tool result landed after the hangup (the 1-in-3 flake). The edge compiles each relative `import('./x')` in `server/`/`platform/` as `Promise.resolve().then(() => require('./x'))` (`edges.ts`): it's the same module from the require cache, resolved in one microtask.
+- **Real I/O in an edge** goes through `CallWorld.trackReal(promise)`. The clock doesn't advance until it settles.
+- **Env:** `installEdges` clears the process env to `HARNESS_ENV` (`TZ=UTC`) before the runtime loads. The CLI on a CI runner and the vitest-spawned child therefore see the same env.
+
+`tests/quality/audio/stress.ts` proves it. It runs the pass^5 gate with the loader thread slowed (every runtime `import()` waits 1 s), the event loop starved (busy-waits) and real I/O in the DB edge. `audio.test.ts` checks three things:
+
+- the stressed report is identical to an idle run, every observation included;
+- the same stress with `--keep-dynamic-imports` (the old harness) reproduces the flake;
+- a polluted env (another TZ, `CI`, `NODE_ENV`, the test process env) gives the identical report.
+
+```
+node --import tsx tests/quality/audio/stress.ts [--keep-dynamic-imports] [--loader-delay-ms=N]
+```
 
 ## Scenarios
 

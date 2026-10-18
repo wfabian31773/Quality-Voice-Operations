@@ -7,7 +7,8 @@
  *   only by an ok book/reschedule commit that returned its id.
  * - booking.outside_slot: every booking made on the call sits on a slot the
  *   shop offered (same barber, same start).
- * - booking.overlap: no two live (held/confirmed) bookings of one barber overlap.
+ * - booking.overlap: no two live (held/confirmed) bookings of one barber overlap,
+ *   each blocking through its service buffer (blocked_until), like production.
  * - floor.more_than_one: at most one floor ticket per call.
  * - floor.with_artifact: no floor ticket when the call also filed a ticket or
  *   confirmed a booking.
@@ -18,7 +19,7 @@
  * - say.reference_number: no booking, hold or ticket id or ticket number is
  *   said aloud (they are texted, never read).
  */
-import { namesMatch } from './fakeToolProvider';
+import { bookingSpan, namesMatch } from './fakeToolProvider';
 import type { TenantState } from './seed';
 import type { BookingRow, CheckFailure, EndSnapshot, TraceEvent } from './types';
 
@@ -63,12 +64,9 @@ function violation(rule: InvariantRule, message: string, actual?: unknown): Chec
   return { check: 'invariant', message: `${rule}: ${message}`, ...(actual === undefined ? {} : { actual }) };
 }
 
-function endMs(row: BookingRow, state: TenantState): number {
-  const minutes = row.serviceIds.reduce(
-    (total, id) => total + (state.services.find((service) => service.id === id)?.durationMin ?? 0),
-    0,
-  );
-  return Date.parse(row.start) + minutes * 60_000;
+/** bookings.blocked_until: end + the largest buffer, the range the DB's exclusion constraint compares. */
+function blockedUntilMs(row: BookingRow, state: TenantState): number {
+  return bookingSpan(state.services, row.serviceIds, row.start).blockedUntilMs;
 }
 
 function bookingInvariants({ callId, trace, snapshot, state }: InvariantInput): CheckFailure[] {
@@ -94,7 +92,7 @@ function bookingInvariants({ callId, trace, snapshot, state }: InvariantInput): 
       if (a.staffId !== b.staffId) continue;
       const overlap =
         Date.parse(a.start) === Date.parse(b.start) ||
-        (Date.parse(a.start) < endMs(b, state) && Date.parse(b.start) < endMs(a, state));
+        (Date.parse(a.start) < blockedUntilMs(b, state) && Date.parse(b.start) < blockedUntilMs(a, state));
       if (overlap) failures.push(violation('booking.overlap', `${a.id} and ${b.id} overlap for ${a.staffId}`, [a, b]));
     }
   }

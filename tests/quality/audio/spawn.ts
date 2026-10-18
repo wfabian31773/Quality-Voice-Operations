@@ -12,6 +12,9 @@ import { RESULT_MARKER } from '../../../scripts/quality/audio/run';
 export const REPO_ROOT = path.resolve(__dirname, '../../..');
 export const CLI = 'scripts/quality/audio/run.ts';
 export const MUTANTS = 'tests/quality/audio/mutants.ts';
+export const STRESS = 'tests/quality/audio/stress.ts';
+/** The env the child starts with. The harness clears its env to HARNESS_ENV anyway (edges.ts), so a CI runner's env can't change a run. */
+export const CLEAN_ENV: NodeJS.ProcessEnv = { TZ: 'UTC' };
 
 export interface HarnessRun {
   code: number | null;
@@ -21,9 +24,9 @@ export interface HarnessRun {
   reports: Array<{ mutant: string; code: number; report: AudioGateReport }>;
 }
 
-export function runHarness(entry: string, args: string[]): Promise<HarnessRun> {
+export function runHarness(entry: string, args: string[], env: NodeJS.ProcessEnv = CLEAN_ENV): Promise<HarnessRun> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--import', 'tsx', entry, ...args], { cwd: REPO_ROOT, env: { TZ: 'UTC' } });
+    const child = spawn(process.execPath, ['--import', 'tsx', entry, ...args], { cwd: REPO_ROOT, env });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => out.push(chunk));

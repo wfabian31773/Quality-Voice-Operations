@@ -19,7 +19,17 @@
  *
  * The runtime reads XAI_API_KEY and VOICE_GATEWAY_STREAM_TOKEN; the harness
  * sets both to fixed dummies (it never reads env) so stream.ts takes its
- * production path. The fake xAI socket refuses any other bearer.
+ * production path. The fake xAI socket refuses any other bearer. Before
+ * that, the process env is cleared down to HARNESS_ENV, so the CLI on a CI
+ * runner and the vitest-spawned child see the same env.
+ *
+ * Dynamic imports: the runtime's relative `await import('./x')` calls (the
+ * tool path's usage meter, stream.ts's DNC check) would go through the ESM
+ * loader, whose tsx hooks resolve them asynchronously off-thread, in real
+ * time. The virtual clock keeps stepping meanwhile, so on a loaded box a
+ * tool result landed seconds later on the call's timeline. The edge
+ * compiles them as `Promise.resolve().then(() => require('./x'))`: the same
+ * module (the require cache, edges included), resolved in one microtask.
  */
 import Module, { createRequire } from 'node:module';
 import path from 'node:path';
@@ -92,10 +102,49 @@ export interface RuntimeModules {
   xaiRealtimeTransport: typeof import('../../../server/voice-gateway/services/xaiRealtimeTransport');
 }
 
+/** The only env a harness run sees (plus the two dummies installEdges sets). */
+export const HARNESS_ENV: Readonly<Record<string, string>> = { TZ: 'UTC' };
+
+function sanitizeEnv(): void {
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, HARNESS_ENV);
+}
+
+/** A relative dynamic import with a literal specifier, as esbuild prints it. */
+const RELATIVE_DYNAMIC_IMPORT = /(?<![.\w$])import\(\s*(["'])(\.{1,2}\/[^"'\n]+)\1\s*\)/g;
+const RUNTIME_DIRS = ['server', 'platform'].map((dir) => path.join(REPO_ROOT, dir) + path.sep);
+
+/** Runtime files whose dynamic imports were compiled to require, with how many (diagnostics and tests). */
+export const syncedDynamicImports = new Map<string, number>();
+
+function syncRuntimeDynamicImports(): void {
+  type Compile = (this: unknown, content: string, filename: string) => unknown;
+  const proto = Module.prototype as unknown as { _compile: Compile };
+  const compile = proto._compile;
+  proto._compile = function (this: unknown, content: string, filename: string) {
+    if (RUNTIME_DIRS.some((dir) => filename.startsWith(dir)) && !filename.includes(`${path.sep}node_modules${path.sep}`)) {
+      let count = 0;
+      content = content.replace(RELATIVE_DYNAMIC_IMPORT, (_match, quote: string, specifier: string) => {
+        count += 1;
+        return `Promise.resolve().then(() => require(${quote}${specifier}${quote}))`;
+      });
+      if (count > 0) syncedDynamicImports.set(path.relative(REPO_ROOT, filename), count);
+    }
+    return compile.call(this, content, filename);
+  };
+}
+
+export interface EdgeOptions {
+  /** Default true. false keeps the runtime's real `import()` (only to prove the stress test bites). */
+  syncDynamicImports?: boolean;
+}
+
 let installed: RuntimeModules | null = null;
 
-export function installEdges(): RuntimeModules {
+export function installEdges(opts: EdgeOptions = {}): RuntimeModules {
   if (installed) return installed;
+  sanitizeEnv();
+  if (opts.syncDynamicImports ?? true) syncRuntimeDynamicImports();
   process.env.XAI_API_KEY = HARNESS_XAI_KEY;
   process.env.VOICE_GATEWAY_STREAM_TOKEN = HARNESS_STREAM_TOKEN;
 
