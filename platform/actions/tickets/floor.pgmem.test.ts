@@ -212,6 +212,20 @@ describe('tickets.file_floor on pg-mem (sqlTicketsRepo)', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('counts a booking stored under the CallSid when the floor is called with the session id', async () => {
+    await tx.query(`INSERT INTO call_sessions (id, tenant_id, call_sid) VALUES ('sess-y', $1, 'CA-y')`, [TENANT]);
+    await tx.query(`INSERT INTO bookings (tenant_id, status, intake_data) VALUES ($1, 'confirmed', $2::jsonb)`, [
+      TENANT,
+      JSON.stringify({ qvo: { session: 'CA-y', serviceIds: [] } }),
+    ]);
+    expect(ok(await floor('sess-y', { callerLines: ['I need a fade Friday'] }))).toEqual({
+      filed: false,
+      reason: 'already_filed',
+    });
+    const { rows } = await tx.query(`SELECT 1 FROM tickets WHERE source_call_ref = 'sess-y'`);
+    expect(rows).toHaveLength(0);
+  });
+
   it("ignores another tenant's tickets, bookings and call row for the same call id", async () => {
     await tx.query(
       `INSERT INTO call_sessions (id, tenant_id, call_sid, caller_number) VALUES ('sess-b', $1, 'CA-shared', '+1 555 010 9999')`,

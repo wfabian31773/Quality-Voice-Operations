@@ -68,6 +68,47 @@ describe('saidMoreThanTheirOwnName', () => {
   it('removes filler phrases only as whole runs', () => {
     // "this" and "is" alone are content; only the "this is" run is filler.
     expect(contentWords(['is this open'])).toEqual(['is', 'this', 'open']);
-    expect(contentWords(['this is Luis'])).toEqual(['luis']);
+    expect(contentWords(['this is for Friday'])).toEqual(['for', 'friday']);
+  });
+
+  it('counts a contiguous callback number (7+ digits in one token) as substantive on its own', () => {
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis, 5552013344'], 'Luis')).toBe(true);
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis +15552013344'], 'Luis')).toBe(true);
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis (555)201-3344'], 'Luis')).toBe(true);
+    expect(saidMoreThanTheirOwnName(['Luis 42'], 'Luis')).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis, 555201'], 'Luis')).toBe(false);
+  });
+
+  it('drops a multi-word name after an intro phrase when it ends the line (no callerName)', () => {
+    expect(contentWords(['Hi, this is Luis Garcia'])).toEqual([]);
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['My name is Luis Garcia Lopez'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Hello, this is Luis Garcia'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['this is Luis Garcia'])).toBe(false);
+    expect(contentWords(['Hola, habla María José López'])).toEqual([]);
+    expect(saidMoreThanTheirOwnName(['Hola, habla María José López'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Buenas tardes, le habla Ana Ruiz'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['Hola, soy Ana Ruiz'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['me llamo Ana María Ruiz'])).toBe(false);
+    expect(saidMoreThanTheirOwnName(['mi nombre es Ana Ruiz'])).toBe(false);
+  });
+
+  it('keeps everything after the name, and never swallows a request as a name', () => {
+    expect(contentWords(['Hi, this is Luis Garcia, I need a fade Friday'])).toEqual(['luis', 'garcia', 'i', 'need', 'a', 'fade', 'friday']);
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia, I need a fade Friday'])).toBe(true);
+    expect(saidMoreThanTheirOwnName(['Hola, habla María José López, quiero una cita'])).toBe(true);
+    expect(contentWords(['this is about my booking Friday'])).toEqual(['about', 'my', 'booking', 'friday']);
+    expect(saidMoreThanTheirOwnName(['this is about my booking Friday'])).toBe(true);
+    // More than 3 tokens, or a common word in the tail, is not a name.
+    expect(saidMoreThanTheirOwnName(['this is my booking'])).toBe(true);
+    expect(saidMoreThanTheirOwnName(['soy de la tienda'])).toBe(true);
+    // The name only counts when it ends the line; a later line still counts.
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia', 'haircut tomorrow'])).toBe(true);
+  });
+
+  it.each([undefined, 'Luis'])('does not read "I\'m ..." as an introduction (callerName %s)', (callerName) => {
+    expect(saidMoreThanTheirOwnName(["I'm canceling tomorrow"], callerName)).toBe(true);
+    expect(saidMoreThanTheirOwnName(["I'm running late today"], callerName)).toBe(true);
+    expect(saidMoreThanTheirOwnName(['Hi, this is Luis Garcia'], callerName)).toBe(false);
   });
 });

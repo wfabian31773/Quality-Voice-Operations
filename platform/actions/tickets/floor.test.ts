@@ -240,6 +240,54 @@ describe('tickets.file_floor rules', () => {
     expect(stored).toContain('"substantive":true');
   });
 
+  it.each([['Hi, this is Luis, 5552013344'], ['Hi, this is Luis +15552013344']])(
+    'name plus a contiguous callback number (%s) → filed, the number masked in details and audit',
+    async (line) => {
+      const { store, tickets, floor } = setup();
+      const out = data(await floor({ callerLines: [line], callerName: 'Luis' }));
+      expect(out.reason).toBe('filed');
+      const { description } = tickets.state.tickets[0];
+      expect(description).not.toContain('5552013344');
+      expect(description).toContain('***3344');
+      for (const audit of store.audits) {
+        const stored = JSON.stringify(audit.inputRedacted);
+        expect(stored).not.toContain('5552013344');
+        expect(stored).toContain('***3344');
+      }
+    },
+  );
+
+  it('name plus a short number ("Luis 42") → nothing_substantive', async () => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ callerLines: ['Luis 42'], callerName: 'Luis' }))).toEqual({
+      filed: false,
+      reason: 'nothing_substantive',
+    });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
+
+  it('a multi-word self-introduction without callerName → nothing_substantive (EN and ES)', async () => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ callerLines: ['Hi, this is Luis Garcia'] }))).toEqual({ filed: false, reason: 'nothing_substantive' });
+    expect(data(await floor({ callId: 'CA-es', callerLines: ['Hola, habla María José López'] }, systemCtx('CA-es')))).toEqual({
+      filed: false,
+      reason: 'nothing_substantive',
+    });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
+
+  it('a booking stored under the CallSid, floor called with the session id → already_filed', async () => {
+    const { tickets, floor } = setup();
+    tickets.state.callSessions.set(`${TENANT}\0CA-y`, 'sess-y');
+    tickets.state.bookedCalls.add(`${TENANT}\0CA-y`);
+    const ctx = systemCtx('sess-y', { callId: undefined });
+    expect(data(await floor({ callId: 'sess-y', callerLines: ['I need a fade Friday'] }, ctx))).toEqual({
+      filed: false,
+      reason: 'already_filed',
+    });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
+
   it('a caller-supplied substantive flag → VALIDATION_FAILED', async () => {
     const { tickets, floor } = setup();
     expectFail(await floor({ callerLines: ['Hi, this is Luis'], callerName: 'Luis', substantive: true }), 'VALIDATION_FAILED');

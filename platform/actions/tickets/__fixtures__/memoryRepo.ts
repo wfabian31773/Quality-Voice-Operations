@@ -130,9 +130,13 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
       async hasCallArtifact(callRef) {
         const session = state.callSessions.get(`${tenantId}\0${callRef}`);
         const sessions = session ? [callRef, session] : [callRef];
+        // Bookings also match the CallSid of the call_sessions row whose id is callRef.
+        const callSids = [...state.callSessions]
+          .filter(([key, id]) => id === callRef && key.startsWith(`${tenantId}\0`))
+          .map(([key]) => key.slice(tenantId.length + 1));
         return (
           own().some((ticket) => ticket.sourceCallRef === callRef || sessions.includes(ticket.callId ?? '')) ||
-          sessions.some((id) => state.bookedCalls.has(`${tenantId}\0${id}`))
+          [...sessions, ...callSids].some((id) => state.bookedCalls.has(`${tenantId}\0${id}`))
         );
       },
       async callerNumber(callRef) {
