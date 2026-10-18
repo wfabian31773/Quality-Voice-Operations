@@ -96,7 +96,9 @@ export interface ActionDefinition<I = unknown, O = unknown> {
   output: ZodType<O>;
   permissions: ActionPermissions;
   agentDescription?: string;
-  run: (ctx: ActionContext, input: I, tx: TenantTx) => Promise<ActionResult<O>>;
+  /** Rewrites the raw input before it is audited; used only on the validation-failure path, must never throw. */
+  auditRawInput?: (raw: unknown) => unknown;
+  run:(ctx: ActionContext, input: I, tx: TenantTx) => Promise<ActionResult<O>>;
 }
 
 // Registry entries are heterogeneous; `any` keeps assignability from typed defs.

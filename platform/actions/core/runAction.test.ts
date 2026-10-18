@@ -651,6 +651,34 @@ describe('audit', () => {
     expectFail(result, 'VALIDATION_FAILED');
   });
 
+  it('audits the raw input on a validation failure when the action has no auditRawInput hook', async () => {
+    const { store, deps } = runtime([createEchoWriteAction({ count: 0 })]);
+    const raw = { note: 'kept as sent', phone: '+15555550142' };
+    expectFail(await runAction('core.echo.write', ctx({ idempotencyKey: 'raw-1' }), raw, deps), 'VALIDATION_FAILED');
+    expect(store.audits.map((a) => a.resultCode)).toEqual(['VALIDATION_FAILED']);
+    expect(store.audits[0]?.inputRedacted).toEqual({ note: 'kept as sent', phone: '***0142' });
+  });
+
+  it('audits the auditRawInput copy on a validation failure, and {} when the hook throws', async () => {
+    const base = createEchoWriteAction({ count: 0 });
+    const rewritten = defineAction({ ...base, name: 'core.echo.rewritten', auditRawInput: () => ({ note: 'rewritten' }) });
+    const throwing = defineAction({
+      ...base,
+      name: 'core.echo.throwing',
+      auditRawInput: () => {
+        throw new Error('hook failed');
+      },
+    });
+    const { store, deps } = runtime([rewritten, throwing]);
+    const raw = { note: 'secret 123-45-6789' };
+    expectFail(await runAction('core.echo.rewritten', ctx({ idempotencyKey: 'h-1' }), raw, deps), 'VALIDATION_FAILED');
+    expectFail(await runAction('core.echo.throwing', ctx({ idempotencyKey: 'h-2' }), raw, deps), 'VALIDATION_FAILED');
+    expect(store.audits.map((a) => [a.action, a.resultCode, a.inputRedacted])).toEqual([
+      ['core.echo.rewritten', 'VALIDATION_FAILED', { note: 'rewritten' }],
+      ['core.echo.throwing', 'VALIDATION_FAILED', {}],
+    ]);
+  });
+
   it('keeps a successful write when audit insert would abort the transaction', async () => {
     const side = { count: 0 };
     const store = createMemoryStore();

@@ -5,8 +5,11 @@ import { createTicketsActions } from './actions';
 import {
   NUMBER_MASK,
   FILE_FLOOR,
+  FLOOR_MAX_LINE_LENGTH,
+  FLOOR_MAX_LINES,
   FLOOR_SUBJECT,
   SSN_MASK,
+  floorAuditRawInput,
   floorIdempotencyKey,
   redactCallerLines,
   redactCallerText,
@@ -295,6 +298,33 @@ describe('tickets.file_floor rules', () => {
     expect(tickets.state.tickets).toHaveLength(0);
   });
 
+  it('a ticket stored with only source_call_ref = the CallSid, floor called with the session id → already_filed', async () => {
+    const { tickets, floor } = setup();
+    tickets.state.callSessions.set(`${TENANT}\0CA-z`, 'sess-z');
+    await tickets.repo({ query: async () => ({ rows: [] }) }, TENANT).insert({
+      kind: 'callback',
+      subject: 'call me back',
+      description: '',
+      contactName: '',
+      contactPhone: '',
+      urgency: 'normal',
+      priority: 'medium',
+      source: 'ai_agent',
+      intake: {},
+      callbackDueAt: null,
+      callRef: 'CA-z',
+      createdByUserId: null,
+      now: NOW,
+    });
+    expect(tickets.state.tickets[0]).toMatchObject({ callId: null, sourceCallRef: 'CA-z' });
+    const ctx = systemCtx('sess-z', { callId: undefined });
+    expect(data(await floor({ callId: 'sess-z', callerLines: ['I need a fade Friday'] }, ctx))).toEqual({
+      filed: false,
+      reason: 'already_filed',
+    });
+    expect(tickets.state.tickets).toHaveLength(1);
+  });
+
   it('a caller-supplied substantive flag → VALIDATION_FAILED', async () => {
     const { tickets, floor } = setup();
     expectFail(await floor({ callerLines: ['Hi, this is Luis'], callerName: 'Luis', substantive: true }), 'VALIDATION_FAILED');
@@ -448,5 +478,43 @@ describe('tickets.file_floor audit row', () => {
       expect(stored).not.toContain('5500');
     }
     expect(JSON.stringify(store.audits[0].inputRedacted)).toContain(NUMBER_MASK);
+  });
+
+  it.each([
+    ['51 lines', Array.from({ length: 51 }, (_, i) => (i === 7 ? 'card 4111 1111 1111 1111, ssn 123-45-6789' : 'I need a fade'))],
+    ['one line over 500 chars', [`card 4111 1111 1111 1111, ssn 123-45-6789 ${'x'.repeat(500)}`]],
+  ])('an oversized payload (%s) → VALIDATION_FAILED, the audit row holds no card or SSN and is capped', async (_label, lines) => {
+    const { store, floor } = setup();
+    expectFail(await floor({ callerLines: lines }), 'VALIDATION_FAILED');
+    expect(store.audits.map((a) => a.resultCode)).toEqual(['VALIDATION_FAILED']);
+    const audited = store.audits[0].inputRedacted as { callId: string; callerLines: string[] };
+    const stored = JSON.stringify(audited);
+    expect(stored).not.toContain('4111');
+    expect(stored.replace(/[\s,.-]/g, '')).not.toMatch(/\d{13,19}/);
+    expect(stored).not.toContain('123-45-6789');
+    expect(stored).toContain(NUMBER_MASK);
+    expect(stored).toContain(SSN_MASK);
+    expect(audited.callId).toBe(CALL);
+    expect(audited.callerLines.length).toBeLessThanOrEqual(FLOOR_MAX_LINES);
+    for (const line of audited.callerLines) expect(line.length).toBeLessThanOrEqual(FLOOR_MAX_LINE_LENGTH);
+  });
+
+  it('a non-string line → VALIDATION_FAILED, the audit row keeps the redacted string lines and drops the rest', async () => {
+    const { store, floor } = setup();
+    expectFail(await floor({ callerLines: ['my card is 4111 1111 1111 1111', 42, { x: 1 }] }), 'VALIDATION_FAILED');
+    expect(store.audits[0].inputRedacted).toEqual({ callId: CALL, callerLines: [`my card is ${NUMBER_MASK}`] });
+  });
+});
+
+describe('floorAuditRawInput', () => {
+  it('passes other fields through and leaves a non-object or a missing callerLines alone', () => {
+    expect(floorAuditRawInput({ callId: 'CA-1', extra: 'y', callerLines: ['ssn 123-45-6789'] })).toEqual({
+      callId: 'CA-1',
+      extra: 'y',
+      callerLines: [`ssn ${SSN_MASK}`],
+    });
+    expect(floorAuditRawInput({ callId: 'CA-1', callerLines: 'not a list' })).toEqual({ callId: 'CA-1', callerLines: 'not a list' });
+    expect(floorAuditRawInput(undefined)).toBeUndefined();
+    expect(floorAuditRawInput('text')).toBe('text');
   });
 });

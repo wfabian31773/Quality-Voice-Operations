@@ -65,6 +65,25 @@ export function redactCallerLines(lines: readonly string[]): string[] {
   return lines.length === 0 ? [] : redactCallerText(lines.join('\n')).split('\n');
 }
 
+/**
+ * The validation-failure audit copy of a raw floor input. runAction audits the
+ * raw input when it fails the schema (too many lines, a line too long, a
+ * non-string line, an unknown key), and the core redactor masks phones only.
+ * So callerLines is replaced by its redacted string entries (non-strings are
+ * dropped), then capped to FLOOR_MAX_LINES lines of FLOOR_MAX_LINE_LENGTH chars
+ * so the row stays bounded. Every other field passes through unchanged.
+ */
+export function floorAuditRawInput(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const input = raw as Record<string, unknown>;
+  if (!Array.isArray(input.callerLines)) return { ...input };
+  const strings = input.callerLines.filter((line): line is string => typeof line === 'string');
+  const callerLines = redactCallerLines(strings)
+    .slice(0, FLOOR_MAX_LINES)
+    .map((line) => line.slice(0, FLOOR_MAX_LINE_LENGTH));
+  return { ...input, callerLines };
+}
+
 function nonBlank(lines: readonly string[]): string[] {
   return lines.map((line) => line.trim()).filter(Boolean);
 }
@@ -143,6 +162,7 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
     output: fileFloorOutput,
     // No roles, no agent, no MCP scope: only a system actor passes checkPermission.
     permissions: { roles: [], agent: false },
+    auditRawInput: floorAuditRawInput,
     async run(ctx, input, tx) {
       if (ctx.actor.type !== 'system') return actionFail('FORBIDDEN', 'Only the runtime can file the floor ticket');
       if (ctx.callId && ctx.callId !== input.callId) {

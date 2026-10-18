@@ -42,6 +42,16 @@ function confirmationTokenFrom(input: unknown): string | undefined {
   return typeof token === 'string' && token.length > 0 ? token : undefined;
 }
 
+function auditableRawInput(def: AnyActionDefinition, rawInput: unknown): unknown {
+  if (!def.auditRawInput) return rawInput;
+  try {
+    return def.auditRawInput(rawInput);
+  } catch {
+    // Never fall back to the raw input: it is what the hook exists to keep out of the audit row.
+    return {};
+  }
+}
+
 function resultCode(result: ActionResult): string {
   return result.ok ? 'ok' : result.error.code;
 }
@@ -173,7 +183,7 @@ async function execute<I, O>(
   const parsed = def.input.safeParse(rawInput);
   if (!parsed.success) {
     const failed = validationError(parsed.error);
-    await auditBestEffort(withTenantTx, store, ctx, def.name, rawInput, failed, startedAt);
+    await auditBestEffort(withTenantTx, store, ctx, def.name, auditableRawInput(def, rawInput), failed, startedAt);
     return failed;
   }
 

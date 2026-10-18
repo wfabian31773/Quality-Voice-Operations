@@ -387,7 +387,8 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
         WHERE tenant_id = $1
           AND (source_call_ref = $2
                OR call_id = $2
-               OR call_id IN (SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2))
+               OR call_id IN (SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2)
+               OR source_call_ref IN (SELECT call_sid FROM call_sessions WHERE tenant_id = $1 AND id = $2))
         LIMIT 1`,
       [tenantId, callRef],
     );
