@@ -172,6 +172,46 @@ describe('scheduling.book.prepare enforces booking.book@1', () => {
     expect(other.exit).toBeUndefined();
   });
 
+  describe('sessions without a callId', () => {
+    const convCtx = () => agentCtx({ callId: undefined, conversationId: `conv-${randomUUID()}` });
+
+    it('counts per conversationId: the same slot missing twice exits to a message', async () => {
+      const ctx = convCtx();
+      const first = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() }));
+      expect(first).toMatchObject({ askId: 'ask.staff', retryable: true });
+      expect(first.exit).toBeUndefined();
+      const second = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() }));
+      expect(second).toMatchObject({ askId: 'ask.staff', exit: 'message_ticket', retryable: false });
+    });
+
+    it('a complete prepare clears the conversation\'s counts', async () => {
+      const ctx = convCtx();
+      await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() });
+      const full = { ...NO_NAME, customer: { name: 'Luis', phone: '+15555550142' } };
+      expect(refusal(await prepare(full, { ...ctx, idempotencyKey: randomUUID() })).code).not.toBe('SLOT_MISSING');
+      const again = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() }));
+      expect(again).toMatchObject({ askId: 'ask.staff', retryable: true });
+      expect(again.exit).toBeUndefined();
+    });
+
+    it('a different conversationId starts fresh', async () => {
+      const ctx = convCtx();
+      await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() });
+      const other = refusal(await prepare(SERVICE_ONLY, { ...convCtx(), idempotencyKey: randomUUID() }));
+      expect(other).toMatchObject({ askId: 'ask.staff', retryable: true });
+      expect(other.exit).toBeUndefined();
+    });
+
+    it('with neither callId nor conversationId, nothing is counted and it never exits', async () => {
+      const ctx = agentCtx({ callId: undefined, conversationId: undefined });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const ask = refusal(await prepare(SERVICE_ONLY, { ...ctx, idempotencyKey: randomUUID() }));
+        expect(ask).toMatchObject({ askId: 'ask.staff', retryable: true });
+        expect(ask.exit).toBeUndefined();
+      }
+    });
+  });
+
   it('speaks the Spanish ask when the call locale is Spanish', async () => {
     const error = refusal(await prepare(SERVICE_ONLY, agentCtx({ locale: 'es-MX' })));
     expect(error.callerSafeMessage).toBe(BOOKING_BOOK_V1.slots[1].defaultAsk.es);

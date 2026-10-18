@@ -57,7 +57,9 @@ function heldFactsOf(ctx: ActionContext): HeldFacts {
 
 /*
  * One ask per slot, then an exit. SLOT_MISSING refusals are counted per
- * (tenant, call, contract, slot) here, never from model arguments. The action
+ * (tenant, session, contract, slot) here, never from model arguments. The
+ * session is the one holds use (callId, else conversationId); with neither,
+ * nothing is counted and every refusal is a first ask. The action
  * store has no read path for the audit log, so this is an in-process map with
  * a TTL and a size cap: on more than one instance a call's second refusal can
  * land on a fresh counter and ask once more before the exit. A retry of the
@@ -68,8 +70,8 @@ const SLOT_ASK_TTL_MS = 30 * 60_000;
 const SLOT_ASK_MAX_ENTRIES = 5_000;
 const slotAsks = new Map<string, { count: number; atMs: number; lastKey?: string }>();
 
-function slotAskKey(ctx: ActionContext, callId: string, slot: SlotSpec): string {
-  return [ctx.tenantId, callId, contractKey(BOOKING_BOOK_V1), slot.name].join('\0');
+function slotAskKey(ctx: ActionContext, session: string, slot: SlotSpec): string {
+  return [ctx.tenantId, session, contractKey(BOOKING_BOOK_V1), slot.name].join('\0');
 }
 
 // invocationKey must be unique per model tool call (e.g. the provider's tool-call id),
@@ -90,8 +92,9 @@ function countSlotAsk(key: string, nowMs: number, invocationKey: string | undefi
 }
 
 function clearSlotAsks(ctx: ActionContext): void {
-  if (!ctx.callId) return;
-  for (const slot of BOOKING_BOOK_V1.slots) slotAsks.delete(slotAskKey(ctx, ctx.callId, slot));
+  const session = sessionOf(ctx);
+  if (!session) return;
+  for (const slot of BOOKING_BOOK_V1.slots) slotAsks.delete(slotAskKey(ctx, session, slot));
 }
 
 const SLOT_EXIT_MESSAGE = {
@@ -101,8 +104,9 @@ const SLOT_EXIT_MESSAGE = {
 
 function refuseMissingSlot(ctx: ActionContext, slot: SlotSpec): ActionResult<never> {
   const lang = readbackLang(ctx.locale);
-  const asks = ctx.callId
-    ? countSlotAsk(slotAskKey(ctx, ctx.callId, slot), ctx.now.getTime(), ctx.idempotencyKey)
+  const session = sessionOf(ctx);
+  const asks = session
+    ? countSlotAsk(slotAskKey(ctx, session, slot), ctx.now.getTime(), ctx.idempotencyKey)
     : 1;
   if (asks > BOOKING_BOOK_V1.ceilings.maxAsksPerSlot) {
     return actionFail('SLOT_MISSING', `Still missing ${slot.name} after one ask this call; offer to take a message`, {
