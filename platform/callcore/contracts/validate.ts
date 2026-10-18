@@ -79,10 +79,12 @@ export function schemaHasPath(schema: ZodTypeAny, path: string): boolean {
  * 2. A write contract has a confirm block.
  * 3. Outbound other than 'none' names its destination source.
  * 4. Every sayBack field exists in the commit action's output schema.
- * 5. Every onFailure chain ends in message_ticket or scripted_close. When
- *    `errorCodes` is given (the action runtime's code list, passed in so this
- *    folder never imports it), every onFailure key is one of them or 'default'.
- * 6. id@version is unique, and every slot inputPath exists in the prepare input.
+ * 5. onFailure has a 'default' chain, and every chain ends in message_ticket
+ *    or scripted_close. When `errorCodes` is given (the action runtime's code
+ *    list, passed in so this folder never imports it), every onFailure key is
+ *    one of them or 'default'.
+ * 6. id@version appears at most once in `peers` (which includes the contract
+ *    itself), and every slot inputPath exists in the prepare input.
  */
 export function validateContract(
   contract: ToolContract,
@@ -119,6 +121,9 @@ export function validateContract(
   }
 
   const slotNames = new Set(contract.slots.map((s) => s.name));
+  if (!Object.prototype.hasOwnProperty.call(contract.onFailure, 'default')) {
+    issues.push({ rule: 5, message: `${key}: onFailure needs a default chain` });
+  }
   for (const [code, chain] of Object.entries(contract.onFailure)) {
     if (errorCodes && code !== 'default' && !errorCodes.includes(code)) {
       issues.push({ rule: 5, message: `${key}: onFailure.${code} is not a known error code` });
@@ -134,7 +139,7 @@ export function validateContract(
     }
   }
 
-  if (peers.some((other) => other !== contract && contractKey(other) === key)) {
+  if (peers.filter((other) => contractKey(other) === key).length > 1) {
     issues.push({ rule: 6, message: `${key}: id@version is not unique` });
   }
   const prepare = contract.confirm ? actions.get(contract.confirm.prepare) : undefined;

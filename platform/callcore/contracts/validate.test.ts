@@ -70,11 +70,20 @@ describe('validateContract', () => {
   it('rule 5: every onFailure chain must end in message_ticket or scripted_close', () => {
     expect(rulesBroken(fixture({ onFailure: { CONFLICT: [{ step: 'offer_alternatives' }, { step: 'ask_again', slot: 'item' }] } }))).toEqual([5]);
     expect(rulesBroken(fixture({ onFailure: { CONFLICT: [] } }))).toEqual([5]);
-    expect(rulesBroken(fixture({ onFailure: { CONFLICT: [{ step: 'scripted_close' }] } }))).toEqual([]);
+    expect(rulesBroken(fixture({ onFailure: { CONFLICT: [{ step: 'scripted_close' }], default: [{ step: 'message_ticket' }] } }))).toEqual([]);
+  });
+
+  it('rule 5: onFailure must have a default chain', () => {
+    const empty = validateContract(fixture({ onFailure: {} }), FAKE_ACTIONS);
+    expect(empty.issues).toEqual([{ rule: 5, message: 'fake.flow@1: onFailure needs a default chain' }]);
+    const noDefault = validateContract(fixture({ onFailure: { CONFLICT: [{ step: 'message_ticket' }] } }), FAKE_ACTIONS);
+    expect(noDefault.issues).toEqual([{ rule: 5, message: 'fake.flow@1: onFailure needs a default chain' }]);
   });
 
   it('rule 5: an ask_again step must name a slot of the contract', () => {
-    const unknownSlot = fixture({ onFailure: { CONFLICT: [{ step: 'ask_again', slot: 'time' }, { step: 'message_ticket' }] } });
+    const unknownSlot = fixture({
+      onFailure: { CONFLICT: [{ step: 'ask_again', slot: 'time' }, { step: 'message_ticket' }], default: [{ step: 'message_ticket' }] },
+    });
     const result = validateContract(unknownSlot, FAKE_ACTIONS);
     expect(result.issues).toEqual([{ rule: 5, message: expect.stringMatching(/unknown slot 'time'/) }]);
   });
@@ -95,6 +104,15 @@ describe('validateContract', () => {
       slots: [{ name: 'phone', inputPath: 'contact.phone', required: true, askId: 'ask.phone', defaultAsk: { en: 'Phone?', es: '¿Teléfono?' } }],
     });
     expect(rulesBroken(badPath)).toEqual([6]);
+  });
+
+  it('rule 6: the same contract object listed twice is a duplicate', () => {
+    const c = fixture();
+    const twice = validateContracts([c, c], FAKE_ACTIONS);
+    expect(twice.ok).toBe(false);
+    expect([...new Set(twice.issues.map((i) => i.rule))]).toEqual([6]);
+    expect(validateContracts([c, fixture()], FAKE_ACTIONS).issues.map((i) => i.rule)).toEqual([6, 6]);
+    expect(validateContracts([c, fixture({ id: 'fake.other' })], FAKE_ACTIONS).ok).toBe(true);
   });
 });
 
