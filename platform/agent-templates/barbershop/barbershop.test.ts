@@ -23,6 +23,7 @@ import {
   phraseAsk,
   templateKey,
   type Phrase,
+  type TemplateLanguage,
 } from './index';
 
 const T = BARBERSHOP_TEMPLATE_V1;
@@ -30,24 +31,49 @@ const T = BARBERSHOP_TEMPLATE_V1;
 // Derived from the contracts, so an askId added to any contract later fails here until it is phrased.
 const CONTRACT_ASK_IDS = [...new Set(CONTRACTS.flatMap((c) => c.slots.map((s) => s.askId)))];
 
-const SAMPLE = {
-  en: { barber: 'Marco', date: 'Friday, October 23', time: '3:30 PM' },
-  es: { barber: 'Marco', date: 'viernes 23 de octubre', time: '3:30 de la tarde' },
+/**
+ * Commit `readback` strings in the shape platform/actions/scheduling/readback.ts
+ * returns (confirmedReadback / rescheduledReadback / cancelledReadback), with
+ * the time worded by spokenSlot (en-US, es-US). None carries a booking id.
+ */
+const SAMPLE_READBACK = {
+  booked: {
+    en: "Confirmed: Men's cut with Marco, Friday at 3:30 PM, for Luis.",
+    es: 'Confirmado: Corte de caballero con Marco, viernes, 3:30 p. m., para Luis.',
+  },
+  rescheduled: {
+    en: "Done: Luis's Men's cut is now Tuesday, October 27 at 3:30 PM with Marco.",
+    es: 'Listo: la cita de Luis, Corte de caballero, ahora es martes, 27 de octubre, 3:30 p. m. con Marco.',
+  },
+  cancelled: {
+    en: "Cancelled: Luis's Men's cut with Marco, Friday at 3:30 PM.",
+    es: 'Cancelada: la cita de Luis, Corte de caballero con Marco, viernes, 3:30 p. m.',
+  },
 } as const;
+
+type WriteKey = keyof typeof SAMPLE_READBACK;
+
+/** An after-write line as it would be spoken: the server readback filled in. */
+function spokenAfterWrite(key: WriteKey, lang: TemplateLanguage): string {
+  return fillPlaceholders(T.afterWrite[key][lang], { readback: SAMPLE_READBACK[key][lang] });
+}
 
 /**
  * Everything the template holds, as [label, text] pairs, both languages, with
- * placeholders filled as they would be before speaking ("{{barber}}" would
+ * placeholders filled as they would be before speaking ("{{readback}}" would
  * otherwise read as bracketed narration).
  */
 function allTexts(): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const add = (label: string, phrase: Phrase) => {
-    for (const lang of TEMPLATE_LANGUAGES) out.push([`${label}.${lang}`, fillPlaceholders(phrase[lang], SAMPLE[lang])]);
+    for (const lang of TEMPLATE_LANGUAGES) out.push([`${label}.${lang}`, phrase[lang]]);
   };
   add('persona', T.persona);
   for (const [askId, phrase] of Object.entries(T.asks)) add(askId, phrase);
-  for (const [key, phrase] of Object.entries(T.afterWrite)) add(`afterWrite.${key}`, phrase);
+  add('afterWrite.textWillFollow', T.afterWrite.textWillFollow);
+  for (const key of Object.keys(SAMPLE_READBACK) as WriteKey[]) {
+    for (const lang of TEMPLATE_LANGUAGES) out.push([`afterWrite.${key}.${lang}`, spokenAfterWrite(key, lang)]);
+  }
   return out;
 }
 
@@ -108,6 +134,15 @@ describe('barbershop@1 template export', () => {
     expect(T.persona.es).toMatch(/una sola pregunta a la vez/i);
     expect(T.persona.en).toMatch(/barbershop/i);
     expect(T.persona.es).toMatch(/barbería/i);
+  });
+
+  it('persona confirms with the tool readback and does not say refs are texted today', () => {
+    expect(T.persona.en).toMatch(/confirm using the readback the tool returns/i);
+    expect(T.persona.es).toMatch(/el resumen que devuelve la herramienta/i);
+    expect(T.persona.en).toMatch(/will be texted once texting is enabled/i);
+    expect(T.persona.es).toMatch(/se enviarán por mensaje de texto una vez que se activen/i);
+    expect(T.persona.en).not.toMatch(/are sent by text|only the day, the time and the barber/i);
+    expect(T.persona.es).not.toMatch(/se envían por mensaje|solo el día, la hora y el barbero/i);
   });
 
   it('has the expected shape', () => {
@@ -190,18 +225,22 @@ describe('barbershop@1 spoken lines pass the invariant SAY check (SMS off, refs 
   for (const [key, action] of cases) {
     for (const lang of TEMPLATE_LANGUAGES) {
       it(`afterWrite.${key}.${lang} + the text line pass after an ok ${action}`, () => {
-        const line = `${fillPlaceholders(T.afterWrite[key][lang], SAMPLE[lang])} ${T.afterWrite.textWillFollow[lang]}`;
+        const line = `${spokenAfterWrite(key, lang)} ${T.afterWrite.textWillFollow[lang]}`;
         expect(line).not.toMatch(/\{\{/);
         expect(checkSay(committed(action), line)).toEqual({ ok: true });
+      });
+
+      it(`afterWrite.${key}.${lang} is blocked before any commit`, () => {
+        expect(checkSay(facts(), spokenAfterWrite(key, lang))).toMatchObject({ ok: false, rule: 'say.success_before_commit' });
       });
     }
   }
 
-  it('afterWrite lines confirm only date, time and barber', () => {
+  it('afterWrite lines carry only the server readback, no date, time or barber formatting', () => {
     for (const [key] of cases) {
       for (const lang of TEMPLATE_LANGUAGES) {
-        const placeholders = [...T.afterWrite[key][lang].matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
-        expect(placeholders, `${key}.${lang}`).toEqual(['barber', 'date', 'time']);
+        const placeholders = [...T.afterWrite[key][lang].matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+        expect(placeholders, `${key}.${lang}`).toEqual(['readback']);
       }
     }
     for (const phrase of [T.persona, ...Object.values(T.asks), T.afterWrite.textWillFollow]) {

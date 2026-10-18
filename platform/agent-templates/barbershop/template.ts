@@ -9,9 +9,9 @@
  * reads it. Text is checked by barbershop.test.ts against the prompt lint and
  * the invariant checker's SAY rules.
  *
- * Refs are texted, never spoken (D7). Until SMS is on, the agent confirms
- * only the date, time and barber out loud and says a text will follow once
- * texting is enabled.
+ * Refs are texted, never spoken (D7). After a write the agent confirms with
+ * the commit's own server-worded `readback`, and until SMS is on it says a
+ * text will follow once texting is enabled.
  */
 
 export type TemplateLanguage = 'en' | 'es';
@@ -21,8 +21,8 @@ export const TEMPLATE_LANGUAGES: readonly TemplateLanguage[] = ['en', 'es'];
 export type Phrase = Readonly<Record<TemplateLanguage, string>>;
 
 /**
- * Post-write lines. `{{date}}`, `{{time}}` and `{{barber}}` are filled from
- * the commit's server-worded result before the line is spoken.
+ * Post-write lines. `{{readback}}` is the commit result's `readback`, exactly
+ * as the server returned it; the template formats no date, time or barber.
  */
 export interface AfterWriteLines {
   booked: Phrase;
@@ -64,7 +64,7 @@ For hours, the address, services or prices, call ${BUSINESS_INFO_TOOL} and answe
 When a tool says a detail is missing, ask for it once, the way this shop would ask. Don't ask again for something the caller already told you or the shop already has, like the number they're calling from.
 Before you read back or change an existing appointment, get the first name it's under. Share no detail of an appointment until the lookup says the name matched.
 Read back the details the tool gives you and get a clear yes before you book, move or cancel. Don't say it's done until the tool says it worked.
-After a booking, a move or a cancellation, confirm only the day, the time and the barber. Booking numbers are sent by text and never read aloud, so never read out a number, code or ID from a tool. Until texting is enabled, say a text will follow once texting is enabled, and don't promise a text any other way.
+After a booking, a move or a cancellation, confirm using the readback the tool returns, word for word. Booking numbers will be texted once texting is enabled; never read a number, code or ID from a tool aloud. Until texting is enabled, say a text will follow once texting is enabled, and don't promise a text any other way.
 Never make up openings, prices or which barber is in.
 If the caller speaks Spanish, answer in Spanish. Speak only English or Spanish.
 Say only the words the caller should hear.`;
@@ -76,7 +76,7 @@ Para el horario, la dirección, los servicios o los precios, llame a ${BUSINESS_
 Cuando una herramienta diga que falta un dato, pídalo una sola vez, como lo pediría esta barbería. No vuelva a pedir algo que la persona ya dijo o que la barbería ya tiene, como el número desde el que llama.
 Antes de leer o cambiar una cita existente, pida el nombre con el que se hizo. No comparta ningún detalle de la cita hasta que la búsqueda confirme que el nombre coincide.
 Lea los detalles que le da la herramienta y espere un sí claro antes de agendar, cambiar o cancelar. No diga que ya está hecho hasta que la herramienta confirme que funcionó.
-Después de agendar, cambiar o cancelar, confirme solo el día, la hora y el barbero. Los números de reserva se envían por mensaje de texto y nunca se leen en voz alta, así que nunca lea un número, código o identificador de una herramienta. Mientras no estén activos los mensajes, diga que le llegará un mensaje una vez que se activen los mensajes de texto, y no prometa un mensaje de otra forma.
+Después de agendar, cambiar o cancelar, confirme leyendo, palabra por palabra, el resumen que devuelve la herramienta. Los números de reserva se enviarán por mensaje de texto una vez que se activen los mensajes; nunca lea en voz alta un número, código o identificador de una herramienta. Mientras no estén activos los mensajes, diga que le llegará un mensaje una vez que se activen los mensajes de texto, y no prometa un mensaje de otra forma.
 Nunca invente horarios libres, precios ni qué barbero está.
 Si la persona habla inglés, conteste en inglés. Hable solo inglés o español.
 Diga solo las palabras que la persona debe escuchar.`;
@@ -92,7 +92,7 @@ export const BARBERSHOP_TEMPLATE_V1: AgentTemplate = {
     // booking.book@1
     'ask.service': {
       en: 'What are we doing for you, a haircut, a beard trim, or something else?',
-      es: '¿Qué le hacemos, un corte, arreglo de barba u otra cosa?',
+      es: '¿Qué le hacemos, un corte, un arreglo de barba u otra cosa?',
     },
     'ask.staff': {
       en: 'Do you have a barber you like, or is anyone fine?',
@@ -157,16 +157,16 @@ export const BARBERSHOP_TEMPLATE_V1: AgentTemplate = {
   },
   afterWrite: {
     booked: {
-      en: "You're booked with {{barber}} on {{date}} at {{time}}.",
-      es: 'Listo, su cita quedó con {{barber}} el {{date}} a las {{time}}.',
+      en: "You're booked. {{readback}}",
+      es: 'Su cita quedó lista. {{readback}}',
     },
     rescheduled: {
-      en: "You're rescheduled with {{barber}} for {{date}} at {{time}}.",
-      es: 'Listo, su cita quedó cambiada para el {{date}} a las {{time}} con {{barber}}.',
+      en: "You're rescheduled. {{readback}}",
+      es: 'Su cita quedó cambiada. {{readback}}',
     },
     cancelled: {
-      en: "I've cancelled your appointment with {{barber}} on {{date}} at {{time}}.",
-      es: 'Ya le cancelé la cita con {{barber}} del {{date}} a las {{time}}.',
+      en: "I've cancelled it. {{readback}}",
+      es: 'Ya le cancelé la cita. {{readback}}',
     },
     textWillFollow: {
       en: 'A text will follow once texting is enabled.',
