@@ -23,7 +23,12 @@ export interface StageDirectionHit {
   index: number;
 }
 
-const NARRATION_CUE = /\b(?:quietly|silently|softly|sotto\s+voce|whisper\w*|paus(?:e|es|ed|ing)|beat|aside|sigh\w*|laugh\w*|chuckl\w*|smil(?:e|es|ed|ing)|nod(?:s|ded|ding)?|mutter\w*|under\s+(?:your|her|his|my)\s+breath|to\s+(?:yourself|herself|himself)|internally|off[-\s]?mic|typing|filing|checking)\b/i;
+const NARRATION_CUE = /\b(?:quietly|silently|softly|sotto\s+voce|whisper\w*|paus(?:e|es|ed|ing)|beat|aside|sigh\w*|laugh\w*|chuckl\w*|smil(?:e|es|ed|ing)|nod(?:s|ded|ding)?|mutter\w*|under\s+(?:your|her|his|my)\s+breath|to\s+(?:yourself|herself|himself)|internally|off[-\s]?mic)\b/i;
+
+// Activity cues count only when they open the bracket ("(checking the
+// calendar)"); elsewhere they are content ("(hearing or filing within 24-48
+// hours)" in the legal template).
+const LEADING_ACTIVITY_CUE = /^\s*(?:typing|filing|checking)\b/i;
 
 const NARRATION_WORD = /\b(?:quietly|silently|sotto\s+voce|whisper\w*)\b/gi;
 
@@ -44,7 +49,7 @@ export function findStageDirections(text: string): StageDirectionHit[] {
 
   for (const m of text.matchAll(BRACKETED)) {
     const inner = m[1] ?? m[2] ?? '';
-    if (NARRATION_CUE.test(inner)) {
+    if (NARRATION_CUE.test(inner) || LEADING_ACTIVITY_CUE.test(inner)) {
       hits.push({ rule: 'bracketed-narration', match: m[0], index: m.index ?? 0 });
     }
   }
@@ -62,4 +67,42 @@ export function findStageDirections(text: string): StageDirectionHit[] {
   }
 
   return hits.sort((a, b) => a.index - b.index);
+}
+
+const REMOVABLE_RULES: ReadonlySet<StageDirectionRule> = new Set(['bracketed-narration', 'asterisk-action']);
+
+/**
+ * Removes bracketed narration and *action* spans, for prompt text we don't
+ * author (tenant DB prompts). Narration words such as "silently" can be real
+ * instructions ("Do not silently hang up."), so they are only reported in
+ * `hits`, never removed. Text with no removable hit is returned unchanged.
+ */
+export function stripStageDirections(text: string): { text: string; hits: StageDirectionHit[] } {
+  const hits = findStageDirections(text);
+  const spans: Array<{ start: number; end: number }> = [];
+  for (const hit of hits) {
+    if (!REMOVABLE_RULES.has(hit.rule)) continue;
+    const start = hit.index;
+    const end = hit.index + hit.match.length;
+    const last = spans[spans.length - 1];
+    if (last && start <= last.end) last.end = Math.max(last.end, end);
+    else spans.push({ start, end });
+  }
+  if (spans.length === 0) return { text, hits };
+
+  let out = '';
+  let cursor = 0;
+  for (const span of spans) {
+    const before = out + text.slice(cursor, span.start);
+    const left = before.replace(/[ \t]+$/, '');
+    const after = text.slice(span.end);
+    const right = after.replace(/^[ \t]+/, '');
+    // One space where the span sat between words; none at a line edge or
+    // before punctuation.
+    const hadSpace = left.length < before.length || right.length < after.length;
+    const keepSpace = hadSpace && left !== '' && !left.endsWith('\n') && right !== '' && !/^[\n.,;:!?)\]]/.test(right);
+    out = keepSpace ? `${left} ` : left;
+    cursor = text.length - right.length;
+  }
+  return { text: out + text.slice(cursor), hits };
 }

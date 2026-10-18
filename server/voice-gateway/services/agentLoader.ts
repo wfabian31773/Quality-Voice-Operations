@@ -71,6 +71,7 @@ import {
   compileRolePackage,
   normalizeTimeZone,
 } from '../../../platform/agent-runtime/masterVoiceAgent';
+import { stripStageDirections, type StageDirectionRule } from '../../../platform/agent-runtime/promptLint';
 import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
 import { buildCallerIdPromptLine, createSalonRolePackage } from '../../../platform/agent-templates/salon';
 import { isTemplateOrDefaultSystemPrompt } from '../../../client-app/src/lib/agentBuilderI18n';
@@ -456,9 +457,23 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
     lockedRoleIdentity?: { id: string; version: string },
   ): LoadedAgentConfig => {
     const rolePromptMatch = cfg.systemPrompt.match(/^===== ROLE PACKAGE =====\n([\s\S]*?)(?:\n\n=====|$)/);
-    const rolePrompt = (rolePromptMatch?.[1]?.trim() || cfg.systemPrompt)
+    const extractedRolePrompt = (rolePromptMatch?.[1]?.trim() || cfg.systemPrompt)
       .replace(MASTER_VOICE_CONVERSATION_POLICY, '')
       .trim();
+    // Tenant DB prompts can carry stage directions grok-voice reads aloud
+    // ("(file the ticket quietly)", "*pauses*"). Repo prompts are lint-clean,
+    // so they pass through unchanged. Log rule counts only: the matched text
+    // is tenant-authored and may hold PHI.
+    const { text: rolePrompt, hits: stageDirectionHits } = stripStageDirections(extractedRolePrompt);
+    if (stageDirectionHits.length > 0) {
+      const counts: Partial<Record<StageDirectionRule, number>> = {};
+      for (const hit of stageDirectionHits) counts[hit.rule] = (counts[hit.rule] ?? 0) + 1;
+      logger.warn('Stage directions found in agent role prompt; bracketed and asterisk ones were removed', {
+        tenantId,
+        agentId,
+        counts,
+      });
+    }
     const rolePackageVersion = lockedRoleIdentity?.version ?? (typeof meta.rolePackageVersion === 'string'
       ? meta.rolePackageVersion
       : '1.0.0');

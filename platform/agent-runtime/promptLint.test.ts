@@ -8,7 +8,7 @@ import {
   compileRolePackage,
   type RolePackageDefinition,
 } from './masterVoiceAgent';
-import { findStageDirections } from './promptLint';
+import { findStageDirections, stripStageDirections } from './promptLint';
 import { createCoreReceptionistRolePackage } from '../agent-templates/core-receptionist/rolePackage';
 import { appendSalonCallRules, createSalonRolePackage } from '../agent-templates/salon/rolePackage';
 
@@ -83,7 +83,40 @@ describe('findStageDirections fixtures', () => {
     'Use **only** the permitted tools.',
     '- first item\n* second item',
     'Do not announce this tool call.',
+    '- Imminent court deadlines (hearing or filing within 24-48 hours)',
   ])('does not flag plain instructions: %s', (text) => {
     expect(findStageDirections(text)).toEqual([]);
+  });
+});
+
+describe('stripStageDirections', () => {
+  it('removes bracketed and asterisk directions but keeps narration words', () => {
+    const sample = [
+      'Book the cut, then call create_ticket (file the ticket quietly).',
+      '[pause] Confirm the time with the caller.',
+      'Say the total *pauses* and wait for a yes.',
+      'Do not silently hang up.',
+    ].join('\n');
+
+    const { text, hits } = stripStageDirections(sample);
+
+    expect(text).toBe([
+      'Book the cut, then call create_ticket.',
+      'Confirm the time with the caller.',
+      'Say the total and wait for a yes.',
+      'Do not silently hang up.',
+    ].join('\n'));
+    expect(hits.map((hit) => [hit.rule, hit.match])).toEqual([
+      ['bracketed-narration', '(file the ticket quietly)'],
+      ['bracketed-narration', '[pause]'],
+      ['asterisk-action', '*pauses*'],
+      ['narration-word', 'silently'],
+    ]);
+    expect(findStageDirections(text).map((hit) => hit.rule)).toEqual(['narration-word']);
+  });
+
+  it('returns a clean prompt unchanged', () => {
+    const clean = createSalonRolePackage({ businessName: 'Sharp Line Barbers' }).prompt;
+    expect(stripStageDirections(clean)).toEqual({ text: clean, hits: [] });
   });
 });
