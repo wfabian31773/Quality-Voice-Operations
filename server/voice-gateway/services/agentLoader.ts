@@ -75,8 +75,35 @@ import { stripStageDirections, type StageDirectionRule } from '../../../platform
 import { createCoreReceptionistRolePackage } from '../../../platform/agent-templates/core-receptionist';
 import { buildCallerIdPromptLine, createSalonRolePackage } from '../../../platform/agent-templates/salon';
 import { isTemplateOrDefaultSystemPrompt } from '../../../client-app/src/lib/agentBuilderI18n';
+import { compose, type ContractToolBinding } from '../../../platform/agent-runtime/composer';
+import { BARBERSHOP_TEMPLATE_V1 } from '../../../platform/agent-templates/barbershop';
+import type { AgentTemplate } from '../../../platform/agent-templates/shared';
 
 const logger = createLogger('AGENT_LOADER');
+
+/**
+ * RT-09 flag: an agent runs on the generic composer only when its own
+ * metadata says `runtime: 'composer'` (agents.metadata JSON; no env var, no
+ * migration). Anything else, or no value, keeps the existing path.
+ */
+export const COMPOSER_RUNTIME_KEY = 'runtime';
+export const COMPOSER_RUNTIME = 'composer';
+
+/** Agent types with a composer template; only these can turn the flag on. */
+const COMPOSER_TEMPLATES: Readonly<Record<string, AgentTemplate>> = {
+  barbershop: BARBERSHOP_TEMPLATE_V1,
+};
+
+/** The composer template for this agent, or undefined when the flag is off or its type has none. */
+export function composerTemplateFor(agentType: string, metadata: Record<string, unknown>): AgentTemplate | undefined {
+  if (metadata[COMPOSER_RUNTIME_KEY] !== COMPOSER_RUNTIME) return undefined;
+  return Object.prototype.hasOwnProperty.call(COMPOSER_TEMPLATES, agentType) ? COMPOSER_TEMPLATES[agentType] : undefined;
+}
+
+function firstText(...values: unknown[]): string | undefined {
+  for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
+  return undefined;
+}
 
 /**
  * The salon agent's DB prompt as shop-specific business details, or null
@@ -107,6 +134,10 @@ export interface LoadedAgentConfig {
   tools: AgentToolDef[];
   guardrails: string[];
   metadata: Record<string, unknown>;
+  /** Composer agents only: how the session's tool bridge runs the contract tools. */
+  contractTools?: ContractToolBinding;
+  /** Composer agents only: words the recognizer should expect (the business's name). */
+  keyterms?: string[];
 }
 
 export interface AgentToolDef {
@@ -542,6 +573,56 @@ export function loadAgentConfig(ctx: AgentLoadContext): LoadedAgentConfig {
       tools: compiled.tools,
     };
   };
+
+  const composerTemplate = composerTemplateFor(agentType, meta);
+  if (composerTemplate) {
+    // The same tenant facts the salon path uses: the business name and the
+    // shop's own saved prompt as business details. Caller ID goes last.
+    const businessName = firstText(meta.businessName, meta.practiceName, meta.companyName);
+    const composed = compose(
+      composerTemplate,
+      undefined,
+      { businessName, businessDetails: salonBusinessDetails(dbAgent?.system_prompt) },
+      { language, callerIdLine: buildCallerIdPromptLine(callerPhone) },
+    );
+    const greeting = typeof meta.greeting === 'string'
+      ? stripTenantText('greeting', meta.greeting, { builtIn: () => composed.greeting, generic: composed.greeting })
+      : composed.greeting;
+    const metadata = { ...meta, businessName: businessName ?? null, role: composerTemplate.id, template: composed.templateKey };
+    const compiled = compileRolePackage({
+      id: composerTemplate.id,
+      version: `${composerTemplate.version}.0.0`,
+      prompt: composed.prompt,
+      greeting,
+      voice: dbAgent?.voice,
+      preferredLanguage: getAgentLanguageLabel(language),
+      timeZone,
+      tools: composed.tools,
+      guardrails: [],
+      metadata,
+    });
+    logger.info('Loading composer agent', { tenantId, agentId, template: composed.templateKey });
+    return {
+      agentId,
+      tenantId,
+      coreVersion: compiled.coreVersion,
+      rolePackageId: compiled.rolePackageId,
+      rolePackageVersion: compiled.rolePackageVersion,
+      rolePrompt: compiled.rolePrompt,
+      systemPrompt: compiled.systemPrompt,
+      greeting,
+      voice: compiled.voice,
+      model: compiled.model,
+      language,
+      preferredLanguage: compiled.preferredLanguage,
+      timeZone: compiled.timeZone,
+      tools: compiled.tools,
+      guardrails: compiled.guardrails,
+      metadata,
+      contractTools: composed.contractTools,
+      keyterms: composed.keyterms,
+    };
+  }
 
   switch (templateKey) {
     case 'core-receptionist': {

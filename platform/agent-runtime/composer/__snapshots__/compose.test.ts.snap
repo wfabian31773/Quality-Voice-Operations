@@ -1,0 +1,272 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`compose: tools > the tool list is pinned 1`] = `
+[
+  {
+    "description": "Hold an appointment for 5 minutes and get the readback. Use serviceIds, staffId (a staff id or 'any') and a start time from check_availability, plus the customer's name and phone. Read the returned readback to the caller word for word and call scheduling.book.commit only after an explicit yes. If the caller changes anything, call prepare again (the earlier hold is released). On CONFLICT, offer the alternatives. On SLOT_MISSING, ask the caller the one question in callerSafeMessage; if exit is set, offer to take a message.",
+    "name": "scheduling_book_prepare",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "customer": {
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "format": "email",
+              "maxLength": 255,
+              "type": "string",
+            },
+            "name": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string",
+            },
+            "phone": {
+              "maxLength": 32,
+              "minLength": 7,
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+        "notes": {
+          "maxLength": 1000,
+          "type": "string",
+        },
+        "serviceIds": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "staffId": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "start": {
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Confirm a prepared appointment after the caller explicitly said yes to the readback. Only say it is booked once this returns ok. Retrying with the same token is safe. On CONFLICT the hold was lost: say so and offer the alternatives.",
+    "name": "scheduling_book_commit",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmationToken": {
+          "format": "uuid",
+          "type": "string",
+        },
+      },
+      "required": [
+        "confirmationToken",
+      ],
+      "type": "object",
+    },
+  },
+  {
+    "description": "Prepare a message, callback request, complaint, quote request or intake for the business. Read the returned readback to the caller word for word and commit only after an explicit yes. For a message or callback, the callback number comes from caller ID when there is one; do not ask for it. On SLOT_MISSING, ask the caller the one question in callerSafeMessage and call prepare again; if the caller will not give a callback number, call prepare again without one and the message is filed without it. If exit is set, do not ask again: say callerSafeMessage.",
+    "name": "tickets_open_prepare",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "callbackWindow": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string",
+        },
+        "customer": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "maxLength": 255,
+              "type": "string",
+            },
+            "phone": {
+              "maxLength": 32,
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+        "details": {
+          "maxLength": 2000,
+          "type": "string",
+        },
+        "intake": {
+          "additionalProperties": {},
+          "type": "object",
+        },
+        "kind": {
+          "enum": [
+            "message",
+            "callback",
+            "complaint",
+            "quote_request",
+            "intake",
+            "other",
+          ],
+          "type": "string",
+        },
+        "related": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string",
+            },
+            "type": {
+              "maxLength": 50,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+            "id",
+          ],
+          "type": "object",
+        },
+        "subject": {
+          "maxLength": 120,
+          "type": "string",
+        },
+        "urgency": {
+          "enum": [
+            "normal",
+            "urgent",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+      ],
+      "type": "object",
+    },
+  },
+  {
+    "description": "Commit a prepared ticket after the caller explicitly said yes to the readback. A repeat of the same request in this call is added to the first ticket.",
+    "name": "tickets_open_commit",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmationToken": {
+          "format": "uuid",
+          "type": "string",
+        },
+        "payloadHash": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "confirmationToken",
+        "payloadHash",
+      ],
+      "type": "object",
+    },
+  },
+  {
+    "description": "Find open appointment times for 1 to 3 services done back-to-back by one staff member. staffId is a staff id or 'any'. Give date (YYYY-MM-DD, resolved from the tenant's current time) or window {from,to}; with neither it finds the first available day. Optional partOfDay (morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.",
+    "name": "scheduling_check_availability",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 5,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "partOfDay": {
+          "enum": [
+            "morning",
+            "afternoon",
+            "evening",
+          ],
+          "type": "string",
+        },
+        "serviceIds": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "staffId": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "window": {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "type": "string",
+            },
+            "to": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "from",
+            "to",
+          ],
+          "type": "object",
+        },
+      },
+      "required": [
+        "serviceIds",
+      ],
+      "type": "object",
+    },
+  },
+  {
+    "description": "Return the current date, weekday, local time, IANA timezone, and UTC offset for the tenant. Use when relative dates matter or a long call may have crossed a boundary.",
+    "name": "get_current_tenant_time",
+    "parameters": {
+      "properties": {},
+      "required": [],
+      "type": "object",
+    },
+  },
+  {
+    "description": "Record a change in the caller's primary spoken language (English or Spanish). Call only when the language changes; do not announce this action.",
+    "name": "record_language_change",
+    "parameters": {
+      "properties": {
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+          ],
+          "type": "string",
+        },
+        "language": {
+          "enum": [
+            "en",
+            "es",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "language",
+        "confidence",
+      ],
+      "type": "object",
+    },
+  },
+]
+`;
