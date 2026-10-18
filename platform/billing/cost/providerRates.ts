@@ -40,6 +40,10 @@ export const MODEL_RATES: Record<string, ModelRate> = {
   //
   // Older Realtime SKUs are kept in the map only so cost analytics for
   // legacy DB rows that still reference them continue to compute.
+  //
+  // grok-voice-3.0 is the pinned production model and is priced the same
+  // as 2.0 ($0.08/min). Keep the 2.0 entry so historical calls still price.
+  'grok-voice-3.0': { inputPer1kTokens: 0.8, outputPer1kTokens: 0.8, cachedInputPer1kTokens: 0.8 },
   'grok-voice-think-fast-2.0': { inputPer1kTokens: 0.8, outputPer1kTokens: 0.8, cachedInputPer1kTokens: 0.8 },
   'grok-voice-latest': { inputPer1kTokens: 0.8, outputPer1kTokens: 0.8, cachedInputPer1kTokens: 0.8 },
   'gpt-realtime-2': { inputPer1kTokens: 3.2, outputPer1kTokens: 6.4, cachedInputPer1kTokens: 0.04 },
@@ -102,9 +106,9 @@ export type ModelTier = 'economy' | 'standard' | 'premium';
 // been refreshed in the May 2026 release, so we keep the Aug 2025 GA
 // mini until OpenAI ships a v2 mini.
 export const TIER_MODEL_MAP: Record<ModelTier, string> = {
-  economy: 'grok-voice-think-fast-2.0',
-  standard: 'grok-voice-think-fast-2.0',
-  premium: 'grok-voice-think-fast-2.0',
+  economy: 'grok-voice-3.0',
+  standard: 'grok-voice-3.0',
+  premium: 'grok-voice-3.0',
 };
 
 // Reasoning effort knob is exclusive to `gpt-realtime-2`. OpenAI's

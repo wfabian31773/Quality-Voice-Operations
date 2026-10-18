@@ -18,7 +18,8 @@ describe('salon role package', () => {
     }));
 
     expect(compiled.coreVersion).toBe('2.0.0');
-    expect(compiled.model).toBe('grok-voice-think-fast-2.0');
+    expect(compiled.model).toBe('grok-voice-3.0');
+    expect(compiled.voice).toBe('ara');
     expect(compiled.rolePackageId).toBe(SALON_ROLE_ID);
     expect(compiled.greeting).toContain('Northside Barbers');
     expect(compiled.tools.map((tool) => tool.name)).toEqual(
@@ -35,6 +36,11 @@ describe('salon role package', () => {
     expect(compiled.rolePrompt).toContain('create_booking');
     expect(compiled.rolePrompt).toContain('update_booking');
     expect(compiled.rolePrompt).not.toMatch(/diagnos|prescription|phi/i);
+  });
+
+  it('defaults the voice to ara but keeps an explicit agent voice', () => {
+    expect(compileRolePackage(createSalonRolePackage({})).voice).toBe('ara');
+    expect(compileRolePackage(createSalonRolePackage({ voice: 'eve' })).voice).toBe('eve');
   });
 
   it('renders only the last four digits of the caller ID and the caller-ID token', () => {

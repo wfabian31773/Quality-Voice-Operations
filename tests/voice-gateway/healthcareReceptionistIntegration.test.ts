@@ -24,7 +24,7 @@ describe('healthcare receptionist voice-gateway integration', () => {
         coreVersion: '2.0.0',
         rolePackageId: 'healthcare-receptionist',
         rolePackageVersion: '1.0.0',
-        model: 'grok-voice-think-fast-2.0',
+        model: 'grok-voice-3.0',
         language: 'es',
         timeZone: 'America/Los_Angeles',
       });

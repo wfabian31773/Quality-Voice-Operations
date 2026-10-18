@@ -1,9 +1,11 @@
 export const MASTER_VOICE_AGENT_CORE_VERSION = '2.0.0';
 export const MASTER_VOICE_AGENT_PROVIDER = 'xai' as const;
-export const MASTER_VOICE_AGENT_MODEL = 'grok-voice-think-fast-2.0';
+// Pinned versioned name (xAI deprecated grok-voice-2.0 on Oct 14). 3.0 defaults
+// to high reasoning, so the effort below keeps it off for latency.
+export const MASTER_VOICE_AGENT_MODEL = 'grok-voice-3.0';
 export const MASTER_VOICE_AGENT_REASONING_EFFORT = 'none' as const;
 export const MASTER_VOICE_AGENT_DEFAULT_TIME_ZONE = 'America/New_York';
-export const MASTER_VOICE_AGENT_DEFAULT_VOICE = 'eve';
+export const MASTER_VOICE_AGENT_DEFAULT_VOICE = 'ara';
 export const MASTER_VOICE_AGENT_REALTIME_URL = 'wss://api.x.ai/v1/realtime';
 
 export interface MasterVoiceAgentContract {
