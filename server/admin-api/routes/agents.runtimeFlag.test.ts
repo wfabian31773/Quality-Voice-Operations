@@ -146,3 +146,60 @@ describe('publish and version rollback never change metadata.runtime', () => {
     expect(writtenMetadata()).not.toHaveProperty('runtime');
   });
 });
+
+describe('Codex 4307682356: publish locks the agent row before keeping the stored runtime', () => {
+  /**
+   * A platform admin's runtime change lands while publish runs: an unlocked read
+   * still sees the old row, a FOR UPDATE read waits for it and sees the new one.
+   */
+  function racingDb() {
+    const before = { runtime: 'composer', businessName: 'Sharp Line Barbers' };
+    const after = { runtime: 'legacy', businessName: 'Sharp Line Barbers' };
+    a.queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT * FROM agents')) {
+        const metadata = /FOR UPDATE/.test(sql) ? after : before;
+        return { rows: [{ id: 'a1', name: 'Front desk', type: 'barbershop', metadata, tools: [] }] };
+      }
+      if (sql.includes('MAX(version)')) return { rows: [{ max_version: 0 }] };
+      if (sql.includes('UPDATE agents')) return { rows: [{ id: 'a1' }] };
+      return { rows: [] };
+    });
+  }
+
+  const order = () => sqlCalls().map(([sql]) => sql).filter((sql) =>
+    /^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) || /FROM agents|UPDATE agents/.test(sql));
+
+  it('the runtime written is the one the locked read returned (a concurrent change survives)', async () => {
+    racingDb();
+    const res = await request(app()).post('/agents/a1/publish').send({});
+    expect(res.status).toBe(200);
+    expect(writtenMetadata()).toMatchObject({ runtime: 'legacy', businessName: 'Sharp Line Barbers' });
+  });
+
+  it('BEGIN → SELECT … FOR UPDATE → UPDATE agents → COMMIT', async () => {
+    racingDb();
+    await request(app()).post('/agents/a1/publish').send({});
+    const seq = order();
+    expect(seq).toHaveLength(4);
+    expect(seq[0]).toBe('BEGIN');
+    expect(seq[1]).toMatch(/SELECT \* FROM agents .*FOR UPDATE/);
+    expect(seq[2]).toMatch(/^UPDATE agents/);
+    expect(seq[3]).toBe('COMMIT');
+  });
+
+  it('a failed write rolls back and never commits', async () => {
+    racingDb();
+    const base = a.queryMock.getMockImplementation()!;
+    a.queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('UPDATE agents')) throw new Error('db down');
+      return base(sql, values);
+    });
+    const res = await request(app()).post('/agents/a1/publish').send({});
+    expect(res.status).toBe(500);
+    const seq = order();
+    expect(seq[0]).toBe('BEGIN');
+    expect(seq[1]).toMatch(/FOR UPDATE/);
+    expect(seq.at(-1)).toBe('ROLLBACK');
+    expect(seq).not.toContain('COMMIT');
+  });
+});

@@ -966,8 +966,9 @@ router.post('/agents/:id/publish', requireAuth, requireRole('manager'), async (r
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
+    // Locked so a concurrent metadata.runtime change can't be overwritten by the write below.
     const { rows: agentRows } = await client.query(
-      `SELECT * FROM agents WHERE id = $1 AND tenant_id = $2`,
+      `SELECT * FROM agents WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
       [id, tenantId],
     );
     if (agentRows.length === 0) {
