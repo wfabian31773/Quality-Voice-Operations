@@ -779,6 +779,7 @@ Task 7.3 external evidence can proceed in parallel. The next repository task sho
 
 **Goal:** Make the commercial and onboarding path match the actual service.
 
+- [x] Plan rule (Wayne, Oct 19 2026): every plan includes every vertical and every tool; tiers differ only in minutes and usage caps (monthly minutes/calls/SMS with overage, calls/hour, minutes/day). New code must not gate a vertical, agent type, template, tool, feature, or agent/number count on plan tier. `min_plan` and `template_entitlements` remain in the schema but are always `starter` / enabled. See [Tools spec](../shop/tools-spec.md), "Plans and entitlements".
 - [ ] Approve setup fee, recurring price, included usage, overages, and support scope.
 - [ ] Define what QVO configures versus what the customer manages.
 - [ ] Define contract, cancellation, pilot, and success terms.

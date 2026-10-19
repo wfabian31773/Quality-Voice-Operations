@@ -82,7 +82,6 @@ export async function installTemplate(request: InstallRequest): Promise<InstallR
   }
 
   const entitlement = await checkEntitlement(tenantId, {
-    minPlan: template.min_plan,
     requiredIntegrations: template.required_integrations,
   });
 

@@ -619,9 +619,9 @@ function FeatureCell({ value }: { value: boolean | string }) {
     return <span className="text-sm font-medium text-text-primary">{value}</span>;
   }
   return value ? (
-    <CheckCircle2 className="h-4.5 w-4.5 text-success mx-auto" />
+    <CheckCircle2 className="h-4.5 w-4.5 text-success mx-auto" data-included="true" />
   ) : (
-    <XIcon className="h-4 w-4 text-text-muted mx-auto" />
+    <XIcon className="h-4 w-4 text-text-muted mx-auto" data-included="false" />
   );
 }
 
@@ -1032,9 +1032,10 @@ export default function Pricing() {
   );
 
   const tUnlimited = t('pricing.features_list.unlimited');
-  const tUpTo3 = t('pricing.features_list.up_to_3');
-  const tUpTo10 = t('pricing.features_list.up_to_10');
 
+  // Every plan includes every industry template, tool and feature; tiers differ
+  // only in minutes and usage caps (docs/shop/tools-spec.md, "Plans and
+  // entitlements"). Only the volume rows may differ by tier.
   const features: Feature[] = [
     {
       nameKey: 'ai_minutes',
@@ -1049,21 +1050,19 @@ export default function Pricing() {
       enterprise: formatOverageRate(PLAN_CATALOG.enterprise.overageRatePerMinute),
     },
     { nameKey: 'agents', starter: tUnlimited, pro: tUnlimited, enterprise: tUnlimited },
-    { nameKey: 'phones', starter: tUpTo3, pro: tUpTo10, enterprise: tUnlimited },
+    { nameKey: 'phones', starter: tUnlimited, pro: tUnlimited, enterprise: tUnlimited },
     { nameKey: 'inbound', starter: true, pro: true, enterprise: true },
-    { nameKey: 'outbound', starter: false, pro: true, enterprise: true },
+    { nameKey: 'outbound', starter: true, pro: true, enterprise: true },
     { nameKey: 'transcripts', starter: true, pro: true, enterprise: true },
-    { nameKey: 'quality', starter: false, pro: true, enterprise: true },
+    { nameKey: 'quality', starter: true, pro: true, enterprise: true },
     { nameKey: 'analytics', starter: true, pro: true, enterprise: true },
-    { nameKey: 'team', starter: tUpTo3, pro: tUpTo10, enterprise: tUnlimited },
-    { nameKey: 'rbac', starter: false, pro: true, enterprise: true },
-    { nameKey: 'api', starter: false, pro: true, enterprise: true },
-    { nameKey: 'crm', starter: false, pro: true, enterprise: true },
-    { nameKey: 'templates', starter: false, pro: true, enterprise: true },
-    { nameKey: 'audit', starter: false, pro: false, enterprise: true },
-    { nameKey: 'multi_loc', starter: false, pro: false, enterprise: true },
-    { nameKey: 'priority', starter: false, pro: true, enterprise: true },
-    { nameKey: 'onboarding', starter: false, pro: false, enterprise: true },
+    { nameKey: 'team', starter: tUnlimited, pro: tUnlimited, enterprise: tUnlimited },
+    { nameKey: 'rbac', starter: true, pro: true, enterprise: true },
+    { nameKey: 'api', starter: true, pro: true, enterprise: true },
+    { nameKey: 'crm', starter: true, pro: true, enterprise: true },
+    { nameKey: 'templates', starter: true, pro: true, enterprise: true },
+    { nameKey: 'audit', starter: true, pro: true, enterprise: true },
+    { nameKey: 'multi_loc', starter: true, pro: true, enterprise: true },
     { nameKey: 'demo', starter: true, pro: true, enterprise: true },
   ];
 
@@ -1416,9 +1415,12 @@ export default function Pricing() {
 
           <RevealSection>
           <div className="max-w-5xl mx-auto">
-            <h2 className="font-display text-2xl font-bold text-text-primary mb-8 text-center">
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-3 text-center">
               {t('pricing.compare.title')}
             </h2>
+            <p className="text-center text-text-secondary font-body mb-8" data-testid="pricing-all-included">
+              {t('pricing.compare.all_included')}
+            </p>
             <div className="bg-surface rounded-2xl border border-border/50 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1443,6 +1445,7 @@ export default function Pricing() {
                     {features.map((f, i) => (
                       <tr
                         key={f.nameKey}
+                        data-feature={f.nameKey}
                         className={`transition-colors hover:bg-primary/5 ${i % 2 === 0 ? 'bg-surface-secondary/30' : ''}`}
                       >
                         <td className="py-3.5 px-6 text-sm text-text-primary/70 font-body">

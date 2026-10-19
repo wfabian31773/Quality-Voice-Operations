@@ -470,9 +470,9 @@
       "guarantee": "Garantia de devolução em 30 dias"
     },
     "tier_copy": {
-      "starter_desc": "Para clínicas pequenas que estão começando com automação de voz.",
-      "pro_desc": "Para empresas em crescimento que precisam de campanhas e integrações.",
-      "enterprise_desc": "Para organizações com várias unidades e alto volume de chamadas."
+      "starter_desc": "Todos os modelos e ferramentas, dimensionados para o volume de chamadas de um único negócio.",
+      "pro_desc": "Todos os modelos e ferramentas, com mais minutos e limites de chamadas maiores para equipes movimentadas.",
+      "enterprise_desc": "Todos os modelos e ferramentas, com o maior número de minutos e os maiores limites de chamadas."
     },
     "tier_card": {
       "most_popular": "Mais popular",
@@ -526,7 +526,8 @@
     },
     "compare": {
       "title": "Compare todos os recursos",
-      "feature_col": "Recurso"
+      "feature_col": "Recurso",
+      "all_included": "Todos os planos incluem todos os modelos de setor e todas as ferramentas."
     },
     "features_list": {
       "ai_minutes": "Minutos de IA inclusos",
@@ -573,7 +574,7 @@
       "q3": "O que acontece se eu ultrapassar os minutos inclusos?",
       "a3": "Você é cobrado pela tarifa de excedente do seu plano para cada minuto além da cota mensal. Starter paga {{starter}}, Pro paga {{pro}} e Enterprise paga {{enterprise}}.",
       "q4": "Posso mudar de plano a qualquer momento?",
-      "a4": "Sim. Faça upgrade ou downgrade quando quiser pelas configurações da conta. No upgrade, você acessa imediatamente os novos recursos. Downgrades passam a valer no início do próximo ciclo de faturamento.",
+      "a4": "Sim. Faça upgrade ou downgrade quando quiser pelas configurações da conta. Todos os planos incluem todos os modelos e ferramentas, então mudar de plano só muda seus minutos incluídos, sua tarifa de excedente e seus limites de uso. Upgrades valem na hora; downgrades passam a valer no início do próximo ciclo de faturamento.",
       "q5": "Existem contratos ou compromissos?",
       "a5": "Não. Todos os planos são mês a mês, sem contratos de longo prazo. Você pode cancelar quando quiser, e a conta segue ativa até o fim do ciclo atual.",
       "q6": "Vocês oferecem preço anual?",

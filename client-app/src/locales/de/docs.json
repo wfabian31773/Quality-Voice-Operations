@@ -1143,14 +1143,9 @@
       "description": "Was in jeder Stufe enthalten ist und wie die Nutzung abgerechnet wird.",
       "body": {
         "0": "Planstufen",
-        "1": {
-          "0": "Testversion – 30 kostenlose Sprachminuten, 1 Agent, 1 Nummer.",
-          "1": "Starter – für Einzelbetreiber; enthaltene Minuten plus Überstunden pro Minute.",
-          "2": "Wachstum – für Mehrzeilen-Teams; höhere Basis, niedrigere Überstunden, Premium-Stimmen.",
-          "3": "Unternehmen – maßgeschneidert; SSO, BAA, dedizierter Support, vertragliche SLA."
-        },
-        "2": "Was abgerechnet wird",
-        "3": {
+        "1": "Jeder Plan enthält alle Branchenvorlagen, alle Agententypen und alle Tools. Die Pläne unterscheiden sich nur bei den inklusiven Minuten, dem Überschreitungstarif und den Nutzungslimits (monatliche Anrufe, Minuten und SMS, Anrufe pro Stunde und Anrufminuten pro Tag), die mit jeder Stufe steigen. Jede Stufe unten nennt ihre inklusiven KI-Minuten und ihren Überschreitungstarif pro Minute.",
+        "3": "Was abgerechnet wird",
+        "4": {
           "0": "Sprachminuten (eingehend + ausgehend).",
           "1": "SMS-Segmente.",
           "2": "Wissensdatenbank-Speicher über das enthaltene Kontingent hinaus.",

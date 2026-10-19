@@ -470,9 +470,9 @@
       "guarantee": "Garantie satisfait ou remboursé sous 30 jours"
     },
     "tier_copy": {
-      "starter_desc": "Pour les petits cabinets qui se lancent dans l'automatisation vocale.",
-      "pro_desc": "Pour les entreprises en croissance qui ont besoin de campagnes et d'intégrations.",
-      "enterprise_desc": "Pour les organisations multisite avec un fort volume d'appels."
+      "starter_desc": "Tous les modèles et tous les outils, dimensionnés pour le volume d'appels d'un seul établissement.",
+      "pro_desc": "Tous les modèles et tous les outils, avec plus de minutes et des plafonds d'appels plus élevés pour les équipes très sollicitées.",
+      "enterprise_desc": "Tous les modèles et tous les outils, avec le plus de minutes et les plafonds d'appels les plus élevés."
     },
     "tier_card": {
       "most_popular": "Le plus populaire",
@@ -526,7 +526,8 @@
     },
     "compare": {
       "title": "Comparez toutes les fonctionnalités",
-      "feature_col": "Fonctionnalité"
+      "feature_col": "Fonctionnalité",
+      "all_included": "Chaque plan inclut tous les modèles sectoriels et tous les outils."
     },
     "features_list": {
       "ai_minutes": "Minutes IA incluses",
@@ -573,7 +574,7 @@
       "q3": "Que se passe-t-il si je dépasse mes minutes incluses ?",
       "a3": "Vous êtes facturé au tarif de dépassement de votre plan pour chaque minute au-delà de votre quota mensuel. Starter paye {{starter}}, Pro paye {{pro}} et Enterprise paye {{enterprise}}.",
       "q4": "Puis-je changer de plan à tout moment ?",
-      "a4": "Oui. Montez ou descendez de plan à tout moment depuis vos paramètres. À la montée, vous accédez immédiatement aux nouvelles fonctionnalités. Les baisses prennent effet au début du cycle de facturation suivant.",
+      "a4": "Oui. Montez ou descendez de plan à tout moment depuis vos paramètres. Chaque plan inclut tous les modèles et tous les outils : changer de plan ne modifie que vos minutes incluses, votre tarif de dépassement et vos plafonds d'utilisation. Les montées prennent effet immédiatement ; les baisses, au début du cycle de facturation suivant.",
       "q5": "Y a-t-il des contrats ou des engagements ?",
       "a5": "Non. Tous les plans sont mensuels, sans engagement long terme. Vous pouvez annuler à tout moment et votre compte reste actif jusqu'à la fin du cycle en cours.",
       "q6": "Proposez-vous un tarif annuel ?",

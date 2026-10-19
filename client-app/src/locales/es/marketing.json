@@ -470,9 +470,9 @@
       "guarantee": "Garantía de devolución de 30 días"
     },
     "tier_copy": {
-      "starter_desc": "Para clínicas pequeñas que comienzan con automatización de voz.",
-      "pro_desc": "Para empresas en crecimiento que necesitan campañas e integraciones.",
-      "enterprise_desc": "Para organizaciones con varias sedes y alto volumen de llamadas."
+      "starter_desc": "Todas las plantillas y herramientas, a la medida del volumen de llamadas de un solo negocio.",
+      "pro_desc": "Todas las plantillas y herramientas, con más minutos y límites de llamadas más altos para equipos con mucho movimiento.",
+      "enterprise_desc": "Todas las plantillas y herramientas, con la mayor cantidad de minutos y los límites de llamadas más altos."
     },
     "tier_card": {
       "most_popular": "Más popular",
@@ -526,7 +526,8 @@
     },
     "compare": {
       "title": "Compara todas las características",
-      "feature_col": "Característica"
+      "feature_col": "Característica",
+      "all_included": "Todos los planes incluyen todas las plantillas de industria y todas las herramientas."
     },
     "features_list": {
       "ai_minutes": "Minutos de IA incluidos",
@@ -573,7 +574,7 @@
       "q3": "¿Qué pasa si supero los minutos incluidos?",
       "a3": "Se factura a la tarifa de exceso de tu plan por cada minuto adicional. Starter paga {{starter}}, Pro paga {{pro}} y Enterprise paga {{enterprise}}.",
       "q4": "¿Puedo cambiar de plan en cualquier momento?",
-      "a4": "Sí. Sube o baja de plan cuando quieras desde la configuración de tu cuenta. Al subir, accedes de inmediato a las nuevas funciones. Las bajadas aplican al inicio del siguiente ciclo de facturación.",
+      "a4": "Sí. Sube o baja de plan cuando quieras desde la configuración de tu cuenta. Todos los planes incluyen todas las plantillas y herramientas, así que cambiar de plan solo cambia tus minutos incluidos, tu tarifa por excedente y tus límites de uso. Las subidas aplican de inmediato; las bajadas, al inicio del siguiente ciclo de facturación.",
       "q5": "¿Hay contratos o compromisos?",
       "a5": "No. Todos los planes son mes a mes y sin contratos a largo plazo. Puedes cancelar cuando quieras y tu cuenta sigue activa hasta el final del ciclo en curso.",
       "q6": "¿Ofrecen precio anual?",

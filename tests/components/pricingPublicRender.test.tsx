@@ -2342,3 +2342,47 @@ describe('computeCustomRateDelta — annual framing', () => {
     expect(delta?.deltaDollars).toBe(149);
   });
 });
+
+// Every plan includes every industry template, tool and feature; tiers differ
+// only in minutes and usage caps (docs/shop/tools-spec.md, "Plans and
+// entitlements"). Only the volume rows of the comparison table may differ.
+describe('Public /pricing comparison table: every plan includes every feature', () => {
+  const VOLUME_ROWS = new Set(['ai_minutes', 'overage']);
+
+  it('renders every non-volume row the same on all three tiers, with no "not included" cell', async () => {
+    mockUser = null;
+    await renderUnderPublicBundleProviders();
+
+    const rows = await waitFor(() => {
+      const found = Array.from(document.querySelectorAll<HTMLTableRowElement>('tr[data-feature]'));
+      expect(found.length).toBeGreaterThan(VOLUME_ROWS.size);
+      return found;
+    });
+
+    expect(document.querySelectorAll('[data-included="false"]').length).toBe(0);
+
+    for (const row of rows) {
+      const feature = row.getAttribute('data-feature')!;
+      const tierCells = Array.from(row.querySelectorAll('td')).slice(1);
+      expect(tierCells, feature).toHaveLength(3);
+      if (VOLUME_ROWS.has(feature)) continue;
+      const rendered = tierCells.map((td) =>
+        td.querySelector('[data-included="true"]') ? 'included' : (td.textContent ?? '').trim(),
+      );
+      expect(new Set(rendered).size, `${feature} differs by tier: ${rendered.join(' / ')}`).toBe(1);
+    }
+
+    const byFeature = new Map(rows.map((r) => [r.getAttribute('data-feature'), r]));
+    for (const capped of ['phones', 'team']) {
+      const cells = Array.from(byFeature.get(capped)!.querySelectorAll('td')).slice(1);
+      expect(cells.map((td) => td.textContent)).toEqual(['Unlimited', 'Unlimited', 'Unlimited']);
+    }
+  });
+
+  it('says every plan includes every industry template and every tool', async () => {
+    mockUser = null;
+    await renderUnderPublicBundleProviders();
+    const line = await waitFor(() => screen.getByTestId('pricing-all-included'));
+    expect(line.textContent).toBe('Every plan includes every industry template and every tool.');
+  });
+});

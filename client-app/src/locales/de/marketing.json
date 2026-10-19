@@ -470,9 +470,9 @@
       "guarantee": "30-Tage-Geld-zurück-Garantie"
     },
     "tier_copy": {
-      "starter_desc": "Für kleine Praxen, die mit Sprachautomatisierung starten.",
-      "pro_desc": "Für wachsende Unternehmen, die Kampagnen und Integrationen brauchen.",
-      "enterprise_desc": "Für Multi-Standort-Organisationen mit hohem Anrufvolumen."
+      "starter_desc": "Alle Vorlagen und Tools, ausgelegt auf das Anrufvolumen eines einzelnen Betriebs.",
+      "pro_desc": "Alle Vorlagen und Tools, mit mehr Minuten und höheren Anruflimits für ausgelastete Teams.",
+      "enterprise_desc": "Alle Vorlagen und Tools, mit den meisten Minuten und den höchsten Anruflimits."
     },
     "tier_card": {
       "most_popular": "Am beliebtesten",
@@ -526,7 +526,8 @@
     },
     "compare": {
       "title": "Alle Funktionen vergleichen",
-      "feature_col": "Funktion"
+      "feature_col": "Funktion",
+      "all_included": "Jeder Plan enthält alle Branchenvorlagen und alle Tools."
     },
     "features_list": {
       "ai_minutes": "Enthaltene KI-Minuten",
@@ -573,7 +574,7 @@
       "q3": "Was passiert, wenn ich meine enthaltenen Minuten überschreite?",
       "a3": "Jede Minute über Ihrem Monatskontingent wird zum Übernutzungstarif Ihres Plans abgerechnet. Starter zahlt {{starter}}, Pro zahlt {{pro}} und Enterprise zahlt {{enterprise}}.",
       "q4": "Kann ich den Plan jederzeit wechseln?",
-      "a4": "Ja. Upgrades und Downgrades sind jederzeit über die Kontoeinstellungen möglich. Beim Upgrade erhalten Sie sofort Zugriff auf die neuen Funktionen. Downgrades werden zu Beginn des nächsten Abrechnungszyklus wirksam.",
+      "a4": "Ja. Upgrades und Downgrades sind jederzeit über die Kontoeinstellungen möglich. Jeder Plan enthält alle Vorlagen und Tools, ein Planwechsel ändert also nur Ihre inklusiven Minuten, Ihren Überschreitungstarif und Ihre Nutzungslimits. Upgrades gelten sofort; Downgrades werden zu Beginn des nächsten Abrechnungszyklus wirksam.",
       "q5": "Gibt es Verträge oder Verpflichtungen?",
       "a5": "Nein. Alle Pläne sind monatsweise und ohne langfristige Verträge. Sie können jederzeit kündigen und Ihr Konto bleibt bis zum Ende des aktuellen Abrechnungszeitraums aktiv.",
       "q6": "Bieten Sie Jahrespreise an?",

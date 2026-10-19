@@ -1140,14 +1140,14 @@
     "see_pro_benefits": "Pro-Vorteile ansehen",
     "upgrade_now": "Jetzt upgraden",
     "approaching_limit_title": "Tariflimit fast erreicht",
-    "approaching_limit_calls": "Du hast {{pct}} % deiner monatlichen Anrufe genutzt. Wechsle zu Pro für höhere Limits und erweiterte Funktionen.",
-    "approaching_limit_minutes": "Du hast {{pct}} % deiner monatlichen KI-Minuten genutzt. Wechsle zu Pro für höhere Limits und erweiterte Funktionen.",
+    "approaching_limit_calls": "Du hast {{pct}} % deiner monatlichen Anrufe genutzt. Upgrade für mehr inklusive Minuten und höhere Nutzungslimits.",
+    "approaching_limit_minutes": "Du hast {{pct}} % deiner monatlichen KI-Minuten genutzt. Upgrade für mehr inklusive Minuten und höhere Nutzungslimits.",
     "calls_milestone_title": "Toller Fortschritt!",
-    "calls_milestone_message": "Du hast {{count}} Anrufe abgeschlossen. Upgrade, um erweiterte Analysen, Kampagnen-Tools und höhere Limits freizuschalten.",
+    "calls_milestone_message": "Du hast {{count}} Anrufe abgeschlossen. Jeder Plan enthält alle Tools; upgrade, wenn du mehr Minuten und höhere Nutzungslimits brauchst.",
     "first_call_title": "Erster Anruf abgeschlossen!",
-    "first_call_message": "Glückwunsch zum ersten Anruf! Wechsle zu Pro für erweiterte Analysen, unbegrenzte Agenten und priorisierten Support.",
+    "first_call_message": "Glückwunsch zum ersten Anruf! Jeder Plan enthält alle Vorlagen und Tools; die Pläne unterscheiden sich nur bei Minuten und Nutzungslimits.",
     "agent_deployed_title": "Agent veröffentlicht!",
-    "agent_deployed_message": "Dein Agent ist veröffentlicht und bereit, Anrufe entgegenzunehmen. Wechsle zu Pro für mehr Agenten, höhere Anrufvolumen und priorisierten Support."
+    "agent_deployed_message": "Dein Agent ist veröffentlicht und bereit, Anrufe entgegenzunehmen. Jeder Plan enthält alle Vorlagen und Tools; upgrade, wenn du mehr Minuten und höhere Anrufvolumen brauchst."
   },
   "onboarding_checklist": {
     "title": "Aktivierungsfortschritt",

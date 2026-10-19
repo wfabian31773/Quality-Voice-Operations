@@ -1140,14 +1140,14 @@
     "see_pro_benefits": "Voir les avantages Pro",
     "upgrade_now": "Passer à un forfait",
     "approaching_limit_title": "Limite du forfait proche",
-    "approaching_limit_calls": "Vous avez utilisé {{pct}} % de vos appels mensuels. Passez à Pro pour des limites plus élevées et des fonctionnalités avancées.",
-    "approaching_limit_minutes": "Vous avez utilisé {{pct}} % de vos minutes IA mensuelles. Passez à Pro pour des limites plus élevées et des fonctionnalités avancées.",
+    "approaching_limit_calls": "Vous avez utilisé {{pct}} % de vos appels mensuels. Passez à un forfait supérieur pour plus de minutes incluses et des plafonds d'utilisation plus élevés.",
+    "approaching_limit_minutes": "Vous avez utilisé {{pct}} % de vos minutes IA mensuelles. Passez à un forfait supérieur pour plus de minutes incluses et des plafonds d'utilisation plus élevés.",
     "calls_milestone_title": "Belle progression !",
-    "calls_milestone_message": "Vous avez complété {{count}} appels. Passez à un forfait supérieur pour débloquer l'analytique avancée, les outils de campagne et de meilleures limites.",
+    "calls_milestone_message": "Vous avez complété {{count}} appels. Chaque forfait inclut tous les outils ; passez à un forfait supérieur quand il vous faut plus de minutes et des plafonds plus élevés.",
     "first_call_title": "Premier appel réussi !",
-    "first_call_message": "Félicitations pour votre premier appel ! Passez à Pro pour l'analytique avancée, des agents illimités et un support prioritaire.",
+    "first_call_message": "Félicitations pour votre premier appel ! Chaque forfait inclut tous les modèles et tous les outils ; seuls les minutes et les plafonds d'utilisation changent.",
     "agent_deployed_title": "Agent déployé !",
-    "agent_deployed_message": "Votre agent est publié et prêt à prendre des appels. Passez à Pro pour plus d'agents, davantage de volume d'appels et un support prioritaire."
+    "agent_deployed_message": "Votre agent est publié et prêt à prendre des appels. Chaque forfait inclut tous les modèles et tous les outils ; passez à un forfait supérieur quand il vous faut plus de minutes et de volume d'appels."
   },
   "onboarding_checklist": {
     "title": "Progression de l'activation",

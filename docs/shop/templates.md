@@ -15,6 +15,8 @@ Customers do not build agents. QVO configures each business's agent from a **use
 
 A business can enable one tool or all of them; the template sets the defaults.
 
+**Plans:** every template is on every plan; plans differ only in minutes and usage caps ([Tools spec](./tools-spec.md), "Plans and entitlements"). A template's `minPlan` / `min_plan` is ignored and always `starter`.
+
 **Runtime phrasing templates (RT-08):** the voice side of a vertical lives in `platform/agent-templates/<vertical>/` as a versioned agent template (first: `barbershop@1`). It holds the persona and the EN/ES phrasing for every `askId` the contracts in `platform/callcore/contracts` return. After a booking, move or cancellation it wraps the commit's own server-worded `readback` (one `{{readback}}` placeholder; the template formats no date, time or barber) and, while SMS is off, says a text will follow once texting is enabled. Booking numbers are never spoken. The shared template types live in `platform/agent-templates/shared/`.
 
 **Composer (RT-09):** `platform/agent-runtime/composer` compiles an agent from a template, its contracts and the business's settings: the tools are exactly the platform actions the template's contracts name (plus the runtime's clock and language tools, no library tools), and the prompt is the persona in the call's language, the business's own details and the caller-ID line. It runs on live calls only for an agent of type `barbershop` whose `agents.metadata` has `"runtime": "composer"`; every other agent, and a barbershop agent without that value, loads exactly as before. Contract tool calls run through `server/voice-gateway/services/contractToolBridge.ts` (`runAction` as the agent, inside the invariant checker).

@@ -12,6 +12,7 @@ import {
 } from '../../../platform/marketplace/InstallationService';
 import { checkEntitlement } from '../../../platform/marketplace/EntitlementService';
 import { guardRuntimeFlag, keepStoredRuntime } from '../services/agentRuntimeFlag';
+import { PLAN_TIERS } from '../../../shared/billing/planCatalog';
 import {
   getChecklistState,
   markStepComplete,
@@ -62,7 +63,7 @@ router.get('/marketplace/templates', requireAuth, async (req, res) => {
 
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
-    const plan = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
+    // `?plan=` is still accepted but ignored: every plan includes every template.
     const status = typeof req.query.status === 'string' ? req.query.status.trim() : 'active';
     const agentType = typeof req.query.agent_type === 'string' ? req.query.agent_type.trim() : '';
     const tag = typeof req.query.tag === 'string' ? req.query.tag.trim() : '';
@@ -95,14 +96,6 @@ router.get('/marketplace/templates', requireAuth, async (req, res) => {
         WHERE tcm.template_id = tr.id AND tc.name = $${paramIdx++}
       )`);
       params.push(category);
-    }
-
-    if (plan) {
-      conditions.push(`EXISTS (
-        SELECT 1 FROM template_entitlements te
-        WHERE te.template_id = tr.id AND te.plan_tier = $${paramIdx++} AND te.enabled = TRUE
-      )`);
-      params.push(plan);
     }
 
     if (agentType) {
@@ -211,7 +204,7 @@ router.get('/marketplace/templates/:id', requireAuth, async (req, res) => {
 
     const isPlatformAdmin = req.user?.isPlatformAdmin === true;
 
-    const [versionsResult, categoriesResult, changelogsResult, entitlementsResult] = await Promise.all([
+    const [versionsResult, categoriesResult, changelogsResult] = await Promise.all([
       pool.query(
         isPlatformAdmin
           ? `SELECT id, version, changelog, package_ref, release_notes, is_latest, status, published_at
@@ -238,13 +231,6 @@ router.get('/marketplace/templates/:id', requireAuth, async (req, res) => {
          WHERE template_id = $1
          ORDER BY created_at DESC
          LIMIT 20`,
-        [template.id],
-      ),
-      pool.query(
-        `SELECT plan_tier, enabled
-         FROM template_entitlements
-         WHERE template_id = $1
-         ORDER BY plan_tier`,
         [template.id],
       ),
     ]);
@@ -277,10 +263,8 @@ router.get('/marketplace/templates/:id', requireAuth, async (req, res) => {
         details: c.details,
         createdAt: c.created_at,
       })),
-      entitlements: entitlementsResult.rows.map((e) => ({
-        planTier: e.plan_tier,
-        enabled: e.enabled,
-      })),
+      // Every plan includes every template; kept for API shape.
+      entitlements: PLAN_TIERS.map((planTier) => ({ planTier, enabled: true })),
     });
   } catch (err) {
     logger.error('Failed to get marketplace template', { error: (err as Error).message });
@@ -822,7 +806,6 @@ router.get('/marketplace/templates/:id/compatibility', requireAuth, async (req, 
     if (!template) return res.status(404).json({ error: 'Template not found' });
 
     const result = await checkEntitlement(tenantId, {
-      minPlan: template.min_plan,
       requiredIntegrations: template.required_integrations,
     });
 

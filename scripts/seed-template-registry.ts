@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getPrivilegedPool } from '../platform/db';
+import { TEMPLATE_MIN_PLAN, enableTemplateForAllPlans } from '../platform/marketplace/templateEntitlements';
 
 interface ManifestData {
   slug: string;
@@ -15,7 +16,6 @@ interface ManifestData {
   optionalTools: string[];
   defaultVoice: string;
   defaultLanguage: string;
-  minPlan: string;
   tags: string[];
   configSchema: Record<string, unknown>;
   iconUrl?: string;
@@ -52,7 +52,7 @@ const CATEGORIES: Record<string, { displayName: string; description: string; ico
   financial: { displayName: 'Financial', description: 'Collections, billing, and financial services agent templates', icon: 'dollar-sign', sortOrder: 8 },
 };
 
-async function seedTemplateRegistry(): Promise<void> {
+export async function seedTemplateRegistry(): Promise<void> {
   const pool = getPrivilegedPool();
   const client = await pool.connect();
 
@@ -86,11 +86,7 @@ async function seedTemplateRegistry(): Promise<void> {
 
       const manifest: ManifestData = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
 
-      const VALID_PLANS = ['starter', 'pro', 'enterprise'];
       const VALID_AGENT_TYPES = ['inbound', 'outbound'];
-      if (!VALID_PLANS.includes(manifest.minPlan)) {
-        throw new Error(`Invalid minPlan "${manifest.minPlan}" in ${dir}/manifest.json. Must be one of: ${VALID_PLANS.join(', ')}`);
-      }
       if (!VALID_AGENT_TYPES.includes(manifest.agentType)) {
         throw new Error(`Invalid agentType "${manifest.agentType}" in ${dir}/manifest.json. Must be one of: ${VALID_AGENT_TYPES.join(', ')}`);
       }
@@ -147,7 +143,7 @@ async function seedTemplateRegistry(): Promise<void> {
           manifest.iconUrl ?? null,
           'active',
           manifest.version,
-          manifest.minPlan,
+          TEMPLATE_MIN_PLAN,
           manifest.agentType,
           manifest.defaultVoice,
           manifest.defaultLanguage,
@@ -216,17 +212,9 @@ async function seedTemplateRegistry(): Promise<void> {
         );
       }
 
-      const planTiers = ['starter', 'pro', 'enterprise'];
-      const planIndex = planTiers.indexOf(manifest.minPlan);
-      for (let i = 0; i < planTiers.length; i++) {
-        await client.query(
-          `INSERT INTO template_entitlements (template_id, plan_tier, enabled)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (template_id, plan_tier) DO UPDATE SET enabled = EXCLUDED.enabled`,
-          [templateId, planTiers[i], i >= planIndex],
-        );
-      }
-      console.log(`  Entitlements set (min: ${manifest.minPlan})`);
+      // Every plan includes every template; a manifest's minPlan is ignored.
+      await enableTemplateForAllPlans(client, templateId);
+      console.log('  Entitlements set (all plans)');
     }
 
     await client.query('COMMIT');
@@ -240,6 +228,8 @@ async function seedTemplateRegistry(): Promise<void> {
   }
 }
 
-seedTemplateRegistry()
-  .then(() => process.exit(0))
-  .catch(() => process.exit(1));
+if (process.argv[1] && process.argv[1].endsWith('seed-template-registry.ts')) {
+  seedTemplateRegistry()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}

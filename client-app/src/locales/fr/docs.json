@@ -1143,14 +1143,9 @@
       "description": "Ce qui est inclus dans chaque niveau et comment l'utilisation est mesurée.",
       "body": {
         "0": "Niveaux de plan",
-        "1": {
-          "0": "Essai — 30 minutes de voix gratuites, 1 agent, 1 numéro.",
-          "1": "Démarrage — pour les opérateurs seuls ; minutes incluses plus des frais par minute.",
-          "2": "Croissance — pour les équipes multi-lignes ; base plus élevée, frais supplémentaires plus bas, voix premium.",
-          "3": "Entreprise — personnalisé ; SSO, BAA, support dédié, SLA contractuel."
-        },
-        "2": "Qu'est-ce que le mesurage",
-        "3": {
+        "1": "Chaque plan inclut tous les modèles sectoriels, tous les types d'agents et tous les outils. Les plans ne diffèrent que par les minutes incluses, le tarif de dépassement et les plafonds d'utilisation (appels, minutes et SMS mensuels, appels par heure et minutes d'appel par jour), qui augmentent à chaque niveau. Chaque niveau ci-dessous indique ses minutes IA incluses et son tarif de dépassement par minute.",
+        "3": "Qu'est-ce que le mesurage",
+        "4": {
           "0": "Minutes vocales (entrant + sortant).",
           "1": "Segments SMS.",
           "2": "Stockage de la base de connaissances au-delà du quota inclus.",

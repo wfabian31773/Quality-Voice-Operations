@@ -17,7 +17,7 @@
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
-  "minPlan": "enterprise",
+  "minPlan": "starter",
   "tags": [
     "collections",
     "debt",

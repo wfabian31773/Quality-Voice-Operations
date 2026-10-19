@@ -412,7 +412,6 @@ function DocumentationSection() {
   "agentType": "inbound",
   "defaultVoice": "sage",
   "defaultLanguage": "en",
-  "minPlan": "starter",
   "tags": ["healthcare", "scheduling"]
 }`}</pre>
           </div>

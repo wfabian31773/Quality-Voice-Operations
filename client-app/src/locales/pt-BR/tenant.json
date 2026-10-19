@@ -1140,14 +1140,14 @@
     "see_pro_benefits": "Ver benefícios do Pro",
     "upgrade_now": "Faça upgrade agora",
     "approaching_limit_title": "Chegando ao limite do plano",
-    "approaching_limit_calls": "Você usou {{pct}}% das suas chamadas mensais. Faça upgrade para o Pro para limites maiores e recursos avançados.",
-    "approaching_limit_minutes": "Você usou {{pct}}% dos seus minutos de IA mensais. Faça upgrade para o Pro para limites maiores e recursos avançados.",
+    "approaching_limit_calls": "Você usou {{pct}}% das suas chamadas mensais. Faça upgrade para ter mais minutos incluídos e limites de uso maiores.",
+    "approaching_limit_minutes": "Você usou {{pct}}% dos seus minutos de IA mensais. Faça upgrade para ter mais minutos incluídos e limites de uso maiores.",
     "calls_milestone_title": "Ótimo progresso!",
-    "calls_milestone_message": "Você concluiu {{count}} chamadas. Faça upgrade para desbloquear análises avançadas, ferramentas de campanha e limites maiores.",
+    "calls_milestone_message": "Você concluiu {{count}} chamadas. Todos os planos incluem todas as ferramentas; faça upgrade quando precisar de mais minutos e limites de uso maiores.",
     "first_call_title": "Primeira chamada concluída!",
-    "first_call_message": "Parabéns pela sua primeira chamada! Faça upgrade para o Pro para análises avançadas, agentes ilimitados e suporte prioritário.",
+    "first_call_message": "Parabéns pela sua primeira chamada! Todos os planos incluem todos os modelos e ferramentas; só mudam os minutos e os limites de uso.",
     "agent_deployed_title": "Agente publicado!",
-    "agent_deployed_message": "Seu agente está publicado e pronto para atender chamadas. Faça upgrade para o Pro para mais agentes, mais volume de chamadas e suporte prioritário."
+    "agent_deployed_message": "Seu agente está publicado e pronto para atender chamadas. Todos os planos incluem todos os modelos e ferramentas; faça upgrade quando precisar de mais minutos e mais volume de chamadas."
   },
   "onboarding_checklist": {
     "title": "Progresso da ativação",

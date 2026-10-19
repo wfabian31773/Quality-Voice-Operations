@@ -6,6 +6,12 @@ Repo inspected: `wfabian31773/Quality-Voice-Operations`, `main` @ `6a98241` (Oct
 
 **How the benchmarks were built.** Benchmark features come from the products' public feature pages and common knowledge of them. They are a target list, not a set of verified competitor claims. Re-check any specific claim before it appears in marketing.
 
+## Plans and entitlements
+Rule (Wayne, Oct 19 2026): **every plan gets every vertical** (barbershop, salon/nails, restaurant, dental, legal, collections, and the rest) **and every tool and feature.** Starter, Pro and Enterprise differ only in minutes and the matching usage caps: monthly minutes, calls and SMS (with overage), calls per hour, and minutes per day (`PLAN_LIMITS`, `PLAN_RATE_LIMITS` and `PLAN_CATALOG`, enforced by `checkBudget`, `HourlyRateLimiter`, `DailyMinuteCap` and `UsageGuardrails`).
+- New code must not gate a vertical, agent type, template, tool, feature, or agent or phone-number count on plan tier. A limit that differs by tier has to be a minutes or usage cap.
+- `template_registry.min_plan` and `template_entitlements` stay in the schema, but `min_plan` is always `'starter'` and every (template, tier) row is enabled (migration 128, `platform/marketplace/templateEntitlements.ts`). Nothing reads them to gate installs.
+- The trial is not a plan. Its limits (`TRIAL_LIMITS`: 2 agents, 10 tool executions, call caps) still apply until the tenant is on a paid plan.
+
 ---
 
 ## 0. Architecture: one action layer, three callers

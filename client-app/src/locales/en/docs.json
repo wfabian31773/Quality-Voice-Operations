@@ -1143,14 +1143,9 @@
       "description": "What is included in each tier and how usage is metered.",
       "body": {
         "0": "Plan tiers",
-        "1": {
-          "0": "Trial — 30 free voice minutes, 1 agent, 1 number.",
-          "1": "Starter — for solo operators; included minutes plus per-minute overage.",
-          "2": "Growth — for multi-line teams; higher base, lower overage, premium voices.",
-          "3": "Enterprise — custom; SSO, BAA, dedicated support, contractual SLA."
-        },
-        "2": "What is metered",
-        "3": {
+        "1": "Every plan includes every industry template, every agent type and every tool. Plans differ only in included minutes, the overage rate, and usage caps (monthly calls, minutes and SMS, calls per hour, and call minutes per day), which rise with each tier. Each tier below lists its included AI minutes and its overage rate per minute.",
+        "3": "What is metered",
+        "4": {
           "0": "Voice minutes (inbound + outbound).",
           "1": "SMS segments.",
           "2": "Knowledge-base storage above the included quota.",

@@ -1,6 +1,7 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
 import { validateVersionFormat } from '../agent-templates/versioningService';
+import { TEMPLATE_MIN_PLAN, enableTemplateForAllPlans } from './templateEntitlements';
 
 const logger = createLogger('DEVELOPER_SUBMISSIONS');
 
@@ -300,6 +301,7 @@ export async function reviewSubmission(
            description = EXCLUDED.description,
            short_description = EXCLUDED.short_description,
            current_version = EXCLUDED.current_version,
+           min_plan = EXCLUDED.min_plan,
            marketplace_category = EXCLUDED.marketplace_category,
            price_model = EXCLUDED.price_model,
            price_cents = EXCLUDED.price_cents,
@@ -313,7 +315,8 @@ export async function reviewSubmission(
           submission.description,
           submission.short_description,
           submission.version ?? '1.0.0',
-          (manifest.minPlan as string) ?? 'starter',
+          // A submitted minPlan is ignored: every plan includes every template.
+          TEMPLATE_MIN_PLAN,
           (manifest.agentType as string) ?? 'inbound',
           (manifest.defaultVoice as string) ?? 'sage',
           (manifest.defaultLanguage as string) ?? 'en',
@@ -332,6 +335,7 @@ export async function reviewSubmission(
       );
 
       templateId = templateRows[0].id as string;
+      await enableTemplateForAllPlans(client, templateId);
 
       await client.query(
         `UPDATE developer_submissions SET template_id = $1, status = 'published', updated_at = NOW() WHERE id = $2`,
