@@ -416,6 +416,40 @@ describe('demo tenant: call limits by call type', () => {
     expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_completed', expect.any(String), 'dental', 0);
     expect(m.scheduleDemoDataCleanupMock).not.toHaveBeenCalled();
   });
+
+  it('ordinary demo-tenant calls get the tenant hourly and daily-minute limits but never the budget check', async () => {
+    subscription('pro');
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(false);
+    // Would block the call if it were consulted.
+    m.checkBudgetMock.mockResolvedValue({ allowed: false, reason: 'over budget' });
+    const text = await place('CA-nobudget', '10.0.1.7');
+    expect(text).toContain('<Stream');
+    expect(text).not.toContain('Service limit reached');
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('demo', 'pro');
+    expect(m.checkDailyMinuteCapMock).toHaveBeenCalledWith('demo', 'pro');
+    expect(m.checkBudgetMock).not.toHaveBeenCalled();
+    expect(m.incrementHourlyCallCountMock).toHaveBeenCalledWith('demo');
+  });
+
+  it('non-demo tenants never run the website-demo lookup, per-IP guard or demo hourly limit', async () => {
+    realisticLimiters({ trial: 5, starter: 10, pro: 50 });
+    subscription('pro');
+    m.lookupByPhoneNumberMock.mockResolvedValue({
+      tenantId: 't1', agentId: 'a1', phoneNumberId: 'pn-t1', agentType: 'barbershop', tenantName: 'Acme', agentName: 'Bot',
+    });
+    // Back-to-back from one IP, with earlier calls still active and past 5/hour.
+    const texts: string[] = [];
+    for (let i = 1; i <= 7; i++) texts.push(await place(`CA-t1-${i}`, '10.0.1.8'));
+    expect(texts.every((t) => t.includes('<Stream'))).toBe(true);
+    expect(m.isWebsiteDemoNumberMock).not.toHaveBeenCalled();
+    expect(m.createRateLimitCheckerMock).not.toHaveBeenCalled();
+    expect(m.recordDemoAnalyticsEventMock).not.toHaveBeenCalled();
+    expect(m.poolQueryMock.mock.calls.some(([sql]) => String(sql).includes('demo_call_count'))).toBe(false);
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('t1', 'pro');
+    expect(m.checkDailyMinuteCapMock).toHaveBeenCalledWith('t1', 'pro');
+    expect(m.checkBudgetMock).toHaveBeenCalledWith('t1');
+  });
 });
 
 describe('POST /twilio/sms-status', () => {
