@@ -17,6 +17,7 @@ import { resolveProcessRole, resolveApiPort, isRenderRuntime, scrubReplitFallbac
 import { markDraining, markEnvValidated, markRegistriesLoaded } from '../../platform/runtime/health';
 import { getBuildInfo } from '../../platform/runtime/buildInfo';
 import { closeWithTimeout } from '../../platform/runtime/boundedClose';
+import { startDemoDataSweep } from './routes/demo';
 
 const logger = createLogger('ADMIN_API');
 
@@ -118,6 +119,8 @@ server.listen(PORT, '0.0.0.0', async () => {
     skipped: schedulerSelection.skipped.length,
   });
   startSchedulers(schedulerSelection.enabled, { voiceGatewayBaseUrl });
+  // Was a module-level setInterval in routes/demo.ts (ran in every importer).
+  startDemoDataSweep();
   if (schedulerSelection.enabled.some((s) => s.name === 'campaigns')) {
     logger.info('Campaign scheduler started', { voiceGatewayBaseUrl, adminApiBaseUrl });
   }

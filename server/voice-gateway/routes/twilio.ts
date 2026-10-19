@@ -28,7 +28,12 @@ import { withPrivilegedClient, withTenantClient } from '../../../platform/db';
 import { extractStirTelemetry } from '../../../platform/telephony/stirAttestation';
 import { recordTwilioCallCost } from '../../../platform/billing/cost';
 import crypto from 'crypto';
-import { recordDemoAnalyticsEvent, scheduleDemoDataCleanup } from '../../admin-api/routes/demo';
+import {
+  isWebsiteDemoNumber,
+  recordDemoAnalyticsEvent,
+  scheduleDemoDataCleanup,
+  WEBSITE_DEMO_CALL_SID_KEY,
+} from '../../admin-api/routes/demo';
 import {
   checkHourlyCallLimit,
   incrementHourlyCallCount,
@@ -47,7 +52,10 @@ const isDemoCallAllowed = createRateLimitChecker({
   maxRequests: 5,
 });
 
-const activeDemoCalls = new Map<string, { callSid: string; startedAt: number; ipHash: string; agentType?: string }>();
+const activeDemoCalls = new Map<
+  string,
+  { callSid: string; startedAt: number; ipHash: string; agentType?: string; websiteDemo: boolean }
+>();
 const DEMO_ACTIVE_CALL_TTL_MS = 4 * 60 * 1000;
 
 function getDemoCallerIp(req: import('express').Request): string {
@@ -314,9 +322,19 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
         return;
       }
 
-      activeDemoCalls.set(visitorIp, { callSid, startedAt: Date.now(), ipHash, agentType });
+      // Only website-demo calls get the marker that lets demo cleanup delete
+      // their history; ordinary calls to a `demo` number keep theirs.
+      const websiteDemo = await isWebsiteDemoNumber(routing.phoneNumberId, agentType);
+      activeDemoCalls.set(visitorIp, { callSid, startedAt: Date.now(), ipHash, agentType, websiteDemo });
       incrementDemoCallCount();
-      recordDemoAnalyticsEvent('call_started', ipHash, agentType).catch(() => {});
+      recordDemoAnalyticsEvent(
+        'call_started',
+        ipHash,
+        agentType,
+        undefined,
+        undefined,
+        websiteDemo ? { [WEBSITE_DEMO_CALL_SID_KEY]: callSid } : undefined,
+      ).catch(() => {});
     }
 
     if (tenantId !== DEMO_TENANT_ID) {
@@ -534,19 +552,21 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
         const eventType = callStatus === 'completed' ? 'call_completed' : 'call_abandoned';
         recordDemoAnalyticsEvent(eventType, entry.ipHash, entry.agentType, callDuration).catch(() => {});
 
-        try {
-          const rows = await withTenantClient(DEMO_TENANT_ID, async (client) => {
-            const result = await client.query(
-              `SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2 LIMIT 1`,
-              [DEMO_TENANT_ID, callSid],
-            );
-            return result.rows;
-          });
-          if (rows.length > 0) {
-            scheduleDemoDataCleanup(rows[0].id as string);
+        if (entry.websiteDemo) {
+          try {
+            const rows = await withTenantClient(DEMO_TENANT_ID, async (client) => {
+              const result = await client.query(
+                `SELECT id FROM call_sessions WHERE tenant_id = $1 AND call_sid = $2 LIMIT 1`,
+                [DEMO_TENANT_ID, callSid],
+              );
+              return result.rows;
+            });
+            if (rows.length > 0) {
+              scheduleDemoDataCleanup(rows[0].id as string);
+            }
+          } catch (err) {
+            logger.warn('Failed to schedule demo data cleanup', { callSid, error: String(err) });
           }
-        } catch (err) {
-          logger.warn('Failed to schedule demo data cleanup', { callSid, error: String(err) });
         }
         break;
       }

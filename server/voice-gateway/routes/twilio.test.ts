@@ -31,6 +31,7 @@ const m = vi.hoisted(() => ({
   createRateLimitCheckerMock: vi.fn(),
   recordDemoAnalyticsEventMock: vi.fn(),
   scheduleDemoDataCleanupMock: vi.fn(),
+  isWebsiteDemoNumberMock: vi.fn(),
   authorizeHealthcareDeploymentMock: vi.fn(),
   // dynamic imports
   smsService: {} as Record<string, ReturnType<typeof vi.fn>>,
@@ -79,6 +80,8 @@ vi.mock('../../../platform/billing/cost', () => ({ recordTwilioCallCost: m.recor
 vi.mock('../../admin-api/routes/demo', () => ({
   recordDemoAnalyticsEvent: m.recordDemoAnalyticsEventMock,
   scheduleDemoDataCleanup: m.scheduleDemoDataCleanupMock,
+  isWebsiteDemoNumber: m.isWebsiteDemoNumberMock,
+  WEBSITE_DEMO_CALL_SID_KEY: 'websiteDemoCallSid',
 }));
 vi.mock('../../../platform/billing/guardrails', () => ({
   checkHourlyCallLimit: m.checkHourlyCallLimitMock,
@@ -229,6 +232,39 @@ describe('POST /twilio/status', () => {
     const res = await form(request(app()).post('/twilio/status'), { CallSid: 'CA1', CallStatus: 'completed' });
     expect(res.status).toBe(204);
     expect(m.withPrivilegedClientMock).toHaveBeenCalled();
+  });
+});
+
+describe('demo tenant: website-demo marker and cleanup', () => {
+  const demoRouting = { tenantId: 'demo', agentId: 'a1', phoneNumberId: 'pn1', tenantName: 'Demo', agentName: 'Bot' };
+
+  async function callAndHangUp(callSid: string, ip: string) {
+    await form(request(app()).post('/twilio/voice').set('X-Forwarded-For', ip), {
+      CallSid: callSid, From: '+15551112222', To: '+15553334444',
+    });
+    m.poolQueryMock.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT id FROM call_sessions') ? { rows: [{ id: `sess-${callSid}` }] } : { rows: [] },
+    );
+    await form(request(app()).post('/twilio/status'), { CallSid: callSid, CallStatus: 'completed' });
+  }
+
+  it('an ordinary call to a demo-tenant number (Sharp Line) is not marked and never scheduled for cleanup', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(false);
+    await callAndHangUp('CA-sharp', '10.0.0.1');
+    expect(m.isWebsiteDemoNumberMock).toHaveBeenCalledWith('pn1', 'barbershop');
+    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_started', expect.any(String), 'barbershop', undefined, undefined, undefined);
+    expect(m.scheduleDemoDataCleanupMock).not.toHaveBeenCalled();
+  });
+
+  it('a website-demo call is marked with its CallSid and scheduled for cleanup', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'dental' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(true);
+    await callAndHangUp('CA-web', '10.0.0.2');
+    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith(
+      'call_started', expect.any(String), 'dental', undefined, undefined, { websiteDemoCallSid: 'CA-web' },
+    );
+    expect(m.scheduleDemoDataCleanupMock).toHaveBeenCalledWith('sess-CA-web');
   });
 });
 
