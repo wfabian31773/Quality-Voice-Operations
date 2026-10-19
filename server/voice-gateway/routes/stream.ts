@@ -229,9 +229,11 @@ export function attachWebSocket(server: HTTPServer): void {
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
 
         // Every bookkeeping write the call queued (tool rows, state moves,
-        // events, call_end_outcome), and a tool run still open at hangup
-        // (BOOKKEEPING_FINALIZE_DRAIN_MAX_MS), lands before the final state and
-        // call_completed (bounded). Anything later can't leave the final state.
+        // events, call_end_outcome), and the rows of a tool run still open at
+        // hangup (BOOKKEEPING_FINALIZE_DRAIN_MAX_MS), land before finalize and
+        // call_completed (bounded). The state is not the drain's: the close
+        // above queued session_closed (CALL_COMPLETED), and callPersistence
+        // keeps a terminal state against any later move.
         if (sessionResult) await sessionResult.drainBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
@@ -1029,8 +1031,9 @@ export function attachWebSocket(server: HTTPServer): void {
         // negotiated tenant's widget call drilldown matches what Stripe
         // will invoice (instead of quoting the catalog AI rate).
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
-        // Same as the phone path: the queued bookkeeping and open tool runs
-        // land before the final state (bounded); release is awaited only before unregister.
+        // Same as the phone path: the queued bookkeeping and the rows of open
+        // tool runs land before finalize (bounded; the terminal guard keeps
+        // the state); release is awaited only before unregister.
         if (sessionResult) await sessionResult.drainBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);

@@ -300,7 +300,7 @@ describe('BookkeepingQueue: release', () => {
   });
 });
 
-describe('BookkeepingQueue: drain (before the final call state)', () => {
+describe('BookkeepingQueue: drain (before finalize and call_completed)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 

@@ -1,15 +1,24 @@
 // @vitest-environment node
 //
 // Codex P1 on #135: a tool run still open at hangup queued its last writes
-// (tool_end -> ACTIVE_CONVERSATION) after finalizeCallSession had written
-// CALL_COMPLETED, so the call never ended in a terminal state; and
-// releaseBookkeeping() (up to 60 s) sat in front of usage / cost writes.
+// (tool_end -> ACTIVE_CONVERSATION) after the call's CALL_COMPLETED, so the
+// call never ended in a terminal state; and releaseBookkeeping() (up to 60 s)
+// sat in front of usage / cost writes.
+//
+// As in production, session.close() queues call_state.session_closed
+// (CALL_COMPLETED) at the start of teardown, before the drain: the row is
+// final before the run's tool_end lands, so the final state is the terminal
+// guard's job (KEEP_TERMINAL_STATE_SQL). The drain's job is order: the run's
+// rows and events (tool_invocations complete, tool_end, meter) land before
+// finalize and the call_completed event, bounded by
+// BOOKKEEPING_FINALIZE_DRAIN_MAX_MS.
 //
 // Drives the real phone and widget finalizers over a loopback WebSocket with
-// the real BookkeepingQueue and the real callPersistence; only the pool is a
-// fake that keeps call_sessions.lifecycle_state in memory and applies
-// applyCallState's terminal guard the way Postgres would (the SQL itself is
-// checked on a real Postgres in callPersistence.terminalGuard.realDb.test.ts).
+// the real BookkeepingQueue, the real callPersistence and the real
+// beginToolRun / finishToolRun; only the pool is a fake that keeps
+// call_sessions.lifecycle_state in memory and applies the state SQL the way
+// Postgres would (checked on a real Postgres in
+// callPersistence.terminalGuard.realDb.test.ts).
 import { createServer, type Server as HTTPServer } from 'http';
 import type { AddressInfo } from 'net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,21 +31,30 @@ const h = vi.hoisted(() => {
     state: new Map<string, string>(),
     /** Every state the row took, in order. */
     history: [] as string[],
+    /** Every row written, in order: `state:<X>`, `event:<type>`, `finalize`, `tool_invocations.complete`, `meter`. */
+    writes: [] as string[],
     /** When finalizeCallSession's UPDATE ran (Date.now(), faked or not). */
     finalizedAt: undefined as number | undefined,
   };
   const query = vi.fn(async (sql: string, values: unknown[] = []) => {
     if (sql.startsWith('UPDATE call_sessions SET')) {
       const id = String(values[1]);
-      const current = db.state.get(id) ?? 'ACTIVE_CONVERSATION';
-      const guarded = sql.includes(`lifecycle_state NOT IN ('CALL_COMPLETED', 'CALL_FAILED')`);
-      if (guarded && TERMINAL.includes(current)) return { rows: [], rowCount: 0 };
-      const next = String(values[2]);
+      const current = db.state.get(id) ?? '';
+      // 5ac743e0's whole-row guard, so the old code can be run against this test.
+      if (sql.includes(`lifecycle_state NOT IN ('CALL_COMPLETED', 'CALL_FAILED')`) && TERMINAL.includes(current)) return { rows: [], rowCount: 0 };
+      const keepsTerminal = sql.includes(`lifecycle_state = CASE WHEN lifecycle_state IN ('CALL_COMPLETED', 'CALL_FAILED') THEN lifecycle_state ELSE $3 END`);
+      const next = keepsTerminal && TERMINAL.includes(current) ? current : String(values[2]);
+      if (sql.includes('end_time = NOW()')) {
+        db.finalizedAt = Date.now();
+        db.writes.push('finalize');
+      } else {
+        db.writes.push(`state:${next}`);
+      }
+      if (next !== current || sql.includes('end_time = NOW()')) db.history.push(next);
       db.state.set(id, next);
-      db.history.push(next);
-      if (sql.includes('end_time = NOW()')) db.finalizedAt = Date.now();
       return { rows: [], rowCount: 1 };
     }
+    if (sql.startsWith('INSERT INTO call_events')) db.writes.push(`event:${String(values[3])}`);
     return { rows: [], rowCount: 1 };
   });
   return {
@@ -46,7 +64,6 @@ const h = vi.hoisted(() => {
     estimateCostMock: vi.fn(async (..._args: unknown[]) => ({ totalCostCents: 0 })),
     recordCallUsageMock: vi.fn(async (..._args: unknown[]) => {}),
     recordConversationCostMock: vi.fn(async (..._args: unknown[]) => {}),
-    sessionCloseMock: vi.fn(async () => {}),
     callSessionId: 'cs-finalize-drain',
   };
 });
@@ -54,10 +71,19 @@ const h = vi.hoisted(() => {
 vi.mock('../services/openaiSession', () => ({
   createRealtimeSession: vi.fn(async () => {
     const { BookkeepingQueue } = await import('../services/bookkeepingQueue');
+    const { updateCallStateWithEvent } = await import('../services/callPersistence');
     const queue = new BookkeepingQueue({ log: { info: () => {}, warn: () => {}, error: () => {} } });
     h.queue = queue;
+    // What openaiSession's 'close' handler queues (the transport emits 'close'
+    // synchronously inside session.close()): session_closed, behind every
+    // write already queued, before the finalizer's drain.
+    const close = vi.fn(async () => {
+      void queue.enqueue('call_state.session_closed', () => updateCallStateWithEvent('t-1', h.callSessionId, 'CALL_COMPLETED', {
+        type: 'session_closed', from: 'ACTIVE_CONVERSATION', to: 'CALL_COMPLETED',
+      }));
+    });
     return {
-      session: { connect: vi.fn(async () => {}), close: h.sessionCloseMock },
+      session: { connect: vi.fn(async () => {}), close },
       callSessionId: h.callSessionId,
       onOpenAIAudio: vi.fn(),
       triggerGreeting: vi.fn(),
@@ -169,6 +195,11 @@ vi.mock('../../../platform/analytics/TopicClusteringService', () => ({ classifyC
 vi.mock('../../../platform/billing/usage/UsageRecorder', () => ({
   recordCallUsage: h.recordCallUsageMock,
   estimateCallCostWithLiveRate: h.estimateCostMock,
+  recordToolExecution: vi.fn(async () => { h.db.writes.push('meter'); }),
+}));
+vi.mock('../../../platform/tools/ToolExecutionService', () => ({
+  createToolExecution: vi.fn(async () => 'exec-1'),
+  completeToolExecution: vi.fn(async () => { h.db.writes.push('tool_invocations.complete'); }),
 }));
 vi.mock('../../../platform/billing/cost', () => ({
   recordConversationCost: h.recordConversationCostMock,
@@ -182,7 +213,7 @@ vi.mock('../../../platform/widget/WidgetTokenService', () => ({
 vi.mock('../../../platform/workforce/HandoffEngine', () => ({ HandoffEngine: class {} }));
 
 import { attachWebSocket } from './stream';
-import { updateCallStateWithEvent } from '../services/callPersistence';
+import { beginToolRun, finishToolRun, type ToolRunCall } from '../services/toolBookkeeping';
 import { BOOKKEEPING_FINALIZE_DRAIN_MAX_MS } from '../services/bookkeepingQueue';
 import { getWidgetConfig, validateWidgetToken } from '../../../platform/widget/WidgetTokenService';
 
@@ -209,21 +240,33 @@ const sockets: WebSocket[] = [];
 
 const FAKE: Parameters<typeof vi.useFakeTimers>[0] = { toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] };
 
-/** A tool run the way openaiSession's trackToolRun + toolBookkeeping drive the queue. */
+/** A tool run the way openaiSession's trackToolRun drives toolBookkeeping on the queue. */
 function openToolRun(queue: BookkeepingQueue) {
   const closeRun = queue.openRun();
-  void queue.enqueue('call_state.tool_start', () => updateCallStateWithEvent('t-1', h.callSessionId, 'TOOL_EXECUTION', {
-    type: 'tool_start', from: 'ACTIVE_CONVERSATION', to: 'TOOL_EXECUTION',
-  }));
+  const call: ToolRunCall = { tenantId: 't-1',callSessionId: h.callSessionId, agentId: 'a-1', toolName: 'book_appointment', args: {} };
+  const run = beginToolRun(call, queue);
+  const startTime = Date.now();
   return {
-    /** finishToolRun's state + event pair, then the run closes. */
+    /** finishToolRun's writes (complete, tool_end, meter), then the run closes. */
     end() {
-      void queue.enqueue('call_state.tool_end', () => updateCallStateWithEvent('t-1', h.callSessionId, 'ACTIVE_CONVERSATION', {
-        type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION',
-      }));
+      void finishToolRun(call, { run, startTime, result: { success: true }, status: 'success' }, queue);
       closeRun();
     },
   };
+}
+
+const before = (a: string, b: string) => {
+  const ia = h.db.writes.indexOf(a);
+  const ib = h.db.writes.indexOf(b);
+  return ia >= 0 && ib >= 0 && ia < ib;
+};
+
+/** Once the row is final, no write moved it out (only CALL_COMPLETED after the first). */
+function neverLeftCallCompleted(): void {
+  const first = h.db.history.indexOf('CALL_COMPLETED');
+  expect(first).toBeGreaterThanOrEqual(0);
+  expect(h.db.history.slice(first).every((s) => s === 'CALL_COMPLETED')).toBe(true);
+  expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
 }
 
 async function openPhoneCall(port: number): Promise<WebSocket> {
@@ -266,7 +309,7 @@ async function openWidgetCall(port: number): Promise<WebSocket> {
 
 const finalized = () => h.db.finalizedAt !== undefined;
 
-describe('stream finalizers: open tool runs drain before the final state, and never undo it', () => {
+describe('stream finalizers: open tool runs land their rows before finalize (bounded); the call ends CALL_COMPLETED', () => {
   let server: HTTPServer;
   let port: number;
   const prevApiKey = process.env.OPENAI_API_KEY;
@@ -293,6 +336,7 @@ describe('stream finalizers: open tool runs drain before the final state, and ne
   beforeEach(() => {
     h.db.state.clear();
     h.db.history.length = 0;
+    h.db.writes.length = 0;
     h.db.finalizedAt = undefined;
     h.queue = undefined;
     h.query.mockClear();
@@ -306,7 +350,7 @@ describe('stream finalizers: open tool runs drain before the final state, and ne
     for (const ws of sockets.splice(0)) ws.terminate();
   });
 
-  it('phone: a tool run open at hangup lands its tool_end before CALL_COMPLETED; the call ends CALL_COMPLETED', async () => {
+  it('phone: a tool run open at hangup lands tool_invocations complete, tool_end and its meter before finalize and call_completed; the call ends CALL_COMPLETED', async () => {
     const ws = await openPhoneCall(port);
     const run = openToolRun(h.queue!);
     await h.queue!.flush();
@@ -317,13 +361,20 @@ describe('stream finalizers: open tool runs drain before the final state, and ne
     await vi.advanceTimersByTimeAsync(500);
     // The action is still in flight: the call is not finalized under it.
     expect(finalized()).toBe(false);
+    // session_closed was queued at the start of teardown: the row is already final.
+    expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
     run.end();
     await waitFor(finalized);
     await vi.advanceTimersByTimeAsync(0);
     await waitFor(() => h.queue!.isReleased);
 
-    expect(h.db.history).toEqual(['ACTIVE_CONVERSATION', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED']);
-    expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
+    for (const write of ['tool_invocations.complete', 'event:tool_end', 'meter']) {
+      expect(before(write, 'finalize'), `${write} before finalize`).toBe(true);
+      expect(before(write, 'event:call_completed'), `${write} before call_completed`).toBe(true);
+    }
+    // The tool_end's ACTIVE_CONVERSATION was kept off the final row.
+    expect(h.db.history).toEqual(['ACTIVE_CONVERSATION', 'TOOL_EXECUTION', 'CALL_COMPLETED', 'CALL_COMPLETED']);
+    neverLeftCallCompleted();
     ws.close();
   });
 
@@ -351,13 +402,14 @@ describe('stream finalizers: open tool runs drain before the final state, and ne
     run.end();
     await vi.advanceTimersByTimeAsync(0);
     await waitFor(() => h.queue!.isReleased);
-    expect(h.query.mock.calls.some(([sql, values]) => String(sql).includes('INSERT INTO call_events') && (values as unknown[])[3] === 'tool_end')).toBe(true);
-    expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
-    expect(h.db.history.at(-1)).toBe('CALL_COMPLETED');
+    // Its rows still land (after the final rows), and never move the state.
+    expect(before('event:call_completed', 'event:tool_end')).toBe(true);
+    expect(before('finalize', 'tool_invocations.complete')).toBe(true);
+    neverLeftCallCompleted();
     ws.close();
   });
 
-  it('widget: a tool run open at hangup lands its tool_end before the final state; the call ends CALL_COMPLETED', async () => {
+  it('widget: a tool run open at hangup lands tool_invocations complete, tool_end and its meter before finalize; the call ends CALL_COMPLETED', async () => {
     const ws = await openWidgetCall(port);
     const run = openToolRun(h.queue!);
     await h.queue!.flush();
@@ -367,13 +419,18 @@ describe('stream finalizers: open tool runs drain before the final state, and ne
     await teardownReachedDrain();
     await vi.advanceTimersByTimeAsync(500);
     expect(finalized()).toBe(false);
+    expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
     run.end();
     await waitFor(finalized);
     await vi.advanceTimersByTimeAsync(0);
     await waitFor(() => h.queue!.isReleased);
 
-    expect(h.db.history).toEqual(['TOOL_EXECUTION', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED']);
-    expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
+    // The widget finalizer writes no call_completed event: finalize is the line.
+    for (const write of ['tool_invocations.complete', 'event:tool_end', 'meter']) {
+      expect(before(write, 'finalize'), `${write} before finalize`).toBe(true);
+    }
+    expect(h.db.history).toEqual(['TOOL_EXECUTION', 'CALL_COMPLETED', 'CALL_COMPLETED']);
+    neverLeftCallCompleted();
     ws.close();
   });
 
@@ -398,7 +455,8 @@ describe('stream finalizers: open tool runs drain before the final state, and ne
     run.end();
     await vi.advanceTimersByTimeAsync(0);
     await waitFor(() => h.queue!.isReleased);
-    expect(h.db.state.get(h.callSessionId)).toBe('CALL_COMPLETED');
+    expect(before('finalize', 'event:tool_end')).toBe(true);
+    neverLeftCallCompleted();
     ws.close();
   });
 });

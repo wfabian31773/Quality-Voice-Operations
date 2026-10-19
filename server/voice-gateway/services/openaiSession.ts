@@ -407,9 +407,18 @@ function buildToolHandler(
       const demoStartTime = Date.now();
       const demoArgs = args;
       let resolveDemoId: (id: string) => void = () => {};
-      const demoExecId = new Promise<string>((resolve) => { resolveDemoId = resolve; });
+      let rejectDemoId: (err: unknown) => void = () => {};
+      const demoExecId = new Promise<string>((resolve, reject) => { resolveDemoId = resolve; rejectDemoId = reject; });
+      // Like toolBookkeeping's queueInvocationRow: if the insert throws, the
+      // writes that await the id fail at once and the queue moves on.
+      demoExecId.catch(() => {});
       void queue.enqueue('tool_invocations.create', async () => {
-        resolveDemoId(await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: demoArgs }));
+        try {
+          resolveDemoId(await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: demoArgs }));
+        } catch (err) {
+          rejectDemoId(err);
+          throw err;
+        }
       });
       void queue.enqueue('call_state.tool_execution', () => updateCallState(tenantId, callSessionId, 'TOOL_EXECUTION'));
       void queue.enqueue('call_event.tool_start', async () => writeCallEvent(tenantId, callSessionId, 'tool_start', 'WORKFLOW_EXECUTION', 'TOOL_EXECUTION', {
@@ -831,8 +840,9 @@ export interface RealtimeSessionResult {
    */
   flushBookkeeping: (reason?: string) => Promise<FlushResult>;
   /**
-   * What teardown waits on before the final call state: open tool runs (at
-   * most BOOKKEEPING_FINALIZE_DRAIN_MAX_MS), then a flush. Does not end the
+   * What teardown waits on before finalize and call_completed, so the rows of
+   * open tool runs land first: the runs (at most
+   * BOOKKEEPING_FINALIZE_DRAIN_MAX_MS), then a flush. Does not end the
    * queue. Never rejects.
    */
   drainBookkeeping: (reason?: string) => Promise<FlushResult>;
@@ -1760,8 +1770,11 @@ export async function createRealtimeSession(
         }
       }
 
-      // Behind every tool write already queued, so a tool's ACTIVE_CONVERSATION
-      // never lands after the call's CALL_COMPLETED.
+      // Behind every tool write already queued. Queued at the start of
+      // teardown (the transport emits 'close' synchronously), so the row is
+      // CALL_COMPLETED before the finalizer's drain; a later state move (a run
+      // still open, a transfer's ESCALATED) keeps it (callPersistence's
+      // KEEP_TERMINAL_STATE_SQL).
       persist('call_state.session_closed', () => updateCallStateWithEvent(tenantId, callSessionId, 'CALL_COMPLETED', {
         type: 'session_closed', from: 'ACTIVE_CONVERSATION', to: 'CALL_COMPLETED',
       }));

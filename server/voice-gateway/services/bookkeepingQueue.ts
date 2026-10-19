@@ -16,25 +16,36 @@
  *   cut off. JS can't cancel a DB statement: a write the queue stopped
  *   waiting for would still land later, after newer writes or after the
  *   final call state. So the next write starts only once it settles, and the
- *   writes land in enqueue order, always. The DB bounds the settle: the
- *   connection checkout by the pool's connectionTimeoutMillis, and
- *   callPersistence transactions run from here SET LOCAL statement_timeout to
+ *   writes land in enqueue order, always. What bounds the settle depends on
+ *   the writer. Only callPersistence transactions run from here get a DB
+ *   statement timeout: they SET LOCAL statement_timeout to
  *   BOOKKEEPING_STATEMENT_TIMEOUT_MS (isBookkeepingWrite()), so Postgres
- *   cancels a stuck statement and the transaction rolls back. A stuck write
- *   holds only this call's later writes; flush, drain and release keep their
- *   own bounds, so the floor and teardown are never held by it;
+ *   cancels a stuck statement and the transaction rolls back. That timeout
+ *   is per statement, not per transaction (a state + event + ticket
+ *   transaction can take a few times it). The other queued writers
+ *   (ToolExecutionService's tool_invocations rows, UsageRecorder's meter,
+ *   TrialGuard, observability) are bounded only by the pool's connection
+ *   checkout timeout; a lock wait there holds this call's later writes until
+ *   it ends. A stuck write holds only this call's later writes: flush, drain
+ *   and release keep their own bounds, so the floor and teardown are never
+ *   held by it;
  * - flush() waits for every write enqueued before it, bounded by
  *   BOOKKEEPING_FLUSH_TIMEOUT_MS (an error log on timeout). Readers of these
  *   rows flush first: the floor and teardown;
- * - drain() is what teardown waits on before the final call state: open tool
- *   runs, at most BOOKKEEPING_FINALIZE_DRAIN_MAX_MS, then a flush. It does
- *   not end the queue;
+ * - drain() is what teardown waits on before finalize and the call_completed
+ *   event: open tool runs, at most BOOKKEEPING_FINALIZE_DRAIN_MAX_MS, then a
+ *   flush. It orders rows, not the state: a run that closes within the bound
+ *   lands its rows and events (tool_invocations complete, tool_end, meter)
+ *   before them. It does not end the queue;
  * - release() ends the queue at teardown, once no tool run is open and the
  *   writes have drained (bounded by BOOKKEEPING_RELEASE_MAX_WAIT_MS). After
- *   that nothing runs; a late write is dropped and logged. A run still open
- *   after the drain can queue writes until then, but they can't move the
- *   call out of CALL_COMPLETED / CALL_FAILED (callPersistence's terminal
- *   guard): they add rows and events, never a newer state.
+ *   that nothing runs; a late write is dropped and logged.
+ *
+ * The final call state is not the queue's job. session_closed (CALL_COMPLETED)
+ * is queued at the start of teardown, before the drain, so a run still open
+ * at hangup moves the state after the row is final, inside the drain or
+ * after it. callPersistence keeps a terminal state (KEEP_TERMINAL_STATE_SQL)
+ * and still writes the move's other columns, events and rows.
  *
  * A logger that throws never breaks the chain. Nothing here is global: the
  * queue lives in the call's session closures and goes with them.
@@ -50,13 +61,15 @@ export const BOOKKEEPING_WRITE_TIMEOUT_MS = 5_000;
 export const BOOKKEEPING_RELEASE_MAX_WAIT_MS = 60_000;
 /**
  * Longest the hangup waits for a tool run still open to queue its last
- * writes before the final call state is written (a flush, bounded as above,
- * follows). A run open at hangup is an action already in flight (a booking
- * write, an SMS send), which mostly ends within a second or two; 3 s lets its
- * tool_end land before CALL_COMPLETED. It is short because every hangup with
- * a run open waits on it before the call shows as ended (live-call UI,
- * call_completed). A slower run still queues its rows until release(), and
- * the terminal guard keeps the final state.
+ * writes before finalize and the call_completed event (a flush, bounded as
+ * above, follows). It orders rows, not the state: the row is already
+ * CALL_COMPLETED (session_closed) and the terminal guard keeps it. A run open
+ * at hangup is an action already in flight (a booking write, an SMS send),
+ * which mostly ends within a second or two; 3 s lets its tool_invocations
+ * completion, tool_end event and meter land before call_completed. It is
+ * short because every hangup with a run open waits on it before end_time is
+ * written (live-call UI, call_completed). A slower run still queues its rows
+ * until release(), after the final rows.
  */
 export const BOOKKEEPING_FINALIZE_DRAIN_MAX_MS = 3_000;
 /**
@@ -199,8 +212,9 @@ export class BookkeepingQueue {
   }
 
   /**
-   * What teardown waits on before the final call state: open tool runs, at
-   * most `maxWaitMs`, then a flush (its own bound). Does not end the queue;
+   * What teardown waits on before finalize and call_completed (row order, not
+   * the state): open tool runs, at most `maxWaitMs`, then a flush (its own
+   * bound). Does not end the queue;
    * release() does. Never rejects; logs when a run is still open.
    */
   async drain(reason = 'drain', maxWaitMs = this.opts.drainMaxWaitMs ?? BOOKKEEPING_FINALIZE_DRAIN_MAX_MS): Promise<FlushResult> {

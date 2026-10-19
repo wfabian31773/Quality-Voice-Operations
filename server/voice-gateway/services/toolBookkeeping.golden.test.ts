@@ -49,7 +49,7 @@ import { BARBERSHOP_TEMPLATE_V1 } from '../../../platform/agent-templates/barber
 import { actionFail, actionOk, type ActionResult } from '../../../platform/actions';
 import { ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { BookkeepingQueue } from './bookkeepingQueue';
-import { NOT_TERMINAL_SQL } from './callPersistence';
+import { KEEP_TERMINAL_STATE_SQL } from './callPersistence';
 import { ContractToolBridge, type ContractActionRunner } from './contractToolBridge';
 import { beginToolRun, finishToolRun, runContractTool, type ToolRunCall } from './toolBookkeeping';
 
@@ -97,12 +97,13 @@ function normalized() {
       framing += 1;
       continue;
     }
-    // Since #135's fix-forward every call state move carries the terminal
-    // guard; 31996d53 did not. Checked here, then compared without it.
+    // Since #135's fix-forward every call state move keeps a terminal state
+    // (KEEP_TERMINAL_STATE_SQL); 31996d53 wrote `lifecycle_state = $3`.
+    // Checked here, then compared as the plain assignment.
     let sql = entry.sql;
     if (sql.startsWith('UPDATE call_sessions SET lifecycle_state')) {
-      expect(sql.endsWith(NOT_TERMINAL_SQL)).toBe(true);
-      sql = sql.slice(0, -NOT_TERMINAL_SQL.length);
+      expect(sql.startsWith(`UPDATE call_sessions SET ${KEEP_TERMINAL_STATE_SQL}, `)).toBe(true);
+      sql = sql.replace(KEEP_TERMINAL_STATE_SQL, 'lifecycle_state = $3');
     }
     const params = entry.params.map((p, i) =>
       entry.sql.startsWith('UPDATE tool_invocations') && i === 6 && typeof p === 'number' ? '<ms>' : p);

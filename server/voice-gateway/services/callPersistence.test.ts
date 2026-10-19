@@ -22,7 +22,7 @@ import {
   finalizeCallSession,
   persistCallOutcome,
   PERSIST_CALL_OUTCOME_SQL,
-  NOT_TERMINAL_SQL,
+  KEEP_TERMINAL_STATE_SQL,
   TERMINAL_LIFECYCLE_STATES,
 } from './callPersistence';
 import { BOOKKEEPING_STATEMENT_TIMEOUT_MS, BOOKKEEPING_WRITE_TIMEOUT_MS, BookkeepingQueue } from './bookkeepingQueue';
@@ -105,39 +105,72 @@ describe('updateCallState', () => {
 describe('terminal-state guard (Codex P1/P2 on #135)', () => {
   const stateUpdate = () => a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('UPDATE call_sessions SET'));
 
-  it('the terminal states are CALL_COMPLETED and CALL_FAILED', () => {
+  /**
+   * One call_sessions row that applies an UPDATE's SET list the way Postgres
+   * would: `col = $n` assignments, the KEEP_TERMINAL_STATE_SQL CASE, and (to
+   * fail on 5ac743e0) its whole-row `AND lifecycle_state NOT IN (...)` guard.
+   */
+  function fakeRow(initial: Record<string, unknown>) {
+    const row: Record<string, unknown> = { ...initial };
+    const terminal = () => (TERMINAL_LIFECYCLE_STATES as readonly unknown[]).includes(row.lifecycle_state);
+    a.clientQueryMock.mockImplementation(async (sql: string, values: unknown[] = []) => {
+      if (!sql.startsWith('UPDATE call_sessions SET')) return { rows: [], rowCount: 1 };
+      const [setList, where] = sql.slice('UPDATE call_sessions SET '.length).split(' WHERE ');
+      if (where.includes('lifecycle_state NOT IN') && terminal()) return { rows: [], rowCount: 0 };
+      const keepTerminal = setList.includes(KEEP_TERMINAL_STATE_SQL);
+      const wasTerminal = terminal();
+      for (const [, col, n] of setList.matchAll(/(\w+) = \$(\d+)/g)) row[col] = values[Number(n) - 1];
+      if (keepTerminal && !wasTerminal) row.lifecycle_state = values[2];
+      return { rows: [], rowCount: 1 };
+    });
+    return row;
+  }
+
+  it('the terminal states are CALL_COMPLETED and CALL_FAILED; only the state column is guarded', () => {
     expect([...TERMINAL_LIFECYCLE_STATES]).toEqual(['CALL_COMPLETED', 'CALL_FAILED']);
-    expect(NOT_TERMINAL_SQL).toBe(" AND lifecycle_state NOT IN ('CALL_COMPLETED', 'CALL_FAILED')");
+    expect(KEEP_TERMINAL_STATE_SQL).toBe("lifecycle_state = CASE WHEN lifecycle_state IN ('CALL_COMPLETED', 'CALL_FAILED') THEN lifecycle_state ELSE $3 END");
   });
 
-  it('updateCallState and updateCallStateWithEvent only move a call that is not in a terminal state', async () => {
-    await updateCallState('t1', 'cs1', 'ACTIVE_CONVERSATION');
-    expect(String(stateUpdate()?.[0])).toMatch(/WHERE tenant_id = \$1 AND id = \$2 AND lifecycle_state NOT IN \('CALL_COMPLETED', 'CALL_FAILED'\)$/);
+  it('updateCallState and updateCallStateWithEvent set the state through the guard, with no row filter', async () => {
+    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationTarget: '+15550001111', escalationReason: 'caller asked' });
+    const sql = String(stateUpdate()?.[0]);
+    expect(sql.startsWith(`UPDATE call_sessions SET ${KEEP_TERMINAL_STATE_SQL}, updated_at = NOW(), escalation_target = $4, escalation_reason = $5`)).toBe(true);
+    expect(sql.endsWith('WHERE tenant_id = $1 AND id = $2')).toBe(true);
     a.clientQueryMock.mockClear();
     await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
-    expect(String(stateUpdate()?.[0])).toContain(NOT_TERMINAL_SQL);
+    expect(String(stateUpdate()?.[0])).toContain(KEEP_TERMINAL_STATE_SQL);
   });
 
-  it('a skipped state move (rowCount 0) on a final call creates no escalation ticket', async () => {
-    a.clientQueryMock.mockImplementation(async (sql: string) => {
-      if (sql.includes('UPDATE call_sessions SET')) return { rows: [], rowCount: 0 };
-      return { rows: [], rowCount: 0 };
-    });
-    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationReason: 'late' });
-    expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('FROM tickets'))).toBe(false);
-    expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('INSERT INTO tickets'))).toBe(false);
+  it('a state move on a call not yet final still moves it', async () => {
+    const row = fakeRow({ lifecycle_state: 'TOOL_EXECUTION' });
+    await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
+    expect(row.lifecycle_state).toBe('ACTIVE_CONVERSATION');
+  });
+
+  it('a transfer landing after session_closed keeps CALL_COMPLETED but writes escalation_target / escalation_reason and files the ESCALATED ticket', async () => {
+    const row = fakeRow({ lifecycle_state: 'ACTIVE_CONVERSATION' });
+    // Teardown queues session_closed first (the transport emits 'close' synchronously) ...
+    await updateCallStateWithEvent('t1', 'cs1', 'CALL_COMPLETED', { type: 'session_closed', from: 'ACTIVE_CONVERSATION', to: 'CALL_COMPLETED' });
+    // ... then the transfer's ESCALATED (stream.ts onEscalation / call_state.escalated) lands.
+    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationTarget: '+15550001111', escalationReason: 'caller asked for a person' });
+    expect(row.lifecycle_state).toBe('CALL_COMPLETED');
+    expect(row.escalation_target).toBe('+15550001111');
+    expect(row.escalation_reason).toBe('caller asked for a person');
+    const ticket = a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('INSERT INTO tickets'));
+    expect(ticket?.[1]).toEqual(['t1', 'cs1', 'Escalated call: caller asked for a person', expect.stringContaining('Reason: caller asked for a person')]);
   });
 
   it('a late tool_end on a final call still writes its event row (history), not the state', async () => {
-    a.clientQueryMock.mockImplementation(async (sql: string) => ({ rows: [], rowCount: sql.includes('UPDATE call_sessions SET') ? 0 : 1 }));
+    const row = fakeRow({ lifecycle_state: 'CALL_COMPLETED' });
     await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
+    expect(row.lifecycle_state).toBe('CALL_COMPLETED');
     expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('INSERT INTO call_events'))).toBe(true);
     expect(a.clientQueryMock.mock.calls.map(([s]) => s)).toContain('COMMIT');
   });
 
   it('finalizeCallSession still writes the final state over any state (no guard)', async () => {
     await finalizeCallSession('t1', 'cs1', 'failed');
-    expect(String(stateUpdate()?.[0])).not.toContain('NOT IN');
+    expect(String(stateUpdate()?.[0])).not.toContain('CASE WHEN');
   });
 });
 
