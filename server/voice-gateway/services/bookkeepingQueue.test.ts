@@ -27,36 +27,73 @@ function lcg(seed: number) {
   };
 }
 
+/** A promise and the function that settles it. */
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => { open = resolve; });
+  return { opened, open };
+}
+
 describe('BookkeepingQueue: order', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
   it('writes enqueued from overlapping tool calls run one at a time in exactly enqueue order', async () => {
+    // The test, not real timers, decides when each tool call moves on: the
+    // enqueue order is fixed, so only the queue can change the run order.
+    vi.useFakeTimers();
     const queue = new BookkeepingQueue({ log: logger() });
+    const enqueued: string[] = [];
     const ran: string[] = [];
     let running = 0;
     let maxRunning = 0;
-    const write = (label: string, ms: number) => async () => {
-      running += 1;
-      maxRunning = Math.max(maxRunning, running);
-      await sleep(ms);
-      ran.push(label);
-      running -= 1;
+    const enqueue = (label: string, ms: number) => {
+      enqueued.push(label);
+      void queue.enqueue(label, async () => {
+        running += 1;
+        maxRunning = Math.max(maxRunning, running);
+        await sleep(ms);
+        ran.push(label);
+        running -= 1;
+      });
     };
     // Two tool calls whose bookkeeping interleaves: A begins, B begins, A finishes, B finishes.
+    // The writes take different times, so a queue that is not FIFO would reorder them.
+    const bBegins = gate();
+    const aFinishes = gate();
+    const bFinishes = gate();
     const callA = async () => {
-      void queue.enqueue('a.create', write('a.create', 5));
-      void queue.enqueue('a.start', write('a.start', 1));
-      await sleep(2);
-      void queue.enqueue('a.complete', write('a.complete', 3));
-      void queue.enqueue('a.end', write('a.end', 1));
+      enqueue('a.create', 5);
+      enqueue('a.start', 1);
+      await aFinishes.opened;
+      enqueue('a.complete', 3);
+      enqueue('a.end', 1);
     };
     const callB = async () => {
-      await sleep(1);
-      void queue.enqueue('b.create', write('b.create', 1));
-      void queue.enqueue('b.start', write('b.start', 4));
-      await sleep(3);
-      void queue.enqueue('b.complete', write('b.complete', 1));
+      await bBegins.opened;
+      enqueue('b.create', 1);
+      enqueue('b.start', 4);
+      await bFinishes.opened;
+      enqueue('b.complete', 1);
     };
-    await Promise.all([callA(), callB()]);
-    expect(await queue.flush()).toBe('drained');
+    const calls = Promise.all([callA(), callB()]);
+
+    // Each step lands 1 ms later, while a.create (5 ms) still holds the queue.
+    expect(enqueued).toEqual(['a.create', 'a.start']);
+    bBegins.open();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(enqueued).toEqual(['a.create', 'a.start', 'b.create', 'b.start']);
+    aFinishes.open();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(enqueued).toEqual(['a.create', 'a.start', 'b.create', 'b.start', 'a.complete', 'a.end']);
+    bFinishes.open();
+    await vi.advanceTimersByTimeAsync(1);
+    await calls;
+    expect(ran).toEqual([]);
+
+    const flushed = queue.flush();
+    await vi.advanceTimersByTimeAsync(5 + 1 + 1 + 4 + 3 + 1 + 1);
+    expect(await flushed).toBe('drained');
+    expect(ran).toEqual(enqueued);
     expect(ran).toEqual(['a.create', 'a.start', 'b.create', 'b.start', 'a.complete', 'a.end', 'b.complete']);
     expect(maxRunning).toBe(1);
   });
