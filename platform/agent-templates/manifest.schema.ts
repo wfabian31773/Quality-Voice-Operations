@@ -1,5 +1,3 @@
-import type { PlanTier } from '../billing/stripe/plans';
-
 export interface TemplateManifest {
   slug: string;
   displayName: string;
@@ -13,7 +11,12 @@ export interface TemplateManifest {
   optionalTools: string[];
   defaultVoice: string;
   defaultLanguage: string;
-  minPlan: PlanTier;
+  /**
+   * Ignored, and must stay 'starter': every plan includes every template
+   * (docs/shop/tools-spec.md, "Plans and entitlements"). Kept so existing
+   * manifests still match the schema.
+   */
+  minPlan: 'starter';
   tags: string[];
   configSchema: Record<string, unknown>;
   iconUrl?: string;

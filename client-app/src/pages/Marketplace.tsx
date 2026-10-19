@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   Search, Store, ArrowLeft, Download, CheckCircle, Phone, MessageSquare,
-  Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, ChevronDown, Shield,
+  Globe, Tag, Clock, ArrowUpCircle, Settings2, X, ChevronRight, ChevronDown,
   BookOpen, MessageCircle, PlayCircle, Star,
   Sparkles, TrendingUp, Package, Puzzle, FileText, BarChart3,
   ShoppingCart, Filter, Receipt, BadgePercent, AlertCircle,
@@ -243,14 +243,9 @@ interface CompatibilityResult {
   warnings: string[];
   plan: string;
   agentCount: number;
-  maxAgents: number;
+  /** Trial agent limit; null on any paid plan (no agent-count cap). */
+  maxAgents: number | null;
 }
-
-const PLAN_COLORS: Record<string, string> = {
-  starter: 'bg-success-light text-success dark:text-success',
-  pro: 'bg-info-light text-info dark:text-info',
-  enterprise: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-};
 
 const CHANNEL_ICONS: Record<string, typeof Phone> = {
   voice: Phone,
@@ -456,11 +451,45 @@ function CategoryIcon({ category }: { category: string }) {
   return <Icon className="h-5 w-5 text-primary" />;
 }
 
-function PlanBadge({ plan }: { plan: string }) {
+/**
+ * Why an install is blocked. Every plan includes every template, so these are
+ * never plan-tier reasons: billing state (cancelled, past due, trial agent
+ * limit) or a missing integration. The links go where the fix is, not to an
+ * upgrade.
+ */
+function InstallBlockedNotice({ errors, className = '' }: { errors: string[]; className?: string }) {
+  const needsBilling = errors.some((e) => /subscription|billing|trial/i.test(e));
+  const needsIntegration = errors.some((e) => /integration/i.test(e));
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${PLAN_COLORS[plan] ?? 'bg-surface-hover text-text-secondary'}`}>
-      {plan}
-    </span>
+    <div className={`p-4 bg-warning-light border border-warning rounded-lg ${className}`} data-testid="marketplace-install-blocked">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-warning dark:text-warning">Can&apos;t install yet</p>
+          {errors.map((err, i) => (
+            <p key={i} className="text-xs text-warning dark:text-warning mt-1">{err}</p>
+          ))}
+          <div className="flex flex-wrap gap-3 mt-2">
+            {needsBilling && (
+              <a
+                href="/billing"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition"
+              >
+                Go to Billing <ChevronRight className="h-3 w-3" />
+              </a>
+            )}
+            {needsIntegration && (
+              <a
+                href="/connectors"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition"
+              >
+                Set Up Connectors <ChevronRight className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -557,29 +586,11 @@ function InstallModal({
           {checkingCompat && (
             <div className="flex items-center gap-2 text-sm text-text-secondary">
               <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-              Checking plan compatibility...
+              Checking compatibility...
             </div>
           )}
 
-          {isBlocked && (
-            <div className="p-4 bg-warning-light border border-warning rounded-lg">
-              <div className="flex items-start gap-2">
-                <Shield className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-warning dark:text-warning">Upgrade Required</p>
-                  {compatibility.errors.map((err, i) => (
-                    <p key={i} className="text-xs text-warning dark:text-warning mt-1">{err}</p>
-                  ))}
-                  <a
-                    href="/billing"
-                    className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-primary hover:text-primary-hover transition"
-                  >
-                    View Plans <ChevronRight className="h-3 w-3" />
-                  </a>
-                </div>
-              </div>
-            </div>
-          )}
+          {isBlocked && <InstallBlockedNotice errors={compatibility.errors} />}
 
           {compatibility?.warnings && compatibility.warnings.length > 0 && (
             <div className="p-3 bg-warning-light border border-warning rounded-lg">
@@ -672,10 +683,6 @@ function InstallModal({
                     <span className="text-text-primary text-xs italic">&ldquo;{welcomeGreeting}&rdquo;</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-text-secondary">Plan</span>
-                  <PlanBadge plan={template.minPlan} />
-                </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-text-secondary">Channels</span>
                   <ChannelBadges channels={template.supportedChannels} />
@@ -788,7 +795,6 @@ function TemplateCard({
 
       <div className="flex items-center justify-between">
         <ChannelBadges channels={template.supportedChannels} />
-        <PlanBadge plan={template.minPlan} />
       </div>
     </button>
   );
@@ -851,7 +857,7 @@ function TemplateDetailView({
     queryFn: () => api.get<CompatibilityResult>(`/marketplace/templates/${templateId}/compatibility`),
     enabled: !!template && !isInstalled,
   });
-  const isPlanGated = compatibility ? !compatibility.compatible : false;
+  const isInstallBlocked = compatibility ? !compatibility.compatible : false;
 
   const { data: promptLibData } = useQuery({
     queryKey: ['marketplace-prompt-library', templateId],
@@ -961,7 +967,6 @@ function TemplateDetailView({
                   v{template.currentVersion} &middot; {template.agentType} agent
                 </p>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <PlanBadge plan={template.minPlan} />
                   <PriceBadge
                     priceCents={template.priceCents}
                     priceModel={template.priceModel}
@@ -1299,24 +1304,8 @@ function TemplateDetailView({
                 <p className="text-sm font-medium text-text-primary">Already Installed</p>
                 <p className="text-xs text-text-secondary mt-1">This template is active in your workspace.</p>
               </div>
-            ) : isPlanGated ? (
-              <div>
-                <div className="flex items-start gap-2 p-3 bg-warning-light border border-warning rounded-lg mb-3">
-                  <Shield className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-warning dark:text-warning">Upgrade Required</p>
-                    {compatibility?.errors.map((err, i) => (
-                      <p key={i} className="text-xs text-warning dark:text-warning mt-1">{err}</p>
-                    ))}
-                  </div>
-                </div>
-                <a
-                  href="/billing"
-                  className="w-full px-4 py-2.5 bg-warning hover:bg-warning text-white text-sm font-medium rounded-lg transition inline-flex items-center justify-center gap-2"
-                >
-                  <ArrowUpCircle className="h-4 w-4" /> Upgrade Plan
-                </a>
-              </div>
+            ) : isInstallBlocked ? (
+              <InstallBlockedNotice errors={compatibility?.errors ?? []} />
             ) : isPaidTemplate && !hasPurchaseAccess ? (
               (() => {
                 // Customer-discount-aware Purchase CTA (Task #1380). When
@@ -1399,10 +1388,6 @@ function TemplateDetailView({
             <h3 className="text-sm font-semibold text-text-primary">Details</h3>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">Plan Required</span>
-                <PlanBadge plan={template.minPlan} />
-              </div>
-              <div className="flex items-center justify-between text-sm">
                 <span className="text-text-secondary">Agent Type</span>
                 <span className="text-text-primary capitalize">{template.agentType}</span>
               </div>
@@ -1447,23 +1432,6 @@ function TemplateDetailView({
             </div>
           )}
 
-          {template.entitlements && template.entitlements.length > 0 && (
-            <div className="bg-surface border border-border rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-text-primary mb-2">Plan Availability</h3>
-              <div className="space-y-1.5">
-                {template.entitlements.map((e) => (
-                  <div key={e.planTier} className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary capitalize">{e.planTier}</span>
-                    {e.enabled ? (
-                      <CheckCircle className="h-4 w-4 text-success dark:text-success" />
-                    ) : (
-                      <X className="h-4 w-4 text-text-muted" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 

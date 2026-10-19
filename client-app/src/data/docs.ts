@@ -2,6 +2,7 @@ import {
   Rocket, Bot, Network, Plug, Boxes, Key, AlertTriangle, CreditCard,
   type LucideIcon,
 } from 'lucide-react';
+import { PLAN_CATALOG, PLAN_TIERS } from '../../../shared/billing/planCatalog';
 
 export type DocCategorySlug =
   | 'getting-started'
@@ -1089,15 +1090,18 @@ Response includes transcript, recording_url, tool_executions, quality_score.`, '
     title: 'Plans and pricing',
     description: 'What is included in each tier and how usage is metered.',
     readTime: '4 min',
-    updated: '2026-04-21',
+    updated: '2026-10-19',
     body: [
       h2('Plan tiers'),
-      ul([
-        'Trial — 30 free voice minutes, 1 agent, 1 number.',
-        'Starter — for solo operators; included minutes plus per-minute overage.',
-        'Growth — for multi-line teams; higher base, lower overage, premium voices.',
-        'Enterprise — custom; SSO, BAA, dedicated support, contractual SLA.',
-      ]),
+      p('Every plan includes every industry template, every agent type and every tool. Plans differ only in included minutes, the overage rate, and usage caps (monthly calls, minutes and SMS, calls per hour, and call minutes per day), which rise with each tier. Each tier below lists its included AI minutes and its overage rate per minute.'),
+      // Numbers only (from PLAN_CATALOG), so the line reads the same in every
+      // locale; docs.json deliberately has no key for this block.
+      ul(
+        PLAN_TIERS.map((tier) => {
+          const plan = PLAN_CATALOG[tier];
+          return `${plan.name} — ${plan.includedMinutes.toLocaleString('en-US')} min · $${plan.overageRatePerMinute.toFixed(2)}/min`;
+        }),
+      ),
       h2('What is metered'),
       ul(['Voice minutes (inbound + outbound).', 'SMS segments.', 'Knowledge-base storage above the included quota.', 'Premium voice surcharges.']),
     ],

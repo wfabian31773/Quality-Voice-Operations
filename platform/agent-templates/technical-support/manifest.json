@@ -20,7 +20,7 @@
   ],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
-  "minPlan": "pro",
+  "minPlan": "starter",
   "tags": [
     "technical-support",
     "troubleshooting",

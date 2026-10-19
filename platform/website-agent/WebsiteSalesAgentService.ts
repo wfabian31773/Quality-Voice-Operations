@@ -7,6 +7,7 @@ import {
   getPlanMonthlyPriceWholeDollars,
   type PlanTier,
 } from '../../shared/billing/planCatalog';
+import { PLAN_RATE_LIMITS } from '../billing/stripe/plans';
 
 export interface RecommendPlanActionData {
   plan: PlanTier;
@@ -46,10 +47,20 @@ function buildPricingBlock(): string {
   const proPrice = getPlanMonthlyPriceWholeDollars('pro');
   const enterprisePrice = getPlanMonthlyPriceWholeDollars('enterprise');
 
+  // Every plan includes every vertical, template and tool; tiers differ only in
+  // included minutes, overage rate and usage caps (docs/shop/tools-spec.md,
+  // "Plans and entitlements").
+  const caps = (tier: PlanTier): string => {
+    const { hourlyCallLimit, dailyCallMinuteCap } = PLAN_RATE_LIMITS[tier];
+    if (hourlyCallLimit >= 999_999 && dailyCallMinuteCap >= 999_999) return 'no hourly or daily call caps';
+    return `up to ${hourlyCallLimit.toLocaleString()} calls per hour and ${dailyCallMinuteCap.toLocaleString()} call minutes per day`;
+  };
+
   return [
-    `- Starter: $${starterPrice}/month — ${starter.includedMinutes.toLocaleString()} AI minutes, up to 3 phone numbers, 3 team members, inbound calls, transcripts, analytics. Best for small practices getting started.`,
-    `- Pro: $${proPrice}/month — ${pro.includedMinutes.toLocaleString()} AI minutes, up to 10 phone numbers, 10 team members, outbound campaigns, quality scoring, API access, CRM integrations, custom templates, priority support. Best for growing businesses. MOST POPULAR.`,
-    `- Enterprise: $${enterprisePrice}/month — ${enterprise.includedMinutes.toLocaleString()} AI minutes, unlimited phone numbers & team members, audit logs, multi-location support, dedicated onboarding. Best for multi-location organizations.`,
+    `- Every plan includes every industry template, every agent type and every tool. Plans differ only in included minutes, overage rate and usage caps. Never say a template, tool or feature needs a higher plan.`,
+    `- Starter: $${starterPrice}/month — ${starter.includedMinutes.toLocaleString()} AI minutes included; ${caps('starter')}. Best for a single shop.`,
+    `- Pro: $${proPrice}/month — ${pro.includedMinutes.toLocaleString()} AI minutes included; ${caps('pro')}. Best for busier teams. MOST POPULAR.`,
+    `- Enterprise: $${enterprisePrice}/month — ${enterprise.includedMinutes.toLocaleString()} AI minutes included; ${caps('enterprise')}. Best for high call volume.`,
     `- Now onboarding pilot shops. Book a walkthrough to get started.`,
     `- Overage rates: Starter $${starter.overageRatePerMinute.toFixed(2)}/min, Pro $${pro.overageRatePerMinute.toFixed(2)}/min, Enterprise $${enterprise.overageRatePerMinute.toFixed(2)}/min.`,
     `- Annual billing saves 20%.`,
@@ -95,7 +106,7 @@ ${buildPricingBlock()}
 
 INSTRUCTIONS:
 1. When a visitor asks about a product feature, explain it clearly and suggest trying a demo.
-2. When asked about pricing, explain the tiers and recommend one based on their stated needs.
+2. When asked about pricing, explain the tiers and recommend one based on their expected call volume.
 3. When a visitor mentions their industry, recommend the relevant agent template.
 4. Collect lead information naturally during conversation (name, email, company, industry, business size) — don't ask for all at once.
 5. When you have enough context, use the recommend_plan function to suggest a plan.

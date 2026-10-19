@@ -9,7 +9,6 @@ export interface PlanLimits {
   monthlySmsLimit: number;
   monthlyAiMinuteLimit: number;
   overageEnabled: boolean;
-  maxAgents: number;
 }
 
 export interface TrialLimits {
@@ -39,21 +38,18 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     monthlySmsLimit: 1_000,
     monthlyAiMinuteLimit: 250,
     overageEnabled: false,
-    maxAgents: 2,
   },
   pro: {
     monthlyCallLimit: 5_000,
     monthlySmsLimit: 10_000,
     monthlyAiMinuteLimit: 2_500,
     overageEnabled: true,
-    maxAgents: 10,
   },
   enterprise: {
     monthlyCallLimit: 999_999,
     monthlySmsLimit: 999_999,
     monthlyAiMinuteLimit: 999_999,
     overageEnabled: true,
-    maxAgents: 999,
   },
 };
 

@@ -470,9 +470,9 @@
       "guarantee": "30-day money-back guarantee"
     },
     "tier_copy": {
-      "starter_desc": "For small practices getting started with voice automation.",
-      "pro_desc": "For growing businesses that need campaigns and integrations.",
-      "enterprise_desc": "For multi-location organizations with high call volume."
+      "starter_desc": "Every template and tool, sized for a single shop's call volume.",
+      "pro_desc": "Every template and tool, with more minutes and higher call caps for busy teams.",
+      "enterprise_desc": "Every template and tool, with the most minutes and the highest call caps."
     },
     "tier_card": {
       "most_popular": "Most Popular",
@@ -526,7 +526,8 @@
     },
     "compare": {
       "title": "Compare all features",
-      "feature_col": "Feature"
+      "feature_col": "Feature",
+      "all_included": "Every plan includes every industry template and every tool."
     },
     "features_list": {
       "ai_minutes": "AI minutes included",
@@ -573,7 +574,7 @@
       "q3": "What happens if I exceed my included minutes?",
       "a3": "You'll be billed at your plan's overage rate for any minutes beyond your monthly allocation. Starter plans pay {{starter}}, Pro pays {{pro}}, and Enterprise pays {{enterprise}}.",
       "q4": "Can I change plans at any time?",
-      "a4": "Yes. Upgrade or downgrade at any time from your account settings. When upgrading, you get immediate access to the new features. Downgrades take effect at the start of your next billing cycle.",
+      "a4": "Yes. Upgrade or downgrade at any time from your account settings. Every plan includes every template and tool, so changing plans only changes your included minutes, overage rate and usage caps. Upgrades take effect immediately; downgrades take effect at the start of your next billing cycle.",
       "q5": "Are there any contracts or commitments?",
       "a5": "No. All plans are month-to-month with no long-term contracts. You can cancel at any time and your account will remain active through the end of your current billing period.",
       "q6": "Do you offer annual pricing?",

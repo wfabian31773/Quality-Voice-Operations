@@ -17,7 +17,7 @@
   "optionalTools": [],
   "defaultVoice": "sage",
   "defaultLanguage": "en",
-  "minPlan": "pro",
+  "minPlan": "starter",
   "tags": [
     "legal",
     "intake",

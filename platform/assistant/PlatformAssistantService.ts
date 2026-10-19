@@ -854,7 +854,7 @@ function generateFallbackResponse(userMessage: string, pageContext?: string): st
     return 'To set up integrations, go to the **Connectors** page. We support CRM systems, scheduling tools, ticketing systems, SMS, and more. Click "Add Connector" and follow the setup guide for your specific tool.';
   }
   if (msg.includes('billing') || msg.includes('plan') || msg.includes('upgrade') || msg.includes('pricing')) {
-    return 'You can manage your subscription on the **Billing** page. The Starter plan includes basic features, while the Pro plan unlocks advanced analytics, more agents, higher call volumes, and priority support. Visit the Billing page to compare plans.';
+    return 'You can manage your subscription on the **Billing** page. Every plan includes every industry template and every tool; plans differ only in included minutes, overage rate, and usage caps (calls per hour, minutes per day). Visit the Billing page to compare plans.';
   }
   if (msg.includes('widget') || msg.includes('embed') || msg.includes('website')) {
     return 'To add the chat widget to your website, go to the **Widget** page. Configure the widget appearance and generate an embed code. Simply paste the code snippet into your website\'s HTML to enable web chat and voice capabilities.';

@@ -1140,14 +1140,14 @@
     "see_pro_benefits": "See Pro Benefits",
     "upgrade_now": "Upgrade Now",
     "approaching_limit_title": "Approaching Plan Limit",
-    "approaching_limit_calls": "You've used {{pct}}% of your monthly calls. Upgrade to Pro for higher limits and unlock advanced features.",
-    "approaching_limit_minutes": "You've used {{pct}}% of your monthly AI minutes. Upgrade to Pro for higher limits and unlock advanced features.",
+    "approaching_limit_calls": "You've used {{pct}}% of your monthly calls. Upgrade for more included minutes and higher usage caps.",
+    "approaching_limit_minutes": "You've used {{pct}}% of your monthly AI minutes. Upgrade for more included minutes and higher usage caps.",
     "calls_milestone_title": "Great Progress!",
-    "calls_milestone_message": "You've completed {{count}} calls. Upgrade to unlock advanced analytics, campaign tools, and higher limits.",
+    "calls_milestone_message": "You've completed {{count}} calls. Every plan includes every tool; upgrade when you need more minutes and higher usage caps.",
     "first_call_title": "First Call Complete!",
-    "first_call_message": "Congratulations on your first call! Upgrade to Pro for advanced analytics, unlimited agents, and priority support.",
+    "first_call_message": "Congratulations on your first call! Every plan includes every template and tool; plans differ only in minutes and usage caps.",
     "agent_deployed_title": "Agent Deployed!",
-    "agent_deployed_message": "Your agent is published and ready to handle calls. Upgrade to Pro for more agents, higher call volumes, and priority support."
+    "agent_deployed_message": "Your agent is published and ready to handle calls. Every plan includes every template and tool; upgrade when you need more minutes and higher call volumes."
   },
   "onboarding_checklist": {
     "title": "Activation Progress",

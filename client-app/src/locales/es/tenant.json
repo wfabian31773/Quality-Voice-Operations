@@ -1140,14 +1140,14 @@
     "see_pro_benefits": "Ver ventajas de Pro",
     "upgrade_now": "Mejora ahora",
     "approaching_limit_title": "Te acercas al límite del plan",
-    "approaching_limit_calls": "Has usado el {{pct}}% de tus llamadas mensuales. Mejora a Pro para tener más capacidad y desbloquear funciones avanzadas.",
-    "approaching_limit_minutes": "Has usado el {{pct}}% de tus minutos de IA mensuales. Mejora a Pro para tener más capacidad y desbloquear funciones avanzadas.",
+    "approaching_limit_calls": "Has usado el {{pct}}% de tus llamadas mensuales. Mejora tu plan para tener más minutos incluidos y límites de uso más altos.",
+    "approaching_limit_minutes": "Has usado el {{pct}}% de tus minutos de IA mensuales. Mejora tu plan para tener más minutos incluidos y límites de uso más altos.",
     "calls_milestone_title": "¡Gran avance!",
-    "calls_milestone_message": "Has completado {{count}} llamadas. Mejora para desbloquear analíticas avanzadas, herramientas de campañas y mayores límites.",
+    "calls_milestone_message": "Has completado {{count}} llamadas. Todos los planes incluyen todas las herramientas; mejora tu plan cuando necesites más minutos y límites de uso más altos.",
     "first_call_title": "¡Primera llamada completada!",
-    "first_call_message": "¡Felicidades por tu primera llamada! Mejora a Pro para tener analíticas avanzadas, agentes ilimitados y soporte prioritario.",
+    "first_call_message": "¡Felicidades por tu primera llamada! Todos los planes incluyen todas las plantillas y herramientas; solo cambian los minutos y los límites de uso.",
     "agent_deployed_title": "¡Agente desplegado!",
-    "agent_deployed_message": "Tu agente está publicado y listo para atender llamadas. Mejora a Pro para tener más agentes, mayor volumen de llamadas y soporte prioritario."
+    "agent_deployed_message": "Tu agente está publicado y listo para atender llamadas. Todos los planes incluyen todas las plantillas y herramientas; mejora tu plan cuando necesites más minutos y mayor volumen de llamadas."
   },
   "onboarding_checklist": {
     "title": "Progreso de activación",

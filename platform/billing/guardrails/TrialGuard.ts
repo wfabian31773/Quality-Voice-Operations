@@ -20,6 +20,11 @@ export interface TrialCheckResult {
   trialExpiresAt?: string;
 }
 
+/** Trial state: no subscription row yet, or a subscription still `trialing`. */
+export function isTrialSubscription(sub: { status?: unknown } | undefined): boolean {
+  return !sub || sub.status === 'trialing';
+}
+
 export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckResult> {
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -33,7 +38,7 @@ export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckRe
       [tenantId],
     );
 
-    const isTrial = subRows.length === 0 || subRows[0]?.status === 'trialing';
+    const isTrial = isTrialSubscription(subRows[0]);
 
     if (!isTrial) {
       await client.query('COMMIT');
