@@ -191,6 +191,100 @@ describe('resolveServiceRef (pure)', () => {
     expect(found.status).toBe('unknown');
     if (found.status === 'unknown') expect(found.suggestions[0].id).toBe('fade');
   });
+
+  it('matches English "-y" / "-ies" plurals both ways', () => {
+    const menu = { services: [{ id: 'facial', name: 'Facial Therapies' }, { id: 'lash', name: 'Eyelash Specialty' }, { id: 'series', name: 'Lash Series' }] };
+    expect(resolveServiceRef(menu, 'facial therapy')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'facial' } });
+    expect(resolveServiceRef(menu, 'Facial Therapies')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'facial' } });
+    expect(resolveServiceRef(menu, 'eyelash specialties')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'lash' } });
+    expect(resolveServiceRef(menu, 'the lash series')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'series' } });
+    const both = { services: [{ id: 'one', name: 'Facial Therapy' }, { id: 'many', name: 'Facial Therapies' }] };
+    for (const ref of ['facial therapy', 'facial therapies']) expect(resolveServiceRef(both, ref).status).toBe('ambiguous');
+  });
+});
+
+/** A nail salon menu: "uña(s)" folds to "una(s)", which is also a Spanish article. */
+const NAILS: Rows = [
+  seededService('gel', 'gel_manicure', 'Uñas de Gel', ['uña de gel', 'gel nails']),
+  seededService('acrylic', null, 'Uñas Acrílicas', []),
+  seededService('mani', 'manicure', 'Manicura', []),
+  seededService('pedi', 'pedicure', 'Pedicura', []),
+];
+
+const NAIL_REFS: [string, string][] = [
+  ['uña de gel', 'gel'],
+  ['uñas de gel', 'gel'],
+  ['Uña de Gel', 'gel'],
+  ['unas de gel', 'gel'], // caller/ASR without the ñ
+  ['una de gel', 'gel'],
+  ['unas uñas de gel', 'gel'], // article + service
+  ['una manicura', 'mani'],
+  ['la pedicura', 'pedi'],
+  ['las uñas acrílicas', 'acrylic'],
+  ['uñas acrilicas', 'acrylic'],
+  ['uña acrílica', 'acrylic'],
+  ['unas acrilicas', 'acrylic'],
+];
+
+describe('Spanish nail-salon names: "uña" is never the article "una"', () => {
+  const catalog = {
+    services: NAILS.map((r) => ({ id: String(r.id), name: String(r.name), aliases: r.aliases as string[] })),
+  };
+
+  it('resolves every nail ref to its service (pure)', () => {
+    for (const [ref, id] of NAIL_REFS) {
+      expect({ ref, found: resolveServiceRef(catalog, ref) }).toMatchObject({ ref, found: { status: 'found', service: { id } } });
+    }
+  });
+
+  it('resolves a catalog name typed without the ñ ("Unas Acrilicas") the same way', () => {
+    const typed = { services: [{ id: 'acrylic', name: 'Unas Acrilicas' }, { id: 'gel', name: 'Uñas de Gel' }] };
+    for (const ref of ['uñas acrílicas', 'unas acrilicas', 'las uñas acrílicas']) {
+      expect(resolveServiceRef(typed, ref)).toMatchObject({ status: 'found', service: { id: 'acrylic' } });
+    }
+  });
+
+  it('nothing looser than an exact name or alias: "de gel" and "uñas" alone are unknown', () => {
+    for (const ref of ['de gel', 'uñas', 'gel acrílico']) expect(resolveServiceRef(catalog, ref).status).toBe('unknown');
+  });
+
+  it('unaccented "unas"/"una" read both ways never guesses between two services', () => {
+    const menu = { services: [{ id: 'acr', name: 'Acrílicas' }, { id: 'nails', name: 'Uñas Acrílicas' }] };
+    // "unas acrilicas" is "some acrylics" or "acrylic nails": both are on this menu, so the agent asks.
+    const found = resolveServiceRef(menu, 'unas acrilicas');
+    expect(found.status).toBe('ambiguous');
+    if (found.status === 'ambiguous') expect(found.candidates.map((s) => s.id).sort()).toEqual(['acr', 'nails']);
+    // The ñ settles it; so does a second article.
+    expect(resolveServiceRef(menu, 'uñas acrílicas')).toMatchObject({ status: 'found', service: { id: 'nails' } });
+    expect(resolveServiceRef(menu, 'las uñas acrílicas')).toMatchObject({ status: 'found', service: { id: 'nails' } });
+    expect(resolveServiceRef(menu, 'las acrílicas')).toMatchObject({ status: 'found', service: { id: 'acr' } });
+  });
+
+  it('list_staff resolves every nail ref', async () => {
+    for (const [ref, id] of NAIL_REFS) {
+      const { result } = await run('scheduling.list_staff', { serviceId: ref }, tenants(NAILS), { locale: 'es-US' });
+      expect({ ref, ok: result.ok }).toEqual({ ref, ok: true });
+      const expected = id === 'acrylic' ? ['marcus', 'dee'] : ['marcus'];
+      expect({ ref, staff: staffIds(result) }).toEqual({ ref, staff: expected });
+    }
+  });
+
+  it('check_availability gives the same slots for the name, the ñ-less ref and the id', async () => {
+    const input = { staffId: 'any', date: '2026-10-20' };
+    const byId = (await run('scheduling.check_availability', { ...input, serviceIds: ['gel'] }, tenants(NAILS))).result;
+    expect(byId.ok).toBe(true);
+    for (const ref of ['uña de gel', 'unas de gel', 'Uñas de Gel']) {
+      expect((await run('scheduling.check_availability', { ...input, serviceIds: [ref] }, tenants(NAILS))).result).toEqual(byId);
+    }
+  });
+
+  it('book.prepare slot scope stores the right service id for every nail ref', async () => {
+    for (const [ref, id] of NAIL_REFS) {
+      const found = await slotScope(txFor(tenants(NAILS)).tx, ctx(), { serviceIds: [ref], staffId: 'any' });
+      expect({ ref, failed: isActionFailure(found) }).toEqual({ ref, failed: false });
+      if (!isActionFailure(found)) expect({ ref, ids: found.services.map((s) => s.id) }).toEqual({ ref, ids: [id] });
+    }
+  });
 });
 
 describe('scheduling.list_staff with a service name', () => {

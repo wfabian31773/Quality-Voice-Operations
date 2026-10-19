@@ -17,9 +17,9 @@
 import {
   isContextualServiceTerm,
   matchServiceTerm,
-  normalizeServiceName,
   normalizeServiceText,
   serviceLabel,
+  serviceNameReadings,
   type ServiceKey,
   type ServiceLang,
 } from '../../../shared/scheduling/serviceLexicon';
@@ -153,13 +153,15 @@ function serviceKeyOf(service: MatchableService): { key: ServiceKey; generic: bo
 
 /**
  * `plural` is the regular plural of `single`: "-s" ("massages", "degradados",
- * "cortes") or "-es" after a consonant ("brushes", "boxes", "classes",
- * "colores"). A word ending in "s" never takes a bare "-s" ("bass" is not a
- * plural of "bas"), and the singular keeps at least two letters.
+ * "cortes"), "-es" after a consonant ("brushes", "boxes", "classes",
+ * "colores") or "-ies" for a consonant + "y" ("therapies", "specialties"). A
+ * word ending in "s" never takes a bare "-s" ("bass" is not a plural of
+ * "bas"), and the singular keeps at least two letters.
  */
 function pluralOf(plural: string, single: string): boolean {
   if (single.length < 2) return false;
   if (plural === `${single}s`) return !single.endsWith('s');
+  if (/[^aeiou]y$/.test(single) && plural === `${single.slice(0, -1)}ies`) return true;
   return plural === `${single}es` && !/[aeiou]$/.test(single);
 }
 
@@ -206,10 +208,14 @@ export function resolveServiceRef<S extends MatchableService>(
   // anywhere, "combo" would equal "Combo A" but not "Combo B" and pick it.
   // Plurals compare word by word in both directions (sameServiceName), not by
   // folding onto catalog words, so "massage" = "Massages" but "bass" ≠ "Bas".
-  const exact = normalizeServiceName(ref);
+  // An unaccented leading "una(s)" reads both as an article and as "uña(s)"
+  // (serviceNameReadings), on both sides: whichever reading matches decides,
+  // and two readings matching different services are ambiguous like any tie.
+  const exact = serviceNameReadings(ref).filter((r) => r);
   const exactMatch = (s: S, source: 'name' | 'alias') =>
-    (source === 'name' ? [s.name] : s.aliases ?? []).some((p) => sameServiceName(normalizeServiceName(p), exact));
-  if (exact) {
+    (source === 'name' ? [s.name] : s.aliases ?? [])
+      .some((p) => serviceNameReadings(p).some((name) => exact.some((r) => sameServiceName(name, r))));
+  if (exact.length > 0) {
     const named = catalog.services.filter((s) => exactMatch(s, 'name'));
     const aliased = catalog.services.filter((s) => !named.includes(s) && exactMatch(s, 'alias'));
     const matches = [...named, ...aliased];
