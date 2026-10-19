@@ -253,7 +253,7 @@ describe('demo tenant: website-demo marker and cleanup', () => {
     m.isWebsiteDemoNumberMock.mockResolvedValue(false);
     await callAndHangUp('CA-sharp', '10.0.0.1');
     expect(m.isWebsiteDemoNumberMock).toHaveBeenCalledWith('pn1', 'barbershop');
-    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_started', expect.any(String), 'barbershop', undefined, undefined, undefined);
+    expect(m.recordDemoAnalyticsEventMock).not.toHaveBeenCalled();
     expect(m.scheduleDemoDataCleanupMock).not.toHaveBeenCalled();
   });
 
@@ -293,6 +293,128 @@ describe('demo tenant: website-demo marker and cleanup', () => {
     await form(request(app()).post('/twilio/status'), { CallSid: acceptedSid, CallStatus: 'completed' });
     expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_completed', expect.any(String), 'dental', 0);
     expect(m.scheduleDemoDataCleanupMock).toHaveBeenCalledWith(`sess-${acceptedSid}`);
+  });
+});
+
+describe('demo tenant: call limits by call type', () => {
+  const demoRouting = { tenantId: 'demo', agentId: 'a1', phoneNumberId: 'pn1', tenantName: 'Demo', agentName: 'Bot' };
+  const ACTIVE_DEMO = 'You already have an active demo call';
+  const DEMO_HOURLY = 'maximum number of demo calls per hour';
+
+  // Stand-ins for the real limiters: the website-demo checker allows 5 per key
+  // per hour, the tenant hourly limit allows the plan's quota.
+  function realisticLimiters(tenantHourly: Record<string, number> = { trial: 5, starter: 10, pro: 50 }) {
+    const demoHits = new Map<string, number>();
+    m.createRateLimitCheckerMock.mockImplementation((key: string) => {
+      const n = (demoHits.get(key) ?? 0) + 1;
+      demoHits.set(key, n);
+      return n <= 5;
+    });
+    const tenantCalls = new Map<string, number>();
+    m.incrementHourlyCallCountMock.mockImplementation((t: string) => tenantCalls.set(t, (tenantCalls.get(t) ?? 0) + 1));
+    m.checkHourlyCallLimitMock.mockImplementation((t: string, plan: string) => ({
+      allowed: (tenantCalls.get(t) ?? 0) < tenantHourly[plan],
+    }));
+  }
+  const subscription = (plan: string) =>
+    m.poolQueryMock.mockImplementation(async (sql: string) =>
+      sql.includes('FROM subscriptions') ? { rows: [{ plan, status: 'active' }] } : { rows: [] },
+    );
+  const place = (callSid: string, ip: string) =>
+    form(request(app()).post('/twilio/voice').set('X-Forwarded-For', ip), {
+      CallSid: callSid, From: '+15551112222', To: '+15553334444',
+    }).then((r) => r.text);
+
+  it('back-to-back ordinary demo-tenant calls from one forwarded IP are all accepted, past 5/hour and with calls still active', async () => {
+    realisticLimiters();
+    subscription('pro');
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(false);
+    const texts: string[] = [];
+    for (let i = 1; i <= 10; i++) texts.push(await place(`CA-sharp-${i}`, '10.0.1.1'));
+    expect(texts.every((t) => t.includes('<Stream'))).toBe(true);
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('demo', 'pro');
+    expect(m.checkDailyMinuteCapMock).toHaveBeenCalledWith('demo', 'pro');
+    expect(m.incrementHourlyCallCountMock).toHaveBeenCalledTimes(10);
+    expect(m.createRateLimitCheckerMock).not.toHaveBeenCalled();
+    expect(m.recordDemoAnalyticsEventMock).not.toHaveBeenCalled();
+    expect(m.poolQueryMock.mock.calls.some(([sql]) => String(sql).includes('demo_call_count'))).toBe(false);
+
+    // Their hangups touch no website-demo bookkeeping.
+    await form(request(app()).post('/twilio/status'), { CallSid: 'CA-sharp-1', CallStatus: 'completed' });
+    expect(m.recordDemoAnalyticsEventMock).not.toHaveBeenCalled();
+    expect(m.scheduleDemoDataCleanupMock).not.toHaveBeenCalled();
+  });
+
+  it('website-demo calls keep the one-active-call-per-IP guard and the 5/hour demo limit', async () => {
+    realisticLimiters();
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'dental' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(true);
+
+    expect(await place('CA-web-1', '10.0.1.2')).toContain('<Stream');
+    expect(await place('CA-web-2', '10.0.1.2')).toContain(ACTIVE_DEMO);
+    await form(request(app()).post('/twilio/status'), { CallSid: 'CA-web-1', CallStatus: 'completed' });
+
+    for (let i = 3; i <= 6; i++) {
+      expect(await place(`CA-web-${i}`, '10.0.1.2')).toContain('<Stream');
+      await form(request(app()).post('/twilio/status'), { CallSid: `CA-web-${i}`, CallStatus: 'completed' });
+    }
+    expect(await place('CA-web-7', '10.0.1.2')).toContain(DEMO_HOURLY);
+    expect(m.checkHourlyCallLimitMock).not.toHaveBeenCalled();
+    expect(m.checkDailyMinuteCapMock).not.toHaveBeenCalled();
+    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith(
+      'call_started', expect.any(String), 'dental', undefined, undefined, { websiteDemoCallSid: 'CA-web-1' },
+    );
+  });
+
+  it('ordinary demo-tenant calls are blocked once the tenant hourly limit is exceeded', async () => {
+    realisticLimiters({ starter: 10 });
+    subscription('starter');
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(false);
+    for (let i = 1; i <= 10; i++) expect(await place(`CA-lim-${i}`, '10.0.1.3')).toContain('<Stream');
+    const blocked = await place('CA-lim-11', '10.0.1.3');
+    expect(blocked).toContain('Call limit reached');
+    expect(blocked).not.toContain('<Stream');
+  });
+
+  it('ordinary demo-tenant calls hit the daily minute cap like any tenant', async () => {
+    subscription('pro');
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(false);
+    m.checkDailyMinuteCapMock.mockResolvedValue({ allowed: false, reason: 'cap' });
+    expect(await place('CA-cap', '10.0.1.4')).toContain('Daily call limit reached');
+    expect(m.incrementHourlyCallCountMock).not.toHaveBeenCalled();
+  });
+
+  it('an unreadable demo-tenant plan falls back to the strictest plan (trial), never unlimited', async () => {
+    m.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM subscriptions')) throw new Error('db down');
+      return { rows: [] };
+    });
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(false);
+    await place('CA-noplan', '10.0.1.5');
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('demo', 'trial');
+    expect(m.checkDailyMinuteCapMock).toHaveBeenCalledWith('demo', 'trial');
+  });
+
+  it('a failed website-demo lookup fails closed: website-demo guards apply, without the cleanup marker', async () => {
+    realisticLimiters();
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'dental' });
+    m.isWebsiteDemoNumberMock.mockResolvedValue(null);
+    expect(await place('CA-unk-1', '10.0.1.6')).toContain('<Stream');
+    expect(await place('CA-unk-2', '10.0.1.6')).toContain(ACTIVE_DEMO);
+    expect(m.checkHourlyCallLimitMock).not.toHaveBeenCalled();
+    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith(
+      'call_started', expect.any(String), 'dental', undefined, undefined, undefined,
+    );
+    m.poolQueryMock.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT id FROM call_sessions') ? { rows: [{ id: 'sess-CA-unk-1' }] } : { rows: [] },
+    );
+    await form(request(app()).post('/twilio/status'), { CallSid: 'CA-unk-1', CallStatus: 'completed' });
+    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_completed', expect.any(String), 'dental', 0);
+    expect(m.scheduleDemoDataCleanupMock).not.toHaveBeenCalled();
   });
 });
 

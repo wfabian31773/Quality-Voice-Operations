@@ -119,7 +119,10 @@ export function getTwilioAdapter(): TwilioTransferAdapter | undefined {
   return twilioAdapterInstance;
 }
 
-async function resolveTenantPlan(tenantId: string): Promise<'trial' | 'starter' | 'pro' | 'enterprise'> {
+async function resolveTenantPlan(
+  tenantId: string,
+  onError: 'trial' | 'starter' = 'starter',
+): Promise<'trial' | 'starter' | 'pro' | 'enterprise'> {
   try {
     return await withTenantClient(tenantId, async (client) => {
       const { rows } = await client.query(
@@ -130,7 +133,7 @@ async function resolveTenantPlan(tenantId: string): Promise<'trial' | 'starter' 
       return (rows[0].plan as 'starter' | 'pro' | 'enterprise') || 'starter';
     });
   } catch {
-    return 'starter';
+    return onError;
   }
 }
 
@@ -292,16 +295,22 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       return;
     }
 
-    if (tenantId === DEMO_TENANT_ID) {
+    // Website-demo calls get the public per-IP demo guards. Ordinary calls to a
+    // `demo` number (e.g. Sharp Line test calls) get the tenant plan limits
+    // below instead. If the website-demo lookup fails, the call gets the public
+    // guards (fail closed) but not the cleanup marker (it keeps its history).
+    // Looked up before the one-call-per-IP guard so nothing awaits between
+    // has() and set(): two concurrent calls from one IP can't both pass it.
+    const websiteDemoLookup = tenantId === DEMO_TENANT_ID
+      ? await isWebsiteDemoNumber(routing.phoneNumberId, agentType)
+      : false;
+    const demoGuarded = websiteDemoLookup !== false;
+
+    if (demoGuarded) {
       const visitorIp = getDemoCallerIp(req);
       const ipHash = hashIp(visitorIp);
       const rateLimitKey = getDemoCallKey(req);
-
-      // Only website-demo calls get the marker that lets demo cleanup delete
-      // their history; ordinary calls to a `demo` number keep theirs. Looked up
-      // before the one-call-per-IP guard so nothing awaits between has() and
-      // set(): two concurrent calls from one IP can't both pass the check.
-      const websiteDemo = await isWebsiteDemoNumber(routing.phoneNumberId, agentType);
+      const websiteDemo = websiteDemoLookup === true;
 
       cleanStaleDemoCallEntries();
       if (activeDemoCalls.has(visitorIp)) {
@@ -340,8 +349,10 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       ).catch(() => {});
     }
 
-    if (tenantId !== DEMO_TENANT_ID) {
-      const plan = await resolveTenantPlan(tenantId);
+    if (!demoGuarded) {
+      const isDemoTenant = tenantId === DEMO_TENANT_ID;
+      // The demo tenant falls back to the strictest plan if its plan can't be read.
+      const plan = await resolveTenantPlan(tenantId, isDemoTenant ? 'trial' : 'starter');
 
       const hourlyCheck = checkHourlyCallLimit(tenantId, plan);
       if (!hourlyCheck.allowed) {
@@ -363,14 +374,17 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
         return;
       }
 
-      const budgetResult = await checkBudget(tenantId);
-      if (!budgetResult.allowed) {
-        logger.warn('Inbound call blocked by budget check', { tenantId, callSid, reason: budgetResult.reason });
-        res.type('text/xml').send(
-          `<?xml version="1.0" encoding="UTF-8"?>
+      // The demo tenant has never had a billing budget; it stays out of this check.
+      if (!isDemoTenant) {
+        const budgetResult = await checkBudget(tenantId);
+        if (!budgetResult.allowed) {
+          logger.warn('Inbound call blocked by budget check', { tenantId, callSid, reason: budgetResult.reason });
+          res.type('text/xml').send(
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Response><Say>Service limit reached. Please contact your administrator.</Say><Hangup/></Response>`,
-        );
-        return;
+          );
+          return;
+        }
       }
 
       incrementHourlyCallCount(tenantId);
