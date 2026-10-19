@@ -93,6 +93,23 @@ describe('FakeToolProvider', () => {
     expect((result.error.alternatives as { serviceId: string; name: string }[])[0]).toEqual({ serviceId: 'beard-trim', name: 'beard trim' });
   });
 
+  it('book.prepare with a service nothing matches is VALIDATION_FAILED, like the real action (list_staff stays NOT_FOUND)', async () => {
+    const state = buildShopFixture('barbershop-basic');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const result = await tools.invoke(
+      'scheduling.book.prepare',
+      { serviceIds: ['beard'], staffId: 'any', start: '2026-10-24T10:00:00-04:00', customer: { name: 'Luis', phone: '+15555550142' } },
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({ code: 'VALIDATION_FAILED', field: 'serviceIds', callerSafeMessage: "I couldn't find that service." });
+    expect((result.error.alternatives as { serviceId: string; name: string }[])[0]).toEqual({ serviceId: 'beard-trim', name: 'beard trim' });
+    expect(state.bookings).toHaveLength(0);
+    const availability = await tools.invoke('scheduling.check_availability', { serviceIds: ['beard'], staffId: 'any', date: '2026-10-24' }, ctx());
+    expect(!availability.ok && availability.error.code).toBe('NOT_FOUND');
+  });
+
   it('rejects tools the template did not enable', async () => {
     const tools = new FakeToolProvider(buildFixture('barbershop-marco'), ['scheduling']);
     const result = await tools.invoke('calls.transfer_to_human.prepare', { target: 'Dana' }, ctx());

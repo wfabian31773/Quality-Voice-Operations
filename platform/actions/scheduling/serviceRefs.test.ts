@@ -143,6 +143,49 @@ describe('resolveServiceRef (pure)', () => {
     expect(resolveServiceRef(aliased, 'package')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'pa' } });
   });
 
+  it('matches a singular ref to a plural menu name or alias, and a plural ref to a singular one', () => {
+    const menu = {
+      services: [
+        { id: 's1', name: 'Massages' },
+        { id: 'color', name: 'Color', aliases: ['Highlights'] },
+        { id: 'brush', name: 'Brush out' },
+        { id: 'fade', name: 'Fade', aliases: ['Degradados'] },
+        { id: 'beard', name: 'Barba' },
+      ],
+    };
+    expect(resolveServiceRef(menu, 'massage')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 's1' } });
+    expect(resolveServiceRef(menu, 'a massage')).toMatchObject({ status: 'found', service: { id: 's1' } });
+    expect(resolveServiceRef(menu, 'highlight')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'color' } });
+    expect(resolveServiceRef(menu, 'colors')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'color' } });
+    expect(resolveServiceRef(menu, 'brushes out')).toMatchObject({ status: 'found', service: { id: 'brush' } });
+    expect(resolveServiceRef(menu, 'degradado')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'fade' } });
+    expect(resolveServiceRef(menu, 'barbas')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'beard' } });
+    // Spanish the other way: a plural ref against a singular alias.
+    const singularAlias = { services: [{ id: 'fade', name: 'Fade', aliases: ['degradado'] }, { id: 'cut', name: 'Corte' }] };
+    expect(resolveServiceRef(singularAlias, 'Degradados')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'fade' } });
+    expect(resolveServiceRef(singularAlias, 'cortes')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'cut' } });
+  });
+
+  it('a singular and its plural both on the menu stay ambiguous, never a pick', () => {
+    const both = { services: [{ id: 'one', name: 'Massage' }, { id: 'many', name: 'Massages' }] };
+    for (const ref of ['massage', 'Massages']) {
+      const found = resolveServiceRef(both, ref);
+      expect(found.status).toBe('ambiguous');
+      if (found.status === 'ambiguous') expect(found.candidates.map((s) => s.id).sort()).toEqual(['many', 'one']);
+    }
+  });
+
+  it('a word ending in "s" that is not a plural never folds onto a shorter menu item', () => {
+    const menu = { services: [{ id: 's1', name: 'Bass' }, { id: 's2', name: 'Bas' }, { id: 'gloss', name: 'Hair gloss' }] };
+    expect(resolveServiceRef(menu, 'bass')).toMatchObject({ status: 'found', service: { id: 's1' } });
+    expect(resolveServiceRef(menu, 'bas')).toMatchObject({ status: 'found', service: { id: 's2' } });
+    expect(resolveServiceRef(menu, 'hair glos').status).toBe('unknown');
+    expect(resolveServiceRef(menu, 'hair glosses')).toMatchObject({ status: 'found', service: { id: 'gloss' } });
+    // "Kids cut" keeps its "s"; "kid cut" is its singular and still finds it.
+    expect(resolveServiceRef(catalog, 'kids cut')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'kids' } });
+    expect(resolveServiceRef(catalog, 'kid cut')).toMatchObject({ status: 'found', service: { id: 'kids' } });
+  });
+
   it('never resolves through the looser matcher: a phrase inside a sentence only ranks the suggestions', () => {
     const found = resolveServiceRef(catalog, 'can I get a fade on Saturday');
     expect(found.status).toBe('unknown');
@@ -170,6 +213,11 @@ describe('scheduling.list_staff with a service name', () => {
     const own = SHARP_LINE.map((r) => (r.id === 'fade' ? { ...r, id: uuid } : r));
     expect(staffIds((await run('scheduling.list_staff', { serviceId: 'degradado' }, tenants(own))).result)).toEqual(['marcus', 'dee']);
     expect(staffIds((await run('scheduling.list_staff', { serviceId: 'Degradado' }, tenants(own))).result)).toEqual(['marcus', 'dee']);
+  });
+
+  it('resolves a singular name against a plural menu name ("massage" → Massages)', async () => {
+    const own = [...SHARP_LINE.slice(0, 1), seededService('svc-massage', null, 'Massages', []), ...SHARP_LINE.slice(2)];
+    expect(staffIds((await run('scheduling.list_staff', { serviceId: 'massage' }, tenants(own))).result)).toEqual(['marcus', 'dee']);
   });
 
   it('a handle (id) still works unchanged', async () => {

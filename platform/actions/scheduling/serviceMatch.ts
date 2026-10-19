@@ -151,6 +151,25 @@ function serviceKeyOf(service: MatchableService): { key: ServiceKey; generic: bo
   return null;
 }
 
+/**
+ * `plural` is the regular plural of `single`: "-s" ("massages", "degradados",
+ * "cortes") or "-es" after a consonant ("brushes", "boxes", "classes",
+ * "colores"). A word ending in "s" never takes a bare "-s" ("bass" is not a
+ * plural of "bas"), and the singular keeps at least two letters.
+ */
+function pluralOf(plural: string, single: string): boolean {
+  if (single.length < 2) return false;
+  if (plural === `${single}s`) return !single.endsWith('s');
+  return plural === `${single}es` && !/[aeiou]$/.test(single);
+}
+
+/** Two normalized names with the same words in order, each equal or a singular/plural pair. */
+function sameServiceName(a: string, b: string): boolean {
+  const x = a.split(' ');
+  const y = b.split(' ');
+  return x.length === y.length && x.every((w, i) => w === y[i] || pluralOf(w, y[i]) || pluralOf(y[i], w));
+}
+
 /** How many services an unknown service ref comes back with as suggestions. */
 export const MAX_SERVICE_SUGGESTIONS = 4;
 
@@ -185,12 +204,14 @@ export function resolveServiceRef<S extends MatchableService>(
   const text = normalizeServiceText(ref, singulars);
   // Exact matching drops an article only at the start ("a fade"): dropped
   // anywhere, "combo" would equal "Combo A" but not "Combo B" and pick it.
-  const exact = normalizeServiceName(ref, singulars);
-  const exactPhrases = (s: S, source: 'name' | 'alias') =>
-    (source === 'name' ? [s.name] : s.aliases ?? []).map((p) => normalizeServiceName(p, singulars));
+  // Plurals compare word by word in both directions (sameServiceName), not by
+  // folding onto catalog words, so "massage" = "Massages" but "bass" ≠ "Bas".
+  const exact = normalizeServiceName(ref);
+  const exactMatch = (s: S, source: 'name' | 'alias') =>
+    (source === 'name' ? [s.name] : s.aliases ?? []).some((p) => sameServiceName(normalizeServiceName(p), exact));
   if (exact) {
-    const named = catalog.services.filter((s) => exactPhrases(s, 'name').includes(exact));
-    const aliased = catalog.services.filter((s) => !named.includes(s) && exactPhrases(s, 'alias').includes(exact));
+    const named = catalog.services.filter((s) => exactMatch(s, 'name'));
+    const aliased = catalog.services.filter((s) => !named.includes(s) && exactMatch(s, 'alias'));
     const matches = [...named, ...aliased];
     if (matches.length === 1) return { status: 'found', service: matches[0], matchedBy: named.length ? 'name' : 'alias' };
     if (matches.length > 1) return { status: 'ambiguous', candidates: matches };

@@ -458,8 +458,8 @@ export class FakeToolProvider implements ToolProvider {
         field: !start ? 'start' : !name ? 'customer.name' : 'customer.phone',
       });
     }
-    // The fake's earlier NOT_FOUND for an unknown service stays; the booking stores ids.
-    const serviceIds = resolveServiceIds(this.state, serviceRefs, 'serviceIds', 'NOT_FOUND');
+    // Like the real book.prepare (slots.ts slotScope): an unknown service is VALIDATION_FAILED.
+    const serviceIds = resolveServiceIds(this.state, serviceRefs, 'serviceIds', 'VALIDATION_FAILED');
     if (!Array.isArray(serviceIds)) return serviceIds;
     this.releaseCallHolds(ctx.callId);
     const onDate = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
