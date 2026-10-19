@@ -297,6 +297,12 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       const ipHash = hashIp(visitorIp);
       const rateLimitKey = getDemoCallKey(req);
 
+      // Only website-demo calls get the marker that lets demo cleanup delete
+      // their history; ordinary calls to a `demo` number keep theirs. Looked up
+      // before the one-call-per-IP guard so nothing awaits between has() and
+      // set(): two concurrent calls from one IP can't both pass the check.
+      const websiteDemo = await isWebsiteDemoNumber(routing.phoneNumberId, agentType);
+
       cleanStaleDemoCallEntries();
       if (activeDemoCalls.has(visitorIp)) {
         logger.warn('Demo call rejected — already has active call from this IP', {
@@ -322,9 +328,6 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
         return;
       }
 
-      // Only website-demo calls get the marker that lets demo cleanup delete
-      // their history; ordinary calls to a `demo` number keep theirs.
-      const websiteDemo = await isWebsiteDemoNumber(routing.phoneNumberId, agentType);
       activeDemoCalls.set(visitorIp, { callSid, startedAt: Date.now(), ipHash, agentType, websiteDemo });
       incrementDemoCallCount();
       recordDemoAnalyticsEvent(

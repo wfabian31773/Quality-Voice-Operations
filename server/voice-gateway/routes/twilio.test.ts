@@ -266,6 +266,34 @@ describe('demo tenant: website-demo marker and cleanup', () => {
     );
     expect(m.scheduleDemoDataCleanupMock).toHaveBeenCalledWith('sess-CA-web');
   });
+
+  it('two concurrent calls from one IP while the website-demo lookup is slow: one accepted, the other rejected', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'dental' });
+    let resolveLookup!: (v: boolean) => void;
+    m.isWebsiteDemoNumberMock.mockReturnValue(new Promise<boolean>((r) => { resolveLookup = r; }));
+    const place = (callSid: string) =>
+      form(request(app()).post('/twilio/voice').set('X-Forwarded-For', '10.0.0.3'), {
+        CallSid: callSid, From: '+15551112222', To: '+15553334444',
+      }).then((r) => r);
+    const first = place('CA-race-1');
+    const second = place('CA-race-2');
+    await vi.waitFor(() => expect(m.isWebsiteDemoNumberMock).toHaveBeenCalledTimes(2));
+    resolveLookup(true);
+    const texts = (await Promise.all([first, second])).map((r) => r.text);
+    const rejected = texts.filter((t) => t.includes('You already have an active demo call'));
+    expect(rejected).toHaveLength(1);
+    expect(texts.filter((t) => t.includes('<Stream'))).toHaveLength(1);
+    const acceptedSid = texts[0].includes('<Stream') ? 'CA-race-1' : 'CA-race-2';
+
+    // The accepted call's entry was not overwritten: its hangup still records
+    // completion analytics and schedules its cleanup.
+    m.poolQueryMock.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT id FROM call_sessions') ? { rows: [{ id: `sess-${acceptedSid}` }] } : { rows: [] },
+    );
+    await form(request(app()).post('/twilio/status'), { CallSid: acceptedSid, CallStatus: 'completed' });
+    expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_completed', expect.any(String), 'dental', 0);
+    expect(m.scheduleDemoDataCleanupMock).toHaveBeenCalledWith(`sess-${acceptedSid}`);
+  });
 });
 
 describe('POST /twilio/sms-status', () => {
