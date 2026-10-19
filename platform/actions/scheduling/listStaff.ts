@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import { actionFail, actionOk, defineAction } from '../core';
+import { actionOk, defineAction, isActionFailure } from '../core';
 import { loadCatalog } from './availability';
+import { readbackLang } from './readback';
+import { resolveServiceRefs } from './serviceRefs';
 
 const input = z.object({
-  /** Only staff who perform this service. */
+  /** Only staff who perform this service: its id, or its exact name or alias. */
   serviceId: z.string().min(1).max(255).optional(),
 });
 
@@ -22,14 +24,19 @@ export const listStaffAction = defineAction({
   permissions: { agent: true, mcpScope: 'qvo:read' },
   agentDescription:
     "List the shop's active staff and the services each performs. Pass serviceId to list only "
-    + 'the staff who do that service. Use the id as staffId in check_availability.',
+    + 'the staff who do that service: a service id from list_services is preferred, the exact service name '
+    + '(or one of its aliases) also works. Use the id as staffId in check_availability.',
   async run(ctx, args, tx) {
     const catalog = await loadCatalog(tx, ctx.tenantId);
-    if (args.serviceId && !catalog.staffByService.has(args.serviceId)) {
-      return actionFail('NOT_FOUND', `Unknown service: ${args.serviceId}`, {
+    let serviceId: string | undefined;
+    if (args.serviceId) {
+      const found = resolveServiceRefs(catalog, [args.serviceId], {
         field: 'serviceId',
-        callerSafeMessage: "I couldn't find that service.",
+        lang: readbackLang(ctx.locale),
+        unknownCode: 'NOT_FOUND',
       });
+      if (isActionFailure(found)) return found;
+      serviceId = found[0].id;
     }
     const items = catalog.staff
       .map((m) => ({
@@ -37,7 +44,7 @@ export const listStaffAction = defineAction({
         displayName: m.name,
         serviceIds: catalog.services.filter((s) => catalog.staffByService.get(s.id)!.has(m.id)).map((s) => s.id),
       }))
-      .filter((m) => !args.serviceId || m.serviceIds.includes(args.serviceId));
+      .filter((m) => !serviceId || m.serviceIds.includes(serviceId));
     return actionOk(items);
   },
 });

@@ -279,6 +279,20 @@ export function normalizeServiceText(text: string, singulars?: ReadonlySet<strin
   return tokenize(text, singulars).words.map((w) => w.text).join(' ');
 }
 
+/** Articles an exact service ref may start with: "a fade", "the fade", "el degradado". */
+const LEADING_ARTICLES = new Set(['a', 'an', 'the', 'un', 'una', 'el', 'la', 'los', 'las']);
+
+/**
+ * normalizeServiceText for exact name/alias matching: the same folding, but one
+ * article is dropped only as the first word, never inside or at the end, so
+ * "Combo A" stays "combo a" and never equals "combo".
+ */
+export function normalizeServiceName(text: string, singulars?: ReadonlySet<string>): string {
+  const raw = rawTokens(text);
+  const start = raw.length > 1 && LEADING_ARTICLES.has(raw[0]) ? 1 : 0;
+  return raw.slice(start).map((w) => singular(CONJUNCTIONS[w] ?? w, singulars)).join(' ');
+}
+
 type TermKind = 'strong' | 'contextual' | 'weak';
 
 interface IndexedTerm {

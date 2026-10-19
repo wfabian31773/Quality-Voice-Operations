@@ -3,7 +3,7 @@
 exports[`compose: tools > the tool list is pinned 1`] = `
 [
   {
-    "description": "Hold an appointment for 5 minutes and get the readback. Use serviceIds, staffId (a staff id or 'any') and a start time from check_availability, plus the customer's name and phone. Read the returned readback to the caller word for word and call scheduling.book.commit only after an explicit yes. If the caller changes anything, call prepare again (the earlier hold is released). On CONFLICT, offer the alternatives. On SLOT_MISSING, ask the caller the one question in callerSafeMessage; if exit is set, offer to take a message.",
+    "description": "Hold an appointment for 5 minutes and get the readback. Use serviceIds (service ids preferred; an exact service name or alias also works), staffId (a staff id or 'any') and a start time from check_availability, plus the customer's name and phone. Read the returned readback to the caller word for word and call scheduling.book.commit only after an explicit yes. If the caller changes anything, call prepare again (the earlier hold is released). On CONFLICT, offer the alternatives. On SLOT_MISSING, ask the caller the one question in callerSafeMessage; if exit is set, offer to take a message.",
     "name": "scheduling_book_prepare",
     "parameters": {
       "additionalProperties": false,
@@ -174,7 +174,7 @@ exports[`compose: tools > the tool list is pinned 1`] = `
     },
   },
   {
-    "description": "Find open appointment times for 1 to 3 services done back-to-back by one staff member. staffId is a staff id or 'any'. Give date (YYYY-MM-DD, the date in the tenant's timezone; get_current_tenant_time gives today's date) or window {from,to} in the same format; with neither it finds the first available day. Optional partOfDay (morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.",
+    "description": "Find open appointment times for 1 to 3 services done back-to-back by one staff member. serviceIds: service ids from list_services are preferred; an exact service name (or alias) also works. staffId is a staff id or 'any'. Give date (YYYY-MM-DD, the date in the tenant's timezone; get_current_tenant_time gives today's date) or window {from,to} in the same format; with neither it finds the first available day. Optional partOfDay (morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.",
     "name": "scheduling_check_availability",
     "parameters": {
       "additionalProperties": false,

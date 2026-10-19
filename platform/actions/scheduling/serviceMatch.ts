@@ -17,6 +17,7 @@
 import {
   isContextualServiceTerm,
   matchServiceTerm,
+  normalizeServiceName,
   normalizeServiceText,
   serviceLabel,
   type ServiceKey,
@@ -148,6 +149,87 @@ function serviceKeyOf(service: MatchableService): { key: ServiceKey; generic: bo
     if (fromAlias && fromAlias.confidence >= 0.8) return { key: fromAlias.key, generic: false };
   }
   return null;
+}
+
+/**
+ * `plural` is the regular plural of `single`: "-s" ("massages", "degradados",
+ * "cortes") or "-es" after a consonant ("brushes", "boxes", "classes",
+ * "colores"). A word ending in "s" never takes a bare "-s" ("bass" is not a
+ * plural of "bas"), and the singular keeps at least two letters.
+ */
+function pluralOf(plural: string, single: string): boolean {
+  if (single.length < 2) return false;
+  if (plural === `${single}s`) return !single.endsWith('s');
+  return plural === `${single}es` && !/[aeiou]$/.test(single);
+}
+
+/** Two normalized names with the same words in order, each equal or a singular/plural pair. */
+function sameServiceName(a: string, b: string): boolean {
+  const x = a.split(' ');
+  const y = b.split(' ');
+  return x.length === y.length && x.every((w, i) => w === y[i] || pluralOf(w, y[i]) || pluralOf(y[i], w));
+}
+
+/** How many services an unknown service ref comes back with as suggestions. */
+export const MAX_SERVICE_SUGGESTIONS = 4;
+
+export type ServiceRefResult<S> =
+  | { status: 'found'; service: S; matchedBy: 'id' | 'name' | 'alias' }
+  /** Several services carry this exact name or alias: the agent asks which one. */
+  | { status: 'ambiguous'; candidates: S[] }
+  /** Nothing has this id, name or alias; the closest few services, never a pick. */
+  | { status: 'unknown'; suggestions: S[] };
+
+/**
+ * A service ref a tool call sent (a service id, or the agent passing the
+ * service's name where the id goes) → one of the tenant's catalog services.
+ *
+ * Exact id first, then an exact name or alias match after normalization
+ * (case, accents, plurals, a leading article only: "Fade", "a fade", "el
+ * DEGRADADO"; "combo" is not "Combo A"). Names and
+ * aliases count the same: two services matching at all is ambiguous, never a
+ * pick, so a write can't land on a different service than the one named.
+ * Nothing beyond exact matching resolves; resolveServiceByName's looser tiers
+ * (text inside a sentence, the lexicon) only rank the suggestions. Pure: the
+ * catalog is already the tenant's.
+ */
+export function resolveServiceRef<S extends MatchableService>(
+  catalog: { services: S[] },
+  ref: string,
+): ServiceRefResult<S> {
+  const byId = catalog.services.find((s) => s.id === ref);
+  if (byId) return { status: 'found', service: byId, matchedBy: 'id' };
+
+  const singulars = catalogWords(catalog.services);
+  const text = normalizeServiceText(ref, singulars);
+  // Exact matching drops an article only at the start ("a fade"): dropped
+  // anywhere, "combo" would equal "Combo A" but not "Combo B" and pick it.
+  // Plurals compare word by word in both directions (sameServiceName), not by
+  // folding onto catalog words, so "massage" = "Massages" but "bass" ≠ "Bas".
+  const exact = normalizeServiceName(ref);
+  const exactMatch = (s: S, source: 'name' | 'alias') =>
+    (source === 'name' ? [s.name] : s.aliases ?? []).some((p) => sameServiceName(normalizeServiceName(p), exact));
+  if (exact) {
+    const named = catalog.services.filter((s) => exactMatch(s, 'name'));
+    const aliased = catalog.services.filter((s) => !named.includes(s) && exactMatch(s, 'alias'));
+    const matches = [...named, ...aliased];
+    if (matches.length === 1) return { status: 'found', service: matches[0], matchedBy: named.length ? 'name' : 'alias' };
+    if (matches.length > 1) return { status: 'ambiguous', candidates: matches };
+  }
+
+  // Closest first: what the looser matcher reads into the text ("low fade" →
+  // Fade), then services sharing a word with it, then the rest of the menu.
+  const loose = text ? resolveServiceByName(catalog, ref).candidates.map((c) => c.id) : [];
+  const words = new Set(text.split(' ').filter((w) => w.length > 1));
+  const sharesWord = (s: S) =>
+    [...phrases(s, 'name', singulars), ...phrases(s, 'alias', singulars)].some((p) => p.split(' ').some((w) => words.has(w)));
+  const rank = (s: S) => (loose.includes(s.id) ? 0 : sharesWord(s) ? 1 : 2);
+  const suggestions = catalog.services
+    .map((s, i) => ({ s, i, r: rank(s) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .slice(0, MAX_SERVICE_SUGGESTIONS)
+    .map((x) => x.s);
+  return { status: 'unknown', suggestions };
 }
 
 export function resolveServiceByName<S extends MatchableService>(

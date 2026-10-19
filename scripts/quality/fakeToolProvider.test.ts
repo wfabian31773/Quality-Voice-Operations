@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ShopFixtureStore } from '../../tests/quality/fixtures/shopFixtures';
+import { buildShopFixture, ShopFixtureStore } from '../../tests/quality/fixtures/shopFixtures';
 import {
   FakeToolProvider,
   FIND_LIMIT,
@@ -64,6 +64,50 @@ describe('FakeToolProvider', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data).toMatchObject({ slots: [], reasonIfNone: 'fully_booked', nextOpenDate: '2026-10-21' });
+  });
+
+  it('resolves a service name like the real actions (serviceRefs.ts): list_staff, check_availability, book.prepare', async () => {
+    resetFakeTokens();
+    const state = buildShopFixture('barbershop-basic');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const staff = await tools.invoke('scheduling.list_staff', { serviceId: 'Beard Trim' }, ctx());
+    expect(staff.ok && (staff.data as { id: string }[]).map((m) => m.id)).toEqual(['marco']);
+    const byName = await tools.invoke('scheduling.check_availability', { serviceIds: ["Men's Cut"], staffId: 'any', date: '2026-10-24' }, ctx());
+    const byId = await tools.invoke('scheduling.check_availability', { serviceIds: ['mens-cut'], staffId: 'any', date: '2026-10-24' }, ctx());
+    expect(byName).toEqual(byId);
+    const prepare = await tools.invoke(
+      'scheduling.book.prepare',
+      { serviceIds: ['mens cut'], staffId: 'any', start: '2026-10-24T10:00:00-04:00', customer: { name: 'Luis', phone: '+15555550142' } },
+      ctx(),
+    );
+    expect(prepare.ok).toBe(true);
+    expect(state.bookings.at(-1)?.serviceIds).toEqual(['mens-cut']);
+  });
+
+  it('a service name nothing matches is NOT_FOUND with the closest services as {serviceId, name}', async () => {
+    const tools = new FakeToolProvider(buildShopFixture('barbershop-basic'), ['scheduling']);
+    const result = await tools.invoke('scheduling.list_staff', { serviceId: 'beard' }, ctx());
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({ code: 'NOT_FOUND', field: 'serviceId', callerSafeMessage: "I couldn't find that service." });
+    expect((result.error.alternatives as { serviceId: string; name: string }[])[0]).toEqual({ serviceId: 'beard-trim', name: 'beard trim' });
+  });
+
+  it('book.prepare with a service nothing matches is VALIDATION_FAILED, like the real action (list_staff stays NOT_FOUND)', async () => {
+    const state = buildShopFixture('barbershop-basic');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const result = await tools.invoke(
+      'scheduling.book.prepare',
+      { serviceIds: ['beard'], staffId: 'any', start: '2026-10-24T10:00:00-04:00', customer: { name: 'Luis', phone: '+15555550142' } },
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({ code: 'VALIDATION_FAILED', field: 'serviceIds', callerSafeMessage: "I couldn't find that service." });
+    expect((result.error.alternatives as { serviceId: string; name: string }[])[0]).toEqual({ serviceId: 'beard-trim', name: 'beard trim' });
+    expect(state.bookings).toHaveLength(0);
+    const availability = await tools.invoke('scheduling.check_availability', { serviceIds: ['beard'], staffId: 'any', date: '2026-10-24' }, ctx());
+    expect(!availability.ok && availability.error.code).toBe('NOT_FOUND');
   });
 
   it('rejects tools the template did not enable', async () => {

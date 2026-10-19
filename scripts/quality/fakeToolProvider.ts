@@ -1,6 +1,8 @@
 // The real floor's "said more than their own name" rule (pure, no imports), so
 // the sim's floor decision can't drift from production's.
 import { saidMoreThanTheirOwnName } from '../../platform/actions/tickets/floorHeuristics';
+// The real service-ref resolver (pure), so a service name resolves in the sim exactly as in production.
+import { resolveServiceRef } from '../../platform/actions/scheduling/serviceMatch';
 import { isReleasedHold, type Service, type TenantState } from './seed';
 import type {
   AgentToolSchema,
@@ -43,7 +45,9 @@ function fail(
 // The real scheduling actions' caller-safe texts (platform/actions/scheduling/readback.ts).
 const UNKNOWN_BOOKING = "I couldn't find that appointment.";
 const SLOT_UNAVAILABLE = "That time isn't available. I can offer the closest open times.";
-const PAST_APPOINTMENT = "That appointment has already started or passed, so I can't change it. I can take a message for the shop.";
+const UNKNOWN_SERVICE = "I couldn't find that service.";
+const AMBIGUOUS_SERVICE = 'We have more than one service by that name. Which one did you mean?';
+const PAST_APPOINTMENT ="That appointment has already started or passed, so I can't change it. I can take a message for the shop.";
 
 /**
  * booking.find@1's asks (platform/callcore/contracts/bookingFind.ts) and the
@@ -172,8 +176,35 @@ function staffPerforms(state: TenantState, staffId: string, serviceIds: string[]
   return Boolean(staff && serviceIds.every((id) => staff.serviceIds.includes(id)));
 }
 
-function unknownServiceIds(state: TenantState, serviceIds: string[]): string[] {
-  return serviceIds.filter((id) => !state.services.some((service) => service.id === id));
+/**
+ * Service refs → service ids, with the real resolver (serviceMatch.ts
+ * resolveServiceRef): an id, or an exact name/alias of exactly one service.
+ * Failures mirror serviceRefs.ts: candidates in `alternatives` as { serviceId, name }.
+ */
+function resolveServiceIds(
+  state: TenantState,
+  refs: string[],
+  field: string,
+  unknownCode: 'NOT_FOUND' | 'VALIDATION_FAILED',
+): string[] | ToolResult {
+  const ids: string[] = [];
+  const choices = (services: Service[]) => services.map((service) => ({ serviceId: service.id, name: service.name }));
+  for (const ref of refs) {
+    const found = resolveServiceRef(state, ref);
+    if (found.status === 'ambiguous') {
+      return fail('VALIDATION_FAILED', `"${ref}" matches more than one service`, {
+        field,
+        alternatives: choices(found.candidates),
+        callerSafeMessage: AMBIGUOUS_SERVICE,
+      });
+    }
+    if (found.status === 'unknown') {
+      return fail(unknownCode, `unknown service ${ref}`, { field, alternatives: choices(found.suggestions), callerSafeMessage: UNKNOWN_SERVICE });
+    }
+    ids.push(found.service.id);
+  }
+  if (new Set(ids).size !== ids.length) return fail('VALIDATION_FAILED', 'Each service may appear once', { field });
+  return ids;
 }
 
 export function slotStartMatches(
@@ -314,7 +345,7 @@ export class FakeToolProvider implements ToolProvider {
       case 'scheduling.list_services':
         return ok(this.state.services);
       case 'scheduling.list_staff':
-        return ok(this.state.staff.map((member) => ({ id: member.id, displayName: member.displayName, serviceIds: member.serviceIds })));
+        return this.listStaff(asRecord(input));
       case 'scheduling.check_availability':
         return this.checkAvailability(asRecord(input), ctx);
       case 'scheduling.book.prepare':
@@ -350,11 +381,23 @@ export class FakeToolProvider implements ToolProvider {
     }
   }
 
+  /** Like scheduling.list_staff: serviceId (an id, or an exact service name/alias) lists only who does it. */
+  private listStaff(input: Record<string, unknown>): ToolResult {
+    const ref = asString(input.serviceId);
+    const resolved = ref ? resolveServiceIds(this.state, [ref], 'serviceId', 'NOT_FOUND') : [];
+    if (!Array.isArray(resolved)) return resolved;
+    const [serviceId] = resolved;
+    return ok(
+      this.state.staff
+        .filter((member) => !serviceId || member.serviceIds.includes(serviceId))
+        .map((member) => ({ id: member.id, displayName: member.displayName, serviceIds: member.serviceIds })),
+    );
+  }
+
   private checkAvailability(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const staffId = asString(input.staffId) ?? 'any';
-    const serviceIds = asStringArray(input.serviceIds);
-    const unknown = unknownServiceIds(this.state, serviceIds);
-    if (unknown.length > 0) return fail('NOT_FOUND', `unknown service ${unknown.join(', ')}`, { field: 'serviceIds' });
+    const serviceIds = resolveServiceIds(this.state, asStringArray(input.serviceIds), 'serviceIds', 'NOT_FOUND');
+    if (!Array.isArray(serviceIds)) return serviceIds;
     const date = asString(input.date) ?? localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const today = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slots = this.state.slots
@@ -404,19 +447,20 @@ export class FakeToolProvider implements ToolProvider {
   }
 
   private bookPrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
-    const serviceIds = asStringArray(input.serviceIds);
+    const serviceRefs = asStringArray(input.serviceIds);
     const start = asString(input.start);
     const staffPref = asString(input.staffId) ?? 'any';
     const customer = (input.customer ?? {}) as Record<string, unknown>;
     const name = asString(customer.name);
     const phone = asString(customer.phone);
-    if (!start || !name || !phone || serviceIds.length === 0) {
+    if (!start || !name || !phone || serviceRefs.length === 0) {
       return fail('VALIDATION_FAILED', 'serviceIds, start, and customer name/phone are required', {
         field: !start ? 'start' : !name ? 'customer.name' : 'customer.phone',
       });
     }
-    const unknown = unknownServiceIds(this.state, serviceIds);
-    if (unknown.length > 0) return fail('NOT_FOUND', `unknown service ${unknown.join(', ')}`, { field: 'serviceIds' });
+    // Like the real book.prepare (slots.ts slotScope): an unknown service is VALIDATION_FAILED.
+    const serviceIds = resolveServiceIds(this.state, serviceRefs, 'serviceIds', 'VALIDATION_FAILED');
+    if (!Array.isArray(serviceIds)) return serviceIds;
     this.releaseCallHolds(ctx.callId);
     const onDate = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slot = this.state.slots.find((candidate) => {

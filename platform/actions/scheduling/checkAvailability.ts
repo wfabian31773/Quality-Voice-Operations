@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DATE_SLOT_FORMAT } from '../../callcore/contracts';
-import { actionFail, actionOk, defineAction } from '../core';
+import { actionFail, actionOk, defineAction, isActionFailure } from '../core';
 import {
   addDays,
   computeAvailability,
@@ -13,9 +13,10 @@ import {
   PARTS_OF_DAY,
   resolveBookingRules,
   searchPlan,
-  type CatalogService,
 } from './availability';
 import { dateSlot, toTenantDate, writtenDate } from './dateSlot';
+import { readbackLang } from './readback';
+import { resolveServiceRefs } from './serviceRefs';
 
 /** Longest date window a caller can ask about in one check. */
 export const MAX_WINDOW_DAYS = 14;
@@ -29,6 +30,7 @@ function windowIssue(from: string, to: string): string | undefined {
 
 const input = z
   .object({
+    /** Service ids from list_services; an exact service name or alias also resolves. */
     serviceIds: z.array(z.string().min(1).max(255)).min(1).max(3),
     /** A staff id from list_staff, or 'any'. */
     staffId: z.string().min(1).max(255).optional(),
@@ -74,6 +76,7 @@ export const checkAvailabilityAction = defineAction({
   permissions: { agent: true, mcpScope: 'qvo:read' },
   agentDescription:
     'Find open appointment times for 1 to 3 services done back-to-back by one staff member. '
+    + 'serviceIds: service ids from list_services are preferred; an exact service name (or alias) also works. '
     + `staffId is a staff id or 'any'. Give date (${DATE_SLOT_FORMAT}) `
     + 'or window {from,to} in the same format; with neither it finds the first available day. Optional partOfDay '
     + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. '
@@ -101,17 +104,13 @@ export const checkAvailabilityAction = defineAction({
     }
 
     const catalog = await loadCatalog(tx, ctx.tenantId);
-    const services: CatalogService[] = [];
-    for (const id of args.serviceIds) {
-      const svc = catalog.services.find((s) => s.id === id);
-      if (!svc) {
-        return actionFail('NOT_FOUND', `Unknown service: ${id}`, {
-          field: 'serviceIds',
-          callerSafeMessage: "I couldn't find that service.",
-        });
-      }
-      services.push(svc);
-    }
+    const services = resolveServiceRefs(catalog, args.serviceIds, {
+      field: 'serviceIds',
+      lang: readbackLang(ctx.locale),
+      unknownCode: 'NOT_FOUND',
+    });
+    if (isActionFailure(services)) return services;
+    const serviceIds = services.map((s) => s.id);
 
     const performsAll = (staffId: string) =>
       services.every((s) => catalog.staffByService.get(s.id)!.has(staffId));
@@ -141,7 +140,7 @@ export const checkAvailabilityAction = defineAction({
       });
     }
 
-    const rules = resolveBookingRules(await loadBookingRuleRows(tx, ctx.tenantId, args.serviceIds), args.serviceIds);
+    const rules = resolveBookingRules(await loadBookingRuleRows(tx, ctx.tenantId, serviceIds), serviceIds);
     const plan = searchPlan({ today, date: args.date, window: args.window, rules });
     const data = await loadAvailabilityData(tx, ctx.tenantId, {
       staffIds: catalog.staff.map((s) => s.id),

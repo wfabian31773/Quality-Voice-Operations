@@ -183,6 +183,10 @@ const MESSAGES = {
     en: "I couldn't find that service.",
     es: 'No encontré ese servicio.',
   },
+  ambiguousService: {
+    en: 'We have more than one service by that name. Which one did you mean?',
+    es: 'Tenemos más de un servicio con ese nombre. ¿Cuál quería?',
+  },
   unknownStaff: {
     en: "I couldn't find that staff member.",
     es: 'No encontré a esa persona.',
