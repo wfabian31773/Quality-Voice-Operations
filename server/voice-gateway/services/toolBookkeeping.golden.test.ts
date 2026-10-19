@@ -49,11 +49,13 @@ import { BARBERSHOP_TEMPLATE_V1 } from '../../../platform/agent-templates/barber
 import { actionFail, actionOk, type ActionResult } from '../../../platform/actions';
 import { ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { BookkeepingQueue } from './bookkeepingQueue';
+import { KEEP_TERMINAL_STATE_SQL } from './callPersistence';
 import { ContractToolBridge, type ContractActionRunner } from './contractToolBridge';
 import { beginToolRun, finishToolRun, runContractTool, type ToolRunCall } from './toolBookkeeping';
 
 const BINDING = compose(BARBERSHOP_TEMPLATE_V1, undefined, { businessName: 'Sharp Line Barbers' }, { language: 'en' }).contractTools;
-const FRAMING = /^(BEGIN|COMMIT|ROLLBACK)$|set_config\('app\.tenant_id'/;
+// The bookkeeping statement timeout (SET LOCAL, queue writes only) is framing too.
+const FRAMING = /^(BEGIN|COMMIT|ROLLBACK)$|set_config\('app\.tenant_id'|^SET LOCAL statement_timeout = \d+$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
 
 function bridge(runner: ContractActionRunner, over: Partial<ConstructorParameters<typeof ContractToolBridge>[0]> = {}) {
@@ -95,9 +97,17 @@ function normalized() {
       framing += 1;
       continue;
     }
+    // Since #135's fix-forward every call state move keeps a terminal state
+    // (KEEP_TERMINAL_STATE_SQL); 31996d53 wrote `lifecycle_state = $3`.
+    // Checked here, then compared as the plain assignment.
+    let sql = entry.sql;
+    if (sql.startsWith('UPDATE call_sessions SET lifecycle_state')) {
+      expect(sql.startsWith(`UPDATE call_sessions SET ${KEEP_TERMINAL_STATE_SQL}, `)).toBe(true);
+      sql = sql.replace(KEEP_TERMINAL_STATE_SQL, 'lifecycle_state = $3');
+    }
     const params = entry.params.map((p, i) =>
       entry.sql.startsWith('UPDATE tool_invocations') && i === 6 && typeof p === 'number' ? '<ms>' : p);
-    data.push({ sql: entry.sql, params: JSON.parse(label(JSON.stringify(params))) });
+    data.push({ sql, params: JSON.parse(label(JSON.stringify(params))) });
   }
   return { data, framing };
 }
@@ -122,7 +132,8 @@ describe('bookkeeping golden (statements recorded on 31996d53, inline writes)', 
     expect(data).toMatchSnapshot();
     // 31996d53: 6 transactions (insert, state, event, complete, state, event) × 3 framing statements = 18.
     // Now each state + event pair is one transaction: insert, state+event, complete, state+event.
-    expect(framing).toBe(4 * 3);
+    // The two state+event transactions (callPersistence) also SET LOCAL the bookkeeping statement timeout.
+    expect(framing).toBe(4 * 3 + 2);
   });
 
   it('contract tool, failed: a failed completion, has_tool_failure, one observability error', async () => {

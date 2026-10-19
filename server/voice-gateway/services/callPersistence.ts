@@ -6,6 +6,7 @@ import { recordConversionStage } from '../../../platform/analytics/ConversionFun
 import { CALL_FUNNEL_STAGE } from '../../../shared/analytics/conversionStages';
 import { encryptTranscript, encryptSensitiveField, decryptSensitiveField } from '../../../platform/security/FieldEncryption';
 import { createPiiLookupHashRecord } from '../../../platform/security/PiiLookupHash';
+import { BOOKKEEPING_STATEMENT_TIMEOUT_MS, isBookkeepingWrite } from './bookkeepingQueue';
 
 const logger = createLogger('CALL_PERSISTENCE');
 
@@ -23,6 +24,28 @@ type LifecycleState =
   | 'WORKFLOW_FAILED'
   | 'ESCALATION_FAILED'
   | 'HANDOFF';
+
+/**
+ * States a call never leaves once in: the queued session_closed (at the start
+ * of teardown) and finalizeCallSession write them. A state move written after
+ * (a tool run still open at hangup, a transfer's ESCALATED, a late
+ * bookkeeping write) keeps the state; its other columns are still written.
+ * WORKFLOW_FAILED and ESCALATION_FAILED are not here: nothing writes them as
+ * the row's state (escalation_failed is an event, and the call goes back to
+ * ACTIVE_CONVERSATION after it).
+ */
+export const TERMINAL_LIFECYCLE_STATES = ['CALL_COMPLETED', 'CALL_FAILED'] as const satisfies readonly LifecycleState[];
+
+/**
+ * applyCallState's state column ($3 is the new state): a state move never
+ * takes a call out of a terminal state. Only the state is guarded; the rest
+ * of the UPDATE (escalation target / reason, workflow, context, agent,
+ * updated_at) is written whatever the state.
+ */
+export const KEEP_TERMINAL_STATE_SQL = `lifecycle_state = CASE WHEN lifecycle_state IN (${TERMINAL_LIFECYCLE_STATES.map((s) => `'${s}'`).join(', ')}) THEN lifecycle_state ELSE $3 END`;
+
+/** Postgres statement_timeout for the transactions a bookkeeping queue write runs. */
+const BOOKKEEPING_STATEMENT_TIMEOUT_SQL = `SET LOCAL statement_timeout = ${BOOKKEEPING_STATEMENT_TIMEOUT_MS}`;
 
 export interface CreateCallSessionParams {
   tenantId: string;
@@ -52,6 +75,9 @@ async function withTenant<T>(tenantId: string, fn: (client: DbClient) => Promise
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // A bookkeeping queue write: Postgres cancels a stuck statement, so the
+    // queue (which waits for each write to settle) is never held for long.
+    if (isBookkeepingWrite()) await client.query(BOOKKEEPING_STATEMENT_TIMEOUT_SQL);
     await withTenantContext(client, tenantId, async () => {});
     const result = await fn(client as unknown as DbClient);
     await client.query('COMMIT');
@@ -181,7 +207,9 @@ export interface CallEventSpec {
  * updateCallState then writeCallEvent, the same two statements in one
  * transaction (one BEGIN / set_config / COMMIT instead of two): the tool
  * bookkeeping's state + event pairs. If either statement fails, neither row
- * is written.
+ * is written. On a call already final the state is kept
+ * (KEEP_TERMINAL_STATE_SQL) and the event row is still written: it is
+ * history, not state.
  */
 export async function updateCallStateWithEvent(
   tenantId: string,
@@ -202,7 +230,7 @@ async function applyCallState(
   newState: LifecycleState,
   extra?: CallStateExtra,
 ): Promise<void> {
-  const sets = ['lifecycle_state = $3', 'updated_at = NOW()'];
+  const sets = [KEEP_TERMINAL_STATE_SQL, 'updated_at = NOW()'];
   const values: unknown[] = [tenantId, callSessionId, newState];
   let idx = 4;
 
@@ -232,6 +260,8 @@ async function applyCallState(
     values,
   );
 
+  // Keyed on the move, not the row's state: a transfer that lands after
+  // session_closed still files its ticket.
   if (newState === 'ESCALATED') {
     try {
       const { rows: existingTickets } = await client.query(

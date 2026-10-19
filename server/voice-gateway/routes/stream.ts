@@ -229,8 +229,12 @@ export function attachWebSocket(server: HTTPServer): void {
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
 
         // Every bookkeeping write the call queued (tool rows, state moves,
-        // events, call_end_outcome) lands before the final state and call_completed (bounded).
-        if (sessionResult) await sessionResult.flushBookkeeping('call_completed');
+        // events, call_end_outcome), and the rows of a tool run still open at
+        // hangup (BOOKKEEPING_FINALIZE_DRAIN_MAX_MS), land before finalize and
+        // call_completed (bounded). The state is not the drain's: the close
+        // above queued session_closed (CALL_COMPLETED), and callPersistence
+        // keeps a terminal state against any later move.
+        if (sessionResult) await sessionResult.drainBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
           await writeCallEvent(tenantId, callSessionId, 'call_completed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED', {
@@ -241,8 +245,9 @@ export function attachWebSocket(server: HTTPServer): void {
           slog.error('Error finalizing call session', { error: String(err) });
         }
         // Ends the queue after the outcome and final rows: safe for provider_failure
-        // where the realtime close ran before this finalizer.
-        if (sessionResult) await sessionResult.releaseBookkeeping();
+        // where the realtime close ran before this finalizer. Awaited only before
+        // unregister below: usage, cost and CSAT are not held behind a slow run.
+        const bookkeepingReleased = sessionResult ? sessionResult.releaseBookkeeping() : Promise.resolve();
 
         // Post-call CSAT survey dispatch (fire-and-forget). Only inbound
         // calls where the customer-supplied caller number is a real PSTN
@@ -384,8 +389,9 @@ export function attachWebSocket(server: HTTPServer): void {
         if (twilioCallSid) {
           coordinator.handleTwilioStatusCallback(twilioCallSid, 'completed');
         }
-        // Bounded (FLOOR_DEADLINE_MS) and never rejects.
+        // Bounded (FLOOR_DEADLINE_MS / BOOKKEEPING_RELEASE_MAX_WAIT_MS) and never reject.
         await floor;
+        await bookkeepingReleased;
         sessionManager.unregister(callSessionId);
       }
     }
@@ -1025,14 +1031,16 @@ export function attachWebSocket(server: HTTPServer): void {
         // negotiated tenant's widget call drilldown matches what Stripe
         // will invoice (instead of quoting the catalog AI rate).
         const costEstimate = await estimateCallCostWithLiveRate(tenantId, durationSeconds);
-        // Same as the phone path: the queued bookkeeping lands before the final state.
-        if (sessionResult) await sessionResult.flushBookkeeping('call_completed');
+        // Same as the phone path: the queued bookkeeping and the rows of open
+        // tool runs land before finalize (bounded; the terminal guard keeps
+        // the state); release is awaited only before unregister.
+        if (sessionResult) await sessionResult.drainBookkeeping('call_completed');
         try {
           await finalizeCallSession(tenantId, callSessionId, 'completed', durationSeconds, costEstimate.totalCostCents);
         } catch (err) {
           slog.error('Error finalizing widget session', { error: String(err) });
         }
-        if (sessionResult) await sessionResult.releaseBookkeeping();
+        const bookkeepingReleased = sessionResult ? sessionResult.releaseBookkeeping() : Promise.resolve();
         recordCallUsage(tenantId, 'inbound', durationSeconds).catch((err) => {
           slog.error('Failed to record widget usage', { error: String(err) });
         });
@@ -1087,6 +1095,7 @@ export function attachWebSocket(server: HTTPServer): void {
           callSessionId,
           outcome: 'completed',
         }).catch(() => {});
+        await bookkeepingReleased;
         sessionManager.unregister(callSessionId);
       }
     }

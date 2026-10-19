@@ -6,10 +6,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BOOKKEEPING_FINALIZE_DRAIN_MAX_MS,
   BOOKKEEPING_FLUSH_TIMEOUT_MS,
   BOOKKEEPING_RELEASE_MAX_WAIT_MS,
   BOOKKEEPING_WRITE_TIMEOUT_MS,
   BookkeepingQueue,
+  isBookkeepingWrite,
 } from './bookkeepingQueue';
 
 function logger() {
@@ -163,11 +165,12 @@ describe('BookkeepingQueue: bounds (fake timers)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('a hanging write is cut off after the write timeout; flush is bounded by the flush timeout; later writes still run', async () => {
+  it('a hanging write is logged at the write timeout; flush is bounded by the flush timeout; the next write waits for it to settle', async () => {
     const log = logger();
     const queue = new BookkeepingQueue({ log });
     const ran: string[] = [];
-    void queue.enqueue('hangs', () => new Promise(() => {}));
+    const stuck = gate();
+    void queue.enqueue('hangs', () => stuck.opened);
     void queue.enqueue('after', async () => { ran.push('after'); });
 
     let flushed: string | undefined;
@@ -177,12 +180,42 @@ describe('BookkeepingQueue: bounds (fake timers)', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(flushed).toBe('timeout');
     expect(log.error).toHaveBeenCalledWith('Bookkeeping flush timed out', expect.objectContaining({ reason: 'teardown', waitedMs: BOOKKEEPING_FLUSH_TIMEOUT_MS, depthAtFlush: 2 }));
+    expect(log.error).toHaveBeenCalledWith('Bookkeeping write timed out; later writes wait for it to settle', { write: 'hangs', waitedMs: BOOKKEEPING_WRITE_TIMEOUT_MS });
 
-    // The hung write is cut off at its own bound, then the next write goes.
-    await vi.advanceTimersByTimeAsync(BOOKKEEPING_WRITE_TIMEOUT_MS);
+    // Not cut off: the next write starts only once the hung one settles.
+    await vi.advanceTimersByTimeAsync(BOOKKEEPING_WRITE_TIMEOUT_MS * 10);
+    expect(ran).toEqual([]);
+    expect(queue.depth).toBe(2);
+    stuck.open();
+    await vi.advanceTimersByTimeAsync(0);
     expect(ran).toEqual(['after']);
-    expect(log.error).toHaveBeenCalledWith('Bookkeeping write timed out; the queue moves on', { write: 'hangs', waitedMs: BOOKKEEPING_WRITE_TIMEOUT_MS });
     expect(queue.depth).toBe(0);
+  });
+
+  it('P2: a write that times out and lands late never lands after a later write; the later state is the one left', async () => {
+    // A row the writes overwrite, like call_sessions.lifecycle_state.
+    let state = 'ACTIVE_CONVERSATION';
+    const landed: string[] = [];
+    const log = logger();
+    const queue = new BookkeepingQueue({ log });
+    // The DB takes 7 s for this statement: past the write timeout, it still commits.
+    void queue.enqueue('call_state.tool_start', async () => {
+      await sleep(BOOKKEEPING_WRITE_TIMEOUT_MS + 2_000);
+      state = 'TOOL_EXECUTION';
+      landed.push('tool_start');
+    });
+    void queue.enqueue('call_state.tool_end', async () => {
+      await sleep(10);
+      state = 'ACTIVE_CONVERSATION';
+      landed.push('tool_end');
+    });
+    await vi.advanceTimersByTimeAsync(BOOKKEEPING_WRITE_TIMEOUT_MS + 100);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(10);
+    // The later write did not start behind the stuck one's back, so it is the state left.
+    expect(landed).toEqual(['tool_start', 'tool_end']);
+    expect(state).toBe('ACTIVE_CONVERSATION');
+    expect(log.error).toHaveBeenCalledWith('Bookkeeping write timed out; later writes wait for it to settle', expect.objectContaining({ write: 'call_state.tool_start' }));
   });
 
   it('flush resolves only after every write enqueued before it, not before the last one', async () => {
@@ -264,6 +297,96 @@ describe('BookkeepingQueue: release', () => {
     expect(queue.release()).toBe(first);
     await first;
     expect(queue.isReleased).toBe(true);
+  });
+});
+
+describe('BookkeepingQueue: drain (before finalize and call_completed)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('waits for an open tool run to queue its last writes and for them to land, without releasing', async () => {
+    const queue = new BookkeepingQueue({ log: logger() });
+    const ran: string[] = [];
+    const closeRun = queue.openRun();
+    let drained: string | undefined;
+    void queue.drain('call_completed').then((r) => { drained = r; });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(drained).toBeUndefined();
+    void queue.enqueue('call_state.tool_end', async () => { await sleep(50); ran.push('tool_end'); });
+    closeRun();
+    await vi.advanceTimersByTimeAsync(49);
+    expect(drained).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(drained).toBe('drained');
+    expect(ran).toEqual(['tool_end']);
+    expect(queue.isReleased).toBe(false);
+    await queue.enqueue('after_drain', async () => { ran.push('after_drain'); });
+    expect(ran).toEqual(['tool_end', 'after_drain']);
+  });
+
+  it('a run that never closes holds drain at most BOOKKEEPING_FINALIZE_DRAIN_MAX_MS (logged)', async () => {
+    const log = logger();
+    const queue = new BookkeepingQueue({ log });
+    queue.openRun();
+    let drained: string | undefined;
+    void queue.drain('call_completed').then((r) => { drained = r; });
+    await vi.advanceTimersByTimeAsync(BOOKKEEPING_FINALIZE_DRAIN_MAX_MS - 1);
+    expect(drained).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(drained).toBe('drained');
+    expect(log.error).toHaveBeenCalledWith('Bookkeeping drain: tool runs still open', { reason: 'call_completed', openRuns: 1, waitedMs: BOOKKEEPING_FINALIZE_DRAIN_MAX_MS });
+  });
+
+  it('with no open run and an empty queue it resolves at once', async () => {
+    const queue = new BookkeepingQueue({ log: logger() });
+    expect(await queue.drain()).toBe('drained');
+  });
+});
+
+describe('BookkeepingQueue: a logger that throws', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('never rejects the chain or stalls later writes; they still run, in order', async () => {
+    const boom = () => { throw new Error('logger down'); };
+    const queue = new BookkeepingQueue({ log: { info: boom, warn: boom, error: boom }, writeTimeoutMs: 100 });
+    const ran: string[] = [];
+    const results: Array<Promise<void>> = [];
+    results.push(queue.enqueue('fails', async () => { throw Object.assign(new Error('x'), { code: '23505' }); }));
+    results.push(queue.enqueue('slow', async () => { await sleep(150); ran.push('slow'); }));
+    results.push(queue.enqueue('next', async () => { ran.push('next'); }));
+    await vi.advanceTimersByTimeAsync(150);
+    await expect(Promise.all(results)).resolves.toBeDefined();
+    expect(ran).toEqual(['slow', 'next']);
+
+    // flush timeout, drain timeout, release and a dropped write log too.
+    void queue.enqueue('stuck', () => new Promise(() => {}));
+    const flushed = queue.flush('teardown', 10);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(flushed).resolves.toBe('timeout');
+    queue.openRun();
+    const drained = queue.drain('call_completed', 10);
+    await vi.advanceTimersByTimeAsync(BOOKKEEPING_FLUSH_TIMEOUT_MS + 10);
+    await expect(drained).resolves.toBe('timeout');
+    const released = queue.release();
+    await vi.advanceTimersByTimeAsync(BOOKKEEPING_RELEASE_MAX_WAIT_MS + 1);
+    await expect(released).resolves.toBeUndefined();
+    await expect(queue.enqueue('late', async () => {})).resolves.toBeUndefined();
+  });
+});
+
+describe('BookkeepingQueue: the DB statement timeout scope', () => {
+  it('isBookkeepingWrite() is true inside a queued write (across its awaits) and false outside', async () => {
+    const queue = new BookkeepingQueue({ log: logger() });
+    const seen: boolean[] = [];
+    expect(isBookkeepingWrite()).toBe(false);
+    await queue.enqueue('w', async () => {
+      seen.push(isBookkeepingWrite());
+      await sleep(1);
+      seen.push(isBookkeepingWrite());
+    });
+    expect(seen).toEqual([true, true]);
+    expect(isBookkeepingWrite()).toBe(false);
   });
 });
 
