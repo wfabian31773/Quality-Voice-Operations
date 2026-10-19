@@ -31,6 +31,7 @@ import {
   staffMismatchMessage,
   type MessageKey,
 } from './readback';
+import { resolveServiceRefs } from './serviceRefs';
 
 /** Alternatives offered with a CONFLICT (spec §1.5: at most 3). */
 export const MAX_ALTERNATIVES = 3;
@@ -73,13 +74,17 @@ export async function slotScope(
 ): Promise<SlotScope | ActionResult<never>> {
   const lang = readbackLang(ctx.locale);
   const catalog = await loadCatalog(tx, ctx.tenantId);
-  const services: CatalogService[] = [];
-  for (const id of req.serviceIds) {
-    const svc = catalog.services.find((s) => s.id === id);
-    // Inactive, unknown and other-tenant services all look the same: not bookable here.
-    if (!svc) return fail('VALIDATION_FAILED', `Unknown or inactive service: ${id}`, 'serviceIds', callerMessage('unknownService', lang));
-    services.push(svc);
-  }
+  // An id, or an exact name/alias of exactly one service: never a looser guess,
+  // a hold is for the service the agent named. Inactive, unknown and
+  // other-tenant services all look the same: not bookable here.
+  const services = resolveServiceRefs(catalog, req.serviceIds, {
+    field: 'serviceIds',
+    lang,
+    unknownCode: 'VALIDATION_FAILED',
+    unknownLabel: 'Unknown or inactive service',
+  });
+  if (isActionFailure(services)) return services;
+  const serviceIds = services.map((s) => s.id);
 
   const performsAll = (staffId: string) => services.every((s) => catalog.staffByService.get(s.id)!.has(staffId));
   const named = req.staffId !== 'any' ? req.staffId : null;
@@ -100,7 +105,7 @@ export async function slotScope(
     const key: MessageKey = services.length > 1 ? 'noStaffForAll' : 'noStaffForOne';
     return fail('VALIDATION_FAILED', 'No active staff member performs every requested service', 'serviceIds', callerMessage(key, lang));
   }
-  const rules = resolveBookingRules(await loadBookingRuleRows(tx, ctx.tenantId, req.serviceIds), req.serviceIds);
+  const rules = resolveBookingRules(await loadBookingRuleRows(tx, ctx.tenantId, serviceIds), serviceIds);
   return { services, catalog, named, eligible, rules };
 }
 

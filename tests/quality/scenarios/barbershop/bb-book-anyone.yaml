@@ -4,6 +4,8 @@ tools: [scheduling, sms, tickets, business, calls]
 tags: [barbershop, core, flow:book-anyone, template:barbershop, lang:en]
 # "Anyone's fine": the agent asks for any barber and books the first open
 # Saturday-morning slot. Any barber who does the service is a correct result.
+# The agent passes the service's name, not its id (as live models do): it
+# resolves in one step and the booking still stores the id.
 seed: barbershop-basic
 callerId: "+15555550142"
 now: "2026-10-20T14:00:00-04:00"
@@ -15,15 +17,19 @@ script:
   - on: 0
     steps:
       - call:
+          name: scheduling.list_staff
+          input:
+            serviceId: "Men's Cut"
+      - call:
           name: scheduling.check_availability
           input:
-            serviceIds: [mens-cut]
+            serviceIds: ["Men's Cut"]
             staffId: any
             date: "2026-10-24"
       - call:
           name: scheduling.book.prepare
           input:
-            serviceIds: [mens-cut]
+            serviceIds: ["Men's Cut"]
             staffId: any
             start: "2026-10-24T10:00:00-04:00"
             customer:
@@ -39,6 +45,7 @@ script:
       - say: "You're all set for Saturday at 10."
 expect:
   actions:
+    - name: scheduling.list_staff
     - name: scheduling.check_availability
       input:
         staffId: any

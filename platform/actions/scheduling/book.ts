@@ -89,7 +89,8 @@ export const bookPrepareAction = defineAction({
   output: bookPrepareOutput,
   permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
-    'Hold an appointment for 5 minutes and get the readback. Use serviceIds, staffId (a staff id or \'any\') '
+    'Hold an appointment for 5 minutes and get the readback. Use serviceIds (service ids preferred; an exact '
+    + 'service name or alias also works), staffId (a staff id or \'any\') '
     + 'and a start time from check_availability, plus the customer\'s name and phone. Read the returned readback '
     + 'to the caller word for word and call scheduling.book.commit only after an explicit yes. If the caller '
     + 'changes anything, call prepare again (the earlier hold is released). On CONFLICT, offer the alternatives. '
@@ -100,10 +101,10 @@ export const bookPrepareAction = defineAction({
     const missing = nextMissingSlot(BOOKING_BOOK_V1, input, held);
     if (missing) return refuseMissingSlot(ctx, missing);
     clearSlotAsks(ctx, BOOKING_BOOK_V1);
-    const { serviceIds, staffId } = input;
+    const { serviceIds: serviceRefs, staffId } = input;
     const customerName = input.customer?.name ?? held.verifiedName;
     const customerPhone = input.customer?.phone ?? held.callerPhone;
-    if (!serviceIds || !staffId || !input.start || !customerName || !customerPhone) {
+    if (!serviceRefs || !staffId || !input.start || !customerName || !customerPhone) {
       return actionFail('VALIDATION_FAILED', 'Booking details are incomplete');
     }
 
@@ -113,8 +114,10 @@ export const bookPrepareAction = defineAction({
     // never blocks its own replacement and exactly one booking can remain.
     const replacedHoldIds = await releaseSessionHolds(tx, ctx.tenantId, session);
 
-    const scope = await slotScope(tx, ctx, { serviceIds, staffId });
+    const scope = await slotScope(tx, ctx, { serviceIds: serviceRefs, staffId });
     if (isActionFailure(scope)) return scope;
+    // The hold, proposal and booking carry ids even when the agent sent an exact service name.
+    const serviceIds = scope.services.map((s) => s.id);
     const resolved = await resolveSlot(tx, ctx, { serviceIds, staffId, start: new Date(input.start) }, scope);
     if (isActionFailure(resolved)) return resolved;
 

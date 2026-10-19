@@ -48,7 +48,7 @@ function slot<T extends z.ZodTypeAny>(schema: T): z.ZodType<z.output<T> | undefi
 }
 
 export const bookPrepareInput = z.object({
-  /** 1 to 3 services, done back-to-back by one staff member. */
+  /** 1 to 3 services, done back-to-back by one staff member: ids, or an exact service name or alias. */
   serviceIds: slot(serviceIds),
   /** A staff id from list_staff, or 'any'. */
   staffId: slot(id),
