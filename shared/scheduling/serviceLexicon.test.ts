@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   isContextualServiceTerm,
   matchServiceTerm,
+  normalizeServiceName,
   normalizeServiceText,
   serviceAliases,
   serviceLabel,
+  serviceNameReadings,
   SERVICE_KEYS,
   STRONG_MATCH_CONFIDENCE,
   type ServiceKey,
@@ -205,6 +207,22 @@ describe('serviceLexicon', () => {
     expect(normalizeServiceText('Corte y barba')).toBe('corte and barba');
     expect(normalizeServiceText('cut + beard')).toBe('cut and beard');
     expect(normalizeServiceText('Un corte para niños')).toBe('corte para ninos');
+  });
+
+  it('judges articles as written: "uña" is never the article "una"', () => {
+    expect(normalizeServiceText('una uña de gel')).toBe('una de gel');
+    expect(normalizeServiceText('una manicura')).toBe('manicura');
+    expect(normalizeServiceName('Uña de Gel')).toBe('una de gel');
+    expect(normalizeServiceName('uñas acrílicas')).toBe('unas acrilicas');
+    expect(normalizeServiceName('una manicura')).toBe('manicura');
+    expect(normalizeServiceName('unas uñas de gel')).toBe('unas de gel');
+    expect(normalizeServiceName('Combo A')).toBe('combo a');
+    // Without the ñ, "una(s)" may be either: both readings, article first.
+    expect(serviceNameReadings('unas de gel')).toEqual(['de gel', 'unas de gel']);
+    expect(serviceNameReadings('la pedicura')).toEqual(['pedicura']);
+    expect(serviceNameReadings('uñas de gel')).toEqual(['unas de gel']);
+    expect(serviceNameReadings('una')).toEqual(['una']);
+    expect(keyOf('quiero unas uñas de gel')).toBe('gel_manicure');
   });
 
   it('folds plurals onto a known singular only (gate re-review P2)', () => {

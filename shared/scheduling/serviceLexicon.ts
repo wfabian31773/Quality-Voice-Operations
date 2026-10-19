@@ -226,16 +226,30 @@ interface Word {
   rawIndex: number;
 }
 
-function rawTokens(text: string): string[] {
+interface RawToken {
+  /** Folded: lowercase, no accents ("uñas" → "unas"). */
+  text: string;
+  /** The word as written, lowercase, accents kept ("uñas"). Articles are looked up here. */
+  written: string;
+}
+
+function foldedTokens(text: string): RawToken[] {
   return text
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .normalize('NFC')
     .toLowerCase()
     .replace(/['’`]/g, '')
     .replace(/[+&]/g, ' and ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .split(' ')
-    .filter((w) => w);
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
+    .flatMap((written) => written
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .split(/[^a-z0-9]+/)
+      .filter((text) => text)
+      .map((text) => ({ text, written })));
+}
+
+function rawTokens(text: string): string[] {
+  return foldedTokens(text).map((t) => t.text);
 }
 
 /** Every word used in a lexicon term ("fade", "haircut", "edges", "corte"). */
@@ -243,7 +257,7 @@ const TERM_WORDS = new Set(
   Object.values(LEXICON).flatMap((entry) =>
     [entry.terms, entry.contextual ?? {}, entry.weak ?? {}].flatMap((lists) =>
       [...(lists.en ?? []), ...(lists.es ?? [])].flatMap((term) =>
-        rawTokens(term).filter((w) => !DROPPED_WORDS.has(w)).map((w) => CONJUNCTIONS[w] ?? w)))),
+        foldedTokens(term).filter((t) => !DROPPED_WORDS.has(t.written)).map((t) => CONJUNCTIONS[t.text] ?? t.text)))),
 );
 
 /**
@@ -260,37 +274,63 @@ function singular(word: string, singulars?: ReadonlySet<string>): string {
 }
 
 function tokenize(text: string, singulars?: ReadonlySet<string>): { raw: string[]; words: Word[] } {
-  const raw = rawTokens(text);
+  const tokens = foldedTokens(text);
   const words: Word[] = [];
-  raw.forEach((w, rawIndex) => {
-    if (!DROPPED_WORDS.has(w)) words.push({ text: singular(CONJUNCTIONS[w] ?? w, singulars), rawIndex });
+  tokens.forEach(({ text: w, written }, rawIndex) => {
+    if (!DROPPED_WORDS.has(written)) words.push({ text: singular(CONJUNCTIONS[w] ?? w, singulars), rawIndex });
   });
-  return { raw, words };
+  return { raw: tokens.map((t) => t.text), words };
 }
 
 /**
  * Lowercase, strip accents and apostrophes, turn "+"/"&"/"y"/"plus" into
- * "and", drop articles (a, an, un, una), fold plurals onto a known singular,
- * and collapse everything else to single spaces. "Kid's line-up" → "kids line
- * up"; "Niño" → "nino"; "fades" → "fade". `singulars` adds words a plural may
- * fold onto besides the lexicon's (e.g. the tenant's catalog words).
+ * "and", drop articles (a, an, un, una, judged as written: "uña" stays
+ * "una"), fold plurals onto a known singular, and collapse everything else to
+ * single spaces. "Kid's line-up" → "kids line up"; "Niño" → "nino"; "fades" →
+ * "fade". `singulars` adds words a plural may fold onto besides the lexicon's
+ * (e.g. the tenant's catalog words).
  */
 export function normalizeServiceText(text: string, singulars?: ReadonlySet<string>): string {
   return tokenize(text, singulars).words.map((w) => w.text).join(' ');
 }
 
 /** Articles an exact service ref may start with: "a fade", "the fade", "el degradado". */
-const LEADING_ARTICLES = new Set(['a', 'an', 'the', 'un', 'una', 'el', 'la', 'los', 'las']);
+const LEADING_ARTICLES = new Set(['a', 'an', 'the', 'un', 'una', 'unos', 'unas', 'el', 'la', 'los', 'las']);
+
+/**
+ * Articles that are also a noun once the ñ is lost: "una(s)" is "uña(s)"
+ * typed or transcribed without the ñ ("unas de gel").
+ */
+const ARTICLE_OR_NOUN = new Set(['una', 'unas']);
+
+function nameReading(tokens: RawToken[], start: number): string {
+  return tokens.slice(start).map((t) => singular(CONJUNCTIONS[t.text] ?? t.text)).join(' ');
+}
 
 /**
  * normalizeServiceText for exact name/alias matching: the same folding, but one
  * article is dropped only as the first word, never inside or at the end, so
- * "Combo A" stays "combo a" and never equals "combo".
+ * "Combo A" stays "combo a" and never equals "combo". The article is judged
+ * as written, before accents fold: "uña de gel" keeps "una", "una manicura"
+ * drops it.
  */
-export function normalizeServiceName(text: string, singulars?: ReadonlySet<string>): string {
-  const raw = rawTokens(text);
-  const start = raw.length > 1 && LEADING_ARTICLES.has(raw[0]) ? 1 : 0;
-  return raw.slice(start).map((w) => singular(CONJUNCTIONS[w] ?? w, singulars)).join(' ');
+export function normalizeServiceName(text: string): string {
+  const tokens = foldedTokens(text);
+  const start = tokens.length > 1 && LEADING_ARTICLES.has(tokens[0].written) ? 1 : 0;
+  return nameReading(tokens, start);
+}
+
+/**
+ * Every way an exact name/alias match may read `text`: normalizeServiceName,
+ * plus, when it starts with an unaccented "una"/"unas", the reading that keeps
+ * it as "uña(s)" ("unas de gel" → "de gel" and "unas de gel"). Applied the
+ * same to refs and catalog phrases.
+ */
+export function serviceNameReadings(text: string): string[] {
+  const tokens = foldedTokens(text);
+  const article = normalizeServiceName(text);
+  if (tokens.length < 2 || !ARTICLE_OR_NOUN.has(tokens[0].written)) return [article];
+  return [article, nameReading(tokens, 0)];
 }
 
 type TermKind = 'strong' | 'contextual' | 'weak';
