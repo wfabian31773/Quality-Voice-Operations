@@ -80,16 +80,56 @@ export async function recordDemoAnalyticsEvent(
   }
 }
 
+// The `demo` tenant also serves ordinary test calls (Sharp Line Barbers), so
+// tenant id alone does not mean "website demo". A call is a website-demo call
+// only when the dialed number is one the website publishes (/demo/agents: an
+// is_demo number routed to an agent whose type has an active demo_agents
+// template). Such calls get a `call_started` demo_analytics row carrying
+// `metadata.websiteDemoCallSid`; cleanup only ever touches sessions with that
+// marker, so unmarked sessions keep their history.
+export const WEBSITE_DEMO_CALL_SID_KEY = 'websiteDemoCallSid';
+
+// Applied to call_sessions rows (demo_analytics has no call_sid column).
+const WEBSITE_DEMO_SESSION_FILTER = `call_sid IN (
+  SELECT metadata->>'${WEBSITE_DEMO_CALL_SID_KEY}' FROM demo_analytics
+  WHERE event_type = 'call_started'
+)`;
+
+export async function isWebsiteDemoNumber(phoneNumberId: string | undefined, agentType: string | undefined): Promise<boolean> {
+  if (!phoneNumberId || !agentType) return false;
+  try {
+    const pool = getPlatformPool();
+    const { rows } = await pool.query(
+      `SELECT 1
+       FROM phone_numbers pn
+       JOIN demo_agents da ON da.tenant_id = pn.tenant_id AND da.agent_template = $3 AND da.is_active = true
+       WHERE pn.id = $1 AND pn.tenant_id = $2 AND pn.is_demo = true
+       LIMIT 1`,
+      [phoneNumberId, DEMO_TENANT_ID, agentType],
+    );
+    return rows.length > 0;
+  } catch (err) {
+    // Unknown means "not a website demo": the call keeps its history.
+    logger.warn('Website demo number check failed', { error: String(err) });
+    return false;
+  }
+}
+
 export function scheduleDemoDataCleanup(callSessionId: string, retentionMs: number = DEMO_DATA_RETENTION_MS): void {
   setTimeout(async () => {
     try {
       const pool = getPlatformPool();
       await pool.query(
-        `DELETE FROM call_events WHERE call_session_id = $1 AND tenant_id = $2`,
+        `DELETE FROM call_events
+         WHERE tenant_id = $2
+           AND call_session_id IN (
+             SELECT id FROM call_sessions WHERE id = $1 AND tenant_id = $2 AND ${WEBSITE_DEMO_SESSION_FILTER}
+           )`,
         [callSessionId, DEMO_TENANT_ID],
       );
       await pool.query(
-        `UPDATE call_sessions SET context = '{}'::jsonb WHERE id = $1 AND tenant_id = $2`,
+        `UPDATE call_sessions SET context = '{}'::jsonb
+         WHERE id = $1 AND tenant_id = $2 AND ${WEBSITE_DEMO_SESSION_FILTER}`,
         [callSessionId, DEMO_TENANT_ID],
       );
       logger.info('Demo session data cleaned up', { callSessionId });
@@ -99,7 +139,7 @@ export function scheduleDemoDataCleanup(callSessionId: string, retentionMs: numb
   }, retentionMs);
 }
 
-async function sweepStaleDemoData(): Promise<void> {
+export async function sweepStaleDemoData(): Promise<void> {
   try {
     const pool = getPlatformPool();
     const retentionMinutes = Math.ceil(DEMO_DATA_RETENTION_MS / 60_000);
@@ -112,6 +152,7 @@ async function sweepStaleDemoData(): Promise<void> {
              AND lifecycle_state IN ('CALL_COMPLETED', 'CALL_FAILED', 'WORKFLOW_FAILED', 'ESCALATION_FAILED')
              AND end_time IS NOT NULL
              AND end_time < NOW() - INTERVAL '1 minute' * $2
+             AND ${WEBSITE_DEMO_SESSION_FILTER}
          )`,
       [DEMO_TENANT_ID, retentionMinutes],
     );
@@ -122,7 +163,8 @@ async function sweepStaleDemoData(): Promise<void> {
          AND lifecycle_state IN ('CALL_COMPLETED', 'CALL_FAILED', 'WORKFLOW_FAILED', 'ESCALATION_FAILED')
          AND end_time IS NOT NULL
          AND end_time < NOW() - INTERVAL '1 minute' * $2
-         AND context != '{}'::jsonb`,
+         AND context != '{}'::jsonb
+         AND ${WEBSITE_DEMO_SESSION_FILTER}`,
       [DEMO_TENANT_ID, retentionMinutes],
     );
     if ((eventsDeleted ?? 0) > 0 || (sessionsCleared ?? 0) > 0) {
@@ -133,7 +175,14 @@ async function sweepStaleDemoData(): Promise<void> {
   }
 }
 
-setInterval(sweepStaleDemoData, 5 * 60_000);
+let demoSweepTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Started once from the admin-api bootstrap (start.ts), not on import. */
+export function startDemoDataSweep(intervalMs: number = 5 * 60_000): void {
+  if (demoSweepTimer) return;
+  demoSweepTimer = setInterval(sweepStaleDemoData, intervalMs);
+  demoSweepTimer.unref?.();
+}
 
 function mapEventType(raw: string): string {
   const map: Record<string, string> = {
