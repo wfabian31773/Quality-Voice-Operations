@@ -95,7 +95,8 @@ const WEBSITE_DEMO_SESSION_FILTER = `call_sid IN (
   WHERE event_type = 'call_started'
 )`;
 
-export async function isWebsiteDemoNumber(phoneNumberId: string | undefined, agentType: string | undefined): Promise<boolean> {
+/** `null` when the lookup failed: the caller decides how to treat "unknown". */
+export async function isWebsiteDemoNumber(phoneNumberId: string | undefined, agentType: string | undefined): Promise<boolean | null> {
   if (!phoneNumberId || !agentType) return false;
   try {
     const pool = getPlatformPool();
@@ -109,9 +110,8 @@ export async function isWebsiteDemoNumber(phoneNumberId: string | undefined, age
     );
     return rows.length > 0;
   } catch (err) {
-    // Unknown means "not a website demo": the call keeps its history.
     logger.warn('Website demo number check failed', { error: String(err) });
-    return false;
+    return null;
   }
 }
 
