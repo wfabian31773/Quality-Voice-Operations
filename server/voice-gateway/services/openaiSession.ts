@@ -831,6 +831,12 @@ export interface RealtimeSessionResult {
    */
   flushBookkeeping: (reason?: string) => Promise<FlushResult>;
   /**
+   * What teardown waits on before the final call state: open tool runs (at
+   * most BOOKKEEPING_FINALIZE_DRAIN_MAX_MS), then a flush. Does not end the
+   * queue. Never rejects.
+   */
+  drainBookkeeping: (reason?: string) => Promise<FlushResult>;
+  /**
    * Ends the call's bookkeeping queue once its open tool runs have queued
    * their last writes and those have run (bounded); nothing runs after it.
    */
@@ -2155,6 +2161,7 @@ export async function createRealtimeSession(
     onBargeIn: (handler) => { bargeInHandlers.push(handler); },
     evaluateFloor: () => invariants.evaluateFloor(),
     flushBookkeeping: (reason = 'teardown') => bookkeeping.flush(reason),
+    drainBookkeeping: (reason = 'teardown') => bookkeeping.drain(reason),
     releaseBookkeeping: () => bookkeeping.release(),
     costTracker,
     routedModel: costTracker.activeModel,

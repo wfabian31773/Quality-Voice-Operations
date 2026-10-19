@@ -18,10 +18,14 @@ import {
   createCallSession,
   writeCallEvent,
   updateCallState,
+  updateCallStateWithEvent,
   finalizeCallSession,
   persistCallOutcome,
   PERSIST_CALL_OUTCOME_SQL,
+  NOT_TERMINAL_SQL,
+  TERMINAL_LIFECYCLE_STATES,
 } from './callPersistence';
+import { BOOKKEEPING_STATEMENT_TIMEOUT_MS, BOOKKEEPING_WRITE_TIMEOUT_MS, BookkeepingQueue } from './bookkeepingQueue';
 
 beforeEach(() => {
   a.clientQueryMock.mockReset().mockResolvedValue({ rows: [] });
@@ -95,6 +99,66 @@ describe('updateCallState', () => {
     });
     await updateCallState('t1', 'cs1', 'ESCALATED');
     expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('INSERT INTO tickets'))).toBe(false);
+  });
+});
+
+describe('terminal-state guard (Codex P1/P2 on #135)', () => {
+  const stateUpdate = () => a.clientQueryMock.mock.calls.find(([s]) => String(s).includes('UPDATE call_sessions SET'));
+
+  it('the terminal states are CALL_COMPLETED and CALL_FAILED', () => {
+    expect([...TERMINAL_LIFECYCLE_STATES]).toEqual(['CALL_COMPLETED', 'CALL_FAILED']);
+    expect(NOT_TERMINAL_SQL).toBe(" AND lifecycle_state NOT IN ('CALL_COMPLETED', 'CALL_FAILED')");
+  });
+
+  it('updateCallState and updateCallStateWithEvent only move a call that is not in a terminal state', async () => {
+    await updateCallState('t1', 'cs1', 'ACTIVE_CONVERSATION');
+    expect(String(stateUpdate()?.[0])).toMatch(/WHERE tenant_id = \$1 AND id = \$2 AND lifecycle_state NOT IN \('CALL_COMPLETED', 'CALL_FAILED'\)$/);
+    a.clientQueryMock.mockClear();
+    await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
+    expect(String(stateUpdate()?.[0])).toContain(NOT_TERMINAL_SQL);
+  });
+
+  it('a skipped state move (rowCount 0) on a final call creates no escalation ticket', async () => {
+    a.clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('UPDATE call_sessions SET')) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationReason: 'late' });
+    expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('FROM tickets'))).toBe(false);
+    expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('INSERT INTO tickets'))).toBe(false);
+  });
+
+  it('a late tool_end on a final call still writes its event row (history), not the state', async () => {
+    a.clientQueryMock.mockImplementation(async (sql: string) => ({ rows: [], rowCount: sql.includes('UPDATE call_sessions SET') ? 0 : 1 }));
+    await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
+    expect(a.clientQueryMock.mock.calls.some(([s]) => String(s).includes('INSERT INTO call_events'))).toBe(true);
+    expect(a.clientQueryMock.mock.calls.map(([s]) => s)).toContain('COMMIT');
+  });
+
+  it('finalizeCallSession still writes the final state over any state (no guard)', async () => {
+    await finalizeCallSession('t1', 'cs1', 'failed');
+    expect(String(stateUpdate()?.[0])).not.toContain('NOT IN');
+  });
+});
+
+describe('bookkeeping statement timeout (P2 option b)', () => {
+  const statementTimeouts = () => a.clientQueryMock.mock.calls.filter(([s]) => String(s).startsWith('SET LOCAL statement_timeout'));
+
+  it('is SET LOCAL right after BEGIN on a transaction a bookkeeping queue write runs', async () => {
+    const queue = new BookkeepingQueue({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } });
+    await queue.enqueue('call_state.tool_end', () => updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' }));
+    expect(statementTimeouts()).toEqual([[`SET LOCAL statement_timeout = ${BOOKKEEPING_STATEMENT_TIMEOUT_MS}`]]);
+    const sqls = a.clientQueryMock.mock.calls.map(([s]) => String(s));
+    expect(sqls.indexOf('BEGIN')).toBe(sqls.findIndex((s) => s.startsWith('SET LOCAL statement_timeout')) - 1);
+    expect(BOOKKEEPING_STATEMENT_TIMEOUT_MS).toBeLessThan(BOOKKEEPING_WRITE_TIMEOUT_MS);
+  });
+
+  it('is never set for the same helpers called outside the queue', async () => {
+    await updateCallState('t1', 'cs1', 'ACTIVE_CONVERSATION');
+    await updateCallStateWithEvent('t1', 'cs1', 'TOOL_EXECUTION', { type: 'tool_start', from: 'ACTIVE_CONVERSATION', to: 'TOOL_EXECUTION' });
+    await writeCallEvent('t1', 'cs1', 'call_completed', 'ACTIVE_CONVERSATION', 'CALL_COMPLETED');
+    await finalizeCallSession('t1', 'cs1', 'completed');
+    expect(statementTimeouts()).toEqual([]);
   });
 });
 
