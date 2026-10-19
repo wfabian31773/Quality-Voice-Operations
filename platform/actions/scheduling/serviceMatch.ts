@@ -17,6 +17,7 @@
 import {
   isContextualServiceTerm,
   matchServiceTerm,
+  normalizeServiceName,
   normalizeServiceText,
   serviceLabel,
   type ServiceKey,
@@ -165,7 +166,8 @@ export type ServiceRefResult<S> =
  * service's name where the id goes) → one of the tenant's catalog services.
  *
  * Exact id first, then an exact name or alias match after normalization
- * (case, accents, articles, plurals: "Fade", "a fade", "DEGRADADO"). Names and
+ * (case, accents, plurals, a leading article only: "Fade", "a fade", "el
+ * DEGRADADO"; "combo" is not "Combo A"). Names and
  * aliases count the same: two services matching at all is ambiguous, never a
  * pick, so a write can't land on a different service than the one named.
  * Nothing beyond exact matching resolves; resolveServiceByName's looser tiers
@@ -181,9 +183,14 @@ export function resolveServiceRef<S extends MatchableService>(
 
   const singulars = catalogWords(catalog.services);
   const text = normalizeServiceText(ref, singulars);
-  if (text) {
-    const named = catalog.services.filter((s) => phrases(s, 'name', singulars).includes(text));
-    const aliased = catalog.services.filter((s) => !named.includes(s) && phrases(s, 'alias', singulars).includes(text));
+  // Exact matching drops an article only at the start ("a fade"): dropped
+  // anywhere, "combo" would equal "Combo A" but not "Combo B" and pick it.
+  const exact = normalizeServiceName(ref, singulars);
+  const exactPhrases = (s: S, source: 'name' | 'alias') =>
+    (source === 'name' ? [s.name] : s.aliases ?? []).map((p) => normalizeServiceName(p, singulars));
+  if (exact) {
+    const named = catalog.services.filter((s) => exactPhrases(s, 'name').includes(exact));
+    const aliased = catalog.services.filter((s) => !named.includes(s) && exactPhrases(s, 'alias').includes(exact));
     const matches = [...named, ...aliased];
     if (matches.length === 1) return { status: 'found', service: matches[0], matchedBy: named.length ? 'name' : 'alias' };
     if (matches.length > 1) return { status: 'ambiguous', candidates: matches };

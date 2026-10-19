@@ -118,6 +118,31 @@ describe('resolveServiceRef (pure)', () => {
     expect(resolveServiceRef(catalog, 'DESVANECIDO')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'fade' } });
   });
 
+  it('drops a leading article in English or Spanish ("the fade", "el degradado")', () => {
+    expect(resolveServiceRef(catalog, 'the fade')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'fade' } });
+    expect(resolveServiceRef(catalog, 'el degradado')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'fade' } });  });
+
+  it('never picks "Combo A" for "combo": an article inside or at the end of a name is part of it', () => {
+    const combos = { services: [{ id: 'ca', name: 'Combo A' }, { id: 'cb', name: 'Combo B' }] };
+    const combo = resolveServiceRef(combos, 'combo');
+    expect(combo.status).not.toBe('found');
+    if (combo.status === 'unknown') expect(combo.suggestions.map((s) => s.id).sort()).toEqual(['ca', 'cb']);
+    if (combo.status === 'ambiguous') expect(combo.candidates.map((s) => s.id).sort()).toEqual(['ca', 'cb']);
+    expect(resolveServiceRef(combos, 'Combo A')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'ca' } });
+    expect(resolveServiceRef(combos, 'combo b')).toMatchObject({ status: 'found', matchedBy: 'name', service: { id: 'cb' } });
+    expect(resolveServiceRef(combos, 'the combo a')).toMatchObject({ status: 'found', service: { id: 'ca' } });
+  });
+
+  it('a single-letter suffix service alone on the menu is not matched by its stem', () => {
+    const alone = { services: [{ id: 'pa', name: 'Package A' }, { id: 'pk', name: 'Mani', aliases: ['package deal una'] }] };
+    expect(resolveServiceRef(alone, 'package').status).toBe('unknown');
+    expect(resolveServiceRef(alone, 'package deal').status).toBe('unknown');
+    expect(resolveServiceRef(alone, 'Package A')).toMatchObject({ status: 'found', service: { id: 'pa' } });
+    // Its stem only resolves when the stem is itself an exact name or alias.
+    const aliased = { services: [{ id: 'pa', name: 'Package A', aliases: ['package'] }] };
+    expect(resolveServiceRef(aliased, 'package')).toMatchObject({ status: 'found', matchedBy: 'alias', service: { id: 'pa' } });
+  });
+
   it('never resolves through the looser matcher: a phrase inside a sentence only ranks the suggestions', () => {
     const found = resolveServiceRef(catalog, 'can I get a fade on Saturday');
     expect(found.status).toBe('unknown');
