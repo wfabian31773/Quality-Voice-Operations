@@ -205,8 +205,16 @@ describe.skipIf(!dbReachable)('scheduling read actions on Postgres (RLS-bound lo
       { id: ids['a:cut'], name: 'a cut', durationMin: 30, priceText: 'from $45', staffIds: expect.arrayContaining([ids['a:staff'], ids['a:other']]) },
     ]);
     const staff = await read(shopA, 'scheduling.list_staff', { serviceId: ids['a:beard'] });
+    // No weekly schedule: Marco follows the shop's Mon–Sat 9 to 5.
+    const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     expect(staff.ok && staff.data).toEqual([
-      { id: ids['a:staff'], displayName: 'Marco', serviceIds: [ids['a:beard'], ids['a:cut']] },
+      {
+        id: ids['a:staff'],
+        displayName: 'Marco',
+        serviceIds: [ids['a:beard'], ids['a:cut']],
+        workingDays: days,
+        hours: Object.fromEntries(days.map((d) => [d, '09:00-17:00'])),
+      },
     ]);
   });
 

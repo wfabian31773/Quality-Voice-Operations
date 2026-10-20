@@ -127,21 +127,97 @@ describe('scheduling.list_services', () => {
 });
 
 describe('scheduling.list_staff', () => {
-  it('lists active staff with the services they perform', async () => {
+  // No weekly schedule: they follow the shop's hours (Mon–Sat, 9 to 5).
+  const MON_SAT = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const SHOP_WEEK = { workingDays: MON_SAT, hours: Object.fromEntries(MON_SAT.map((d) => [d, '09:00-17:00'])) };
+
+  it('lists active staff with the services they perform and their usual week', async () => {
     const { result, query } = await run('scheduling.list_staff', {});
     expect(result).toEqual({
       ok: true,
       data: [
-        { id: 'dana', displayName: 'Dana', serviceIds: ['cut'] },
-        { id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'] },
+        { id: 'dana', displayName: 'Dana', serviceIds: ['cut'], ...SHOP_WEEK },
+        { id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'], ...SHOP_WEEK },
       ],
     });
     readOnlyAndTenantScoped(query);
+    expect(dataQueries(query).some(([sql]) => /FROM scheduling_provider_schedules\b/.test(sql))).toBe(true);
   });
 
   it('filters by service', async () => {
     const { result } = await run('scheduling.list_staff', { serviceId: 'beard' });
-    expect(result.ok && result.data).toEqual([{ id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'] }]);
+    expect(result.ok && result.data).toEqual([{ id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'], ...SHOP_WEEK }]);
+  });
+
+  it('returns a non-contiguous week (Tue, Thu, Fri, Sat) from the weekly schedule, inside shop hours', async () => {
+    // Oct 18 Sharp Line call: the agent said "Tuesday through Saturday" for Dee.
+    const data = shopData({
+      scheduling_providers: [{ id: 'dana', name: 'Dana' }, { id: 'dee', name: 'Dee' }],
+      scheduling_provider_services: [
+        { provider_id: 'dana', appointment_type_id: 'cut' },
+        { provider_id: 'dee', appointment_type_id: 'cut' },
+      ],
+      scheduling_provider_schedules: [
+        ...[2, 4, 5].map((d) => ({ provider_id: 'dee', day_of_week: d, start_time: '10:00:00', end_time: '18:00:00' })),
+        { provider_id: 'dee', day_of_week: 6, start_time: '09:00:00', end_time: '12:00:00' },
+        { provider_id: 'dee', day_of_week: 6, start_time: '13:00:00', end_time: '16:00:00' },
+        // A Sunday block: the shop is closed Sundays, so it is not a working day.
+        { provider_id: 'dee', day_of_week: 0, start_time: '10:00:00', end_time: '14:00:00' },
+      ],
+    });
+    const env = setup(data);
+    const { result } = await run('scheduling.list_staff', { serviceId: 'cut' }, env);
+    const dee = result.ok ? (result.data as { id: string }[]).find((m) => m.id === 'dee') : undefined;
+    expect(dee).toEqual({
+      id: 'dee',
+      displayName: 'Dee',
+      serviceIds: ['cut'],
+      workingDays: ['tue', 'thu', 'fri', 'sat'],
+      // Clipped to the shop's 5 PM close; a split Saturday keeps both blocks.
+      hours: { tue: '10:00-17:00', thu: '10:00-17:00', fri: '10:00-17:00', sat: '09:00-12:00, 13:00-16:00' },
+    });
+    // check_availability reads the same rows: no Wednesday for Dee, Thursday open.
+    const wed = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'dee', date: '2026-10-21' }, env);
+    const thu = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'dee', date: '2026-10-22' }, env);
+    expect(wed.result.ok && (wed.result.data as { slots: unknown[] }).slots).toEqual([]);
+    expect(thu.result.ok && (thu.result.data as { slots: unknown[] }).slots.length).toBeGreaterThan(0);
+  });
+
+  it("reports the tenant's own weekdays and wall-clock hours, not UTC ones", async () => {
+    // Los Angeles: Saturday 6–10 PM is Sunday 01:00–05:00 UTC; Friday 10 PM–2 AM runs past midnight.
+    const data = shopData({
+      scheduling_providers: [{ id: 'dee', name: 'Dee' }],
+      scheduling_provider_services: [{ provider_id: 'dee', appointment_type_id: 'cut' }],
+      scheduling_business_hours: [
+        { day_of_week: 5, open_time: '20:00:00', close_time: '03:00:00' },
+        { day_of_week: 6, open_time: '17:00:00', close_time: '23:00:00' },
+      ],
+      scheduling_provider_schedules: [
+        { provider_id: 'dee', day_of_week: 5, start_time: '22:00:00', end_time: '02:00:00' },
+        { provider_id: 'dee', day_of_week: 6, start_time: '18:00:00', end_time: '22:00:00' },
+      ],
+    });
+    // Fri Oct 23, 8 PM in Los Angeles = Sat 03:00 UTC.
+    const { result } = await run('scheduling.list_staff', {}, setup(data), {
+      tenantTimezone: 'America/Los_Angeles',
+      now: new Date('2026-10-24T03:00:00Z'),
+    });
+    expect(result.ok && result.data).toEqual([
+      { id: 'dee', displayName: 'Dee', serviceIds: ['cut'], workingDays: ['fri', 'sat'], hours: { fri: '22:00-02:00', sat: '18:00-22:00' } },
+    ]);
+  });
+
+  it('a member with a schedule but no shop hours configured works their own schedule', async () => {
+    const data = shopData({
+      scheduling_business_hours: [],
+      scheduling_provider_schedules: [{ provider_id: 'marco', day_of_week: 3, start_time: '12:00', end_time: '20:00' }],
+    });
+    const { result } = await run('scheduling.list_staff', {}, setup(data));
+    expect(result.ok && result.data).toEqual([
+      // No schedule and no shop hours: no usual week to report.
+      { id: 'dana', displayName: 'Dana', serviceIds: ['cut'], workingDays: [], hours: {} },
+      { id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'], workingDays: ['wed'], hours: { wed: '12:00-20:00' } },
+    ]);
   });
 
   it('returns NOT_FOUND for an unknown service', async () => {

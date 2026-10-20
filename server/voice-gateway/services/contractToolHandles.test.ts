@@ -129,6 +129,15 @@ describe('CallHandles', () => {
     expect(new CallHandles().toModel(value, 'tickets.open.commit', new Set(['ticketNumber']))).toEqual({ ok: true, data: { ticketNumber: 1042 } });
   });
 
+  it("list_staff: the id becomes a handle, the member's working days and hours reach the model as is", () => {
+    const week = { workingDays: ['tue', 'thu', 'fri', 'sat'], hours: { tue: '10:00-18:00', thu: '10:00-18:00', fri: '10:00-18:00', sat: '09:00-12:00, 13:00-16:00' } };
+    const value = { ok: true, data: [{ id: randomUUID(), displayName: 'Dee', serviceIds: [randomUUID()], ...week }] };
+    expect(new CallHandles().toModel(value, 'scheduling.list_staff')).toEqual({
+      ok: true,
+      data: [{ id: 'staff-1', displayName: 'Dee', serviceIds: ['service-1'], ...week }],
+    });
+  });
+
   it('turns a uuid anywhere else, even inside a message, into a ref handle', () => {
     const id = randomUUID();
     const out = new CallHandles().toModel({ error: { message: `Unknown thing ${id}`, other: id } }, 'x') as { error: Record<string, string> };

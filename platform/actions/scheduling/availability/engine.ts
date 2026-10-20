@@ -111,6 +111,58 @@ function weeklyIntervals(blocks: ClockBlock[], date: string, tz: string): Interv
   return normalize(out);
 }
 
+// ─── usual week (list_staff) ───
+
+export const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+export type WeekdayKey = (typeof WEEKDAY_KEYS)[number];
+
+export interface WeeklyHours {
+  /** Days with working hours, Sunday first. */
+  workingDays: WeekdayKey[];
+  /** Local 'HH:MM-HH:MM' per working day; split shifts are joined with ', '. */
+  hours: Partial<Record<WeekdayKey, string>>;
+}
+
+/** Minute-of-day blocks that start on `dow`; an end at or before the start runs past midnight. */
+function dayMinutes(blocks: ClockBlock[], dow: number): Interval[] {
+  const out: Interval[] = [];
+  for (const b of blocks) {
+    if (b.dayOfWeek !== dow) continue;
+    const s = parseClock(b.start);
+    let e = parseClock(b.end);
+    if (s === null || e === null) continue;
+    if (e <= s) e += DAY_MINUTES;
+    out.push([s, e]);
+  }
+  return normalize(out);
+}
+
+function clockText(minute: number): string {
+  // Past midnight wraps ('02:00'); a close at midnight stays '24:00'.
+  const m = minute > DAY_MINUTES ? minute - DAY_MINUTES : minute;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The week a staff member usually works, by the same rule as staffWindows: the
+ * weekly schedule inside the shop's hours, the shop's hours when they have no
+ * schedule, their schedule when the shop has no hours. Blocks are tenant
+ * wall-clock, so the days are the tenant's own weekdays. Date overrides (time
+ * off, holidays, special hours) are not part of the usual week.
+ */
+export function weeklyHours(weekly: ClockBlock[], businessHours: ClockBlock[]): WeeklyHours {
+  const result: WeeklyHours = { workingDays: [], hours: {} };
+  WEEKDAY_KEYS.forEach((day, dow) => {
+    const own = weekly.length ? dayMinutes(weekly, dow) : null;
+    const biz = businessHours.length ? dayMinutes(businessHours, dow) : null;
+    const blocks = own && biz ? intersect(own, biz) : own ?? biz ?? [];
+    if (blocks.length === 0) return;
+    result.workingDays.push(day);
+    result.hours[day] = blocks.map(([s, e]) => `${clockText(s)}-${clockText(e)}`).join(', ');
+  });
+  return result;
+}
+
 function isFullDayClosure(o: DateOverride): boolean {
   return !o.isAvailable && !o.start && !o.end;
 }

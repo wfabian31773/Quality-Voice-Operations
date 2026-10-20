@@ -117,7 +117,7 @@ interface ActionDefinition<I, O> {
 | Action | Kind | Input (zod) | Output | Errors |
 |---|---|---|---|---|
 | `scheduling.list_services` | read | `{ staffId? }` | `[{id, name, durationMin, priceText, staffIds}]` | — |
-| `scheduling.list_staff` | read | `{ serviceId? }` | `[{id, displayName, serviceIds}]` | — |
+| `scheduling.list_staff` | read | `{ serviceId? }` | `[{id, displayName, serviceIds, workingDays: ['tue', …], hours: {tue: '09:00-17:00'}}]` (usual week, shop time) | — |
 | `scheduling.check_availability` | read | `{ serviceIds: string[1..3], staffId?: string \| 'any', date?: ISODate, window?: {from,to}, partOfDay?: 'morning'\|'afternoon'\|'evening', limit≤5 }` | `{ slots: [{start, end, staffId, staffName, spoken}], nextOpenDate?, reasonIfNone?: 'closed'\|'fully_booked'\|'outside_lead_time'\|'staff_off' }` | VALIDATION_FAILED, NOT_FOUND |
 | `scheduling.book.prepare` | prepare | `{ serviceIds, staffId\|'any', start, customer: {name, phone(E.164), email?}, notes? }` | `{ confirmationToken, holdId, expiresAt (+5 min), readback, priceText }`, plus a **held** booking row | CONFLICT (+alternatives), OUTSIDE_POLICY, VALIDATION_FAILED |
 | `scheduling.book.commit` | commit | `{ confirmationToken }` | `{ bookingId, status:'confirmed', readback, confirmationChannel: 'sms'\|'email'\|'none' }` | CONFIRMATION_INVALID, CONFLICT (hold lost) |

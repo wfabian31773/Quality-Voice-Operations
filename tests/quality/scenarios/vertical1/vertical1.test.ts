@@ -126,6 +126,12 @@ describe('vertical1 shop fixtures', () => {
     const wednesday = state.slots.filter((slot) => weekdayOf(slot.start.slice(0, 10)) === 'wed');
     expect(wednesday.length).toBeGreaterThan(0);
     expect(wednesday.some((slot) => slot.staffId === 'marco')).toBe(false);
+    // list_staff's working days agree with the slots: every day a barber has a slot, and no other.
+    for (const member of state.staff) {
+      const slotDays = new Set(state.slots.filter((slot) => slot.staffId === member.id).map((slot) => weekdayOf(slot.start.slice(0, 10))));
+      expect([...slotDays].sort(), member.id).toEqual([...member.workingDays].sort());
+    }
+    expect(state.staff.find((member) => member.id === 'marco')?.workingDays).toEqual(['sun', 'tue', 'thu', 'fri', 'sat']);
     const prices = Object.fromEntries(state.services.map((service) => [service.id, service.priceText]));
     expect(prices['mens-cut']).toMatch(/^from \$/);
     expect(prices['beard-trim']).toMatch(/^\$\d+$/);
