@@ -84,6 +84,25 @@ describe('FakeToolProvider', () => {
     expect(state.bookings.at(-1)?.serviceIds).toEqual(['mens-cut']);
   });
 
+  it("list_staff returns each member's usual week in the real action's shape (workingDays, hours)", async () => {
+    // Oct 18 Sharp Line call: Dee works Tue, Thu, Fri, Sat, not "Tuesday through Saturday".
+    const sharp = new FakeToolProvider(buildFixture('sharp-line-oct17'), ['scheduling']);
+    const fade = await sharp.invoke('scheduling.list_staff', { serviceId: 'fade' }, ctx());
+    expect(fade.ok && fade.data).toContainEqual({
+      id: 'dee',
+      displayName: 'Dee',
+      serviceIds: ['haircut', 'fade'],
+      workingDays: ['tue', 'thu', 'fri', 'sat'],
+      hours: { tue: '09:00-19:00', thu: '09:00-19:00', fri: '09:00-19:00', sat: '09:00-19:00' },
+    });
+    // YAML fixtures: the shop's hours minus the barber's days off.
+    const basic = new FakeToolProvider(buildShopFixture('barbershop-basic'), ['scheduling']);
+    const all = await basic.invoke('scheduling.list_staff', {}, ctx());
+    const marco = all.ok ? (all.data as { id: string; workingDays: string[]; hours: Record<string, string> }[]).find((m) => m.id === 'marco') : undefined;
+    expect(marco?.workingDays).toEqual(['sun', 'tue', 'thu', 'fri', 'sat']);
+    expect(marco?.hours).toMatchObject({ sun: '10:00-16:00', sat: '08:00-17:00' });
+  });
+
   it('a service name nothing matches is NOT_FOUND with the closest services as {serviceId, name}', async () => {
     const tools = new FakeToolProvider(buildShopFixture('barbershop-basic'), ['scheduling']);
     const result = await tools.invoke('scheduling.list_staff', { serviceId: 'beard' }, ctx());

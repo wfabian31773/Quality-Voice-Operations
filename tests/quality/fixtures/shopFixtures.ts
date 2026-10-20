@@ -60,7 +60,8 @@ export type ShopFixture = {
   slotServiceIds: string[];
   openTimes: string[];
   dateRange: { from: string; to: string };
-  staff: Array<StaffMember & { daysOff?: Weekday[] }>;
+  /** The usual week (`workingDays` / `hours`) is the shop's hours minus `daysOff`. */
+  staff: Array<Omit<StaffMember, 'workingDays' | 'hours'> & { daysOff?: Weekday[] }>;
   services: FixtureService[];
   sms: SmsSettings;
   transferHours: TransferHours;
@@ -215,7 +216,11 @@ function expandShopFixture(seedName: string): ShopTenantState {
   if (!variant) {
     throw new Error(`unknown shop fixture ${seedName}; known: ${listShopFixtureNames().join(', ')}`);
   }
-  const staff = fixture.staff.map(({ id, displayName, serviceIds }) => ({ id, displayName, serviceIds: [...serviceIds] }));
+  const staff: StaffMember[] = fixture.staff.map(({ id, displayName, serviceIds, daysOff }) => {
+    const workingDays = WEEKDAYS.filter((day) => fixture.hours[day] && !daysOff?.includes(day));
+    const hours = Object.fromEntries(workingDays.map((day) => [day, fixture.hours[day]!.join('-')]));
+    return { id, displayName, serviceIds: [...serviceIds], workingDays, hours };
+  });
   const bookings: BookingRow[] = (variant.bookings ?? []).map((row) => ({
     ...row,
     serviceIds: [...row.serviceIds],

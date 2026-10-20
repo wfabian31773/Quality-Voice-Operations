@@ -135,6 +135,11 @@ describe('barbershop@1 template export', () => {
     expect(T.persona.es).toMatch(/la barbería se lo va a confirmar/i);
   });
 
+  it("takes a barber's working days from the staff list, not the prompt", () => {
+    expect(T.persona.en).toMatch(/working days the staff list gives you, never these instructions/i);
+    expect(T.persona.es).toMatch(/días de trabajo que da la lista del personal, nunca estas instrucciones/i);
+  });
+
   it('greets with the shop name in both languages', () => {
     for (const lang of TEMPLATE_LANGUAGES) {
       expect(T.greeting[lang]).toContain('{{businessName}}');

@@ -1,9 +1,25 @@
 import type { BookingRow, EndSnapshot, TemplateId, TicketRow, TransferRow, WaitlistRow } from './types';
 
-export type StaffMember = { id: string; displayName: string; serviceIds: string[] };
+/**
+ * `workingDays` / `hours`: the usual week, shaped like scheduling.list_staff's
+ * (availability/engine.ts weeklyHours): weekday keys Sunday first, local 'HH:MM-HH:MM'.
+ */
+export type StaffMember = {
+  id: string;
+  displayName: string;
+  serviceIds: string[];
+  workingDays: string[];
+  hours: Record<string, string>;
+};
 export type Service = { id: string; name: string; durationMin: number; priceText: string };
 export type Slot = { start: string; end: string; staffId: string };
 
+/** A usual week with the same hours every working day. */
+function week(days: string[], hours: string): Pick<StaffMember, 'workingDays' | 'hours'> {
+  return { workingDays: days, hours: Object.fromEntries(days.map((day) => [day, hours])) };
+}
+
+const TUE_SAT = ['tue', 'wed', 'thu', 'fri', 'sat'];
 export type TenantState = {
   tenantId: string;
   timezone: string;
@@ -64,8 +80,8 @@ function baseShop(template: TemplateId, seed: string): Omit<
     address: '14 Mercer Street',
     hoursText: 'Tuesday to Saturday, 9 to 6',
     staff: [
-      { id: 'marco', displayName: 'Marco', serviceIds: ['mens-cut', 'beard'] },
-      { id: 'dana', displayName: 'Dana', serviceIds: ['mens-cut'] },
+      { id: 'marco', displayName: 'Marco', serviceIds: ['mens-cut', 'beard'], ...week(TUE_SAT, '09:00-18:00') },
+      { id: 'dana', displayName: 'Dana', serviceIds: ['mens-cut'], ...week(TUE_SAT, '09:00-18:00') },
     ],
     services: [
       { id: 'mens-cut', name: "men's cut", durationMin: 30, priceText: 'from $45' },
@@ -101,8 +117,9 @@ const FIXTURES: Record<string, () => TenantState> = {
     address: '1 Demo Way',
     hoursText: 'Tuesday to Saturday, 9 to 7',
     staff: [
-      { id: 'marcus', displayName: 'Marcus', serviceIds: ['haircut', 'fade', 'beard-trim'] },
-      { id: 'dee', displayName: 'Dee', serviceIds: ['haircut', 'fade'] },
+      { id: 'marcus', displayName: 'Marcus', serviceIds: ['haircut', 'fade', 'beard-trim'], ...week(TUE_SAT, '09:00-19:00') },
+      // Not Wednesday (the Oct 18 call said "Tuesday through Saturday").
+      { id: 'dee', displayName: 'Dee', serviceIds: ['haircut', 'fade'], ...week(['tue', 'thu', 'fri', 'sat'], '09:00-19:00') },
     ],
     services: [
       { id: 'haircut', name: 'haircut', durationMin: 30, priceText: 'from $30' },
@@ -119,8 +136,8 @@ const FIXTURES: Record<string, () => TenantState> = {
   'nail-salon-front-desk': () => ({
     ...baseShop('nail_salon', 'nail-salon-front-desk'),
     staff: [
-      { id: 'dana', displayName: 'Dana', serviceIds: ['gel-mani'] },
-      { id: 'linh', displayName: 'Linh', serviceIds: ['gel-mani'] },
+      { id: 'dana', displayName: 'Dana', serviceIds: ['gel-mani'], ...week(TUE_SAT, '09:00-18:00') },
+      { id: 'linh', displayName: 'Linh', serviceIds: ['gel-mani'], ...week(TUE_SAT, '09:00-18:00') },
     ],
     services: [{ id: 'gel-mani', name: 'gel manicure', durationMin: 45, priceText: 'from $55' }],
     slots: [{ start: '2026-10-20T15:30:00-04:00', end: '2026-10-20T16:15:00-04:00', staffId: 'linh' }],

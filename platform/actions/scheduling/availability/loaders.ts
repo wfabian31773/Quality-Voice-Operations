@@ -128,12 +128,49 @@ export async function loadBookingRuleRows(
   }));
 }
 
-export interface AvailabilityData {
+export interface WeeklySchedules {
   businessHours: ClockBlock[];
   /** staffId → weekly blocks (missing = follows business hours). */
   weeklyByStaff: Map<string, ClockBlock[]>;
+}
+
+export interface AvailabilityData extends WeeklySchedules {
   overrides: DateOverride[];
   bookings: BusyBooking[];
+}
+
+/** Business hours and the weekly schedules of `staffIds` (tenant wall-clock). */
+export async function loadWeeklySchedules(tx: TenantTx, tenantId: string, staffIds: string[]): Promise<WeeklySchedules> {
+  const hours = await tx.query(
+    `SELECT day_of_week, open_time::text AS open_time, close_time::text AS close_time
+       FROM scheduling_business_hours
+      WHERE tenant_id = $1
+      ORDER BY day_of_week, open_time`,
+    [tenantId],
+  );
+  const schedules = await tx.query(
+    `SELECT provider_id, day_of_week, start_time::text AS start_time, end_time::text AS end_time
+       FROM scheduling_provider_schedules
+      WHERE tenant_id = $1 AND is_active = true AND provider_id = ANY($2::text[])
+      ORDER BY provider_id, day_of_week, start_time`,
+    [tenantId, staffIds],
+  );
+
+  const weeklyByStaff = new Map<string, ClockBlock[]>();
+  for (const r of schedules.rows) {
+    const id = str(r.provider_id);
+    const list = weeklyByStaff.get(id) ?? [];
+    list.push({ dayOfWeek: Number(r.day_of_week), start: str(r.start_time), end: str(r.end_time) });
+    weeklyByStaff.set(id, list);
+  }
+  return {
+    businessHours: hours.rows.map((r) => ({
+      dayOfWeek: Number(r.day_of_week),
+      start: str(r.open_time),
+      end: str(r.close_time),
+    })),
+    weeklyByStaff,
+  };
 }
 
 export async function loadAvailabilityData(
@@ -151,20 +188,7 @@ export async function loadAvailabilityData(
     now: Date;
   },
 ): Promise<AvailabilityData> {
-  const hours = await tx.query(
-    `SELECT day_of_week, open_time::text AS open_time, close_time::text AS close_time
-       FROM scheduling_business_hours
-      WHERE tenant_id = $1
-      ORDER BY day_of_week, open_time`,
-    [tenantId],
-  );
-  const schedules = await tx.query(
-    `SELECT provider_id, day_of_week, start_time::text AS start_time, end_time::text AS end_time
-       FROM scheduling_provider_schedules
-      WHERE tenant_id = $1 AND is_active = true AND provider_id = ANY($2::text[])
-      ORDER BY provider_id, day_of_week, start_time`,
-    [tenantId, opts.staffIds],
-  );
+  const weekly = await loadWeeklySchedules(tx, tenantId, opts.staffIds);
   const overrides = await tx.query(
     `SELECT provider_id, override_date::text AS override_date,
             start_time::text AS start_time, end_time::text AS end_time, is_available
@@ -188,21 +212,8 @@ export async function loadAvailabilityData(
     [tenantId, opts.bookingStaffIds, [...BUSY_STATUSES], opts.now, rangeStart, rangeEnd],
   );
 
-  const weeklyByStaff = new Map<string, ClockBlock[]>();
-  for (const r of schedules.rows) {
-    const id = str(r.provider_id);
-    const list = weeklyByStaff.get(id) ?? [];
-    list.push({ dayOfWeek: Number(r.day_of_week), start: str(r.start_time), end: str(r.end_time) });
-    weeklyByStaff.set(id, list);
-  }
-
   return {
-    businessHours: hours.rows.map((r) => ({
-      dayOfWeek: Number(r.day_of_week),
-      start: str(r.open_time),
-      end: str(r.close_time),
-    })),
-    weeklyByStaff,
+    ...weekly,
     overrides: overrides.rows.map((r) => ({
       date: str(r.override_date).slice(0, 10),
       staffId: r.provider_id == null ? null : str(r.provider_id),

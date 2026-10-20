@@ -381,7 +381,10 @@ export class FakeToolProvider implements ToolProvider {
     }
   }
 
-  /** Like scheduling.list_staff: serviceId (an id, or an exact service name/alias) lists only who does it. */
+  /**
+   * Like scheduling.list_staff: serviceId (an id, or an exact service name/alias) lists only who does it.
+   * Each member carries their usual week (workingDays, hours) from the seed.
+   */
   private listStaff(input: Record<string, unknown>): ToolResult {
     const ref = asString(input.serviceId);
     const resolved = ref ? resolveServiceIds(this.state, [ref], 'serviceId', 'NOT_FOUND') : [];
@@ -390,7 +393,13 @@ export class FakeToolProvider implements ToolProvider {
     return ok(
       this.state.staff
         .filter((member) => !serviceId || member.serviceIds.includes(serviceId))
-        .map((member) => ({ id: member.id, displayName: member.displayName, serviceIds: member.serviceIds })),
+        .map((member) => ({
+          id: member.id,
+          displayName: member.displayName,
+          serviceIds: member.serviceIds,
+          workingDays: [...member.workingDays],
+          hours: { ...member.hours },
+        })),
     );
   }
 
