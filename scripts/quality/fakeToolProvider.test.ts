@@ -94,7 +94,12 @@ describe('FakeToolProvider', () => {
       serviceIds: ['haircut', 'fade'],
       workingDays: ['tue', 'thu', 'fri', 'sat'],
       hours: { tue: '09:00-19:00', thu: '09:00-19:00', fri: '09:00-19:00', sat: '09:00-19:00' },
+      spokenHours: { tue: '9 AM to 7 PM', thu: '9 AM to 7 PM', fri: '9 AM to 7 PM', sat: '9 AM to 7 PM' },
     });
+    // A Spanish call gets the Spanish wording, like the real action.
+    const es = await sharp.invoke('scheduling.list_staff', { serviceId: 'fade' }, { ...ctx(), locale: 'es-US' });
+    const deeEs = es.ok ? (es.data as { id: string; spokenHours: Record<string, string> }[]).find((m) => m.id === 'dee') : undefined;
+    expect(deeEs?.spokenHours.tue).toBe('9 a. m. a 7 p. m.');
     // YAML fixtures: the shop's hours minus the barber's days off.
     const basic = new FakeToolProvider(buildShopFixture('barbershop-basic'), ['scheduling']);
     const all = await basic.invoke('scheduling.list_staff', {}, ctx());
