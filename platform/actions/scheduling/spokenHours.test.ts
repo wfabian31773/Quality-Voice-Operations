@@ -17,6 +17,7 @@ describe('spokenHours', () => {
     expect(spokenHours('12:00-24:00', 'en')).toBe('noon to midnight');
     expect(spokenHours('12:00-24:00', 'es')).toBe('12 del mediodía a 12 de la noche');
     expect(spokenHours('00:00-06:00', 'en')).toBe('midnight to 6 AM');
+    expect(spokenHours('00:00-06:00', 'es')).toBe('12 de la noche a 6 a. m.');
   });
 
   it('says a shift past midnight and a split day', () => {

@@ -10,6 +10,7 @@ import {
   type ActionContext,
   type ActionResult,
 } from '../../../platform/actions';
+import { spokenWeek } from '../../../platform/actions/scheduling/spokenHours';
 import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
 import { TOOL_STOP_THRESHOLD, ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { CallInvariants } from './callInvariants';
@@ -198,6 +199,27 @@ describe('contract tool bridge: after-write line in the commit\'s language', () 
     const out = parse(await b.runTool('tickets_open_commit', { confirmationToken: prep.data.confirmationToken }));
     expect(out.ok).toBe(true);
     expect(out.say).toBeUndefined();
+  });
+});
+
+describe('contract tool bridge: call-stable reads follow the call\'s language', () => {
+  it('list_staff in English, then a switch to Spanish: the next list_staff reads again and words spokenHours in Spanish', async () => {
+    const hours = { tue: '09:00-17:00', sat: '09:00-12:00, 13:00-16:00' };
+    // list_staff's language rule: spokenHours in ctx.locale (listStaff.ts).
+    const run = vi.fn<ContractActionRunner>(async (_name, ctx) =>
+      actionOk([{ id: 'marco', displayName: 'Marco', serviceIds: [], workingDays: ['tue', 'sat'], hours, spokenHours: spokenWeek(hours, ctx.locale?.startsWith('es') ? 'es' : 'en') }]));
+    const b = bridge(run, { language: 'en' });
+
+    const en = parse(await b.runTool('scheduling_list_staff', {}));
+    expect(en.data[0].spokenHours).toEqual({ tue: '9 AM to 5 PM', sat: '9 AM to noon and 1 PM to 4 PM' });
+    b.observeToolCall('record_language_change', { language: 'es', confidence: 'high' });
+    const es = parse(await b.runTool('scheduling_list_staff', {}));
+    expect(es.data[0].spokenHours).toEqual({ tue: '9 a. m. a 5 p. m.', sat: '9 a. m. a 12 del mediodía y 1 p. m. a 4 p. m.' });
+    expect(run).toHaveBeenCalledTimes(2);
+
+    // Still cached within a language: asking again in Spanish is no new read.
+    expect(parse(await b.runTool('scheduling_list_staff', {}))).toEqual(es);
+    expect(run).toHaveBeenCalledTimes(2);
   });
 });
 

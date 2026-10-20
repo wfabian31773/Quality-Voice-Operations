@@ -37,8 +37,9 @@
  * - the per-tenant tool rate limit (unifiedToolRegistry.checkRateLimit).
  *
  * A call-stable read (binding.cacheable, e.g. a catalog) asked again on the
- * same call with the same normalized arguments is answered from this call's
- * cache: the same output and handles, no DB read. It still counts against
+ * same call with the same normalized arguments, in the same language, is
+ * answered from this call's cache (a read can word its output in ctx.locale,
+ * e.g. list_staff's spokenHours, so a language change reads again): the same output and handles, no DB read. It still counts against
  * the rate limit and still gets its own bookkeeping (a success row, events,
  * the meter), so billing and logs stay truthful.
  *
@@ -262,8 +263,8 @@ export class ContractToolBridge {
   /** Tools with a prepare or write that timed out on this call (it may still have landed). */
   private readonly uncertainWrites = new Map<string, Exclude<TimeoutClass, 'read'>>();
   /**
-   * This call's ok results of call-stable reads (binding.cacheable), by action
-   * and normalized arguments. One bridge per call session, so nothing here is
+   * This call's ok results of call-stable reads (binding.cacheable), by action,
+   * the call's language and normalized arguments. One bridge per call session, so nothing here is
    * shared across calls or tenants, and it goes with the call.
    */
   private readonly readCache = new Map<string, ContractToolRun>();
@@ -323,10 +324,14 @@ export class ContractToolBridge {
     return run;
   }
 
-  /** The call cache's key for a call-stable read (binding.cacheable) and its normalized arguments; undefined for every other action. */
+  /**
+   * The call cache's key for a call-stable read (binding.cacheable): the
+   * action, the call's current language (the read's ctx.locale) and its
+   * normalized arguments. Undefined for every other action.
+   */
   private readCacheKey(action: string, args: Record<string, unknown>): string | undefined {
     if (this.init.binding.cacheable[action] !== 'call' || getAction(action)?.kind !== 'read') return undefined;
-    return `${action}\u0000${JSON.stringify(normalizedArgs(args))}`;
+    return `${action}\u0000${this.language}\u0000${JSON.stringify(normalizedArgs(args))}`;
   }
 
   /** One real run of the action behind a contract tool (after the rate limit, the hook, the stop check and the cache). */
