@@ -168,6 +168,51 @@ describe('terminal-state guard (Codex P1/P2 on #135)', () => {
     expect(a.clientQueryMock.mock.calls.map(([s]) => s)).toContain('COMMIT');
   });
 
+  it('a failed ticket INSERT does not roll back escalation_target / escalation_reason (Postgres aborted-transaction model)', async () => {
+    // Postgres semantics: after a failed statement every statement but
+    // ROLLBACK [TO SAVEPOINT] errors, and COMMIT of an aborted transaction
+    // rolls it back. ROLLBACK TO SAVEPOINT drops only the writes after it.
+    const committed: Record<string, unknown> = { lifecycle_state: 'CALL_COMPLETED' };
+    let pending: Record<string, unknown> = {};
+    const savepoints = new Map<string, Record<string, unknown>>();
+    let aborted = false;
+    a.clientQueryMock.mockImplementation(async (sql: string, values: unknown[] = []) => {
+      const sp = /^(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT) (\w+)$/.exec(sql);
+      if (sp?.[1] === 'ROLLBACK TO SAVEPOINT') {
+        pending = { ...savepoints.get(sp[2])! };
+        aborted = false;
+        return { rows: [] };
+      }
+      if (sql === 'ROLLBACK' || (sql === 'COMMIT' && aborted)) { pending = {}; aborted = false; return { rows: [] }; }
+      if (aborted) throw new Error('current transaction is aborted, commands ignored until end of transaction block');
+      if (sql === 'BEGIN') { pending = {}; return { rows: [] }; }
+      if (sql === 'COMMIT') { Object.assign(committed, pending); return { rows: [] }; }
+      if (sp?.[1] === 'SAVEPOINT') { savepoints.set(sp[2], { ...pending }); return { rows: [] }; }
+      if (sql.startsWith('UPDATE call_sessions SET')) {
+        for (const [, col, n] of sql.matchAll(/(\w+) = \$(\d+)/g)) pending[col] = values[Number(n) - 1];
+      }
+      if (sql.includes('INSERT INTO tickets')) {
+        aborted = true;
+        throw new Error('null value in column "id" violates not-null constraint');
+      }
+      return { rows: [] };
+    });
+    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationTarget: '+15550001111', escalationReason: 'caller asked for a person' });
+    expect(committed).toMatchObject({ escalation_target: '+15550001111', escalation_reason: 'caller asked for a person' });
+    const sqls = a.clientQueryMock.mock.calls.map(([s]) => String(s));
+    expect(sqls).toContain('ROLLBACK TO SAVEPOINT escalation_ticket');
+    expect(sqls.at(-1)).toBe('COMMIT');
+  });
+
+  it('a filed ticket releases its savepoint', async () => {
+    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationReason: 'x' });
+    const sqls = a.clientQueryMock.mock.calls.map(([s]) => String(s));
+    const at = (s: string) => sqls.findIndex((q) => q.includes(s));
+    expect(at('SAVEPOINT escalation_ticket')).toBeLessThan(at('INSERT INTO tickets'));
+    expect(at('RELEASE SAVEPOINT escalation_ticket')).toBeGreaterThan(at('INSERT INTO tickets'));
+    expect(sqls).not.toContain('ROLLBACK TO SAVEPOINT escalation_ticket');
+  });
+
   it('finalizeCallSession still writes the final state over any state (no guard)', async () => {
     await finalizeCallSession('t1', 'cs1', 'failed');
     expect(String(stateUpdate()?.[0])).not.toContain('CASE WHEN');

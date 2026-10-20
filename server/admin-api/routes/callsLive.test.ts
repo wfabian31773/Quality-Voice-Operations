@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -57,6 +57,52 @@ describe('GET /calls/live (SSE)', () => {
     });
     const res = await request(app()).get('/calls/live');
     expect(res.status).toBe(429);
+  });
+});
+
+describe('GET /calls/live escalation events (transfers end in CALL_COMPLETED since #143)', () => {
+  type Row = { id: string; lifecycle_state: string; escalation_target: string | null };
+
+  /** Runs the SSE handler on a fake req/res; returns the event names written and a way to run the next poll. */
+  async function openStream(rows: { current: Row[] }) {
+    a.acquireMock.mockReturnValue(true);
+    a.queryMock.mockImplementation(async (sql: string) => (sql.includes('FROM call_sessions') ? { rows: rows.current } : { rows: [] }));
+    const layer = (router as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (...args: unknown[]) => unknown }> } }> })
+      .stack.find((l) => l.route?.path === '/calls/live' && l.route.methods.get)!;
+    const handler = layer.route!.stack.at(-1)!.handle;
+    const writes: string[] = [];
+    // afterEach drops the fake timers, which stops the poll interval.
+    const req = { user: a.user, on: vi.fn() };
+    const res = { writeHead: vi.fn(), write: (chunk: string) => { writes.push(chunk); return true; } };
+    await handler(req, res);
+    return {
+      events: () => writes.map((w) => /^event: (\w+)/.exec(w)?.[1]).filter((e) => e !== 'active_calls'),
+      poll: () => vi.advanceTimersByTimeAsync(3000),
+    };
+  }
+
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('a transfer landing after the call is final (CALL_COMPLETED + escalation_target) emits call_escalated once', async () => {
+    const rows = { current: [{ id: 'c1', lifecycle_state: 'ACTIVE_CONVERSATION', escalation_target: null }] as Row[] };
+    const s = await openStream(rows);
+    rows.current = [{ id: 'c1', lifecycle_state: 'CALL_COMPLETED', escalation_target: null }];
+    await s.poll();
+    rows.current = [{ id: 'c1', lifecycle_state: 'CALL_COMPLETED', escalation_target: '+15550001111' }];
+    await s.poll();
+    await s.poll();
+    expect(s.events()).toEqual(['connection', 'call_connected', 'call_completed', 'call_escalated']);
+  });
+
+  it('a transfer seen as ESCALATED then CALL_COMPLETED emits call_escalated once, then call_completed', async () => {
+    const rows = { current: [{ id: 'c1', lifecycle_state: 'ACTIVE_CONVERSATION', escalation_target: null }] as Row[] };
+    const s = await openStream(rows);
+    rows.current = [{ id: 'c1', lifecycle_state: 'ESCALATED', escalation_target: '+15550001111' }];
+    await s.poll();
+    rows.current = [{ id: 'c1', lifecycle_state: 'CALL_COMPLETED', escalation_target: '+15550001111' }];
+    await s.poll();
+    expect(s.events()).toEqual(['connection', 'call_connected', 'call_escalated', 'call_completed']);
   });
 });
 

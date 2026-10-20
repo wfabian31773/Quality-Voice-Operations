@@ -98,7 +98,7 @@ export async function getCallAnalytics(
          COALESCE(AVG(duration_seconds), 0) AS avg_duration,
          COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_COMPLETED')::int AS completed_calls,
          COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_FAILED')::int AS failed_calls,
-         COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED')::int AS escalated_calls,
+         COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED' OR escalation_target IS NOT NULL)::int AS escalated_calls,
          COALESCE(SUM(total_cost_cents), 0)::int AS total_cost_cents
        FROM call_sessions
        WHERE tenant_id = $1

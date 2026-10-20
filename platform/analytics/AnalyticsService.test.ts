@@ -40,6 +40,12 @@ describe('getCallAnalytics', () => {
     expect(res.dailyBreakdown[0]).toMatchObject({ date: '2026-01-02', calls: 3 });
     expect(res.languageBreakdown).toEqual([{ language: 'en', calls: 7 }, { language: null, calls: 3 }]);
   });
+  it('counts a transferred call (CALL_COMPLETED + escalation_target) as escalated', async () => {
+    dispatch([]);
+    await getCallAnalytics('t1', FROM, TO);
+    const summary = a.clientQueryMock.mock.calls.map(([s]) => String(s)).find((s) => s.includes('AS escalated_calls'));
+    expect(summary).toContain("COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED' OR escalation_target IS NOT NULL)::int AS escalated_calls");
+  });
   it('handles an empty range with zeroed rates', async () => {
     dispatch([]);
     const res = await getCallAnalytics('t1', FROM, TO);

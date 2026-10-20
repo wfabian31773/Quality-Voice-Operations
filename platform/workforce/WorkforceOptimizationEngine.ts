@@ -109,7 +109,7 @@ export class WorkforceOptimizationEngine {
         `SELECT
            EXTRACT(HOUR FROM cs.created_at)::int AS hour,
            COUNT(*)::int AS calls,
-           COUNT(*) FILTER (WHERE cs.lifecycle_state IN ('CALL_FAILED', 'ESCALATED'))::int AS missed_or_escalated
+           COUNT(*) FILTER (WHERE cs.lifecycle_state IN ('CALL_FAILED', 'ESCALATED') OR cs.escalation_target IS NOT NULL)::int AS missed_or_escalated
          FROM call_sessions cs
          WHERE cs.agent_id = ANY($1)
            AND cs.tenant_id = $2

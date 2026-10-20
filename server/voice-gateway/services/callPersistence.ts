@@ -261,8 +261,12 @@ async function applyCallState(
   );
 
   // Keyed on the move, not the row's state: a transfer that lands after
-  // session_closed still files its ticket.
+  // session_closed still files its ticket. The ticket runs under a savepoint:
+  // a failed statement aborts the whole transaction, and COMMIT then rolls it
+  // back without an error, so without one a ticket failure would silently
+  // undo the escalation_target / escalation_reason written above.
   if (newState === 'ESCALATED') {
+    await client.query('SAVEPOINT escalation_ticket');
     try {
       const { rows: existingTickets } = await client.query(
         `SELECT id FROM tickets WHERE tenant_id = $1 AND call_id = $2 LIMIT 1`,
@@ -277,7 +281,9 @@ async function applyCallState(
         );
         logger.info('Auto-created ticket for escalated call', { tenantId, callSessionId });
       }
+      await client.query('RELEASE SAVEPOINT escalation_ticket');
     } catch (ticketErr) {
+      await client.query('ROLLBACK TO SAVEPOINT escalation_ticket');
       logger.error('Failed to auto-create ticket for escalated call', { tenantId, callSessionId, error: String(ticketErr) });
     }
   }

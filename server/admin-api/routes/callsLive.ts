@@ -61,6 +61,7 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
   res.write(`event: connection\ndata: ${JSON.stringify({ connectionId })}\n\n`);
 
   const knownCalls = new Map<string, string>();
+  const escalatedCalls = new Set<string>();
   let alive = true;
 
   const poll = async () => {
@@ -120,11 +121,21 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
             res.write(`event: call_updated\ndata: ${JSON.stringify(row)}\n\n`);
           }
         }
+
+        // A transfer that lands after the call is final keeps CALL_COMPLETED
+        // and only sets escalation_target: still tell the client it escalated.
+        if ((row.escalation_target || row.lifecycle_state === 'ESCALATED') && !escalatedCalls.has(row.id)) {
+          escalatedCalls.add(row.id);
+          if (prevState && row.lifecycle_state !== 'ESCALATED') {
+            res.write(`event: call_escalated\ndata: ${JSON.stringify(row)}\n\n`);
+          }
+        }
       }
 
       for (const [callId] of knownCalls) {
         if (!currentIds.has(callId)) {
           knownCalls.delete(callId);
+          escalatedCalls.delete(callId);
         }
       }
 

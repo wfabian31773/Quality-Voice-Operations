@@ -69,7 +69,7 @@ async function getTenantCallStats(client: { query: (sql: string, values?: unknow
   const { rows: callRows } = await client.query(
     `SELECT
        COUNT(*)::int AS total,
-       COUNT(*) FILTER (WHERE escalated = true)::int AS escalated,
+       COUNT(*) FILTER (WHERE escalated = true OR lifecycle_state = 'ESCALATED' OR escalation_target IS NOT NULL)::int AS escalated,
        COALESCE(AVG(EXTRACT(EPOCH FROM (end_time - start_time))), 0)::float AS avg_duration
      FROM call_sessions WHERE tenant_id = $1`,
     [tenantId],

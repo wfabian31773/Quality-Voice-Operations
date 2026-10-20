@@ -126,6 +126,29 @@ describe.skipIf(!db.client)('terminal-state guard (real Postgres)', () => {
     expect(tickets.rows).toEqual([{ subject: 'Escalated call: caller asked for a person' }]);
   });
 
+  it('a failed ticket INSERT does not roll back escalation_target / escalation_reason (savepoint)', async () => {
+    await finalizeCallSession('t-1', 'cs-1', 'completed');
+    await db.client!.query(`ALTER TABLE tickets ADD CONSTRAINT tickets_reject_all CHECK (false) NOT VALID`);
+    try {
+      await updateCallState('t-1', 'cs-1', 'ESCALATED', { escalationTarget: '+15550001111', escalationReason: 'caller asked for a person' });
+      await updateCallStateWithEvent('t-1', 'cs-1', 'ESCALATED', { type: 'escalated', from: 'ACTIVE_CONVERSATION', to: 'ESCALATED' });
+    } finally {
+      await db.client!.query(`ALTER TABLE tickets DROP CONSTRAINT tickets_reject_all`);
+    }
+    const { rows } = await db.client!.query(
+      `SELECT lifecycle_state, escalation_target, escalation_reason FROM call_sessions WHERE id = 'cs-1'`,
+    );
+    expect(rows[0]).toEqual({
+      lifecycle_state: 'CALL_COMPLETED',
+      escalation_target: '+15550001111',
+      escalation_reason: 'caller asked for a person',
+    });
+    expect((await db.client!.query(`SELECT 1 FROM tickets`)).rows).toEqual([]);
+    // The event written after the failed ticket, in the same transaction, is kept too.
+    const events = await db.client!.query(`SELECT event_type FROM call_events WHERE call_session_id = 'cs-1'`);
+    expect(events.rows.map((r) => r.event_type)).toEqual(['escalated']);
+  });
+
   it('CALL_FAILED is terminal too', async () => {
     await finalizeCallSession('t-1', 'cs-1', 'failed');
     await updateCallState('t-1', 'cs-1', 'ACTIVE_CONVERSATION');
