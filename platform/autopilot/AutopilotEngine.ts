@@ -152,7 +152,7 @@ async function gatherOperationalSignals(tenantId: string): Promise<OperationalSi
          a.id AS agent_id, a.name AS agent_name,
          COUNT(cs.id)::int AS calls,
          COALESCE(AVG(cs.duration_seconds) FILTER (WHERE cs.duration_seconds > 0), 0)::float AS avg_duration,
-         COUNT(cs.id) FILTER (WHERE cs.lifecycle_state = 'ESCALATED')::int AS escalated,
+         COUNT(cs.id) FILTER (WHERE cs.lifecycle_state = 'ESCALATED' OR cs.escalation_target IS NOT NULL)::int AS escalated,
          COUNT(cs.id) FILTER (WHERE cs.lifecycle_state IN ('CALL_FAILED','WORKFLOW_FAILED'))::int AS failed
        FROM agents a
        LEFT JOIN call_sessions cs ON cs.agent_id = a.id AND cs.created_at >= $2 AND cs.created_at < $3

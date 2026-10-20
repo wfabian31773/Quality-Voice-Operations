@@ -99,7 +99,7 @@ export class WorkforceRevenueService {
            AND cs.tenant_id = $2
            AND cs.created_at >= $3
            AND cs.created_at < $4
-           AND cs.lifecycle_state IN ('CALL_FAILED', 'ESCALATED')
+           AND (cs.lifecycle_state IN ('CALL_FAILED', 'ESCALATED') OR cs.escalation_target IS NOT NULL)
            AND cs.duration_seconds > 30`,
         [agentIds, tenantId, from, to],
       );

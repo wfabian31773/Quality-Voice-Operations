@@ -11,6 +11,11 @@ import {
   registerSseConnection,
   ackSseConnection,
 } from '../../../platform/infra/rate-limit/sseConnectionLimiter';
+import {
+  BOOKKEEPING_FLUSH_TIMEOUT_MS,
+  BOOKKEEPING_RELEASE_MAX_WAIT_MS,
+  BOOKKEEPING_STATEMENT_TIMEOUT_MS,
+} from '../../voice-gateway/services/bookkeepingQueue';
 import type { Request } from 'express';
 
 const logger = createLogger('CALLS_LIVE');
@@ -25,6 +30,29 @@ export const callsLiveRateLimiter = createRateLimiter({
     (req as Request & { user?: { tenantId?: string } }).user?.tenantId ?? 'platform',
   message: 'Too many live-stream connection attempts for this tenant.',
 });
+
+/**
+ * A final call stays in the poll for 10 s after its last update. Its
+ * escalation_target write can land later than that: a tool run still open at
+ * hangup queues its writes until release() (BOOKKEEPING_RELEASE_MAX_WAIT_MS,
+ * 60 s; the 3 s finalize drain is inside it), then a flush
+ * (BOOKKEEPING_FLUSH_TIMEOUT_MS, 5 s), then the escalation transaction itself:
+ * UPDATE, ticket SAVEPOINT / SELECT / INSERT / RELEASE and the event row, six
+ * statements of up to BOOKKEEPING_STATEMENT_TIMEOUT_MS (4 s) each, 24 s.
+ * 60 + 5 + 24 = 89 s, rounded up to the next minute: 120 s.
+ */
+const LATE_ESCALATION_WORST_CASE_MS =
+  BOOKKEEPING_RELEASE_MAX_WAIT_MS + BOOKKEEPING_FLUSH_TIMEOUT_MS + 6 * BOOKKEEPING_STATEMENT_TIMEOUT_MS;
+/** How long a connection remembers a call that left the poll, so a late escalation still reaches the client. */
+export const RECENT_CALL_RETENTION_MS = Math.ceil(LATE_ESCALATION_WORST_CASE_MS / 60_000) * 60_000;
+/** Most calls a connection remembers that way; the oldest goes first. */
+export const RECENT_CALL_MAX = 500;
+
+interface RecentCall {
+  state: string;
+  escalated: boolean;
+  leftAt: number;
+}
 
 interface CallRow {
   id: string;
@@ -61,6 +89,9 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
   res.write(`event: connection\ndata: ${JSON.stringify({ connectionId })}\n\n`);
 
   const knownCalls = new Map<string, string>();
+  const escalatedCalls = new Set<string>();
+  // Calls that left the poll in the last RECENT_CALL_RETENTION_MS, oldest first.
+  const recentCalls = new Map<string, RecentCall>();
   let alive = true;
 
   const poll = async () => {
@@ -88,9 +119,21 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
       await client.query('COMMIT');
 
       const currentIds = new Set<string>();
+      const now = Date.now();
+      for (const [callId, recent] of recentCalls) {
+        if (now - recent.leftAt <= RECENT_CALL_RETENTION_MS) break;
+        recentCalls.delete(callId);
+      }
 
       for (const row of rows) {
         currentIds.add(row.id);
+        // A call back from recentCalls is known, not part of the initial snapshot.
+        const recent = recentCalls.get(row.id);
+        if (recent) {
+          recentCalls.delete(row.id);
+          knownCalls.set(row.id, recent.state);
+          if (recent.escalated) escalatedCalls.add(row.id);
+        }
         const prevState = knownCalls.get(row.id);
 
         if (!prevState) {
@@ -120,12 +163,27 @@ router.get('/calls/live', requireAuth, callsLiveRateLimiter, async (req, res) =>
             res.write(`event: call_updated\ndata: ${JSON.stringify(row)}\n\n`);
           }
         }
+
+        // A transfer that lands after the call is final keeps CALL_COMPLETED
+        // and only sets escalation_target: still tell the client it escalated.
+        if ((row.escalation_target || row.lifecycle_state === 'ESCALATED') && !escalatedCalls.has(row.id)) {
+          escalatedCalls.add(row.id);
+          if (prevState && row.lifecycle_state !== 'ESCALATED') {
+            res.write(`event: call_escalated\ndata: ${JSON.stringify(row)}\n\n`);
+          }
+        }
       }
 
-      for (const [callId] of knownCalls) {
+      for (const [callId, state] of knownCalls) {
         if (!currentIds.has(callId)) {
+          recentCalls.set(callId, { state, escalated: escalatedCalls.has(callId), leftAt: now });
           knownCalls.delete(callId);
+          escalatedCalls.delete(callId);
         }
+      }
+      for (const callId of recentCalls.keys()) {
+        if (recentCalls.size <= RECENT_CALL_MAX) break;
+        recentCalls.delete(callId);
       }
 
       const activeCalls = rows.filter(

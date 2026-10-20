@@ -151,7 +151,7 @@ async function buildOperationalSnapshot(
        COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound_calls,
        COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound_calls,
        COALESCE(AVG(duration_seconds), 0) AS avg_duration,
-       COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED')::int AS escalated_calls
+       COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED' OR escalation_target IS NOT NULL)::int AS escalated_calls
      FROM call_sessions
      WHERE tenant_id = $1 AND created_at >= $2 AND created_at < $3`,
     [tenantId, from, to],

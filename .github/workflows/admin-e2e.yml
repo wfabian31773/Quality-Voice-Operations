@@ -71,6 +71,19 @@ jobs:
       - name: Install root dependencies
         run: bash scripts/ci-npm-ci.sh
 
+      # The real-Postgres suites skip when DATABASE_URL is unreachable; this
+      # job is the one with a Postgres service, so run them here (TEMP tables
+      # only, no migrations needed) and fail if any of them skipped.
+      - name: Run real-Postgres call persistence / escalation suites
+        run: |
+          mkdir -p .ci-logs
+          npx vitest run \
+            server/voice-gateway/services/callPersistence.terminalGuard.realDb.test.ts \
+            server/voice-gateway/services/callPersistence.outcome.realDb.test.ts \
+            tests/analytics/escalatedCallPredicate.test.ts \
+            --reporter=default --reporter=json --outputFile=.ci-logs/real-db-vitest.json
+          node -e "const r=require('./.ci-logs/real-db-vitest.json'); if (r.numPendingTests || r.numTodoTests || !r.numPassedTests) { console.error('::error::real-Postgres suites skipped instead of running', {passed:r.numPassedTests, skipped:r.numPendingTests}); process.exit(1); }"
+
       - name: Install client-app dependencies
         run: bash scripts/ci-npm-ci.sh client-app
 
