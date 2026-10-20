@@ -46,6 +46,13 @@ describe('getCallAnalytics', () => {
     const summary = a.clientQueryMock.mock.calls.map(([s]) => String(s)).find((s) => s.includes('AS escalated_calls'));
     expect(summary).toContain("COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED' OR escalation_target IS NOT NULL)::int AS escalated_calls");
   });
+  it('Outcomes buckets are mutually exclusive: a transferred call is escalated, not completed or failed', async () => {
+    dispatch([]);
+    await getCallAnalytics('t1', FROM, TO);
+    const summary = a.clientQueryMock.mock.calls.map(([s]) => String(s)).find((s) => s.includes('AS escalated_calls'));
+    expect(summary).toContain("COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_COMPLETED' AND escalation_target IS NULL)::int AS completed_calls");
+    expect(summary).toContain("COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_FAILED' AND escalation_target IS NULL)::int AS failed_calls");
+  });
   it('handles an empty range with zeroed rates', async () => {
     dispatch([]);
     const res = await getCallAnalytics('t1', FROM, TO);

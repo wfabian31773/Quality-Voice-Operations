@@ -11,13 +11,20 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client } from 'pg';
 
-const db = vi.hoisted(() => ({ client: null as import('pg').Client | null }));
+const db = vi.hoisted(() => ({
+  client: null as import('pg').Client | null,
+  /** Runs on the test connection before each statement the code under test sends. */
+  beforeQuery: null as ((sql: string) => Promise<void>) | null,
+}));
 
 vi.mock('../../../platform/db', () => ({
   // Every transaction runs on the one test connection, which owns the TEMP tables.
   getPlatformPool: () => ({
     connect: async () => ({
-      query: (sql: string, values?: unknown[]) => db.client!.query(sql, values),
+      query: async (sql: string, values?: unknown[]) => {
+        await db.beforeQuery?.(sql);
+        return db.client!.query(sql, values);
+      },
       release: () => {},
     }),
   }),
@@ -124,6 +131,22 @@ describe.skipIf(!db.client)('terminal-state guard (real Postgres)', () => {
     expect(rows[0].updated_at).not.toBeNull();
     const tickets = await db.client!.query(`SELECT subject FROM tickets WHERE call_id = 'cs-1'`);
     expect(tickets.rows).toEqual([{ subject: 'Escalated call: caller asked for a person' }]);
+  });
+
+  it('the escalation updated_at is the wall clock at the UPDATE, not the transaction start (live-calls poll window)', async () => {
+    let txStart: Date | null = null;
+    db.beforeQuery = async (sql) => {
+      if (!sql.startsWith('UPDATE call_sessions SET')) return;
+      txStart = (await db.client!.query(`SELECT now() AS t`)).rows[0].t;
+      await db.client!.query(`SELECT pg_sleep(0.3)`);
+    };
+    try {
+      await updateCallState('t-1', 'cs-1', 'ESCALATED', { escalationTarget: '+15550001111' });
+    } finally {
+      db.beforeQuery = null;
+    }
+    const { rows } = await db.client!.query(`SELECT updated_at FROM call_sessions WHERE id = 'cs-1'`);
+    expect((rows[0].updated_at as Date).getTime() - txStart!.getTime()).toBeGreaterThanOrEqual(300);
   });
 
   it('a failed ticket INSERT does not roll back escalation_target / escalation_reason (savepoint)', async () => {
