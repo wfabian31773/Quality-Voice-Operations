@@ -31,7 +31,7 @@ vi.mock('../../../platform/infra/rate-limit/sseConnectionLimiter', () => ({
   ackSseConnection: a.ackSseConnectionMock,
 }));
 
-import router from './callsLive';
+import router, { RECENT_CALL_MAX, RECENT_CALL_RETENTION_MS } from './callsLive';
 
 function app() {
   const app = express();
@@ -103,6 +103,68 @@ describe('GET /calls/live escalation events (transfers end in CALL_COMPLETED sin
     rows.current = [{ id: 'c1', lifecycle_state: 'CALL_COMPLETED', escalation_target: '+15550001111' }];
     await s.poll();
     expect(s.events()).toEqual(['connection', 'call_connected', 'call_escalated', 'call_completed']);
+  });
+
+  describe('a final call that left the poll (updated_at older than 10 s)', () => {
+    const active: Row = { id: 'c1', lifecycle_state: 'ACTIVE_CONVERSATION', escalation_target: null };
+    const completed: Row = { id: 'c1', lifecycle_state: 'CALL_COMPLETED', escalation_target: null };
+    const transferred: Row = { ...completed, escalation_target: '+15550001111' };
+
+    /** Finalizes c1 on the next poll, then drops it from the result set for `absentMs` and polls once with `back`. */
+    async function finalizeLeaveAndReturn(absentMs: number, back: Row[]) {
+      const rows = { current: [active] };
+      const s = await openStream(rows);
+      rows.current = [completed];
+      await s.poll();
+      rows.current = [];
+      await s.poll();
+      await vi.advanceTimersByTimeAsync(absentMs);
+      rows.current = back;
+      await s.poll();
+      return s;
+    }
+
+    it('an escalation write landing 15 s after finalization emits call_escalated once', async () => {
+      // Final at t=3 s, gone at t=6 s, back with the transfer at t=18 s.
+      const s = await finalizeLeaveAndReturn(9_000, [transferred]);
+      await s.poll();
+      expect(s.events()).toEqual(['connection', 'call_connected', 'call_completed', 'call_escalated']);
+    });
+
+    it('an escalation write landing just inside the retention window still emits call_escalated', async () => {
+      const s = await finalizeLeaveAndReturn(RECENT_CALL_RETENTION_MS - 6_000, [transferred]);
+      expect(s.events()).toEqual(['connection', 'call_connected', 'call_completed', 'call_escalated']);
+    });
+
+    it('an escalation already reported is not reported again when the call comes back', async () => {
+      const rows = { current: [active] };
+      const s = await openStream(rows);
+      rows.current = [transferred];
+      await s.poll();
+      rows.current = [];
+      await s.poll();
+      rows.current = [transferred];
+      await s.poll();
+      expect(s.events()).toEqual(['connection', 'call_connected', 'call_completed', 'call_escalated']);
+    });
+
+    it('after the retention window a returning call is treated like the initial snapshot', async () => {
+      const s = await finalizeLeaveAndReturn(RECENT_CALL_RETENTION_MS, [transferred]);
+      expect(s.events()).toEqual(['connection', 'call_connected', 'call_completed', 'call_completed']);
+    });
+
+    it(`remembers at most ${RECENT_CALL_MAX} calls, dropping the oldest first`, async () => {
+      const ids = Array.from({ length: RECENT_CALL_MAX + 1 }, (_, i) => `c${i}`);
+      const rows = { current: ids.map((id): Row => ({ id, lifecycle_state: 'ACTIVE_CONVERSATION', escalation_target: null })) };
+      const s = await openStream(rows);
+      rows.current = [];
+      await s.poll();
+      const before = s.events().length;
+      // c0 was evicted: initial snapshot (no call_escalated). c1 was kept: escalation reported.
+      rows.current = ['c0', 'c1'].map((id): Row => ({ id, lifecycle_state: 'ACTIVE_CONVERSATION', escalation_target: '+15550001111' }));
+      await s.poll();
+      expect(s.events().slice(before)).toEqual(['call_connected', 'call_escalated']);
+    });
   });
 });
 
