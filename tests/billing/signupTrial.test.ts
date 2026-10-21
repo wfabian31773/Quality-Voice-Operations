@@ -93,7 +93,7 @@ describe('POST /auth/signup — trial', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(trialHelperSpy).toHaveBeenCalledWith(true);
+      expect(trialHelperSpy).toHaveBeenCalledWith(expect.objectContaining({ isFirstSubscription: true }));
       expect(checkoutCreateMock).toHaveBeenCalledTimes(1);
       const args = checkoutCreateMock.mock.calls[0][0] as {
         subscription_data?: { trial_period_days?: number; metadata?: Record<string, string> };
@@ -105,11 +105,25 @@ describe('POST /auth/signup — trial', () => {
 });
 
 describe('buildTrialSubscriptionData', () => {
-  it('returns the 7-day trial for a first subscription and nothing otherwise', async () => {
+  async function helper() {
     const { buildTrialSubscriptionData } = await vi.importActual<
       typeof import('../../platform/billing/stripe/trial')
     >('../../platform/billing/stripe/trial');
-    expect(buildTrialSubscriptionData(true)).toEqual({ trial_period_days: 7 });
-    expect(buildTrialSubscriptionData(false)).toEqual({});
+    return buildTrialSubscriptionData;
+  }
+
+  it('returns the 7-day trial for a first subscription and nothing otherwise', async () => {
+    const build = await helper();
+    expect(build({ isFirstSubscription: true })).toEqual({ trial_period_days: 7 });
+    expect(build({ isFirstSubscription: false })).toEqual({});
+  });
+
+  it('returns no trial once the signup free trial has run out', async () => {
+    const build = await helper();
+    const now = Date.UTC(2026, 9, 21);
+    expect(build({ isFirstSubscription: true, freeTrialExpiresAt: new Date(now - 1), now })).toEqual({});
+    expect(build({ isFirstSubscription: true, freeTrialExpiresAt: new Date(now).toISOString(), now })).toEqual({});
+    expect(build({ isFirstSubscription: true, freeTrialExpiresAt: new Date(now + 1), now })).toEqual({ trial_period_days: 7 });
+    expect(build({ isFirstSubscription: true, freeTrialExpiresAt: null, now })).toEqual({ trial_period_days: 7 });
   });
 });

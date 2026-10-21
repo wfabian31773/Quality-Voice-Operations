@@ -319,7 +319,7 @@ router.post('/auth/signup', async (req, res) => {
         subscription_data: {
           metadata: { tenantId, userId, plan, interval, billingCurrency: normalizedBillingCurrency },
           // Signup creates the tenant, so this is always its first subscription.
-          ...buildTrialSubscriptionData(true),
+          ...buildTrialSubscriptionData({ isFirstSubscription: true, freeTrialExpiresAt: trialExpiresAt }),
         },
         client_reference_id: visitorId || undefined,
         success_url: `${baseUrl}/onboarding?session_id={CHECKOUT_SESSION_ID}`,

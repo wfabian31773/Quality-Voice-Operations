@@ -489,6 +489,56 @@ describe('handleStripeEvent — trial status sync', () => {
     expect(inserts[0].values[13]).toBe(TRIAL_END_ISO);
   });
 
+  function stripeError(type: string, statusCode?: number, code?: string): Error {
+    return Object.assign(new Error(`${type} ${code ?? ''}`), { type, statusCode, code });
+  }
+
+  it.each([
+    ['StripeConnectionError', undefined],
+    ['StripeAPIError', 500],
+    ['StripeRateLimitError', 429],
+    ['StripeInvalidRequestError', 503],
+  ] as const)('checkout.session.completed rethrows a transient %s (status %s) so Stripe retries', async (type, statusCode) => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockRejectedValue(stripeError(type, statusCode));
+
+    await expect(
+      handleStripeEvent(makeCheckoutEvent('price_pro_monthly_test', 'month', { id: `evt_co_transient_${type}` })),
+    ).rejects.toThrow(type);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it.each([
+    ['StripeInvalidRequestError', 404, 'resource_missing'],
+    ['StripeAuthenticationError', 401, undefined],
+    ['StripePermissionError', 403, undefined],
+  ] as const)('checkout.session.completed falls back to the session on a permanent %s', async (type, statusCode, code) => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockRejectedValue(stripeError(type, statusCode, code));
+    const evt = makeCheckoutEvent('price_pro_monthly_test', 'month', { id: `evt_co_permanent_${type}` });
+    (evt.data.object as unknown as Record<string, unknown>).payment_status = 'no_payment_required';
+
+    await handleStripeEvent(evt);
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values[3]).toBe('sub_1');
+    // A trial checkout completes with no_payment_required, so it reads as trialing.
+    expect(inserts[0].values[12]).toBe('trialing');
+    expect(inserts[0].values[13]).toBeNull();
+  });
+
+  it('checkout.session.completed permanent-error fallback writes active for a paid session', async () => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockRejectedValue(stripeError('StripeInvalidRequestError', 404, 'resource_missing'));
+    const evt = makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_permanent_paid' });
+    (evt.data.object as unknown as Record<string, unknown>).payment_status = 'paid';
+
+    await handleStripeEvent(evt);
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values[12]).toBe('active');
+  });
+
   function updatedEventWithTrial(status: string, trialEnd: number | null, id: string): Stripe.Event {
     const event = makeUpdatedEvent('price_pro_monthly_test', 'month', { id, status });
     (event.data.object as unknown as Record<string, unknown>).trial_end = trialEnd;

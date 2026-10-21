@@ -108,6 +108,13 @@ export async function createCheckoutSession(params: {
     // checkout, and must not get another trial.
     const isFirstSubscription =
       !existingCustomerId && !(rows[0]?.stripe_subscription_id as string | null);
+    // A tenant that already ran out its signup-time free trial gets no
+    // second one here.
+    const { rows: tenantRows } = await client.query(
+      `SELECT trial_expires_at FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    const freeTrialExpiresAt = (tenantRows[0]?.trial_expires_at as Date | string | null | undefined) ?? null;
     await client.query('COMMIT');
 
     const priceId = getPlanPriceId(plan, interval);
@@ -178,7 +185,7 @@ export async function createCheckoutSession(params: {
       },
       subscription_data: {
         metadata: { tenantId, plan },
-        ...buildTrialSubscriptionData(isFirstSubscription),
+        ...buildTrialSubscriptionData({ isFirstSubscription, freeTrialExpiresAt }),
       },
       ...(sessionDiscounts ? { discounts: sessionDiscounts } : {}),
     });

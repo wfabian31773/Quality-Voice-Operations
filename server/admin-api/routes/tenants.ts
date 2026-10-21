@@ -7,6 +7,12 @@ import { getProvisioningStatus, provisionTenant } from '../../../platform/tenant
 import { getRegisteredTemplates } from '../../../platform/agent-templates/registry';
 import { getStripeClient } from '../../../platform/billing/stripe/client';
 import { PLAN_LIMITS } from '../../../platform/billing/stripe/plans';
+import {
+  EMPTY_CHECKOUT_DETAILS,
+  retrieveCheckoutSubscription,
+  upsertCheckoutSubscription,
+  type CheckoutSubscriptionDetails,
+} from '../../../platform/billing/stripe/webhook';
 import { getActivationMilestones, dismissTooltip, getDismissedTooltips } from '../../../platform/activation/ActivationService';
 import { invalidateTenantCurrencyCache } from '../../../platform/billing/tenantCurrency';
 import {
@@ -118,34 +124,45 @@ router.post('/tenants/me/verify-checkout', requireAuth, async (req, res) => {
     }
 
     const plan = (session.metadata?.plan ?? 'starter') as keyof typeof PLAN_LIMITS;
-    const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.starter;
 
-    const subClient = await pool.connect();
-    try {
-      await subClient.query('BEGIN');
-      await withTenantContext(subClient, tenantId, async () => {});
-      await subClient.query(
-        `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
-           monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled)
-         VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (tenant_id) DO UPDATE SET
-           plan = EXCLUDED.plan, status = 'active',
-           stripe_customer_id = EXCLUDED.stripe_customer_id,
-           stripe_subscription_id = EXCLUDED.stripe_subscription_id,
-           monthly_call_limit = EXCLUDED.monthly_call_limit,
-           monthly_sms_limit = EXCLUDED.monthly_sms_limit,
-           monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
-           overage_enabled = EXCLUDED.overage_enabled,
-           updated_at = NOW()`,
-        [tenantId, plan, session.customer, session.subscription,
-         limits.monthlyCallLimit, limits.monthlySmsLimit, limits.monthlyAiMinuteLimit, limits.overageEnabled],
-      );
-      await subClient.query('COMMIT');
-    } catch (subErr) {
-      await subClient.query('ROLLBACK').catch(() => {});
-      logger.warn('Subscription upsert during verify-checkout failed (non-fatal)', { tenantId, error: String(subErr) });
-    } finally {
-      subClient.release();
+    // Write the status Stripe reports (signup checkouts start `trialing`),
+    // never a guessed 'active'. If the subscription can't be read, skip
+    // the row: the checkout webhook retries until it can write it.
+    const subscriptionId = session.subscription ? String(session.subscription) : null;
+    let details: CheckoutSubscriptionDetails | null = EMPTY_CHECKOUT_DETAILS;
+    if (subscriptionId) {
+      try {
+        details = await retrieveCheckoutSubscription(subscriptionId);
+      } catch (retrieveErr) {
+        details = null;
+        logger.warn('Could not fetch checkout subscription during verify-checkout; leaving the row to the webhook', {
+          tenantId, error: String(retrieveErr),
+        });
+      }
+    }
+
+    if (details) {
+      const subClient = await pool.connect();
+      try {
+        await subClient.query('BEGIN');
+        await withTenantContext(subClient, tenantId, async () => {});
+        const written = await upsertCheckoutSubscription(subClient, {
+          tenantId,
+          plan,
+          customerId: session.customer ? String(session.customer) : null,
+          subscriptionId,
+          details,
+        }, { keepWebhookStatus: true });
+        await subClient.query('COMMIT');
+        if (!written) {
+          logger.info('verify-checkout left the webhook-written subscription row alone', { tenantId });
+        }
+      } catch (subErr) {
+        await subClient.query('ROLLBACK').catch(() => {});
+        logger.warn('Subscription upsert during verify-checkout failed (non-fatal)', { tenantId, error: String(subErr) });
+      } finally {
+        subClient.release();
+      }
     }
 
     await provisionTenant(tenantId, userId, plan);

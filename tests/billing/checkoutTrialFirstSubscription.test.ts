@@ -6,6 +6,7 @@ const { sessionsCreate, trialHelperSpy } = vi.hoisted(() => ({
   trialHelperSpy: vi.fn(),
 }));
 let subscriptionRow: Record<string, string | null> | undefined;
+let tenantTrialExpiresAt: string | null;
 
 vi.mock('../../platform/db', () => ({
   getPlatformPool: () => ({
@@ -15,6 +16,7 @@ vi.mock('../../platform/db', () => ({
         if (t.startsWith('BEGIN') || t.startsWith('COMMIT') || t.startsWith('ROLLBACK')) {
           return { rows: [] };
         }
+        if (/FROM tenants/.test(sql)) return { rows: [{ trial_expires_at: tenantTrialExpiresAt }] };
         return { rows: subscriptionRow ? [subscriptionRow] : [] };
       }),
       release: vi.fn(),
@@ -57,6 +59,7 @@ function trialDays(): unknown {
 beforeEach(() => {
   sessionsCreate.mockReset();
   trialHelperSpy.mockClear();
+  tenantTrialExpiresAt = null;
   sessionsCreate.mockResolvedValue({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' });
 });
 
@@ -67,7 +70,7 @@ describe('createCheckoutSession trial', () => {
       subscriptionRow = undefined;
       await createCheckoutSession({ tenantId: TENANT, plan: plan, interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
       expect(trialDays()).toBe(7);
-      expect(trialHelperSpy).toHaveBeenCalledWith(true);
+      expect(trialHelperSpy).toHaveBeenCalledWith(expect.objectContaining({ isFirstSubscription: true }));
     },
   );
 
@@ -76,12 +79,27 @@ describe('createCheckoutSession trial', () => {
     await createCheckoutSession({ tenantId: TENANT, plan: 'enterprise', interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
     expect(trialDays()).toBeUndefined();
     expect(sessionsCreate.mock.calls[0][0].subscription_data).not.toHaveProperty('trial_period_days');
-    expect(trialHelperSpy).toHaveBeenCalledWith(false);
+    expect(trialHelperSpy).toHaveBeenCalledWith(expect.objectContaining({ isFirstSubscription: false }));
   });
 
   it('gives no trial when a prior subscription id exists', async () => {
     subscriptionRow = { stripe_customer_id: null, stripe_subscription_id: 'sub_old' };
     await createCheckoutSession({ tenantId: TENANT, plan: 'pro', interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
     expect(trialDays()).toBeUndefined();
+  });
+
+  it('gives no second trial once the signup free trial (trial_expires_at) has run out', async () => {
+    subscriptionRow = undefined;
+    tenantTrialExpiresAt = new Date(Date.now() - 60_000).toISOString();
+    await createCheckoutSession({ tenantId: TENANT, plan: 'pro', interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
+    expect(trialDays()).toBeUndefined();
+    expect(trialHelperSpy).toHaveBeenCalledWith({ isFirstSubscription: true, freeTrialExpiresAt: tenantTrialExpiresAt });
+  });
+
+  it('still gives the trial while the signup free trial has not run out', async () => {
+    subscriptionRow = undefined;
+    tenantTrialExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    await createCheckoutSession({ tenantId: TENANT, plan: 'pro', interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
+    expect(trialDays()).toBe(7);
   });
 });

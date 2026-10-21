@@ -38,7 +38,11 @@ vi.mock('../../platform/core/logger', () => ({
 
 import { checkBudget } from '../../platform/billing/budget/checkBudget';
 import { PLAN_LIMITS, TRIAL_LIMITS } from '../../platform/billing/stripe/plans';
-import { STRIPE_TRIAL_GRACE_MS } from '../../platform/billing/guardrails/TrialGuard';
+import {
+  checkTrialLimits,
+  isUnpaidSubscriptionStatus,
+  STRIPE_TRIAL_GRACE_MS,
+} from '../../platform/billing/guardrails/TrialGuard';
 
 const TENANT = 'tenant-budget-stripe-trial' as TenantId;
 const DAY = 24 * 60 * 60 * 1000;
@@ -114,6 +118,26 @@ describe('checkBudget — unpaid statuses', () => {
     expect(result.allowed).toBe(false);
     expect(result.status).toBe(status);
     expect(result.reason).toMatch(new RegExp(`Subscription is ${status}`));
+  });
+});
+
+describe('checkBudget and checkTrialLimits agree on unpaid statuses', () => {
+  it.each([
+    ['active', true],
+    ['trialing', true],
+    ['paused', false],
+    ['past_due', false],
+    ['cancelled', false],
+  ] as const)('%s → allowed=%s in both guards', async (status, allowed) => {
+    subRow = proRow({ status });
+
+    const budget = await checkBudget(TENANT);
+    const trial = await checkTrialLimits(TENANT);
+
+    expect(isUnpaidSubscriptionStatus(status)).toBe(!allowed);
+    expect(budget.allowed).toBe(allowed);
+    expect(trial.allowed).toBe(allowed);
+    if (!allowed) expect(trial.reason).toBe(budget.reason);
   });
 });
 

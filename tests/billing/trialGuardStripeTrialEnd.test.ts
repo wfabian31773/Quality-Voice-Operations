@@ -140,6 +140,26 @@ describe('checkTrialLimits — free trial', () => {
   });
 });
 
+describe('checkTrialLimits — unpaid statuses (same rule as checkBudget)', () => {
+  it.each(['paused', 'past_due', 'cancelled'])('blocks a %s plan row, including agent creation', async (status) => {
+    subRow = { status, trial_end: null, stripe_subscription_id: 'sub_1' };
+
+    const result = await checkTrialLimits(TENANT);
+
+    expect(result.isTrial).toBe(false);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe(`Subscription is ${status}. Please update your billing to continue.`);
+    expect(await checkTrialAgentLimit(TENANT)).toEqual({ allowed: false, reason: result.reason });
+  });
+
+  it('allows an active plan row', async () => {
+    subRow = { status: 'active', trial_end: null, stripe_subscription_id: 'sub_1' };
+
+    expect((await checkTrialLimits(TENANT)).allowed).toBe(true);
+    expect((await checkTrialAgentLimit(TENANT)).allowed).toBe(true);
+  });
+});
+
 describe('checkTrialLimits — Stripe trial (paid plan)', () => {
   it('is not held to TRIAL_LIMITS: usage past the free-trial caps is allowed', async () => {
     subRow = { status: 'trialing', trial_end: new Date(Date.now() + 5 * DAY), stripe_subscription_id: 'sub_1' };

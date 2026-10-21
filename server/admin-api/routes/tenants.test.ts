@@ -10,6 +10,7 @@ const a = vi.hoisted(() => ({
   provisionTenantMock: vi.fn(),
   getRegisteredTemplatesMock: vi.fn(),
   stripeRetrieveMock: vi.fn(),
+  subscriptionRetrieveMock: vi.fn(),
   getActivationMilestonesMock: vi.fn(),
   dismissTooltipMock: vi.fn(),
   getDismissedTooltipsMock: vi.fn(),
@@ -36,10 +37,14 @@ vi.mock('../../../platform/tenant/provisioning/TenantProvisioningService', () =>
 }));
 vi.mock('../../../platform/agent-templates/registry', () => ({ getRegisteredTemplates: a.getRegisteredTemplatesMock }));
 vi.mock('../../../platform/billing/stripe/client', () => ({
-  getStripeClient: () => ({ checkout: { sessions: { retrieve: a.stripeRetrieveMock } } }),
+  getStripeClient: () => ({
+    checkout: { sessions: { retrieve: a.stripeRetrieveMock } },
+    subscriptions: { retrieve: a.subscriptionRetrieveMock },
+  }),
 }));
 vi.mock('../../../platform/billing/stripe/plans', () => ({
   PLAN_LIMITS: { starter: { monthlyCallLimit: 100, monthlySmsLimit: 100, monthlyAiMinuteLimit: 100, overageEnabled: false } },
+  getPlanFromPriceId: () => null,
 }));
 vi.mock('../../../platform/activation/ActivationService', () => ({
   getActivationMilestones: a.getActivationMilestonesMock,
@@ -70,6 +75,7 @@ beforeEach(() => {
   a.provisionTenantMock.mockReset().mockResolvedValue(undefined);
   a.getRegisteredTemplatesMock.mockReset().mockReturnValue([{ key: 'dental' }]);
   a.stripeRetrieveMock.mockReset();
+  a.subscriptionRetrieveMock.mockReset().mockResolvedValue({ id: 'sub_1', status: 'active', trial_end: null, items: { data: [] } });
   a.getActivationMilestonesMock.mockReset().mockResolvedValue([]);
   a.dismissTooltipMock.mockReset().mockResolvedValue(undefined);
   a.getDismissedTooltipsMock.mockReset().mockResolvedValue([]);
@@ -142,6 +148,43 @@ describe('POST /tenants/me/verify-checkout', () => {
     const res = await request(app()).post('/tenants/me/verify-checkout').send({ sessionId: 'cs_1' });
     expect(res.body).toEqual({ status: 'ready' });
     expect(a.provisionTenantMock).toHaveBeenCalledWith('t1', 'u1', 'starter');
+  });
+
+  function subscriptionUpserts() {
+    return a.clientQueryMock.mock.calls.filter(([sql]) => /INSERT INTO subscriptions/.test(String(sql)));
+  }
+
+  it('writes the Stripe status and trial_end, not a forced active, and never overwrites a webhook row for the same sub', async () => {
+    const trialEnd = Math.floor(Date.UTC(2026, 9, 28) / 1000);
+    a.clientQueryMock.mockResolvedValue({ rows: [{ status: 'pending' }], rowCount: 1 });
+    a.stripeRetrieveMock.mockResolvedValue({
+      metadata: { tenantId: 't1', plan: 'starter' }, payment_status: 'no_payment_required', status: 'complete', customer: 'cus_1', subscription: 'sub_1',
+    });
+    a.subscriptionRetrieveMock.mockResolvedValue({ id: 'sub_1', status: 'trialing', trial_end: trialEnd, items: { data: [] } });
+
+    const res = await request(app()).post('/tenants/me/verify-checkout').send({ sessionId: 'cs_1' });
+
+    expect(res.body).toEqual({ status: 'ready' });
+    expect(a.subscriptionRetrieveMock).toHaveBeenCalledWith('sub_1');
+    const [[sql, values]] = subscriptionUpserts();
+    expect(String(sql)).not.toMatch(/'active'/);
+    expect(String(sql)).toMatch(/WHERE subscriptions\.stripe_subscription_id IS NULL\s+OR subscriptions\.stripe_subscription_id <> EXCLUDED\.stripe_subscription_id/);
+    expect((values as unknown[])[12]).toBe('trialing');
+    expect((values as unknown[])[13]).toBe(new Date(trialEnd * 1000).toISOString());
+  });
+
+  it('skips the row (leaving it to the webhook) when the subscription cannot be read', async () => {
+    a.clientQueryMock.mockResolvedValue({ rows: [{ status: 'pending' }], rowCount: 1 });
+    a.stripeRetrieveMock.mockResolvedValue({
+      metadata: { tenantId: 't1', plan: 'starter' }, payment_status: 'no_payment_required', status: 'complete', customer: 'cus_1', subscription: 'sub_1',
+    });
+    a.subscriptionRetrieveMock.mockRejectedValue(new Error('stripe down'));
+
+    const res = await request(app()).post('/tenants/me/verify-checkout').send({ sessionId: 'cs_1' });
+
+    expect(res.body).toEqual({ status: 'ready' });
+    expect(subscriptionUpserts()).toHaveLength(0);
+    expect(a.provisionTenantMock).toHaveBeenCalled();
   });
 });
 

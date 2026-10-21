@@ -32,6 +32,22 @@ export const STRIPE_TRIAL_LAPSED_REASON =
   'Your trial has ended and your first payment has not been confirmed yet. Please check your billing details to continue.';
 
 /**
+ * Plan-row statuses that block usage until billing is fixed. 'paused' is
+ * what Stripe sets when a trial ends with no payment method under
+ * end_behavior=pause; it's unpaid, same as past_due. Shared by
+ * `checkBudget` and `checkTrialLimits` so both guards agree.
+ */
+const UNPAID_SUBSCRIPTION_STATUSES: ReadonlySet<unknown> = new Set(['past_due', 'paused', 'cancelled']);
+
+export function isUnpaidSubscriptionStatus(status: unknown): boolean {
+  return UNPAID_SUBSCRIPTION_STATUSES.has(status);
+}
+
+export function unpaidSubscriptionReason(status: string): string {
+  return `Subscription is ${status}. Please update your billing to continue.`;
+}
+
+/**
  * Stripe trial: a paid plan inside Stripe's trial period (checkout done,
  * `stripe_subscription_id` set). Gets the plan's own limits, not TRIAL_LIMITS.
  */
@@ -81,14 +97,19 @@ export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckRe
 
     if (!isTrial) {
       await client.query('COMMIT');
-      // A Stripe trial runs on its paid plan's limits; it is only blocked
-      // if the conversion webhook still hasn't landed after the grace window.
+      // An unpaid plan row is blocked, same as in checkBudget. A Stripe
+      // trial runs on its paid plan's limits; it is only blocked if the
+      // conversion webhook still hasn't landed after the grace window.
+      const status = subRows[0]?.status;
+      const unpaid = isUnpaidSubscriptionStatus(status);
       const lapsed = stripeTrialLapsed(subRows[0]);
       const stripeTrialEnd = isStripeTrial(subRows[0]) ? trialEndFor(subRows[0], null) : null;
       return {
         isTrial: false,
-        allowed: !lapsed,
-        reason: lapsed ? STRIPE_TRIAL_LAPSED_REASON : undefined,
+        allowed: !unpaid && !lapsed,
+        reason: unpaid
+          ? unpaidSubscriptionReason(String(status))
+          : lapsed ? STRIPE_TRIAL_LAPSED_REASON : undefined,
         trialExpiresAt: stripeTrialEnd ?? undefined,
         usage: {
           totalCalls: 0,
@@ -198,7 +219,8 @@ export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckRe
 
 export async function checkTrialAgentLimit(tenantId: TenantId): Promise<{ allowed: boolean; reason?: string }> {
   const result = await checkTrialLimits(tenantId);
-  if (!result.isTrial) return { allowed: true };
+  // Paid plans have no agent cap, but an unpaid or lapsed row is still blocked.
+  if (!result.isTrial) return result.allowed ? { allowed: true } : { allowed: false, reason: result.reason };
 
   if (result.usage.agentCount >= TRIAL_LIMITS.maxAgents) {
     return {

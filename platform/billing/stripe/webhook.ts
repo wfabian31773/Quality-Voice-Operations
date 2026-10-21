@@ -81,6 +81,134 @@ function stripeTrialEnd(sub: unknown): string | null | undefined {
   return typeof raw === 'number' ? new Date(raw * 1000).toISOString() : null;
 }
 
+/** What a completed checkout writes to the tenant's plan row. */
+export interface CheckoutSubscriptionDetails {
+  status: SubscriptionState;
+  trialEnd: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  billingInterval: 'monthly' | 'annual' | null;
+  stripePriceId: string | null;
+}
+
+/** Plan-row details for a payment-mode checkout (no subscription). */
+export const EMPTY_CHECKOUT_DETAILS: CheckoutSubscriptionDetails = {
+  status: 'active', trialEnd: null, periodStart: null, periodEnd: null, billingInterval: null, stripePriceId: null,
+};
+
+/**
+ * Re-read a checkout's subscription from Stripe and map it onto the plan
+ * row. Shared by the `checkout.session.completed` webhook and the
+ * onboarding verify-checkout route so both write the same status and
+ * `trial_end`. Throws if Stripe can't be reached.
+ */
+export async function retrieveCheckoutSubscription(subscriptionId: string): Promise<CheckoutSubscriptionDetails> {
+  const stripe = getStripeClient();
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  const rawSub = sub as unknown as Record<string, unknown>;
+  const rawStart = rawSub.current_period_start as number | undefined;
+  const rawEnd = rawSub.current_period_end as number | undefined;
+  const item = sub.items?.data?.[0];
+  const priceRaw = item?.price as unknown as Record<string, unknown> | undefined;
+  const recurringRaw = priceRaw?.recurring as Record<string, unknown> | undefined;
+  const interval = (recurringRaw?.interval as string | undefined)
+    ?? (priceRaw?.recurring_interval as string | undefined);
+  return {
+    status: mapStripeSubscriptionStatus(sub.status) ?? 'active',
+    trialEnd: stripeTrialEnd(sub) ?? null,
+    periodStart: rawStart ? new Date(rawStart * 1000).toISOString() : null,
+    periodEnd: rawEnd ? new Date(rawEnd * 1000).toISOString() : null,
+    // Normalize Stripe's 'month'/'year' to the local billing_interval
+    // enum's 'monthly'/'annual' BEFORE storing — otherwise the
+    // `::billing_interval` cast in the upsert blows up on a raw 'year'
+    // value and the whole checkout write fails.
+    billingInterval: normalizeBillingInterval(interval),
+    stripePriceId: item?.price?.id ?? null,
+  };
+}
+
+/**
+ * Plan-row details from the session alone, for when the subscription
+ * can't be retrieved for good. Signup and first checkouts carry a trial,
+ * which Stripe completes with `no_payment_required`, so that reads as
+ * `trialing`; anything paid reads as `active`.
+ */
+function checkoutDetailsFromSession(session: Stripe.Checkout.Session): CheckoutSubscriptionDetails {
+  return {
+    ...EMPTY_CHECKOUT_DETAILS,
+    status: session.payment_status === 'no_payment_required' ? 'trialing' : 'active',
+  };
+}
+
+const TRANSIENT_STRIPE_ERROR_TYPES = new Set(['StripeConnectionError', 'StripeAPIError', 'StripeRateLimitError']);
+
+/**
+ * True when a Stripe call failed in a way a retry can fix: connection
+ * errors, Stripe-side API/5xx errors and rate limits. Other Stripe errors
+ * (invalid request such as `resource_missing`, authentication, permission)
+ * are permanent. Errors with no Stripe type are treated as transient.
+ */
+export function isTransientStripeError(err: unknown): boolean {
+  const e = (err ?? {}) as { type?: unknown; statusCode?: unknown };
+  if (typeof e.statusCode === 'number' && (e.statusCode >= 500 || e.statusCode === 429)) return true;
+  if (typeof e.type === 'string' && e.type.startsWith('Stripe')) return TRANSIENT_STRIPE_ERROR_TYPES.has(e.type);
+  return true;
+}
+
+/**
+ * Upsert the tenant's plan row for a completed checkout.
+ *
+ * `keepWebhookStatus` (verify-checkout): when the row already tracks this
+ * same `stripe_subscription_id`, a webhook has written it from Stripe, so
+ * leave it alone instead of overwriting its status. Returns whether the
+ * row was written.
+ */
+export async function upsertCheckoutSubscription(
+  client: import('pg').PoolClient,
+  row: {
+    tenantId: string;
+    plan: string;
+    customerId: string | null;
+    subscriptionId: string | null;
+    details: CheckoutSubscriptionDetails;
+  },
+  options: { keepWebhookStatus?: boolean } = {},
+): Promise<boolean> {
+  const limits = PLAN_LIMITS[row.plan as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.starter;
+  const { details } = row;
+  const result = await client.query(
+    `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
+       stripe_price_id, billing_interval,
+       monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled,
+       current_period_start, current_period_end, trial_end)
+     VALUES ($1, $2, $13::subscription_status, $3, $4, $5, COALESCE($6::billing_interval, 'monthly'),
+       $7, $8, $9, $10, $11, $12, $14)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       plan = EXCLUDED.plan, status = EXCLUDED.status,
+       trial_end = EXCLUDED.trial_end,
+       stripe_customer_id = EXCLUDED.stripe_customer_id,
+       stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+       stripe_price_id = EXCLUDED.stripe_price_id,
+       billing_interval = EXCLUDED.billing_interval,
+       monthly_call_limit = EXCLUDED.monthly_call_limit,
+       monthly_sms_limit = EXCLUDED.monthly_sms_limit,
+       monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
+       overage_enabled = EXCLUDED.overage_enabled,
+       current_period_start = EXCLUDED.current_period_start,
+       current_period_end = EXCLUDED.current_period_end,
+       updated_at = NOW()${options.keepWebhookStatus
+      ? `
+     WHERE subscriptions.stripe_subscription_id IS NULL
+        OR subscriptions.stripe_subscription_id <> EXCLUDED.stripe_subscription_id`
+      : ''}`,
+    [row.tenantId, row.plan, row.customerId, row.subscriptionId,
+     details.stripePriceId, details.billingInterval,
+     limits.monthlyCallLimit, limits.monthlySmsLimit, limits.monthlyAiMinuteLimit, limits.overageEnabled,
+     details.periodStart, details.periodEnd, details.status, details.trialEnd],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 async function isEventProcessed(eventId: string): Promise<boolean> {
   return withPrivilegedClient(async (client) => {
     const { rows } = await client.query(
@@ -200,52 +328,37 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   }
 
   const plan = session.metadata?.plan ?? 'starter';
-  const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.starter;
 
-  let periodStart: string | null = null;
-  let periodEnd: string | null = null;
-  let billingInterval: string | null = null;
-  let stripePriceId: string | null = null;
-  // Payment-mode sessions have no subscription and stay 'active'. A
-  // subscription we can't retrieve throws instead (see below).
-  let status: SubscriptionState = 'active';
-  let trialEnd: string | null = null;
+  // Payment-mode sessions have no subscription and stay 'active'.
+  let details: CheckoutSubscriptionDetails = EMPTY_CHECKOUT_DETAILS;
 
   if (session.subscription) {
     try {
-      const stripe = getStripeClient();
-      const sub = await stripe.subscriptions.retrieve(session.subscription as string);
-      const rawSub = sub as unknown as Record<string, unknown>;
-      const rawStart = rawSub.current_period_start as number | undefined;
-      const rawEnd = rawSub.current_period_end as number | undefined;
-      if (rawStart) periodStart = new Date(rawStart * 1000).toISOString();
-      if (rawEnd) periodEnd = new Date(rawEnd * 1000).toISOString();
-      const item = sub.items?.data?.[0];
-      if (item?.price?.id) stripePriceId = item.price.id;
-      const priceRaw = item?.price as unknown as Record<string, unknown> | undefined;
-      const recurringRaw = priceRaw?.recurring as Record<string, unknown> | undefined;
-      const interval = (recurringRaw?.interval as string | undefined)
-        ?? (priceRaw?.recurring_interval as string | undefined);
-      // Normalize Stripe's 'month'/'year' to the local billing_interval
-      // enum's 'monthly'/'annual' BEFORE storing — otherwise the
-      // `$6::billing_interval` cast in the INSERT below blows up on a
-      // raw 'year' value and the whole checkout webhook fails.
-      billingInterval = normalizeBillingInterval(interval);
-      status = mapStripeSubscriptionStatus(sub.status) ?? 'active';
-      trialEnd = stripeTrialEnd(sub) ?? null;
+      details = await retrieveCheckoutSubscription(session.subscription as string);
     } catch (err) {
       // Without the subscription we can't tell a trial apart, and on a
       // first signup customer.subscription.created usually arrived before
       // this event and was dropped (no row had the customer id yet), so
-      // nothing would correct a guessed 'active'. Throw so the route
-      // returns 500 and Stripe retries; no billing_events row has been
-      // written yet, so the retry isn't deduped.
-      logger.error('Could not fetch checkout subscription from Stripe; failing for retry', {
-        sessionId: session.id, error: String(err),
+      // nothing would correct a guess. For a transient failure, throw so
+      // the route returns 500 and Stripe retries; no billing_events row
+      // has been written yet, so the retry isn't deduped.
+      if (isTransientStripeError(err)) {
+        logger.error('Could not fetch checkout subscription from Stripe; failing for retry', {
+          sessionId: session.id, error: String(err),
+        });
+        throw err;
+      }
+      // A permanent error (missing resource, key/mode mismatch) would fail
+      // the same way for ~3 days of retries and leave the tenant
+      // unprovisioned. Write the row from the session instead; the next
+      // subscription/invoice webhook corrects it.
+      details = checkoutDetailsFromSession(session);
+      logger.error('Could not fetch checkout subscription from Stripe (permanent); writing row from the session', {
+        sessionId: session.id, error: String(err), status: details.status,
       });
-      throw err;
     }
   }
+  const { billingInterval, stripePriceId, status, trialEnd } = details;
 
   await withTenant(tenantId, async (client) => {
     // Capture the prior plan BEFORE the UPSERT below overwrites it. We
@@ -269,32 +382,13 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       priorPlanForDiscount = null;
     }
 
-    await client.query(
-      `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
-         stripe_price_id, billing_interval,
-         monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled,
-         current_period_start, current_period_end, trial_end)
-       VALUES ($1, $2, $13::subscription_status, $3, $4, $5, COALESCE($6::billing_interval, 'monthly'),
-         $7, $8, $9, $10, $11, $12, $14)
-       ON CONFLICT (tenant_id) DO UPDATE SET
-         plan = EXCLUDED.plan, status = EXCLUDED.status,
-         trial_end = EXCLUDED.trial_end,
-         stripe_customer_id = EXCLUDED.stripe_customer_id,
-         stripe_subscription_id = EXCLUDED.stripe_subscription_id,
-         stripe_price_id = EXCLUDED.stripe_price_id,
-         billing_interval = EXCLUDED.billing_interval,
-         monthly_call_limit = EXCLUDED.monthly_call_limit,
-         monthly_sms_limit = EXCLUDED.monthly_sms_limit,
-         monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
-         overage_enabled = EXCLUDED.overage_enabled,
-         current_period_start = EXCLUDED.current_period_start,
-         current_period_end = EXCLUDED.current_period_end,
-         updated_at = NOW()`,
-      [tenantId, plan, session.customer, session.subscription,
-       stripePriceId, billingInterval,
-       limits.monthlyCallLimit, limits.monthlySmsLimit, limits.monthlyAiMinuteLimit, limits.overageEnabled,
-       periodStart, periodEnd, status, trialEnd],
-    );
+    await upsertCheckoutSubscription(client, {
+      tenantId,
+      plan,
+      customerId: session.customer as string | null,
+      subscriptionId: session.subscription as string | null,
+      details,
+    });
 
     await appendBillingEvent(client, tenantId, 'checkout_completed', {
       sessionId: session.id,

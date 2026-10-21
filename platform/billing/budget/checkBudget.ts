@@ -6,7 +6,9 @@ import { createLogger } from '../../core/logger';
 import {
   checkTrialLimits,
   isTrialSubscription,
+  isUnpaidSubscriptionStatus,
   stripeTrialLapsed,
+  unpaidSubscriptionReason,
   STRIPE_TRIAL_LAPSED_REASON,
 } from '../guardrails/TrialGuard';
 
@@ -91,13 +93,11 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
     const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? PLAN_LIMITS.starter.monthlyAiMinuteLimit;
     const overageEnabled = (sub.overage_enabled as boolean) ?? false;
 
-    // 'paused' is what Stripe sets when a trial ends with no payment method
-    // under end_behavior=pause; it's unpaid, same as past_due.
-    if (subStatus === 'cancelled' || subStatus === 'past_due' || subStatus === 'paused') {
+    if (isUnpaidSubscriptionStatus(subStatus)) {
       await client.query('COMMIT');
       return {
         allowed: false,
-        reason: `Subscription is ${subStatus}. Please update your billing to continue.`,
+        reason: unpaidSubscriptionReason(subStatus),
         plan,
         status: subStatus,
         isTrial: false,
