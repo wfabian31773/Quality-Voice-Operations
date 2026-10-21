@@ -3,6 +3,8 @@
 import { saidMoreThanTheirOwnName } from '../../platform/actions/tickets/floorHeuristics';
 // The real service-ref resolver (pure), so a service name resolves in the sim exactly as in production.
 import { resolveServiceRef } from '../../platform/actions/scheduling/serviceMatch';
+// The real spoken-hours wording (pure), so list_staff's spokenHours match production's.
+import { spokenWeek } from '../../platform/actions/scheduling/spokenHours';
 import { isReleasedHold, type Service, type TenantState } from './seed';
 import type {
   AgentToolSchema,
@@ -345,7 +347,7 @@ export class FakeToolProvider implements ToolProvider {
       case 'scheduling.list_services':
         return ok(this.state.services);
       case 'scheduling.list_staff':
-        return this.listStaff(asRecord(input));
+        return this.listStaff(asRecord(input), ctx);
       case 'scheduling.check_availability':
         return this.checkAvailability(asRecord(input), ctx);
       case 'scheduling.book.prepare':
@@ -383,9 +385,10 @@ export class FakeToolProvider implements ToolProvider {
 
   /**
    * Like scheduling.list_staff: serviceId (an id, or an exact service name/alias) lists only who does it.
-   * Each member carries their usual week (workingDays, hours) from the seed.
+   * Each member carries their usual week (workingDays, hours, spokenHours) from the seed.
    */
-  private listStaff(input: Record<string, unknown>): ToolResult {
+  private listStaff(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
+    const lang = ctx.locale?.toLowerCase().startsWith('es') ? 'es' : 'en';
     const ref = asString(input.serviceId);
     const resolved = ref ? resolveServiceIds(this.state, [ref], 'serviceId', 'NOT_FOUND') : [];
     if (!Array.isArray(resolved)) return resolved;
@@ -399,6 +402,7 @@ export class FakeToolProvider implements ToolProvider {
           serviceIds: member.serviceIds,
           workingDays: [...member.workingDays],
           hours: { ...member.hours },
+          spokenHours: spokenWeek(member.hours, lang),
         })),
     );
   }

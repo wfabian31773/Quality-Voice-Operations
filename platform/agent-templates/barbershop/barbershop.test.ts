@@ -140,6 +140,11 @@ describe('barbershop@1 template export', () => {
     expect(T.persona.es).toMatch(/días de trabajo que da la lista del personal, nunca estas instrucciones/i);
   });
 
+  it("says a barber's hours in the staff list's spoken form (12-hour clock)", () => {
+    expect(T.persona.en).toMatch(/hours the way the staff list's spoken hours word them, like 9 AM to 5 PM/i);
+    expect(T.persona.es).toMatch(/como las dicen las horas habladas de la lista del personal, por ejemplo 9 a\. m\. a 5 p\. m\./i);
+  });
+
   it('greets with the shop name in both languages', () => {
     for (const lang of TEMPLATE_LANGUAGES) {
       expect(T.greeting[lang]).toContain('{{businessName}}');

@@ -214,6 +214,7 @@ describe.skipIf(!dbReachable)('scheduling read actions on Postgres (RLS-bound lo
         serviceIds: [ids['a:beard'], ids['a:cut']],
         workingDays: days,
         hours: Object.fromEntries(days.map((d) => [d, '09:00-17:00'])),
+        spokenHours: Object.fromEntries(days.map((d) => [d, '9 AM to 5 PM'])),
       },
     ]);
   });
