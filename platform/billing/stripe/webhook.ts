@@ -133,6 +133,7 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     case 'customer.subscription.deleted':
       await handleSubscriptionDeleted(event.data.object as Stripe.Subscription, stripeEventId);
       break;
+    case 'customer.subscription.created':
     case 'customer.subscription.updated':
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription, stripeEventId);
       break;
@@ -206,7 +207,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   let billingInterval: string | null = null;
   let stripePriceId: string | null = null;
   // Without the Stripe subscription we can't tell a trial apart, so keep
-  // the old 'active' default; customer.subscription.updated corrects it.
+  // the old 'active' default; a later customer.subscription.created or
+  // .updated corrects it.
   let status: SubscriptionState = 'active';
   let trialEnd: string | null = null;
 
@@ -744,19 +746,61 @@ async function handleInvoiceFailed(invoice: Stripe.Invoice, stripeEventId: strin
   logger.warn('Invoice payment failed', { tenantId, invoiceId: invoice.id });
 }
 
+/**
+ * Marketplace template subscriptions share the tenant's Stripe customer
+ * but are tracked in `marketplace_purchases`, never on the plan row.
+ * Older ones carry no `metadata.type`, so also check the purchases table.
+ */
+async function isMarketplaceSubscription(sub: Stripe.Subscription): Promise<boolean> {
+  if (sub.metadata?.type === 'marketplace_purchase') return true;
+  const { rows } = await getPlatformPool().query(
+    `SELECT 1 FROM marketplace_purchases WHERE stripe_subscription_id = $1 LIMIT 1`,
+    [sub.id],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Stripe doesn't guarantee event order and retries can land hours late,
+ * so read the subscription's current state instead of trusting the
+ * payload. Falls back to the payload if Stripe can't be reached.
+ */
+async function fetchLatestSubscription(sub: Stripe.Subscription): Promise<Stripe.Subscription> {
+  try {
+    const latest = await getStripeClient().subscriptions.retrieve(sub.id);
+    if (latest?.id) return latest;
+  } catch (err) {
+    logger.warn('Could not re-fetch subscription from Stripe; using event payload', {
+      subscriptionId: sub.id,
+      error: String(err),
+    });
+  }
+  return sub;
+}
+
 async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
   const customerId = sub.customer as string;
   const tenantId = await getTenantByCustomer(customerId);
   if (!tenantId) return;
 
-  await withTenant(tenantId, async (client) => {
-    await client.query(
-      `UPDATE subscriptions SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
-       WHERE tenant_id = $1`,
-      [tenantId],
-    );
-    await appendBillingEvent(client, tenantId, 'subscription_cancelled', { subscriptionId: sub.id }, stripeEventId);
-  });
+  if (!(await isMarketplaceSubscription(sub))) {
+    await withTenant(tenantId, async (client) => {
+      // Only cancel the plan row for the subscription it tracks; an old
+      // subscription left over from an upgrade must not cancel the new one.
+      const result = await client.query(
+        `UPDATE subscriptions SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+         WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
+        [tenantId, sub.id],
+      );
+      if (!result.rowCount) {
+        logger.info('Deleted subscription is not the tenant plan subscription; plan row left alone', {
+          tenantId, subscriptionId: sub.id,
+        });
+        return;
+      }
+      await appendBillingEvent(client, tenantId, 'subscription_cancelled', { subscriptionId: sub.id }, stripeEventId);
+    });
+  }
 
   const pool = getPlatformPool();
   await pool.query(
@@ -776,11 +820,34 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId
 // can't silently desynchronize the two paths.
 const PLAN_TIER_RANK: Record<string, number> = { starter: 0, pro: 1, enterprise: 2 };
 
-async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
-  const customerId = sub.customer as string;
+async function handleSubscriptionUpdated(payload: Stripe.Subscription, stripeEventId: string): Promise<void> {
+  const customerId = payload.customer as string;
   const tenantId = await getTenantByCustomer(customerId);
   if (!tenantId) return;
 
+  const sub = await fetchLatestSubscription(payload);
+
+  if (await isMarketplaceSubscription(sub)) {
+    logger.info('Marketplace subscription event; plan row left alone', { tenantId, subscriptionId: sub.id });
+  } else {
+    await syncPlanSubscription(tenantId, sub, stripeEventId);
+  }
+
+  const marketplaceSubStatus = sub.status === 'active' ? 'active'
+    : sub.status === 'past_due' ? 'past_due'
+    : sub.status === 'canceled' ? 'canceled'
+    : sub.status === 'unpaid' ? 'unpaid'
+    : 'incomplete';
+  const pool = getPlatformPool();
+  await pool.query(
+    `UPDATE marketplace_purchases SET subscription_status = $1
+     WHERE stripe_subscription_id = $2`,
+    [marketplaceSubStatus, sub.id],
+  );
+}
+
+/** Sync the tenant's plan row from the subscription it tracks. */
+async function syncPlanSubscription(tenantId: string, sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
   const item = sub.items?.data?.[0];
   const priceId = item?.price?.id;
   const plan = priceId ? getPlanFromPriceId(priceId) : undefined;
@@ -812,19 +879,31 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     // Billing UI can render a one-time "Your downgrade to <Plan> is now
     // active" banner on the tenant's next visit (Task #1366).
     let priorPlanForDowngrade: string | null = null;
+    let trackedSubscriptionId: string | null = null;
     try {
       const { rows: priorRows } = await client.query(
-        `SELECT plan FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        `SELECT plan, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
         [tenantId],
       );
       const prior = priorRows[0]?.plan;
       if (typeof prior === 'string') priorPlanForDowngrade = prior;
+      const tracked = priorRows[0]?.stripe_subscription_id;
+      if (typeof tracked === 'string' && tracked) trackedSubscriptionId = tracked;
     } catch {
       priorPlanForDowngrade = null;
     }
 
+    // Another subscription on the same customer (e.g. the old one left
+    // running after a checkout upgrade) must not overwrite the plan row.
+    if (trackedSubscriptionId && trackedSubscriptionId !== sub.id) {
+      logger.info('Subscription event is not for the tenant plan subscription; plan row left alone', {
+        tenantId, subscriptionId: sub.id, trackedSubscriptionId,
+      });
+      return;
+    }
+
     const updateFields: string[] = ['updated_at = NOW()'];
-    const values: unknown[] = [tenantId];
+    const values: unknown[] = [tenantId, sub.id];
 
     if (plan) { values.push(plan); updateFields.push(`plan = $${values.length}`); }
     if (limits) {
@@ -877,23 +956,12 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     if (trialEnd !== undefined) { values.push(trialEnd); updateFields.push(`trial_end = $${values.length}`); }
 
     await client.query(
-      `UPDATE subscriptions SET ${updateFields.join(', ')} WHERE tenant_id = $1`,
+      `UPDATE subscriptions SET ${updateFields.join(', ')}
+        WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
       values,
     );
     await appendBillingEvent(client, tenantId, 'subscription_updated', { plan, subscriptionId: sub.id, status, trialEnd }, stripeEventId);
   });
-
-  const marketplaceSubStatus = sub.status === 'active' ? 'active'
-    : sub.status === 'past_due' ? 'past_due'
-    : sub.status === 'canceled' ? 'canceled'
-    : sub.status === 'unpaid' ? 'unpaid'
-    : 'incomplete';
-  const pool = getPlatformPool();
-  await pool.query(
-    `UPDATE marketplace_purchases SET subscription_status = $1
-     WHERE stripe_subscription_id = $2`,
-    [marketplaceSubStatus, sub.id],
-  );
 }
 
 async function getTenantByCustomer(customerId: string): Promise<string | null> {

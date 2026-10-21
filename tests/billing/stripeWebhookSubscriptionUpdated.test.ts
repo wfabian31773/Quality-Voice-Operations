@@ -81,7 +81,7 @@ function captureSubscriptionUpdate(options: { priorPlan?: string } = {}): {
     // in handleSubscriptionUpdated. Must match BEFORE the generic
     // `SELECT ... FROM subscriptions` fallback so the downgrade test
     // can inject a higher-tier prior plan.
-    if (/SELECT\s+plan\s+FROM\s+subscriptions\s+WHERE\s+tenant_id/i.test(sql)) {
+    if (/SELECT\s+plan(,\s*stripe_subscription_id)?\s+FROM\s+subscriptions\s+WHERE\s+tenant_id/i.test(sql)) {
       return options.priorPlan
         ? { rows: [{ plan: options.priorPlan }], rowCount: 1 }
         : { rows: [], rowCount: 0 };

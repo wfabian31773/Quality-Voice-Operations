@@ -186,4 +186,60 @@ describe('GET /tenants/me/trial-status', () => {
     expect(res.body.onPaidPlan).toBe(true);
     expect(res.body.onTrial).toBe(false);
   });
+
+  const mockRows = (tenant: Record<string, unknown>, sub: Record<string, unknown> | null) =>
+    a.queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM tenants WHERE id = $1')) return { rows: [tenant] };
+      if (sql.includes('FROM subscriptions')) return { rows: sub ? [sub] : [] };
+      return { rows: [] };
+    });
+  const past = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+  it.each(['active', 'past_due'])('treats a %s Starter subscriber as paid, even with a past trial_end', async (status) => {
+    mockRows(
+      { trial_expires_at: past(3), status: 'active', plan: 'starter' },
+      { plan: 'starter', status, trial_end: past(1), stripe_subscription_id: 'sub_1' },
+    );
+    const res = await request(app()).get('/tenants/me/trial-status');
+    expect(res.body.onPaidPlan).toBe(true);
+    expect(res.body.onTrial).toBe(false);
+    expect(res.body.expired).toBe(false);
+  });
+
+  it('ignores trial_end on a non-trialing subscription', async () => {
+    const tenantEnd = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    mockRows(
+      { trial_expires_at: tenantEnd, status: 'active', plan: 'starter' },
+      { plan: 'starter', status: 'cancelled', trial_end: past(1), stripe_subscription_id: 'sub_1' },
+    );
+    const res = await request(app()).get('/tenants/me/trial-status');
+    expect(res.body.trialExpiresAt).toBe(tenantEnd);
+    expect(res.body.expired).toBe(false);
+  });
+
+  it('a Stripe trial just past trial_end is inside the grace window, not expired', async () => {
+    mockRows(
+      { trial_expires_at: null, status: 'active', plan: 'pro' },
+      { plan: 'pro', status: 'trialing', trial_end: new Date(Date.now() - 3_600_000).toISOString(), stripe_subscription_id: 'sub_1' },
+    );
+    const res = await request(app()).get('/tenants/me/trial-status');
+    expect(res.body.onTrial).toBe(true);
+    expect(res.body.expired).toBe(false);
+  });
+
+  it('a Stripe trial past the grace window is expired', async () => {
+    mockRows(
+      { trial_expires_at: null, status: 'active', plan: 'pro' },
+      { plan: 'pro', status: 'trialing', trial_end: past(2), stripe_subscription_id: 'sub_1' },
+    );
+    const res = await request(app()).get('/tenants/me/trial-status');
+    expect(res.body.expired).toBe(true);
+  });
+
+  it('a free trial past trial_expires_at is expired with no grace', async () => {
+    mockRows({ trial_expires_at: new Date(Date.now() - 60_000).toISOString(), status: 'active', plan: 'starter' }, null);
+    const res = await request(app()).get('/tenants/me/trial-status');
+    expect(res.body.onTrial).toBe(true);
+    expect(res.body.expired).toBe(true);
+  });
 });

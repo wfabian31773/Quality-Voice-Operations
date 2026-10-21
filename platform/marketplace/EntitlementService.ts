@@ -37,7 +37,7 @@ export async function checkEntitlement(
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows: subRows } = await client.query(
-      `SELECT plan, status FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      `SELECT plan, status, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
 

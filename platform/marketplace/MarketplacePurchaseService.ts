@@ -188,7 +188,14 @@ export async function createMarketplacePurchase(input: PurchaseInput): Promise<{
       // metadata onto the invoice so Finance/Support can trace the
       // receipt PDF back to the originating marketplace purchase row
       // without joining through the Charge.
-      if (!isSubscription) {
+      if (isSubscription) {
+        // Session metadata isn't copied onto the subscription. The Stripe
+        // webhook reads `type` off the subscription to keep marketplace
+        // subscription events away from the tenant's plan row.
+        sessionParams.subscription_data = {
+          metadata: { tenantId, templateId, purchaseId, type: 'marketplace_purchase' },
+        };
+      } else {
         sessionParams.invoice_creation = {
           enabled: true,
           invoice_data: {
