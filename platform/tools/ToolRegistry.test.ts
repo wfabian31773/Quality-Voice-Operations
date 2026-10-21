@@ -37,6 +37,31 @@ describe('redactToolParameters', () => {
     expect((out.nested as Record<string, unknown>).note).toContain('[NAME_REDACTED]');
     expect(out.flag).toBe(true);
   });
+
+  it('redacts a current-year date under a DOB-like key, nested too, but keeps appointment dates', () => {
+    const now = new Date('2026-10-20T15:00:00.000Z');
+    const out = redactToolParameters({
+      dob: '2026-03-15',
+      dateOfBirth: '03/15/2026',
+      d_o_b: 'March 15',
+      fecha_nacimiento: '15 de marzo de 2026',
+      patient: { birth_date: '2026-03-15', dob: { value: '2026-03-15' } },
+      birthdays: ['2026-03-15'],
+      appointment_date: '2026-03-15',
+    }, now);
+    expect(out.dob).toBe('[DOB_REDACTED]');
+    expect(out.dateOfBirth).toBe('[DOB_REDACTED]');
+    expect(out.d_o_b).toBe('[DOB_REDACTED]');
+    expect(out.fecha_nacimiento).toBe('[DOB_REDACTED]');
+    expect(out.patient).toEqual({ birth_date: '[DOB_REDACTED]', dob: { value: '[DOB_REDACTED]' } });
+    expect(out.birthdays).toEqual(['[DOB_REDACTED]']);
+    expect(out.appointment_date).toBe('2026-03-15');
+  });
+
+  it('uses the real clock by default: { dob: <this year> } is redacted', () => {
+    const year = new Date().getUTCFullYear();
+    expect(redactToolParameters({ dob: `${year}-03-15` }).dob).toBe('[DOB_REDACTED]');
+  });
 });
 
 describe('UnifiedToolRegistry validation', () => {

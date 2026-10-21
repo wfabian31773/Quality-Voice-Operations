@@ -196,6 +196,15 @@ describe('callerVerdict on stored transcripts (after redactPHI) is the live floo
     }
   });
 
+  it('a kept appointment date or a redacted birth date classifies as the raw line did', async () => {
+    const year = new Date().getUTCFullYear();
+    for (const line of [`Hi, this is Luis, ${year}-10-24`, 'Hi, this is Luis, born 01/15/1990', 'Hi, this is Luis, nací el 3 de marzo']) {
+      const live = FLOOR_TO_VERDICT[await floorReason(`CA-date-${line.length}`, [line], 'Luis')];
+      expect(callerVerdict([redactPHI(line)], 'Luis')).toBe(live);
+    }
+    expect(redactPHI(`booked ${year}-10-24`)).toBe(`booked ${year}-10-24`);
+  });
+
   it('a name placeholder plus a request is still substantive', () => {
     expect(callerVerdict(["Hi, I'm [NAME_REDACTED], I need a fade"], undefined)).toBe('substantive');
   });
