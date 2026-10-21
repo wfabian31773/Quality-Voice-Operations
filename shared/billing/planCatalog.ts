@@ -14,65 +14,39 @@ export const PLAN_CATALOG: Record<PlanTier, PlanCatalogEntry> = {
   starter: {
     key: 'starter',
     name: 'Starter',
-    monthlyPriceCents: 9_900,
+    monthlyPriceCents: 14_900,
     includedMinutes: 500,
-    overageRatePerMinute: 0.15,
+    overageRatePerMinute: 0.25,
   },
   pro: {
     key: 'pro',
     name: 'Pro',
-    monthlyPriceCents: 39_900,
-    includedMinutes: 2_500,
-    overageRatePerMinute: 0.12,
+    monthlyPriceCents: 34_900,
+    includedMinutes: 1_500,
+    overageRatePerMinute: 0.22,
   },
   enterprise: {
     key: 'enterprise',
     name: 'Enterprise',
-    monthlyPriceCents: 99_900,
-    includedMinutes: 10_000,
-    overageRatePerMinute: 0.08,
+    monthlyPriceCents: 79_900,
+    includedMinutes: 3_000,
+    overageRatePerMinute: 0.18,
   },
 };
 
 export const PLAN_TIERS: PlanTier[] = ['starter', 'pro', 'enterprise'];
 
 /**
- * Published per-message SMS rate, in dollars/message. SMS pricing is
- * tenant-wide rather than per-tier, so it lives outside `PLAN_CATALOG`.
- *
- * MUST be kept in lockstep with the server-side env default
- * `SMS_COST_PER_MESSAGE_CENTS` (see
- * `platform/billing/stripe/effectiveRate.ts:defaultSmsRatePerMessageDollars`):
- * the public pricing callout uses this constant as the catalog reference
- * when comparing a tenant's negotiated Stripe SMS rate (task #1327), so
- * a divergence here would falsely render a "you pay $X vs $Y" delta
- * against the wrong baseline.
- */
-export const CATALOG_SMS_RATE_PER_MESSAGE = 0.01;
-
-/**
- * Published per-minute Twilio (carrier) rate, in dollars/minute. Like
- * SMS, carrier pricing is tenant-wide rather than per-tier, so it
- * lives outside `PLAN_CATALOG`.
- *
- * MUST be kept in lockstep with the server-side env default
- * `TWILIO_COST_PER_MINUTE_CENTS` (see
- * `platform/billing/stripe/effectiveRate.ts:defaultTwilioRatePerMinuteDollars`):
- * the public pricing callout uses this constant as the catalog reference
- * when comparing a tenant's negotiated Stripe Twilio carrier rate
- * (task #1357), so a divergence here would falsely render a "you pay
- * $X vs $Y" delta against the wrong baseline.
- */
-export const CATALOG_TWILIO_RATE_PER_MINUTE = 0.02;
-
-/**
  * Discount applied to the published monthly base price when a tenant
- * commits to annual billing (e.g. 0.2 == 20% off). Lives in the shared
+ * commits to annual billing (e.g. 0.15 == 15% off). Lives in the shared
  * catalog so the public pricing page, the in-app billing estimator, and
  * the plan-recommendation engine can all reason about annual pricing
  * with the same constant.
+ *
+ * Carrier (Twilio voice and SMS) costs are folded into the plan price:
+ * there is no separate per-minute or per-message carrier charge.
  */
-export const ANNUAL_DISCOUNT = 0.2;
+export const ANNUAL_DISCOUNT = 0.15;
 
 export function getPlan(tier: PlanTier): PlanCatalogEntry {
   return PLAN_CATALOG[tier];
@@ -94,9 +68,9 @@ export function getPlanMonthlyPriceWholeDollars(tier: PlanTier): number {
  * monthly-equivalent price (the strikethrough/discounted pair on the
  * /pricing tier card and on the in-page MinutesPricingCalculator). The
  * rounding is what makes the per-tier annual savings — `(monthly −
- * annualMonthly) × 12` — render as a clean dollar amount ($240 / $960 /
- * $2,400 at catalog prices) instead of a fractional carry-through like
- * $237.60. Centralising it here keeps the marketing card and the
+ * annualMonthly) × 12` — render as a clean dollar amount ($264 / $624 /
+ * $1,440 at catalog prices) instead of a fractional carry-through like
+ * $268.20. Centralising it here keeps the marketing card and the
  * calculator in lockstep so the two figures never drift.
  */
 export function getDiscountedAnnualMonthlyDollars(monthlyDollars: number): number {

@@ -482,7 +482,7 @@
       "start_trial": "Crear una cuenta",
       "recommended": "RECOMENDADO",
       "billed_monthly": "Facturación mensual · cancela cuando quieras",
-      "billed_annually": "Facturación anual · ahorra 20%",
+      "billed_annually": "Facturación anual · ahorra 15%",
       "save_badge": "Ahorra {{percent}}%",
       "save_badge_aria": "Ahorra {{percent}}% con facturación anual",
       "save_amount": "Ahorra {{amount}}/año",
@@ -494,7 +494,7 @@
     "billing_toggle": {
       "monthly": "Mensual",
       "annual": "Anual",
-      "save_badge": "Ahorra 20%"
+      "save_badge": "Ahorra 15%"
     },
     "calculator": {
       "eyebrow": "Calculadora por minuto",
@@ -506,18 +506,10 @@
       "title_more": "Tienes una tarifa personalizada por encima del precio público actual",
       "title_overage_less": "Tienes una tarifa de exceso personalizada por debajo del precio público actual",
       "title_overage_more": "Tienes una tarifa de exceso personalizada por encima del precio público actual",
-      "title_sms_less": "Tienes una tarifa de SMS personalizada por debajo del precio público actual",
-      "title_sms_more": "Tienes una tarifa de SMS personalizada por encima del precio público actual",
-      "title_twilio_less": "Tienes una tarifa de operador personalizada por debajo del precio público actual",
-      "title_twilio_more": "Tienes una tarifa de operador personalizada por encima del precio público actual",
       "description_less": "Tu cuenta paga {{currentPrice}}/mes por {{tierName}} — eso es {{deltaPrice}}/mes menos que la tarifa pública actual de {{catalogPrice}}. Cambiar a un plan actual modificaría tu factura.",
       "description_more": "Tu cuenta paga {{currentPrice}}/mes por {{tierName}} — eso es {{deltaPrice}}/mes más que la tarifa pública actual de {{catalogPrice}}. Cambiar a un plan actual modificaría tu factura.",
       "overage_line_less": "Tu exceso de {{tierName}} se factura a {{currentRate}} — {{deltaRate}} menos que la tarifa pública actual de {{catalogRate}}.",
       "overage_line_more": "Tu exceso de {{tierName}} se factura a {{currentRate}} — {{deltaRate}} más que la tarifa pública actual de {{catalogRate}}.",
-      "sms_line_less": "Tus SMS se facturan a {{currentRate}} — {{deltaRate}} menos que la tarifa pública actual de {{catalogRate}}.",
-      "sms_line_more": "Tus SMS se facturan a {{currentRate}} — {{deltaRate}} más que la tarifa pública actual de {{catalogRate}}.",
-      "twilio_line_less": "Tus minutos de operador Twilio se facturan a {{currentRate}} — {{deltaRate}} menos que la tarifa pública actual de {{catalogRate}}.",
-      "twilio_line_more": "Tus minutos de operador Twilio se facturan a {{currentRate}} — {{deltaRate}} más que la tarifa pública actual de {{catalogRate}}.",
       "title_annual_less": "Tienes una tarifa anual personalizada por debajo de la tarifa pública actual",
       "title_annual_more": "Tienes una tarifa anual personalizada por encima de la tarifa pública actual",
       "description_annual_less": "Tu cuenta paga {{annualCurrentPrice}}/año por {{tierName}} — eso es {{annualDeltaPrice}}/año menos que la tarifa anual pública actual de {{annualCatalogPrice}}/año. Cambiar a un plan actual modificaría tu factura.",
@@ -527,7 +519,7 @@
     "compare": {
       "title": "Compara todas las características",
       "feature_col": "Característica",
-      "all_included": "Todos los planes incluyen todas las plantillas de industria y todas las herramientas."
+      "all_included": "Todos los planes incluyen todas las plantillas de industria, todas las herramientas y los costos de llamadas y SMS del operador. Prueba de 7 días en todos los planes."
     },
     "features_list": {
       "ai_minutes": "Minutos de IA incluidos",
@@ -578,7 +570,7 @@
       "q5": "¿Hay contratos o compromisos?",
       "a5": "No. Todos los planes son mes a mes y sin contratos a largo plazo. Puedes cancelar cuando quieras y tu cuenta sigue activa hasta el final del ciclo en curso.",
       "q6": "¿Ofrecen precio anual?",
-      "a6": "Sí. La facturación anual te ahorra un 20% frente al precio mensual. Contacta a ventas o elige facturación anual al registrarte para acceder al descuento.",
+      "a6": "Sí. La facturación anual te ahorra un 15% frente al precio mensual. Contacta a ventas o elige facturación anual al registrarte para acceder al descuento.",
       "q7": "¿Cómo funciona la puesta en marcha?",
       "a7": "Ahora estamos dando de alta talleres piloto. La puesta en marcha se comenta en la demostración.",
       "q8": "¿Qué métodos de pago aceptan?",

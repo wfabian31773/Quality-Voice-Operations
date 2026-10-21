@@ -128,8 +128,8 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
       metadata: {},
@@ -159,13 +159,13 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
       'cus_with_discount',
       { expand: ['discount.promotion_code'] },
     );
-    // Catalog list is $399; 25% off → $299.25 → 29 925 cents.
-    expect(result.basePriceCents).toBe(29_925);
+    // Catalog list is $349; 25% off → $261.75 → 26 175 cents.
+    expect(result.basePriceCents).toBe(26_175);
     // The discount must beat the published catalog price.
     expect(result.basePriceCents).toBeLessThan(PLAN_CATALOG.pro.monthlyPriceCents);
-    // percent_off applies to overages too — Pro catalog is $0.12/min,
-    // 25% off → $0.09/min.
-    expect(result.overageRatePerMinute).toBeCloseTo(0.09, 6);
+    // percent_off applies to overages too — Pro catalog is $0.22/min,
+    // 25% off → $0.165/min.
+    expect(result.overageRatePerMinute).toBeCloseTo(0.165, 6);
     expect(result.overageRatePerMinute).toBeLessThan(
       PLAN_CATALOG.pro.overageRatePerMinute,
     );
@@ -191,8 +191,8 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -215,8 +215,8 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    // $399 published → $349 after $50 amount_off coupon.
-    expect(result.basePriceCents).toBe(34_900);
+    // $349 published → $299 after $50 amount_off coupon.
+    expect(result.basePriceCents).toBe(29_900);
     // amount_off is a flat invoice credit — overage stays at catalog Pro.
     expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
     expect(result.discount).toMatchObject({
@@ -239,7 +239,7 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 35_000, // Custom-priced Pro: $350 (not the catalog $399)
+      unit_amount: 35_000, // Custom-priced Pro: $350 (not the catalog $349)
       unit_amount_decimal: '35000',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
@@ -253,7 +253,7 @@ describe('getTenantUpgradePreview — Stripe customer discount overrides', () =>
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    // Stripe's published price (35 000c) overrides catalog (39 900c)
+    // Stripe's published price (35 000c) overrides catalog (34 900c)
     // even when there's no discount.
     expect(result.basePriceCents).toBe(35_000);
     expect(result.basePriceSource).toBe('stripe');
@@ -335,8 +335,8 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    // 10% off the catalog Pro base ($399 → $359.10 → 35 910c).
-    expect(result.basePriceCents).toBe(35_910);
+    // 10% off the catalog Pro base ($349 → $314.10 → 31 410c).
+    expect(result.basePriceCents).toBe(31_410);
     expect(result.basePriceSource).toBe('catalog');
     // Mixed: catalog base + stripe-discount overlay.
     expect(result.source).toBe('mixed');
@@ -352,8 +352,8 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -371,7 +371,7 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    expect(result.basePriceCents).toBe(39_900);
+    expect(result.basePriceCents).toBe(34_900);
     expect(result.discount).toBeNull();
   });
 
@@ -384,8 +384,8 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -405,7 +405,7 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    expect(result.basePriceCents).toBe(39_900);
+    expect(result.basePriceCents).toBe(34_900);
     expect(result.discount).toBeNull();
   });
 
@@ -418,8 +418,8 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -431,7 +431,7 @@ describe('getTenantUpgradePreview — graceful degradation', () => {
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    expect(result.basePriceCents).toBe(39_900);
+    expect(result.basePriceCents).toBe(34_900);
     expect(result.discount).toBeNull();
   });
 
@@ -478,8 +478,8 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
       if (priceId === 'price_pro_monthly_published') {
         return {
           id: 'price_pro_monthly_published',
-          unit_amount: 39_900,
-          unit_amount_decimal: '39900',
+          unit_amount: 34_900,
+          unit_amount_decimal: '34900',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
           metadata: {},
@@ -525,7 +525,7 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
     expect(result.basePriceSource).toBe('stripe');
     expect(result.source).toBe('stripe');
     // No discount means the base stays at the published Stripe value.
-    expect(result.basePriceCents).toBe(39_900);
+    expect(result.basePriceCents).toBe(34_900);
     expect(result.discount).toBeNull();
   });
 
@@ -543,8 +543,8 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
       if (priceId === 'price_pro_monthly_published') {
         return {
           id: 'price_pro_monthly_published',
-          unit_amount: 39_900,
-          unit_amount_decimal: '39900',
+          unit_amount: 34_900,
+          unit_amount_decimal: '34900',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'month' },
           metadata: {},
@@ -585,7 +585,7 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
 
   it('rejects a non-metered price wired into STRIPE_PRICE_<TIER>_AI_MINUTES and falls back to catalog (guards against operator misconfiguration)', async () => {
     // Operator points the AI minutes env var at a *licensed* monthly
-    // price by mistake. Without the metered guard we'd quote $399/min
+    // price by mistake. Without the metered guard we'd quote $349/min
     // — instead the function must ignore it and fall back to catalog.
     process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_oops_licensed';
 
@@ -600,8 +600,8 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
       if (priceId === 'price_pro_monthly_published') {
         return {
           id: 'price_pro_monthly_published',
-          unit_amount: 39_900,
-          unit_amount_decimal: '39900',
+          unit_amount: 34_900,
+          unit_amount_decimal: '34900',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'month' },
           metadata: {},
@@ -611,8 +611,8 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
         // The wrong-shape price: a recurring LICENSED line, NOT metered.
         return {
           id: 'price_oops_licensed',
-          unit_amount: 39_900, // Would be $399/min if naively trusted
-          unit_amount_decimal: '39900',
+          unit_amount: 34_900, // Would be $349/min if naively trusted
+          unit_amount_decimal: '34900',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'month' },
           metadata: {},
@@ -629,7 +629,7 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
 
     const result = await getTenantUpgradePreview(TENANT, 'pro');
 
-    // The guard kicked in: we did NOT quote $399/min from the licensed
+    // The guard kicked in: we did NOT quote $349/min from the licensed
     // price — overage stays at the catalog Pro rate.
     expect(result.overageRatePerMinute).toBe(PLAN_CATALOG.pro.overageRatePerMinute);
     expect(result.overagePriceSource).toBe('catalog');
@@ -654,8 +654,8 @@ describe('getTenantUpgradePreview — metered AI-minutes price override', () => 
       if (priceId === 'price_pro_monthly_published') {
         return {
           id: 'price_pro_monthly_published',
-          unit_amount: 39_900,
-          unit_amount_decimal: '39900',
+          unit_amount: 34_900,
+          unit_amount_decimal: '34900',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'month' },
           metadata: {},

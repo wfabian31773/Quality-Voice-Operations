@@ -3,7 +3,7 @@
  * Regression coverage for task #1157.
  *
  * The website chat widget's `recommend_plan` card must surface the
- * 20%-off annual-billing price alongside the catalog monthly price, and
+ * 15%-off annual-billing price alongside the catalog monthly price, and
  * its "Start [Plan] Trial" CTA must preserve the visitor's billing
  * choice as `?interval=annual` the same way the public Pricing page CTA
  * does. Previously the card only showed the monthly price, so a visitor
@@ -58,9 +58,9 @@ beforeEach(() => {
               data: {
                 plan: 'pro',
                 reason: 'Recommended for growing teams',
-                monthlyPriceCents: 39900,
-                includedMinutes: 2500,
-                overageRatePerMinute: 0.12,
+                monthlyPriceCents: 34900,
+                includedMinutes: 1500,
+                overageRatePerMinute: 0.22,
               },
             },
           ],
@@ -125,12 +125,12 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
     await openWidgetAndAskForRecommendation();
 
     const priceEl = screen.getByTestId('recommend-plan-price-pro');
-    // Default render is monthly: $399/month
-    expect(priceEl.textContent).toContain('$399/month');
+    // Default render is monthly: $349/month
+    expect(priceEl.textContent).toContain('$349/month');
 
     const altPriceEl = screen.getByTestId('recommend-plan-alt-price-pro');
-    // Discounted annual-equivalent monthly using ANNUAL_DISCOUNT (399 * 0.8 = 319.20)
-    const annualMonthlyCents = Math.round(39900 * (1 - ANNUAL_DISCOUNT));
+    // Discounted annual-equivalent monthly using ANNUAL_DISCOUNT (349 * 0.85 = 296.65 → $297)
+    const annualMonthlyCents = Math.round(34900 * (1 - ANNUAL_DISCOUNT));
     const expectedAnnualDollars = (annualMonthlyCents / 100).toFixed(0);
     expect(altPriceEl.textContent).toContain(`$${expectedAnnualDollars}/mo billed annually`);
     expect(altPriceEl.textContent).toContain(`save ${Math.round(ANNUAL_DISCOUNT * 100)}%`);
@@ -146,12 +146,12 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
     });
 
     const priceEl = screen.getByTestId('recommend-plan-price-pro');
-    const annualMonthlyDollars = Math.round(39900 * (1 - ANNUAL_DISCOUNT) / 100);
+    const annualMonthlyDollars = Math.round(34900 * (1 - ANNUAL_DISCOUNT) / 100);
     expect(priceEl.textContent).toContain(`$${annualMonthlyDollars}/month`);
 
     // Alt price now shows the strikethrough monthly equivalent
     const altPriceEl = screen.getByTestId('recommend-plan-alt-price-pro');
-    expect(altPriceEl.textContent).toContain('$399/mo billed monthly');
+    expect(altPriceEl.textContent).toContain('$349/mo billed monthly');
 
     const cta = screen.getByTestId('recommend-plan-cta-pro');
     act(() => {
@@ -187,7 +187,7 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
     expect(annualToggle.getAttribute('aria-pressed')).toBe('true');
 
     const priceEl = screen.getByTestId('recommend-plan-price-pro');
-    const annualMonthlyDollars = Math.round((39900 * (1 - ANNUAL_DISCOUNT)) / 100);
+    const annualMonthlyDollars = Math.round((34900 * (1 - ANNUAL_DISCOUNT)) / 100);
     expect(priceEl.textContent).toContain(`$${annualMonthlyDollars}/month`);
 
     const cta = screen.getByTestId('recommend-plan-cta-pro');

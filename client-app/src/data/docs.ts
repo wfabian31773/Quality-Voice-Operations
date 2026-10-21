@@ -2,7 +2,7 @@ import {
   Rocket, Bot, Network, Plug, Boxes, Key, AlertTriangle, CreditCard,
   type LucideIcon,
 } from 'lucide-react';
-import { PLAN_CATALOG, PLAN_TIERS } from '../../../shared/billing/planCatalog';
+import { PLAN_CATALOG, PLAN_TIERS, getPlanMonthlyPriceWholeDollars } from '../../../shared/billing/planCatalog';
 
 export type DocCategorySlug =
   | 'getting-started'
@@ -81,7 +81,7 @@ export const docArticles: DocArticle[] = [
       ol([
         'Visit the signup page and enter your business email, company name, and a password.',
         'Confirm your email by clicking the link we send you.',
-        'Choose your plan (Free Trial works for everything in this guide).',
+        'Choose your plan (every plan starts with a 7-day trial that works for everything in this guide).',
       ]),
       { type: 'image', src: '/docs/screenshots/quickstart-signup.jpg', alt: 'QVO signup form with organization name, email, password, and plan selection', caption: 'The signup form auto-provisions your tenant.' },
       tip('Your tenant environment is provisioned automatically — no waiting for sales or onboarding calls.'),
@@ -1099,7 +1099,7 @@ Response includes transcript, recording_url, tool_executions, quality_score.`, '
       ul(
         PLAN_TIERS.map((tier) => {
           const plan = PLAN_CATALOG[tier];
-          return `${plan.name} — ${plan.includedMinutes.toLocaleString('en-US')} min · $${plan.overageRatePerMinute.toFixed(2)}/min`;
+          return `${plan.name} — $${getPlanMonthlyPriceWholeDollars(tier)}/mo · ${plan.includedMinutes.toLocaleString('en-US')} min · $${plan.overageRatePerMinute.toFixed(2)}/min`;
         }),
       ),
       h2('What is metered'),

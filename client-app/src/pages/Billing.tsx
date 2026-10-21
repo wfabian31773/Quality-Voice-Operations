@@ -18,6 +18,7 @@ import {
   type BillingPeriod,
 } from '../components/MinutesPricingCalculator';
 import {
+  PLAN_CATALOG,
   centsToWholeDollars,
   getDiscountedAnnualMonthlyDollars,
   getPlanMonthlyPriceCents,
@@ -35,7 +36,7 @@ interface StatusMeta { tone: BadgeTone; icon: React.ReactNode; tooltip: string; 
 
 function subscriptionMeta(status: string): StatusMeta {
   if (status === 'active') return { tone: 'success', icon: <CheckCircle2 className="h-3 w-3" aria-hidden="true" />, tooltip: 'Subscription is active and billing normally' };
-  if (status === 'trialing') return { tone: 'primary', icon: <Sparkles className="h-3 w-3" aria-hidden="true" />, tooltip: 'Free trial — full access until the trial ends' };
+  if (status === 'trialing') return { tone: 'primary', icon: <Sparkles className="h-3 w-3" aria-hidden="true" />, tooltip: '7-day trial — full access until the trial ends' };
   if (status === 'past_due') return { tone: 'warning', icon: <AlertTriangle className="h-3 w-3" aria-hidden="true" />, tooltip: 'Payment is past due — update your card to keep service running' };
   if (status === 'incomplete') return { tone: 'warning', icon: <Loader2 className="h-3 w-3" aria-hidden="true" />, tooltip: 'Subscription setup is incomplete — finish payment to activate' };
   if (status === 'canceled' || status === 'cancelled') return { tone: 'danger', icon: <XCircle className="h-3 w-3" aria-hidden="true" />, tooltip: 'Subscription has been cancelled' };
@@ -1106,20 +1107,6 @@ export default function Billing() {
       monthlyBasePriceSource: 'stripe' | 'catalog';
       annualBasePriceCents: number;
       annualBasePriceSource: 'stripe' | 'catalog';
-      // Per-message SMS rate (in dollars) and its provenance. Optional
-      // for backward-compat with older API responses — the
-      // BillingEstimator hides its SMS rate row when the field is
-      // missing rather than rendering a misleading "$0.00/msg".
-      smsRatePerMessage?: number;
-      smsPriceSource?: 'stripe' | 'catalog';
-      // Per-minute Twilio (carrier) rate (in dollars), its provenance,
-      // and the Stripe price id backing it. Optional for backward-compat
-      // with older API responses — the BillingEstimator hides the Twilio
-      // rate row when the field is missing rather than rendering a
-      // misleading "$0.00/min" line.
-      twilioRatePerMinute?: number;
-      twilioPriceSource?: 'stripe' | 'catalog';
-      twilioPriceId?: string | null;
       // Stripe `Price.id`s for the licensed base line and the metered
       // AI-minutes overage line (when sourced from Stripe). Surfaced
       // through the BillingEstimator's "Live Stripe rate" badge tooltip —
@@ -2256,7 +2243,7 @@ export default function Billing() {
                 // Gating intent: only nudge tenants whose subscription is
                 // currently in good standing toward annual. A `past_due`,
                 // `incomplete`, or `cancelled` monthly sub has bigger
-                // problems than a 20%-off pitch, and surfacing the
+                // problems than an annual-discount pitch, and surfacing the
                 // callout there would be actively confusing.
                 const monthlyCents = effectiveRateData.monthlyBasePriceCents;
                 const annualEquivCents = effectiveRateData.annualBasePriceCents;
@@ -2422,27 +2409,6 @@ export default function Billing() {
                   // the new `data-base-price-id` attribute correctly.
                   basePriceSource: effectiveRateData.basePriceSource,
                   overagePriceSource: effectiveRateData.overagePriceSource,
-                  // Always pass the SMS rate when present — even when
-                  // the source is `catalog`, surfacing the rate the
-                  // tenant is actually billed at is more useful than
-                  // hiding it. The "Live Stripe rate" badge is
-                  // separately gated on `smsPriceSource === 'stripe'`
-                  // so a catalog-sourced rate renders without the
-                  // badge (matching the AI-overage convention).
-                  smsRatePerMessage: effectiveRateData.smsRatePerMessage ?? null,
-                  smsPriceSource: effectiveRateData.smsPriceSource ?? null,
-                  // Twilio (carrier) per-minute rate follows the same
-                  // convention as SMS — always pass the rate when present
-                  // so a tenant on a catalog/env-default rate still sees
-                  // what's driving their telephony line on the invoice.
-                  // The "Live Stripe rate" badge is gated separately on
-                  // `twilioPriceSource === 'stripe'` (matching the
-                  // AI-overage / SMS conventions). The Stripe price id is
-                  // forwarded so the badge can expose it as a data attribute
-                  // for QA / support diagnostics.
-                  twilioRatePerMinute: effectiveRateData.twilioRatePerMinute ?? null,
-                  twilioPriceSource: effectiveRateData.twilioPriceSource ?? null,
-                  twilioPriceId: effectiveRateData.twilioPriceId ?? null,
                   // Stripe `Price.id`s and operator-set nicknames for
                   // the AI base/overage lines — paired so the
                   // BillingEstimator's "Live Stripe rate" badge
@@ -2859,12 +2825,12 @@ export default function Billing() {
                       const annualSavingsCents = cardIsAnnual
                         ? dollarsToCents((baseMonthlyDollars - effectiveMonthlyDollars) * 12)
                         : 0;
-                      const summary =
-                        tier === 'starter'
-                          ? '500 calls · 250 AI min · 2 agents'
-                          : tier === 'pro'
-                            ? '5,000 calls · 2,500 AI min · 10 agents'
-                            : 'Unlimited calls · Unlimited AI min · Unlimited agents';
+                      // Every plan includes all verticals and tools; plans
+                      // differ only in minutes and the matching caps
+                      // (call counts mirror `PLAN_LIMITS.monthlyCallLimit`).
+                      const monthlyCalls =
+                        tier === 'starter' ? '600' : tier === 'pro' ? '1,800' : '3,600';
+                      const summary = `${monthlyCalls} calls · ${PLAN_CATALOG[tier].includedMinutes.toLocaleString('en-US')} AI min · all tools`;
                       const label = tier === 'starter' ? 'Starter' : tier === 'pro' ? 'Pro' : 'Enterprise';
                       const isLoading = upgradeLoading === tier;
                       const cta =

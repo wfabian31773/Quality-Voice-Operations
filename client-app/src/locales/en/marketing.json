@@ -482,7 +482,7 @@
       "start_trial": "Create an account",
       "recommended": "RECOMMENDED",
       "billed_monthly": "Billed monthly · cancel anytime",
-      "billed_annually": "Billed annually · save 20%",
+      "billed_annually": "Billed annually · save 15%",
       "save_badge": "Save {{percent}}%",
       "save_badge_aria": "Save {{percent}}% with annual billing",
       "save_amount": "Save {{amount}}/yr",
@@ -494,7 +494,7 @@
     "billing_toggle": {
       "monthly": "Monthly",
       "annual": "Annual",
-      "save_badge": "Save 20%"
+      "save_badge": "Save 15%"
     },
     "calculator": {
       "eyebrow": "Per-minute calculator",
@@ -506,18 +506,10 @@
       "title_more": "You're on a custom rate above today's published price",
       "title_overage_less": "You're on a custom overage rate below today's published price",
       "title_overage_more": "You're on a custom overage rate above today's published price",
-      "title_sms_less": "You're on a custom SMS rate below today's published price",
-      "title_sms_more": "You're on a custom SMS rate above today's published price",
-      "title_twilio_less": "You're on a custom carrier rate below today's published price",
-      "title_twilio_more": "You're on a custom carrier rate above today's published price",
       "description_less": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo less than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
       "description_more": "Your account pays {{currentPrice}}/mo for {{tierName}} — that's {{deltaPrice}}/mo more than the current {{catalogPrice}} published rate. Switching to a current plan would change your bill.",
       "overage_line_less": "Your {{tierName}} overage is billed at {{currentRate}} — {{deltaRate}} less than the current {{catalogRate}} published rate.",
       "overage_line_more": "Your {{tierName}} overage is billed at {{currentRate}} — {{deltaRate}} more than the current {{catalogRate}} published rate.",
-      "sms_line_less": "Your SMS is billed at {{currentRate}} — {{deltaRate}} less than the current {{catalogRate}} published rate.",
-      "sms_line_more": "Your SMS is billed at {{currentRate}} — {{deltaRate}} more than the current {{catalogRate}} published rate.",
-      "twilio_line_less": "Your Twilio carrier minutes are billed at {{currentRate}} — {{deltaRate}} less than the current {{catalogRate}} published rate.",
-      "twilio_line_more": "Your Twilio carrier minutes are billed at {{currentRate}} — {{deltaRate}} more than the current {{catalogRate}} published rate.",
       "title_annual_less": "You're on a custom annual rate below today's published rate",
       "title_annual_more": "You're on a custom annual rate above today's published rate",
       "description_annual_less": "Your account pays {{annualCurrentPrice}}/yr for {{tierName}} — that's {{annualDeltaPrice}}/yr less than the current {{annualCatalogPrice}}/yr published annual rate. Switching to a current plan would change your bill.",
@@ -527,7 +519,7 @@
     "compare": {
       "title": "Compare all features",
       "feature_col": "Feature",
-      "all_included": "Every plan includes every industry template and every tool."
+      "all_included": "Every plan includes every industry template, every tool, and carrier calling and SMS costs. 7-day trial on every plan."
     },
     "features_list": {
       "ai_minutes": "AI minutes included",
@@ -578,7 +570,7 @@
       "q5": "Are there any contracts or commitments?",
       "a5": "No. All plans are month-to-month with no long-term contracts. You can cancel at any time and your account will remain active through the end of your current billing period.",
       "q6": "Do you offer annual pricing?",
-      "a6": "Yes. Annual billing saves you 20% compared to monthly pricing. Contact our sales team or select annual billing during signup to get the discounted rate.",
+      "a6": "Yes. Annual billing saves you 15% compared to monthly pricing. Contact our sales team or select annual billing during signup to get the discounted rate.",
       "q7": "How does setup work?",
       "a7": "Now onboarding pilot shops. Setup is discussed during your walkthrough.",
       "q8": "What payment methods do you accept?",

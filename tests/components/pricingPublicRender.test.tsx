@@ -36,8 +36,41 @@ import {
 } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
+// Type-only import (erased at runtime) so it doesn't defeat the per-test
+// `vi.resetModules()` + dynamic `import()` pattern used below.
+import type { EffectiveRateResponse } from '../../client-app/src/pages/public/Pricing';
 
 void React;
+
+// Carrier pass-through charges (Twilio per-minute + SMS per-message) were
+// removed from QVO pricing: carrier costs are folded into every plan price,
+// so `EffectiveRateResponse` no longer carries any sms*/twilio* fields.
+// Older API responses (or a stale cache) may still send them — these are
+// the legacy fields the regression tests below inject to prove they are
+// ignored end-to-end (no calculator row, no callout line, no override).
+const LEGACY_STRIPE_CARRIER_FIELDS = {
+  smsRatePerMessage: 0.0075,
+  smsPriceSource: 'stripe',
+  smsPriceId: 'price_sms_negotiated',
+  twilioRatePerMinute: 0.0125,
+  twilioPriceSource: 'stripe',
+  twilioPriceId: 'price_twilio_negotiated',
+} as const;
+
+const CARRIER_CALC_TEST_IDS = [
+  'calc-sms-rate',
+  'calc-sms-rate-value',
+  'calc-sms-source',
+  'calc-twilio-rate',
+  'calc-twilio-rate-value',
+  'calc-twilio-source',
+] as const;
+
+function expectNoCarrierCalculatorRows(): void {
+  for (const id of CARRIER_CALC_TEST_IDS) {
+    expect(screen.queryByTestId(id), id).toBeNull();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Suppress the iframe page-load chatter the Pricing page bottom CTA can
@@ -144,6 +177,29 @@ async function renderUnderPublicBundleProviders(): Promise<void> {
   );
 }
 
+// For negative assertions ("X must NOT render") we need the effective-rate
+// fetch to have resolved first, otherwise the assertion could pass merely
+// because the payload hasn't landed yet. Wait for the request, then yield
+// a few macrotasks so `api.get` can parse the body and React can commit.
+async function waitForEffectiveRateSettled(): Promise<void> {
+  await waitFor(() => {
+    expect(fetchUrls.some((u) => u.includes('/billing/effective-rate'))).toBe(true);
+  });
+  for (let i = 0; i < 5; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await waitFor(() => {
+    expect(screen.getByTestId('pricing-tier-pro-cta')).toBeTruthy();
+  });
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 describe('Public /pricing page renders under the marketing bundle providers (task #1114)', () => {
   it('renders for anonymous visitors with NO QueryClientProvider and issues zero network calls', async () => {
     mockUser = null;
@@ -172,21 +228,10 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // see it.
     expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
 
-    // The per-message SMS rate row (task #1265 / #1314) is gated on a
-    // logged-in tenant with an SMS override on the effective-rate
-    // payload. Anonymous visitors must NOT see an SMS line — they have
-    // no negotiated rate to surface and we don't want to leak the
-    // existence of an authed-only SMS price field on the marketing page.
-    expect(screen.queryByTestId('calc-sms-rate')).toBeNull();
-    expect(screen.queryByTestId('calc-sms-rate-value')).toBeNull();
-    expect(screen.queryByTestId('calc-sms-source')).toBeNull();
-
-    // Same gate as SMS for the per-minute Twilio rate row (task #1356):
-    // anonymous visitors have no negotiated carrier rate to surface, so
-    // the row must stay hidden and the badge must never mount.
-    expect(screen.queryByTestId('calc-twilio-rate')).toBeNull();
-    expect(screen.queryByTestId('calc-twilio-rate-value')).toBeNull();
-    expect(screen.queryByTestId('calc-twilio-source')).toBeNull();
+    // Carrier (SMS / Twilio) pass-through rate rows were removed from the
+    // calculator — carrier costs are included in every plan — so they
+    // must never mount, for anonymous visitors or anyone else.
+    expectNoCarrierCalculatorRows();
 
     // No /billing/* fetches for an anonymous visitor.
     expect(
@@ -202,12 +247,12 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            // $349 — deliberately different from the catalog Pro price
-            // ($399, see shared/billing/planCatalog.ts) so a regression
+            // $329 — deliberately different from the catalog Pro price
+            // ($349, see shared/billing/planCatalog.ts) so a regression
             // that ignored the override would surface as a wrong dollar
             // value on the rendered card. The overage rate is also
-            // moved off the catalog default ($0.08) for the same reason.
-            basePriceCents: 34900,
+            // moved off the catalog default ($0.22) for the same reason.
+            basePriceCents: 32900,
             overageRatePerMinute: 0.07,
             currency: 'usd',
             source: 'stripe',
@@ -242,344 +287,90 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
   });
 
   // -------------------------------------------------------------------------
-  // Task #1314: a logged-in tenant on a custom Stripe SMS price must see
-  // their negotiated $/msg rate on the public /pricing calculator with the
-  // "Live Stripe rate" badge. Locks the SMS-rendered case end-to-end so a
-  // future regression in the buildOverride → MinutesPricingCalculator
-  // wiring (or in the calc-sms-rate render gate) surfaces here.
+  // Carrier pass-through removal (replaces tasks #1265 / #1314 / #1356):
+  // the calculator used to render a per-message SMS row and a per-minute
+  // Twilio row (with a "Live Stripe rate" badge for negotiated rates).
+  // Carrier costs are now folded into every plan price, so those rows are
+  // gone. A legacy payload that still carries Stripe-sourced carrier
+  // fields must neither resurrect the rows nor engage the override.
   // -------------------------------------------------------------------------
-  it('renders the negotiated SMS rate with the "Live Stripe rate" badge for a logged-in tenant on a custom Stripe SMS price (task #1314)', async () => {
-    mockUser = { tenantId: 'tenant-sms-negotiated' };
+  it('renders NO carrier rate rows and NO "Live Stripe rate" badge when a legacy payload only carries Stripe-sourced SMS / Twilio rates', async () => {
+    mockUser = { tenantId: 'tenant-legacy-carrier-only' };
     fetchHandler = (url) => {
       if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // Catalog AI/base/overage on Pro — the only Stripe-sourced
-            // override is on the SMS side. This is the exact scenario
-            // task #1314 calls out: a tenant on a published AI plan
-            // who has separately negotiated a custom per-message SMS
-            // rate must still see that SMS rate (and badge) surface
-            // on the public calculator.
-            basePriceCents: 39900,
-            overageRatePerMinute: 0.12,
-            currency: 'usd',
-            source: 'catalog',
-            basePriceSource: 'catalog',
-            overagePriceSource: 'catalog',
-            monthlyBasePriceCents: 39900,
-            monthlyBasePriceSource: 'catalog',
-            annualBasePriceCents: 31920,
-            annualBasePriceSource: 'catalog',
-            // Negotiated $0.0075/msg vs typical env default ~$0.01/msg.
-            // Picked deliberately so a regression that fell back to a
-            // catalog default (or dropped the override entirely) would
-            // surface as a wrong rendered dollar value rather than a
-            // silently-passing assertion on a coincidental match.
-            smsRatePerMessage: 0.0075,
-            smsPriceSource: 'stripe',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
+        return jsonResponse({
+          plan: 'pro',
+          // Catalog AI/base/overage on Pro — the only Stripe-sourced
+          // fields are the legacy carrier ones. Pre-removal this
+          // engaged the override and mounted the SMS + Twilio rows.
+          basePriceCents: 34900,
+          overageRatePerMinute: 0.22,
+          currency: 'usd',
+          source: 'catalog',
+          basePriceSource: 'catalog',
+          overagePriceSource: 'catalog',
+          monthlyBasePriceCents: 34900,
+          monthlyBasePriceSource: 'catalog',
+          annualBasePriceCents: 29665,
+          annualBasePriceSource: 'catalog',
+          ...LEGACY_STRIPE_CARRIER_FIELDS,
+        });
       }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({});
     };
 
     await renderUnderPublicBundleProviders();
+    await waitForEffectiveRateSettled();
 
-    // SMS row mounts on the calculator.
-    const smsRow = await waitFor(() => screen.getByTestId('calc-sms-rate'));
-    expect(smsRow.getAttribute('data-sms-source')).toBe('stripe');
+    expectNoCarrierCalculatorRows();
+    expect(document.querySelector('[data-sms-source]')).toBeNull();
+    expect(document.querySelector('[data-twilio-source]')).toBeNull();
 
-    // Rendered $/msg matches the negotiated rate, formatted to four
-    // fraction digits per MinutesPricingCalculator.formatPerMessage so
-    // a sub-cent rate is never quietly truncated to "$0.01".
-    const valueEl = screen.getByTestId('calc-sms-rate-value');
-    const valueText = valueEl.textContent ?? '';
-    expect(valueText).toContain('$0.0075');
-    expect(valueText).toContain('/msg');
-
-    // "Live Stripe rate" badge engages because smsPriceSource === 'stripe'.
-    const badge = screen.getByTestId('calc-sms-source');
-    expect(badge.textContent ?? '').toMatch(/live stripe rate/i);
-
-    // The AI side stayed on catalog — none of the per-tier "Live Stripe
-    // rate" badges should have mounted just because SMS was Stripe-sourced.
+    // Carrier-only Stripe provenance no longer engages the override, so
+    // no per-tier "Live Stripe rate" badge may mount.
     expect(screen.queryByTestId('calc-source-starter')).toBeNull();
     expect(screen.queryByTestId('calc-source-pro')).toBeNull();
     expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
+
+    // And no callout either — nothing plan-related diverges.
+    expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
   });
 
-  it('renders the SMS row WITHOUT the "Live Stripe rate" badge when the SMS price is catalog-sourced (task #1314)', async () => {
-    // Counterpart to the positive test: a tenant on a Stripe-sourced AI
-    // plan whose SMS rate IS present on the payload but flagged
-    // smsPriceSource === 'catalog' (i.e. the env-default fallback the
-    // backend resolved when the tenant has no negotiated Stripe SMS
-    // price). MinutesPricingCalculator's render gate is keyed on the
-    // numeric rate being present — so the row mounts — but the
-    // "Live Stripe rate" badge MUST stay hidden so we don't falsely
-    // imply the env-default fallback was a negotiated rate.
-    mockUser = { tenantId: 'tenant-sms-catalog' };
+  it('renders NO carrier rate rows when the AI-side override engages alongside legacy SMS / Twilio fields', async () => {
+    mockUser = { tenantId: 'tenant-legacy-carrier-with-ai-override' };
     fetchHandler = (url) => {
       if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            basePriceCents: 34900,
-            overageRatePerMinute: 0.07,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            // SMS rate value is present (env default), but provenance
-            // is catalog. Picked at $0.01/msg so a regression that
-            // started rendering the badge for catalog-sourced SMS
-            // would surface here instead of silently passing.
-            smsRatePerMessage: 0.01,
-            smsPriceSource: 'catalog',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
+        return jsonResponse({
+          plan: 'pro',
+          basePriceCents: 32900,
+          overageRatePerMinute: 0.07,
+          currency: 'usd',
+          source: 'stripe',
+          basePriceSource: 'stripe',
+          overagePriceSource: 'stripe',
+          ...LEGACY_STRIPE_CARRIER_FIELDS,
+        });
       }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({});
     };
 
     await renderUnderPublicBundleProviders();
 
-    // Wait for the AI-side override to engage so we know the page has
-    // finished its effective-rate fetch before asserting on the SMS row.
+    // Positive anchor: the AI-side override DID land on the calculator…
     await waitFor(() => {
       expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
     });
 
-    // Row mounts because the rate value is present, but data-sms-source
-    // reflects the catalog provenance and the badge is suppressed.
-    const smsRow = screen.getByTestId('calc-sms-rate');
-    expect(smsRow.getAttribute('data-sms-source')).toBe('catalog');
-    expect(screen.queryByTestId('calc-sms-source')).toBeNull();
+    // …but the legacy carrier fields rode along without rendering anything.
+    expectNoCarrierCalculatorRows();
+    const proCard = screen.getByTestId('calc-tier-pro');
+    expect(proCard.textContent ?? '').not.toContain('/msg');
+    expect(proCard.textContent ?? '').not.toContain('$0.0125');
 
-    // Rendered $/msg still shows the env-default value so the calculator
-    // isn't lying about what the tenant pays — it just isn't claiming
-    // the rate came from a negotiated Stripe price.
-    const valueText = screen.getByTestId('calc-sms-rate-value').textContent ?? '';
-    expect(valueText).toContain('$0.0100');
-    expect(valueText).toContain('/msg');
-  });
-
-  it('does NOT render the SMS row at all when the override carries no SMS rate value (task #1314)', async () => {
-    // Separate guard for the "no SMS rate at all" case (e.g. a tenant
-    // whose backend response simply omits smsRatePerMessage). The
-    // MinutesPricingCalculator gate is keyed on the numeric value, so
-    // missing rate => row is suppressed entirely, regardless of source.
-    mockUser = { tenantId: 'tenant-sms-missing' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            basePriceCents: 34900,
-            overageRatePerMinute: 0.07,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            // No smsRatePerMessage / smsPriceSource fields at all.
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
-    });
-
-    expect(screen.queryByTestId('calc-sms-rate')).toBeNull();
-    expect(screen.queryByTestId('calc-sms-rate-value')).toBeNull();
-    expect(screen.queryByTestId('calc-sms-source')).toBeNull();
-  });
-
-  // -------------------------------------------------------------------------
-  // Task #1356: a logged-in tenant on a custom Stripe Twilio (carrier) rate
-  // must see their negotiated $/min rate on the public /pricing calculator
-  // with the "Live Stripe rate" badge — same treatment as the SMS row added
-  // in #1314. Locks the Twilio-rendered case end-to-end so a future
-  // regression in the buildOverride → MinutesPricingCalculator wiring (or
-  // in the calc-twilio-rate render gate) surfaces here.
-  // -------------------------------------------------------------------------
-  it('renders the negotiated Twilio rate with the "Live Stripe rate" badge for a logged-in tenant on a custom Stripe Twilio price (task #1356)', async () => {
-    mockUser = { tenantId: 'tenant-twilio-negotiated' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // Catalog AI/base/overage on Pro — the only Stripe-sourced
-            // override is on the Twilio side. Mirrors the SMS-only
-            // scenario above: a tenant on a published AI plan who has
-            // separately negotiated a custom Twilio carrier rate must
-            // still see that rate (and badge) on the public calculator.
-            basePriceCents: 39900,
-            overageRatePerMinute: 0.12,
-            currency: 'usd',
-            source: 'catalog',
-            basePriceSource: 'catalog',
-            overagePriceSource: 'catalog',
-            monthlyBasePriceCents: 39900,
-            monthlyBasePriceSource: 'catalog',
-            annualBasePriceCents: 31920,
-            annualBasePriceSource: 'catalog',
-            // Negotiated $0.011/min vs typical env default ~$0.013/min.
-            // Picked deliberately so a regression that fell back to a
-            // catalog default (or dropped the override entirely) would
-            // surface as a wrong rendered dollar value rather than a
-            // silently-passing assertion on a coincidental match.
-            twilioRatePerMinute: 0.011,
-            twilioPriceSource: 'stripe',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    // Twilio row mounts on the calculator.
-    const twilioRow = await waitFor(() => screen.getByTestId('calc-twilio-rate'));
-    expect(twilioRow.getAttribute('data-twilio-source')).toBe('stripe');
-
-    // Rendered $/min matches the negotiated rate, formatted to three
-    // fraction digits per MinutesPricingCalculator.formatPerMinute so
-    // a sub-cent rate is never quietly truncated.
-    const valueEl = screen.getByTestId('calc-twilio-rate-value');
-    const valueText = valueEl.textContent ?? '';
-    expect(valueText).toContain('$0.011');
-    expect(valueText).toContain('/min');
-
-    // "Live Stripe rate" badge engages because twilioPriceSource === 'stripe'.
-    const badge = screen.getByTestId('calc-twilio-source');
-    expect(badge.textContent ?? '').toMatch(/live stripe rate/i);
-
-    // The AI side stayed on catalog — none of the per-tier "Live Stripe
-    // rate" badges should have mounted just because Twilio was Stripe-sourced.
-    expect(screen.queryByTestId('calc-source-starter')).toBeNull();
-    expect(screen.queryByTestId('calc-source-pro')).toBeNull();
-    expect(screen.queryByTestId('calc-source-enterprise')).toBeNull();
-  });
-
-  it('renders the Twilio row WITHOUT the "Live Stripe rate" badge when the Twilio price is catalog-sourced (task #1356)', async () => {
-    // Counterpart to the positive Twilio test: a tenant on a Stripe-
-    // sourced AI plan whose Twilio rate IS present on the payload but
-    // flagged twilioPriceSource === 'catalog' (i.e. the env-default
-    // fallback the backend resolved when the tenant has no negotiated
-    // Stripe Twilio price). MinutesPricingCalculator's render gate is
-    // keyed on the numeric rate being present — so the row mounts —
-    // but the "Live Stripe rate" badge MUST stay hidden so we don't
-    // falsely imply the env-default fallback was a negotiated rate.
-    mockUser = { tenantId: 'tenant-twilio-catalog' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            basePriceCents: 34900,
-            overageRatePerMinute: 0.07,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            // Twilio rate value is present (env default), but provenance
-            // is catalog. Picked at $0.013/min so a regression that
-            // started rendering the badge for catalog-sourced Twilio
-            // would surface here instead of silently passing.
-            twilioRatePerMinute: 0.013,
-            twilioPriceSource: 'catalog',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    // Wait for the AI-side override to engage so we know the page has
-    // finished its effective-rate fetch before asserting on the Twilio row.
-    await waitFor(() => {
-      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
-    });
-
-    // Row mounts because the rate value is present, but data-twilio-source
-    // reflects the catalog provenance and the badge is suppressed.
-    const twilioRow = screen.getByTestId('calc-twilio-rate');
-    expect(twilioRow.getAttribute('data-twilio-source')).toBe('catalog');
-    expect(screen.queryByTestId('calc-twilio-source')).toBeNull();
-
-    // Rendered $/min still shows the env-default value so the calculator
-    // isn't lying about what the tenant pays — it just isn't claiming
-    // the rate came from a negotiated Stripe price.
-    const valueText = screen.getByTestId('calc-twilio-rate-value').textContent ?? '';
-    expect(valueText).toContain('$0.013');
-    expect(valueText).toContain('/min');
-  });
-
-  it('does NOT render the Twilio row at all when the override carries no Twilio rate value (task #1356)', async () => {
-    // Separate guard for the "no Twilio rate at all" case (e.g. a
-    // tenant whose backend response simply omits twilioRatePerMinute).
-    // The MinutesPricingCalculator gate is keyed on the numeric value,
-    // so missing rate => row is suppressed entirely, regardless of
-    // source — same behaviour as the SMS row.
-    mockUser = { tenantId: 'tenant-twilio-missing' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            basePriceCents: 34900,
-            overageRatePerMinute: 0.07,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            // No twilioRatePerMinute / twilioPriceSource fields at all.
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
-    });
-
-    expect(screen.queryByTestId('calc-twilio-rate')).toBeNull();
-    expect(screen.queryByTestId('calc-twilio-rate-value')).toBeNull();
-    expect(screen.queryByTestId('calc-twilio-source')).toBeNull();
+    // Monthly disclaimer now tells visitors carrier costs are bundled.
+    expect(screen.getByTestId('calc-disclaimer').textContent ?? '').toContain(
+      'Carrier calling and SMS costs are included in every plan.',
+    );
   });
 
   it('shows the custom-rate callout above the calculator when the tenant pays LESS than catalog (task #1210)', async () => {
@@ -589,9 +380,9 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            // Tenant grandfathered at $250/mo for Pro; catalog is $399.
+            // Tenant grandfathered at $250/mo for Pro; catalog is $349.
             basePriceCents: 25000,
-            overageRatePerMinute: 0.12,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
@@ -623,9 +414,10 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // key, so a future copy tweak surfaces here as a real failure.
     const description = screen.getByTestId('pricing-override-callout-description');
     const text = description.textContent ?? '';
+    // $349 catalog − $250 tenant = $99/mo less.
     expect(text).toContain('$250');
-    expect(text).toContain('$149');
-    expect(text).toContain('$399');
+    expect(text).toContain('$99');
+    expect(text).toContain('$349');
     expect(text.toLowerCase()).toContain('pro');
     expect(text.toLowerCase()).toContain('less');
 
@@ -641,16 +433,16 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'starter',
-            // Custom rate $149/mo for Starter; catalog is $99.
-            basePriceCents: 14900,
-            overageRatePerMinute: 0.15,
+            // Custom rate $199/mo for Starter; catalog is $149.
+            basePriceCents: 19900,
+            overageRatePerMinute: 0.25,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'catalog',
-            monthlyBasePriceCents: 14900,
+            monthlyBasePriceCents: 19900,
             monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 12000,
+            annualBasePriceCents: 16000,
             annualBasePriceSource: 'stripe',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -669,37 +461,37 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     );
     expect(callout.getAttribute('data-direction')).toBe('more');
     const text = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
-    expect(text).toContain('$149');
+    expect(text).toContain('$199');
     expect(text).toContain('$50');
-    expect(text).toContain('$99');
+    expect(text).toContain('$149');
     expect(text.toLowerCase()).toContain('more');
   });
 
   it('does NOT render the custom-rate callout for a tenant on the standard published ANNUAL rate (task #1210, regression)', async () => {
     // Regression: an annual-billed tenant on the catalog rate has
-    // basePriceCents = catalog × 0.8 (annualised monthly equivalent).
+    // basePriceCents = catalog × 0.85 (annualised monthly equivalent).
     // A naive comparison against catalog monthly would falsely flag
     // them as paying "less than the published rate" when they're
     // simply on the annual interval. The fix is to compare against the
-    // matching catalog interval (annual = catalog × 0.8).
+    // matching catalog interval (annual = catalog × (1 − ANNUAL_DISCOUNT)).
     mockUser = { tenantId: 'tenant-on-published-annual' };
     fetchHandler = (url) => {
       if (url.includes('/billing/effective-rate')) {
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            // $399 monthly catalog × (1 - 0.20) = $319.20/mo annualised.
-            basePriceCents: 31920,
-            overageRatePerMinute: 0.12,
+            // $349 monthly catalog × (1 - 0.15) = $296.65/mo annualised.
+            basePriceCents: 29665,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'stripe',
             // The matching (annual) interval reuses the sub-derived
             // value verbatim; the other side comes from env lookup.
-            monthlyBasePriceCents: 39900,
+            monthlyBasePriceCents: 34900,
             monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 31920,
+            annualBasePriceCents: 29665,
             annualBasePriceSource: 'stripe',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -727,14 +519,15 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            // Annual at $3,000/yr ($250/mo); catalog annual = $3,830/yr.
+            // Annual at $3,000/yr ($250/mo); catalog annual =
+            // $296.65/mo × 12 ≈ $3,560/yr.
             basePriceCents: 25000,
-            overageRatePerMinute: 0.12,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'catalog',
-            monthlyBasePriceCents: 39900,
+            monthlyBasePriceCents: 34900,
             monthlyBasePriceSource: 'stripe',
             annualBasePriceCents: 25000,
             annualBasePriceSource: 'stripe',
@@ -771,8 +564,8 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     const annualText =
       screen.getByTestId('pricing-override-callout-description').textContent ?? '';
     expect(annualText).toContain('$3,000');
-    expect(annualText).toContain('$3,830');
-    expect(annualText).toContain('$830');
+    expect(annualText).toContain('$3,560');
+    expect(annualText).toContain('$560');
     expect(annualText).toContain('/yr');
     expect(annualText).not.toContain('/mo');
   });
@@ -784,15 +577,17 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            basePriceCents: 35000,
-            overageRatePerMinute: 0.12,
+            // Custom $300/mo monthly (vs catalog $349) — but the annual
+            // side is the published $296.65/mo annual reference.
+            basePriceCents: 30000,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'catalog',
-            monthlyBasePriceCents: 35000,
+            monthlyBasePriceCents: 30000,
             monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 31920,
+            annualBasePriceCents: 29665,
             annualBasePriceSource: 'catalog',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -825,15 +620,15 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
           JSON.stringify({
             plan: 'pro',
             // Annual contract at $3,000/yr → $250/mo annualised.
-            // Catalog annual reference = $399 × 0.8 = $319.20/mo.
-            // Delta = $319 - $250 = ~$69/mo less.
+            // Catalog annual reference = $349 × 0.85 = $296.65/mo.
+            // Delta = $296.65 - $250 = $46.65 → ~$47/mo less.
             basePriceCents: 25000,
-            overageRatePerMinute: 0.12,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'catalog',
-            monthlyBasePriceCents: 39900,
+            monthlyBasePriceCents: 34900,
             monthlyBasePriceSource: 'stripe',
             // Annual side mirrors basePriceCents for an annual sub.
             annualBasePriceCents: 25000,
@@ -855,13 +650,13 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     );
     expect(callout.getAttribute('data-direction')).toBe('less');
     const text = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
-    // Reference should be the ANNUAL catalog price ($319), not monthly $399.
+    // Reference should be the ANNUAL catalog price ($297), not monthly $349.
     expect(text).toContain('$250');
-    expect(text).toContain('$319');
-    expect(text).toContain('$69');
+    expect(text).toContain('$297');
+    expect(text).toContain('$47');
     // And specifically NOT the monthly catalog headline — that would
     // be the regression we're guarding against.
-    expect(text).not.toContain('$399');
+    expect(text).not.toContain('$349');
   });
 
   // -------------------------------------------------------------------------
@@ -877,8 +672,8 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            // Custom base ($250 vs catalog $399) + custom overage
-            // ($0.05/min vs catalog $0.12/min) — banner copy must read
+            // Custom base ($250 vs catalog $349) + custom overage
+            // ($0.05/min vs catalog $0.22/min) — banner copy must read
             // cleanly with both lines present.
             basePriceCents: 25000,
             overageRatePerMinute: 0.05,
@@ -912,14 +707,14 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // Base line still reads cleanly.
     const baseText = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
     expect(baseText).toContain('$250');
-    expect(baseText).toContain('$149');
-    expect(baseText).toContain('$399');
+    expect(baseText).toContain('$99');
+    expect(baseText).toContain('$349');
 
     // Overage line renders with per-minute numbers and tier name.
     const overageText = screen.getByTestId('pricing-override-callout-overage').textContent ?? '';
     expect(overageText).toContain('$0.05/min');
-    expect(overageText).toContain('$0.07/min');
-    expect(overageText).toContain('$0.12/min');
+    expect(overageText).toContain('$0.17/min');
+    expect(overageText).toContain('$0.22/min');
     expect(overageText.toLowerCase()).toContain('pro');
     expect(overageText.toLowerCase()).toContain('less');
   });
@@ -931,19 +726,19 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            // On the published Pro base price ($399) but with a
+            // On the published Pro base price ($349) but with a
             // negotiated $0.05/min overage. Pre-#1270 this banner
             // would have stayed hidden — the whole point of the task
             // is that this tenant now sees a per-minute summary.
-            basePriceCents: 39900,
+            basePriceCents: 34900,
             overageRatePerMinute: 0.05,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 39900,
+            monthlyBasePriceCents: 34900,
             monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 31920,
+            annualBasePriceCents: 29665,
             annualBasePriceSource: 'stripe',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -971,49 +766,41 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     // Overage line stands on its own.
     const overageText = screen.getByTestId('pricing-override-callout-overage').textContent ?? '';
     expect(overageText).toContain('$0.05/min');
-    expect(overageText).toContain('$0.12/min');
+    expect(overageText).toContain('$0.22/min');
     expect(overageText.toLowerCase()).toContain('less');
   });
 
   // -------------------------------------------------------------------------
-  // Task #1327: render-side coverage for the SMS line. The pure
-  // computeCustomRateDelta tests below lock in the data shape; these
-  // mount the page so we also verify the i18n keys exist and the line
-  // renders with the expected per-message numbers alongside the existing
-  // base + overage lines.
+  // Carrier pass-through removal (replaces tasks #1327 / #1357): the
+  // callout used to render a per-message SMS line and a per-minute Twilio
+  // carrier line (plus `data-has-sms` / `data-has-twilio` attributes).
+  // Carrier costs are now included in every plan, so a legacy payload
+  // carrying Stripe-sourced carrier rates must not surface either line,
+  // nor mount the callout on its own.
   // -------------------------------------------------------------------------
-  it('renders the SMS line on the callout when base, overage AND SMS are all custom (task #1327)', async () => {
-    mockUser = { tenantId: 'tenant-grandfathered-everything' };
+  it('renders NO SMS / Twilio line on the callout when legacy Stripe-sourced carrier rates ride along with custom base + overage', async () => {
+    mockUser = { tenantId: 'tenant-grandfathered-legacy-carrier' };
     fetchHandler = (url) => {
       if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // Custom base ($250 vs catalog $399) + custom overage
-            // ($0.05/min vs catalog $0.12/min) + custom SMS
-            // ($0.0075/msg vs catalog $0.01/msg). Banner copy must
-            // read cleanly with all three lines present — that's the
-            // headline scenario the task calls out.
-            basePriceCents: 25000,
-            overageRatePerMinute: 0.05,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 25000,
-            monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 20000,
-            annualBasePriceSource: 'stripe',
-            smsRatePerMessage: 0.0075,
-            smsPriceSource: 'stripe',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
+        return jsonResponse({
+          plan: 'pro',
+          // Custom base ($250 vs catalog $349) + custom overage
+          // ($0.05/min vs catalog $0.22/min) + legacy negotiated
+          // SMS ($0.0075/msg) and Twilio ($0.0125/min) fields.
+          basePriceCents: 25000,
+          overageRatePerMinute: 0.05,
+          currency: 'usd',
+          source: 'stripe',
+          basePriceSource: 'stripe',
+          overagePriceSource: 'stripe',
+          monthlyBasePriceCents: 25000,
+          monthlyBasePriceSource: 'stripe',
+          annualBasePriceCents: 20000,
+          annualBasePriceSource: 'stripe',
+          ...LEGACY_STRIPE_CARRIER_FIELDS,
+        });
       }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({});
     };
 
     await renderUnderPublicBundleProviders();
@@ -1021,301 +808,61 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
     const callout = await waitFor(() =>
       screen.getByTestId('pricing-override-callout'),
     );
+    // Base + overage lines still render — that's why the callout mounted.
     expect(callout.getAttribute('data-direction')).toBe('less');
     expect(callout.getAttribute('data-has-base')).toBe('true');
     expect(callout.getAttribute('data-has-overage')).toBe('true');
-    expect(callout.getAttribute('data-has-sms')).toBe('true');
+    expect(screen.getByTestId('pricing-override-callout-description')).toBeTruthy();
+    expect(screen.getByTestId('pricing-override-callout-overage')).toBeTruthy();
 
-    // All three lines render side-by-side without confusing each other.
-    const baseText = screen.getByTestId('pricing-override-callout-description').textContent ?? '';
-    expect(baseText).toContain('$250');
-    expect(baseText).toContain('$399');
-
-    const overageText = screen.getByTestId('pricing-override-callout-overage').textContent ?? '';
-    expect(overageText).toContain('$0.05/min');
-    expect(overageText).toContain('$0.12/min');
-
-    // SMS line carries its own per-message numbers, formatted to four
-    // fraction digits so a sub-cent rate is never quietly truncated.
-    const smsText = screen.getByTestId('pricing-override-callout-sms').textContent ?? '';
-    expect(smsText).toContain('$0.0075/msg');
-    expect(smsText).toContain('$0.0100/msg');
-    expect(smsText).toContain('$0.0025/msg');
-    expect(smsText.toLowerCase()).toContain('less');
-  });
-
-  it('renders the callout for a tenant with ONLY a custom SMS rate (base + overage match catalog) (task #1327)', async () => {
-    mockUser = { tenantId: 'tenant-sms-only' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // On the published Pro base + catalog overage, but with a
-            // negotiated $0.0075/msg SMS rate. Pre-#1327 this banner
-            // would have stayed hidden — the whole point of the task
-            // is that this tenant now sees a per-message summary.
-            basePriceCents: 39900,
-            overageRatePerMinute: 0.12,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 39900,
-            monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 31920,
-            annualBasePriceSource: 'stripe',
-            smsRatePerMessage: 0.0075,
-            smsPriceSource: 'stripe',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    const callout = await waitFor(() =>
-      screen.getByTestId('pricing-override-callout'),
-    );
-    // Tone derived from the SMS direction since neither base nor overage diverges.
-    expect(callout.getAttribute('data-direction')).toBe('less');
-    expect(callout.getAttribute('data-has-base')).toBe('false');
-    expect(callout.getAttribute('data-has-overage')).toBe('false');
-    expect(callout.getAttribute('data-has-sms')).toBe('true');
-
-    // Base and overage sentences are suppressed — there's nothing
-    // meaningful to say about them.
-    expect(screen.queryByTestId('pricing-override-callout-description')).toBeNull();
-    expect(screen.queryByTestId('pricing-override-callout-overage')).toBeNull();
-
-    // SMS line stands on its own.
-    const smsText = screen.getByTestId('pricing-override-callout-sms').textContent ?? '';
-    expect(smsText).toContain('$0.0075/msg');
-    expect(smsText).toContain('$0.0100/msg');
-    expect(smsText.toLowerCase()).toContain('less');
-  });
-
-  // -------------------------------------------------------------------------
-  // Task #1357: render-side coverage for the Twilio carrier line. The
-  // pure computeCustomRateDelta tests above lock in the data shape;
-  // these mount the page so we also verify the i18n keys exist and
-  // the line renders with the expected per-minute carrier numbers
-  // alongside the existing base + overage + SMS lines.
-  // -------------------------------------------------------------------------
-  it('renders the Twilio carrier line on the callout when base, overage, SMS AND Twilio are all custom (task #1357)', async () => {
-    mockUser = { tenantId: 'tenant-grandfathered-everything-twilio' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // Custom base ($250 vs catalog $399) + custom overage
-            // ($0.05/min vs catalog $0.12/min) + custom SMS
-            // ($0.0075/msg vs catalog $0.01/msg) + custom Twilio
-            // ($0.0125/min vs catalog $0.02/min). Banner copy must
-            // read cleanly with all four lines present — that's the
-            // headline scenario for a high-volume voice tenant on a
-            // negotiated carrier rate.
-            basePriceCents: 25000,
-            overageRatePerMinute: 0.05,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 25000,
-            monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 20000,
-            annualBasePriceSource: 'stripe',
-            smsRatePerMessage: 0.0075,
-            smsPriceSource: 'stripe',
-            twilioRatePerMinute: 0.0125,
-            twilioPriceSource: 'stripe',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    const callout = await waitFor(() =>
-      screen.getByTestId('pricing-override-callout'),
-    );
-    expect(callout.getAttribute('data-direction')).toBe('less');
-    expect(callout.getAttribute('data-has-base')).toBe('true');
-    expect(callout.getAttribute('data-has-overage')).toBe('true');
-    expect(callout.getAttribute('data-has-sms')).toBe('true');
-    expect(callout.getAttribute('data-has-twilio')).toBe('true');
-
-    // Twilio line carries its own per-minute carrier numbers,
-    // formatted to four fraction digits so a sub-cent rate is never
-    // quietly truncated.
-    const twilioText = screen.getByTestId('pricing-override-callout-twilio').textContent ?? '';
-    expect(twilioText).toContain('$0.0125/min');
-    expect(twilioText).toContain('$0.0200/min');
-    expect(twilioText).toContain('$0.0075/min');
-    expect(twilioText.toLowerCase()).toContain('less');
-  });
-
-  it('renders the callout for a tenant with ONLY a custom Twilio carrier rate (base + overage + SMS match catalog) (task #1357)', async () => {
-    mockUser = { tenantId: 'tenant-twilio-only' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // On the published Pro base + catalog overage + catalog
-            // SMS, but with a negotiated $0.0125/min Twilio carrier
-            // rate. Pre-#1357 this banner would have stayed hidden —
-            // the whole point of the task is that this tenant now
-            // sees a per-minute carrier summary.
-            basePriceCents: 39900,
-            overageRatePerMinute: 0.12,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 39900,
-            monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 31920,
-            annualBasePriceSource: 'stripe',
-            twilioRatePerMinute: 0.0125,
-            twilioPriceSource: 'stripe',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    const callout = await waitFor(() =>
-      screen.getByTestId('pricing-override-callout'),
-    );
-    // Tone derived from the Twilio direction since none of base /
-    // overage / SMS diverges.
-    expect(callout.getAttribute('data-direction')).toBe('less');
-    expect(callout.getAttribute('data-has-base')).toBe('false');
-    expect(callout.getAttribute('data-has-overage')).toBe('false');
-    expect(callout.getAttribute('data-has-sms')).toBe('false');
-    expect(callout.getAttribute('data-has-twilio')).toBe('true');
-
-    // Base, overage, and SMS sentences are suppressed — there's
-    // nothing meaningful to say about them.
-    expect(screen.queryByTestId('pricing-override-callout-description')).toBeNull();
-    expect(screen.queryByTestId('pricing-override-callout-overage')).toBeNull();
+    // No carrier attributes or lines.
+    expect(callout.hasAttribute('data-has-sms')).toBe(false);
+    expect(callout.hasAttribute('data-has-twilio')).toBe(false);
     expect(screen.queryByTestId('pricing-override-callout-sms')).toBeNull();
-
-    // Twilio line stands on its own.
-    const twilioText = screen.getByTestId('pricing-override-callout-twilio').textContent ?? '';
-    expect(twilioText).toContain('$0.0125/min');
-    expect(twilioText).toContain('$0.0200/min');
-    expect(twilioText.toLowerCase()).toContain('less');
-  });
-
-  it('does NOT render the Twilio line when twilioPriceSource is catalog (task #1357)', async () => {
-    mockUser = { tenantId: 'tenant-base-custom-twilio-catalog' };
-    fetchHandler = (url) => {
-      if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // Custom base + Stripe overage, but Twilio source is
-            // catalog (env-default fallback) — the Twilio line MUST
-            // stay hidden even though the value is present, since we
-            // don't want to imply the env default was negotiated.
-            basePriceCents: 25000,
-            overageRatePerMinute: 0.05,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 25000,
-            monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 20000,
-            annualBasePriceSource: 'stripe',
-            twilioRatePerMinute: 0.02,
-            twilioPriceSource: 'catalog',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
-    await renderUnderPublicBundleProviders();
-
-    const callout = await waitFor(() =>
-      screen.getByTestId('pricing-override-callout'),
-    );
-    expect(callout.getAttribute('data-has-twilio')).toBe('false');
     expect(screen.queryByTestId('pricing-override-callout-twilio')).toBeNull();
-    // Existing base + overage lines still render — that's why the
-    // callout mounted at all.
-    expect(screen.getByTestId('pricing-override-callout-description')).toBeTruthy();
-    expect(screen.getByTestId('pricing-override-callout-overage')).toBeTruthy();
+    const calloutText = callout.textContent ?? '';
+    expect(calloutText).not.toContain('/msg');
+    expect(calloutText).not.toContain('$0.0125');
+    expect(calloutText).not.toContain('$0.0075');
   });
 
-  it('does NOT render the SMS line when smsPriceSource is catalog (task #1327)', async () => {
-    mockUser = { tenantId: 'tenant-base-custom-sms-catalog' };
+  it('does NOT mount the callout when the only divergence is a legacy Stripe-sourced SMS / Twilio rate (base + overage match catalog)', async () => {
+    mockUser = { tenantId: 'tenant-legacy-carrier-divergence-only' };
     fetchHandler = (url) => {
       if (url.includes('/billing/effective-rate')) {
-        return new Response(
-          JSON.stringify({
-            plan: 'pro',
-            // Custom base + Stripe overage, but SMS source is catalog
-            // (env-default fallback) — the SMS line MUST stay hidden
-            // even though the value is present, since we don't want
-            // to imply the env default was negotiated.
-            basePriceCents: 25000,
-            overageRatePerMinute: 0.05,
-            currency: 'usd',
-            source: 'stripe',
-            basePriceSource: 'stripe',
-            overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 25000,
-            monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 20000,
-            annualBasePriceSource: 'stripe',
-            smsRatePerMessage: 0.01,
-            smsPriceSource: 'catalog',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
+        return jsonResponse({
+          plan: 'pro',
+          // On the published Pro base + overage (Stripe-sourced), with
+          // legacy negotiated carrier rates. Pre-removal this mounted an
+          // SMS-only / Twilio-only callout; now there's nothing to say.
+          basePriceCents: 34900,
+          overageRatePerMinute: 0.22,
+          currency: 'usd',
+          source: 'stripe',
+          basePriceSource: 'stripe',
+          overagePriceSource: 'stripe',
+          monthlyBasePriceCents: 34900,
+          monthlyBasePriceSource: 'stripe',
+          annualBasePriceCents: 29665,
+          annualBasePriceSource: 'stripe',
+          ...LEGACY_STRIPE_CARRIER_FIELDS,
+        });
       }
-      return new Response('{}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({});
     };
 
     await renderUnderPublicBundleProviders();
 
-    const callout = await waitFor(() =>
-      screen.getByTestId('pricing-override-callout'),
-    );
-    expect(callout.getAttribute('data-has-sms')).toBe('false');
+    // The override itself engages (base/overage are Stripe-sourced), which
+    // proves the payload landed before we assert on the missing callout.
+    await waitFor(() => {
+      expect(screen.getByTestId('calc-source-pro')).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId('pricing-override-callout')).toBeNull();
     expect(screen.queryByTestId('pricing-override-callout-sms')).toBeNull();
-    // Existing base + overage lines still render — that's why the
-    // callout mounted at all.
-    expect(screen.getByTestId('pricing-override-callout-description')).toBeTruthy();
-    expect(screen.getByTestId('pricing-override-callout-overage')).toBeTruthy();
+    expect(screen.queryByTestId('pricing-override-callout-twilio')).toBeNull();
+    expectNoCarrierCalculatorRows();
   });
 
   it('does NOT render the overage line when overage matches catalog (task #1270)', async () => {
@@ -1328,7 +875,7 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
             // Custom base, but overage is catalog-sourced — overage
             // line MUST stay hidden.
             basePriceCents: 25000,
-            overageRatePerMinute: 0.12,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
@@ -1368,15 +915,15 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
             // Tenant pays the published rate exactly — even though the
             // payload is Stripe-sourced (live subscription), there's no
             // delta to surface, so the callout MUST NOT mount.
-            basePriceCents: 39900,
-            overageRatePerMinute: 0.12,
+            basePriceCents: 34900,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'stripe',
             basePriceSource: 'stripe',
             overagePriceSource: 'stripe',
-            monthlyBasePriceCents: 39900,
+            monthlyBasePriceCents: 34900,
             monthlyBasePriceSource: 'stripe',
-            annualBasePriceCents: 31900,
+            annualBasePriceCents: 29665,
             annualBasePriceSource: 'stripe',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -1405,8 +952,8 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
         return new Response(
           JSON.stringify({
             plan: 'pro',
-            basePriceCents: 49900,
-            overageRatePerMinute: 0.08,
+            basePriceCents: 34900,
+            overageRatePerMinute: 0.22,
             currency: 'usd',
             source: 'catalog',
             basePriceSource: 'catalog',
@@ -1443,10 +990,10 @@ describe('Public /pricing page renders under the marketing bundle providers (tas
 // monthly equivalent of whatever interval the tenant's subscription is on).
 // For a tenant on annual, `basePriceCents` is the annual monthly-equivalent
 // (e.g. $300 for a $3,600/yr Pro plan), NOT the published monthly Pro price
-// ($399). The calculator's monthly mode must render the latter, which the
+// ($349). The calculator's monthly mode must render the latter, which the
 // API now provides via `monthlyBasePriceCents`. These tests pin down the
 // mapping in `buildOverride()` so an annual tenant flipping the calculator
-// to monthly mode sees the correct $399 published rate, not their own
+// to monthly mode sees the correct $349 published rate, not their own
 // $300 annual-equivalent.
 // ---------------------------------------------------------------------------
 describe('buildOverride / EffectiveRateResponse mapping', () => {
@@ -1461,7 +1008,7 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
       // Backend resolved the monthly side from STRIPE_PRICE_PRO_MONTHLY.
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'stripe',
       // Annual side reuses the sub-derived value.
       annualBasePriceCents: 30000,
@@ -1470,7 +1017,7 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
     expect(override).toBeDefined();
     // Calculator's monthly mode must see the published monthly price, not
     // the tenant's annual monthly-equivalent.
-    expect(override?.basePriceCents).toBe(39900);
+    expect(override?.basePriceCents).toBe(34900);
     expect(override?.basePriceSource).toBe('stripe');
     // Annual mode passthrough.
     expect(override?.annualBasePriceCents).toBe(30000);
@@ -1484,12 +1031,12 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
     // rather than crashing or dropping the override entirely.
     const override = buildOverride({
       plan: 'pro',
-      basePriceCents: 34900,
-      overageRatePerMinute: 0.08,
+      basePriceCents: 32900,
+      overageRatePerMinute: 0.2,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
     });
-    expect(override?.basePriceCents).toBe(34900);
+    expect(override?.basePriceCents).toBe(32900);
     expect(override?.basePriceSource).toBe('stripe');
     expect(override?.annualBasePriceCents).toBeUndefined();
   });
@@ -1502,19 +1049,19 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
     // override (and the badge) even though monthly+overage are catalog.
     const override = buildOverride({
       plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.08,
+      basePriceCents: 34900,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'catalog',
       overagePriceSource: 'catalog',
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'catalog',
-      annualBasePriceCents: 31900,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'stripe',
     });
     expect(override).toBeDefined();
     expect(override?.basePriceSource).toBe('catalog');
     expect(override?.annualBasePriceSource).toBe('stripe');
-    expect(override?.annualBasePriceCents).toBe(31900);
+    expect(override?.annualBasePriceCents).toBe(29665);
   });
 
   it('returns undefined when every interval is catalog-sourced', async () => {
@@ -1523,125 +1070,63 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
     // catalog rendering rather than mounting a misleading badge.
     const override = buildOverride({
       plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.08,
+      basePriceCents: 34900,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'catalog',
       overagePriceSource: 'catalog',
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'catalog',
-      annualBasePriceCents: 31900,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'catalog',
     });
     expect(override).toBeUndefined();
   });
 
-  // Task #1265: an SMS-only Stripe quote (catalog AI/base rates) must
-  // still produce an override so the calculator can surface the
-  // negotiated $/msg rate. Previously buildOverride bailed out unless
-  // an AI-side source was Stripe, which would have hidden the SMS row
-  // for tenants on a custom SMS price + catalog AI plan.
-  it('engages the override when only the SMS side is Stripe-sourced', async () => {
+  // Carrier pass-through removal (replaces tasks #1265 / #1356): an
+  // SMS-only or Twilio-only Stripe quote used to engage the override so
+  // the calculator could surface the negotiated carrier rate. Carrier
+  // costs are now bundled into plan prices, so legacy carrier provenance
+  // must NOT engage the override (no misleading "Live Stripe rate" badge).
+  it('returns undefined when the only Stripe-sourced fields are legacy SMS / Twilio rates', async () => {
     const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
     const override = buildOverride({
       plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.08,
+      basePriceCents: 34900,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'catalog',
       overagePriceSource: 'catalog',
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'catalog',
-      annualBasePriceCents: 31900,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'catalog',
-      smsRatePerMessage: 0.0075,
-      smsPriceSource: 'stripe',
-    });
+      ...LEGACY_STRIPE_CARRIER_FIELDS,
+    } as unknown as EffectiveRateResponse);
+    expect(override).toBeUndefined();
+  });
+
+  it('never passes legacy SMS / Twilio fields through when the override is engaged for AI reasons', async () => {
+    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
+    const override = buildOverride({
+      plan: 'pro',
+      basePriceCents: 30000,
+      overageRatePerMinute: 0.07,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      ...LEGACY_STRIPE_CARRIER_FIELDS,
+    } as unknown as EffectiveRateResponse);
     expect(override).toBeDefined();
-    expect(override?.basePriceSource).toBe('catalog');
-    expect(override?.smsRatePerMessage).toBe(0.0075);
-    expect(override?.smsPriceSource).toBe('stripe');
-  });
-
-  it('passes SMS fields through unchanged when the override is engaged for AI reasons', async () => {
-    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
-    const override = buildOverride({
-      plan: 'pro',
-      basePriceCents: 30000,
-      overageRatePerMinute: 0.07,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.012,
-      smsPriceSource: 'stripe',
-    });
-    expect(override?.smsRatePerMessage).toBe(0.012);
-    expect(override?.smsPriceSource).toBe('stripe');
-  });
-
-  it('normalises missing SMS fields to null on the override', async () => {
-    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
-    const override = buildOverride({
-      plan: 'pro',
-      basePriceCents: 30000,
-      overageRatePerMinute: 0.07,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-    });
-    expect(override?.smsRatePerMessage).toBeNull();
-    expect(override?.smsPriceSource).toBeNull();
-  });
-
-  // Task #1356: a Twilio-only Stripe quote (catalog AI/SMS rates) must
-  // still produce an override so the calculator can surface the
-  // negotiated $/min Twilio carrier rate. Mirrors the SMS-only test
-  // above — without this, buildOverride would bail out for tenants on
-  // a custom Twilio price + catalog AI plan and the row would never
-  // mount on the public /pricing calculator.
-  it('engages the override when only the Twilio side is Stripe-sourced (task #1356)', async () => {
-    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
-    const override = buildOverride({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.08,
-      basePriceSource: 'catalog',
-      overagePriceSource: 'catalog',
-      monthlyBasePriceCents: 39900,
-      monthlyBasePriceSource: 'catalog',
-      annualBasePriceCents: 31900,
-      annualBasePriceSource: 'catalog',
-      twilioRatePerMinute: 0.011,
-      twilioPriceSource: 'stripe',
-    });
-    expect(override).toBeDefined();
-    expect(override?.basePriceSource).toBe('catalog');
-    expect(override?.twilioRatePerMinute).toBe(0.011);
-    expect(override?.twilioPriceSource).toBe('stripe');
-  });
-
-  it('passes Twilio fields through unchanged when the override is engaged for AI reasons (task #1356)', async () => {
-    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
-    const override = buildOverride({
-      plan: 'pro',
-      basePriceCents: 30000,
-      overageRatePerMinute: 0.07,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioRatePerMinute: 0.012,
-      twilioPriceSource: 'stripe',
-    });
-    expect(override?.twilioRatePerMinute).toBe(0.012);
-    expect(override?.twilioPriceSource).toBe('stripe');
-  });
-
-  it('normalises missing Twilio fields to null on the override (task #1356)', async () => {
-    const { buildOverride } = await import('../../client-app/src/pages/public/Pricing');
-    const override = buildOverride({
-      plan: 'pro',
-      basePriceCents: 30000,
-      overageRatePerMinute: 0.07,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-    });
-    expect(override?.twilioRatePerMinute).toBeNull();
-    expect(override?.twilioPriceSource).toBeNull();
+    expect(override?.basePriceCents).toBe(30000);
+    expect(override?.overageRatePerMinute).toBe(0.07);
+    for (const key of [
+      'smsRatePerMessage',
+      'smsPriceSource',
+      'smsPriceId',
+      'twilioRatePerMinute',
+      'twilioPriceSource',
+      'twilioPriceId',
+    ]) {
+      expect(override, key).not.toHaveProperty(key);
+    }
   });
 });
 
@@ -1653,7 +1138,8 @@ describe('buildOverride / EffectiveRateResponse mapping', () => {
 // interval-agnostic `basePriceCents` (monthly equivalent of whatever
 // interval the subscription is on), and the catalog reference is the
 // matching catalog interval price — monthly for monthly subs, the
-// catalog × (1 - 0.20) annual equivalent for annual subs.
+// catalog × (1 - ANNUAL_DISCOUNT) = catalog × 0.85 annual equivalent for
+// annual subs.
 // ---------------------------------------------------------------------------
 describe('computeCustomRateDelta', () => {
   it('returns null for a null/undefined payload', async () => {
@@ -1668,8 +1154,8 @@ describe('computeCustomRateDelta', () => {
     // would see — the callout would lie, so it must not render.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
+      basePriceCents: 34900,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'catalog',
       overagePriceSource: 'catalog',
     });
@@ -1682,8 +1168,8 @@ describe('computeCustomRateDelta', () => {
     // a 1¢ proration drift from rounding shouldn't trigger the banner.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39901,
-      overageRatePerMinute: 0.12,
+      basePriceCents: 34901,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
     });
@@ -1695,7 +1181,7 @@ describe('computeCustomRateDelta', () => {
     const delta = computeCustomRateDelta({
       plan: 'pro',
       basePriceCents: 25000,
-      overageRatePerMinute: 0.12,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'catalog',
     });
@@ -1704,8 +1190,8 @@ describe('computeCustomRateDelta', () => {
       tierName: 'Pro',
       frame: 'monthly',
       currentMonthlyDollars: 250,
-      catalogMonthlyDollars: 399,
-      deltaDollars: 149,
+      catalogMonthlyDollars: 349,
+      deltaDollars: 99,
       annualCurrentDollars: null,
       annualCatalogDollars: null,
       annualDeltaDollars: null,
@@ -1717,8 +1203,8 @@ describe('computeCustomRateDelta', () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
     const delta = computeCustomRateDelta({
       plan: 'starter',
-      basePriceCents: 14900,
-      overageRatePerMinute: 0.15,
+      basePriceCents: 19900,
+      overageRatePerMinute: 0.25,
       basePriceSource: 'stripe',
       overagePriceSource: 'catalog',
     });
@@ -1726,8 +1212,8 @@ describe('computeCustomRateDelta', () => {
       tier: 'starter',
       tierName: 'Starter',
       frame: 'monthly',
-      currentMonthlyDollars: 149,
-      catalogMonthlyDollars: 99,
+      currentMonthlyDollars: 199,
+      catalogMonthlyDollars: 149,
       deltaDollars: 50,
       annualCurrentDollars: null,
       annualCatalogDollars: null,
@@ -1745,34 +1231,34 @@ describe('computeCustomRateDelta', () => {
     // surfaces a banner whenever base differs from catalog.
     const delta = computeCustomRateDelta({
       plan: 'enterprise',
-      basePriceCents: 80000,
+      basePriceCents: 70000,
       overageRatePerMinute: 0.05,
       basePriceSource: 'catalog',
       overagePriceSource: 'stripe',
     });
     expect(delta).not.toBeNull();
     expect(delta?.isLess).toBe(true);
-    expect(delta?.currentMonthlyDollars).toBe(800);
-    expect(delta?.catalogMonthlyDollars).toBe(999);
+    expect(delta?.currentMonthlyDollars).toBe(700);
+    expect(delta?.catalogMonthlyDollars).toBe(799);
   });
 
   it('does NOT flag a tenant on the standard published ANNUAL rate (regression for #1210)', async () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // catalog Pro monthly = $399, annual = $399 × 0.8 = $319.20.
-    // A tenant on STRIPE_PRICE_PRO_ANNUAL has basePriceCents = 31920,
+    // catalog Pro monthly = $349, annual = $349 × 0.85 = $296.65.
+    // A tenant on STRIPE_PRICE_PRO_ANNUAL has basePriceCents = 29665,
     // basePriceSource = 'stripe'. The earlier always-monthly comparison
-    // would have returned a $80 delta — the fix detects the annual
+    // would have returned a ~$52 delta — the fix detects the annual
     // interval and compares against the catalog annual reference,
     // yielding a delta of ~0.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 31920,
-      overageRatePerMinute: 0.12,
+      basePriceCents: 29665,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'stripe',
-      annualBasePriceCents: 31920,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'stripe',
     });
     expect(delta).toBeNull();
@@ -1783,19 +1269,20 @@ describe('computeCustomRateDelta', () => {
     const delta = computeCustomRateDelta({
       plan: 'pro',
       basePriceCents: 25000,
-      overageRatePerMinute: 0.12,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'catalog',
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'stripe',
       annualBasePriceCents: 25000,
       annualBasePriceSource: 'stripe',
     });
     expect(delta).not.toBeNull();
     expect(delta?.currentMonthlyDollars).toBe(250);
-    // Catalog reference = round(39900 × 0.8 / 100) = 319 (annual, not 399).
-    expect(delta?.catalogMonthlyDollars).toBe(319);
-    expect(delta?.deltaDollars).toBe(69);
+    // Catalog reference = round(34900 × 0.85 / 100) = 297 (annual, not 349).
+    expect(delta?.catalogMonthlyDollars).toBe(297);
+    // round((29665 − 25000) / 100) = round(46.65) = 47.
+    expect(delta?.deltaDollars).toBe(47);
     expect(delta?.isLess).toBe(true);
   });
 
@@ -1808,12 +1295,12 @@ describe('computeCustomRateDelta', () => {
     const delta = computeCustomRateDelta({
       plan: 'pro',
       basePriceCents: 27000,
-      overageRatePerMinute: 0.12,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      monthlyBasePriceCents: 39900,
+      monthlyBasePriceCents: 34900,
       monthlyBasePriceSource: 'stripe',
-      annualBasePriceCents: 31920,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'stripe',
     });
     expect(delta).toBeNull();
@@ -1822,16 +1309,16 @@ describe('computeCustomRateDelta', () => {
   it('skips when the delta is below the whole-dollar render threshold', async () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
     // Sub-dollar drift would print rounded numbers that don't add up
-    // ("$399 — that's $0/mo less than $399"). Suppress the callout.
+    // ("$349 — that's $1/mo less than $349"). Suppress the callout.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39850,
-      overageRatePerMinute: 0.12,
+      basePriceCents: 34850,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      monthlyBasePriceCents: 39850,
+      monthlyBasePriceCents: 34850,
       monthlyBasePriceSource: 'stripe',
-      annualBasePriceCents: 31920,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'stripe',
     });
     expect(delta).toBeNull();
@@ -1859,8 +1346,8 @@ describe('computeCustomRateDelta', () => {
   // -------------------------------------------------------------------------
   it('attaches an overage sub-delta when overagePriceSource is stripe and the rate diverges', async () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Pro catalog overage = $0.12/min; tenant negotiated $0.05/min.
-    // Base price ALSO diverges (Stripe sub at $250/mo vs catalog $399).
+    // Pro catalog overage = $0.22/min; tenant negotiated $0.05/min.
+    // Base price ALSO diverges (Stripe sub at $250/mo vs catalog $349).
     const delta = computeCustomRateDelta({
       plan: 'pro',
       basePriceCents: 25000,
@@ -1871,15 +1358,15 @@ describe('computeCustomRateDelta', () => {
     expect(delta).not.toBeNull();
     // Base headline preserved.
     expect(delta?.currentMonthlyDollars).toBe(250);
-    expect(delta?.catalogMonthlyDollars).toBe(399);
-    expect(delta?.deltaDollars).toBe(149);
+    expect(delta?.catalogMonthlyDollars).toBe(349);
+    expect(delta?.deltaDollars).toBe(99);
     expect(delta?.isLess).toBe(true);
     // Overage sub-delta carries the per-minute breakdown.
     expect(delta?.overage).toBeDefined();
     expect(delta?.overage?.currentRatePerMinute).toBe(0.05);
-    expect(delta?.overage?.catalogRatePerMinute).toBe(0.12);
-    // Floating-point: 0.12 - 0.05 = 0.07 (within rounding noise).
-    expect(delta?.overage?.deltaPerMinute).toBeCloseTo(0.07, 6);
+    expect(delta?.overage?.catalogRatePerMinute).toBe(0.22);
+    // Floating-point: 0.22 - 0.05 = 0.17 (within rounding noise).
+    expect(delta?.overage?.deltaPerMinute).toBeCloseTo(0.17, 6);
     expect(delta?.overage?.isLess).toBe(true);
   });
 
@@ -1907,7 +1394,7 @@ describe('computeCustomRateDelta', () => {
     const delta = computeCustomRateDelta({
       plan: 'pro',
       basePriceCents: 25000,
-      overageRatePerMinute: 0.121,
+      overageRatePerMinute: 0.221,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
     });
@@ -1917,27 +1404,27 @@ describe('computeCustomRateDelta', () => {
 
   it('returns a delta with overage-only when base matches catalog but overage diverges', async () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Tenant on the published Pro base price ($399) but a negotiated
+    // Tenant on the published Pro base price ($349) but a negotiated
     // $0.05/min overage rate. Base delta is 0; overage delta is real.
     // This is exactly the "tenant negotiating purely on overage"
     // scenario the task calls out — must surface the callout.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39900,
+      basePriceCents: 34900,
       overageRatePerMinute: 0.05,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
     });
     expect(delta).not.toBeNull();
     // deltaDollars is zeroed out so the renderer skips the base
-    // sentence rather than printing "$0/mo less than $399".
+    // sentence rather than printing "$0/mo less than $349".
     expect(delta?.deltaDollars).toBe(0);
     // isLess is also normalised so the renderer's tone fall-through
     // can rely on the overage direction instead.
     expect(delta?.isLess).toBe(false);
     expect(delta?.overage).toBeDefined();
     expect(delta?.overage?.currentRatePerMinute).toBe(0.05);
-    expect(delta?.overage?.catalogRatePerMinute).toBe(0.12);
+    expect(delta?.overage?.catalogRatePerMinute).toBe(0.22);
     expect(delta?.overage?.isLess).toBe(true);
   });
 
@@ -1948,8 +1435,8 @@ describe('computeCustomRateDelta', () => {
     // nothing to say.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39950,
-      overageRatePerMinute: 0.1201,
+      basePriceCents: 34950,
+      overageRatePerMinute: 0.2201,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
     });
@@ -1957,276 +1444,78 @@ describe('computeCustomRateDelta', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Task #1327: a tenant on a custom Stripe SMS rate must see the same
-  // "you pay $X/msg vs the published $Y/msg" summary on the callout
-  // alongside the existing base + overage lines, so a grandfathered
-  // customer with any of base, overage, or SMS negotiated sees the
-  // full picture in one place.
+  // Carrier pass-through removal (replaces tasks #1327 / #1357): the delta
+  // used to carry `sms` / `twilio` sub-deltas, and a Stripe-sourced SMS or
+  // Twilio price alone was enough to mark the payload "Stripe sourced".
+  // Carrier costs are now folded into plan prices, so only base + overage
+  // count. Legacy payloads still carrying carrier fields must be ignored.
   // -------------------------------------------------------------------------
-  it('attaches an SMS sub-delta when smsPriceSource is stripe and the rate diverges', async () => {
+  it('returns null when the ONLY Stripe-sourced fields are legacy SMS / Twilio rates', async () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Catalog SMS rate = $0.01/msg; tenant negotiated $0.0075/msg.
-    // Base/overage stay catalog so we can see the SMS line populates
-    // independently of the AI-side fields.
+    // Pre-removal, a Twilio- or SMS-only Stripe price engaged the callout
+    // even with catalog base/overage. Now carrier provenance is ignored,
+    // so a payload with only catalog plan fields is not "Stripe sourced".
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.0075,
-      smsPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    // SMS sub-delta carries the per-message breakdown.
-    expect(delta?.sms).toBeDefined();
-    expect(delta?.sms?.currentRatePerMessage).toBe(0.0075);
-    expect(delta?.sms?.catalogRatePerMessage).toBe(0.01);
-    // Floating-point: 0.01 - 0.0075 = 0.0025 (within rounding noise).
-    expect(delta?.sms?.deltaPerMessage).toBeCloseTo(0.0025, 6);
-    expect(delta?.sms?.isLess).toBe(true);
-  });
-
-  it('omits the SMS sub-delta when smsPriceSource is catalog (even if the rate happens to differ)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // smsPriceSource is catalog — even though the numeric rate
-    // happens to look custom, we trust the source label and skip the
-    // SMS line so we don't compare catalog-against-catalog.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
+      // Deliberately off-catalog so a regression that re-accepted carrier
+      // provenance as "Stripe sourced" would surface a base delta here.
       basePriceCents: 25000,
       overageRatePerMinute: 0.05,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.0075,
-      smsPriceSource: 'catalog',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.sms).toBeUndefined();
-  });
-
-  it('omits the SMS sub-delta when the tenant rate matches catalog within rounding noise', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // 0.0001/msg drift is below the half-tenth-of-a-cent threshold —
-    // almost certainly Stripe pricing-engine rounding rather than a
-    // negotiated rate, so suppress the SMS line.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 25000,
-      overageRatePerMinute: 0.05,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.0101,
-      smsPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.sms).toBeUndefined();
-  });
-
-  it('returns a delta with SMS-only when base AND overage match catalog but SMS diverges', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Tenant on the published Pro base + catalog overage but a
-    // negotiated $0.0075/msg SMS rate. Base + overage deltas are 0;
-    // SMS delta is real. Pre-#1327 this banner would have stayed
-    // hidden — the whole point of the task is that this tenant now
-    // sees a per-message summary.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.0075,
-      smsPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.deltaDollars).toBe(0);
-    expect(delta?.isLess).toBe(false);
-    expect(delta?.overage).toBeUndefined();
-    expect(delta?.sms).toBeDefined();
-    expect(delta?.sms?.currentRatePerMessage).toBe(0.0075);
-    expect(delta?.sms?.isLess).toBe(true);
-  });
-
-  it('flags an SMS rate above catalog as not-less', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.015,
-      smsPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.sms?.isLess).toBe(false);
-    expect(delta?.sms?.deltaPerMessage).toBeCloseTo(0.005, 6);
-  });
-
-  it('returns null when base + overage + SMS all match catalog within their thresholds (Stripe-sourced)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Sub-threshold drift on every dimension — even though every
-    // source is Stripe, we don't mount a banner with nothing to say.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39950,
-      overageRatePerMinute: 0.1201,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.0101,
-      smsPriceSource: 'stripe',
-    });
-    expect(delta).toBeNull();
-  });
-
-  // -------------------------------------------------------------------------
-  // Task #1357: a tenant on a custom Stripe Twilio (carrier) rate must
-  // see the same "you pay $X/min vs the published $Y/min" summary on
-  // the callout alongside the existing base + overage + SMS lines, so
-  // a high-volume voice tenant on a negotiated carrier rate gets the
-  // full picture in one place rather than no signal at all.
-  // -------------------------------------------------------------------------
-  it('attaches a Twilio sub-delta when twilioPriceSource is stripe and the rate diverges (task #1357)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Catalog Twilio rate = $0.02/min; tenant negotiated $0.0125/min.
-    // Base/overage/SMS stay catalog so we can see the Twilio line
-    // populates independently of the AI- and SMS-side fields.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioRatePerMinute: 0.0125,
-      twilioPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    // Twilio sub-delta carries the per-minute breakdown.
-    expect(delta?.twilio).toBeDefined();
-    expect(delta?.twilio?.currentRatePerMinute).toBe(0.0125);
-    expect(delta?.twilio?.catalogRatePerMinute).toBe(0.02);
-    // Floating-point: 0.02 - 0.0125 = 0.0075 (within rounding noise).
-    expect(delta?.twilio?.deltaPerMinute).toBeCloseTo(0.0075, 6);
-    expect(delta?.twilio?.isLess).toBe(true);
-  });
-
-  it('omits the Twilio sub-delta when twilioPriceSource is catalog (even if the rate happens to differ) (task #1357)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // twilioPriceSource is catalog — even though the numeric rate
-    // happens to look custom, we trust the source label and skip the
-    // Twilio line so we don't compare env-default-against-env-default.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 25000,
-      overageRatePerMinute: 0.05,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioRatePerMinute: 0.0125,
-      twilioPriceSource: 'catalog',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.twilio).toBeUndefined();
-  });
-
-  it('omits the Twilio sub-delta when the tenant rate matches catalog within rounding noise (task #1357)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // 0.0001/min drift is below the half-tenth-of-a-cent threshold —
-    // almost certainly Stripe pricing-engine rounding rather than a
-    // negotiated carrier rate, so suppress the Twilio line.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 25000,
-      overageRatePerMinute: 0.05,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioRatePerMinute: 0.0201,
-      twilioPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.twilio).toBeUndefined();
-  });
-
-  it('returns a delta with Twilio-only when base + overage + SMS all match catalog but Twilio diverges (task #1357)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Tenant on the published Pro base + catalog overage + catalog
-    // SMS but a negotiated $0.0125/min Twilio carrier rate. Pre-#1357
-    // this banner would have stayed hidden — the whole point of the
-    // task is that this high-volume voice tenant now sees a
-    // per-minute carrier summary.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioRatePerMinute: 0.0125,
-      twilioPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.deltaDollars).toBe(0);
-    expect(delta?.isLess).toBe(false);
-    expect(delta?.overage).toBeUndefined();
-    expect(delta?.sms).toBeUndefined();
-    expect(delta?.twilio).toBeDefined();
-    expect(delta?.twilio?.currentRatePerMinute).toBe(0.0125);
-    expect(delta?.twilio?.isLess).toBe(true);
-  });
-
-  it('flags a Twilio rate above catalog as not-less (task #1357)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioRatePerMinute: 0.03,
-      twilioPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.twilio?.isLess).toBe(false);
-    expect(delta?.twilio?.deltaPerMinute).toBeCloseTo(0.01, 6);
-  });
-
-  it('engages the callout for a tenant whose ONLY Stripe-sourced field is Twilio (task #1357)', async () => {
-    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Edge case: a brand-new tenant whose subscription has only a
-    // metered Twilio price configured — base/overage/SMS still resolve
-    // from catalog. The isStripeSourced check must accept twilio as a
-    // sufficient signal so the carrier delta is surfaced rather than
-    // the whole banner getting suppressed.
-    const delta = computeCustomRateDelta({
-      plan: 'pro',
-      basePriceCents: 39900,
-      overageRatePerMinute: 0.12,
       basePriceSource: 'catalog',
       overagePriceSource: 'catalog',
-      twilioRatePerMinute: 0.0125,
-      twilioPriceSource: 'stripe',
-    });
-    expect(delta).not.toBeNull();
-    expect(delta?.twilio).toBeDefined();
-    expect(delta?.twilio?.currentRatePerMinute).toBe(0.0125);
-    expect(delta?.twilio?.isLess).toBe(true);
+      ...LEGACY_STRIPE_CARRIER_FIELDS,
+    } as unknown as EffectiveRateResponse);
+    expect(delta).toBeNull();
   });
 
-  it('returns null when base + overage + SMS + Twilio all match catalog within their thresholds (Stripe-sourced) (task #1357)', async () => {
+  it('returns null when base + overage match catalog even if legacy Stripe-sourced SMS / Twilio rates diverge', async () => {
     const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
-    // Sub-threshold drift on every dimension — even though every
-    // source is Stripe, we don't mount a banner with nothing to say.
+    // Published Pro base + overage via a live Stripe sub, plus legacy
+    // negotiated carrier rates. Pre-removal this produced an SMS-only /
+    // Twilio-only delta; now there is nothing to say.
     const delta = computeCustomRateDelta({
       plan: 'pro',
-      basePriceCents: 39950,
-      overageRatePerMinute: 0.1201,
+      basePriceCents: 34900,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      smsRatePerMessage: 0.0101,
-      smsPriceSource: 'stripe',
-      twilioRatePerMinute: 0.0201,
-      twilioPriceSource: 'stripe',
-    });
+      ...LEGACY_STRIPE_CARRIER_FIELDS,
+    } as unknown as EffectiveRateResponse);
     expect(delta).toBeNull();
+  });
+
+  it('never attaches sms / twilio sub-deltas alongside a real base + overage delta', async () => {
+    const { computeCustomRateDelta } = await import('../../client-app/src/pages/public/Pricing');
+    const delta = computeCustomRateDelta({
+      plan: 'pro',
+      basePriceCents: 25000,
+      overageRatePerMinute: 0.05,
+      basePriceSource: 'stripe',
+      overagePriceSource: 'stripe',
+      ...LEGACY_STRIPE_CARRIER_FIELDS,
+    } as unknown as EffectiveRateResponse);
+    expect(delta).not.toBeNull();
+    expect(delta).not.toHaveProperty('sms');
+    expect(delta).not.toHaveProperty('twilio');
+    // Exact shape: only the base headline + overage sub-delta.
+    expect(delta).toEqual({
+      tier: 'pro',
+      tierName: 'Pro',
+      frame: 'monthly',
+      currentMonthlyDollars: 250,
+      catalogMonthlyDollars: 349,
+      deltaDollars: 99,
+      annualCurrentDollars: null,
+      annualCatalogDollars: null,
+      annualDeltaDollars: null,
+      isLess: true,
+      overage: {
+        currentRatePerMinute: 0.05,
+        catalogRatePerMinute: 0.22,
+        deltaPerMinute: expect.closeTo(0.17, 6),
+        isLess: true,
+      },
+    });
   });
 });
 
@@ -2236,12 +1525,12 @@ describe('computeCustomRateDelta — annual framing', () => {
     const delta = computeCustomRateDelta(
       {
         plan: 'pro',
-        // $3,000/yr ($250/mo); catalog annual ≈ $319/mo ($3,830/yr).
+        // $3,000/yr ($250/mo); catalog annual = $296.65/mo ($3,560/yr rounded).
         basePriceCents: 25000,
-        overageRatePerMinute: 0.12,
+        overageRatePerMinute: 0.22,
         basePriceSource: 'stripe',
         overagePriceSource: 'catalog',
-        monthlyBasePriceCents: 39900,
+        monthlyBasePriceCents: 34900,
         monthlyBasePriceSource: 'stripe',
         annualBasePriceCents: 25000,
         annualBasePriceSource: 'stripe',
@@ -2253,11 +1542,13 @@ describe('computeCustomRateDelta — annual framing', () => {
     expect(delta?.tier).toBe('pro');
     expect(delta?.tierName).toBe('Pro');
     expect(delta?.currentMonthlyDollars).toBe(250);
-    expect(delta?.catalogMonthlyDollars).toBe(319);
-    expect(delta?.deltaDollars).toBe(69);
+    expect(delta?.catalogMonthlyDollars).toBe(297);
+    expect(delta?.deltaDollars).toBe(47);
     expect(delta?.annualCurrentDollars).toBe(3000);
-    expect(delta?.annualCatalogDollars).toBe(3830);
-    expect(delta?.annualDeltaDollars).toBe(830);
+    // round(29665 × 12 / 100) = round(3559.8) = 3560.
+    expect(delta?.annualCatalogDollars).toBe(3560);
+    // round(4665 × 12 / 100) = round(559.8) = 560.
+    expect(delta?.annualDeltaDollars).toBe(560);
     expect(delta?.isLess).toBe(true);
   });
 
@@ -2266,14 +1557,14 @@ describe('computeCustomRateDelta — annual framing', () => {
     const delta = computeCustomRateDelta(
       {
         plan: 'starter',
-        // $1,500/yr ($125/mo); catalog annual ≈ $79.20/mo ($950/yr rounded).
-        basePriceCents: 12500,
-        overageRatePerMinute: 0.15,
+        // $1,800/yr ($150/mo); catalog annual = $126.65/mo ($1,520/yr rounded).
+        basePriceCents: 15000,
+        overageRatePerMinute: 0.25,
         basePriceSource: 'stripe',
         overagePriceSource: 'catalog',
-        monthlyBasePriceCents: 9900,
+        monthlyBasePriceCents: 14900,
         monthlyBasePriceSource: 'stripe',
-        annualBasePriceCents: 12500,
+        annualBasePriceCents: 15000,
         annualBasePriceSource: 'stripe',
       },
       'annual',
@@ -2281,9 +1572,11 @@ describe('computeCustomRateDelta — annual framing', () => {
     expect(delta).not.toBeNull();
     expect(delta?.frame).toBe('annual');
     expect(delta?.isLess).toBe(false);
-    expect(delta?.annualCurrentDollars).toBe(1500);
-    expect(delta?.annualCatalogDollars).toBe(950);
-    expect(delta?.annualDeltaDollars).toBe(550);
+    expect(delta?.annualCurrentDollars).toBe(1800);
+    // round(12665 × 12 / 100) = round(1519.8) = 1520.
+    expect(delta?.annualCatalogDollars).toBe(1520);
+    // round((15000 − 12665) × 12 / 100) = round(280.2) = 280.
+    expect(delta?.annualDeltaDollars).toBe(280);
   });
 
   it('suppresses the callout in annual mode when the annual side matches catalog', async () => {
@@ -2291,13 +1584,14 @@ describe('computeCustomRateDelta — annual framing', () => {
     const delta = computeCustomRateDelta(
       {
         plan: 'pro',
-        basePriceCents: 35000,
-        overageRatePerMinute: 0.12,
+        basePriceCents: 30000,
+        overageRatePerMinute: 0.22,
         basePriceSource: 'stripe',
         overagePriceSource: 'catalog',
-        monthlyBasePriceCents: 35000,
+        monthlyBasePriceCents: 30000,
         monthlyBasePriceSource: 'stripe',
-        annualBasePriceCents: 31920,
+        // Published annual reference: round(34900 × 0.85) = 29665.
+        annualBasePriceCents: 29665,
         annualBasePriceSource: 'catalog',
       },
       'annual',
@@ -2311,7 +1605,7 @@ describe('computeCustomRateDelta — annual framing', () => {
       {
         plan: 'pro',
         basePriceCents: 25000,
-        overageRatePerMinute: 0.12,
+        overageRatePerMinute: 0.22,
         basePriceSource: 'stripe',
         overagePriceSource: 'catalog',
       },
@@ -2320,7 +1614,7 @@ describe('computeCustomRateDelta — annual framing', () => {
     expect(delta).not.toBeNull();
     expect(delta?.frame).toBe('monthly');
     expect(delta?.currentMonthlyDollars).toBe(250);
-    expect(delta?.catalogMonthlyDollars).toBe(399);
+    expect(delta?.catalogMonthlyDollars).toBe(349);
     expect(delta?.annualCurrentDollars).toBeNull();
     expect(delta?.annualDeltaDollars).toBeNull();
   });
@@ -2330,16 +1624,16 @@ describe('computeCustomRateDelta — annual framing', () => {
     const delta = computeCustomRateDelta({
       plan: 'pro',
       basePriceCents: 25000,
-      overageRatePerMinute: 0.12,
+      overageRatePerMinute: 0.22,
       basePriceSource: 'stripe',
       overagePriceSource: 'catalog',
       monthlyBasePriceCents: 25000,
       monthlyBasePriceSource: 'stripe',
-      annualBasePriceCents: 31920,
+      annualBasePriceCents: 29665,
       annualBasePriceSource: 'catalog',
     });
     expect(delta?.frame).toBe('monthly');
-    expect(delta?.deltaDollars).toBe(149);
+    expect(delta?.deltaDollars).toBe(99);
   });
 });
 
@@ -2379,10 +1673,12 @@ describe('Public /pricing comparison table: every plan includes every feature', 
     }
   });
 
-  it('says every plan includes every industry template and every tool', async () => {
+  it('says every plan includes every industry template, every tool, and carrier calling and SMS costs', async () => {
     mockUser = null;
     await renderUnderPublicBundleProviders();
     const line = await waitFor(() => screen.getByTestId('pricing-all-included'));
-    expect(line.textContent).toBe('Every plan includes every industry template and every tool.');
+    expect(line.textContent).toBe(
+      'Every plan includes every industry template, every tool, and carrier calling and SMS costs. 7-day trial on every plan.',
+    );
   });
 });

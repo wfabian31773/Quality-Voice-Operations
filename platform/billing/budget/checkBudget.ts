@@ -80,8 +80,8 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
       };
     }
 
-    const callLimit = (sub.monthly_call_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyCallLimit ?? 500;
-    const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? 250;
+    const callLimit = (sub.monthly_call_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyCallLimit ?? PLAN_LIMITS.starter.monthlyCallLimit;
+    const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? PLAN_LIMITS.starter.monthlyAiMinuteLimit;
     const overageEnabled = (sub.overage_enabled as boolean) ?? false;
 
     if (subStatus === 'cancelled' || subStatus === 'past_due') {

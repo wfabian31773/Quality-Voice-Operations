@@ -173,8 +173,8 @@ describe('BillingEstimator recommendation card variants', () => {
       fireEvent.click(
         screen.getByTestId('billing-estimator-recommendation-annual-pitch-cta'),
       );
-      // Starter @ 100 min: catalog base $99 → annual base $79.20
-      // → monthly savings $19.80 → 1980¢.
+      // Starter @ 100 min: catalog base $149 → annual base $126.65
+      // → monthly savings $22.35 → 2235¢.
       expect(calls).toEqual([
         {
           tier: 'starter',
@@ -182,7 +182,7 @@ describe('BillingEstimator recommendation card variants', () => {
           attribution: {
             currentTier: 'starter',
             recommendedTier: 'starter',
-            monthlySavingsCents: 1_980,
+            monthlySavingsCents: 2_235,
             trailingWindowMonths: 3,
           },
         },

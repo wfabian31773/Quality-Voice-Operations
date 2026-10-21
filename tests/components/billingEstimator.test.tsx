@@ -56,11 +56,11 @@ describe('BillingEstimator', () => {
     render(<BillingEstimator currentPlan="starter" monthToDateAiMinutes={0} />);
     const input = document.getElementById('billing-estimator-input') as HTMLInputElement;
 
-    // Starter @ 600 min = $99 + 100 * $0.15 = $114
+    // Starter @ 600 min = $149 + 100 * $0.25 = $174
     fireEvent.change(input, { target: { value: '600' } });
-    expect(screen.getByTestId('billing-estimator-monthly-starter').textContent).toContain('$114');
-    // Pro @ 600 min stays at base $399 (within 2,500 included)
-    expect(screen.getByTestId('billing-estimator-monthly-pro').textContent).toContain('$399');
+    expect(screen.getByTestId('billing-estimator-monthly-starter').textContent).toContain('$174');
+    // Pro @ 600 min stays at base $349 (within 1,500 included)
+    expect(screen.getByTestId('billing-estimator-monthly-pro').textContent).toContain('$349');
   });
 
   it('falls back to starter when an unknown plan is provided', () => {
@@ -95,10 +95,10 @@ describe('BillingEstimator', () => {
     const monthlyPro = normalize(
       screen.getByTestId('billing-estimator-monthly-pro').textContent ?? '',
     );
-    // Starter @ 600 min = €99 + 100 * €0.15 = €114
-    expect(monthlyStarter).toContain('€114');
-    // Pro @ 600 min stays at base €399 (within 2,500 included)
-    expect(monthlyPro).toContain('€399');
+    // Starter @ 600 min = €149 + 100 * €0.25 = €174
+    expect(monthlyStarter).toContain('€174');
+    // Pro @ 600 min stays at base €349 (within 1,500 included)
+    expect(monthlyPro).toContain('€349');
     // No dollar sign should leak through for a Euro tenant.
     expect(monthlyStarter).not.toContain('$');
     expect(monthlyPro).not.toContain('$');
@@ -185,8 +185,8 @@ describe('BillingEstimator', () => {
           currentPlan="starter"
           monthToDateAiMinutes={500}
           upgradePreview={{
-            basePriceCents: 39_900,
-            overageRatePerMinute: 0.12,
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.22,
             discount: null,
           }}
         />,
@@ -271,7 +271,7 @@ describe('BillingEstimator', () => {
           currentPlan="starter"
           monthToDateAiMinutes={500}
           upgradePreview={{
-            basePriceCents: 39_900,
+            basePriceCents: 34_900,
             overageRatePerMinute: 0.10,
             basePriceSource: 'catalog',
             overagePriceSource: 'stripe',
@@ -318,8 +318,8 @@ describe('BillingEstimator', () => {
           currentPlan="starter"
           monthToDateAiMinutes={500}
           upgradePreview={{
-            basePriceCents: 39_900,
-            overageRatePerMinute: 0.15,
+            basePriceCents: 34_900,
+            overageRatePerMinute: 0.22,
             basePriceSource: 'catalog',
             overagePriceSource: 'catalog',
             discount: null,
@@ -491,7 +491,7 @@ describe('BillingEstimator', () => {
     });
 
     it('renders a downgrade recommendation when a Pro tenant has averaged well under Pro included minutes', () => {
-      // Trailing avg = 300 min: Starter $99/mo vs. Pro $399/mo → save $300/mo.
+      // Trailing avg = 300 min: Starter $149/mo vs. Pro $349/mo → save $200/mo.
       render(
         <BillingEstimator
           currentPlan="pro"
@@ -507,9 +507,9 @@ describe('BillingEstimator', () => {
       ).toContain('Starter');
       expect(
         screen.getByTestId('billing-estimator-recommendation-savings').textContent,
-      ).toContain('$300');
+      ).toContain('$200');
       expect(card.textContent).toMatch(/last 3 complete months/i);
-      expect(card.textContent).toContain('$3,600');
+      expect(card.textContent).toContain('$2,400');
     });
 
     it('renders the "already optimal" variant when the current plan is the cheapest', () => {
@@ -542,7 +542,7 @@ describe('BillingEstimator', () => {
 
     it('honors the Stripe rate override on the current plan when computing savings', () => {
       // Pro tenant on a $299 negotiated base, trailing avg 300 min.
-      // Starter @ 300 min = $99, discounted Pro = $299 → save $200/mo.
+      // Starter @ 300 min = $149, discounted Pro = $299 → save $150/mo.
       render(
         <BillingEstimator
           currentPlan="pro"
@@ -556,7 +556,7 @@ describe('BillingEstimator', () => {
       );
       expect(
         screen.getByTestId('billing-estimator-recommendation-savings').textContent,
-      ).toContain('$200');
+      ).toContain('$150');
     });
 
     it('renders the recommendation savings in the tenant billing currency', () => {
@@ -682,7 +682,7 @@ describe('BillingEstimator', () => {
       // month had 300 min. The backend deliberately divides by the full
       // window (3) so the recommendation doesn't push them into a tier
       // that won't fit once usage ramps. That math gives a 100 min/mo
-      // average — which keeps Starter cheapest by $300/mo. The copy
+      // average — which keeps Starter cheapest by $200/mo. The copy
       // should still call out the single complete month with data.
       render(
         <BillingEstimator
@@ -696,7 +696,7 @@ describe('BillingEstimator', () => {
       expect(card.getAttribute('data-recommended-tier')).toBe('starter');
       expect(
         screen.getByTestId('billing-estimator-recommendation-savings').textContent,
-      ).toContain('$300');
+      ).toContain('$200');
       expect(card.textContent).toMatch(/last complete month/i);
       expect(card.textContent).toMatch(/100/);
     });
@@ -759,9 +759,9 @@ describe('BillingEstimator', () => {
       });
 
       it('updates the headline savings copy when annual is selected', () => {
-        // Pro tenant @ 300 min: monthly headline is $300/mo savings on
-        // Starter ($99). Annual variant: Starter base $99 * 0.8 = $79.2,
-        // savings vs. Pro $399 = $319.8/mo, $3,837.6/yr → rounded.
+        // Pro tenant @ 300 min: monthly headline is $200/mo savings on
+        // Starter ($149). Annual variant: Starter base $149 * 0.85 = $126.65,
+        // savings vs. Pro $349 = $222.35/mo, $2,668.20/yr → rounded.
         render(
           <BillingEstimator
             currentPlan="pro"
@@ -773,7 +773,7 @@ describe('BillingEstimator', () => {
         // Sanity-check the monthly headline first.
         expect(
           screen.getByTestId('billing-estimator-recommendation-savings').textContent,
-        ).toContain('$300');
+        ).toContain('$200');
         expect(
           screen.queryByTestId('billing-estimator-recommendation-annual-tag'),
         ).toBeNull();
@@ -785,7 +785,7 @@ describe('BillingEstimator', () => {
         // Headline savings reflect the annual figure (rounded for display).
         const savingsAnnual =
           screen.getByTestId('billing-estimator-recommendation-savings').textContent ?? '';
-        expect(savingsAnnual).toContain('$320');
+        expect(savingsAnnual).toContain('$222');
         // Annual badge appears in the headline so the tenant knows the
         // savings number is the discounted variant.
         expect(
@@ -796,13 +796,13 @@ describe('BillingEstimator', () => {
           screen
             .getByTestId('billing-estimator-recommendation-recommended-cost')
             .textContent,
-        ).toContain('$79');
+        ).toContain('$127');
         // Annual savings line reflects the annualised discount.
         expect(
           screen
             .getByTestId('billing-estimator-recommendation-annual-savings')
             .textContent,
-        ).toContain('$3,838');
+        ).toContain('$2,668');
       });
 
       it('forwards the chosen interval to onSwitchPlan when the CTA is clicked', () => {

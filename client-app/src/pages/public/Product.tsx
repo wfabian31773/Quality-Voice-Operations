@@ -18,6 +18,7 @@ import {
   convertUsd,
   useDisplayCurrency,
 } from '../../lib/displayCurrency';
+import { getPlanMonthlyPriceWholeDollars } from '../../../../shared/billing/planCatalog';
 import WorkflowDiagram, {
   genericWorkflowSteps,
   healthcareWorkflow,
@@ -329,8 +330,8 @@ function SecuritySection() {
 
 export default function Product() {
   const [displayCurrency] = useDisplayCurrency();
-  const productLowUsd = 99;
-  const productHighUsd = 999;
+  const productLowUsd = getPlanMonthlyPriceWholeDollars('starter');
+  const productHighUsd = getPlanMonthlyPriceWholeDollars('enterprise');
   const productLow =
     displayCurrency === DEFAULT_DISPLAY_CURRENCY
       ? productLowUsd

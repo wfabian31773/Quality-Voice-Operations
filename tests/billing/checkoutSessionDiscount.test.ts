@@ -35,6 +35,9 @@ vi.mock('../../platform/core/logger', () => ({
 
 vi.mock('../../platform/billing/stripe/plans', () => ({
   getPlanPriceId: () => 'price_starter_monthly',
+  // `createCheckoutSession` stamps `trial_period_days` from
+  // TRIAL_LIMITS.durationDays on every plan, so the mock must expose it.
+  TRIAL_LIMITS: { durationDays: 7 },
 }));
 
 vi.mock('../../platform/billing/stripe/client', () => ({

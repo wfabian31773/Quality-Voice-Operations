@@ -482,7 +482,7 @@
       "start_trial": "Criar uma conta",
       "recommended": "RECOMENDADO",
       "billed_monthly": "Cobrança mensal · cancele quando quiser",
-      "billed_annually": "Cobrança anual · economize 20%",
+      "billed_annually": "Cobrança anual · economize 15%",
       "save_badge": "Economize {{percent}}%",
       "save_badge_aria": "Economize {{percent}}% com cobrança anual",
       "save_amount": "Economize {{amount}}/ano",
@@ -494,7 +494,7 @@
     "billing_toggle": {
       "monthly": "Mensal",
       "annual": "Anual",
-      "save_badge": "Economize 20%"
+      "save_badge": "Economize 15%"
     },
     "calculator": {
       "eyebrow": "Calculadora por minuto",
@@ -506,18 +506,10 @@
       "title_more": "Você tem uma tarifa personalizada acima do preço público atual",
       "title_overage_less": "Você tem uma tarifa de excedente personalizada abaixo do preço público atual",
       "title_overage_more": "Você tem uma tarifa de excedente personalizada acima do preço público atual",
-      "title_sms_less": "Você tem uma tarifa de SMS personalizada abaixo do preço público atual",
-      "title_sms_more": "Você tem uma tarifa de SMS personalizada acima do preço público atual",
-      "title_twilio_less": "Você tem uma tarifa de operadora personalizada abaixo do preço público atual",
-      "title_twilio_more": "Você tem uma tarifa de operadora personalizada acima do preço público atual",
       "description_less": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a menos que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
       "description_more": "Sua conta paga {{currentPrice}}/mês por {{tierName}} — isso é {{deltaPrice}}/mês a mais que a tarifa pública atual de {{catalogPrice}}. Mudar para um plano atual alteraria sua fatura.",
       "overage_line_less": "Seu excedente do {{tierName}} é cobrado a {{currentRate}} — {{deltaRate}} a menos que a tarifa pública atual de {{catalogRate}}.",
       "overage_line_more": "Seu excedente do {{tierName}} é cobrado a {{currentRate}} — {{deltaRate}} a mais que a tarifa pública atual de {{catalogRate}}.",
-      "sms_line_less": "Seu SMS é cobrado a {{currentRate}} — {{deltaRate}} a menos que a tarifa pública atual de {{catalogRate}}.",
-      "sms_line_more": "Seu SMS é cobrado a {{currentRate}} — {{deltaRate}} a mais que a tarifa pública atual de {{catalogRate}}.",
-      "twilio_line_less": "Seus minutos de operadora Twilio são cobrados a {{currentRate}} — {{deltaRate}} a menos que a tarifa pública atual de {{catalogRate}}.",
-      "twilio_line_more": "Seus minutos de operadora Twilio são cobrados a {{currentRate}} — {{deltaRate}} a mais que a tarifa pública atual de {{catalogRate}}.",
       "title_annual_less": "Você tem uma tarifa anual personalizada abaixo da tarifa pública atual",
       "title_annual_more": "Você tem uma tarifa anual personalizada acima da tarifa pública atual",
       "description_annual_less": "Sua conta paga {{annualCurrentPrice}}/ano por {{tierName}} — isso é {{annualDeltaPrice}}/ano a menos que a tarifa anual pública atual de {{annualCatalogPrice}}/ano. Mudar para um plano atual alteraria sua fatura.",
@@ -527,7 +519,7 @@
     "compare": {
       "title": "Compare todos os recursos",
       "feature_col": "Recurso",
-      "all_included": "Todos os planos incluem todos os modelos de setor e todas as ferramentas."
+      "all_included": "Todos os planos incluem todos os modelos de setor, todas as ferramentas e os custos de chamadas e SMS da operadora. Teste de 7 dias em todos os planos."
     },
     "features_list": {
       "ai_minutes": "Minutos de IA inclusos",
@@ -578,7 +570,7 @@
       "q5": "Existem contratos ou compromissos?",
       "a5": "Não. Todos os planos são mês a mês, sem contratos de longo prazo. Você pode cancelar quando quiser, e a conta segue ativa até o fim do ciclo atual.",
       "q6": "Vocês oferecem preço anual?",
-      "a6": "Sim. O faturamento anual gera 20% de economia em relação ao mensal. Fale com o time de vendas ou escolha faturamento anual no cadastro para ter o desconto.",
+      "a6": "Sim. O faturamento anual gera 15% de economia em relação ao mensal. Fale com o time de vendas ou escolha faturamento anual no cadastro para ter o desconto.",
       "q7": "Como funciona a configuração inicial?",
       "a7": "Agora estamos fazendo o onboarding de oficinas piloto. A configuração inicial é discutida na demonstração.",
       "q8": "Quais formas de pagamento vocês aceitam?",

@@ -299,8 +299,8 @@ describe('Pricing page — discounted vs undiscounted card rendering', () => {
     expect(
       screen.queryByTestId('pricing-tier-starter-pre-discount-price'),
     ).toBeNull();
-    // Unmodified catalog price ($99 starter monthly) is shown.
-    expect(textIncludesDollars(priceEl, 99)).toBe(true);
+    // Unmodified catalog price ($149 starter monthly) is shown.
+    expect(textIncludesDollars(priceEl, 149)).toBe(true);
   });
 
   it('shows a percent-off chip and discounted price on monthly billing', async () => {
@@ -318,18 +318,18 @@ describe('Pricing page — discounted vs undiscounted card rendering', () => {
     const preDiscount = screen.getByTestId(
       'pricing-tier-starter-pre-discount-price',
     );
-    // Strikethrough shows the original $99 (catalog starter monthly).
-    expect(textIncludesDollars(preDiscount, 99)).toBe(true);
+    // Strikethrough shows the original $149 (catalog starter monthly).
+    expect(textIncludesDollars(preDiscount, 149)).toBe(true);
 
     const priceEl = screen.getByTestId('pricing-tier-starter-price');
     expect(priceEl.dataset.discountApplied).toBe('true');
-    // 25% off $99 = $74.25 → display $74 (cents math: 9,900 → 7,425
+    // 25% off $149 = $111.75 → display $112 (cents math: 14,900 → 11,175
     // cents → formatted whole dollars).
-    expect(textIncludesDollars(priceEl, 74)).toBe(true);
+    expect(textIncludesDollars(priceEl, 112)).toBe(true);
   });
 
   it('shows an amount-off chip and discounted price on monthly billing (no annual scaling)', async () => {
-    // $30 off ON MONTHLY → $99 catalog → $69 displayed (subtract once
+    // $30 off ON MONTHLY → $149 catalog → $119 displayed (subtract once
     // from the monthly invoice; amount_off applies per-invoice and
     // monthly cadence = 1 invoice/month).
     stubEffectiveRate(buildPayload({ amountOffCents: 3_000 }));
@@ -342,7 +342,7 @@ describe('Pricing page — discounted vs undiscounted card rendering', () => {
 
     const priceEl = screen.getByTestId('pricing-tier-starter-price');
     expect(priceEl.dataset.discountApplied).toBe('true');
-    expect(textIncludesDollars(priceEl, 69)).toBe(true);
+    expect(textIncludesDollars(priceEl, 119)).toBe(true);
   });
 
   it('amount_off on ANNUAL billing scales the per-month figure (regression: 12× over-discount bug)', async () => {
@@ -350,11 +350,11 @@ describe('Pricing page — discounted vs undiscounted card rendering', () => {
     // review flagged. A $120 amount_off coupon reduces the WHOLE
     // annual invoice by $120, NOT each monthly invoice by $120.
     //
-    // Starter catalog monthly = $99 → annual monthly equivalent =
-    // round($99 × 0.8) = $79/mo. Applying $120 off to the year:
-    //   ($79 × 12 − $120) / 12 = ($948 − $120) / 12 = $69/mo.
-    // The naive (broken) formula `$79 − $120` would clamp to $0/mo
-    // and the chip would show "$120 off applied" against an $0
+    // Starter catalog monthly = $149 → annual monthly equivalent =
+    // round($149 × 0.85) = $127/mo. Applying $120 off to the year:
+    //   ($127 × 12 − $120) / 12 = ($1,524 − $120) / 12 = $117/mo.
+    // The naive (broken) formula `$127 − $120` would give $7/mo
+    // and the chip would show "$120 off applied" against a $7
     // monthly figure — the regression this test pins.
     stubEffectiveRate(buildPayload({ amountOffCents: 12_000 }));
     renderPricing();
@@ -366,17 +366,17 @@ describe('Pricing page — discounted vs undiscounted card rendering', () => {
       .querySelectorAll('button')[1] as HTMLButtonElement;
     fireEvent.click(annualToggle);
 
-    // Pre-discount strikethrough holds the unmodified $79/mo annual
-    // equivalent; post-discount price is $69/mo.
+    // Pre-discount strikethrough holds the unmodified $127/mo annual
+    // equivalent; post-discount price is $117/mo.
     await waitFor(() => {
       const pre = screen.getByTestId(
         'pricing-tier-starter-pre-discount-price',
       );
-      expect(textIncludesDollars(pre, 79)).toBe(true);
+      expect(textIncludesDollars(pre, 127)).toBe(true);
     });
     const priceEl = screen.getByTestId('pricing-tier-starter-price');
     expect(priceEl.dataset.discountApplied).toBe('true');
-    expect(textIncludesDollars(priceEl, 69)).toBe(true);
+    expect(textIncludesDollars(priceEl, 117)).toBe(true);
   });
 
   it('renders the promotion code on the discount chip when present', async () => {

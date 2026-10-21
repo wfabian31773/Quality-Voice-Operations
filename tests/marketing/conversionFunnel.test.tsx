@@ -396,7 +396,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     ).toBe('true');
   });
 
-  it('only shows the "Save 20%" tier-card badge when Annual is selected', () => {
+  it('only shows the "Save 15%" tier-card badge when Annual is selected', () => {
     render(
       <FunnelHarness
         initialPath="/pricing"
@@ -419,12 +419,12 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     // Toggle Annual on the pricing page.
     fireEvent.click(screen.getByTestId('pricing-billing-annual'));
 
-    // Each tier card now exposes a "Save 20%" badge derived from
+    // Each tier card now exposes a "Save 15%" badge derived from
     // ANNUAL_DISCOUNT so the percentage stays in sync if it ever changes.
     for (const tier of tiers) {
       const badge = screen.getByTestId(`pricing-tier-${tier}-save-badge`);
       expect(badge).toBeTruthy();
-      expect(badge.textContent).toMatch(/20%/);
+      expect(badge.textContent).toMatch(/15%/);
     }
 
     // Toggling back to Monthly removes them again.
@@ -458,11 +458,11 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
     fireEvent.click(screen.getByTestId('pricing-billing-annual'));
 
     // Expected savings = (monthly − annualMonthly) * 12, where annualMonthly
-    // = round(monthly * 0.8). At catalog prices this is $240 / $960 / $2,400.
+    // = round(monthly * 0.85). At catalog prices this is $264 / $624 / $1,440.
     const expectedSavings: Record<typeof tiers[number], string> = {
-      starter: '$240',
-      pro: '$960',
-      enterprise: '$2,400',
+      starter: '$264',
+      pro: '$624',
+      enterprise: '$1,440',
     };
     for (const tier of tiers) {
       const line = screen.getByTestId(`pricing-tier-${tier}-save-amount`);
@@ -503,7 +503,7 @@ describe('Marketing conversion funnel: Pricing CTAs', () => {
 });
 
 describe('Marketing conversion funnel: Signup plan badges', () => {
-  it('shows the "Save 20%" badge on each plan button only when interval=annual', () => {
+  it('shows the "Save 15%" badge on each plan button only when interval=annual', () => {
     // Default landing on /signup (no interval param) → Monthly is selected,
     // so the per-plan save badges should NOT be in the DOM.
     const { unmount } = render(
@@ -526,7 +526,7 @@ describe('Marketing conversion funnel: Signup plan badges', () => {
     cleanup();
 
     // Deep-linking with ?interval=annual should pre-select Annual and
-    // surface a small "Save 20%" badge on every plan button.
+    // surface a small "Save 15%" badge on every plan button.
     render(
       <FunnelHarness
         initialPath="/signup?interval=annual"
@@ -537,7 +537,7 @@ describe('Marketing conversion funnel: Signup plan badges', () => {
     for (const tier of tiers) {
       const badge = screen.getByTestId(`signup-plan-${tier}-save-badge`);
       expect(badge).toBeTruthy();
-      expect(badge.textContent).toMatch(/20%/);
+      expect(badge.textContent).toMatch(/15%/);
     }
   });
 
@@ -564,7 +564,7 @@ describe('Marketing conversion funnel: Signup plan badges', () => {
 
     // ?interval=annual pre-selects Annual; the savings amount should match
     // the same (monthly − annualMonthly) * 12 math used on the /pricing
-    // tier cards: $240 / $960 / $2,400 at catalog prices.
+    // tier cards: $264 / $624 / $1,440 at catalog prices.
     render(
       <FunnelHarness
         initialPath="/signup?interval=annual"
@@ -573,9 +573,9 @@ describe('Marketing conversion funnel: Signup plan badges', () => {
       />,
     );
     const expectedSavings: Record<typeof tiers[number], string> = {
-      starter: '$240',
-      pro: '$960',
-      enterprise: '$2,400',
+      starter: '$264',
+      pro: '$624',
+      enterprise: '$1,440',
     };
     for (const tier of tiers) {
       const line = screen.getByTestId(`signup-plan-${tier}-save-amount`);

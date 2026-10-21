@@ -67,7 +67,7 @@ export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckRe
       return {
         isTrial: true,
         allowed: false,
-        reason: 'Your free trial has expired. Please upgrade to a paid plan to continue using the platform.',
+        reason: 'Your 7-day trial has expired. Please upgrade to a paid plan to continue using the platform.',
         usage: { totalCalls: 0, maxCalls: TRIAL_LIMITS.maxTotalCalls, toolExecutions: 0, maxToolExecutions: TRIAL_LIMITS.maxToolExecutions, agentCount: 0, maxAgents: TRIAL_LIMITS.maxAgents },
         trialExpiresAt: trialExpiresAt ?? undefined,
       };

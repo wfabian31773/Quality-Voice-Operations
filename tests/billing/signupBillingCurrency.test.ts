@@ -78,7 +78,7 @@ vi.mock('../../platform/billing/stripe/client', () => ({
 
 vi.mock('../../platform/billing/stripe/plans', () => ({
   getPlanPriceId: () => 'price_test_pro_monthly',
-  TRIAL_LIMITS: { durationDays: 14 },
+  TRIAL_LIMITS: { durationDays: 7 },
 }));
 
 vi.mock('../../platform/audit/AuditService', () => ({

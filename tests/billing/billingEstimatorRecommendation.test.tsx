@@ -80,7 +80,7 @@ describe('BillingEstimator recommendation CTA', () => {
   describe('Switch vs Downgrade label', () => {
     it('uses "Switch to <Plan>" when the recommended tier is an upgrade from the current plan', () => {
       // Starter tenant averaging 4,000 min → Pro is cheaper than Starter at
-      // that volume (Starter $624 vs Pro $579). Recommended tier is *above*
+      // that volume (Starter $1,024 vs Pro $899). Recommended tier is *above*
       // the current tier, so the verb should be "Switch to" — not "Downgrade".
       render(
         <BillingEstimator
@@ -114,8 +114,9 @@ describe('BillingEstimator recommendation CTA', () => {
     });
 
     it('uses "Downgrade to <Plan>" when an Enterprise tenant should drop to Pro', () => {
-      // Enterprise @ 4,000 min = $999; Pro @ 4,000 min = $399 + 1,500*$0.12 =
-      // $579; Starter @ 4,000 min = $99 + 3,500*$0.15 = $624. Pro is the
+      // Enterprise @ 4,000 min = $799 + 1,000*$0.18 = $979; Pro @ 4,000 min =
+      // $349 + 2,500*$0.22 = $899; Starter @ 4,000 min = $149 + 3,500*$0.25 =
+      // $1,024. Pro is the
       // cheapest tier, so this exercises the enterprise → pro downgrade path
       // (not the multi-step enterprise → starter path).
       render(
