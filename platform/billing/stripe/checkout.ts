@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripeClient } from './client';
-import { getPlanPriceId, TRIAL_LIMITS } from './plans';
+import { getPlanPriceId } from './plans';
+import { buildTrialSubscriptionData } from './trial';
 import type { PlanTier } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
@@ -177,7 +178,7 @@ export async function createCheckoutSession(params: {
       },
       subscription_data: {
         metadata: { tenantId, plan },
-        trial_period_days: isFirstSubscription ? TRIAL_LIMITS.durationDays : undefined,
+        ...buildTrialSubscriptionData(isFirstSubscription),
       },
       ...(sessionDiscounts ? { discounts: sessionDiscounts } : {}),
     });

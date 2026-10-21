@@ -409,3 +409,130 @@ describe('handleStripeEvent — checkout.session.completed', () => {
     expect(inserts[0].values).not.toContain('month');
   });
 });
+
+describe('handleStripeEvent — trial status sync', () => {
+  const TRIAL_END_UNIX = Math.floor(Date.UTC(2026, 9, 28) / 1000);
+  const TRIAL_END_ISO = new Date(TRIAL_END_UNIX * 1000).toISOString();
+
+  beforeEach(() => {
+    queryMock.mockReset();
+    releaseMock.mockReset();
+    connectMock.mockClear();
+    subscriptionsRetrieveMock.mockReset();
+  });
+
+  function retrievedSub(status: string, trialEnd: number | null) {
+    return {
+      id: 'sub_1',
+      status,
+      trial_end: trialEnd,
+      current_period_start: Math.floor(Date.UTC(2026, 9, 21) / 1000),
+      current_period_end: TRIAL_END_UNIX,
+      items: {
+        data: [{ id: 'si_1', price: { id: 'price_pro_monthly_test', recurring: { interval: 'month' } } }],
+      },
+    };
+  }
+
+  it('checkout.session.completed persists trialing + trial_end when the Stripe sub is trialing', async () => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockResolvedValue(retrievedSub('trialing', TRIAL_END_UNIX));
+
+    await handleStripeEvent(makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_trial' }));
+
+    expect(inserts).toHaveLength(1);
+    const { sql, values } = inserts[0];
+    expect(sql).toMatch(/\$13::subscription_status/);
+    expect(sql).toMatch(/status = EXCLUDED\.status/);
+    expect(sql).toMatch(/trial_end = EXCLUDED\.trial_end/);
+    expect(sql).not.toMatch(/'active'/);
+    expect(values[12]).toBe('trialing');
+    expect(values[13]).toBe(TRIAL_END_ISO);
+  });
+
+  it('checkout.session.completed persists active + null trial_end when the Stripe sub is active', async () => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockResolvedValue(retrievedSub('active', null));
+
+    await handleStripeEvent(makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_active' }));
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values[12]).toBe('active');
+    expect(inserts[0].values[13]).toBeNull();
+  });
+
+  it('checkout.session.completed falls back to active when the Stripe sub cannot be retrieved', async () => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockRejectedValue(new Error('stripe down'));
+
+    await handleStripeEvent(makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_noretrieve' }));
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values[12]).toBe('active');
+    expect(inserts[0].values[13]).toBeNull();
+  });
+
+  function updatedEventWithTrial(status: string, trialEnd: number | null, id: string): Stripe.Event {
+    const event = makeUpdatedEvent('price_pro_monthly_test', 'month', { id, status });
+    (event.data.object as unknown as Record<string, unknown>).trial_end = trialEnd;
+    return event;
+  }
+
+  function boundValue(update: CapturedUpdate, column: string): unknown {
+    const match = update.sql.match(new RegExp(`\\b${column} = \\$(\\d+)`));
+    expect(match, `${column} not set in ${update.sql}`).not.toBeNull();
+    return update.values[Number(match![1]) - 1];
+  }
+
+  it('customer.subscription.updated syncs trialing status and trial_end', async () => {
+    const { updates } = captureSubscriptionUpdate();
+
+    await handleStripeEvent(updatedEventWithTrial('trialing', TRIAL_END_UNIX, 'evt_upd_trialing'));
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0].sql).toMatch(/status = \$\d+::subscription_status/);
+    expect(boundValue(updates[0], 'status')).toBe('trialing');
+    expect(boundValue(updates[0], 'trial_end')).toBe(TRIAL_END_ISO);
+  });
+
+  it('customer.subscription.updated flips trialing → active when the trial converts', async () => {
+    const { updates } = captureSubscriptionUpdate();
+
+    await handleStripeEvent(updatedEventWithTrial('active', TRIAL_END_UNIX, 'evt_upd_converted'));
+
+    expect(boundValue(updates[0], 'status')).toBe('active');
+    expect(boundValue(updates[0], 'trial_end')).toBe(TRIAL_END_ISO);
+  });
+
+  it.each([
+    ['past_due', 'past_due'],
+    ['unpaid', 'past_due'],
+    ['canceled', 'cancelled'],
+    ['incomplete_expired', 'cancelled'],
+    ['paused', 'paused'],
+  ])('customer.subscription.updated maps Stripe %s to local %s', async (stripeStatus, local) => {
+    const { updates } = captureSubscriptionUpdate();
+
+    await handleStripeEvent(updatedEventWithTrial(stripeStatus, null, `evt_upd_${stripeStatus}`));
+
+    expect(boundValue(updates[0], 'status')).toBe(local);
+    expect(boundValue(updates[0], 'trial_end')).toBeNull();
+  });
+
+  it('customer.subscription.updated leaves status alone for incomplete', async () => {
+    const { updates } = captureSubscriptionUpdate();
+
+    await handleStripeEvent(updatedEventWithTrial('incomplete', null, 'evt_upd_incomplete'));
+
+    expect(updates[0].sql).not.toMatch(/\bstatus = /);
+  });
+
+  it('customer.subscription.updated leaves trial_end alone when the event omits it', async () => {
+    const { updates } = captureSubscriptionUpdate();
+
+    await handleStripeEvent(makeUpdatedEvent('price_pro_monthly_test', 'month', { id: 'evt_upd_no_trial_field' }));
+
+    expect(boundValue(updates[0], 'status')).toBe('active');
+    expect(updates[0].sql).not.toMatch(/trial_end/);
+  });
+});

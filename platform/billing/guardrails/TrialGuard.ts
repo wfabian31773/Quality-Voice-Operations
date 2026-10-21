@@ -25,6 +25,16 @@ export function isTrialSubscription(sub: { status?: unknown } | undefined): bool
   return !sub || sub.status === 'trialing';
 }
 
+/** Trial end: the subscription's Stripe `trial_end` if set, else the tenant's signup-time `trial_expires_at`. */
+export function trialEndFor(
+  sub: { trial_end?: unknown } | undefined,
+  tenantTrialExpiresAt: unknown,
+): string | null {
+  const raw = sub?.trial_end ?? tenantTrialExpiresAt;
+  if (raw === null || raw === undefined) return null;
+  return raw instanceof Date ? raw.toISOString() : String(raw);
+}
+
 export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckResult> {
   const pool = getPlatformPool();
   const client = await pool.connect();
@@ -61,7 +71,10 @@ export async function checkTrialLimits(tenantId: TenantId): Promise<TrialCheckRe
       [tenantId],
     );
 
-    const trialExpiresAt = tenantRows[0]?.trial_expires_at as string | null;
+    // A Stripe trial's own end date wins: the Stripe trial starts at
+    // checkout, which can be later than the signup-time estimate on
+    // tenants.trial_expires_at.
+    const trialExpiresAt = trialEndFor(subRows[0], tenantRows[0]?.trial_expires_at);
     if (trialExpiresAt && new Date(trialExpiresAt) < new Date()) {
       await client.query('COMMIT');
       return {

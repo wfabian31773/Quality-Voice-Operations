@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantId } from '../../platform/core/types';
 
-const sessionsCreate = vi.fn();
+const { sessionsCreate, trialHelperSpy } = vi.hoisted(() => ({
+  sessionsCreate: vi.fn(),
+  trialHelperSpy: vi.fn(),
+}));
 let subscriptionRow: Record<string, string | null> | undefined;
 
 vi.mock('../../platform/db', () => ({
@@ -37,6 +40,12 @@ vi.mock('../../platform/billing/stripe/client', () => ({
   }),
 }));
 
+vi.mock('../../platform/billing/stripe/trial', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../platform/billing/stripe/trial')>();
+  trialHelperSpy.mockImplementation(actual.buildTrialSubscriptionData);
+  return { buildTrialSubscriptionData: trialHelperSpy };
+});
+
 import { createCheckoutSession } from '../../platform/billing/stripe/checkout';
 
 const TENANT: TenantId = 'tenant-trial-first-sub';
@@ -47,6 +56,7 @@ function trialDays(): unknown {
 
 beforeEach(() => {
   sessionsCreate.mockReset();
+  trialHelperSpy.mockClear();
   sessionsCreate.mockResolvedValue({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' });
 });
 
@@ -57,6 +67,7 @@ describe('createCheckoutSession trial', () => {
       subscriptionRow = undefined;
       await createCheckoutSession({ tenantId: TENANT, plan: plan, interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
       expect(trialDays()).toBe(7);
+      expect(trialHelperSpy).toHaveBeenCalledWith(true);
     },
   );
 
@@ -64,6 +75,8 @@ describe('createCheckoutSession trial', () => {
     subscriptionRow = { stripe_customer_id: 'cus_1', stripe_subscription_id: 'sub_1' };
     await createCheckoutSession({ tenantId: TENANT, plan: 'enterprise', interval: 'monthly', successUrl: 'https://s', cancelUrl: 'https://c', customerEmail: 'owner@example.com' });
     expect(trialDays()).toBeUndefined();
+    expect(sessionsCreate.mock.calls[0][0].subscription_data).not.toHaveProperty('trial_period_days');
+    expect(trialHelperSpy).toHaveBeenCalledWith(false);
   });
 
   it('gives no trial when a prior subscription id exists', async () => {

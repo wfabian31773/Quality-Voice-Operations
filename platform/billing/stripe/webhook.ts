@@ -1,6 +1,6 @@
 import type Stripe from 'stripe';
 import { getStripeClient, getWebhookSecret } from './client';
-import { getPlanFromPriceId, PLAN_LIMITS } from './plans';
+import { getPlanFromPriceId, PLAN_LIMITS, type SubscriptionState } from './plans';
 import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import { provisionTenant } from '../../tenant/provisioning/TenantProvisioningService';
@@ -47,6 +47,38 @@ function normalizeBillingInterval(raw: string | undefined | null): 'monthly' | '
   if (raw === 'year' || raw === 'annual') return 'annual';
   if (raw === 'month' || raw === 'monthly') return 'monthly';
   return null;
+}
+
+/**
+ * Map a Stripe subscription status onto the local `subscription_status`
+ * enum ('trialing' | 'active' | 'past_due' | 'paused' | 'cancelled').
+ * Returns `null` for statuses with no local equivalent (`incomplete`)
+ * so callers can keep their existing value instead of guessing.
+ */
+export function mapStripeSubscriptionStatus(raw: string | undefined | null): SubscriptionState | null {
+  switch (raw) {
+    case 'trialing': return 'trialing';
+    case 'active': return 'active';
+    case 'past_due':
+    case 'unpaid':
+      return 'past_due';
+    case 'paused': return 'paused';
+    case 'canceled':
+    case 'incomplete_expired':
+      return 'cancelled';
+    default: return null;
+  }
+}
+
+/**
+ * Stripe's `trial_end` (unix seconds) as an ISO string. `null` when the
+ * subscription has no trial, `undefined` when the field is absent so
+ * callers can leave the column alone.
+ */
+function stripeTrialEnd(sub: unknown): string | null | undefined {
+  const raw = (sub as Record<string, unknown>).trial_end;
+  if (raw === undefined) return undefined;
+  return typeof raw === 'number' ? new Date(raw * 1000).toISOString() : null;
 }
 
 async function isEventProcessed(eventId: string): Promise<boolean> {
@@ -173,6 +205,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   let periodEnd: string | null = null;
   let billingInterval: string | null = null;
   let stripePriceId: string | null = null;
+  // Without the Stripe subscription we can't tell a trial apart, so keep
+  // the old 'active' default; customer.subscription.updated corrects it.
+  let status: SubscriptionState = 'active';
+  let trialEnd: string | null = null;
 
   if (session.subscription) {
     try {
@@ -194,6 +230,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       // `$6::billing_interval` cast in the INSERT below blows up on a
       // raw 'year' value and the whole checkout webhook fails.
       billingInterval = normalizeBillingInterval(interval);
+      status = mapStripeSubscriptionStatus(sub.status) ?? 'active';
+      trialEnd = stripeTrialEnd(sub) ?? null;
     } catch (err) {
       logger.warn('Could not fetch subscription period from Stripe', { error: String(err) });
     }
@@ -225,11 +263,12 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
          stripe_price_id, billing_interval,
          monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled,
-         current_period_start, current_period_end)
-       VALUES ($1, $2, 'active', $3, $4, $5, COALESCE($6::billing_interval, 'monthly'),
-         $7, $8, $9, $10, $11, $12)
+         current_period_start, current_period_end, trial_end)
+       VALUES ($1, $2, $13::subscription_status, $3, $4, $5, COALESCE($6::billing_interval, 'monthly'),
+         $7, $8, $9, $10, $11, $12, $14)
        ON CONFLICT (tenant_id) DO UPDATE SET
-         plan = EXCLUDED.plan, status = 'active',
+         plan = EXCLUDED.plan, status = EXCLUDED.status,
+         trial_end = EXCLUDED.trial_end,
          stripe_customer_id = EXCLUDED.stripe_customer_id,
          stripe_subscription_id = EXCLUDED.stripe_subscription_id,
          stripe_price_id = EXCLUDED.stripe_price_id,
@@ -244,7 +283,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       [tenantId, plan, session.customer, session.subscription,
        stripePriceId, billingInterval,
        limits.monthlyCallLimit, limits.monthlySmsLimit, limits.monthlyAiMinuteLimit, limits.overageEnabled,
-       periodStart, periodEnd],
+       periodStart, periodEnd, status, trialEnd],
     );
 
     await appendBillingEvent(client, tenantId, 'checkout_completed', {
@@ -253,6 +292,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       customerId: session.customer,
       billingInterval,
       stripePriceId,
+      status,
+      trialEnd,
     }, stripeEventId);
 
     // Server-authoritative attribution for the BillingEstimator's
@@ -374,7 +415,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
     }
   });
 
-  logger.info('Subscription activated from checkout', { tenantId, plan, billingInterval });
+  logger.info('Subscription activated from checkout', { tenantId, plan, billingInterval, status });
 
   try {
     const tenantStatus = await withPrivilegedClient(async (client) => {
@@ -405,9 +446,15 @@ async function handleInvoiceSucceeded(invoice: Stripe.Invoice, stripeEventId: st
   if (!tenantId) return;
 
   await withTenant(tenantId, async (client) => {
+    // Stripe "pays" a $0 invoice when a trial starts; that must not end
+    // the local trial. A real charge (or any non-trial row) still
+    // flips the subscription to 'active'.
     await client.query(
-      `UPDATE subscriptions SET status = 'active', updated_at = NOW() WHERE tenant_id = $1`,
-      [tenantId],
+      `UPDATE subscriptions
+          SET status = CASE WHEN status = 'trialing' AND $2::bigint = 0 THEN status ELSE 'active' END,
+              updated_at = NOW()
+        WHERE tenant_id = $1`,
+      [tenantId, invoice.amount_paid ?? 0],
     );
     await appendBillingEvent(client, tenantId, 'payment_succeeded', {
       invoiceId: invoice.id,
@@ -822,11 +869,18 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     if (currentPeriodStart) { values.push(currentPeriodStart); updateFields.push(`current_period_start = $${values.length}`); }
     if (currentPeriodEnd) { values.push(currentPeriodEnd); updateFields.push(`current_period_end = $${values.length}`); }
 
+    // Keep status and trial_end in step with Stripe, e.g. trialing → active
+    // when the trial converts, or → past_due when the first charge fails.
+    const status = mapStripeSubscriptionStatus(sub.status);
+    if (status) { values.push(status); updateFields.push(`status = $${values.length}::subscription_status`); }
+    const trialEnd = stripeTrialEnd(sub);
+    if (trialEnd !== undefined) { values.push(trialEnd); updateFields.push(`trial_end = $${values.length}`); }
+
     await client.query(
       `UPDATE subscriptions SET ${updateFields.join(', ')} WHERE tenant_id = $1`,
       values,
     );
-    await appendBillingEvent(client, tenantId, 'subscription_updated', { plan, subscriptionId: sub.id }, stripeEventId);
+    await appendBillingEvent(client, tenantId, 'subscription_updated', { plan, subscriptionId: sub.id, status, trialEnd }, stripeEventId);
   });
 
   const marketplaceSubStatus = sub.status === 'active' ? 'active'

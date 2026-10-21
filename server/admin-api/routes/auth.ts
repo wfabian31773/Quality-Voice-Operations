@@ -7,6 +7,7 @@ import { authCookieOptions } from '../middleware/security';
 import { createLogger } from '../../../platform/core/logger';
 import { getStripeClient } from '../../../platform/billing/stripe/client';
 import { getPlanPriceId, TRIAL_LIMITS, type PlanTier } from '../../../platform/billing/stripe/plans';
+import { buildTrialSubscriptionData } from '../../../platform/billing/stripe/trial';
 import { isSupportedBillingCurrency } from '../../../platform/billing/supportedCurrencies';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
@@ -317,6 +318,8 @@ router.post('/auth/signup', async (req, res) => {
         },
         subscription_data: {
           metadata: { tenantId, userId, plan, interval, billingCurrency: normalizedBillingCurrency },
+          // Signup creates the tenant, so this is always its first subscription.
+          ...buildTrialSubscriptionData(true),
         },
         client_reference_id: visitorId || undefined,
         success_url: `${baseUrl}/onboarding?session_id={CHECKOUT_SESSION_ID}`,
