@@ -23,6 +23,7 @@ import { isToolDenied, type ToolOverride } from '../../../platform/agent-templat
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import { createToolExecution, completeToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { BookkeepingQueue, type FlushResult } from './bookkeepingQueue';
+import { withBookkeepingStatementTimeout } from './bookkeepingStatementTimeout';
 import {
   executeWithRetry,
   getToolRetryConfig,
@@ -414,7 +415,8 @@ function buildToolHandler(
       demoExecId.catch(() => {});
       void queue.enqueue('tool_invocations.create', async () => {
         try {
-          resolveDemoId(await createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: demoArgs }));
+          resolveDemoId(await withBookkeepingStatementTimeout(() =>
+            createToolExecution({ tenantId, callSessionId, agentId: agentConfig.agentId, agentSlug: agentConfig.agentId, toolName, parameters: demoArgs })));
         } catch (err) {
           rejectDemoId(err);
           throw err;
@@ -427,14 +429,14 @@ function buildToolHandler(
         executionId: await demoExecId,
       }));
       const demoDurationMs = Date.now() - demoStartTime;
-      void queue.enqueue('tool_invocations.complete', async () => completeToolExecution({
+      void queue.enqueue('tool_invocations.complete', () => withBookkeepingStatementTimeout(async () => completeToolExecution({
         tenantId,
         callSessionId,
         executionId: await demoExecId,
         result: (() => { try { return JSON.parse(demoResult); } catch { return { raw: demoResult }; } })(),
         status: 'success',
         durationMs: demoDurationMs,
-      }));
+      })));
       if (ctx.reasoningEngine) {
         const stepTool = ctx.reasoningEngine.getCurrentWorkflowStepTool();
         if (stepTool === toolName) {

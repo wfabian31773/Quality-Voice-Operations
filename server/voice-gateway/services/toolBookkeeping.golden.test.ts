@@ -24,9 +24,10 @@ vi.mock('../../../platform/db', async (importOriginal) => {
     g.log.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
     return { rows: [], rowCount: 0 };
   };
+  const pool = { query, connect: async () => ({ query, release: () => {} }) };
   return {
     ...actual,
-    getPlatformPool: () => ({ query, connect: async () => ({ query, release: () => {} }) }),
+    getPlatformPool: () => pool,
   };
 });
 vi.mock('../../../platform/core/observability/traceLogger', () => ({ recordTrace: async () => {} }));
@@ -132,8 +133,9 @@ describe('bookkeeping golden (statements recorded on 31996d53, inline writes)', 
     expect(data).toMatchSnapshot();
     // 31996d53: 6 transactions (insert, state, event, complete, state, event) × 3 framing statements = 18.
     // Now each state + event pair is one transaction: insert, state+event, complete, state+event.
-    // The two state+event transactions (callPersistence) also SET LOCAL the bookkeeping statement timeout.
-    expect(framing).toBe(4 * 3 + 2);
+    // All four also SET LOCAL the bookkeeping statement timeout: callPersistence's two state+event
+    // transactions and, through withBookkeepingStatementTimeout, the tool_invocations insert and completion.
+    expect(framing).toBe(4 * 3 + 4);
   });
 
   it('contract tool, failed: a failed completion, has_tool_failure, one observability error', async () => {

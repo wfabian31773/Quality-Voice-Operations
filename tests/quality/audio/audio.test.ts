@@ -431,11 +431,12 @@ describe('audio pack: per-tool timing with 250 ms per DB statement (RT-HOLD-LINE
     expect((after.answerAudioAt as number) - after.callAt).toBeLessThan(RESULT_SENT_BUDGET_MS);
   });
 
-  it('mutation proof: with the writes awaited inline again (bookkeeping-inline) the same assertion fails: 3000 ms, as on 31996d53 and a3d2a94c', () => {
-    // 12 statements at 250 ms: the row insert, its completion and the meter (the harness fakes the state/event writes).
+  it('mutation proof: with the writes awaited inline again (bookkeeping-inline) the same assertion fails: 3750 ms (3000 on 31996d53 and a3d2a94c)', () => {
+    // 15 statements at 250 ms: the row insert, its completion and the meter (the harness fakes the state/event writes),
+    // 5 each: BEGIN, the bookkeeping statement timeout's SET LOCAL (12 statements before it), set_config, the write, COMMIT.
     for (const path of ['inline', 'part1', 'a3d2a94c'] as const) {
       const [timing] = paths[path][BOOKKEEPING].toolTimings;
-      expect(resultSentMs(timing), path).toBe(3_000);
+      expect(resultSentMs(timing), path).toBe(3_750);
       expect(resultSentMs(timing) < RESULT_SENT_BUDGET_MS, path).toBe(false);
     }
     // Part 1's hold line covered the wait; a3d2a94c's caller sat through it.

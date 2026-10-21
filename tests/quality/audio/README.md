@@ -75,5 +75,5 @@ A scenario the runtime can't pass yet can carry `expectedFail` + `pinned`, like 
 - the hold line no longer knows the result came back first (`HoldLine.toolEnded` + `HoldLine.agentAudioStarted`: the tool's end and the answer's audio each keep a fast tool quiet on their own, so both go) → S18 fast 0/5 on `hold_line.count` + `hold_line.after_result` (and S12 backchannel, whose "let me check" it no longer hears);
 - a withheld tool result is never voiced on its own (`XaiRealtimeTransport.voiceWithheldResult`) → S12 backchannel 0/5 on `tool_result.voiced`: the confirmation is never spoken;
 - "heard" needs a transcript again (`SilenceWatchdog.isAudibleSpeech`) → S17 0/5: never-heard prompts every 8 s, cut mid-pause, `never_heard`;
-- a tool call waits for its bookkeeping writes again (`BookkeepingQueue.onCriticalPath` → `settled()`) → the timing fixture's tool call → result sent is 3000 ms, so its < 1000 ms assertion fails;
+- a tool call waits for its bookkeeping writes again (`BookkeepingQueue.onCriticalPath` → `settled()`) → the timing fixture's tool call → result sent is 3750 ms (3000 before the platform writes' statement-timeout SET LOCAL), so its < 1000 ms assertion fails;
 - no call cache for call-stable reads (`ContractToolBridge.readCacheKey`) → the catalog fixture reads the DB twice.

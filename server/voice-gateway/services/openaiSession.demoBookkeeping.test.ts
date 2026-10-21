@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
     emit: (event: string, ...args: unknown[]) => boolean;
   }>,
   logs: [] as Array<{ message: string; extra?: Record<string, unknown> }>,
+  sql: [] as string[],
 }));
 
 vi.mock('../../../platform/tools/registry', () => ({ globalToolRegistry: { get: () => undefined } }));
@@ -24,10 +25,11 @@ vi.mock('../../../platform/billing/usage/UsageRecorder', () => ({ recordToolExec
 vi.mock('./demoToolHandler', () => ({ handleDemoToolCall: vi.fn(() => JSON.stringify({ success: true, demo: true })) }));
 vi.mock('../../../platform/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../platform/db')>();
-  const query = async (): Promise<{ rows: Array<Record<string, unknown>> }> => ({ rows: [] });
+  const query = async (sql: string): Promise<{ rows: Array<Record<string, unknown>> }> => { h.sql.push(sql); return { rows: [] }; };
+  const pool = { connect: async () => ({ query, release: () => {} }) };
   return {
     ...actual,
-    getPlatformPool: () => ({ connect: async () => ({ query, release: () => {} }) }),
+    getPlatformPool: () => pool,
     withTenantContext: async (_client: unknown, _tenantId: string, fn: () => Promise<unknown>) => fn(),
   };
 });
@@ -88,7 +90,8 @@ import { createRealtimeSession, type SessionContext } from './openaiSession';
 import { sessionManager } from './sessionManager';
 import { updateCallState, updateCallStateWithEvent, writeCallEvent } from './callPersistence';
 import { completeToolExecution, createToolExecution } from '../../../platform/tools/ToolExecutionService';
-import { BOOKKEEPING_FLUSH_TIMEOUT_MS } from './bookkeepingQueue';
+import { getPlatformPool } from '../../../platform/db';
+import { BOOKKEEPING_FLUSH_TIMEOUT_MS, BOOKKEEPING_STATEMENT_TIMEOUT_SQL } from './bookkeepingQueue';
 
 const TOOLS = [{ name: 'lookup_customer', description: 'lookup', parameters: { type: 'object', properties: {} } }];
 
@@ -132,6 +135,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   h.transports.length = 0;
   h.logs.length = 0;
+  h.sql.length = 0;
   vi.mocked(writeCallEvent).mockClear();
   vi.mocked(updateCallState).mockClear();
   vi.mocked(updateCallStateWithEvent).mockClear();
@@ -168,6 +172,35 @@ describe('demo tool bookkeeping', () => {
     expect(vi.mocked(completeToolExecution)).not.toHaveBeenCalled();
     expect(vi.mocked(updateCallState).mock.calls.map((c) => c[2])).toEqual(['AGENT_CONNECTED', 'TOOL_EXECUTION', 'ACTIVE_CONVERSATION']);
     expect(vi.mocked(updateCallStateWithEvent).mock.calls.map((c) => c[2])).toContain('CALL_COMPLETED');
+    await result.releaseBookkeeping();
+  });
+
+  it('the demo tool_invocations insert and completion run with the bookkeeping statement timeout (SET LOCAL right after their BEGIN)', async () => {
+    // Stands in for ToolExecutionService's own transaction on the platform pool.
+    const transaction = async (sql: string) => {
+      const client = await getPlatformPool().connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(sql);
+        await client.query('COMMIT');
+      } finally {
+        client.release();
+      }
+    };
+    vi.mocked(createToolExecution).mockImplementationOnce(async () => { await transaction('INSERT INTO tool_invocations'); return 'exec-1'; });
+    vi.mocked(completeToolExecution).mockImplementationOnce(async () => { await transaction('UPDATE tool_invocations'); });
+    const result = await createRealtimeSession(makeCtx());
+    const transport = h.transports[h.transports.length - 1];
+    transport.emit('session.created', { type: 'session.created' });
+
+    await expect(transport.opts.onFunctionCall('lookup_customer', {})).resolves.toContain('"demo":true');
+    await result.session.close();
+    const flushed = result.flushBookkeeping('test');
+    await vi.advanceTimersByTimeAsync(BOOKKEEPING_FLUSH_TIMEOUT_MS);
+    expect(await flushed).toBe('drained');
+
+    const tx = ['BEGIN', BOOKKEEPING_STATEMENT_TIMEOUT_SQL];
+    expect(h.sql).toEqual([...tx, 'INSERT INTO tool_invocations', 'COMMIT', ...tx, 'UPDATE tool_invocations', 'COMMIT']);
     await result.releaseBookkeeping();
   });
 });
