@@ -206,9 +206,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   let periodEnd: string | null = null;
   let billingInterval: string | null = null;
   let stripePriceId: string | null = null;
-  // Without the Stripe subscription we can't tell a trial apart, so keep
-  // the old 'active' default; a later customer.subscription.created or
-  // .updated corrects it.
+  // Payment-mode sessions have no subscription and stay 'active'. A
+  // subscription we can't retrieve throws instead (see below).
   let status: SubscriptionState = 'active';
   let trialEnd: string | null = null;
 
@@ -235,7 +234,16 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       status = mapStripeSubscriptionStatus(sub.status) ?? 'active';
       trialEnd = stripeTrialEnd(sub) ?? null;
     } catch (err) {
-      logger.warn('Could not fetch subscription period from Stripe', { error: String(err) });
+      // Without the subscription we can't tell a trial apart, and on a
+      // first signup customer.subscription.created usually arrived before
+      // this event and was dropped (no row had the customer id yet), so
+      // nothing would correct a guessed 'active'. Throw so the route
+      // returns 500 and Stripe retries; no billing_events row has been
+      // written yet, so the retry isn't deduped.
+      logger.error('Could not fetch checkout subscription from Stripe; failing for retry', {
+        sessionId: session.id, error: String(err),
+      });
+      throw err;
     }
   }
 
@@ -442,30 +450,120 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   }
 }
 
-async function handleInvoiceSucceeded(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
-  const customerId = invoice.customer as string;
-  const tenantId = await getTenantByCustomer(customerId);
-  if (!tenantId) return;
+/**
+ * The subscription an invoice belongs to. Older API versions put it on
+ * `invoice.subscription`; newer ones on
+ * `invoice.parent.subscription_details.subscription`. Either may be an id
+ * or an expanded object. `null` for one-off (payment-mode) invoices.
+ */
+function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  type SubRef = string | { id?: string } | null | undefined;
+  const raw = invoice as unknown as {
+    subscription?: SubRef;
+    parent?: { subscription_details?: { subscription?: SubRef } | null } | null;
+  };
+  const ref = raw.subscription ?? raw.parent?.subscription_details?.subscription ?? null;
+  if (typeof ref === 'string') return ref || null;
+  return ref?.id ?? null;
+}
 
+/**
+ * Resolve the tenant and plan subscription an invoice event may touch.
+ * Returns `null` (plan row left alone) for one-off invoices and marketplace
+ * subscriptions. `subscription` is the state re-read from Stripe, or `null`
+ * if Stripe couldn't be reached. Whether the subscription is the one the
+ * plan row tracks is checked by the caller's UPDATE.
+ */
+async function resolvePlanInvoice(invoice: Stripe.Invoice): Promise<{
+  tenantId: string;
+  subscriptionId: string;
+  subscription: Stripe.Subscription | null;
+} | null> {
+  const tenantId = await getTenantByCustomer(invoice.customer as string);
+  if (!tenantId) return null;
+
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (!subscriptionId) {
+    logger.info('Invoice has no subscription; plan row left alone', { tenantId, invoiceId: invoice.id });
+    return null;
+  }
+
+  let subscription: Stripe.Subscription | null = null;
+  try {
+    const latest = await getStripeClient().subscriptions.retrieve(subscriptionId);
+    if (latest?.id) subscription = latest;
+  } catch (err) {
+    logger.warn('Could not re-fetch invoice subscription from Stripe; using invoice outcome', {
+      subscriptionId, error: String(err),
+    });
+  }
+
+  const forMarketplaceCheck = subscription ?? ({ id: subscriptionId, metadata: {} } as unknown as Stripe.Subscription);
+  if (await isMarketplaceSubscription(forMarketplaceCheck)) {
+    logger.info('Marketplace subscription invoice; plan row left alone', { tenantId, subscriptionId, invoiceId: invoice.id });
+    return null;
+  }
+
+  return { tenantId, subscriptionId, subscription };
+}
+
+/**
+ * Fallback when Stripe can't be reached: apply the invoice outcome to the
+ * plan row, but only if it tracks this subscription (or none yet).
+ */
+async function applyInvoiceStatusFallback(
+  tenantId: string,
+  subscriptionId: string,
+  statusSql: string,
+  statusValues: unknown[],
+  billingEvent: { type: string; data: Record<string, unknown> },
+  stripeEventId: string,
+): Promise<void> {
   await withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `UPDATE subscriptions SET status = ${statusSql}, updated_at = NOW()
+        WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
+      [tenantId, subscriptionId, ...statusValues],
+    );
+    if (!result.rowCount) {
+      logger.info('Invoice is not for the tenant plan subscription; plan row left alone', { tenantId, subscriptionId });
+      return;
+    }
+    await appendBillingEvent(client, tenantId, billingEvent.type, billingEvent.data, stripeEventId);
+  });
+}
+
+async function handleInvoiceSucceeded(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
+  const target = await resolvePlanInvoice(invoice);
+  if (!target) return;
+  const { tenantId, subscriptionId, subscription } = target;
+  const billingEvent = {
+    type: 'payment_succeeded',
+    data: {
+      invoiceId: invoice.id,
+      subscriptionId,
+      amountPaid: invoice.amount_paid,
+      currency: invoice.currency,
+    },
+  };
+
+  if (subscription) {
+    // Stripe's current status already covers the $0 trial-start invoice
+    // (still 'trialing') and a recovered past_due (now 'active').
+    await syncPlanSubscription(tenantId, subscription, stripeEventId, billingEvent);
+  } else {
     // Stripe "pays" a $0 invoice when a trial starts; that must not end
     // the local trial. A real charge (or any non-trial row) still
     // flips the subscription to 'active'.
-    await client.query(
-      `UPDATE subscriptions
-          SET status = CASE WHEN status = 'trialing' AND $2::bigint = 0 THEN status ELSE 'active' END,
-              updated_at = NOW()
-        WHERE tenant_id = $1`,
-      [tenantId, invoice.amount_paid ?? 0],
+    await applyInvoiceStatusFallback(
+      tenantId, subscriptionId,
+      `CASE WHEN status = 'trialing' AND $3::bigint = 0 THEN status ELSE 'active' END`,
+      [invoice.amount_paid ?? 0],
+      billingEvent, stripeEventId,
     );
-    await appendBillingEvent(client, tenantId, 'payment_succeeded', {
-      invoiceId: invoice.id,
-      amountPaid: invoice.amount_paid,
-      currency: invoice.currency,
-    }, stripeEventId);
-  });
+  }
 
-  logger.info('Invoice payment succeeded', { tenantId, invoiceId: invoice.id });
+  logger.info('Invoice payment succeeded', { tenantId, invoiceId: invoice.id, subscriptionId });
 }
 
 /**
@@ -629,20 +727,7 @@ export async function handleInvoiceFinalized(invoice: Stripe.Invoice): Promise<v
   if (typeof metaPurchaseId === 'string' && metaPurchaseId.length > 0) {
     purchaseIdToBadge = metaPurchaseId;
   } else {
-    // `subscription` was removed from the typed `Stripe.Invoice` shape
-    // in newer Stripe API versions (it's reachable via parent objects),
-    // but the JSON payload still carries the raw `subscription` field
-    // for backwards compatibility — read it as `unknown` to stay
-    // resilient to future Stripe SDK upgrades.
-    const rawSubscription = (invoice as unknown as {
-      subscription?: string | { id?: string } | null;
-    }).subscription;
-    const subId =
-      typeof rawSubscription === 'string'
-        ? rawSubscription
-        : rawSubscription && typeof rawSubscription === 'object'
-          ? rawSubscription.id ?? null
-          : null;
+    const subId = invoiceSubscriptionId(invoice);
     if (subId) {
       try {
         const pool = getPlatformPool();
@@ -728,22 +813,27 @@ export function formatDiscountFooter(d: UpgradeDiscount): string {
 }
 
 async function handleInvoiceFailed(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
-  const customerId = invoice.customer as string;
-  const tenantId = await getTenantByCustomer(customerId);
-  if (!tenantId) return;
-
-  await withTenant(tenantId, async (client) => {
-    await client.query(
-      `UPDATE subscriptions SET status = 'past_due', updated_at = NOW() WHERE tenant_id = $1`,
-      [tenantId],
-    );
-    await appendBillingEvent(client, tenantId, 'payment_failed', {
+  const target = await resolvePlanInvoice(invoice);
+  if (!target) return;
+  const { tenantId, subscriptionId, subscription } = target;
+  const billingEvent = {
+    type: 'payment_failed',
+    data: {
       invoiceId: invoice.id,
+      subscriptionId,
       attemptCount: invoice.attempt_count,
-    }, stripeEventId);
-  });
+    },
+  };
 
-  logger.warn('Invoice payment failed', { tenantId, invoiceId: invoice.id });
+  if (subscription) {
+    // Re-read status so a late retry of an old failure can't overwrite a
+    // later successful payment.
+    await syncPlanSubscription(tenantId, subscription, stripeEventId, billingEvent);
+  } else {
+    await applyInvoiceStatusFallback(tenantId, subscriptionId, `'past_due'`, [], billingEvent, stripeEventId);
+  }
+
+  logger.warn('Invoice payment failed', { tenantId, invoiceId: invoice.id, subscriptionId });
 }
 
 /**
@@ -846,8 +936,17 @@ async function handleSubscriptionUpdated(payload: Stripe.Subscription, stripeEve
   );
 }
 
-/** Sync the tenant's plan row from the subscription it tracks. */
-async function syncPlanSubscription(tenantId: string, sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
+/**
+ * Sync the tenant's plan row from the subscription it tracks. Records
+ * `billingEvent` (default: subscription_updated) only when the row was
+ * the subscription's.
+ */
+async function syncPlanSubscription(
+  tenantId: string,
+  sub: Stripe.Subscription,
+  stripeEventId: string,
+  billingEvent?: { type: string; data: Record<string, unknown> },
+): Promise<void> {
   const item = sub.items?.data?.[0];
   const priceId = item?.price?.id;
   const plan = priceId ? getPlanFromPriceId(priceId) : undefined;
@@ -955,12 +1054,16 @@ async function syncPlanSubscription(tenantId: string, sub: Stripe.Subscription, 
     const trialEnd = stripeTrialEnd(sub);
     if (trialEnd !== undefined) { values.push(trialEnd); updateFields.push(`trial_end = $${values.length}`); }
 
-    await client.query(
+    const result = await client.query(
       `UPDATE subscriptions SET ${updateFields.join(', ')}
         WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
       values,
     );
-    await appendBillingEvent(client, tenantId, 'subscription_updated', { plan, subscriptionId: sub.id, status, trialEnd }, stripeEventId);
+    if (!result.rowCount) return;
+    const recorded = billingEvent
+      ? { type: billingEvent.type, data: { ...billingEvent.data, plan, status, trialEnd } }
+      : { type: 'subscription_updated', data: { plan, subscriptionId: sub.id, status, trialEnd } };
+    await appendBillingEvent(client, tenantId, recorded.type, recorded.data, stripeEventId);
   });
 }
 

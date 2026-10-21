@@ -461,15 +461,32 @@ describe('handleStripeEvent — trial status sync', () => {
     expect(inserts[0].values[13]).toBeNull();
   });
 
-  it('checkout.session.completed falls back to active when the Stripe sub cannot be retrieved', async () => {
+  it('checkout.session.completed throws (so Stripe retries) when the Stripe sub cannot be retrieved', async () => {
     const { inserts } = captureSubscriptionUpdate();
     subscriptionsRetrieveMock.mockRejectedValue(new Error('stripe down'));
 
-    await handleStripeEvent(makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_noretrieve' }));
+    await expect(
+      handleStripeEvent(makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_noretrieve' })),
+    ).rejects.toThrow('stripe down');
+
+    // Nothing stored, and no billing_events row, so the retry isn't deduped.
+    expect(inserts).toHaveLength(0);
+    const billingEventInserts = queryMock.mock.calls.filter(([sql]) => /INSERT INTO billing_events/i.test(String(sql)));
+    expect(billingEventInserts).toHaveLength(0);
+  });
+
+  it('checkout.session.completed is re-processed on the retry once Stripe is reachable', async () => {
+    const { inserts } = captureSubscriptionUpdate();
+    subscriptionsRetrieveMock.mockRejectedValueOnce(new Error('stripe down'));
+    subscriptionsRetrieveMock.mockResolvedValueOnce(retrievedSub('trialing', TRIAL_END_UNIX));
+    const evt = makeCheckoutEvent('price_pro_monthly_test', 'month', { id: 'evt_co_retry' });
+
+    await expect(handleStripeEvent(evt)).rejects.toThrow();
+    await handleStripeEvent(evt);
 
     expect(inserts).toHaveLength(1);
-    expect(inserts[0].values[12]).toBe('active');
-    expect(inserts[0].values[13]).toBeNull();
+    expect(inserts[0].values[12]).toBe('trialing');
+    expect(inserts[0].values[13]).toBe(TRIAL_END_ISO);
   });
 
   function updatedEventWithTrial(status: string, trialEnd: number | null, id: string): Stripe.Event {

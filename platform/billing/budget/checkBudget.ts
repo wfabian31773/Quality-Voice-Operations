@@ -91,7 +91,9 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
     const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? PLAN_LIMITS.starter.monthlyAiMinuteLimit;
     const overageEnabled = (sub.overage_enabled as boolean) ?? false;
 
-    if (subStatus === 'cancelled' || subStatus === 'past_due') {
+    // 'paused' is what Stripe sets when a trial ends with no payment method
+    // under end_behavior=pause; it's unpaid, same as past_due.
+    if (subStatus === 'cancelled' || subStatus === 'past_due' || subStatus === 'paused') {
       await client.query('COMMIT');
       return {
         allowed: false,

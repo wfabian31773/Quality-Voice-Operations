@@ -105,6 +105,18 @@ describe('checkBudget — Stripe-trialing paid tenant', () => {
   });
 });
 
+describe('checkBudget — unpaid statuses', () => {
+  it.each(['paused', 'past_due', 'cancelled'])('blocks a %s subscription', async (status) => {
+    subRow = proRow({ status, trial_end: null });
+
+    const result = await checkBudget(TENANT);
+
+    expect(result.allowed).toBe(false);
+    expect(result.status).toBe(status);
+    expect(result.reason).toMatch(new RegExp(`Subscription is ${status}`));
+  });
+});
+
 describe('checkBudget — free trial', () => {
   it('a trialing row without a Stripe subscription keeps TRIAL_LIMITS', async () => {
     subRow = proRow({ stripe_subscription_id: null, plan: 'starter' });

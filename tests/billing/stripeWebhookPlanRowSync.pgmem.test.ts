@@ -5,7 +5,10 @@
  *    and never for marketplace subscriptions;
  *  - subscription.updated re-reads the subscription from Stripe so a stale
  *    or out-of-order payload can't roll the row back;
- *  - invoice.payment_succeeded's $0-invoice branch keeps a trial trialing.
+ *  - invoice.payment_succeeded / .payment_failed only touch the plan row
+ *    for its own subscription (never marketplace, foreign or one-off
+ *    invoices), re-read it from Stripe, and fall back to the invoice
+ *    outcome (keeping a $0 trial invoice trialing) when Stripe is down.
  */
 import { newDb } from 'pg-mem';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -272,24 +275,183 @@ describe('customer.subscription.deleted', () => {
   });
 });
 
-describe('invoice.payment_succeeded — $0 trial invoice', () => {
-  const invoice = (amountPaid: number) => ({ id: `in_${++seq}`, customer: CUSTOMER, amount_paid: amountPaid, currency: 'usd' });
+function invoice(opts: { amountPaid?: number; subscription?: string | null; parentSubscription?: string } = {}) {
+  return {
+    id: `in_${++seq}`,
+    customer: CUSTOMER,
+    amount_paid: opts.amountPaid ?? 34900,
+    currency: 'usd',
+    attempt_count: 1,
+    subscription: opts.subscription === undefined ? 'sub_plan' : opts.subscription,
+    parent: opts.parentSubscription
+      ? { type: 'subscription_details', subscription_details: { subscription: opts.parentSubscription } }
+      : null,
+  };
+}
+
+async function billingEvents() {
+  const { rows } = await h.pool.query(`SELECT event_type, metadata FROM billing_events`);
+  return rows;
+}
+
+describe('invoice events — re-read the plan subscription from Stripe', () => {
+  it('payment_succeeded syncs the row from the re-fetched subscription and records invoice_paid', async () => {
+    await seedPlanRow({ status: 'past_due', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_plan', status: 'active' }));
+
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice()));
+
+    expect(h.retrieveMock).toHaveBeenCalledWith('sub_plan');
+    expect((await planRow()).status).toBe('active');
+    const events = await billingEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].event_type).toBe('invoice_paid');
+    expect(events[0].metadata).toMatchObject({ subscriptionId: 'sub_plan', amountPaid: 34900 });
+  });
+
+  it('the $0 trial-start invoice keeps a trialing row trialing (Stripe still says trialing)', async () => {
+    await seedPlanRow({ status: 'trialing', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_plan', status: 'trialing', trialEnd: TRIAL_END_UNIX }));
+
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice({ amountPaid: 0 })));
+
+    expect((await planRow()).status).toBe('trialing');
+  });
+
+  it('payment_failed sets past_due from the re-fetched subscription and records invoice_failed', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_plan', status: 'past_due' }));
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice()));
+
+    expect((await planRow()).status).toBe('past_due');
+    const events = await billingEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].event_type).toBe('invoice_failed');
+  });
+
+  it('a late payment_failed retry does not overwrite a later successful payment', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_plan', status: 'active' }));
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice()));
+
+    expect((await planRow()).status).toBe('active');
+  });
+
+  it('reads the subscription from invoice.parent.subscription_details on newer API versions', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_plan', status: 'past_due' }));
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: null, parentSubscription: 'sub_plan' })));
+
+    expect(h.retrieveMock).toHaveBeenCalledWith('sub_plan');
+    expect((await planRow()).status).toBe('past_due');
+  });
+});
+
+describe('invoice events — leave the plan row alone when the invoice is not for the plan subscription', () => {
+  it('payment_failed on a marketplace subscription (metadata.type)', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_mkt', status: 'past_due', metadata: { type: 'marketplace_purchase' } }));
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: 'sub_mkt' })));
+
+    expect((await planRow()).status).toBe('active');
+    expect(await billingEvents()).toHaveLength(0);
+  });
+
+  it('payment_failed on a legacy marketplace subscription found via marketplace_purchases, row tracking none', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: null });
+    await h.pool.query(`INSERT INTO marketplace_purchases (id, stripe_subscription_id) VALUES ('mp1', 'sub_mkt_legacy')`);
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_mkt_legacy', status: 'past_due' }));
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: 'sub_mkt_legacy' })));
+
+    expect((await planRow()).status).toBe('active');
+  });
+
+  it('payment_succeeded on a marketplace subscription does not end a Stripe trial early', async () => {
+    await seedPlanRow({ status: 'trialing', stripe_subscription_id: 'sub_plan' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_mkt', status: 'active', metadata: { type: 'marketplace_purchase' } }));
+
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice({ subscription: 'sub_mkt' })));
+
+    expect((await planRow()).status).toBe('trialing');
+  });
+
+  it('payment_failed on a foreign subscription (old sub left after an upgrade)', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_pro', plan: 'pro' });
+    h.retrieveMock.mockResolvedValue(stripeSub({ id: 'sub_old_starter', status: 'past_due', priceId: 'price_starter_monthly_test' }));
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: 'sub_old_starter' })));
+
+    const row = await planRow();
+    expect(row.status).toBe('active');
+    expect(row.plan).toBe('pro');
+    expect(await billingEvents()).toHaveLength(0);
+  });
+
+  it('payment_succeeded for a one-off (payment-mode) invoice does not reactivate a cancelled tenant', async () => {
+    await seedPlanRow({ status: 'cancelled', stripe_subscription_id: 'sub_plan' });
+
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice({ subscription: null, amountPaid: 4900 })));
+
+    expect((await planRow()).status).toBe('cancelled');
+    expect(h.retrieveMock).not.toHaveBeenCalled();
+    expect(await billingEvents()).toHaveLength(0);
+  });
+
+  it('payment_failed for a one-off invoice does not touch the row', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_plan' });
+
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: null })));
+
+    expect((await planRow()).status).toBe('active');
+  });
+});
+
+describe('invoice events — Stripe unreachable: apply the invoice outcome, still scoped', () => {
+  beforeEach(() => {
+    h.retrieveMock.mockRejectedValue(new Error('stripe down'));
+  });
 
   it('a $0 invoice keeps a trialing row trialing', async () => {
     await seedPlanRow({ status: 'trialing', stripe_subscription_id: 'sub_plan' });
-    await handleStripeEvent(event('invoice.payment_succeeded', invoice(0)));
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice({ amountPaid: 0 })));
     expect((await planRow()).status).toBe('trialing');
   });
 
   it('a non-zero invoice flips trialing to active', async () => {
     await seedPlanRow({ status: 'trialing', stripe_subscription_id: 'sub_plan' });
-    await handleStripeEvent(event('invoice.payment_succeeded', invoice(34900)));
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice({ amountPaid: 34900 })));
     expect((await planRow()).status).toBe('active');
+    expect((await billingEvents())[0].event_type).toBe('invoice_paid');
   });
 
   it('a $0 invoice on a past_due row flips it to active', async () => {
     await seedPlanRow({ status: 'past_due', stripe_subscription_id: 'sub_plan' });
-    await handleStripeEvent(event('invoice.payment_succeeded', invoice(0)));
+    await handleStripeEvent(event('invoice.payment_succeeded', invoice({ amountPaid: 0 })));
+    expect((await planRow()).status).toBe('active');
+  });
+
+  it('payment_failed on the plan subscription sets past_due', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_plan' });
+    await handleStripeEvent(event('invoice.payment_failed', invoice()));
+    expect((await planRow()).status).toBe('past_due');
+  });
+
+  it('payment_failed on a foreign subscription leaves the row alone', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: 'sub_pro' });
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: 'sub_old_starter' })));
+    expect((await planRow()).status).toBe('active');
+    expect(await billingEvents()).toHaveLength(0);
+  });
+
+  it('payment_failed on a legacy marketplace subscription leaves the row alone', async () => {
+    await seedPlanRow({ status: 'active', stripe_subscription_id: null });
+    await h.pool.query(`INSERT INTO marketplace_purchases (id, stripe_subscription_id) VALUES ('mp1', 'sub_mkt')`);
+    await handleStripeEvent(event('invoice.payment_failed', invoice({ subscription: 'sub_mkt' })));
     expect((await planRow()).status).toBe('active');
   });
 });
