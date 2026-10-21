@@ -1,8 +1,42 @@
 const PHONE_REGEX =
   /(?:\+\d{8,15}\b|\b(?:\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\(\d{3}\)\s?\d{3}[-.\s]?\d{4})\b)/g;
 
-const DOB_REGEX =
-  /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})\b/g;
+const MONTH =
+  '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|' +
+  'enero|febrero|marzo|abril|mayo|junio|julio|agosto|sep?tiembre|octubre|noviembre|diciembre)(?![a-z])\\.?';
+
+/**
+ * A date, with its year (if any) in a named group: numeric US/ISO, "Oct 24, 1990",
+ * "24 October 1990", "24 de octubre de 1990". Yearless numeric dates ("10/24")
+ * only count as dates when a birth cue is in the text (see dateIsKept).
+ */
+const DATE_REGEX = new RegExp(
+  [
+    String.raw`\b\d{1,2}[\/\-]\d{1,2}[\/\-](?<y1>\d{2,4})\b`,
+    String.raw`\b(?<y2>\d{4})[\/\-]\d{1,2}[\/\-]\d{1,2}\b`,
+    String.raw`\b${MONTH}\s+\d{1,2}(?:st|nd|rd|th)?\b(?:,?\s+(?<y3>\d{4})\b)?`,
+    String.raw`\b\d{1,2}(?:\s+de)?\s+${MONTH}(?:,?\s+(?:de|del)?\s*(?<y4>\d{4})\b)?`,
+    String.raw`\b\d{1,2}[\/\-]\d{1,2}\b`,
+  ].join('|'),
+  'gi',
+);
+
+/** Words that make any date in the same text a possible birth date (EN/ES, with or without accents). */
+const BIRTH_CUE_REGEX =
+  /(?<!\p{L})(?:born|birth\p{L}*|dob|d\.o\.b\.?|nac[ií](?:miento|d[oa]|[oó])?|cumplea[ñn]os|cumple)(?!\p{L})/iu;
+
+/**
+ * Appointment dates stay readable in logs; anything that could be a birth
+ * date is redacted. A date is kept only when the text has no birth cue and
+ * the date has no year, or a four-digit year that is the current or next
+ * year. Two-digit years ("01/15/90", "10/24/26") are always redacted.
+ */
+function dateIsKept(groups: Record<string, string | undefined>, hasBirthCue: boolean, currentYear: number): boolean {
+  if (hasBirthCue) return false;
+  const year = groups.y1 ?? groups.y2 ?? groups.y3 ?? groups.y4;
+  if (year === undefined) return true;
+  return year.length === 4 && (Number(year) === currentYear || Number(year) === currentYear + 1);
+}
 
 const SSN_REGEX = /\b\d{3}-\d{2}-\d{4}\b/g;
 
@@ -40,12 +74,22 @@ const NAME_AFTER_PATTERNS: RegExp[] = [
  * Platform policy: PHI redaction is ALWAYS applied before logging; tenants cannot disable it.
  */
 export function redactPHI(text: string): string {
+  return redactPHIAsOf(text, new Date());
+}
+
+/** redactPHI with the clock passed in: `now` decides which years count as appointment years. */
+export function redactPHIAsOf(text: string, now: Date): string {
   if (!text) return text;
 
+  const currentYear = now.getUTCFullYear();
+  const hasBirthCue = BIRTH_CUE_REGEX.test(text);
   let redacted = text;
   redacted = redacted.replace(SSN_REGEX, '[SSN_REDACTED]');
   redacted = redacted.replace(PHONE_REGEX, '[PHONE_REDACTED]');
-  redacted = redacted.replace(DOB_REGEX, '[DOB_REDACTED]');
+  redacted = redacted.replace(DATE_REGEX, (...args) => {
+    const groups = args[args.length - 1] as Record<string, string | undefined>;
+    return dateIsKept(groups, hasBirthCue, currentYear) ? args[0] as string : '[DOB_REDACTED]';
+  });
 
   for (const pattern of NAME_AFTER_PATTERNS) {
     // The name is the end of the match; replace it there so a name that also

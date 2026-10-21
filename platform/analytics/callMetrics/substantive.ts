@@ -42,7 +42,11 @@ export const REDACTED_NAME_MAX_WORDS = 3;
  *                      ("this is", "my name is", …) three words still drop.
  *   [PHONE_REDACTED] / [SSN_REDACTED] → a 10 / 9 digit token: a callback
  *                      number to the floor (hasLongNumber), as the raw one was.
- *   [DOB_REDACTED]   → a date: three number words, as any matched date was.
+ *   [DOB_REDACTED]   → a date: three number words. A date redactPHI redacts
+ *                      always holds a digit, which the floor never drops as
+ *                      a name, so raw and stand-in both count as content.
+ *                      Dates redactPHI keeps (appointment dates) arrive raw,
+ *                      exactly as the floor saw them.
  */
 export function unredactForFloor(line: string, callerName: string | undefined): string {
   const unknownName = Array.from({ length: REDACTED_NAME_MAX_WORDS }, () => REDACTED_NAME_STAND_IN).join(' ');
