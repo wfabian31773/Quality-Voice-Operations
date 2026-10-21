@@ -6,7 +6,7 @@ import { recordConversionStage } from '../../../platform/analytics/ConversionFun
 import { CALL_FUNNEL_STAGE } from '../../../shared/analytics/conversionStages';
 import { encryptTranscript, encryptSensitiveField, decryptSensitiveField } from '../../../platform/security/FieldEncryption';
 import { createPiiLookupHashRecord } from '../../../platform/security/PiiLookupHash';
-import { BOOKKEEPING_STATEMENT_TIMEOUT_MS, isBookkeepingWrite } from './bookkeepingQueue';
+import { BOOKKEEPING_STATEMENT_TIMEOUT_SQL, isBookkeepingWrite } from './bookkeepingQueue';
 
 const logger = createLogger('CALL_PERSISTENCE');
 
@@ -43,9 +43,6 @@ export const TERMINAL_LIFECYCLE_STATES = ['CALL_COMPLETED', 'CALL_FAILED'] as co
  * updated_at) is written whatever the state.
  */
 export const KEEP_TERMINAL_STATE_SQL = `lifecycle_state = CASE WHEN lifecycle_state IN (${TERMINAL_LIFECYCLE_STATES.map((s) => `'${s}'`).join(', ')}) THEN lifecycle_state ELSE $3 END`;
-
-/** Postgres statement_timeout for the transactions a bookkeeping queue write runs. */
-const BOOKKEEPING_STATEMENT_TIMEOUT_SQL = `SET LOCAL statement_timeout = ${BOOKKEEPING_STATEMENT_TIMEOUT_MS}`;
 
 export interface CreateCallSessionParams {
   tenantId: string;

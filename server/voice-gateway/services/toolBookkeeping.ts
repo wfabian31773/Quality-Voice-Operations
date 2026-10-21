@@ -28,6 +28,7 @@ import type { TenantId } from '../../../platform/core/types';
 import { completeToolExecution, createToolExecution } from '../../../platform/tools/ToolExecutionService';
 import { unifiedToolRegistry } from '../../../platform/tools/ToolRegistry';
 import type { BookkeepingQueue } from './bookkeepingQueue';
+import { withBookkeepingStatementTimeout } from './bookkeepingStatementTimeout';
 import { updateCallStateWithEvent } from './callPersistence';
 import type { ContractToolBridge, ContractToolRun } from './contractToolBridge';
 
@@ -83,7 +84,8 @@ function queueInvocationRow(call: ToolRunCall, queue: BookkeepingQueue): Promise
   executionId.catch(() => {});
   void queue.enqueue('tool_invocations.create', async () => {
     try {
-      resolveId(await createToolExecution({ tenantId, callSessionId, agentId, agentSlug: agentId, toolName, parameters: args }));
+      resolveId(await withBookkeepingStatementTimeout(() =>
+        createToolExecution({ tenantId, callSessionId, agentId, agentSlug: agentId, toolName, parameters: args })));
     } catch (err) {
       rejectId(err);
       throw err;
@@ -134,7 +136,7 @@ export function finishToolRun(call: ToolRunCall, end: ToolRunEnd, queue: Bookkee
   const { run, status, errorMessage } = end;
   const durationMs = Date.now() - end.startTime;
 
-  void queue.enqueue('tool_invocations.complete', async () => completeToolExecution({
+  void queue.enqueue('tool_invocations.complete', () => withBookkeepingStatementTimeout(async () => completeToolExecution({
     tenantId,
     executionId: await run.executionId,
     callSessionId,
@@ -143,7 +145,7 @@ export function finishToolRun(call: ToolRunCall, end: ToolRunEnd, queue: Bookkee
     errorMessage,
     recoveryAction: end.recoveryAction,
     durationMs,
-  }));
+  })));
 
   if (status !== 'success') {
     void queue.enqueue('observability.tool_error', async () => {
@@ -167,7 +169,7 @@ export function finishToolRun(call: ToolRunCall, end: ToolRunEnd, queue: Bookkee
   let written = queue.enqueue('meter.tool_execution', async () => {
     try {
       const { recordToolExecution } = await import('../../../platform/billing/usage/UsageRecorder');
-      await recordToolExecution(tenantId, 1);
+      await withBookkeepingStatementTimeout(() => recordToolExecution(tenantId, 1));
     } catch (meterErr) {
       logger.error('Failed to record tool execution', { tenantId, callId: callSessionId, error: String(meterErr) });
     }
@@ -177,7 +179,7 @@ export function finishToolRun(call: ToolRunCall, end: ToolRunEnd, queue: Bookkee
     written = queue.enqueue('trial.tool_limit_check', async () => {
       try {
         const { checkTrialLimits } = await import('../../../platform/billing/guardrails/TrialGuard');
-        const trialCheck = await checkTrialLimits(tenantId);
+        const trialCheck = await withBookkeepingStatementTimeout(() => checkTrialLimits(tenantId));
         if (trialCheck.isTrial && !trialCheck.allowed && trialCheck.usage.toolExecutions >= trialCheck.usage.maxToolExecutions) {
           logger.warn('Trial tool execution limit reached mid-session', { tenantId, callId: callSessionId, toolExecutions: trialCheck.usage.toolExecutions });
         }
@@ -200,7 +202,7 @@ export function finishToolRun(call: ToolRunCall, end: ToolRunEnd, queue: Bookkee
 export function recordRefusedToolRun(call: ToolRunCall, refusal: ToolRunRefusal, queue: BookkeepingQueue): Promise<void> {
   const opened = { enqueuedAt: Date.now(), depthAtEnqueue: queue.depth };
   const executionId = queueInvocationRow(call, queue);
-  const written = queue.enqueue('tool_invocations.complete', async () => completeToolExecution({
+  const written = queue.enqueue('tool_invocations.complete', () => withBookkeepingStatementTimeout(async () => completeToolExecution({
     tenantId: call.tenantId,
     executionId: await executionId,
     callSessionId: call.callSessionId,
@@ -208,7 +210,7 @@ export function recordRefusedToolRun(call: ToolRunCall, refusal: ToolRunRefusal,
     status: 'failed',
     errorMessage: refusal.errorMessage,
     durationMs: refusal.durationMs,
-  }));
+  })));
   logDrained(call, opened, written, 2);
   return written;
 }

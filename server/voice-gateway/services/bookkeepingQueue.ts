@@ -16,17 +16,17 @@
  *   cut off. JS can't cancel a DB statement: a write the queue stopped
  *   waiting for would still land later, after newer writes or after the
  *   final call state. So the next write starts only once it settles, and the
- *   writes land in enqueue order, always. What bounds the settle depends on
- *   the writer. Only callPersistence transactions run from here get a DB
- *   statement timeout: they SET LOCAL statement_timeout to
- *   BOOKKEEPING_STATEMENT_TIMEOUT_MS (isBookkeepingWrite()), so Postgres
- *   cancels a stuck statement and the transaction rolls back. That timeout
- *   is per statement, not per transaction (a state + event + ticket
- *   transaction can take a few times it). The other queued writers
- *   (ToolExecutionService's tool_invocations rows, UsageRecorder's meter,
- *   TrialGuard, observability) are bounded only by the pool's connection
- *   checkout timeout; a lock wait there holds this call's later writes until
- *   it ends. A stuck write holds only this call's later writes: flush, drain
+ *   writes land in enqueue order, always. What bounds the settle is a DB
+ *   statement timeout: every queued DB write's transaction runs SET LOCAL
+ *   statement_timeout = BOOKKEEPING_STATEMENT_TIMEOUT_MS
+ *   (isBookkeepingWrite()), so Postgres cancels a stuck statement and the
+ *   transaction rolls back. callPersistence sets it itself; the platform
+ *   writers (ToolExecutionService's tool_invocations rows, UsageRecorder's
+ *   meter, TrialGuard) get it through withBookkeepingStatementTimeout
+ *   (bookkeepingStatementTimeout.ts). That timeout is per statement, not per
+ *   transaction (a state + event + ticket transaction can take a few times
+ *   it). The observability error is not awaited, so it never holds the
+ *   queue. A stuck write holds only this call's later writes: flush, drain
  *   and release keep their own bounds, so the floor and teardown are never
  *   held by it;
  * - flush() waits for every write enqueued before it, bounded by
@@ -73,11 +73,13 @@ export const BOOKKEEPING_RELEASE_MAX_WAIT_MS = 60_000;
  */
 export const BOOKKEEPING_FINALIZE_DRAIN_MAX_MS = 3_000;
 /**
- * The Postgres statement_timeout for callPersistence transactions run from
- * this queue: under BOOKKEEPING_WRITE_TIMEOUT_MS, so the DB cancels a stuck
- * statement about when the queue logs it, and the write settles.
+ * The Postgres statement_timeout for the DB transactions run from this queue:
+ * under BOOKKEEPING_WRITE_TIMEOUT_MS, so the DB cancels a stuck statement
+ * about when the queue logs it, and the write settles.
  */
 export const BOOKKEEPING_STATEMENT_TIMEOUT_MS = 4_000;
+/** Run right after BEGIN in each of those transactions (callPersistence, bookkeepingStatementTimeout). */
+export const BOOKKEEPING_STATEMENT_TIMEOUT_SQL = `SET LOCAL statement_timeout = ${BOOKKEEPING_STATEMENT_TIMEOUT_MS}`;
 
 export interface BookkeepingLogger {
   info(message: string, extra?: Record<string, unknown>): void;
