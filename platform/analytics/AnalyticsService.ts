@@ -90,14 +90,18 @@ export async function getCallAnalytics(
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});
 
+    // completed / escalated / failed are the Outcomes panel's shares of
+    // total_calls, so no call is in two of them: a transferred call ends in
+    // CALL_COMPLETED (or CALL_FAILED) with escalation_target set and counts
+    // as escalated only.
     const { rows: summary } = await client.query(
       `SELECT
          COUNT(*)::int AS total_calls,
          COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound_calls,
          COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound_calls,
          COALESCE(AVG(duration_seconds), 0) AS avg_duration,
-         COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_COMPLETED')::int AS completed_calls,
-         COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_FAILED')::int AS failed_calls,
+         COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_COMPLETED' AND escalation_target IS NULL)::int AS completed_calls,
+         COUNT(*) FILTER (WHERE lifecycle_state = 'CALL_FAILED' AND escalation_target IS NULL)::int AS failed_calls,
          COUNT(*) FILTER (WHERE lifecycle_state = 'ESCALATED' OR escalation_target IS NOT NULL)::int AS escalated_calls,
          COALESCE(SUM(total_cost_cents), 0)::int AS total_cost_cents
        FROM call_sessions

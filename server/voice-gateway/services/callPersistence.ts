@@ -230,7 +230,11 @@ async function applyCallState(
   newState: LifecycleState,
   extra?: CallStateExtra,
 ): Promise<void> {
-  const sets = [KEEP_TERMINAL_STATE_SQL, 'updated_at = NOW()'];
+  // NOW() is the transaction start. The live-calls poll only picks up rows
+  // updated in the last 10 s, so an escalation whose transaction ran longer
+  // would commit already out of the window and its call_escalated event
+  // would be missed: stamp it with the wall clock instead.
+  const sets = [KEEP_TERMINAL_STATE_SQL, newState === 'ESCALATED' ? 'updated_at = clock_timestamp()' : 'updated_at = NOW()'];
   const values: unknown[] = [tenantId, callSessionId, newState];
   let idx = 4;
 
@@ -283,8 +287,9 @@ async function applyCallState(
       }
       await client.query('RELEASE SAVEPOINT escalation_ticket');
     } catch (ticketErr) {
-      await client.query('ROLLBACK TO SAVEPOINT escalation_ticket');
+      // Logged first: if the rollback itself fails, the ticket error is still on record.
       logger.error('Failed to auto-create ticket for escalated call', { tenantId, callSessionId, error: String(ticketErr) });
+      await client.query('ROLLBACK TO SAVEPOINT escalation_ticket');
     }
   }
 }

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const a = vi.hoisted(() => ({ clientQueryMock: vi.fn(), releaseMock: vi.fn(), recordStageMock: vi.fn() }));
+const a = vi.hoisted(() => ({ clientQueryMock: vi.fn(), releaseMock: vi.fn(), recordStageMock: vi.fn(), loggerErrorMock: vi.fn() }));
 
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ connect: async () => ({ query: a.clientQueryMock, release: a.releaseMock }) }),
   withTenantContext: async (_c: unknown, _t: string, cb: () => Promise<void>) => cb(),
 }));
-vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
+vi.mock('../../../platform/core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: a.loggerErrorMock, info: vi.fn() }) }));
 vi.mock('../../../platform/analytics/ConversionFunnelService', () => ({ recordConversionStage: a.recordStageMock }));
 vi.mock('../../../platform/security/FieldEncryption', () => ({
   encryptTranscript: vi.fn(async (_t: string, v: string) => `enc:${v}`),
@@ -31,6 +31,7 @@ beforeEach(() => {
   a.clientQueryMock.mockReset().mockResolvedValue({ rows: [] });
   a.releaseMock.mockReset();
   a.recordStageMock.mockReset().mockResolvedValue(undefined);
+  a.loggerErrorMock.mockReset();
   process.env.QVO_PII_LOOKUP_HMAC_KEY = 'a-secure-lookup-key-with-at-least-32-characters';
   process.env.QVO_PII_LOOKUP_HMAC_KEY_VERSION = '2026-07-blue';
 });
@@ -134,7 +135,7 @@ describe('terminal-state guard (Codex P1/P2 on #135)', () => {
   it('updateCallState and updateCallStateWithEvent set the state through the guard, with no row filter', async () => {
     await updateCallState('t1', 'cs1', 'ESCALATED', { escalationTarget: '+15550001111', escalationReason: 'caller asked' });
     const sql = String(stateUpdate()?.[0]);
-    expect(sql.startsWith(`UPDATE call_sessions SET ${KEEP_TERMINAL_STATE_SQL}, updated_at = NOW(), escalation_target = $4, escalation_reason = $5`)).toBe(true);
+    expect(sql.startsWith(`UPDATE call_sessions SET ${KEEP_TERMINAL_STATE_SQL}, updated_at = clock_timestamp(), escalation_target = $4, escalation_reason = $5`)).toBe(true);
     expect(sql.endsWith('WHERE tenant_id = $1 AND id = $2')).toBe(true);
     a.clientQueryMock.mockClear();
     await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
@@ -202,6 +203,36 @@ describe('terminal-state guard (Codex P1/P2 on #135)', () => {
     const sqls = a.clientQueryMock.mock.calls.map(([s]) => String(s));
     expect(sqls).toContain('ROLLBACK TO SAVEPOINT escalation_ticket');
     expect(sqls.at(-1)).toBe('COMMIT');
+  });
+
+  it('a failed ticket INSERT is logged (call id, no ticket text) before ROLLBACK TO SAVEPOINT', async () => {
+    const order: string[] = [];
+    a.loggerErrorMock.mockImplementation(() => { order.push('log'); });
+    a.clientQueryMock.mockImplementation(async (sql: string) => {
+      order.push(sql);
+      if (sql.includes('INSERT INTO tickets')) throw new Error('relation "tickets" does not exist');
+      if (sql === 'ROLLBACK TO SAVEPOINT escalation_ticket') throw new Error('connection lost');
+      return { rows: [] };
+    });
+    // Even when the rollback itself fails (and takes the escalation with it), the ticket error is on record.
+    await expect(updateCallState('t1', 'cs1', 'ESCALATED', { escalationTarget: '+15550001111', escalationReason: 'caller asked for a person' }))
+      .rejects.toThrow('connection lost');
+    expect(order.indexOf('log')).toBeGreaterThan(order.findIndex((s) => s.includes('INSERT INTO tickets')));
+    expect(order.indexOf('log')).toBeLessThan(order.indexOf('ROLLBACK TO SAVEPOINT escalation_ticket'));
+    expect(a.loggerErrorMock).toHaveBeenCalledTimes(1);
+    const [msg, meta] = a.loggerErrorMock.mock.calls[0];
+    expect(msg).toBe('Failed to auto-create ticket for escalated call');
+    expect(meta).toEqual({ tenantId: 't1', callSessionId: 'cs1', error: 'Error: relation "tickets" does not exist' });
+    expect(JSON.stringify(meta)).not.toMatch(/\+15550001111|caller asked/);
+  });
+
+  it('the escalation UPDATE stamps updated_at with clock_timestamp(); other moves keep NOW()', async () => {
+    await updateCallState('t1', 'cs1', 'ESCALATED', { escalationReason: 'x' });
+    expect(String(stateUpdate()?.[0])).toContain('updated_at = clock_timestamp()');
+    expect(String(stateUpdate()?.[0])).not.toContain('updated_at = NOW()');
+    a.clientQueryMock.mockClear();
+    await updateCallStateWithEvent('t1', 'cs1', 'ACTIVE_CONVERSATION', { type: 'tool_end', from: 'TOOL_EXECUTION', to: 'ACTIVE_CONVERSATION' });
+    expect(String(stateUpdate()?.[0])).toContain('updated_at = NOW()');
   });
 
   it('a filed ticket releases its savepoint', async () => {

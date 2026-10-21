@@ -124,4 +124,33 @@ describe.skipIf(!client)('escalated-call predicates, run as written (real Postgr
       });
     }
   });
+
+  it('getCallAnalytics Outcomes buckets (completed / escalated / failed), run as written, put each call in at most one', async () => {
+    const source = readFileSync(path.join(REPO_ROOT, 'platform/analytics/AnalyticsService.ts'), 'utf8');
+    const bucket = (alias: string) => {
+      const m = new RegExp(`COUNT\\(\\*\\) FILTER \\(WHERE (.+?)\\)::int AS ${alias}\\b`).exec(source);
+      if (!m) throw new Error(`no ${alias} in getCallAnalytics`);
+      return m[1];
+    };
+    await client!.query(`CREATE TEMP TABLE outcome_calls (id TEXT PRIMARY KEY, lifecycle_state TEXT NOT NULL, escalation_target TEXT)`);
+    await client!.query(`INSERT INTO outcome_calls VALUES
+      ('plain', 'CALL_COMPLETED', NULL),
+      ('transferred', 'CALL_COMPLETED', '+15550001111'),
+      ('mid_transfer', 'ESCALATED', '+15550001111'),
+      ('reasoning_escalation', 'ESCALATED', NULL),
+      ('failed', 'CALL_FAILED', NULL),
+      ('failed_after_transfer', 'CALL_FAILED', '+15550001111'),
+      ('active', 'ACTIVE_CONVERSATION', NULL)`);
+    const ids = async (alias: string) =>
+      (await client!.query(`SELECT id FROM outcome_calls WHERE ${bucket(alias)} ORDER BY id`)).rows.map((r) => r.id);
+    expect({
+      completed: await ids('completed_calls'),
+      escalated: await ids('escalated_calls'),
+      failed: await ids('failed_calls'),
+    }).toEqual({
+      completed: ['plain'],
+      escalated: ['failed_after_transfer', 'mid_transfer', 'reasoning_escalation', 'transferred'],
+      failed: ['failed'],
+    });
+  });
 });
