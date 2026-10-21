@@ -133,7 +133,7 @@ function buildRegressionSlackText(
   const failureLines = summariseFailures(report.results);
   const header = `:rotating_light: *Stripe price drift detected* — \`${report.summary.status}\` (${report.summary.failed}/${report.summary.total} failed)`;
   const trailer =
-    'Live-rate badge will fall back to the catalog 20% rate until the env vars are re-pointed and the Admin API is redeployed.';
+    'Live-rate badge will fall back to the catalog annual-discount rate until the env vars are re-pointed and the Admin API is redeployed.';
   const screenshotLines = buildScreenshotLinkLines(failureLinks);
   if (failureLines.length === 0) {
     return [header, report.summary.message ?? '', trailer, ...screenshotLines]

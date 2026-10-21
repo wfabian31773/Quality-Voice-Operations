@@ -98,10 +98,15 @@ export async function createCheckoutSession(params: {
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `SELECT stripe_customer_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      `SELECT stripe_customer_id, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
     const existingCustomerId = rows[0]?.stripe_customer_id as string | null;
+    // The 7-day trial is for a tenant's first paid subscription only.
+    // Upgrades, interval switches and re-subscribes also go through this
+    // checkout, and must not get another trial.
+    const isFirstSubscription =
+      !existingCustomerId && !(rows[0]?.stripe_subscription_id as string | null);
     await client.query('COMMIT');
 
     const priceId = getPlanPriceId(plan, interval);
@@ -172,7 +177,7 @@ export async function createCheckoutSession(params: {
       },
       subscription_data: {
         metadata: { tenantId, plan },
-        trial_period_days: TRIAL_LIMITS.durationDays,
+        trial_period_days: isFirstSubscription ? TRIAL_LIMITS.durationDays : undefined,
       },
       ...(sessionDiscounts ? { discounts: sessionDiscounts } : {}),
     });
