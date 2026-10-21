@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import { redactPHI } from '../core/phi/redact';
+import { isBirthDateField, redactPHIAsOf } from '../core/phi/redact';
 import type { ToolDefinition, ToolContext, ToolRegistry } from './registry/types';
 import { globalToolRegistry } from './registry';
 import { isToolDenied, getTemplatePermissions, getAllKnownTools, type ToolOverride } from '../agent-templates/toolPermissions';
@@ -114,15 +114,24 @@ function checkRateLimit(tenantId: string, toolName: string, limit: ToolRateLimit
   return true;
 }
 
-export function redactToolParameters(params: Record<string, unknown>): Record<string, unknown> {
+/**
+ * A value under a birth-date key ({ dob: '2026-03-15' }), or anywhere inside
+ * one ({ dob: { value: ... } }), has every date redacted whatever its year.
+ */
+export function redactToolParameters(
+  params: Record<string, unknown>,
+  now: Date = new Date(),
+  inBirthField = false,
+): Record<string, unknown> {
   const redacted: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
+    const birthField = inBirthField || isBirthDateField(key);
     if (typeof value === 'string') {
-      redacted[key] = redactPHI(value);
+      redacted[key] = redactPHIAsOf(value, now, { birthField });
     } else if (Array.isArray(value)) {
-      redacted[key] = value.map((v) => (typeof v === 'string' ? redactPHI(v) : v));
+      redacted[key] = value.map((v) => (typeof v === 'string' ? redactPHIAsOf(v, now, { birthField }) : v));
     } else if (value && typeof value === 'object') {
-      redacted[key] = redactToolParameters(value as Record<string, unknown>);
+      redacted[key] = redactToolParameters(value as Record<string, unknown>, now, birthField);
     } else {
       redacted[key] = value;
     }

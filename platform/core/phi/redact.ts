@@ -23,7 +23,7 @@ const DATE_REGEX = new RegExp(
 
 /** Words that make any date in the same text a possible birth date (EN/ES, with or without accents). */
 const BIRTH_CUE_REGEX =
-  /(?<!\p{L})(?:born|birth\p{L}*|dob|d\.o\.b\.?|nac[ií](?:miento|d[oa]|[oó])?|cumplea[ñn]os|cumple)(?!\p{L})/iu;
+  /(?<!\p{L})(?:born|birth\p{L}*|b-?days?|dob|d\.o\.b\.?|nac[ií](?:miento|d[oa]|[oó])?|cumplea[ñn]os|cumple)(?!\p{L})/iu;
 
 /**
  * Appointment dates stay readable in logs; anything that could be a birth
@@ -38,7 +38,18 @@ function dateIsKept(groups: Record<string, string | undefined>, hasBirthCue: boo
   return year.length === 4 && (Number(year) === currentYear || Number(year) === currentYear + 1);
 }
 
-const SSN_REGEX = /\b\d{3}-\d{2}-\d{4}\b/g;
+/**
+ * Keys that name a birth-date field once "_", "-", "." and spaces are dropped:
+ * dob, d_o_b, patientDOB, date_of_birth, dateOfBirth, birthday, bday, b-day,
+ * fecha_nacimiento, cumpleaños. Deliberately broad: a false hit only hides a date.
+ */
+const BIRTH_FIELD_REGEX = /^dob|dob$|birth|bday|nac[ií]miento|nacid[oa]|cumple/i;
+
+export function isBirthDateField(key: string): boolean {
+  return BIRTH_FIELD_REGEX.test(key.replace(/[\s_.-]/g, ''));
+}
+
+const SSN_REGEX =/\b\d{3}-\d{2}-\d{4}\b/g;
 
 /**
  * Words that follow a name lead-in without being a name ("I'm Looking for a
@@ -77,12 +88,16 @@ export function redactPHI(text: string): string {
   return redactPHIAsOf(text, new Date());
 }
 
-/** redactPHI with the clock passed in: `now` decides which years count as appointment years. */
-export function redactPHIAsOf(text: string, now: Date): string {
+/**
+ * redactPHI with the clock passed in: `now` decides which years count as
+ * appointment years. `birthField` marks the text as the value of a birth-date
+ * field, so every date in it is redacted whatever its year.
+ */
+export function redactPHIAsOf(text: string, now: Date, opts: { birthField?: boolean } = {}): string {
   if (!text) return text;
 
   const currentYear = now.getUTCFullYear();
-  const hasBirthCue = BIRTH_CUE_REGEX.test(text);
+  const hasBirthCue = opts.birthField === true || BIRTH_CUE_REGEX.test(text);
   let redacted = text;
   redacted = redacted.replace(SSN_REGEX, '[SSN_REDACTED]');
   redacted = redacted.replace(PHONE_REGEX, '[PHONE_REDACTED]');
@@ -102,6 +117,11 @@ export function redactPHIAsOf(text: string, now: Date): string {
   return redacted;
 }
 
+/** Redact a value stored under `key`; a birth-date key ({ dob: '2026-03-15' }) counts as a birth cue. */
+export function redactPHIForField(key: string, value: string, now: Date = new Date()): string {
+  return redactPHIAsOf(value, now, { birthField: isBirthDateField(key) });
+}
+
 export function redactGraderResult(result: unknown): unknown {
   if (!result || typeof result !== 'object') return result;
 
@@ -118,13 +138,13 @@ export function redactGraderResult(result: unknown): unknown {
   return redacted;
 }
 
-export function redactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+export function redactMetadata(metadata: Record<string, unknown>, now: Date = new Date()): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (typeof value === 'string') {
-      result[key] = redactPHI(value);
+      result[key] = redactPHIForField(key, value, now);
     } else if (Array.isArray(value)) {
-      result[key] = value.map((v) => (typeof v === 'string' ? redactPHI(v) : v));
+      result[key] = value.map((v) => (typeof v === 'string' ? redactPHIForField(key, v, now) : v));
     } else {
       result[key] = value;
     }
