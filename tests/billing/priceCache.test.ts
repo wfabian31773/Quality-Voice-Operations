@@ -253,8 +253,8 @@ describe('Stripe price cache — production wiring through /pricing', () => {
       if (priceId === 'price_pro_monthly_published') {
         return {
           id: priceId,
-          unit_amount: 39_900,
-          unit_amount_decimal: '39900',
+          unit_amount: 34_900,
+          unit_amount_decimal: '34900',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'month' },
           metadata: {},
@@ -263,8 +263,8 @@ describe('Stripe price cache — production wiring through /pricing', () => {
       if (priceId === 'price_pro_annual_published') {
         return {
           id: priceId,
-          unit_amount: 38_3040,
-          unit_amount_decimal: '383040',
+          unit_amount: 355_980,
+          unit_amount_decimal: '355980',
           currency: 'usd',
           recurring: { usage_type: 'licensed', interval: 'year' },
           metadata: {},

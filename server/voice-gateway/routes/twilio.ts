@@ -23,6 +23,7 @@ import {
 } from '../../../platform/campaigns';
 import type { ContactStatus, ContactOutcome } from '../../../platform/campaigns';
 import { checkBudget } from '../../../platform/billing/budget/checkBudget';
+import { isTrialSubscription } from '../../../platform/billing/guardrails/TrialGuard';
 import { createRateLimitChecker } from '../../../platform/infra/rate-limit/createRateLimiter';
 import { withPrivilegedClient, withTenantClient } from '../../../platform/db';
 import { extractStirTelemetry } from '../../../platform/telephony/stirAttestation';
@@ -126,10 +127,11 @@ async function resolveTenantPlan(
   try {
     return await withTenantClient(tenantId, async (client) => {
       const { rows } = await client.query(
-        `SELECT plan, status FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        `SELECT plan, status, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
         [tenantId],
       );
-      if (rows.length === 0 || rows[0].status === 'trialing') return 'trial';
+      // A Stripe trial runs on its paid plan; only the free trial is 'trial'.
+      if (isTrialSubscription(rows[0])) return 'trial';
       return (rows[0].plan as 'starter' | 'pro' | 'enterprise') || 'starter';
     });
   } catch {

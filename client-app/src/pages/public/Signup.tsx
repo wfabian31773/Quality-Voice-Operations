@@ -423,7 +423,7 @@ export default function Signup() {
                             isAnnual ? 'bg-white/20 dark:bg-white/20 text-white' : 'bg-success/10 text-success'
                           }`}
                         >
-                          −20%
+                          −{Math.round(ANNUAL_DISCOUNT * 100)}%
                         </span>
                       </button>
                     </div>

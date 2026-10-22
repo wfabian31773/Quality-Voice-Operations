@@ -3,7 +3,14 @@ import { PLAN_LIMITS } from '../stripe/plans';
 import type { PlanTier } from '../stripe/plans';
 import type { TenantId } from '../../core/types';
 import { createLogger } from '../../core/logger';
-import { checkTrialLimits } from '../guardrails/TrialGuard';
+import {
+  checkTrialLimits,
+  isTrialSubscription,
+  isUnpaidSubscriptionStatus,
+  stripeTrialLapsed,
+  unpaidSubscriptionReason,
+  STRIPE_TRIAL_LAPSED_REASON,
+} from '../guardrails/TrialGuard';
 
 const logger = createLogger('BUDGET_CHECK');
 
@@ -33,7 +40,8 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows: subRows } = await client.query(
-      `SELECT plan, status, monthly_call_limit, monthly_ai_minute_limit, overage_enabled
+      `SELECT plan, status, monthly_call_limit, monthly_ai_minute_limit, overage_enabled,
+              stripe_subscription_id, trial_end
        FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
@@ -41,7 +49,8 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
     const sub = subRows[0];
     const plan = (sub?.plan as string) ?? 'starter';
     const subStatus = (sub?.status as string) ?? 'none';
-    const isTrial = subRows.length === 0 || subStatus === 'trialing';
+    // Only the free trial uses TRIAL_LIMITS; a Stripe trial uses its plan's limits below.
+    const isTrial = isTrialSubscription(sub);
 
     if (isTrial) {
       await client.query('COMMIT');
@@ -80,15 +89,27 @@ export async function checkBudget(tenantId: TenantId, options?: { failOpen?: boo
       };
     }
 
-    const callLimit = (sub.monthly_call_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyCallLimit ?? 500;
-    const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? 250;
+    const callLimit = (sub.monthly_call_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyCallLimit ?? PLAN_LIMITS.starter.monthlyCallLimit;
+    const aiMinuteLimit = (sub.monthly_ai_minute_limit as number) ?? PLAN_LIMITS[plan as PlanTier]?.monthlyAiMinuteLimit ?? PLAN_LIMITS.starter.monthlyAiMinuteLimit;
     const overageEnabled = (sub.overage_enabled as boolean) ?? false;
 
-    if (subStatus === 'cancelled' || subStatus === 'past_due') {
+    if (isUnpaidSubscriptionStatus(subStatus)) {
       await client.query('COMMIT');
       return {
         allowed: false,
-        reason: `Subscription is ${subStatus}. Please update your billing to continue.`,
+        reason: unpaidSubscriptionReason(subStatus),
+        plan,
+        status: subStatus,
+        isTrial: false,
+        usage: { callsUsed: 0, callLimit, aiMinutesUsed: 0, aiMinuteLimit },
+      };
+    }
+
+    if (stripeTrialLapsed(sub)) {
+      await client.query('COMMIT');
+      return {
+        allowed: false,
+        reason: STRIPE_TRIAL_LAPSED_REASON,
         plan,
         status: subStatus,
         isTrial: false,

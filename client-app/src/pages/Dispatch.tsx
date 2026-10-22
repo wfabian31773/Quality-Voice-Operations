@@ -4044,7 +4044,7 @@ function DispatchSmsSegmentLimitCard({
         <p className="text-xs text-text-muted mt-1">
           Carriers bill per SMS segment (160 GSM-7 chars / 70 Unicode chars in the
           first segment, then 153 / 67 each after). Capping the rendered template
-          keeps a stray paste from doubling your dispatch SMS bill. Off by default
+          keeps a stray paste from doubling your dispatch SMS usage. Off by default
           so existing templates aren&apos;t broken.
         </p>
       </div>

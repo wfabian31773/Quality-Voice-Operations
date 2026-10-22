@@ -150,7 +150,7 @@ describe('getTenantEffectiveRate — Stripe subscription overrides', () => {
           {
             price: {
               id: 'price_pro_base',
-              unit_amount: 29_900, // $299/mo (10% negotiated discount off catalog)
+              unit_amount: 29_900, // $299/mo (negotiated discount off the $349 catalog)
               unit_amount_decimal: '29900',
               currency: 'usd',
               recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
@@ -188,7 +188,7 @@ describe('getTenantEffectiveRate — Stripe subscription overrides', () => {
       basePriceId: 'price_pro_base',
       overagePriceId: 'price_ai_minutes_custom',
     });
-    // Stripe override must beat the published catalog rate (Pro = $0.12/min).
+    // Stripe override must beat the published catalog rate (Pro = $0.22/min).
     expect(result.overageRatePerMinute).not.toBe(PLAN_CATALOG.pro.overageRatePerMinute);
     expect(result.basePriceCents).not.toBe(PLAN_CATALOG.pro.monthlyPriceCents);
   });
@@ -359,11 +359,11 @@ describe('getTenantEffectiveRate — catalog fallback', () => {
     expect(result.basePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
   });
 
-  it('overrides catalog with the metered Twilio-minutes price for negotiated carrier rates', async () => {
-    // High-volume voice tenant with their own negotiated Twilio rate
-    // shipped as a separate metered line (`metric=twilio_minutes`). The
-    // resolver must surface it on `twilioRatePerMinute` while keeping the
-    // AI-minutes line as the AI overage.
+  it('does not surface a legacy metered Twilio-minutes line as a tenant carrier rate', async () => {
+    // Carrier costs are folded into the plan price. A legacy subscription
+    // still carrying a metered `metric=twilio_minutes` line must not
+    // produce a tenant-facing carrier rate, and the AI-minutes line stays
+    // the AI overage.
     setSubRow({
       plan: 'enterprise',
       stripe_subscription_id: 'sub_voice_heavy',
@@ -375,8 +375,8 @@ describe('getTenantEffectiveRate — catalog fallback', () => {
           {
             price: {
               id: 'price_ent_base',
-              unit_amount: 99_900,
-              unit_amount_decimal: '99900',
+              unit_amount: 79_900,
+              unit_amount_decimal: '79900',
               currency: 'usd',
               recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
               metadata: {},
@@ -408,18 +408,16 @@ describe('getTenantEffectiveRate — catalog fallback', () => {
 
     const result = await getTenantEffectiveRate(TENANT);
 
-    // Twilio override surfaces on the new field with sub-cent precision
-    // intact ($0.012/min, NOT 1¢/min).
-    expect(result.twilioPriceSource).toBe('stripe');
-    expect(result.twilioPriceId).toBe('price_twilio_minutes_custom');
-    expect(result.twilioRatePerMinute).toBeCloseTo(0.012, 6);
+    expect(result).not.toHaveProperty('twilioRatePerMinute');
+    expect(result).not.toHaveProperty('twilioPriceSource');
+    expect(result).not.toHaveProperty('twilioPriceId');
     // AI overage stays AI — the Twilio metered line must NOT have been
     // mistaken for the generic-metered AI fallback.
     expect(result.overagePriceId).toBe('price_ai_minutes_custom');
     expect(result.overageRatePerMinute).toBeCloseTo(0.06, 6);
   });
 
-  it('matches a Twilio-minutes meter via STRIPE_METER_TWILIO_MINUTES env when metadata is absent', async () => {
+  it('keeps a STRIPE_METER_TWILIO_MINUTES-matched line out of the AI overage and the payload', async () => {
     process.env.STRIPE_METER_TWILIO_MINUTES = 'mtr_twilio_min';
     setSubRow({
       plan: 'pro',
@@ -445,8 +443,8 @@ describe('getTenantEffectiveRate — catalog fallback', () => {
 
     const result = await getTenantEffectiveRate(TENANT);
 
-    expect(result.twilioPriceId).toBe('price_twilio_via_meter');
-    expect(result.twilioRatePerMinute).toBeCloseTo(0.015, 6);
+    expect(result).not.toHaveProperty('twilioRatePerMinute');
+    expect(result).not.toHaveProperty('twilioPriceId');
     // The Twilio-tagged metered line must NOT be misclassified as the
     // AI generic-metered fallback — overage stays catalog.
     expect(result.overagePriceSource).toBe('catalog');
@@ -572,8 +570,8 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_ent_monthly_published',
-      unit_amount: 99_900, // $999/mo
-      unit_amount_decimal: '99900',
+      unit_amount: 79_900, // $799/mo
+      unit_amount_decimal: '79900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
       metadata: {},
@@ -587,14 +585,14 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     expect(result.annualBasePriceSource).toBe('stripe');
     expect(result.annualBasePriceId).toBe('price_ent_annual_custom');
     // Monthly side comes from published env-var price.
-    expect(result.monthlyBasePriceCents).toBe(99_900);
+    expect(result.monthlyBasePriceCents).toBe(79_900);
     expect(result.monthlyBasePriceSource).toBe('stripe');
     expect(result.monthlyBasePriceId).toBe('price_ent_monthly_published');
   });
 
   it('falls back to catalog for the opposite interval when env var is unset', async () => {
     // Only monthly env var configured → annual resolves to the catalog
-    // 20%-off floor so the calculator still renders a sensible number.
+    // 15%-off floor so the calculator still renders a sensible number.
     setSubRow({
       plan: 'starter',
       stripe_subscription_id: 'sub_starter',
@@ -623,9 +621,9 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     expect(result.monthlyBasePriceSource).toBe('stripe');
     expect(result.monthlyBasePriceCents).toBe(PLAN_CATALOG.starter.monthlyPriceCents);
     expect(result.annualBasePriceSource).toBe('catalog');
-    // Catalog-fallback annual = monthly × 0.8 (20% off).
+    // Catalog-fallback annual = monthly × 0.85 (15% off).
     expect(result.annualBasePriceCents).toBe(
-      Math.round(PLAN_CATALOG.starter.monthlyPriceCents * 0.8),
+      Math.round(PLAN_CATALOG.starter.monthlyPriceCents * 0.85),
     );
     expect(result.annualBasePriceId).toBeNull();
   });
@@ -660,7 +658,7 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     // Annual silently falls back to catalog so the UI never renders NaN.
     expect(result.annualBasePriceSource).toBe('catalog');
     expect(result.annualBasePriceCents).toBe(
-      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
+      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.85),
     );
     expect(result.annualBasePriceId).toBeNull();
   });
@@ -694,8 +692,8 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_misconfigured',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       // ⚠ wrong interval — env var named _ANNUAL but price is monthly.
       recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
@@ -707,7 +705,7 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     // Wired-wrong env var rejected → annual side falls back to catalog.
     expect(result.annualBasePriceSource).toBe('catalog');
     expect(result.annualBasePriceCents).toBe(
-      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
+      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.85),
     );
     expect(result.annualBasePriceId).toBeNull();
   });
@@ -727,7 +725,7 @@ describe('getTenantEffectiveRate — monthly/annual interval resolution', () => 
     expect(result.monthlyBasePriceCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
     expect(result.annualBasePriceSource).toBe('catalog');
     expect(result.annualBasePriceCents).toBe(
-      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.8),
+      Math.round(PLAN_CATALOG.pro.monthlyPriceCents * 0.85),
     );
   });
 });
@@ -867,7 +865,7 @@ describe('getTenantEffectiveRate — per-tier metered AI-minutes env override', 
   it('rejects a configured AI-minutes price that is not actually metered (defence-in-depth)', async () => {
     // Operator misconfigures the env var to point at a *licensed*
     // (non-metered) price. Without the guardrail, we'd quote that
-    // unit_amount as a per-minute overage (e.g. "$399/min"), which is
+    // unit_amount as a per-minute overage (e.g. "$349/min"), which is
     // catastrophic for the estimator.
     process.env.STRIPE_PRICE_PRO_AI_MINUTES = 'price_oops_licensed';
     setSubRow({
@@ -893,8 +891,8 @@ describe('getTenantEffectiveRate — per-tier metered AI-minutes env override', 
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_oops_licensed',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       // ⚠ wrong shape — env var named _AI_MINUTES but price is licensed.
       recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },

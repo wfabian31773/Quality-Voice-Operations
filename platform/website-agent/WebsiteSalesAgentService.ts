@@ -1,6 +1,7 @@
 import { getPlatformPool } from '../db';
 import { createLogger } from '../core/logger';
 import {
+  ANNUAL_DISCOUNT,
   PLAN_CATALOG,
   PLAN_TIERS,
   getPlan,
@@ -63,7 +64,9 @@ function buildPricingBlock(): string {
     `- Enterprise: $${enterprisePrice}/month — ${enterprise.includedMinutes.toLocaleString()} AI minutes included; ${caps('enterprise')}. Best for high call volume.`,
     `- Now onboarding pilot shops. Book a walkthrough to get started.`,
     `- Overage rates: Starter $${starter.overageRatePerMinute.toFixed(2)}/min, Pro $${pro.overageRatePerMinute.toFixed(2)}/min, Enterprise $${enterprise.overageRatePerMinute.toFixed(2)}/min.`,
-    `- Annual billing saves 20%.`,
+    `- Carrier calling and SMS costs are included in every plan price. There are no separate per-minute carrier or per-message SMS charges.`,
+    `- 7-day trial on every plan.`,
+    `- Annual billing saves ${Math.round(ANNUAL_DISCOUNT * 100)}%.`,
   ].join('\n');
 }
 

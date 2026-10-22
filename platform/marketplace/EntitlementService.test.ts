@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface Scenario {
-  subscription: { plan: string; status: string } | null;
+  subscription: { plan: string; status: string; stripe_subscription_id?: string | null } | null;
   agentCount: number;
   enabledConnectors?: string[];
 }
@@ -16,7 +16,7 @@ let scenario: Scenario;
 const client = {
   query: vi.fn(async (sql: string) => {
     const trimmed = sql.trim();
-    if (trimmed.startsWith('SELECT plan, status FROM subscriptions')) {
+    if (trimmed.startsWith('SELECT plan, status, stripe_subscription_id FROM subscriptions')) {
       return { rows: scenario.subscription ? [scenario.subscription] : [] };
     }
     if (trimmed.startsWith('SELECT COUNT(*) AS count FROM agents')) {
@@ -104,6 +104,13 @@ describe('checkEntitlement — trial keeps its 2-agent limit', () => {
     const allowed = await checkEntitlement(TENANT, proTemplate);
     expect(allowed.allowed).toBe(true);
     expect(allowed.maxAgents).toBe(2);
+  });
+
+  it('does not cap a paid plan inside its Stripe trial (trialing with a Stripe subscription)', async () => {
+    scenario = { subscription: { plan: 'pro', status: 'trialing', stripe_subscription_id: 'sub_pro' }, agentCount: 5 };
+    const result = await checkEntitlement(TENANT, proTemplate);
+    expect(result.allowed).toBe(true);
+    expect(result.maxAgents).toBeNull();
   });
 });
 

@@ -205,11 +205,6 @@ function buildEffectiveRateResponse(): unknown {
     monthlyBasePriceSource: 'catalog',
     annualBasePriceCents: 25_000,
     annualBasePriceSource: 'catalog',
-    smsRatePerMessage: 0.01,
-    smsPriceSource: 'catalog',
-    twilioRatePerMinute: 0.02,
-    twilioPriceSource: 'catalog',
-    twilioPriceId: null,
   };
 }
 

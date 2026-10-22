@@ -1,7 +1,8 @@
 // Verifies `recordCallUsage` writes the AI-minutes row using the live
 // per-tenant Stripe rate via `getCachedTenantEffectiveRate`, that the
 // cache prevents repeat resolutions, and that resolver failures fall
-// back to the env default.
+// back to the env default. Carrier (calls_* / sms_sent) rows are the
+// internal env-default cost estimates: tenants have no carrier charge.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface InsertCall {
@@ -114,30 +115,24 @@ describe('recordCallUsage — tenant-effective Stripe rate', () => {
     expect(totalCost).toBe(27);
   });
 
-  it('writes calls_* total_cost_cents using the live Stripe per-minute Twilio rate', async () => {
-    // Tenant negotiated $0.012/min Twilio (high-volume voice rate well
-    // below the env catalog default of 2¢) — the calls_inbound row must
-    // be quoted at the tenant rate, not the env default.
+  it('writes calls_* total_cost_cents at the internal env carrier cost, ignoring a legacy Stripe Twilio rate', async () => {
+    // Carrier costs are folded into the plan price: even if a legacy
+    // resolver payload still carried a negotiated $0.012/min Twilio rate,
+    // the calls_inbound row is the internal env-default cost estimate.
     getTenantEffectiveRate.mockResolvedValue({
       plan: 'enterprise',
-      basePriceCents: 99_900,
+      basePriceCents: 79_900,
       overageRatePerMinute: 0.06,
-      smsRatePerMessage: 0.01,
       twilioRatePerMinute: 0.012,
       currency: 'usd',
       source: 'stripe',
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      smsPriceSource: 'catalog',
-      twilioPriceSource: 'stripe',
       basePriceId: 'price_ent_base',
       overagePriceId: 'price_ai_minutes_custom',
-      smsPriceId: null,
-      twilioPriceId: 'price_twilio_custom',
     });
 
-    // 180s → 3 minutes. 3 × 1.2¢ = 3.6¢ → rounds to 4¢ (NOT the env
-    // default of 6¢ that 3min × 2¢/min would yield).
+    // 180s → 3 minutes × 2¢ env default = 6¢ (NOT 3 × 1.2¢ ≈ 4¢).
     await recordCallUsage(TENANT, 'inbound', 180);
 
     const callInsert = insertCalls.find((c) => c.metricType === 'calls_inbound');
@@ -146,75 +141,20 @@ describe('recordCallUsage — tenant-effective Stripe rate', () => {
     // $4 periodEnd, $5 cost (used as both unit_cost_cents AND total_cost_cents).
     const [tenantArg, , , , callCost] = callInsert!.values;
     expect(tenantArg).toBe(TENANT);
-    expect(callCost).toBe(4);
+    expect(callCost).toBe(6);
   });
 
-  it('caches the resolved Twilio rate across back-to-back calls (no extra Stripe round-trips)', async () => {
-    // Per-minute Twilio = 1.5¢, per-minute AI = 11¢. The same cached
-    // effective-rate lookup must serve BOTH the carrier-cost and the
-    // AI-cost branches across multiple call finalisations.
-    getTenantEffectiveRate.mockResolvedValue({
-      plan: 'pro',
-      basePriceCents: 29_900,
-      overageRatePerMinute: 0.11,
-      twilioRatePerMinute: 0.015,
-      currency: 'usd',
-      source: 'stripe',
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioPriceSource: 'stripe',
-      basePriceId: 'price_pro_base',
-      overagePriceId: 'price_ai_minutes_custom',
-      twilioPriceId: 'price_twilio_custom',
-    });
+  it('does not consult the rate resolver for the carrier row when there are no AI minutes', async () => {
+    await recordCallUsage(TENANT, 'outbound', 120, 0);
 
-    await recordCallUsage(TENANT, 'inbound', 60);
-    await recordCallUsage(TENANT, 'outbound', 60);
-    await recordCallUsage(TENANT, 'inbound', 60);
-
-    // Twilio + AI resolution share the same cache, so this is still
-    // exactly one round-trip across all three call finalisations.
-    expect(getTenantEffectiveRate).toHaveBeenCalledTimes(1);
-
-    const callInserts = insertCalls.filter(
-      (c) => c.metricType === 'calls_inbound' || c.metricType === 'calls_outbound',
-    );
-    expect(callInserts).toHaveLength(3);
-    // Each call uses 1 minute × 1.5¢ Twilio = 1.5¢ → rounds to 2¢.
-    for (const ins of callInserts) {
-      expect(ins.values[4]).toBe(2);
-    }
-  });
-
-  it('rounds the Twilio aggregate (not the per-minute rate) so sub-cent Stripe pricing matches the invoice', async () => {
-    getTenantEffectiveRate.mockResolvedValue({
-      plan: 'enterprise',
-      basePriceCents: 99_900,
-      overageRatePerMinute: 0.06,
-      // $0.0125/min — would lossily round to 1¢/min if rounded per-minute.
-      twilioRatePerMinute: 0.0125,
-      currency: 'usd',
-      source: 'stripe',
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      twilioPriceSource: 'stripe',
-      basePriceId: 'price_ent_base',
-      overagePriceId: 'price_ai_minutes_custom',
-      twilioPriceId: 'price_twilio_subcent',
-    });
-
-    // 4 minutes × 1.25¢ = 5¢. Per-minute rounding would record 4¢
-    // (1¢/min × 4) — under-quoting the carrier portion.
-    await recordCallUsage(TENANT, 'outbound', 240);
-
+    expect(getTenantEffectiveRate).not.toHaveBeenCalled();
     const callInsert = insertCalls.find((c) => c.metricType === 'calls_outbound');
     expect(callInsert).toBeDefined();
-    expect(callInsert!.values[4]).toBe(5);
+    // 2min × 2¢ env default = 4¢.
+    expect(callInsert!.values[4]).toBe(4);
   });
 
-  it('falls back to TWILIO_COST_PER_MINUTE_CENTS when the resolver throws', async () => {
-    // Resolver throws → calls_* row must use the env default carrier
-    // rate so call teardown never blocks on Stripe.
+  it('uses TWILIO_COST_PER_MINUTE_CENTS for the carrier row when the resolver throws', async () => {
     process.env.TWILIO_COST_PER_MINUTE_CENTS = '3';
     getTenantEffectiveRate.mockRejectedValue(new Error('Stripe boom'));
 
@@ -226,14 +166,12 @@ describe('recordCallUsage — tenant-effective Stripe rate', () => {
     expect(callInsert!.values[4]).toBe(6);
   });
 
-  it('falls back to the env Twilio default when the resolver omits twilioRatePerMinute', async () => {
-    // Old-style fixture without `twilioRatePerMinute` (back-compat with
-    // pre-1266 callers) — must use the env default carrier rate.
+  it('uses the env Twilio cost when the resolver returns a catalog rate', async () => {
     process.env.TWILIO_COST_PER_MINUTE_CENTS = '4';
     getTenantEffectiveRate.mockResolvedValue({
       plan: 'starter',
-      basePriceCents: 9_900,
-      overageRatePerMinute: 0.12,
+      basePriceCents: 14_900,
+      overageRatePerMinute: 0.25,
       currency: 'usd',
       source: 'catalog',
       basePriceSource: 'catalog',
@@ -344,32 +282,29 @@ describe('estimateCallCostWithLiveRate — per-call drilldown matches Stripe', (
     expect(cost.totalCostCents).toBe(33);
   });
 
-  it('quotes the live tenant Twilio rate (not the env default) for the carrier portion', async () => {
-    // Negotiated tenant on $0.014/min Twilio — env default of 2¢/min
-    // would over-quote the carrier cost by ~43% if we used it instead.
+  it('uses the internal env carrier cost, ignoring a legacy Stripe Twilio rate', async () => {
+    // Carrier costs are folded into the plan price, so a legacy
+    // $0.014/min Twilio rate on the payload must not change the estimate.
     getTenantEffectiveRate.mockResolvedValue({
       plan: 'enterprise',
-      basePriceCents: 99_900,
+      basePriceCents: 79_900,
       overageRatePerMinute: 0.06,
       twilioRatePerMinute: 0.014,
       currency: 'usd',
       source: 'stripe',
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      twilioPriceSource: 'stripe',
       basePriceId: 'price_ent_base',
       overagePriceId: 'price_ai_minutes_negotiated',
-      twilioPriceId: 'price_twilio_negotiated',
     });
 
-    // 3 minutes (180s rounded up) × 1.4¢/min = 4.2¢ → rounds to 4¢
-    // (env-default Twilio would give 6¢ here).
+    // 3 minutes (180s rounded up) × 2¢/min env default = 6¢.
     const cost = await estimateCallCostWithLiveRate(TENANT, 180);
 
-    expect(cost.twilioCostCents).toBe(4);
-    // AI: 3min × 6¢ = 18¢. Total = 22¢.
+    expect(cost.twilioCostCents).toBe(6);
+    // AI: 3min × 6¢ = 18¢. Total = 24¢.
     expect(cost.aiCostCents).toBe(18);
-    expect(cost.totalCostCents).toBe(22);
+    expect(cost.totalCostCents).toBe(24);
   });
 
   it('rounds the AI aggregate (not the per-minute rate) so sub-cent Stripe pricing matches the invoice', async () => {
@@ -413,26 +348,26 @@ describe('estimateCallCostWithLiveRate — per-call drilldown matches Stripe', (
   });
 });
 
-describe('recordSmsUsage — tenant-effective Stripe rate', () => {
-  it('writes sms_sent total_cost_cents using the live Stripe per-message rate', async () => {
-    // Tenant negotiated $0.025/SMS — well above the env catalog default of 1¢.
+describe('recordSmsUsage — internal SMS cost estimate (no tenant SMS charge)', () => {
+  it('writes sms_sent total_cost_cents at the env SMS cost, ignoring a legacy Stripe SMS rate', async () => {
+    // Carrier SMS costs are folded into the plan price: a legacy
+    // $0.025/SMS rate on the payload must not drive the usage row.
     getTenantEffectiveRate.mockResolvedValue({
       plan: 'pro',
-      basePriceCents: 29_900,
+      basePriceCents: 34_900,
       overageRatePerMinute: 0.09,
       smsRatePerMessage: 0.025,
       currency: 'usd',
       source: 'stripe',
       basePriceSource: 'stripe',
       overagePriceSource: 'stripe',
-      smsPriceSource: 'stripe',
       basePriceId: 'price_pro_base',
       overagePriceId: 'price_ai_minutes_custom',
-      smsPriceId: 'price_sms_custom',
     });
 
     await recordSmsUsage(TENANT, 4);
 
+    expect(getTenantEffectiveRate).not.toHaveBeenCalled();
     const smsInsert = insertCalls.find((c) => c.metricType === 'sms_sent');
     expect(smsInsert).toBeDefined();
     // Bound params: $1 tenantId, $2 periodStart, $3 periodEnd,
@@ -440,36 +375,22 @@ describe('recordSmsUsage — tenant-effective Stripe rate', () => {
     const [tenantArg, , , quantity, unitCost, totalCost] = smsInsert!.values;
     expect(tenantArg).toBe(TENANT);
     expect(quantity).toBe(4);
-    // $0.025/SMS = 2.5¢ → unit rounds to 3¢, aggregate stays at 4 × 2.5 = 10¢.
-    expect(unitCost).toBe(3);
-    expect(totalCost).toBe(10);
+    // 1¢ env default × 4 = 4¢.
+    expect(unitCost).toBe(1);
+    expect(totalCost).toBe(4);
   });
 
-  it('caches the resolved SMS rate across back-to-back sends', async () => {
-    getTenantEffectiveRate.mockResolvedValue({
-      plan: 'pro',
-      basePriceCents: 29_900,
-      overageRatePerMinute: 0.09,
-      smsRatePerMessage: 0.04,
-      currency: 'usd',
-      source: 'stripe',
-      basePriceSource: 'stripe',
-      overagePriceSource: 'stripe',
-      smsPriceSource: 'stripe',
-      basePriceId: 'price_pro_base',
-      overagePriceId: 'price_ai_minutes_custom',
-      smsPriceId: 'price_sms_custom',
-    });
+  it('never resolves a Stripe rate across back-to-back sends', async () => {
+    process.env.SMS_COST_PER_MESSAGE_CENTS = '4';
 
     await recordSmsUsage(TENANT, 1);
     await recordSmsUsage(TENANT, 2);
     await recordSmsUsage(TENANT, 1);
 
-    expect(getTenantEffectiveRate).toHaveBeenCalledTimes(1);
+    expect(getTenantEffectiveRate).not.toHaveBeenCalled();
 
     const smsInserts = insertCalls.filter((c) => c.metricType === 'sms_sent');
     expect(smsInserts).toHaveLength(3);
-    // Each insert uses the cached 4¢/message rate.
     expect(smsInserts[0]!.values[5]).toBe(4);
     expect(smsInserts[1]!.values[5]).toBe(8);
     expect(smsInserts[2]!.values[5]).toBe(4);
@@ -485,7 +406,7 @@ describe('recordSmsUsage — tenant-effective Stripe rate', () => {
     expect(smsInsert!.values[5]).toBe(0);
   });
 
-  it('falls back to SMS_COST_PER_MESSAGE_CENTS when the rate resolver throws', async () => {
+  it('uses SMS_COST_PER_MESSAGE_CENTS even when the rate resolver would throw', async () => {
     process.env.SMS_COST_PER_MESSAGE_CENTS = '2';
     getTenantEffectiveRate.mockRejectedValue(new Error('Stripe boom'));
 
@@ -497,14 +418,12 @@ describe('recordSmsUsage — tenant-effective Stripe rate', () => {
     expect(smsInsert!.values[5]).toBe(6);
   });
 
-  it('falls back to the env default when the resolver omits smsRatePerMessage', async () => {
+  it('uses the env SMS cost when the resolver returns a catalog rate', async () => {
     process.env.SMS_COST_PER_MESSAGE_CENTS = '5';
-    // Old-style fixture without `smsRatePerMessage` (back-compat with
-    // pre-1206 callers).
     getTenantEffectiveRate.mockResolvedValue({
       plan: 'pro',
-      basePriceCents: 29_900,
-      overageRatePerMinute: 0.12,
+      basePriceCents: 34_900,
+      overageRatePerMinute: 0.22,
       currency: 'usd',
       source: 'catalog',
       basePriceSource: 'catalog',

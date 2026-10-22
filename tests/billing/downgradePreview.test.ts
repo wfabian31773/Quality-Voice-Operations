@@ -129,8 +129,8 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month', interval_count: 1 },
       metadata: {},
@@ -163,15 +163,15 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
       },
     });
     invoicesCreatePreview.mockResolvedValueOnce({
-      total: 39_900,
-      amount_due: 39_900,
+      total: 34_900,
+      amount_due: 34_900,
       currency: 'usd',
       next_payment_attempt: 1_770_000_000,
       period_end: 1_770_000_000,
       lines: {
         data: [
           // Recurring charge for the new tier, NOT a proration line.
-          { amount: 39_900, proration: false },
+          { amount: 34_900, proration: false },
         ],
       },
     });
@@ -199,9 +199,9 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
 
     expect(result.plan).toBe('pro');
     expect(result.interval).toBe('monthly');
-    expect(result.nextInvoiceTotalCents).toBe(39_900);
+    expect(result.nextInvoiceTotalCents).toBe(34_900);
     expect(result.nextInvoiceAt).toBe(new Date(1_770_000_000 * 1000).toISOString());
-    expect(result.basePriceCents).toBe(39_900);
+    expect(result.basePriceCents).toBe(34_900);
     expect(result.basePriceSource).toBe('stripe');
     expect(result.basePriceId).toBe('price_pro_monthly_published');
     expect(result.source).toBe('stripe');
@@ -217,8 +217,8 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -249,17 +249,17 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
         ],
       },
     });
-    // 25% off $399 → Stripe-side total of $299.25.
+    // 25% off $349 → Stripe-side total of $261.75.
     invoicesCreatePreview.mockResolvedValueOnce({
-      total: 29_925,
-      amount_due: 29_925,
+      total: 26_175,
+      amount_due: 26_175,
       currency: 'usd',
       next_payment_attempt: 1_770_000_000,
       period_end: 1_770_000_000,
       lines: {
         data: [
-          { amount: 39_900, proration: false },
-          { amount: -9_975, proration: false }, // discount line — NOT proration
+          { amount: 34_900, proration: false },
+          { amount: -8_725, proration: false }, // discount line — NOT proration
         ],
       },
     });
@@ -270,8 +270,8 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
       'cus_ent_promo',
       { expand: ['discount.promotion_code'] },
     );
-    expect(result.basePriceCents).toBe(29_925);
-    expect(result.nextInvoiceTotalCents).toBe(29_925);
+    expect(result.basePriceCents).toBe(26_175);
+    expect(result.nextInvoiceTotalCents).toBe(26_175);
     expect(result.discount).toMatchObject({
       couponId: 'coupon_pro_25',
       percentOff: 25,
@@ -289,8 +289,8 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_annual_published',
-      unit_amount: 383_040,
-      unit_amount_decimal: '383040',
+      unit_amount: 355_980,
+      unit_amount_decimal: '355980',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'year', interval_count: 1 },
       metadata: {},
@@ -312,12 +312,12 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
       },
     });
     invoicesCreatePreview.mockResolvedValueOnce({
-      total: 383_040,
-      amount_due: 383_040,
+      total: 355_980,
+      amount_due: 355_980,
       currency: 'usd',
       next_payment_attempt: null,
       period_end: 1_780_000_000,
-      lines: { data: [{ amount: 383_040, proration: false }] },
+      lines: { data: [{ amount: 355_980, proration: false }] },
     });
 
     const result = await getTenantDowngradePreview(TENANT, 'pro', 'annual');
@@ -331,11 +331,11 @@ describe('getTenantDowngradePreview — preview mirrors scheduleDowngrade', () =
     );
 
     expect(result.interval).toBe('annual');
-    expect(result.nextInvoiceTotalCents).toBe(383_040);
+    expect(result.nextInvoiceTotalCents).toBe(355_980);
     // Falls back to period_end when next_payment_attempt is null.
     expect(result.nextInvoiceAt).toBe(new Date(1_780_000_000 * 1000).toISOString());
-    // Annual base normalised to monthly: 383 040 / 12 = 31 920c.
-    expect(result.basePriceCents).toBe(31_920);
+    // Annual base normalised to monthly: 355 980 / 12 = 29 665c.
+    expect(result.basePriceCents).toBe(29_665);
   });
 
 });
@@ -367,8 +367,8 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_starter_monthly_published',
-      unit_amount: 9_900,
-      unit_amount_decimal: '9900',
+      unit_amount: 14_900,
+      unit_amount_decimal: '14900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -382,7 +382,7 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
     const result = await getTenantDowngradePreview(TENANT, 'starter', 'monthly');
 
     expect(invoicesCreatePreview).not.toHaveBeenCalled();
-    expect(result.basePriceCents).toBe(9_900);
+    expect(result.basePriceCents).toBe(14_900);
     expect(result.basePriceSource).toBe('stripe');
   });
 
@@ -395,8 +395,8 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
     });
     pricesRetrieve.mockResolvedValueOnce({
       id: 'price_pro_monthly_published',
-      unit_amount: 39_900,
-      unit_amount_decimal: '39900',
+      unit_amount: 34_900,
+      unit_amount_decimal: '34900',
       currency: 'usd',
       recurring: { usage_type: 'licensed', interval: 'month' },
       metadata: {},
@@ -421,7 +421,7 @@ describe('getTenantDowngradePreview — graceful degradation', () => {
 
     const result = await getTenantDowngradePreview(TENANT, 'pro', 'monthly');
 
-    expect(result.basePriceCents).toBe(39_900);
+    expect(result.basePriceCents).toBe(34_900);
     expect(result.basePriceSource).toBe('stripe');
     expect(result.nextInvoiceTotalCents).toBe(PLAN_CATALOG.pro.monthlyPriceCents);
   });

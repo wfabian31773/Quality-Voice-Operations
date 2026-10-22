@@ -202,6 +202,11 @@ describe('createMarketplacePurchase — Stripe Checkout session shape', () => {
     // Promo codes still allowed so the coupon-aware badge works on
     // the renewal invoices too.
     expect(params.allow_promotion_codes).toBe(true);
+    // The subscription itself is tagged so the Stripe webhook keeps its
+    // events off the tenant's plan row.
+    expect(params.subscription_data?.metadata).toMatchObject({
+      tenantId: TENANT, templateId: 'tpl_widget', type: 'marketplace_purchase',
+    });
   });
 
   it('omits invoice_creation on usage-based marketplace subscriptions', async () => {

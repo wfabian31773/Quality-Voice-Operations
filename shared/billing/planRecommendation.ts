@@ -78,9 +78,9 @@ export interface PlanRecommendation {
    * The savings figures compare the discounted recommended cost to the
    * tenant's *current* monthly cost (which is what they're paying right
    * now). When the current tier is already optimal at this volume, the
-   * annual savings are still surfaced as the 20%-off-base figure so the
-   * caller can decide whether to pitch "switch your current plan to
-   * annual to save 20%" — but for an overridden current tier this
+   * annual savings are still surfaced as the `ANNUAL_DISCOUNT`-off-base
+   * figure so the caller can decide whether to pitch "switch your current
+   * plan to annual to save 15%" — but for an overridden current tier this
    * collapses to zero because we have no way to project a custom price
    * onto a different billing interval.
    */
@@ -124,7 +124,8 @@ function toBreakdown(
   // the discount. For overridden (Stripe-sourced) tiers we deliberately
   // skip the discount because the override IS the rate the tenant pays
   // today; we have no way to project a custom/negotiated price onto a
-  // different billing interval, so quoting `base * 0.8` would be a lie.
+  // different billing interval, so quoting `base * (1 - ANNUAL_DISCOUNT)`
+  // would be a lie.
   const annualBase = sourcedFromStripe
     ? basePrice
     : basePrice * (1 - ANNUAL_DISCOUNT);

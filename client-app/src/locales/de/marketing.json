@@ -482,7 +482,7 @@
       "start_trial": "Konto erstellen",
       "recommended": "EMPFOHLEN",
       "billed_monthly": "Monatliche Abrechnung · jederzeit kündbar",
-      "billed_annually": "Jährliche Abrechnung · 20% sparen",
+      "billed_annually": "Jährliche Abrechnung · 15% sparen",
       "save_badge": "{{percent}}% sparen",
       "save_badge_aria": "Mit jährlicher Abrechnung {{percent}}% sparen",
       "save_amount": "Spare {{amount}}/Jahr",
@@ -494,7 +494,7 @@
     "billing_toggle": {
       "monthly": "Monatlich",
       "annual": "Jährlich",
-      "save_badge": "20% sparen"
+      "save_badge": "15% sparen"
     },
     "calculator": {
       "eyebrow": "Pro-Minute-Rechner",
@@ -506,18 +506,10 @@
       "title_more": "Sie haben einen individuellen Tarif über dem aktuellen Listenpreis",
       "title_overage_less": "Sie haben einen individuellen Übernutzungstarif unter dem aktuellen Listenpreis",
       "title_overage_more": "Sie haben einen individuellen Übernutzungstarif über dem aktuellen Listenpreis",
-      "title_sms_less": "Sie haben einen individuellen SMS-Tarif unter dem aktuellen Listenpreis",
-      "title_sms_more": "Sie haben einen individuellen SMS-Tarif über dem aktuellen Listenpreis",
-      "title_twilio_less": "Sie haben einen individuellen Carrier-Tarif unter dem aktuellen Listenpreis",
-      "title_twilio_more": "Sie haben einen individuellen Carrier-Tarif über dem aktuellen Listenpreis",
       "description_less": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat weniger als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
       "description_more": "Ihr Konto zahlt {{currentPrice}}/Monat für {{tierName}} — das ist {{deltaPrice}}/Monat mehr als der aktuelle Listenpreis von {{catalogPrice}}. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
       "overage_line_less": "Ihre Übernutzung für {{tierName}} wird zu {{currentRate}} abgerechnet — {{deltaRate}} weniger als der aktuelle Listenpreis von {{catalogRate}}.",
       "overage_line_more": "Ihre Übernutzung für {{tierName}} wird zu {{currentRate}} abgerechnet — {{deltaRate}} mehr als der aktuelle Listenpreis von {{catalogRate}}.",
-      "sms_line_less": "Ihre SMS wird zu {{currentRate}} abgerechnet — {{deltaRate}} weniger als der aktuelle Listenpreis von {{catalogRate}}.",
-      "sms_line_more": "Ihre SMS wird zu {{currentRate}} abgerechnet — {{deltaRate}} mehr als der aktuelle Listenpreis von {{catalogRate}}.",
-      "twilio_line_less": "Ihre Twilio-Carrier-Minuten werden zu {{currentRate}} abgerechnet — {{deltaRate}} weniger als der aktuelle Listenpreis von {{catalogRate}}.",
-      "twilio_line_more": "Ihre Twilio-Carrier-Minuten werden zu {{currentRate}} abgerechnet — {{deltaRate}} mehr als der aktuelle Listenpreis von {{catalogRate}}.",
       "title_annual_less": "Sie haben einen individuellen Jahrestarif unter dem aktuellen Listenpreis",
       "title_annual_more": "Sie haben einen individuellen Jahrestarif über dem aktuellen Listenpreis",
       "description_annual_less": "Ihr Konto zahlt {{annualCurrentPrice}}/Jahr für {{tierName}} — das ist {{annualDeltaPrice}}/Jahr weniger als der aktuelle Listenpreis von {{annualCatalogPrice}}/Jahr. Ein Wechsel auf einen aktuellen Plan würde Ihre Rechnung ändern.",
@@ -527,7 +519,7 @@
     "compare": {
       "title": "Alle Funktionen vergleichen",
       "feature_col": "Funktion",
-      "all_included": "Jeder Plan enthält alle Branchenvorlagen und alle Tools."
+      "all_included": "Jeder Plan enthält alle Branchenvorlagen, alle Tools sowie die Carrier-Kosten für Anrufe und SMS. 7-tägige Testphase in jedem Plan."
     },
     "features_list": {
       "ai_minutes": "Enthaltene KI-Minuten",
@@ -578,7 +570,7 @@
       "q5": "Gibt es Verträge oder Verpflichtungen?",
       "a5": "Nein. Alle Pläne sind monatsweise und ohne langfristige Verträge. Sie können jederzeit kündigen und Ihr Konto bleibt bis zum Ende des aktuellen Abrechnungszeitraums aktiv.",
       "q6": "Bieten Sie Jahrespreise an?",
-      "a6": "Ja. Die jährliche Abrechnung spart 20 % gegenüber der monatlichen. Sprechen Sie unser Sales-Team an oder wählen Sie bei der Anmeldung die jährliche Abrechnung, um den Rabatt zu erhalten.",
+      "a6": "Ja. Die jährliche Abrechnung spart 15 % gegenüber der monatlichen. Sprechen Sie unser Sales-Team an oder wählen Sie bei der Anmeldung die jährliche Abrechnung, um den Rabatt zu erhalten.",
       "q7": "Wie läuft die Einrichtung?",
       "a7": "Wir nehmen gerade Pilotbetriebe auf. Die Einrichtung wird im Rundgang besprochen.",
       "q8": "Welche Zahlungsmethoden akzeptieren Sie?",

@@ -109,8 +109,8 @@ beforeEach(() => {
     }),
     '/billing/invoices': () => ({ invoices: [] }),
     '/billing/effective-rate': () => ({
-      basePriceCents: 9900,
-      overageRatePerMinute: 0.15,
+      basePriceCents: 14900,
+      overageRatePerMinute: 0.25,
       basePriceSource: 'catalog',
       overagePriceSource: 'catalog',
     }),
@@ -285,18 +285,18 @@ describe('Billing page upgrade interval toggle', () => {
     await waitFor(() => screen.getByTestId('billing-upgrade-card-pro'));
 
     const monthlyPriceText = screen.getByTestId('billing-upgrade-price-pro').textContent ?? '';
-    expect(monthlyPriceText).toContain('$399');
+    expect(monthlyPriceText).toContain('$349');
     expect(monthlyPriceText).not.toMatch(/billed annually/i);
 
     fireEvent.click(screen.getByTestId('billing-upgrade-interval-annual'));
     const annualPriceText = screen.getByTestId('billing-upgrade-price-pro').textContent ?? '';
-    expect(annualPriceText).toContain('$319');
-    expect(annualPriceText).toContain('$399');
+    expect(annualPriceText).toContain('$297');
+    expect(annualPriceText).toContain('$349');
     expect(screen.getByTestId('billing-upgrade-annual-note-pro').textContent ?? '').toMatch(/billed annually/i);
 
     const entAnnualText = screen.getByTestId('billing-upgrade-price-enterprise').textContent ?? '';
+    expect(entAnnualText).toContain('$679');
     expect(entAnnualText).toContain('$799');
-    expect(entAnnualText).toContain('$999');
   });
 
   it('forwards the selected interval to /billing/checkout when Upgrade is clicked', async () => {
@@ -331,7 +331,7 @@ describe('Billing page upgrade interval toggle', () => {
     const proCard = screen.getByTestId('billing-upgrade-card-pro');
     expect(proCard.getAttribute('data-card-kind')).toBe('switch_annual');
     expect(proCard.textContent ?? '').toMatch(/Switch to annual/i);
-    expect(screen.getByTestId('billing-upgrade-price-pro').textContent ?? '').toContain('$319');
+    expect(screen.getByTestId('billing-upgrade-price-pro').textContent ?? '').toContain('$297');
     expect(screen.getByTestId('billing-upgrade-annual-note-pro').textContent ?? '').toMatch(/billed annually/i);
 
     fireEvent.click(screen.getByTestId('billing-upgrade-button-pro'));
@@ -362,7 +362,7 @@ describe('Billing page upgrade interval toggle', () => {
     const entCard = screen.getByTestId('billing-upgrade-card-enterprise');
     expect(entCard.getAttribute('data-card-kind')).toBe('switch_annual');
     expect(entCard.textContent ?? '').toMatch(/Switch to annual/i);
-    expect(screen.getByTestId('billing-upgrade-price-enterprise').textContent ?? '').toContain('$799');
+    expect(screen.getByTestId('billing-upgrade-price-enterprise').textContent ?? '').toContain('$679');
 
     fireEvent.click(screen.getByTestId('billing-upgrade-button-enterprise'));
     await waitFor(() => {
@@ -379,7 +379,7 @@ describe('Billing page upgrade interval toggle', () => {
       expect(screen.getByTestId('billing-upgrade-interval-annual').getAttribute('aria-pressed')).toBe('true');
     });
     // Enterprise upgrade card should already show the discounted price + hint.
-    expect(screen.getByTestId('billing-upgrade-price-enterprise').textContent ?? '').toContain('$799');
+    expect(screen.getByTestId('billing-upgrade-price-enterprise').textContent ?? '').toContain('$679');
 
     fireEvent.click(screen.getByTestId('billing-upgrade-button-enterprise'));
     await waitFor(() => {
@@ -415,18 +415,18 @@ describe('Billing page upgrade interval toggle', () => {
     expect(screen.queryByTestId('billing-upgrade-savings-enterprise')).toBeNull();
 
     fireEvent.click(screen.getByTestId('billing-upgrade-interval-annual'));
-    // Pro: $399 monthly → $319 annual (rounded whole dollars, matching the
+    // Pro: $349 monthly → $297 annual (rounded whole dollars, matching the
     // /pricing card and the in-page MinutesPricingCalculator), savings =
-    // ($399 − $319) × 12 = $960/yr. Rounding in dollars (not cents) is what
-    // makes the savings line reconcile to the displayed $319 price next to
-    // it instead of carrying the .20¢ remainder through to "$958".
+    // ($349 − $297) × 12 = $624/yr. Rounding in dollars (not cents) is what
+    // makes the savings line reconcile to the displayed $297 price next to
+    // it instead of carrying the 35¢ remainder through to "$628".
     const proSavings = await waitFor(() => screen.getByTestId('billing-upgrade-savings-pro'));
-    expect(proSavings.textContent ?? '').toMatch(/Saves \$960\/yr/);
+    expect(proSavings.textContent ?? '').toMatch(/Saves \$624\/yr/);
     expect(proSavings.textContent ?? '').toMatch(/vs monthly billing/i);
-    // Enterprise: $999 monthly → $799 annual, savings = ($999 − $799) × 12
-    // = $2,400/yr.
+    // Enterprise: $799 monthly → $679 annual, savings = ($799 − $679) × 12
+    // = $1,440/yr.
     const entSavings = screen.getByTestId('billing-upgrade-savings-enterprise');
-    expect(entSavings.textContent ?? '').toMatch(/Saves \$2,400\/yr/);
+    expect(entSavings.textContent ?? '').toMatch(/Saves \$1,440\/yr/);
   });
 
   it('reconciles in-app upgrade-card savings to the /pricing card amounts', async () => {
@@ -443,9 +443,9 @@ describe('Billing page upgrade interval toggle', () => {
       const annualMonthly = getDiscountedAnnualMonthlyDollars(monthly);
       return (monthly - annualMonthly) * 12;
     };
-    expect(expectedSavings('starter')).toBe(240);
-    expect(expectedSavings('pro')).toBe(960);
-    expect(expectedSavings('enterprise')).toBe(2400);
+    expect(expectedSavings('starter')).toBe(264);
+    expect(expectedSavings('pro')).toBe(624);
+    expect(expectedSavings('enterprise')).toBe(1440);
 
     loginAsOwner();
     await renderBilling();
@@ -598,7 +598,7 @@ describe('Billing upgrade-interval persistence', () => {
     ).toBe('false');
     // The discounted Pro price proves the saved preference actually drove
     // the upgrade-card pricing, not just the toggle's pressed state.
-    expect(screen.getByTestId('billing-upgrade-price-pro').textContent ?? '').toContain('$319');
+    expect(screen.getByTestId('billing-upgrade-price-pro').textContent ?? '').toContain('$297');
   });
 
   it('writes the chosen interval to /me/preferences when toggled', async () => {

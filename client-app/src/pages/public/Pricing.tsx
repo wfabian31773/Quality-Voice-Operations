@@ -14,8 +14,6 @@ import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } 
 import { CTA } from '../../lib/analyticsCtas';
 import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
 import {
-  CATALOG_SMS_RATE_PER_MESSAGE,
-  CATALOG_TWILIO_RATE_PER_MINUTE,
   PLAN_CATALOG,
   PLAN_TIERS,
   centsToWholeDollars,
@@ -53,24 +51,8 @@ export interface EffectiveRateResponse {
   monthlyBasePriceSource?: 'stripe' | 'catalog';
   annualBasePriceCents?: number;
   annualBasePriceSource?: 'stripe' | 'catalog';
-  // Per-message SMS rate (in dollars) and its provenance, added in
-  // #1265 so the calculator can surface a tenant's negotiated SMS
-  // rate alongside the AI per-minute rate. Optional for backward
-  // compat with older API responses; the calculator hides the SMS
-  // line when neither field is present.
-  smsRatePerMessage?: number;
-  smsPriceSource?: 'stripe' | 'catalog';
-  // Per-minute Twilio (carrier) rate (in dollars) and its provenance.
-  // Added in #1356 so the public pricing calculator can surface a
-  // tenant's negotiated Twilio carrier rate alongside the AI and SMS
-  // rates — same field the in-app Billing screen now reads. Extended
-  // in #1357 so the custom-rate callout can also flag a tenant on a
-  // negotiated carrier rate the same way it flags base / overage /
-  // SMS divergence. Optional for backward compat with older API
-  // responses; both the calculator and the callout hide the Twilio
-  // line when neither field is present.
-  twilioRatePerMinute?: number;
-  twilioPriceSource?: 'stripe' | 'catalog';
+  // No SMS or Twilio (carrier) rate: carrier costs are folded into the
+  // plan price, so the API no longer returns a tenant carrier rate.
   // Active customer-level discount (a Stripe coupon or promotion-code
   // redemption attached to the tenant's customer record) added in
   // #1324 so the public pricing page can render the post-discount
@@ -187,7 +169,7 @@ export function formatDiscountLabel(
  *
  * We deliberately compare like-with-like: a tenant on an annual
  * subscription is compared against the published annual price (catalog
- * monthly × 0.8), not against the catalog monthly. Otherwise every
+ * monthly × (1 − ANNUAL_DISCOUNT)), not against the catalog monthly. Otherwise every
  * tenant on the standard published *annual* rate would falsely see a
  * "you're paying less than the published rate" banner — they're on the
  * published rate, just on a different interval.
@@ -215,43 +197,6 @@ export interface CustomRateOverageDelta {
   isLess: boolean;
 }
 
-/**
- * Per-message SMS divergence summary for the custom-rate callout
- * (task #1327). Mirrors `CustomRateOverageDelta` shape so the renderer
- * can treat the SMS line and the overage line uniformly. SMS pricing is
- * tenant-wide rather than per-tier, so the catalog reference comes from
- * `CATALOG_SMS_RATE_PER_MESSAGE` (not `PLAN_CATALOG`).
- */
-export interface CustomRateSmsDelta {
-  /** Tenant's actual Stripe-invoiced SMS rate, in dollars/message. */
-  currentRatePerMessage: number;
-  /** Catalog (published) SMS rate, dollars/message. */
-  catalogRatePerMessage: number;
-  /** Absolute difference between catalog and tenant rate, dollars/message. */
-  deltaPerMessage: number;
-  /** True when the tenant pays *less* per message than the published rate. */
-  isLess: boolean;
-}
-
-/**
- * Per-minute Twilio (carrier) divergence summary for the custom-rate
- * callout (task #1357). Mirrors `CustomRateOverageDelta` shape so the
- * renderer can treat the Twilio line, the SMS line, and the AI overage
- * line uniformly. Twilio carrier pricing — like SMS — is tenant-wide
- * rather than per-tier, so the catalog reference comes from
- * `CATALOG_TWILIO_RATE_PER_MINUTE` (not `PLAN_CATALOG`).
- */
-export interface CustomRateTwilioDelta {
-  /** Tenant's actual Stripe-invoiced Twilio carrier rate, dollars/minute. */
-  currentRatePerMinute: number;
-  /** Catalog (published) Twilio carrier rate, dollars/minute. */
-  catalogRatePerMinute: number;
-  /** Absolute difference between catalog and tenant rate, dollars/minute. */
-  deltaPerMinute: number;
-  /** True when the tenant pays *less* per minute than the published rate. */
-  isLess: boolean;
-}
-
 export interface CustomRateDelta {
   tier: PlanTier;
   tierName: string;
@@ -262,7 +207,7 @@ export interface CustomRateDelta {
    * Whole-dollar absolute base-price delta. `0` when the tenant base
    * price matches catalog within rounding noise — in that case the
    * callout renders only the overage section (when present) and skips
-   * the base sentence so it doesn't read as "$0/mo less than $399".
+   * the base sentence so it doesn't read as "$0/mo less than $349".
    */
   deltaDollars: number;
   /** Per-year projection. Populated only when `frame === 'annual'`. */
@@ -277,25 +222,6 @@ export interface CustomRateDelta {
    * `OVERAGE_RENDER_THRESHOLD_PER_MIN`. Absent otherwise.
    */
   overage?: CustomRateOverageDelta;
-  /**
-   * Populated only when `smsPriceSource === 'stripe'` AND the tenant's
-   * per-message rate diverges from `CATALOG_SMS_RATE_PER_MESSAGE` by at
-   * least `SMS_RENDER_THRESHOLD_PER_MSG`. Absent otherwise. Mirrors
-   * the `overage` field's treatment so a tenant with any of base,
-   * overage, or SMS negotiated sees the full picture in one banner
-   * (task #1327).
-   */
-  sms?: CustomRateSmsDelta;
-  /**
-   * Populated only when `twilioPriceSource === 'stripe'` AND the
-   * tenant's per-minute carrier rate diverges from
-   * `CATALOG_TWILIO_RATE_PER_MINUTE` by at least
-   * `TWILIO_RENDER_THRESHOLD_PER_MIN`. Absent otherwise. Mirrors the
-   * `sms` field's treatment so a high-volume voice tenant on a
-   * negotiated carrier rate sees the same kind of "you pay $X/min vs
-   * the published $Y/min" summary on the Twilio axis (task #1357).
-   */
-  twilio?: CustomRateTwilioDelta;
 }
 
 // Sub-dollar deltas are suppressed: the callout formats every monetary
@@ -305,36 +231,12 @@ export interface CustomRateDelta {
 const RENDER_THRESHOLD_CENTS = 100;
 
 // Half-cent-per-minute threshold for the overage line. Catalog rates are
-// quoted to the nearest cent (e.g. $0.08, $0.12); negotiated Stripe
+// quoted to the nearest cent (e.g. $0.18, $0.22); negotiated Stripe
 // rates can be sub-cent (e.g. $0.075). Anything below half a cent is
 // almost certainly currency-conversion or pricing-engine drift rather
 // than a meaningful contract delta, so we suppress it to match the
 // "matches catalog within rounding noise" requirement.
 const OVERAGE_RENDER_THRESHOLD_PER_MIN = 0.005;
-
-// Half-tenth-of-a-cent-per-message threshold for the SMS line. The
-// catalog SMS rate is quoted in whole cents ($0.01/msg) and negotiated
-// rates routinely run sub-cent (e.g. $0.0075/msg, $0.012/msg) — so the
-// $0.005/min threshold used for overage would be far too coarse here.
-// $0.0005/msg sits at the same fractional position relative to the
-// catalog reference (half of one significant unit of the published rate)
-// and is well above the four-decimal `formatPerMessageRate` rendering
-// granularity, so anything below it is rounding noise we don't want to
-// surface as a "you pay $0.0000/msg less than $0.0100" sentence.
-const SMS_RENDER_THRESHOLD_PER_MSG = 0.0005;
-
-// Half-tenth-of-a-cent-per-minute threshold for the Twilio carrier
-// line. The env-default Twilio rate is quoted in whole cents
-// ($0.02/min) and negotiated carrier rates routinely run sub-cent
-// (e.g. $0.0125/min for high-volume inbound, $0.018/min for
-// low-volume outbound) — so the $0.005/min threshold used for AI
-// overage would be far too coarse here. $0.0005/min sits at the same
-// fractional position relative to the catalog reference (half of one
-// significant unit of the published rate) and is well above the
-// four-decimal `formatPerMinuteRateCarrier` rendering granularity, so
-// anything below it is rounding noise we don't want to surface as a
-// "you pay $0.0200/min less than $0.0200" sentence (task #1357).
-const TWILIO_RENDER_THRESHOLD_PER_MIN = 0.0005;
 
 function inferTenantInterval(
   payload: EffectiveRateResponse,
@@ -380,17 +282,12 @@ export function computeCustomRateDelta(
   // Only surface the callout when something on the response is actually
   // sourced from Stripe — a fully-catalog response is identical to what
   // an anonymous visitor sees and would render a misleading "custom
-  // plan" message for tenants on the published rate. Twilio counts as
-  // a Stripe-sourced signal too: a tenant on a negotiated carrier rate
-  // (with catalog AI/base/SMS rates) still deserves to see the banner
-  // surface their carrier delta (task #1357).
+  // plan" message for tenants on the published rate.
   const isStripeSourced =
     payload.basePriceSource === 'stripe'
     || payload.monthlyBasePriceSource === 'stripe'
     || payload.annualBasePriceSource === 'stripe'
-    || payload.overagePriceSource === 'stripe'
-    || payload.smsPriceSource === 'stripe'
-    || payload.twilioPriceSource === 'stripe';
+    || payload.overagePriceSource === 'stripe';
   if (!isStripeSourced) return null;
 
   const tier = payload.plan;
@@ -458,64 +355,11 @@ export function computeCustomRateDelta(
     }
   }
 
-  // SMS delta is computed independently of base/overage. Same source-
-  // gated logic as overage: only when Stripe actually sourced the SMS
-  // rate do we trust the divergence as a real negotiated rate rather
-  // than catalog-vs-catalog noise. The catalog reference here is the
-  // shared `CATALOG_SMS_RATE_PER_MESSAGE` constant — SMS pricing is
-  // tenant-wide rather than per-tier, so there's no per-tier catalog
-  // figure to fall back to.
-  let sms: CustomRateSmsDelta | undefined;
-  if (payload.smsPriceSource === 'stripe') {
-    const tenantRate = Number.isFinite(payload.smsRatePerMessage)
-      ? (payload.smsRatePerMessage as number)
-      : CATALOG_SMS_RATE_PER_MESSAGE;
-    if (tenantRate >= 0) {
-      const catalogRate = CATALOG_SMS_RATE_PER_MESSAGE;
-      const smsDelta = catalogRate - tenantRate;
-      if (Math.abs(smsDelta) >= SMS_RENDER_THRESHOLD_PER_MSG) {
-        sms = {
-          currentRatePerMessage: tenantRate,
-          catalogRatePerMessage: catalogRate,
-          deltaPerMessage: Math.abs(smsDelta),
-          isLess: smsDelta > 0,
-        };
-      }
-    }
-  }
-
-  // Twilio (carrier) delta. Same source-gated logic as SMS: only
-  // when Stripe actually sourced the carrier rate do we trust the
-  // divergence as a real negotiated rate rather than env-default-vs-
-  // env-default noise. The catalog reference is the shared
-  // `CATALOG_TWILIO_RATE_PER_MINUTE` constant — Twilio carrier
-  // pricing, like SMS, is tenant-wide rather than per-tier, so
-  // there's no per-tier catalog figure to fall back to (task #1357).
-  let twilio: CustomRateTwilioDelta | undefined;
-  if (payload.twilioPriceSource === 'stripe') {
-    const tenantRate = Number.isFinite(payload.twilioRatePerMinute)
-      ? (payload.twilioRatePerMinute as number)
-      : CATALOG_TWILIO_RATE_PER_MINUTE;
-    if (tenantRate >= 0) {
-      const catalogRate = CATALOG_TWILIO_RATE_PER_MINUTE;
-      const twilioDelta = catalogRate - tenantRate;
-      if (Math.abs(twilioDelta) >= TWILIO_RENDER_THRESHOLD_PER_MIN) {
-        twilio = {
-          currentRatePerMinute: tenantRate,
-          catalogRatePerMinute: catalogRate,
-          deltaPerMinute: Math.abs(twilioDelta),
-          isLess: twilioDelta > 0,
-        };
-      }
-    }
-  }
-
-  // Suppress entirely when none of base, overage, SMS, or Twilio
-  // carries a meaningful delta — an isStripeSourced payload can still
-  // match catalog exactly (tenant on the published rate via a
-  // Stripe-managed sub) and we don't want to mount a banner with
-  // nothing to say.
-  if (!baseMeaningful && !overage && !sms && !twilio) return null;
+  // Suppress entirely when neither base nor overage carries a
+  // meaningful delta — an isStripeSourced payload can still match
+  // catalog exactly (tenant on the published rate via a Stripe-managed
+  // sub) and we don't want to mount a banner with nothing to say.
+  if (!baseMeaningful && !overage) return null;
 
   return {
     tier,
@@ -525,15 +369,13 @@ export function computeCustomRateDelta(
     catalogMonthlyDollars: centsToWholeDollars(catalogCents),
     // When base matches catalog within rounding noise, zero out the
     // headline delta so the renderer skips the base sentence rather
-    // than printing "$0/mo less than $399".
+    // than printing "$0/mo less than $349".
     deltaDollars: baseMeaningful ? centsToWholeDollars(Math.abs(baseDeltaCents)) : 0,
     annualCurrentDollars: null,
     annualCatalogDollars: null,
     annualDeltaDollars: null,
     isLess: baseMeaningful ? baseDeltaCents > 0 : false,
     ...(overage ? { overage } : {}),
-    ...(sms ? { sms } : {}),
-    ...(twilio ? { twilio } : {}),
   };
 }
 
@@ -549,22 +391,11 @@ export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverri
   const monthlySource = payload.monthlyBasePriceSource ?? payload.basePriceSource;
   // No point passing an override that's pure catalog — that's exactly what
   // anonymous visitors already see, and would render a misleading
-  // "Live Stripe rate" badge on the current tier card. SMS counts as
-  // a Stripe-sourced signal too: a tenant on a negotiated SMS price
-  // (with catalog AI/base rates) still deserves to see their rate
-  // surfaced on the calculator's SMS row, so we treat
-  // `smsPriceSource === 'stripe'` as a sufficient reason to engage
-  // the override even when none of the AI-side sources are Stripe.
+  // "Live Stripe rate" badge on the current tier card.
   if (
     monthlySource !== 'stripe'
     && payload.overagePriceSource !== 'stripe'
     && payload.annualBasePriceSource !== 'stripe'
-    && payload.smsPriceSource !== 'stripe'
-    // Twilio counts as a Stripe-sourced signal too (task #1356): a
-    // tenant on a negotiated Twilio carrier rate (with catalog AI/SMS
-    // rates) still deserves to see their rate surfaced on the
-    // calculator's Twilio row, mirroring the SMS gating above.
-    && payload.twilioPriceSource !== 'stripe'
   ) {
     return undefined;
   }
@@ -576,19 +407,6 @@ export function buildOverride(payload: EffectiveRateResponse): CurrentPlanOverri
     overagePriceSource: payload.overagePriceSource,
     annualBasePriceCents: payload.annualBasePriceCents,
     annualBasePriceSource: payload.annualBasePriceSource,
-    // SMS rate is tenant-wide and interval-agnostic, so it flows
-    // through unchanged. The calculator surfaces it alongside the AI
-    // per-minute rate so a tenant on a custom SMS price sees the
-    // rate that's driving their SMS line on the invoice.
-    smsRatePerMessage: payload.smsRatePerMessage ?? null,
-    smsPriceSource: payload.smsPriceSource ?? null,
-    // Twilio carrier rate is tenant-wide and interval-agnostic too,
-    // so it flows through verbatim alongside the SMS fields. Missing
-    // values are normalised to `null` so the calculator's render
-    // gate (keyed on the numeric value being present) suppresses the
-    // row for older API responses that don't yet carry the field.
-    twilioRatePerMinute: payload.twilioRatePerMinute ?? null,
-    twilioPriceSource: payload.twilioPriceSource ?? null,
   };
 }
 
@@ -668,36 +486,11 @@ function formatWholeDollars(value: number): string {
 
 // Per-minute rates can be sub-cent (e.g. negotiated $0.075/min), so we
 // allow up to 3 decimals while still rendering common whole-cent rates
-// like $0.08 with two-decimal precision rather than awkward $0.080.
+// like $0.18 with two-decimal precision rather than awkward $0.180.
 function formatPerMinuteRate(rate: number): string {
   return `${formatDollars(rate, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 3,
-  })}/min`;
-}
-
-// Per-message rates run sub-cent (e.g. $0.0075/msg vs catalog $0.01/msg),
-// so we widen the band to four fraction digits — matching
-// `MinutesPricingCalculator.formatPerMessage` so the callout and the
-// calculator quote the negotiated rate identically rather than drifting
-// at the third decimal.
-function formatPerMessageRate(rate: number): string {
-  return `${formatDollars(rate, {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
-  })}/msg`;
-}
-
-// Per-minute Twilio carrier rates also run sub-cent (e.g. $0.0125/min
-// inbound vs the env-default $0.02/min). We use four fraction digits
-// for parity with the SMS renderer rather than reusing the AI overage
-// formatter, which only goes to three decimals and would round a
-// $0.0125/min negotiated rate to "$0.013/min" — silently misquoting
-// the carrier rate by a tenth of a cent (task #1357).
-function formatPerMinuteRateCarrier(rate: number): string {
-  return `${formatDollars(rate, {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
   })}/min`;
 }
 
@@ -778,12 +571,10 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
   };
   // `deltaDollars === 0` means base matched catalog within rounding
   // noise — `computeCustomRateDelta` only returns a delta in that case
-  // when overage or SMS diverges, so we skip the base sentence entirely
-  // and let the overage / SMS line(s) stand on their own.
+  // when overage diverges, so we skip the base sentence entirely and
+  // let the overage line stand on its own.
   const baseMeaningful = delta.deltaDollars > 0;
   const overage = delta.overage;
-  const sms = delta.sms;
-  const twilio = delta.twilio;
 
   const overageInterp = overage
     ? {
@@ -794,52 +585,22 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
       }
     : null;
 
-  const smsInterp = sms
-    ? {
-        currentRate: formatPerMessageRate(sms.currentRatePerMessage),
-        catalogRate: formatPerMessageRate(sms.catalogRatePerMessage),
-        deltaRate: formatPerMessageRate(sms.deltaPerMessage),
-      }
-    : null;
-
-  const twilioInterp = twilio
-    ? {
-        currentRate: formatPerMinuteRateCarrier(twilio.currentRatePerMinute),
-        catalogRate: formatPerMinuteRateCarrier(twilio.catalogRatePerMinute),
-        deltaRate: formatPerMinuteRateCarrier(twilio.deltaPerMinute),
-      }
-    : null;
-
   // Title and tone are anchored on whichever delta is the headline:
-  // base when present, otherwise overage when present, otherwise SMS,
-  // otherwise the Twilio-only variant. Mixed directions (e.g. base
+  // base when present, otherwise overage. Mixed directions (e.g. base
   // less, overage more) keep the base headline — each line below
   // states its own direction explicitly so the banner still reads
-  // correctly when base, overage, SMS, and Twilio are simultaneously
-  // custom (task #1357).
-  let headlineIsLess: boolean;
-  if (baseMeaningful) headlineIsLess = delta.isLess;
-  else if (overage) headlineIsLess = overage.isLess;
-  else if (sms) headlineIsLess = sms.isLess;
-  else headlineIsLess = twilio!.isLess;
+  // correctly when base and overage are simultaneously custom.
+  const headlineIsLess = baseMeaningful ? delta.isLess : overage!.isLess;
 
   let titleKey: string;
   if (baseMeaningful) {
     titleKey = delta.isLess
       ? 'pricing.override_callout.title_less'
       : 'pricing.override_callout.title_more';
-  } else if (overage) {
-    titleKey = overage.isLess
+  } else {
+    titleKey = overage!.isLess
       ? 'pricing.override_callout.title_overage_less'
       : 'pricing.override_callout.title_overage_more';
-  } else if (sms) {
-    titleKey = sms.isLess
-      ? 'pricing.override_callout.title_sms_less'
-      : 'pricing.override_callout.title_sms_more';
-  } else {
-    titleKey = twilio!.isLess
-      ? 'pricing.override_callout.title_twilio_less'
-      : 'pricing.override_callout.title_twilio_more';
   }
   const baseDescriptionKey = delta.isLess
     ? 'pricing.override_callout.description_less'
@@ -847,12 +608,6 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
   const overageLineKey = overage?.isLess
     ? 'pricing.override_callout.overage_line_less'
     : 'pricing.override_callout.overage_line_more';
-  const smsLineKey = sms?.isLess
-    ? 'pricing.override_callout.sms_line_less'
-    : 'pricing.override_callout.sms_line_more';
-  const twilioLineKey = twilio?.isLess
-    ? 'pricing.override_callout.twilio_line_less'
-    : 'pricing.override_callout.twilio_line_more';
 
   // Tinted by direction: success-green when the tenant is paying less than
   // the current published price (good news), warning-amber when they're
@@ -869,14 +624,6 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
         iconBg: 'bg-warning/15',
       };
 
-  // Whether the SMS line needs top spacing depends on whether ANY line
-  // already rendered above it (base sentence or overage sentence) —
-  // matches the same `mt-1.5` vs `mt-1` rhythm overage uses.
-  const smsHasPrior = baseMeaningful || !!overage;
-  // The Twilio carrier line stacks below SMS when present; same
-  // `mt-1.5` vs `mt-1` rhythm.
-  const twilioHasPrior = baseMeaningful || !!overage || !!sms;
-
   return (
     <div
       data-testid="pricing-override-callout"
@@ -884,8 +631,6 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
       data-frame="monthly"
       data-has-base={baseMeaningful ? 'true' : 'false'}
       data-has-overage={overage ? 'true' : 'false'}
-      data-has-sms={sms ? 'true' : 'false'}
-      data-has-twilio={twilio ? 'true' : 'false'}
       role="status"
       className={`mb-6 flex flex-col sm:flex-row sm:items-start gap-3 rounded-xl border p-4 sm:p-5 ${tone.wrapper}`}
     >
@@ -910,22 +655,6 @@ function CustomRateCallout({ delta, t }: CustomRateCalloutProps) {
             className={`text-sm font-body text-text-primary/80 ${baseMeaningful ? 'mt-1.5' : 'mt-1'}`}
           >
             {t(overageLineKey, overageInterp)}
-          </p>
-        )}
-        {sms && smsInterp && (
-          <p
-            data-testid="pricing-override-callout-sms"
-            className={`text-sm font-body text-text-primary/80 ${smsHasPrior ? 'mt-1.5' : 'mt-1'}`}
-          >
-            {t(smsLineKey, smsInterp)}
-          </p>
-        )}
-        {twilio && twilioInterp && (
-          <p
-            data-testid="pricing-override-callout-twilio"
-            className={`text-sm font-body text-text-primary/80 ${twilioHasPrior ? 'mt-1.5' : 'mt-1'}`}
-          >
-            {t(twilioLineKey, twilioInterp)}
           </p>
         )}
       </div>

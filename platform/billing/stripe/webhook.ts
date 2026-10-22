@@ -1,6 +1,6 @@
 import type Stripe from 'stripe';
 import { getStripeClient, getWebhookSecret } from './client';
-import { getPlanFromPriceId, PLAN_LIMITS } from './plans';
+import { getPlanFromPriceId, PLAN_LIMITS, type SubscriptionState } from './plans';
 import { getPlatformPool, withPrivilegedClient, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import { provisionTenant } from '../../tenant/provisioning/TenantProvisioningService';
@@ -47,6 +47,166 @@ function normalizeBillingInterval(raw: string | undefined | null): 'monthly' | '
   if (raw === 'year' || raw === 'annual') return 'annual';
   if (raw === 'month' || raw === 'monthly') return 'monthly';
   return null;
+}
+
+/**
+ * Map a Stripe subscription status onto the local `subscription_status`
+ * enum ('trialing' | 'active' | 'past_due' | 'paused' | 'cancelled').
+ * Returns `null` for statuses with no local equivalent (`incomplete`)
+ * so callers can keep their existing value instead of guessing.
+ */
+export function mapStripeSubscriptionStatus(raw: string | undefined | null): SubscriptionState | null {
+  switch (raw) {
+    case 'trialing': return 'trialing';
+    case 'active': return 'active';
+    case 'past_due':
+    case 'unpaid':
+      return 'past_due';
+    case 'paused': return 'paused';
+    case 'canceled':
+    case 'incomplete_expired':
+      return 'cancelled';
+    default: return null;
+  }
+}
+
+/**
+ * Stripe's `trial_end` (unix seconds) as an ISO string. `null` when the
+ * subscription has no trial, `undefined` when the field is absent so
+ * callers can leave the column alone.
+ */
+function stripeTrialEnd(sub: unknown): string | null | undefined {
+  const raw = (sub as Record<string, unknown>).trial_end;
+  if (raw === undefined) return undefined;
+  return typeof raw === 'number' ? new Date(raw * 1000).toISOString() : null;
+}
+
+/** What a completed checkout writes to the tenant's plan row. */
+export interface CheckoutSubscriptionDetails {
+  status: SubscriptionState;
+  trialEnd: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  billingInterval: 'monthly' | 'annual' | null;
+  stripePriceId: string | null;
+}
+
+/** Plan-row details for a payment-mode checkout (no subscription). */
+export const EMPTY_CHECKOUT_DETAILS: CheckoutSubscriptionDetails = {
+  status: 'active', trialEnd: null, periodStart: null, periodEnd: null, billingInterval: null, stripePriceId: null,
+};
+
+/**
+ * Re-read a checkout's subscription from Stripe and map it onto the plan
+ * row. Shared by the `checkout.session.completed` webhook and the
+ * onboarding verify-checkout route so both write the same status and
+ * `trial_end`. Throws if Stripe can't be reached.
+ */
+export async function retrieveCheckoutSubscription(subscriptionId: string): Promise<CheckoutSubscriptionDetails> {
+  const stripe = getStripeClient();
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  const rawSub = sub as unknown as Record<string, unknown>;
+  const rawStart = rawSub.current_period_start as number | undefined;
+  const rawEnd = rawSub.current_period_end as number | undefined;
+  const item = sub.items?.data?.[0];
+  const priceRaw = item?.price as unknown as Record<string, unknown> | undefined;
+  const recurringRaw = priceRaw?.recurring as Record<string, unknown> | undefined;
+  const interval = (recurringRaw?.interval as string | undefined)
+    ?? (priceRaw?.recurring_interval as string | undefined);
+  return {
+    status: mapStripeSubscriptionStatus(sub.status) ?? 'active',
+    trialEnd: stripeTrialEnd(sub) ?? null,
+    periodStart: rawStart ? new Date(rawStart * 1000).toISOString() : null,
+    periodEnd: rawEnd ? new Date(rawEnd * 1000).toISOString() : null,
+    // Normalize Stripe's 'month'/'year' to the local billing_interval
+    // enum's 'monthly'/'annual' BEFORE storing — otherwise the
+    // `::billing_interval` cast in the upsert blows up on a raw 'year'
+    // value and the whole checkout write fails.
+    billingInterval: normalizeBillingInterval(interval),
+    stripePriceId: item?.price?.id ?? null,
+  };
+}
+
+/**
+ * Plan-row details from the session alone, for when the subscription
+ * can't be retrieved for good. Signup and first checkouts carry a trial,
+ * which Stripe completes with `no_payment_required`, so that reads as
+ * `trialing`; anything paid reads as `active`.
+ */
+function checkoutDetailsFromSession(session: Stripe.Checkout.Session): CheckoutSubscriptionDetails {
+  return {
+    ...EMPTY_CHECKOUT_DETAILS,
+    status: session.payment_status === 'no_payment_required' ? 'trialing' : 'active',
+  };
+}
+
+const TRANSIENT_STRIPE_ERROR_TYPES = new Set(['StripeConnectionError', 'StripeAPIError', 'StripeRateLimitError']);
+
+/**
+ * True when a Stripe call failed in a way a retry can fix: connection
+ * errors, Stripe-side API/5xx errors and rate limits. Other Stripe errors
+ * (invalid request such as `resource_missing`, authentication, permission)
+ * are permanent. Errors with no Stripe type are treated as transient.
+ */
+export function isTransientStripeError(err: unknown): boolean {
+  const e = (err ?? {}) as { type?: unknown; statusCode?: unknown };
+  if (typeof e.statusCode === 'number' && (e.statusCode >= 500 || e.statusCode === 429)) return true;
+  if (typeof e.type === 'string' && e.type.startsWith('Stripe')) return TRANSIENT_STRIPE_ERROR_TYPES.has(e.type);
+  return true;
+}
+
+/**
+ * Upsert the tenant's plan row for a completed checkout.
+ *
+ * `keepWebhookStatus` (verify-checkout): when the row already tracks this
+ * same `stripe_subscription_id`, a webhook has written it from Stripe, so
+ * leave it alone instead of overwriting its status. Returns whether the
+ * row was written.
+ */
+export async function upsertCheckoutSubscription(
+  client: import('pg').PoolClient,
+  row: {
+    tenantId: string;
+    plan: string;
+    customerId: string | null;
+    subscriptionId: string | null;
+    details: CheckoutSubscriptionDetails;
+  },
+  options: { keepWebhookStatus?: boolean } = {},
+): Promise<boolean> {
+  const limits = PLAN_LIMITS[row.plan as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.starter;
+  const { details } = row;
+  const result = await client.query(
+    `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
+       stripe_price_id, billing_interval,
+       monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled,
+       current_period_start, current_period_end, trial_end)
+     VALUES ($1, $2, $13::subscription_status, $3, $4, $5, COALESCE($6::billing_interval, 'monthly'),
+       $7, $8, $9, $10, $11, $12, $14)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       plan = EXCLUDED.plan, status = EXCLUDED.status,
+       trial_end = EXCLUDED.trial_end,
+       stripe_customer_id = EXCLUDED.stripe_customer_id,
+       stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+       stripe_price_id = EXCLUDED.stripe_price_id,
+       billing_interval = EXCLUDED.billing_interval,
+       monthly_call_limit = EXCLUDED.monthly_call_limit,
+       monthly_sms_limit = EXCLUDED.monthly_sms_limit,
+       monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
+       overage_enabled = EXCLUDED.overage_enabled,
+       current_period_start = EXCLUDED.current_period_start,
+       current_period_end = EXCLUDED.current_period_end,
+       updated_at = NOW()${options.keepWebhookStatus
+      ? `
+     WHERE subscriptions.stripe_subscription_id IS NULL
+        OR subscriptions.stripe_subscription_id <> EXCLUDED.stripe_subscription_id`
+      : ''}`,
+    [row.tenantId, row.plan, row.customerId, row.subscriptionId,
+     details.stripePriceId, details.billingInterval,
+     limits.monthlyCallLimit, limits.monthlySmsLimit, limits.monthlyAiMinuteLimit, limits.overageEnabled,
+     details.periodStart, details.periodEnd, details.status, details.trialEnd],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 async function isEventProcessed(eventId: string): Promise<boolean> {
@@ -101,6 +261,7 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     case 'customer.subscription.deleted':
       await handleSubscriptionDeleted(event.data.object as Stripe.Subscription, stripeEventId);
       break;
+    case 'customer.subscription.created':
     case 'customer.subscription.updated':
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription, stripeEventId);
       break;
@@ -167,37 +328,37 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   }
 
   const plan = session.metadata?.plan ?? 'starter';
-  const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.starter;
 
-  let periodStart: string | null = null;
-  let periodEnd: string | null = null;
-  let billingInterval: string | null = null;
-  let stripePriceId: string | null = null;
+  // Payment-mode sessions have no subscription and stay 'active'.
+  let details: CheckoutSubscriptionDetails = EMPTY_CHECKOUT_DETAILS;
 
   if (session.subscription) {
     try {
-      const stripe = getStripeClient();
-      const sub = await stripe.subscriptions.retrieve(session.subscription as string);
-      const rawSub = sub as unknown as Record<string, unknown>;
-      const rawStart = rawSub.current_period_start as number | undefined;
-      const rawEnd = rawSub.current_period_end as number | undefined;
-      if (rawStart) periodStart = new Date(rawStart * 1000).toISOString();
-      if (rawEnd) periodEnd = new Date(rawEnd * 1000).toISOString();
-      const item = sub.items?.data?.[0];
-      if (item?.price?.id) stripePriceId = item.price.id;
-      const priceRaw = item?.price as unknown as Record<string, unknown> | undefined;
-      const recurringRaw = priceRaw?.recurring as Record<string, unknown> | undefined;
-      const interval = (recurringRaw?.interval as string | undefined)
-        ?? (priceRaw?.recurring_interval as string | undefined);
-      // Normalize Stripe's 'month'/'year' to the local billing_interval
-      // enum's 'monthly'/'annual' BEFORE storing — otherwise the
-      // `$6::billing_interval` cast in the INSERT below blows up on a
-      // raw 'year' value and the whole checkout webhook fails.
-      billingInterval = normalizeBillingInterval(interval);
+      details = await retrieveCheckoutSubscription(session.subscription as string);
     } catch (err) {
-      logger.warn('Could not fetch subscription period from Stripe', { error: String(err) });
+      // Without the subscription we can't tell a trial apart, and on a
+      // first signup customer.subscription.created usually arrived before
+      // this event and was dropped (no row had the customer id yet), so
+      // nothing would correct a guess. For a transient failure, throw so
+      // the route returns 500 and Stripe retries; no billing_events row
+      // has been written yet, so the retry isn't deduped.
+      if (isTransientStripeError(err)) {
+        logger.error('Could not fetch checkout subscription from Stripe; failing for retry', {
+          sessionId: session.id, error: String(err),
+        });
+        throw err;
+      }
+      // A permanent error (missing resource, key/mode mismatch) would fail
+      // the same way for ~3 days of retries and leave the tenant
+      // unprovisioned. Write the row from the session instead; the next
+      // subscription/invoice webhook corrects it.
+      details = checkoutDetailsFromSession(session);
+      logger.error('Could not fetch checkout subscription from Stripe (permanent); writing row from the session', {
+        sessionId: session.id, error: String(err), status: details.status,
+      });
     }
   }
+  const { billingInterval, stripePriceId, status, trialEnd } = details;
 
   await withTenant(tenantId, async (client) => {
     // Capture the prior plan BEFORE the UPSERT below overwrites it. We
@@ -221,31 +382,13 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       priorPlanForDiscount = null;
     }
 
-    await client.query(
-      `INSERT INTO subscriptions (tenant_id, plan, status, stripe_customer_id, stripe_subscription_id,
-         stripe_price_id, billing_interval,
-         monthly_call_limit, monthly_sms_limit, monthly_ai_minute_limit, overage_enabled,
-         current_period_start, current_period_end)
-       VALUES ($1, $2, 'active', $3, $4, $5, COALESCE($6::billing_interval, 'monthly'),
-         $7, $8, $9, $10, $11, $12)
-       ON CONFLICT (tenant_id) DO UPDATE SET
-         plan = EXCLUDED.plan, status = 'active',
-         stripe_customer_id = EXCLUDED.stripe_customer_id,
-         stripe_subscription_id = EXCLUDED.stripe_subscription_id,
-         stripe_price_id = EXCLUDED.stripe_price_id,
-         billing_interval = EXCLUDED.billing_interval,
-         monthly_call_limit = EXCLUDED.monthly_call_limit,
-         monthly_sms_limit = EXCLUDED.monthly_sms_limit,
-         monthly_ai_minute_limit = EXCLUDED.monthly_ai_minute_limit,
-         overage_enabled = EXCLUDED.overage_enabled,
-         current_period_start = EXCLUDED.current_period_start,
-         current_period_end = EXCLUDED.current_period_end,
-         updated_at = NOW()`,
-      [tenantId, plan, session.customer, session.subscription,
-       stripePriceId, billingInterval,
-       limits.monthlyCallLimit, limits.monthlySmsLimit, limits.monthlyAiMinuteLimit, limits.overageEnabled,
-       periodStart, periodEnd],
-    );
+    await upsertCheckoutSubscription(client, {
+      tenantId,
+      plan,
+      customerId: session.customer as string | null,
+      subscriptionId: session.subscription as string | null,
+      details,
+    });
 
     await appendBillingEvent(client, tenantId, 'checkout_completed', {
       sessionId: session.id,
@@ -253,6 +396,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
       customerId: session.customer,
       billingInterval,
       stripePriceId,
+      status,
+      trialEnd,
     }, stripeEventId);
 
     // Server-authoritative attribution for the BillingEstimator's
@@ -374,7 +519,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
     }
   });
 
-  logger.info('Subscription activated from checkout', { tenantId, plan, billingInterval });
+  logger.info('Subscription activated from checkout', { tenantId, plan, billingInterval, status });
 
   try {
     const tenantStatus = await withPrivilegedClient(async (client) => {
@@ -399,24 +544,120 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session, 
   }
 }
 
-async function handleInvoiceSucceeded(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
-  const customerId = invoice.customer as string;
-  const tenantId = await getTenantByCustomer(customerId);
-  if (!tenantId) return;
+/**
+ * The subscription an invoice belongs to. Older API versions put it on
+ * `invoice.subscription`; newer ones on
+ * `invoice.parent.subscription_details.subscription`. Either may be an id
+ * or an expanded object. `null` for one-off (payment-mode) invoices.
+ */
+function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  type SubRef = string | { id?: string } | null | undefined;
+  const raw = invoice as unknown as {
+    subscription?: SubRef;
+    parent?: { subscription_details?: { subscription?: SubRef } | null } | null;
+  };
+  const ref = raw.subscription ?? raw.parent?.subscription_details?.subscription ?? null;
+  if (typeof ref === 'string') return ref || null;
+  return ref?.id ?? null;
+}
 
+/**
+ * Resolve the tenant and plan subscription an invoice event may touch.
+ * Returns `null` (plan row left alone) for one-off invoices and marketplace
+ * subscriptions. `subscription` is the state re-read from Stripe, or `null`
+ * if Stripe couldn't be reached. Whether the subscription is the one the
+ * plan row tracks is checked by the caller's UPDATE.
+ */
+async function resolvePlanInvoice(invoice: Stripe.Invoice): Promise<{
+  tenantId: string;
+  subscriptionId: string;
+  subscription: Stripe.Subscription | null;
+} | null> {
+  const tenantId = await getTenantByCustomer(invoice.customer as string);
+  if (!tenantId) return null;
+
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (!subscriptionId) {
+    logger.info('Invoice has no subscription; plan row left alone', { tenantId, invoiceId: invoice.id });
+    return null;
+  }
+
+  let subscription: Stripe.Subscription | null = null;
+  try {
+    const latest = await getStripeClient().subscriptions.retrieve(subscriptionId);
+    if (latest?.id) subscription = latest;
+  } catch (err) {
+    logger.warn('Could not re-fetch invoice subscription from Stripe; using invoice outcome', {
+      subscriptionId, error: String(err),
+    });
+  }
+
+  const forMarketplaceCheck = subscription ?? ({ id: subscriptionId, metadata: {} } as unknown as Stripe.Subscription);
+  if (await isMarketplaceSubscription(forMarketplaceCheck)) {
+    logger.info('Marketplace subscription invoice; plan row left alone', { tenantId, subscriptionId, invoiceId: invoice.id });
+    return null;
+  }
+
+  return { tenantId, subscriptionId, subscription };
+}
+
+/**
+ * Fallback when Stripe can't be reached: apply the invoice outcome to the
+ * plan row, but only if it tracks this subscription (or none yet).
+ */
+async function applyInvoiceStatusFallback(
+  tenantId: string,
+  subscriptionId: string,
+  statusSql: string,
+  statusValues: unknown[],
+  billingEvent: { type: string; data: Record<string, unknown> },
+  stripeEventId: string,
+): Promise<void> {
   await withTenant(tenantId, async (client) => {
-    await client.query(
-      `UPDATE subscriptions SET status = 'active', updated_at = NOW() WHERE tenant_id = $1`,
-      [tenantId],
+    const result = await client.query(
+      `UPDATE subscriptions SET status = ${statusSql}, updated_at = NOW()
+        WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
+      [tenantId, subscriptionId, ...statusValues],
     );
-    await appendBillingEvent(client, tenantId, 'payment_succeeded', {
+    if (!result.rowCount) {
+      logger.info('Invoice is not for the tenant plan subscription; plan row left alone', { tenantId, subscriptionId });
+      return;
+    }
+    await appendBillingEvent(client, tenantId, billingEvent.type, billingEvent.data, stripeEventId);
+  });
+}
+
+async function handleInvoiceSucceeded(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
+  const target = await resolvePlanInvoice(invoice);
+  if (!target) return;
+  const { tenantId, subscriptionId, subscription } = target;
+  const billingEvent = {
+    type: 'payment_succeeded',
+    data: {
       invoiceId: invoice.id,
+      subscriptionId,
       amountPaid: invoice.amount_paid,
       currency: invoice.currency,
-    }, stripeEventId);
-  });
+    },
+  };
 
-  logger.info('Invoice payment succeeded', { tenantId, invoiceId: invoice.id });
+  if (subscription) {
+    // Stripe's current status already covers the $0 trial-start invoice
+    // (still 'trialing') and a recovered past_due (now 'active').
+    await syncPlanSubscription(tenantId, subscription, stripeEventId, billingEvent);
+  } else {
+    // Stripe "pays" a $0 invoice when a trial starts; that must not end
+    // the local trial. A real charge (or any non-trial row) still
+    // flips the subscription to 'active'.
+    await applyInvoiceStatusFallback(
+      tenantId, subscriptionId,
+      `CASE WHEN status = 'trialing' AND $3::bigint = 0 THEN status ELSE 'active' END`,
+      [invoice.amount_paid ?? 0],
+      billingEvent, stripeEventId,
+    );
+  }
+
+  logger.info('Invoice payment succeeded', { tenantId, invoiceId: invoice.id, subscriptionId });
 }
 
 /**
@@ -580,20 +821,7 @@ export async function handleInvoiceFinalized(invoice: Stripe.Invoice): Promise<v
   if (typeof metaPurchaseId === 'string' && metaPurchaseId.length > 0) {
     purchaseIdToBadge = metaPurchaseId;
   } else {
-    // `subscription` was removed from the typed `Stripe.Invoice` shape
-    // in newer Stripe API versions (it's reachable via parent objects),
-    // but the JSON payload still carries the raw `subscription` field
-    // for backwards compatibility — read it as `unknown` to stay
-    // resilient to future Stripe SDK upgrades.
-    const rawSubscription = (invoice as unknown as {
-      subscription?: string | { id?: string } | null;
-    }).subscription;
-    const subId =
-      typeof rawSubscription === 'string'
-        ? rawSubscription
-        : rawSubscription && typeof rawSubscription === 'object'
-          ? rawSubscription.id ?? null
-          : null;
+    const subId = invoiceSubscriptionId(invoice);
     if (subId) {
       try {
         const pool = getPlatformPool();
@@ -679,22 +907,59 @@ export function formatDiscountFooter(d: UpgradeDiscount): string {
 }
 
 async function handleInvoiceFailed(invoice: Stripe.Invoice, stripeEventId: string): Promise<void> {
-  const customerId = invoice.customer as string;
-  const tenantId = await getTenantByCustomer(customerId);
-  if (!tenantId) return;
-
-  await withTenant(tenantId, async (client) => {
-    await client.query(
-      `UPDATE subscriptions SET status = 'past_due', updated_at = NOW() WHERE tenant_id = $1`,
-      [tenantId],
-    );
-    await appendBillingEvent(client, tenantId, 'payment_failed', {
+  const target = await resolvePlanInvoice(invoice);
+  if (!target) return;
+  const { tenantId, subscriptionId, subscription } = target;
+  const billingEvent = {
+    type: 'payment_failed',
+    data: {
       invoiceId: invoice.id,
+      subscriptionId,
       attemptCount: invoice.attempt_count,
-    }, stripeEventId);
-  });
+    },
+  };
 
-  logger.warn('Invoice payment failed', { tenantId, invoiceId: invoice.id });
+  if (subscription) {
+    // Re-read status so a late retry of an old failure can't overwrite a
+    // later successful payment.
+    await syncPlanSubscription(tenantId, subscription, stripeEventId, billingEvent);
+  } else {
+    await applyInvoiceStatusFallback(tenantId, subscriptionId, `'past_due'`, [], billingEvent, stripeEventId);
+  }
+
+  logger.warn('Invoice payment failed', { tenantId, invoiceId: invoice.id, subscriptionId });
+}
+
+/**
+ * Marketplace template subscriptions share the tenant's Stripe customer
+ * but are tracked in `marketplace_purchases`, never on the plan row.
+ * Older ones carry no `metadata.type`, so also check the purchases table.
+ */
+async function isMarketplaceSubscription(sub: Stripe.Subscription): Promise<boolean> {
+  if (sub.metadata?.type === 'marketplace_purchase') return true;
+  const { rows } = await getPlatformPool().query(
+    `SELECT 1 FROM marketplace_purchases WHERE stripe_subscription_id = $1 LIMIT 1`,
+    [sub.id],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Stripe doesn't guarantee event order and retries can land hours late,
+ * so read the subscription's current state instead of trusting the
+ * payload. Falls back to the payload if Stripe can't be reached.
+ */
+async function fetchLatestSubscription(sub: Stripe.Subscription): Promise<Stripe.Subscription> {
+  try {
+    const latest = await getStripeClient().subscriptions.retrieve(sub.id);
+    if (latest?.id) return latest;
+  } catch (err) {
+    logger.warn('Could not re-fetch subscription from Stripe; using event payload', {
+      subscriptionId: sub.id,
+      error: String(err),
+    });
+  }
+  return sub;
 }
 
 async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
@@ -702,14 +967,24 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId
   const tenantId = await getTenantByCustomer(customerId);
   if (!tenantId) return;
 
-  await withTenant(tenantId, async (client) => {
-    await client.query(
-      `UPDATE subscriptions SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
-       WHERE tenant_id = $1`,
-      [tenantId],
-    );
-    await appendBillingEvent(client, tenantId, 'subscription_cancelled', { subscriptionId: sub.id }, stripeEventId);
-  });
+  if (!(await isMarketplaceSubscription(sub))) {
+    await withTenant(tenantId, async (client) => {
+      // Only cancel the plan row for the subscription it tracks; an old
+      // subscription left over from an upgrade must not cancel the new one.
+      const result = await client.query(
+        `UPDATE subscriptions SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+         WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
+        [tenantId, sub.id],
+      );
+      if (!result.rowCount) {
+        logger.info('Deleted subscription is not the tenant plan subscription; plan row left alone', {
+          tenantId, subscriptionId: sub.id,
+        });
+        return;
+      }
+      await appendBillingEvent(client, tenantId, 'subscription_cancelled', { subscriptionId: sub.id }, stripeEventId);
+    });
+  }
 
   const pool = getPlatformPool();
   await pool.query(
@@ -729,11 +1004,43 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription, stripeEventId
 // can't silently desynchronize the two paths.
 const PLAN_TIER_RANK: Record<string, number> = { starter: 0, pro: 1, enterprise: 2 };
 
-async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId: string): Promise<void> {
-  const customerId = sub.customer as string;
+async function handleSubscriptionUpdated(payload: Stripe.Subscription, stripeEventId: string): Promise<void> {
+  const customerId = payload.customer as string;
   const tenantId = await getTenantByCustomer(customerId);
   if (!tenantId) return;
 
+  const sub = await fetchLatestSubscription(payload);
+
+  if (await isMarketplaceSubscription(sub)) {
+    logger.info('Marketplace subscription event; plan row left alone', { tenantId, subscriptionId: sub.id });
+  } else {
+    await syncPlanSubscription(tenantId, sub, stripeEventId);
+  }
+
+  const marketplaceSubStatus = sub.status === 'active' ? 'active'
+    : sub.status === 'past_due' ? 'past_due'
+    : sub.status === 'canceled' ? 'canceled'
+    : sub.status === 'unpaid' ? 'unpaid'
+    : 'incomplete';
+  const pool = getPlatformPool();
+  await pool.query(
+    `UPDATE marketplace_purchases SET subscription_status = $1
+     WHERE stripe_subscription_id = $2`,
+    [marketplaceSubStatus, sub.id],
+  );
+}
+
+/**
+ * Sync the tenant's plan row from the subscription it tracks. Records
+ * `billingEvent` (default: subscription_updated) only when the row was
+ * the subscription's.
+ */
+async function syncPlanSubscription(
+  tenantId: string,
+  sub: Stripe.Subscription,
+  stripeEventId: string,
+  billingEvent?: { type: string; data: Record<string, unknown> },
+): Promise<void> {
   const item = sub.items?.data?.[0];
   const priceId = item?.price?.id;
   const plan = priceId ? getPlanFromPriceId(priceId) : undefined;
@@ -765,19 +1072,31 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     // Billing UI can render a one-time "Your downgrade to <Plan> is now
     // active" banner on the tenant's next visit (Task #1366).
     let priorPlanForDowngrade: string | null = null;
+    let trackedSubscriptionId: string | null = null;
     try {
       const { rows: priorRows } = await client.query(
-        `SELECT plan FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+        `SELECT plan, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
         [tenantId],
       );
       const prior = priorRows[0]?.plan;
       if (typeof prior === 'string') priorPlanForDowngrade = prior;
+      const tracked = priorRows[0]?.stripe_subscription_id;
+      if (typeof tracked === 'string' && tracked) trackedSubscriptionId = tracked;
     } catch {
       priorPlanForDowngrade = null;
     }
 
+    // Another subscription on the same customer (e.g. the old one left
+    // running after a checkout upgrade) must not overwrite the plan row.
+    if (trackedSubscriptionId && trackedSubscriptionId !== sub.id) {
+      logger.info('Subscription event is not for the tenant plan subscription; plan row left alone', {
+        tenantId, subscriptionId: sub.id, trackedSubscriptionId,
+      });
+      return;
+    }
+
     const updateFields: string[] = ['updated_at = NOW()'];
-    const values: unknown[] = [tenantId];
+    const values: unknown[] = [tenantId, sub.id];
 
     if (plan) { values.push(plan); updateFields.push(`plan = $${values.length}`); }
     if (limits) {
@@ -822,24 +1141,24 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription, stripeEventId
     if (currentPeriodStart) { values.push(currentPeriodStart); updateFields.push(`current_period_start = $${values.length}`); }
     if (currentPeriodEnd) { values.push(currentPeriodEnd); updateFields.push(`current_period_end = $${values.length}`); }
 
-    await client.query(
-      `UPDATE subscriptions SET ${updateFields.join(', ')} WHERE tenant_id = $1`,
+    // Keep status and trial_end in step with Stripe, e.g. trialing → active
+    // when the trial converts, or → past_due when the first charge fails.
+    const status = mapStripeSubscriptionStatus(sub.status);
+    if (status) { values.push(status); updateFields.push(`status = $${values.length}::subscription_status`); }
+    const trialEnd = stripeTrialEnd(sub);
+    if (trialEnd !== undefined) { values.push(trialEnd); updateFields.push(`trial_end = $${values.length}`); }
+
+    const result = await client.query(
+      `UPDATE subscriptions SET ${updateFields.join(', ')}
+        WHERE tenant_id = $1 AND (stripe_subscription_id = $2 OR stripe_subscription_id IS NULL)`,
       values,
     );
-    await appendBillingEvent(client, tenantId, 'subscription_updated', { plan, subscriptionId: sub.id }, stripeEventId);
+    if (!result.rowCount) return;
+    const recorded = billingEvent
+      ? { type: billingEvent.type, data: { ...billingEvent.data, plan, status, trialEnd } }
+      : { type: 'subscription_updated', data: { plan, subscriptionId: sub.id, status, trialEnd } };
+    await appendBillingEvent(client, tenantId, recorded.type, recorded.data, stripeEventId);
   });
-
-  const marketplaceSubStatus = sub.status === 'active' ? 'active'
-    : sub.status === 'past_due' ? 'past_due'
-    : sub.status === 'canceled' ? 'canceled'
-    : sub.status === 'unpaid' ? 'unpaid'
-    : 'incomplete';
-  const pool = getPlatformPool();
-  await pool.query(
-    `UPDATE marketplace_purchases SET subscription_status = $1
-     WHERE stripe_subscription_id = $2`,
-    [marketplaceSubStatus, sub.id],
-  );
 }
 
 async function getTenantByCustomer(customerId: string): Promise<string | null> {

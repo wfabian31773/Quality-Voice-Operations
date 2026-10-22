@@ -83,8 +83,8 @@ const ORIGINAL_REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN;
 
 const PRO_RATE = {
   plan: 'pro' as const,
-  basePriceCents: 39_900,
-  overageRatePerMinute: 0.12,
+  basePriceCents: 34_900,
+  overageRatePerMinute: 0.22,
   currency: 'usd',
   source: 'catalog' as const,
   basePriceSource: 'catalog' as const,
@@ -95,8 +95,8 @@ const PRO_RATE = {
 
 const STARTER_RATE = {
   plan: 'starter' as const,
-  basePriceCents: 9_900,
-  overageRatePerMinute: 0.15,
+  basePriceCents: 14_900,
+  overageRatePerMinute: 0.25,
   currency: 'usd',
   source: 'catalog' as const,
   basePriceSource: 'catalog' as const,

@@ -452,6 +452,39 @@ describe('demo tenant: call limits by call type', () => {
   });
 });
 
+describe('tenant plan for call limits (resolveTenantPlan)', () => {
+  const routing = { tenantId: 't1', agentId: 'a1', phoneNumberId: 'pn-t1', agentType: 'barbershop', tenantName: 'Acme', agentName: 'Bot' };
+  const placeWith = async (sub: Record<string, unknown> | null) => {
+    m.lookupByPhoneNumberMock.mockResolvedValue(routing);
+    m.poolQueryMock.mockImplementation(async (sql: string) =>
+      sql.includes('FROM subscriptions') ? { rows: sub ? [sub] : [] } : { rows: [] },
+    );
+    await form(request(app()).post('/twilio/voice'), { CallSid: 'CA-plan', From: '+15551112222', To: '+15553334444' });
+  };
+
+  it('a Stripe-trialing Pro tenant gets the Pro limits, not the trial limits', async () => {
+    await placeWith({ plan: 'pro', status: 'trialing', stripe_subscription_id: 'sub_pro' });
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('t1', 'pro');
+    expect(m.checkDailyMinuteCapMock).toHaveBeenCalledWith('t1', 'pro');
+  });
+
+  it('a trialing row with no Stripe subscription is the free trial', async () => {
+    await placeWith({ plan: 'starter', status: 'trialing', stripe_subscription_id: null });
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('t1', 'trial');
+  });
+
+  it('no subscription row is the free trial', async () => {
+    await placeWith(null);
+    expect(m.checkHourlyCallLimitMock).toHaveBeenCalledWith('t1', 'trial');
+  });
+
+  it('reads stripe_subscription_id from the subscriptions row', async () => {
+    await placeWith({ plan: 'pro', status: 'active', stripe_subscription_id: 'sub_pro' });
+    const subSql = m.poolQueryMock.mock.calls.map(([sql]) => String(sql)).find((sql) => sql.includes('FROM subscriptions'));
+    expect(subSql).toMatch(/stripe_subscription_id/);
+  });
+});
+
 describe('POST /twilio/sms-status', () => {
   it('returns 400 when the SID or status is missing', async () => {
     const res = await form(request(app()).post('/twilio/sms-status'), { MessageStatus: 'delivered' });

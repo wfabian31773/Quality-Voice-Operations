@@ -6,6 +6,7 @@ import { getCachedStripePrice } from './priceCache';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
 import {
+  ANNUAL_DISCOUNT,
   PLAN_CATALOG,
   PLAN_TIERS,
   type PlanTier,
@@ -46,31 +47,10 @@ export interface TenantEffectiveRate {
    * override exists.
    */
   overageRatePerMinute: number;
-  /**
-   * Per-message SMS rate in dollars. Sourced from the `unit_amount` on the
-   * metered SMS price line on the tenant's Stripe subscription (a price
-   * tagged with `metadata.metric === 'sms_sent'` or matched against
-   * `STRIPE_METER_SMS_SENT`). Falls back to the env-default SMS rate
-   * (`SMS_COST_PER_MESSAGE_CENTS`) when no Stripe override exists.
-   *
-   * Optional so existing test fixtures and downstream consumers that only
-   * care about call/AI rates remain compatible — `recordSmsUsage` falls
-   * back to the env default when this field is absent.
-   */
-  smsRatePerMessage?: number;
-  /**
-   * Per-minute Twilio (carrier) rate in dollars. Sourced from the
-   * `unit_amount` on the metered Twilio-minutes price line on the tenant's
-   * Stripe subscription (a price tagged with
-   * `metadata.metric === 'twilio_minutes'` or matched against
-   * `STRIPE_METER_TWILIO_MINUTES`). Falls back to the env-default Twilio
-   * rate (`TWILIO_COST_PER_MINUTE_CENTS`) when no Stripe override exists.
-   *
-   * Optional so existing test fixtures and downstream consumers that only
-   * care about base/AI/SMS rates remain compatible — `recordCallUsage`
-   * falls back to the env default when this field is absent.
-   */
-  twilioRatePerMinute?: number;
+  // No per-message SMS or per-minute Twilio (carrier) rate: carrier costs
+  // are folded into the plan price, so tenants are never charged for them
+  // separately. Internal carrier cost tracking lives in
+  // `platform/billing/cost/` and `UsageRecorder`'s env-default estimates.
   /** Lower-case ISO currency code for the Stripe price (e.g. `usd`). */
   currency: string;
   /**
@@ -78,10 +58,6 @@ export interface TenantEffectiveRate {
    * from live Stripe data; `mixed` means at least one came from Stripe and
    * the other from the catalog; `catalog` means we found nothing on Stripe
    * and used catalog defaults end-to-end.
-   *
-   * Note: `source` reflects only the base + AI-overage resolution so we
-   * don't break backward-compat with the BillingEstimator UI. Use
-   * `smsPriceSource` for the SMS-line provenance.
    */
   source: EffectiveRateSource;
   /**
@@ -90,10 +66,6 @@ export interface TenantEffectiveRate {
    */
   basePriceSource: 'stripe' | 'catalog';
   overagePriceSource: 'stripe' | 'catalog';
-  /** SMS-line provenance — `stripe` when a tagged metered SMS price was found. */
-  smsPriceSource?: 'stripe' | 'catalog';
-  /** Twilio-minutes provenance — `stripe` when a tagged metered Twilio-minutes price was found. */
-  twilioPriceSource?: 'stripe' | 'catalog';
   /** Stripe price ids that drove the override (when applicable). */
   basePriceId: string | null;
   overagePriceId: string | null;
@@ -112,10 +84,6 @@ export interface TenantEffectiveRate {
    * tooltip falls back to a short price-id snippet when this is `null`.
    */
   overagePriceNickname?: string | null;
-  /** Stripe price id for the metered SMS line (when applicable). */
-  smsPriceId?: string | null;
-  /** Stripe price id for the metered Twilio-minutes line (when applicable). */
-  twilioPriceId?: string | null;
   /**
    * Per-month price the tenant would pay billed *monthly*, in cents.
    * Resolved from the tenant's subscription when their subscription is
@@ -131,8 +99,8 @@ export interface TenantEffectiveRate {
    * tier, in cents (i.e. annual_total / 12). Resolved from the tenant's
    * subscription when their subscription is already on an annual licensed
    * price, otherwise from the published `STRIPE_PRICE_<TIER>_ANNUAL` env
-   * var. Falls back to the catalog `monthlyPriceCents * (1 - 0.20)` when
-   * neither yields data — which mirrors the marketing "Save 20%" badge.
+   * var. Falls back to the catalog `monthlyPriceCents * (1 - ANNUAL_DISCOUNT)`
+   * when neither yields data — which mirrors the marketing annual badge.
    *
    * Lets the public pricing calculator render the live Stripe rate (with
    * the same badge) when the tenant flips the calculator to Annual,
@@ -164,31 +132,6 @@ export interface TenantEffectiveRate {
   discount: UpgradeDiscount | null;
 }
 
-/**
- * Default per-message SMS price in cents. Read at call time so a test
- * that mutates `process.env.SMS_COST_PER_MESSAGE_CENTS` after import is
- * still honoured (mirrors the same approach `recordSmsUsage` uses).
- */
-function defaultSmsRatePerMessageDollars(): number {
-  const raw = parseInt(process.env.SMS_COST_PER_MESSAGE_CENTS ?? '1', 10);
-  const cents = Number.isFinite(raw) && raw >= 0 ? raw : 1;
-  // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars conversion for parity with the dollar-denominated `overageRatePerMinute` / `smsRatePerMessage` fields.
-  return cents / 100;
-}
-
-/**
- * Default per-minute Twilio (carrier) price in dollars. Read at call time
- * so a test that mutates `process.env.TWILIO_COST_PER_MINUTE_CENTS` after
- * import is still honoured (mirrors the same approach `recordCallUsage`
- * uses for its env-default fallback).
- */
-function defaultTwilioRatePerMinuteDollars(): number {
-  const raw = parseInt(process.env.TWILIO_COST_PER_MINUTE_CENTS ?? '2', 10);
-  const cents = Number.isFinite(raw) && raw >= 0 ? raw : 2;
-  // eslint-disable-next-line local/no-cents-divided-by-100 -- cents→dollars conversion for parity with the dollar-denominated `overageRatePerMinute` / `twilioRatePerMinute` fields.
-  return cents / 100;
-}
-
 interface SubscriptionRow {
   plan: string | null;
   stripe_subscription_id: string | null;
@@ -203,14 +146,13 @@ function normalizePlan(plan: string | null | undefined): PlanTier {
 
 /**
  * Annual discount marketing has been promising on the public pricing page
- * (and in `MinutesPricingCalculator.ANNUAL_DISCOUNT`). Used as the
- * catalog-fallback floor for `annualBasePriceCents` when neither the
- * tenant's subscription nor the published `STRIPE_PRICE_<TIER>_ANNUAL`
- * env var yields a Stripe price. Kept in lock-step with the marketing
- * constant by exporting it for tests; do not change without coordinating
- * with the public pricing UI.
+ * (the shared catalog `ANNUAL_DISCOUNT`). Used as the catalog-fallback
+ * floor for `annualBasePriceCents` when neither the tenant's subscription
+ * nor the published `STRIPE_PRICE_<TIER>_ANNUAL` env var yields a Stripe
+ * price. Aliased (not copied) so it can never drift from the public
+ * pricing UI; exported for tests.
  */
-export const CATALOG_ANNUAL_DISCOUNT = 0.2;
+export const CATALOG_ANNUAL_DISCOUNT = ANNUAL_DISCOUNT;
 
 function catalogAnnualEquivalentCents(monthlyCents: number): number {
   return Math.round(monthlyCents * (1 - CATALOG_ANNUAL_DISCOUNT));
@@ -222,20 +164,14 @@ function catalogFor(plan: PlanTier): TenantEffectiveRate {
     plan,
     basePriceCents: entry.monthlyPriceCents,
     overageRatePerMinute: entry.overageRatePerMinute,
-    smsRatePerMessage: defaultSmsRatePerMessageDollars(),
-    twilioRatePerMinute: defaultTwilioRatePerMinuteDollars(),
     currency: 'usd',
     source: 'catalog',
     basePriceSource: 'catalog',
     overagePriceSource: 'catalog',
-    smsPriceSource: 'catalog',
-    twilioPriceSource: 'catalog',
     basePriceId: null,
     overagePriceId: null,
     basePriceNickname: null,
     overagePriceNickname: null,
-    smsPriceId: null,
-    twilioPriceId: null,
     monthlyBasePriceCents: entry.monthlyPriceCents,
     monthlyBasePriceSource: 'catalog',
     monthlyBasePriceId: null,
@@ -299,6 +235,9 @@ interface ItemLike {
  *   3. `price.recurring.usage_type === 'metered'` (AI fallback only — we do
  *      NOT default a generic metered line to SMS or Twilio to avoid
  *      double-counting it across multiple metrics).
+ *
+ * SMS / Twilio lines are recognised only so they are kept out of the AI
+ * overage fallback; their rates are no longer surfaced or charged.
  */
 function classifyPrice(price: PriceLike | null | undefined): {
   isMetered: boolean;
@@ -492,7 +431,7 @@ export async function getTenantEffectiveRate(
           }
         : {}),
       discount,
-      // Base/SMS/Twilio still catalog-sourced, so this is a `mixed`
+      // Base still catalog-sourced, so this is a `mixed`
       // result whenever any Stripe data (overage rate OR discount)
       // came back from the live Stripe call.
       source: resolved || discount ? 'mixed' : 'catalog',
@@ -555,12 +494,10 @@ export async function getTenantEffectiveRate(
 
   let basePrice: PriceLike | null = null;
   let aiMinutesPrice: PriceLike | null = null;
-  let smsPrice: PriceLike | null = null;
-  let twilioMinutesPrice: PriceLike | null = null;
   // Generic metered fallback for the AI-overage rate. We deliberately
-  // SKIP SMS- and Twilio-tagged metered lines here so a tenant with an
-  // SMS or Twilio price configured but no AI price configured doesn't
-  // get those rates misquoted as their AI overage.
+  // SKIP SMS- and Twilio-tagged metered lines here so a legacy
+  // subscription still carrying one of those (now unused) carrier lines
+  // doesn't get it misquoted as the tenant's AI overage.
   let firstMeteredAiCandidate: PriceLike | null = null;
 
   for (const item of items) {
@@ -574,8 +511,6 @@ export async function getTenantEffectiveRate(
       isLicensedRecurring,
     } = classifyPrice(price);
     if (isAiMinutes && !aiMinutesPrice) aiMinutesPrice = price;
-    if (isSms && !smsPrice) smsPrice = price;
-    if (isTwilioMinutes && !twilioMinutesPrice) twilioMinutesPrice = price;
     if (
       isMetered
       && !isSms
@@ -643,42 +578,12 @@ export async function getTenantEffectiveRate(
     }
   }
 
-  let smsRatePerMessage = fallback.smsRatePerMessage ?? defaultSmsRatePerMessageDollars();
-  let smsPriceSource: 'stripe' | 'catalog' = 'catalog';
-  let smsPriceId: string | null = null;
-  if (smsPrice) {
-    const dollarsPerMessage = stripeUnitAmountToDollars(smsPrice);
-    if (dollarsPerMessage != null) {
-      smsRatePerMessage = dollarsPerMessage;
-      smsPriceSource = 'stripe';
-      smsPriceId = smsPrice.id;
-    }
-  }
-
-  let twilioRatePerMinute =
-    fallback.twilioRatePerMinute ?? defaultTwilioRatePerMinuteDollars();
-  let twilioPriceSource: 'stripe' | 'catalog' = 'catalog';
-  let twilioPriceId: string | null = null;
-  if (twilioMinutesPrice) {
-    const dollarsPerMin = unitAmountToDollarsPerMinute(twilioMinutesPrice);
-    if (dollarsPerMin != null) {
-      twilioRatePerMinute = dollarsPerMin;
-      twilioPriceSource = 'stripe';
-      twilioPriceId = twilioMinutesPrice.id;
-    }
-  }
-
   const currency = (
     basePrice?.currency
     ?? overagePrice?.currency
-    ?? smsPrice?.currency
-    ?? twilioMinutesPrice?.currency
     ?? fallback.currency
   ).toLowerCase();
 
-  // `source` intentionally only reflects the base + AI-overage axes so the
-  // BillingEstimator UI keeps its existing meaning. SMS provenance is
-  // surfaced via `smsPriceSource` instead.
   let source: EffectiveRateSource;
   if (basePriceSource === 'stripe' && overagePriceSource === 'stripe') {
     source = 'stripe';
@@ -745,20 +650,14 @@ export async function getTenantEffectiveRate(
     plan: inferredPlan,
     basePriceCents,
     overageRatePerMinute,
-    smsRatePerMessage,
-    twilioRatePerMinute,
     currency,
     source,
     basePriceSource,
     overagePriceSource,
-    smsPriceSource,
-    twilioPriceSource,
     basePriceId,
     overagePriceId,
     basePriceNickname,
     overagePriceNickname,
-    smsPriceId,
-    twilioPriceId,
     monthlyBasePriceCents,
     monthlyBasePriceSource,
     monthlyBasePriceId,
@@ -861,7 +760,7 @@ async function resolvePerTierAiMinutesPrice(
     // the retrieved price is actually a metered line before we trust its
     // unit_amount as a per-minute rate. A licensed/recurring monthly
     // price wired here by mistake would otherwise be quoted as an
-    // *overage* (e.g. "$399/min"), which is catastrophic for the
+    // *overage* (e.g. "$349/min"), which is catastrophic for the
     // estimator. Mirrors the same guardrail `getTenantUpgradePreview`
     // applies to the same env var.
     const { isMetered } = classifyPrice(meteredPrice);
@@ -1408,7 +1307,7 @@ export async function getTenantUpgradePreview(
       // the retrieved price is actually a metered line before we trust its
       // unit_amount as a per-minute rate. A licensed/recurring monthly
       // price wired here by mistake would otherwise be quoted as an
-      // *overage* (e.g. "$399/min"), which is catastrophic for the
+      // *overage* (e.g. "$349/min"), which is catastrophic for the
       // estimator. We intentionally accept a generic metered line that
       // isn't tagged with `metric=ai_minutes` / the AI minutes meter,
       // matching `getTenantEffectiveRate`'s behaviour for grandfathered

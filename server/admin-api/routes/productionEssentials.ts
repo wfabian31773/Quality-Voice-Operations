@@ -19,6 +19,7 @@ import {
   replaceConnectorAlertMutes,
   type ConnectorAlertMute,
 } from '../../../platform/integrations/connectors/ConnectorAlertPreferences';
+import { isStripeTrial, stripeTrialLapsed } from '../../../platform/billing/guardrails/TrialGuard';
 
 const router = Router();
 const logger = createLogger('PRODUCTION_ESSENTIALS');
@@ -447,7 +448,7 @@ router.get('/tenants/me/trial-status', requireAuth, async (req, res) => {
       [tenantId],
     );
     const { rows: subRows } = await pool.query(
-      `SELECT plan, status, trial_end FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      `SELECT plan, status, trial_end, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
 
@@ -455,20 +456,24 @@ router.get('/tenants/me/trial-status', requireAuth, async (req, res) => {
     const sub = subRows[0];
     const plan = sub?.plan ?? tenant?.plan ?? 'starter';
     const subStatus = sub?.status ?? 'none';
-    const trialExpiresAt: Date | null = sub?.trial_end
+    // Stripe keeps trial_end after the trial converts, so only a still-trialing
+    // subscription's trial_end counts.
+    const trialExpiresAt: Date | null = subStatus === 'trialing' && sub?.trial_end
       ? new Date(sub.trial_end)
       : tenant?.trial_expires_at
       ? new Date(tenant.trial_expires_at)
       : null;
 
     const now = Date.now();
-    const onPaidPlan = ['active', 'past_due'].includes(subStatus) && plan !== 'starter';
+    // Every tier (Starter included) is paid.
+    const onPaidPlan = ['active', 'past_due'].includes(subStatus);
     let daysRemaining: number | null = null;
     let expired = false;
     if (trialExpiresAt) {
       const ms = trialExpiresAt.getTime() - now;
       daysRemaining = Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
-      expired = ms <= 0;
+      // A Stripe trial gets the same grace window as TrialGuard before the paywall.
+      expired = isStripeTrial(sub) ? stripeTrialLapsed(sub, now) : ms <= 0;
     }
     const onTrial = !onPaidPlan && trialExpiresAt !== null;
 

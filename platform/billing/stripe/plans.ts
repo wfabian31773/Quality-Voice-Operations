@@ -34,21 +34,21 @@ export const TRIAL_LIMITS: TrialLimits = {
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   starter: {
-    monthlyCallLimit: 500,
+    monthlyCallLimit: 600,
     monthlySmsLimit: 1_000,
-    monthlyAiMinuteLimit: 250,
-    overageEnabled: false,
+    monthlyAiMinuteLimit: 500,
+    overageEnabled: true,
   },
   pro: {
-    monthlyCallLimit: 5_000,
-    monthlySmsLimit: 10_000,
-    monthlyAiMinuteLimit: 2_500,
+    monthlyCallLimit: 1_800,
+    monthlySmsLimit: 3_000,
+    monthlyAiMinuteLimit: 1_500,
     overageEnabled: true,
   },
   enterprise: {
-    monthlyCallLimit: 999_999,
-    monthlySmsLimit: 999_999,
-    monthlyAiMinuteLimit: 999_999,
+    monthlyCallLimit: 3_600,
+    monthlySmsLimit: 8_000,
+    monthlyAiMinuteLimit: 3_000,
     overageEnabled: true,
   },
 };
@@ -59,12 +59,12 @@ export const PLAN_RATE_LIMITS: Record<PlanTier, RateLimits> = {
     dailyCallMinuteCap: 60,
   },
   pro: {
-    hourlyCallLimit: 50,
-    dailyCallMinuteCap: 500,
+    hourlyCallLimit: 25,
+    dailyCallMinuteCap: 150,
   },
   enterprise: {
-    hourlyCallLimit: 999_999,
-    dailyCallMinuteCap: 999_999,
+    hourlyCallLimit: 50,
+    dailyCallMinuteCap: 300,
   },
 };
 

@@ -165,7 +165,7 @@ function roundToNearest(value: number, step: number): number {
 /**
  * Convert a USD amount to the picked currency, rounded to the
  * currency's preferred step so the figure reads like a published
- * price ($399 → ¥60,000, not ¥59,850).
+ * price ($349 → ¥52,000, not ¥52,350).
  */
 export function convertUsd(amountUsd: number, currencyCode: string): number {
   const c = DISPLAY_CURRENCY_BY_CODE[currencyCode] ?? DISPLAY_CURRENCY_BY_CODE[DEFAULT_DISPLAY_CURRENCY];

@@ -11,6 +11,11 @@ import {
   convertUsdRate,
   isApproximateCurrency,
 } from '../lib/displayCurrency';
+import {
+  PLAN_CATALOG,
+  PLAN_TIERS,
+  getPlanMonthlyPriceWholeDollars,
+} from '../../../shared/billing/planCatalog';
 
 interface ROICalculatorProps {
   vertical?: string;
@@ -28,8 +33,6 @@ const DEFAULTS: Record<string, { calls: number; handleTime: number; hourlyRate: 
   dental: { calls: 500, handleTime: 4, hourlyRate: 17 },
 };
 
-const QVO_COST_PER_MINUTE = 0.12;
-const QVO_MONTHLY_BASE = 99;
 
 export default function ROICalculator({
   vertical,
@@ -48,14 +51,6 @@ export default function ROICalculator({
       return '$';
     }
   })();
-  const qvoCostPerMinute =
-    displayCurrency === DEFAULT_DISPLAY_CURRENCY
-      ? QVO_COST_PER_MINUTE
-      : convertUsdRate(QVO_COST_PER_MINUTE, displayCurrency);
-  const qvoMonthlyBase =
-    displayCurrency === DEFAULT_DISPLAY_CURRENCY
-      ? QVO_MONTHLY_BASE
-      : convertUsd(QVO_MONTHLY_BASE, displayCurrency);
   const defaults = vertical && DEFAULTS[vertical] ? DEFAULTS[vertical] : { calls: 500, handleTime: 5, hourlyRate: 18 };
 
   const [step, setStep] = useState(0);
@@ -76,8 +71,22 @@ export default function ROICalculator({
     const currentMonthlyCost = totalHoursPerMonth * agentHourlyCost;
     const currentCostPerCall = monthlyCallVolume > 0 ? currentMonthlyCost / monthlyCallVolume : 0;
     const residualHumanCost = currentMonthlyCost * (1 - aiHandleFraction);
-    const qvoUsageCost = aiMinutesPerMonth * qvoCostPerMinute;
-    const qvoMonthlyCost = qvoUsageCost + qvoMonthlyBase + residualHumanCost;
+    // QVO list prices come from the shared catalog: the cheapest plan for
+    // the projected AI minutes (base + overage past the included minutes).
+    // Carrier calling and SMS costs are included in the plan price.
+    const isUsd = displayCurrency === DEFAULT_DISPLAY_CURRENCY;
+    const qvoPlanCost = Math.min(
+      ...PLAN_TIERS.map((tier) => {
+        const plan = PLAN_CATALOG[tier];
+        const baseUsd = getPlanMonthlyPriceWholeDollars(tier);
+        const base = isUsd ? baseUsd : convertUsd(baseUsd, displayCurrency);
+        const overageRate = isUsd
+          ? plan.overageRatePerMinute
+          : convertUsdRate(plan.overageRatePerMinute, displayCurrency);
+        return base + Math.max(0, aiMinutesPerMonth - plan.includedMinutes) * overageRate;
+      }),
+    );
+    const qvoMonthlyCost = qvoPlanCost + residualHumanCost;
     const monthlySavings = Math.max(0, currentMonthlyCost - qvoMonthlyCost);
     const annualSavings = monthlySavings * 12;
     const annualROI = qvoMonthlyCost > 0 ? ((monthlySavings * 12) / (qvoMonthlyCost * 12)) * 100 : 0;
@@ -94,7 +103,7 @@ export default function ROICalculator({
       totalMinutesPerMonth,
       aiMinutesPerMonth,
     };
-  }, [monthlyCallVolume, avgHandleTime, agentHourlyCost, aiHandleRate, qvoCostPerMinute, qvoMonthlyBase]);
+  }, [monthlyCallVolume, avgHandleTime, agentHourlyCost, aiHandleRate, displayCurrency]);
 
   const handleEmailReport = async (e: React.FormEvent) => {
     e.preventDefault();

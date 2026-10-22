@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripeClient } from './client';
 import { getPlanPriceId } from './plans';
+import { buildTrialSubscriptionData } from './trial';
 import type { PlanTier } from './plans';
 import { getPlatformPool, withTenantContext } from '../../db';
 import { createLogger } from '../../core/logger';
@@ -98,10 +99,22 @@ export async function createCheckoutSession(params: {
     await withTenantContext(client, tenantId, async () => {});
 
     const { rows } = await client.query(
-      `SELECT stripe_customer_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
+      `SELECT stripe_customer_id, stripe_subscription_id FROM subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
     const existingCustomerId = rows[0]?.stripe_customer_id as string | null;
+    // The 7-day trial is for a tenant's first paid subscription only.
+    // Upgrades, interval switches and re-subscribes also go through this
+    // checkout, and must not get another trial.
+    const isFirstSubscription =
+      !existingCustomerId && !(rows[0]?.stripe_subscription_id as string | null);
+    // A tenant that already ran out its signup-time free trial gets no
+    // second one here.
+    const { rows: tenantRows } = await client.query(
+      `SELECT trial_expires_at FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    const freeTrialExpiresAt = (tenantRows[0]?.trial_expires_at as Date | string | null | undefined) ?? null;
     await client.query('COMMIT');
 
     const priceId = getPlanPriceId(plan, interval);
@@ -172,7 +185,7 @@ export async function createCheckoutSession(params: {
       },
       subscription_data: {
         metadata: { tenantId, plan },
-        trial_period_days: plan === 'starter' ? 14 : undefined,
+        ...buildTrialSubscriptionData({ isFirstSubscription, freeTrialExpiresAt }),
       },
       ...(sessionDiscounts ? { discounts: sessionDiscounts } : {}),
     });

@@ -279,13 +279,13 @@ describe('Billing annual-savings callout', () => {
     handlers = defaultHandlers(
       { plan: 'starter', billing_interval: 'monthly' },
       {
-        basePriceCents: 9_900,
-        overageRatePerMinute: 0.15,
+        basePriceCents: 14_900,
+        overageRatePerMinute: 0.25,
         basePriceSource: 'catalog',
         overagePriceSource: 'catalog',
-        monthlyBasePriceCents: 9_900,
+        monthlyBasePriceCents: 14_900,
         monthlyBasePriceSource: 'catalog',
-        annualBasePriceCents: 7_920,
+        annualBasePriceCents: 12_665,
         annualBasePriceSource: 'catalog',
       },
     );
@@ -297,10 +297,10 @@ describe('Billing annual-savings callout', () => {
     });
 
     expect(screen.queryByTestId('billing-annual-savings-live-rate')).toBeNull();
-    // Savings: ($99 - $79.20) × 12 = $237.60/yr.
+    // Savings: ($149 - $126.65) × 12 = $268.20/yr.
     expect(
       screen.getByTestId('billing-annual-savings-amount').textContent,
-    ).toMatch(/\$237\.60\/yr/);
+    ).toMatch(/\$268\.20\/yr/);
   });
 
   it('hides the callout when the annual price is not cheaper than monthly', async () => {
@@ -420,13 +420,13 @@ describe('Billing annual-savings callout', () => {
       }),
       '/billing/invoices': () => ({ invoices: [] }),
       '/billing/effective-rate': () => ({
-        basePriceCents: 9_900,
-        overageRatePerMinute: 0.15,
+        basePriceCents: 14_900,
+        overageRatePerMinute: 0.25,
         basePriceSource: 'catalog',
         overagePriceSource: 'catalog',
-        monthlyBasePriceCents: 9_900,
+        monthlyBasePriceCents: 14_900,
         monthlyBasePriceSource: 'catalog',
-        annualBasePriceCents: 7_920,
+        annualBasePriceCents: 12_665,
         annualBasePriceSource: 'catalog',
       }),
     };
@@ -531,13 +531,13 @@ describe('Billing annual-savings callout', () => {
     handlers = defaultHandlers(
       { plan: 'starter', billing_interval: 'monthly' },
       {
-        basePriceCents: 9_900,
-        overageRatePerMinute: 0.15,
+        basePriceCents: 14_900,
+        overageRatePerMinute: 0.25,
         basePriceSource: 'catalog',
         overagePriceSource: 'catalog',
-        monthlyBasePriceCents: 9_900,
+        monthlyBasePriceCents: 14_900,
         monthlyBasePriceSource: 'catalog',
-        annualBasePriceCents: 7_920,
+        annualBasePriceCents: 12_665,
         annualBasePriceSource: 'catalog',
       },
     );
