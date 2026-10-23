@@ -91,6 +91,8 @@ describe('FakeToolProvider', () => {
     expect(fade.ok && fade.data).toContainEqual({
       id: 'dee',
       displayName: 'Dee',
+      // Each service by id and name, like the real action (Oct 22: ids alone got Dee's Haircut booked as a Fade).
+      services: [{ id: 'haircut', name: 'haircut' }, { id: 'fade', name: 'fade' }],
       serviceIds: ['haircut', 'fade'],
       workingDays: ['tue', 'thu', 'fri', 'sat'],
       hours: { tue: '09:00-19:00', thu: '09:00-19:00', fri: '09:00-19:00', sat: '09:00-19:00' },

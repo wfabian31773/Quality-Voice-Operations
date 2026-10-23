@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, runAction, toAgentToolSchema, toHttpHandler, type ActionContext, type TenantTx } from '../index';
 import { checkAvailabilityAction } from './checkAvailability';
 import { priceText } from './listServices';
+import { listStaffAction } from './listStaff';
 
 const TENANT = 'tenant-shop';
 const MON_0800 = new Date('2026-10-19T12:00:00Z'); // Mon Oct 19 2026, 8:00 AM EDT
@@ -134,23 +135,50 @@ describe('scheduling.list_staff', () => {
     hours: Object.fromEntries(MON_SAT.map((d) => [d, '09:00-17:00'])),
     spokenHours: Object.fromEntries(MON_SAT.map((d) => [d, '9 AM to 5 PM'])),
   };
+  const CUT = { id: 'cut', name: "Men's cut" };
+  const BEARD = { id: 'beard', name: 'Beard trim' };
 
   it('lists active staff with the services they perform and their usual week', async () => {
     const { result, query } = await run('scheduling.list_staff', {});
     expect(result).toEqual({
       ok: true,
       data: [
-        { id: 'dana', displayName: 'Dana', serviceIds: ['cut'], ...SHOP_WEEK },
-        { id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'], ...SHOP_WEEK },
+        { id: 'dana', displayName: 'Dana', services: [CUT], serviceIds: ['cut'], ...SHOP_WEEK },
+        { id: 'marco', displayName: 'Marco', services: [BEARD, CUT], serviceIds: ['beard', 'cut'], ...SHOP_WEEK },
       ],
     });
     readOnlyAndTenantScoped(query);
     expect(dataQueries(query).some(([sql]) => /FROM scheduling_provider_schedules\b/.test(sql))).toBe(true);
   });
 
+  it('names each service next to its id, so an opaque id is never guessed at', async () => {
+    // Oct 22 call: serviceIds alone (service-1..service-5), the agent took
+    // service-1 for a haircut and booked Dee a Fade.
+    const data = shopData({
+      scheduling_appointment_types: [
+        { id: 'service-1', name: 'Fade', duration_minutes: 30, buffer_minutes: 0, price_kind: 'fixed', price_cents: 3500, price_max_cents: null },
+        { id: 'service-2', name: 'Haircut', duration_minutes: 30, buffer_minutes: 0, price_kind: 'fixed', price_cents: 3000, price_max_cents: null },
+      ],
+      scheduling_providers: [{ id: 'staff-dee', name: 'Dee' }],
+      scheduling_provider_services: [
+        { provider_id: 'staff-dee', appointment_type_id: 'service-1' },
+        { provider_id: 'staff-dee', appointment_type_id: 'service-2' },
+      ],
+    });
+    const { result } = await run('scheduling.list_staff', {}, setup(data));
+    expect(result.ok && result.data).toEqual([
+      expect.objectContaining({
+        id: 'staff-dee',
+        services: [{ id: 'service-1', name: 'Fade' }, { id: 'service-2', name: 'Haircut' }],
+        serviceIds: ['service-1', 'service-2'],
+      }),
+    ]);
+    expect(listStaffAction.agentDescription).toMatch(/never infer a service from an id or its position/);
+  });
+
   it('filters by service', async () => {
     const { result } = await run('scheduling.list_staff', { serviceId: 'beard' });
-    expect(result.ok && result.data).toEqual([{ id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'], ...SHOP_WEEK }]);
+    expect(result.ok && result.data).toEqual([{ id: 'marco', displayName: 'Marco', services: [BEARD, CUT], serviceIds: ['beard', 'cut'], ...SHOP_WEEK }]);
   });
 
   it('returns a non-contiguous week (Tue, Thu, Fri, Sat) from the weekly schedule, inside shop hours', async () => {
@@ -175,6 +203,7 @@ describe('scheduling.list_staff', () => {
     expect(dee).toEqual({
       id: 'dee',
       displayName: 'Dee',
+      services: [CUT],
       serviceIds: ['cut'],
       workingDays: ['tue', 'thu', 'fri', 'sat'],
       // Clipped to the shop's 5 PM close; a split Saturday keeps both blocks.
@@ -211,6 +240,7 @@ describe('scheduling.list_staff', () => {
       {
         id: 'dee',
         displayName: 'Dee',
+        services: [CUT],
         serviceIds: ['cut'],
         workingDays: ['fri', 'sat'],
         hours: { fri: '22:00-02:00', sat: '18:00-22:00' },
@@ -227,8 +257,8 @@ describe('scheduling.list_staff', () => {
     const { result } = await run('scheduling.list_staff', {}, setup(data));
     expect(result.ok && result.data).toEqual([
       // No schedule and no shop hours: no usual week to report.
-      { id: 'dana', displayName: 'Dana', serviceIds: ['cut'], workingDays: [], hours: {}, spokenHours: {} },
-      { id: 'marco', displayName: 'Marco', serviceIds: ['beard', 'cut'], workingDays: ['wed'], hours: { wed: '12:00-20:00' }, spokenHours: { wed: 'noon to 8 PM' } },
+      { id: 'dana', displayName: 'Dana', services: [CUT], serviceIds: ['cut'], workingDays: [], hours: {}, spokenHours: {} },
+      { id: 'marco', displayName: 'Marco', services: [BEARD, CUT], serviceIds: ['beard', 'cut'], workingDays: ['wed'], hours: { wed: '12:00-20:00' }, spokenHours: { wed: 'noon to 8 PM' } },
     ]);
   });
 
@@ -247,6 +277,7 @@ describe('scheduling.list_staff', () => {
       {
         id: 'dee',
         displayName: 'Dee',
+        services: [CUT],
         serviceIds: ['cut'],
         workingDays: ['tue', 'fri'],
         hours: { tue: '09:30-12:00', fri: '18:00-24:00' },
@@ -376,9 +407,52 @@ describe('scheduling.check_availability', () => {
     expect(errorOf(result)).toMatchObject({ code: 'NOT_FOUND', field: 'serviceIds', callerSafeMessage: "I couldn't find that service." });
   });
 
-  it('returns NOT_FOUND for an unknown staff member', async () => {
+  it('returns NOT_FOUND for an unknown staff member, with the staff as options', async () => {
     const { result } = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'ghost' });
-    expect(errorOf(result)).toMatchObject({ code: 'NOT_FOUND', field: 'staffId' });
+    expect(errorOf(result)).toMatchObject({
+      code: 'NOT_FOUND',
+      field: 'staffId',
+      callerSafeMessage: "I couldn't find that staff member.",
+      alternatives: [{ staffId: 'dana', name: 'Dana' }, { staffId: 'marco', name: 'Marco' }],
+    });
+  });
+
+  it('accepts an exact staff name where the id goes ("Dee", any case or accents)', async () => {
+    // Oct 22 call: staffId "Dee" failed and the agent said it "didn't go through".
+    const data = shopData({
+      scheduling_providers: [{ id: 'staff-dee', name: 'Dee' }, { id: 'staff-jose', name: 'José Ruiz' }],
+      scheduling_provider_services: [
+        { provider_id: 'staff-dee', appointment_type_id: 'cut' },
+        { provider_id: 'staff-jose', appointment_type_id: 'cut' },
+      ],
+    });
+    const byId = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'staff-dee', date: '2026-10-20' }, setup(data));
+    expect(byId.result.ok).toBe(true);
+    for (const ref of ['Dee', 'dee', ' DEE ']) {
+      const byName = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: ref, date: '2026-10-20' }, setup(data));
+      expect(byName.result).toEqual(byId.result);
+    }
+    const jose = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'jose ruiz', date: '2026-10-20' }, setup(data));
+    expect(jose.result.ok && (jose.result.data as { slots: { staffId: string }[] }).slots.every((s) => s.staffId === 'staff-jose')).toBe(true);
+    // Nothing looser than the exact name: a first name alone is not "José Ruiz".
+    const first = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'José', date: '2026-10-20' }, setup(data));
+    expect(errorOf(first.result)).toMatchObject({ code: 'NOT_FOUND', field: 'staffId' });
+  });
+
+  it('rejects a staff name shared by two people, listing both, never guessing', async () => {
+    const data = shopData({
+      scheduling_providers: [{ id: 'dee-1', name: 'Dee' }, { id: 'dee-2', name: 'dee' }, { id: 'dana', name: 'Dana' }],
+      scheduling_provider_services: ['dee-1', 'dee-2', 'dana'].map((p) => ({ provider_id: p, appointment_type_id: 'cut' })),
+    });
+    const { result, query } = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'Dee' }, setup(data));
+    expect(errorOf(result)).toEqual(expect.objectContaining({
+      code: 'VALIDATION_FAILED',
+      field: 'staffId',
+      alternatives: [{ staffId: 'dee-1', name: 'Dee' }, { staffId: 'dee-2', name: 'dee' }],
+      callerSafeMessage: 'We have more than one person by that name. Which one did you mean?',
+    }));
+    // Refused before any availability is read.
+    expect(dataQueries(query).some(([sql]) => /FROM bookings\b/.test(sql))).toBe(false);
   });
 
   it('rejects a named staff member who does not perform every service', async () => {

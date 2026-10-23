@@ -191,6 +191,10 @@ const MESSAGES = {
     en: "I couldn't find that staff member.",
     es: 'No encontré a esa persona.',
   },
+  ambiguousStaff: {
+    en: 'We have more than one person by that name. Which one did you mean?',
+    es: 'Tenemos más de una persona con ese nombre. ¿Con cuál quería?',
+  },
   unknownBooking: {
     en: "I couldn't find that appointment.",
     es: 'No encontré esa cita.',

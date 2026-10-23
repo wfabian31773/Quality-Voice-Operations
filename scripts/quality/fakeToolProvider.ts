@@ -399,6 +399,7 @@ export class FakeToolProvider implements ToolProvider {
         .map((member) => ({
           id: member.id,
           displayName: member.displayName,
+          services: member.serviceIds.map((id) => ({ id, name: this.state.services.find((s) => s.id === id)?.name ?? id })),
           serviceIds: member.serviceIds,
           workingDays: [...member.workingDays],
           hours: { ...member.hours },

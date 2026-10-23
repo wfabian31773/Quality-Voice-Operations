@@ -211,6 +211,7 @@ describe.skipIf(!dbReachable)('scheduling read actions on Postgres (RLS-bound lo
       {
         id: ids['a:staff'],
         displayName: 'Marco',
+        services: [{ id: ids['a:beard'], name: 'a beard' }, { id: ids['a:cut'], name: 'a cut' }],
         serviceIds: [ids['a:beard'], ids['a:cut']],
         workingDays: days,
         hours: Object.fromEntries(days.map((d) => [d, '09:00-17:00'])),

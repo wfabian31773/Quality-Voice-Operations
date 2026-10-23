@@ -32,6 +32,7 @@ import {
   type MessageKey,
 } from './readback';
 import { resolveServiceRefs } from './serviceRefs';
+import { resolveStaffRef } from './staffRefs';
 
 /** Alternatives offered with a CONFLICT (spec §1.5: at most 3). */
 export const MAX_ALTERNATIVES = 3;
@@ -87,10 +88,12 @@ export async function slotScope(
   const serviceIds = services.map((s) => s.id);
 
   const performsAll = (staffId: string) => services.every((s) => catalog.staffByService.get(s.id)!.has(staffId));
-  const named = req.staffId !== 'any' ? req.staffId : null;
-  if (named) {
-    const member = catalog.staff.find((s) => s.id === named);
-    if (!member) return fail('NOT_FOUND', `Unknown staff member: ${named}`, 'staffId', callerMessage('unknownStaff', lang));
+  let named: string | null = null;
+  if (req.staffId !== 'any') {
+    // An id, or the exact name of exactly one staff member (staffRefs.ts).
+    const member = resolveStaffRef(catalog, req.staffId, lang);
+    if (isActionFailure(member)) return member;
+    named = member.id;
     if (!performsAll(named)) {
       return fail(
         'VALIDATION_FAILED',
