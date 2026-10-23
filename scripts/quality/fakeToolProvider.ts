@@ -49,6 +49,8 @@ const UNKNOWN_BOOKING = "I couldn't find that appointment.";
 const SLOT_UNAVAILABLE = "That time isn't available. I can offer the closest open times.";
 const UNKNOWN_SERVICE = "I couldn't find that service.";
 const AMBIGUOUS_SERVICE = 'We have more than one service by that name. Which one did you mean?';
+const UNKNOWN_STAFF = "I couldn't find that staff member.";
+const AMBIGUOUS_STAFF = 'We have more than one person by that name. Which one did you mean?';
 const PAST_APPOINTMENT ="That appointment has already started or passed, so I can't change it. I can take a message for the shop.";
 
 /**
@@ -207,6 +209,42 @@ function resolveServiceIds(
   }
   if (new Set(ids).size !== ids.length) return fail('VALIDATION_FAILED', 'Each service may appear once', { field });
   return ids;
+}
+
+/** Mirrors normalizeStaffName in platform/actions/scheduling/staffRefs.ts. */
+function normalizeStaffName(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * A staff ref → its staff id, like the real resolveStaffRef (staffRefs.ts):
+ * 'any' passes through; else an id, or the exact (case/accent/spacing-insensitive)
+ * name of exactly one staff member. Several matches are VALIDATION_FAILED, none
+ * NOT_FOUND, with candidates in `alternatives` as { staffId, name }.
+ */
+function resolveStaffId(state: TenantState, ref: string): string | ToolResult {
+  if (ref === 'any' || state.staff.some((member) => member.id === ref)) return ref;
+  const choices = (staff: TenantState['staff']) => staff.map((member) => ({ staffId: member.id, name: member.displayName }));
+  const name = normalizeStaffName(ref);
+  const matches = name ? state.staff.filter((member) => normalizeStaffName(member.displayName) === name) : [];
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) {
+    return fail('VALIDATION_FAILED', `"${ref}" matches more than one staff member`, {
+      field: 'staffId',
+      alternatives: choices(matches),
+      callerSafeMessage: AMBIGUOUS_STAFF,
+    });
+  }
+  return fail('NOT_FOUND', `Unknown staff member: ${ref}`, {
+    field: 'staffId',
+    alternatives: choices(state.staff),
+    callerSafeMessage: UNKNOWN_STAFF,
+  });
 }
 
 export function slotStartMatches(
@@ -409,9 +447,10 @@ export class FakeToolProvider implements ToolProvider {
   }
 
   private checkAvailability(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
-    const staffId = asString(input.staffId) ?? 'any';
     const serviceIds = resolveServiceIds(this.state, asStringArray(input.serviceIds), 'serviceIds', 'NOT_FOUND');
     if (!Array.isArray(serviceIds)) return serviceIds;
+    const staffId = resolveStaffId(this.state, asString(input.staffId) ?? 'any');
+    if (typeof staffId !== 'string') return staffId;
     const date = asString(input.date) ?? localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const today = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slots = this.state.slots
@@ -463,7 +502,6 @@ export class FakeToolProvider implements ToolProvider {
   private bookPrepare(input: Record<string, unknown>, ctx: ToolCallContext): ToolResult {
     const serviceRefs = asStringArray(input.serviceIds);
     const start = asString(input.start);
-    const staffPref = asString(input.staffId) ?? 'any';
     const customer = (input.customer ?? {}) as Record<string, unknown>;
     const name = asString(customer.name);
     const phone = asString(customer.phone);
@@ -475,6 +513,8 @@ export class FakeToolProvider implements ToolProvider {
     // Like the real book.prepare (slots.ts slotScope): an unknown service is VALIDATION_FAILED.
     const serviceIds = resolveServiceIds(this.state, serviceRefs, 'serviceIds', 'VALIDATION_FAILED');
     if (!Array.isArray(serviceIds)) return serviceIds;
+    const staffPref = resolveStaffId(this.state, asString(input.staffId) ?? 'any');
+    if (typeof staffPref !== 'string') return staffPref;
     this.releaseCallHolds(ctx.callId);
     const onDate = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slot = this.state.slots.find((candidate) => {
@@ -682,7 +722,8 @@ export class FakeToolProvider implements ToolProvider {
     if (!newStart || Number.isNaN(Date.parse(newStart))) {
       return fail('VALIDATION_FAILED', 'newStart must be an ISO date-time with offset', { field: 'newStart' });
     }
-    const staffPref = asString(input.staffId) ?? original.staffId;
+    const staffPref = resolveStaffId(this.state, asString(input.staffId) ?? original.staffId);
+    if (typeof staffPref !== 'string') return staffPref;
     this.releaseCallHolds(ctx.callId);
     const tz = ctx.tenantTimezone;
     const fits = (slot: { staffId: string }) =>

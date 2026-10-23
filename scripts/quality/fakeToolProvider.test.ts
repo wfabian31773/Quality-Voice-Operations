@@ -84,6 +84,42 @@ describe('FakeToolProvider', () => {
     expect(state.bookings.at(-1)?.serviceIds).toEqual(['mens-cut']);
   });
 
+  it('resolves a staff name like the real actions (staffRefs.ts): check_availability, book.prepare; unknown is NOT_FOUND', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const query = { serviceIds: ['mens-cut'], date: '2026-10-20' };
+    const byName = await tools.invoke('scheduling.check_availability', { ...query, staffId: 'Marco' }, ctx());
+    const byId = await tools.invoke('scheduling.check_availability', { ...query, staffId: 'marco' }, ctx());
+    expect(byId.ok && (byId.data as { slots: unknown[] }).slots.length).toBeGreaterThan(0);
+    expect(byName).toEqual(byId);
+    const prepare = await tools.invoke(
+      'scheduling.book.prepare',
+      { serviceIds: ['mens-cut'], staffId: ' MARCO ', start: '2026-10-20T15:30:00-04:00', customer: { name: 'Luis', phone: '+15555550142' } },
+      ctx(),
+    );
+    expect(prepare.ok).toBe(true);
+    expect(state.bookings.find((row) => row.status === 'held')?.staffId).toBe('marco');
+
+    const unknown = await tools.invoke('scheduling.check_availability', { ...query, staffId: 'Bob' }, ctx());
+    expect(unknown).toMatchObject({
+      ok: false,
+      error: {
+        code: 'NOT_FOUND',
+        field: 'staffId',
+        callerSafeMessage: "I couldn't find that staff member.",
+        alternatives: [{ staffId: 'marco', name: 'Marco' }, { staffId: 'dana', name: 'Dana' }],
+      },
+    });
+
+    state.staff.push({ ...state.staff[0], id: 'marco-2' });
+    const ambiguous = await tools.invoke('scheduling.check_availability', { ...query, staffId: 'marco ' }, ctx());
+    expect(ambiguous).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', field: 'staffId', alternatives: [{ staffId: 'marco' }, { staffId: 'marco-2' }] },
+    });
+  });
+
   it("list_staff returns each member's usual week in the real action's shape (workingDays, hours)", async () => {
     // Oct 18 Sharp Line call: Dee works Tue, Thu, Fri, Sat, not "Tuesday through Saturday".
     const sharp = new FakeToolProvider(buildFixture('sharp-line-oct17'), ['scheduling']);
