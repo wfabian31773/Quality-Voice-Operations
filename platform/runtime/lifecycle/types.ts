@@ -44,6 +44,11 @@ export interface RegisterCallParams {
   from?: string;
   to?: string;
   isTrial?: boolean;
+  /**
+   * Website ("try it live") demo call: gets the demo hard cap and its warning.
+   * Ordinary calls to the `demo` tenant (Sharp Line test calls) leave it unset.
+   */
+  websiteDemo?: boolean;
 }
 
 export type TerminalTwilioStatus = 'completed' | 'busy' | 'failed' | 'no-answer' | 'canceled';

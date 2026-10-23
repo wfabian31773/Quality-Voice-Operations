@@ -433,6 +433,8 @@ export function attachWebSocket(server: HTTPServer): void {
             campaignContactId = params.contactId || undefined;
             const callerNumber = params.callerNumber;
             const calledNumber = params.calledNumber;
+            // Set by /twilio/voice only for website-demo calls (#139's signal).
+            const websiteDemo = params.websiteDemo === 'true';
             streamCallerNumber = callerNumber;
             streamCalledNumber = calledNumber;
             streamSid = msg.start?.streamSid;
@@ -712,6 +714,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 onHandoff,
                 onSessionSwapRequired,
                 isTrial: budgetResult.isTrial,
+                websiteDemo,
                 // Silence is counted from when Twilio has played the agent's
                 // audio (mark echo), not from the model's response.done.
                 playbackConfirm: 'twilio_mark',
@@ -858,7 +861,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 });
               }
 
-              if (tenantId === 'demo') {
+              if (websiteDemo) {
                 const demoWarningHandler = (evt: { callLogId: string; message: string }) => {
                   if (evt.callLogId === callSessionId && sessionResult) {
                     sessionResult.sendSystemMessage(evt.message);
@@ -867,7 +870,7 @@ export function attachWebSocket(server: HTTPServer): void {
                 const demoTerminateHandler = async (evt: { callLogId: string; twilioCallSid?: string }) => {
                   if (evt.callLogId === callSessionId) {
                     slog.info('Demo hard cap reached — terminating call', { callSessionId });
-                    sessionResult?.recordCallOutcome('agent_ended');
+                    sessionResult?.recordCallOutcome('max_duration');
                     if (evt.twilioCallSid) {
                       try {
                         const { createTwilioAdapterFromEnv } = await import('../services/twilioAdapter');

@@ -303,6 +303,7 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
     // guards (fail closed) but not the cleanup marker (it keeps its history).
     // Looked up before the one-call-per-IP guard so nothing awaits between
     // has() and set(): two concurrent calls from one IP can't both pass it.
+    // The same signal gives the stream the website-demo max duration.
     const websiteDemoLookup = tenantId === DEMO_TENANT_ID
       ? await isWebsiteDemoNumber(routing.phoneNumberId, agentType)
       : false;
@@ -432,7 +433,8 @@ router.post('/twilio/voice', async (req: Request, res: Response) => {
       <Parameter name="agentType" value="${agentType}" />
       <Parameter name="callSid" value="${callSid}" />
       <Parameter name="callerNumber" value="${callerNumber}" />
-      <Parameter name="calledNumber" value="${calledNumber}" />${campaignParams}
+      <Parameter name="calledNumber" value="${calledNumber}" />${demoGuarded ? `
+      <Parameter name="websiteDemo" value="true" />` : ''}${campaignParams}
     </Stream>
   </Connect>
 </Response>`,

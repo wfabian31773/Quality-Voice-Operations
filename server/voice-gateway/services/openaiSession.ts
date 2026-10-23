@@ -99,6 +99,8 @@ export interface SessionContext {
   onSessionSwapRequired?: (targetAgentConfig: import('./agentLoader').LoadedAgentConfig, handoffGreeting: string) => Promise<void>;
   onToolCall?: (name: string, args: unknown, callSessionId: string) => Promise<string>;
   isTrial?: boolean;
+  /** Website-demo call: the lifecycle coordinator applies the demo hard cap. */
+  websiteDemo?: boolean;
   /**
    * Resolved reasoning mode (agent config → tenant settings → vertical
    * default). When omitted it is resolved from templateKey + agent metadata;
@@ -1342,6 +1344,7 @@ export async function createRealtimeSession(
     from: callerNumber,
     to: calledNumber,
     isTrial: ctx.isTrial,
+    websiteDemo: ctx.websiteDemo,
   });
 
   // Keep the lifecycle state transition awaited (the demo live-call UI and
