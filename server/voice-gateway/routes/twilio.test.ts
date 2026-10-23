@@ -294,6 +294,23 @@ describe('demo tenant: website-demo marker and cleanup', () => {
     expect(m.recordDemoAnalyticsEventMock).toHaveBeenCalledWith('call_completed', expect.any(String), 'dental', 0);
     expect(m.scheduleDemoDataCleanupMock).toHaveBeenCalledWith(`sess-${acceptedSid}`);
   });
+
+  it('only website-demo calls (incl. a failed lookup, fail closed) pass the websiteDemo stream flag for the demo max duration', async () => {
+    const twiml = async (callSid: string, ip: string, lookup: boolean | null) => {
+      m.isWebsiteDemoNumberMock.mockResolvedValue(lookup);
+      return (await form(request(app()).post('/twilio/voice').set('X-Forwarded-For', ip), {
+        CallSid: callSid, From: '+15551112222', To: '+15553334444',
+      })).text;
+    };
+    const FLAG = '<Parameter name="websiteDemo" value="true" />';
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'barbershop' });
+    const sharp = await twiml('CA-sharp-flag', '10.0.0.4', false);
+    expect(sharp).toContain('<Stream');
+    expect(sharp).not.toContain('websiteDemo');
+    m.lookupByPhoneNumberMock.mockResolvedValue({ ...demoRouting, agentType: 'dental' });
+    expect(await twiml('CA-web-flag', '10.0.0.5', true)).toContain(FLAG);
+    expect(await twiml('CA-unknown-flag', '10.0.0.6', null)).toContain(FLAG);
+  });
 });
 
 describe('demo tenant: call limits by call type', () => {

@@ -12,8 +12,8 @@
  *                      at the hang-up, so a call that continues never has it).
  *                      An audible caller who is never transcribed and hangs
  *                      up gets `caller_hangup`.
- * - `max_duration`     silence watchdog, 10-minute cap
- * - `agent_ended`      runtime ended the call (budget cap, demo hard cap)
+ * - `max_duration`     silence watchdog, 10-minute cap; website-demo hard cap
+ * - `agent_ended`      runtime ended the call (budget cap)
  * - `provider_failure` the realtime session closed (or failed to connect)
  *                      before the caller's stream ended
  * - `caller_hangup`    default at finalize: the caller side closed first
