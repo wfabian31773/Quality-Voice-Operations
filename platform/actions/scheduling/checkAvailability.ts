@@ -17,6 +17,7 @@ import {
 import { dateSlot, toTenantDate, writtenDate } from './dateSlot';
 import { readbackLang } from './readback';
 import { resolveServiceRefs } from './serviceRefs';
+import { resolveStaffRef } from './staffRefs';
 
 /** Longest date window a caller can ask about in one check. */
 export const MAX_WINDOW_DAYS = 14;
@@ -32,7 +33,7 @@ const input = z
   .object({
     /** Service ids from list_services; an exact service name or alias also resolves. */
     serviceIds: z.array(z.string().min(1).max(255)).min(1).max(3),
-    /** A staff id from list_staff, or 'any'. */
+    /** A staff id from list_staff, or 'any'; an exact staff name also resolves. */
     staffId: z.string().min(1).max(255).optional(),
     date: dateSlot.optional(),
     window: z.object({ from: dateSlot, to: dateSlot }).optional(),
@@ -77,7 +78,7 @@ export const checkAvailabilityAction = defineAction({
   agentDescription:
     'Find open appointment times for 1 to 3 services done back-to-back by one staff member. '
     + 'serviceIds: service ids from list_services are preferred; an exact service name (or alias) also works. '
-    + `staffId is a staff id or 'any'. Give date (${DATE_SLOT_FORMAT}) `
+    + `staffId is a staff id from list_staff or 'any'; their exact name also works. Give date (${DATE_SLOT_FORMAT}) `
     + 'or window {from,to} in the same format; with neither it finds the first available day. Optional partOfDay '
     + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. '
     + 'With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.',
@@ -104,9 +105,10 @@ export const checkAvailabilityAction = defineAction({
     }
 
     const catalog = await loadCatalog(tx, ctx.tenantId);
+    const lang = readbackLang(ctx.locale);
     const services = resolveServiceRefs(catalog, args.serviceIds, {
       field: 'serviceIds',
-      lang: readbackLang(ctx.locale),
+      lang,
       unknownCode: 'NOT_FOUND',
     });
     if (isActionFailure(services)) return services;
@@ -114,15 +116,11 @@ export const checkAvailabilityAction = defineAction({
 
     const performsAll = (staffId: string) =>
       services.every((s) => catalog.staffByService.get(s.id)!.has(staffId));
-    const named = args.staffId && args.staffId !== 'any' ? args.staffId : null;
-    if (named) {
-      const member = catalog.staff.find((s) => s.id === named);
-      if (!member) {
-        return actionFail('NOT_FOUND', `Unknown staff member: ${named}`, {
-          field: 'staffId',
-          callerSafeMessage: "I couldn't find that staff member.",
-        });
-      }
+    let named: string | null = null;
+    if (args.staffId && args.staffId !== 'any') {
+      const member = resolveStaffRef(catalog, args.staffId, lang);
+      if (isActionFailure(member)) return member;
+      named = member.id;
       if (!performsAll(named)) {
         return actionFail('VALIDATION_FAILED', `${named} does not perform every requested service`, {
           field: 'staffId',
