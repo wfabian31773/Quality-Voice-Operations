@@ -758,6 +758,15 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['Can I make an appointment? What are your prices?'],
     ['Is the 5 o clock cancelled? What are your hours?'],
     ['How much to reschedule? What are your prices?'],
+    // Round 2: the day sits in an hours / staff-days question and the ask is its own sentence.
+    ['Does Marco work Saturday? Can he take me?'],
+    ['Does Ana work Friday? Can she do my nails?'],
+    ['Does Marco work Saturday? Could he cut my hair?'],
+    ['Does Marco work Saturday? Sign me up.'],
+    ['¿Marco trabaja el sábado? ¿Me puede atender?'],
+    ['¿Abren el sábado? ¿Puedo pasar?'],
+    ['¿Abren el sábado? ¿Puedo ir?'],
+    ['¿Me llama por favor? ¿Cuál es su horario?'],
   ])('an answered info call where the caller said "%s" → filed', async (line) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toMatchObject({ filed: true, reason: 'filed' });
@@ -780,6 +789,10 @@ describe('tickets.file_floor end reason and answered info calls', () => {
   it.each([
     ['staff days', ['Does Marco work Saturdays?']],
     ['hours on a weekday', ['¿A qué hora abren el sábado?']],
+    ['English hours on a weekday', ['What are your hours on Saturday?']],
+    ['closing time today', ['What time do you close today?']],
+    ['staff days, then thanks', ['Does Marco work Saturdays? Thanks!']],
+    ['hours asked as "can you tell me"', ['Can you tell me your hours on Saturday?']],
     ['a location after a Spanish introduction', ['Hola, me llamo Ana, ¿dónde están ubicados?']],
   ])('a pure info call about %s → still answered_info', async (_label, callerLines) => {
     const { tickets, floor } = setup();

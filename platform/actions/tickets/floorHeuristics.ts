@@ -215,7 +215,28 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'free', 'like', 'get', 'put', 'hold', 'waitlist',
   'llamenme', 'llamada', 'devuelvan', 'regresen', 'disponibilidad', 'reserva', 'reservacion', 'quisiera', 'gustaria',
   'turno', 'espacio',
+  'take', 'cut', 'sign', 'see', 'atender', 'atienden', 'atiende', 'pasar', 'ir', 'venir', 'cortar',
 ]);
+
+/** Subjects and modals before "do" when it is a verb ("can she do my nails"), not an auxiliary ("what do you charge"). */
+const DO_SUBJECTS: ReadonlySet<string> = new Set(['i', 'you', 'he', 'she', 'they', 'we', 'can', 'could', 'would', 'will']);
+
+/** "can he", "could you", "will they": with "puede" / "puedo" / "podría", the shape of a request. */
+const REQUEST_MODALS: ReadonlySet<string> = new Set(['can', 'could', 'would', 'will']);
+const REQUEST_SUBJECTS: ReadonlySet<string> = new Set(['i', 'you', 'he', 'she', 'they', 'we']);
+const SPANISH_REQUEST_WORDS: ReadonlySet<string> = new Set(['puede', 'pueden', 'puedo', 'podria', 'podrian']);
+
+/**
+ * A clause shaped like a request ("Can he take me?", "¿Me puede atender?",
+ * "¿Puedo pasar?") with no info word, so "can you tell me your hours" stays
+ * an info question.
+ */
+function isRequestShaped(tokens: readonly string[]): boolean {
+  if (tokens.some((token) => INFO_WORDS.has(token))) return false;
+  return tokens.some(
+    (token, i) => SPANISH_REQUEST_WORDS.has(token) || (REQUEST_MODALS.has(token) && REQUEST_SUBJECTS.has(tokens[i + 1])),
+  );
+}
 
 /**
  * Word stems (EN/ES) for the same families, so inflections count too
@@ -226,9 +247,12 @@ export const ACTION_PREFIXES: readonly string[] = [
   'llam', 'reserv', 'disponib', 'cancel', 'agend', 'cit', 'book', 'appoint', 'schedul', 'resched',
 ];
 
-/** "me llamo" / "se llama" (my name is, is called) introduce a name; they don't ask for a call. */
-const NAMING_LLAM = new Set(['llamo', 'llama']);
-const NAMING_BEFORE_LLAM = new Set(['me', 'se']);
+/**
+ * "me llamo" / "se llamo" / "se llama" (my name is, is called) introduce a
+ * name; they don't ask for a call. "me llama" is "call me", so it stays a request.
+ */
+const isNamingLlam = (token: string, before: string | undefined): boolean =>
+  (token === 'llamo' && (before === 'me' || before === 'se')) || (token === 'llama' && before === 'se');
 
 /** Weekdays and relative days (EN/ES). "mañana" is "manana" after normalization. */
 export const DAY_WORDS: ReadonlySet<string> = new Set([
@@ -250,7 +274,8 @@ const SCHEDULE_QUESTION_WORDS: ReadonlySet<string> = new Set([
 const isActionToken = (tokens: readonly string[], i: number): boolean => {
   const token = tokens[i];
   if (ACTION_WORDS.has(token)) return true;
-  if (NAMING_LLAM.has(token) && NAMING_BEFORE_LLAM.has(tokens[i - 1])) return false;
+  if (token === 'do') return DO_SUBJECTS.has(tokens[i - 1]);
+  if (isNamingLlam(token, tokens[i - 1])) return false;
   return ACTION_PREFIXES.some((prefix) => token.startsWith(prefix));
 };
 
@@ -269,15 +294,22 @@ const isTimeAt = (tokens: readonly string[], i: number): boolean => {
 
 /**
  * True when a clause asks for something the shop has to act on: an action
- * word or stem, a clock time, or a day outside an hours / staff-days question.
- * Info-only callers rarely name a day or a time, so either keeps the ticket.
+ * word or stem, a request shape, a clock time, or a day. Info-only callers
+ * rarely name a day or a time, so either keeps the ticket. A day in an
+ * hours / staff-days question is ignored only when dayInQuestionIsInfo,
+ * i.e. every other content clause of the call is an info question too.
  */
-function asksForAction(tokens: readonly string[]): boolean {
-  const scheduleQuestion = tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
+function asksForAction(tokens: readonly string[], dayInQuestionIsInfo: boolean): boolean {
+  if (isRequestShaped(tokens)) return true;
+  const ignoreDay = dayInQuestionIsInfo && tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
   return tokens.some(
-    (token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!scheduleQuestion && DAY_WORDS.has(token)),
+    (token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!ignoreDay && DAY_WORDS.has(token)),
   );
 }
+
+/** A clause left with words once filler and an introduced name are removed. */
+const isContentClause = (tokens: string[]): boolean =>
+  withoutPhrases(withoutIntroducedName(tokens)).some((token) => !FILLER_WORDS.has(token));
 
 /** Caller words (EN/ES) that make a line an information question: hours, staff days, prices, services, location. */
 export const INFO_WORDS: ReadonlySet<string> = new Set([
@@ -314,5 +346,7 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   const clauses = lines
     .flatMap((line) => line.replace(MERIDIEM, '$1m').split(CLAUSE_BREAK))
     .map(normalizeTokens);
-  return !clauses.some(asksForAction) && clauses.some((tokens) => tokens.some((token) => INFO_WORDS.has(token)));
+  const isInfoClause = (tokens: string[]) => tokens.some((token) => INFO_WORDS.has(token));
+  const allInfo = clauses.filter(isContentClause).every(isInfoClause);
+  return !clauses.some((tokens) => asksForAction(tokens, allInfo)) && clauses.some(isInfoClause);
 }
