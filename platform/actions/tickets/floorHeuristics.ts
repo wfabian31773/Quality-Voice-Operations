@@ -209,7 +209,7 @@ export const INFO_TOOLS: ReadonlySet<string> = new Set([
 
 /** Weekdays, abbreviated too, and weekends (EN/ES, normalized: "miércoles" → "miercoles", "sábado" → "sabado"). */
 const WEEKDAY =
-  '(?:mon|tues|wednes|thurs|fri|satur|sun)days?|mon|tues?|wed|thu|thurs?|fri|sat|sun|(?:the )?weekends?|' +
+  '(?:mon|tues|wednes|thurs|fri|satur|sun)days?|mon|tues?|weds?|thu|thurs?|fri|sat|sun|(?:the )?weekends?|' +
   'lunes|martes|miercoles|jueves|viernes|sabados?|domingos?|fin(?:es)? de semana';
 /** Weekdays and relative days ("mañana" → "manana"). */
 const DAY = `${WEEKDAY}|today|tomorrow|tonight|now|hoy|manana|ahora`;
@@ -249,8 +249,14 @@ const SHAPE_PARTS: Readonly<Record<string, string>> = {
   WHEN: `(?: (?:on |on the |this |next |right |el |los |este )?(?:${DAY}))?`,
   // A staff member's days: a weekday, never today / now / tomorrow ("does Marco work today" asks for him).
   WEEKDAYS: `(?: (?:on |on the |el |los )?(?:${WEEKDAY}))?`,
-  SVC: `(?:(?:a|an|the|some|any|un|una|el|la|los|las) )?(?:${SERVICES.join('|')})`,
+  SVC: `(?:(?:a|an|some|any|un|una) )?(?:${SERVICES.join('|')})`,
+  // Spanish uses the definite article generically ("el precio de las llantas"), so it keeps el/la/los/las.
+  SVCES: `(?:(?:a|an|some|any|un|una|el|la|los|las) )?(?:${SERVICES.join('|')})`,
   N: '(?<staff>\\S+)',
+  CONTACT: '(?:address|location|phone number|phone|number|website|web site|email(?: address)?)',
+  CONTACTO: '(?:direccion|ubicacion|numero(?: de telefono)?|telefono|pagina(?: web)?|sitio web|correo(?: electronico)?)',
+  PRICE: '(?:price|prices|pricing|cost|rate|rates)',
+  PRECIO: '(?:precio|precios|costo|costos)',
 };
 
 /** "abren hoy", "están cerrados", "está abierto el taller": a yes/no in Spanish, or a statement. */
@@ -289,24 +295,24 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   // "located" / "ubicados" or a shop noun.
   '(?:where (?:are {YOU}|is {SHOP})|wheres {SHOP}) located(?: at)?',
   '(?:where is|wheres) {SHOP}(?: at)?',
-  '(?:what (?:is|are) |whats )?(?:your |the )?(?:address|location|phone number|phone|number|website|web site|email(?: address)?)',
+  '(?:what (?:is|are) |whats )(?:your |the )?{CONTACT}',
   'is there parking',
   'donde (?:estan|esta|quedan|queda|se encuentran) (?:ubicad[oa]s?(?: {TIENDA})?|{TIENDA})',
-  '(?:cual es )?(?:su |la |el )?(?:direccion|ubicacion|numero(?: de telefono)?|telefono|pagina(?: web)?|sitio web|correo(?: electronico)?)',
+  '(?:cual es |cuales son )(?:su |la |el )?{CONTACTO}',
   // Price: "how much is an oil change", "how much does a fade cost", "¿cuánto cuesta un cambio de aceite?".
   'how much (?:is|are|does|do|for|would) {SVC}(?: cost| costs| be| run)?',
   '(?:how much|what) do {YOU} charge(?: for {SVC})?',
-  '(?:what (?:is|are) |whats )?(?:the |your )?(?:price|prices|pricing|cost|rate|rates)(?: (?:of|for|on) {SVC})?',
+  '(?:what (?:is|are) |whats )(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?',
   'what does {SVC} cost',
-  'cuanto (?:cuesta|cuestan|vale|valen|sale|salen|cobran(?: por)?) {SVC}',
-  '(?:cual es |cuales son )?(?:el |los |su |sus )?(?:precio|precios|costo|costos)(?: (?:de|del|por) {SVC})?',
+  'cuanto (?:cuesta|cuestan|vale|valen|sale|salen|cobran(?: por)?) {SVCES}',
+  '(?:cual es |cuales son )(?:el |los |su |sus )?{PRECIO}(?: (?:de|del|por) {SVCES})?',
   // Services: "do you offer brake service", "is brake service available", "what services do you offer", "¿ofrecen ...?".
   // "have" / "carry" / "tienen" take no service: "do you have a tow truck", "¿tienen grúa?" is a dispatch ask.
   'do {YOU} (?:offer|do|sell|provide) {SVC}',
   'is {SVC} available',
   'what (?:services|kind of services|kinds of services|types of services) do {YOU} (?:offer|have|do|provide)',
   'what do {YOU} offer',
-  '(?:ustedes )?(?:ofrecen|hacen|venden|manejan) {SVC}',
+  '(?:ustedes )?(?:ofrecen|hacen|venden|manejan) {SVCES}',
   'que (?:servicios )?(?:ofrecen|tienen|hacen)',
   'do {YOU} have (?:a |an )?(?:website|web site|email(?: address)?|parking|phone number)',
   '(?:ustedes )?tienen (?:una |un )?(?:pagina(?: web)?|sitio web|estacionamiento|parqueo|correo(?: electronico)?)',
@@ -317,7 +323,15 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
  * cerrados hoy." differ only in the "¿?", so these match only a clause the
  * caller's text marks with "?" or "¿".
  */
-const MARKED_QUESTION_SHAPES: readonly RegExp[] = [SPANISH_OPEN_CLOSED].map(shape);
+// A bare contact or price noun ("Email.", "Teléfono.") is often the caller answering the agent's
+// question (how to send a quote), so without a question frame it needs "?" / "¿".
+const MARKED_QUESTION_SHAPES: readonly RegExp[] = [
+  SPANISH_OPEN_CLOSED,
+  '(?:your |the )?{CONTACT}',
+  '(?:su |la |el )?{CONTACTO}',
+  '(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?',
+  '(?:el |los |su |sus )?{PRECIO}(?: (?:de|del|por) {SVCES})?',
+].map(shape);
 
 /**
  * Closed-class words (articles, pronouns, prepositions, indefinites): never a
@@ -343,7 +357,7 @@ const NOT_SLOT_WORDS: ReadonlySet<string> = new Set([
  * May, April) files: the doubt goes to a ticket.
  */
 const TIME_WORDS: ReadonlySet<string> = new Set([
-  'noon', 'midnight', 'morning', 'mornings', 'afternoon', 'afternoons', 'evening', 'evenings', 'night', 'nights',
+  'noon', 'noonish', 'midday', 'lunch', 'lunchtime', 'tmrw', 'midnight', 'morning', 'mornings', 'afternoon', 'afternoons', 'evening', 'evenings', 'night', 'nights',
   'early', 'earlier', 'late', 'later', 'soon', 'sooner', 'anytime', 'oclock',
   'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
   'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november',

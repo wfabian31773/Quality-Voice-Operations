@@ -349,6 +349,30 @@ describe('answeredInfoOnly', () => {
     expect(skips(...lines)).toBe(expected);
   });
 
+  it.each<[string[], boolean]>([
+    // Fourth review: a bare contact / price noun is often an answer to the agent, so it needs "?" / "¿".
+    [['Do you do oil changes?', 'Email.'], false],
+    [['¿Hacen frenos?', 'Teléfono.'], false],
+    [['Do you do oil changes?', 'Phone number.'], false],
+    [['¿Hacen frenos?', 'Correo electrónico.'], false],
+    [['Price.'], false],
+    [['Email?'], true],
+    [["What's your email?"], true],
+    [['¿Teléfono?'], true],
+    // "the" + service reads as the caller's own job.
+    [['How much is the brake job?'], false],
+    [['How much are the tires?'], false],
+    [['Is the tire available?'], false],
+    [['How much is an oil change?'], true],
+    // More time words never count as a staff name.
+    [['DOES MIDDAY WORK?'], false],
+    [['Does Lunch work?'], false],
+    [['Does Weds work?'], false],
+    [['¿Qué? Están cerrados hoy.'], false],
+  ])('fourth review: %j -> %s', (lines, expected) => {
+    expect(answeredInfoOnly(lines, ANSWERED)).toBe(expected);
+  });
+
   it('files greetings and introductions with no question at all', () => {
     expect(skips('Hi, this is Maria')).toBe(false);
     expect(skips('Hello?', 'Thanks, bye')).toBe(false);
