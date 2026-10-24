@@ -117,8 +117,13 @@ describe('answeredInfoOnly', () => {
     expect(skips('Hola, habla Ana. ¿Abren hoy?')).toBe(true);
     expect(skips('hola, habla ana. ¿Abren hoy?')).toBe(false);
     // "my name is" / "mi nombre es" name the caller outright.
-    expect(skips('my name is maria', 'Are you open today?')).toBe(true);
-    expect(skips('mi nombre es ana. ¿A qué hora cierran?')).toBe(true);
+    // "my name is" / "mi nombre es" take a lowercase name only when the whole transcript is lowercase.
+    expect(skips('my name is maria', 'are you open today?')).toBe(true);
+    // With casing elsewhere, a lowercase "name" is not trusted ("My name is misspelled"), unless it is the callerName.
+    expect(skips('my name is maria', 'Are you open today?')).toBe(false);
+    expect(answeredInfoOnly(['My name is maria.', 'Are you open today?'], { ...ANSWERED, callerName: 'Maria' })).toBe(true);
+    expect(skips('mi nombre es ana. ¿a qué hora cierran?')).toBe(true);
+    expect(skips('mi nombre es ana. ¿A qué hora cierran?')).toBe(false);
     // "me llamo" / "soy" need a capitalized name or the callerName, like "this is".
     expect(skips('me llamo ana. ¿A qué hora cierran?')).toBe(false);
     expect(answeredInfoOnly(['me llamo ana. ¿A qué hora cierran?'], { ...ANSWERED, callerName: 'Ana' })).toBe(true);
@@ -376,6 +381,14 @@ describe('answeredInfoOnly', () => {
     [['¿A qué hora cierran?', 'Mi nombre es incorrecto.'], false],
     [['What are your hours?', 'My name is spelled differently.'], false],
     [['My name is Ana.', 'Are you open today?'], true],
+    // Sixth review: casing evidence comes from the whole transcript, so a lead-in or comma can't hide it.
+    [['What are your hours?', 'And my name is spelled differently.'], false],
+    [['What are your hours?', 'Oh, my name is spelled differently.'], false],
+    [['What are your hours, my name is spelled differently.'], false],
+    [['¿A qué hora cierran?', 'Y mi nombre es otro.'], false],
+    [['what are your hours', 'my name is changed'], false],
+    [['Hi, my name is Ana.', 'Are you open today?'], true],
+    [['and my name is maria', 'what are your hours?'], true],
     // A bare hours noun needs "?" / "¿".
     [['Do you do brake service?', 'Hours.'], false],
     [['¿Hacen frenos?', 'Horario.'], false],

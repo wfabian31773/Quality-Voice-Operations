@@ -600,7 +600,7 @@ const NOT_NAME_ADJECTIVES: ReadonlySet<string> = new Set([
   'confused', 'late', 'new', 'great', 'good', 'fine', 'weird', 'strange', 'serious', 'insulting', 'disgusting',
   'frustrante', 'ridiculo', 'ridicula', 'absurdo', 'absurda', 'increible', 'molesto', 'molesta', 'enojado', 'enojada',
   'nuevo', 'nueva', 'malo', 'mala', 'incorrect', 'misspelled', 'different', 'wrong', 'incorrecto', 'incorrecta',
-  'diferente', 'equivocado', 'equivocada',
+  'diferente', 'equivocado', 'equivocada', 'changed', 'outdated', 'misspelt', 'spelled', 'otro', 'otra',
 ]);
 
 /**
@@ -610,7 +610,7 @@ const NOT_NAME_ADJECTIVES: ReadonlySet<string> = new Set([
  * or made of callerName's tokens, so "This is horrible" or "soy cliente" stays
  * a content clause. A problem word or an adjective is never a name.
  */
-function isIntroduction({ text, tokens, raw }: Clause, callerNameTokens: ReadonlySet<string>): boolean {
+function isIntroduction({ text, tokens, raw }: Clause, callerNameTokens: ReadonlySet<string>, transcriptHasUpper: boolean): boolean {
   const starts = (p: string[]) => p.every((word, j) => tokens[j] === word);
   const naming = NAMING_INTROS.find(starts);
   const presenting = naming ? undefined : PRESENTING_INTROS.find(starts);
@@ -621,9 +621,10 @@ function isIntroduction({ text, tokens, raw }: Clause, callerNameTokens: Readonl
   if (name.every((t) => callerNameTokens.has(t))) return true;
   const rawName = raw.slice(intro.length);
   const capitalized = rawName.length === name.length && rawName.every(isCapitalized);
-  // "my name is" takes a lowercase name only when the clause is all lowercase (no casing evidence):
-  // "My name is misspelled." has casing, so its lowercase "name" is not one.
-  if (naming) return capitalized || (raw.length > 0 && !raw.some((r) => /\p{Lu}/u.test(r)));
+  // "my name is" takes a lowercase name only when the whole caller transcript is lowercase (no casing
+  // evidence). Judged on the transcript, not the clause, since a lead-in ("And my name is ...") or a
+  // comma split trims the capitalized first word away.
+  if (naming) return capitalized || !transcriptHasUpper;
   return hasCasingEvidence(raw) && capitalized;
 }
 
@@ -657,6 +658,7 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
   if (hasCallbackNumber(lines) || hasProblemWord(lines)) return false;
   const callerNameTokens = new Set(signals.callerName ? normalizeTokens(signals.callerName) : []);
+  const transcriptHasUpper = lines.some((line) => /\p{Lu}/u.test(line));
   // A clause is "first" while every earlier clause was only greetings or filler.
   let first = true;
   const clauses: Clause[] = [];
@@ -670,7 +672,7 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
       clauses.push(clause);
     });
   }
-  const contentClauses = clauses.filter((clause) => clause.tokens.length > 0 && !isIntroduction(clause, callerNameTokens));
+  const contentClauses = clauses.filter((clause) => clause.tokens.length > 0 && !isIntroduction(clause, callerNameTokens, transcriptHasUpper));
   return (
     contentClauses.length > 0 &&
     contentClauses.every((clause) => isInfoQuestion(clause.tokens, clause.raw, clause.marked))
