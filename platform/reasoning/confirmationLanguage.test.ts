@@ -22,6 +22,10 @@ describe('confirmation language', () => {
     'Um, yes',
     'Absolutely',
     'Yes, that is right',
+    'that’s right',
+    'Go ahead and book it, thanks',
+    'Book it now, please',
+    'Confirm.',
   ])('English yes: %s', (line) => {
     expect(isExplicitYes(line)).toBe(true);
   });
@@ -39,6 +43,10 @@ describe('confirmation language', () => {
     'De acuerdo',
     'Bueno, sí',
     'Listo',
+    '¡Dale!',
+    '¡Sí, resérvalo!',
+    'Dale, gracias',
+    'Perfecto, resérvalo entonces, muchas gracias',
   ])('Spanish yes: %s', (line) => {
     expect(isExplicitYes(line)).toBe(true);
   });
@@ -59,7 +67,7 @@ describe('confirmation language', () => {
     'Yes but make it ten',
     'Friday at nine',
     'Hmm, I guess',
-    'Sure, let me check my calendar',
+    'Don’t book it',
     'No la reserves.',
     'No, espera',
     'Sí, pero a las 3',
@@ -82,15 +90,62 @@ describe('confirmation language', () => {
     'Dale, mejor otro',
     'Resérvalo para el viernes',
     'Um, yes, Friday at 3',
+    // After a go-ahead only affirmatives, filler and punctuation may follow.
+    'Book it for my son',
+    'Resérvalo para mi hijo',
+    'Dale, para mi hijo',
+    'Book it with Marco',
+    'Dale, con Marco',
+    'Resérvalo con Marco',
+    'Book it for next week',
+    'Dale, para la semana que viene',
+    'Book it for the weekend',
+    'Go ahead and book my son too',
+    'Book it for two',
+    'That works? What about the price',
+    'Confirm with my wife first',
   ])('a correction after a go-ahead does not confirm the old details: %s', (line) => {
     expect(isExplicitYes(line)).toBe(false);
   });
 
-  // The matcher before go-aheads were added. Every line it took must still confirm, or the readback repeats.
+  // Lines that open with a plain yes and carry a hedge. The original matcher took them; they must still confirm.
+  it.each([
+    'Yes, I think so.',
+    'Sí, creo que sí.',
+    'Sure, let me know by text',
+    'Yes, I guess that works',
+    'Sí, un momento lo anoto',
+    'Sure, let me check my calendar',
+  ])('a hedged plain yes still confirms: %s', (line) => {
+    expect(isExplicitYes(line)).toBe(true);
+  });
+
+  // The matcher before go-aheads were added. For every line that opens with a plain yes the result must be the same:
+  // a line it took that we reject brings back the readback loop, and a line it rejected that we take is a false yes.
   const MAIN_YES = /^(yes|yeah|yep|yup|sure|correct|right|that'?s (right|correct)|sounds good|perfect|ok|okay|s[ií]|claro|correcto|exacto|perfecto|de acuerdo|est[aá] bien)(?![\p{L}\p{N}])/iu;
   const MAIN_NOT_YES = /(?<![\p{L}\p{N}])(no|not|wait|actually|but|change|wrong|pero|espera|cambia|mal)(?![\p{L}\p{N}])/iu;
+  const mainIsExplicitYes = (line: string) => {
+    const text = line.trim();
+    return MAIN_YES.test(text) && !MAIN_NOT_YES.test(text);
+  };
 
-  it.each([
+  const PLAIN_YES_CORPUS = [
+    // English, taken by the original matcher
+    'Yes',
+    'yes.',
+    'Yeah',
+    'Yep!',
+    'Yup, that works',
+    'Sure',
+    'Sure, book it',
+    'Correct',
+    'Right',
+    "That's right",
+    'Thats correct',
+    'Sounds good',
+    'Perfect',
+    'OK',
+    'Okay, thanks',
     'Yes, Friday at 3',
     'yes, tomorrow at 3 is great',
     'Yes, will I get a text?',
@@ -98,11 +153,55 @@ describe('confirmation language', () => {
     'Yes, at 3 instead',
     'Sounds good, make it 4pm',
     'Perfect, book it for Friday',
+    'Yes, I think so.',
+    'Yes, I guess that works',
+    'Sure, let me know by text',
+    'Sure, let me check my calendar',
+    'Yeah, probably fine',
+    'Okay, hold on a sec',
+    'Yes, maybe',
+    // English, rejected by the original matcher
+    'Yes, but make it ten',
+    'Yes, wait',
+    'Yes, no wait',
+    'Okay, perfect, I can’t wait',
+    'Sure, actually make it Friday',
+    'Right, not that one',
+    'Okay, change it to 4',
+    'Yes, wrong day though',
+    // Spanish, taken by the original matcher
+    'Sí',
+    'si',
+    'Sí, perfecto',
+    'Claro',
+    'Claro que sí',
+    'Correcto',
+    'Exacto',
+    'Perfecto, gracias',
+    'De acuerdo',
+    'Está bien',
+    'Esta bien, resérvalo',
+    'Sí, creo que sí.',
+    'Sí, un momento lo anoto',
     'Sí, resérvalo para el viernes',
     'Sí, mejor otro día',
     'Sí, a las 3',
-  ])('a line the original matcher took still confirms: %s', (line) => {
-    expect(MAIN_YES.test(line) && !MAIN_NOT_YES.test(line)).toBe(true);
-    expect(isExplicitYes(line)).toBe(true);
+    'Sí, tal vez',
+    'Claro, todavía me sirve',
+    // Spanish, rejected by the original matcher
+    'Sí, pero a las 3',
+    'Sí, espera',
+    'Sí, no',
+    'Claro, cambia la hora',
+    'Correcto, está mal el nombre',
+  ];
+
+  it('the parity corpus is wide and every line opens with a plain yes', () => {
+    expect(PLAIN_YES_CORPUS.length).toBeGreaterThanOrEqual(40);
+    for (const line of PLAIN_YES_CORPUS) expect(MAIN_YES.test(line.trim()), line).toBe(true);
+  });
+
+  it.each(PLAIN_YES_CORPUS)('a line opening with a plain yes gets the original result: %s', (line) => {
+    expect(isExplicitYes(line)).toBe(mainIsExplicitYes(line));
   });
 });
