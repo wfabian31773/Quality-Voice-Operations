@@ -230,12 +230,17 @@ export const MAX_INFO_QUESTION_TOKENS = 12;
  */
 export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'move', 'callback', 'call', 'message', 'want', 'wants', 'wanted', 'wanna', 'need', 'needs', 'needed',
-  'available', 'availability',
+  'available', 'availability', 'come', 'came', 'tech', 'techs', 'technician', 'technicians', 'plumber', 'plumbers',
   'quiero', 'quiere', 'queremos', 'quisiera', 'necesito', 'necesita', 'necesitamos', 'mensaje', 'recado',
+  'venir', 'vengan', 'venga', 'mandar', 'manden', 'mande', 'arreglar', 'reparar',
 ]);
-/** Stems: book/booking, appointment, schedule/scheduling, reschedule, cancel/cancelled, reserv*, cita, agendar, llam*, disponib*. */
+/**
+ * Stems: book/booking, appointment, schedule/scheduling, reschedule, cancel/cancelled, reserv*, cita, agendar, llam*, disponib*,
+ * and dispatch verbs: coming, send/sending, fix/fixing, repair, arregl*, repar*.
+ */
 export const ACTION_PREFIXES: readonly string[] = [
   'book', 'appoint', 'appt', 'schedul', 'resched', 'cancel', 'reserv', 'cit', 'agend', 'llam', 'disponib',
+  'coming', 'send', 'fix', 'repair', 'arregl', 'repar',
 ];
 export const ACTION_PHRASES: readonly string[] = [
   'call me back', 'would like', 'id like', 'me gustaria', 'anything open', 'how long', 'how much longer', 'cuanto falta',
@@ -277,6 +282,24 @@ const SCHEDULE_QUESTION_WORDS: ReadonlySet<string> = new Set([
   'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan',
 ]);
 
+/** "work" / "open" used as a job verb when followed by one of these ("work on the furnace", "open the garage door"). */
+const JOB_VERBS: ReadonlySet<string> = new Set(['work', 'works', 'working', 'open']);
+const JOB_OBJECT_STARTS: ReadonlySet<string> = new Set(['on', 'the', 'a', 'an', 'my']);
+
+/** A clause about sending someone out ("can someone come out today"), so a day in it is a requested time. */
+const DISPATCH_WORDS: ReadonlySet<string> = new Set([
+  'someone', 'somebody', 'anyone', 'anybody', 'tech', 'techs', 'technician', 'technicians', 'alguien',
+]);
+
+/**
+ * A day is part of an hours / staff-days question only when the clause has a
+ * schedule word, no schedule word is used as a job verb, and nobody is being
+ * sent out. Unsure cases keep the day, so they file.
+ */
+const isScheduleQuestion = (tokens: readonly string[]): boolean =>
+  tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token)) &&
+  !tokens.some((token, i) => DISPATCH_WORDS.has(token) || (JOB_VERBS.has(token) && JOB_OBJECT_STARTS.has(tokens[i + 1] ?? '')));
+
 /** True when the phrase appears as a whole token run in the clause. */
 const hasPhrase = (tokens: readonly string[], phrase: string): boolean => ` ${tokens.join(' ')} `.includes(` ${phrase} `);
 
@@ -310,11 +333,12 @@ const isTimeAt = (tokens: readonly string[], i: number): boolean => {
 /**
  * An action or request signal: a core action word, stem or phrase, a clock
  * time, or a day. A day in an hours / staff-days question is part of the
- * question ("what time do you close today"), not a requested time.
+ * question ("what time do you close today"), not a requested time
+ * ("can someone work on the furnace today").
  */
 function asksForAction(tokens: readonly string[]): boolean {
   if (ACTION_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
-  const ignoreDay = tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
+  const ignoreDay = isScheduleQuestion(tokens);
   if (!ignoreDay && DAY_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
   return tokens.some((token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!ignoreDay && DAY_WORDS.has(token)));
 }

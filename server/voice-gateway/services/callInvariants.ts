@@ -164,9 +164,10 @@ const COURTESY_CLOSERS: readonly RegExp[] = [
 ];
 
 /**
- * Holding lines (EN/ES): the agent is about to look something up, so nothing
- * was answered yet. Matched anywhere in the turn: a turn that holds one never
- * counts as an answer, even with more after it.
+ * Holding lines (EN/ES): the agent is about to look something up, promises a
+ * follow-up ("I'll have a technician reach out", "Le devolveremos la llamada")
+ * or doesn't know, so nothing was answered yet. Matched anywhere in the turn:
+ * a turn that holds one never counts as an answer, even with more after it.
  */
 const HOLDING_LINES: readonly RegExp[] = [
   /\blet me (?:check|look|see|find|pull|verify|confirm)\b/,
@@ -176,6 +177,14 @@ const HOLDING_LINES: readonly RegExp[] = [
   /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
   /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
   /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
+  // A follow-up promise: someone else will answer later.
+  /\b(?:call you back|reach out|get back to you)\b/,
+  /\bsomeone will (?:call|contact)\b/,
+  /\bhave (?:someone|a tech|a technician|the team) (?:call|contact|reach)\b/,
+  /\ble (?:llam|devolv|contact)|\bse comunicar/,
+  // The agent doesn't know.
+  /\bi (?:don'?t|do not) (?:have|know)\b|\bnot sure\b/,
+  /\bno tengo esa informaci[oó]n|\bno estoy segur[oa]\b/,
 ];
 
 /** An agent turn that only holds the line ("Let me check that", "Un momento", "Déjeme revisar"). */

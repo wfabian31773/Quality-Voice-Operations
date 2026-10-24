@@ -96,6 +96,31 @@ describe('tool classification', () => {
     }
   });
 
+  it('a follow-up promise or a "don\'t know" is a holding line, not an answer (EN/ES)', () => {
+    for (const text of [
+      "We'll call you back with that.",
+      'Someone from our team will reach out.',
+      'I’ll get back to you on that.',
+      'Someone will call you tomorrow.',
+      'Someone will contact you shortly.',
+      'I can have someone call you.',
+      "I'll have a tech contact you.",
+      "Pricing depends on the job, I'll have a technician reach out with a quote.",
+      'I will have the team reach you today.',
+      "I don't have that information.",
+      'I do not know his schedule.',
+      "I'm not sure about that.",
+      'Un técnico le llamará mañana.',
+      'Le devolveremos la llamada.',
+      'Le contactaremos pronto.',
+      'Alguien se comunicará con usted.',
+      'No tengo esa información.',
+      'No estoy segura.',
+    ]) {
+      expect(isHoldingLine(text), text).toBe(true);
+    }
+  });
+
   it('a trailing courtesy closer does not turn an answer into a question; a bare closer answers nothing', () => {
     for (const text of [
       'We open at nine. Anything else I can help with?',
@@ -515,7 +540,18 @@ describe('floor at teardown', () => {
     expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
   });
 
-  it.each(['Let me check that.', 'One moment please.', 'Un momento, por favor.', 'Déjeme revisar.', 'Let me check. We open at nine.'])(
+  it.each([
+    'Let me check that.',
+    'One moment please.',
+    'Un momento, por favor.',
+    'Déjeme revisar.',
+    'Let me check. We open at nine.',
+    "Pricing depends on the job, I'll have a technician reach out with a quote.",
+    "We'll call you back with the price.",
+    "I don't know if Marco works Saturdays.",
+    'Le devolveremos la llamada con el precio.',
+    'No tengo esa información.',
+  ])(
     'a holding line ("%s") never counts as answered',
     async (hold) => {
       const { inv, runFloorAction } = make();
@@ -525,6 +561,15 @@ describe('floor at teardown', () => {
       expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
     },
   );
+
+  it('a follow-up promise after an answer clears it', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('How much is a furnace tune-up?');
+    inv.agentTurnCompleted('A tune-up is eighty-nine dollars.');
+    inv.agentTurnCompleted("For anything more, I'll have a technician reach out with a quote.");
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
 
   it('a holding line, then an info tool returns ok, then the caller hangs up → not answered', async () => {
     const { inv, runFloorAction } = make();

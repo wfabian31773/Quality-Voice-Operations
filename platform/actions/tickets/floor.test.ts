@@ -783,6 +783,19 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['How much is a fade today?'],
     ['¿Cuánto cuesta un corte esta tarde?'],
     ['Is Marco free Saturday at 2?'],
+    // Someone sent out, or work / open as a job verb: the day is a requested time.
+    ['Can someone come out today to work on the furnace?'],
+    ['Could a tech work on the AC tomorrow?'],
+    ['Can someone open the garage door today?'],
+    ['Does anyone work Saturday?'],
+    ['¿Alguien trabaja hoy?'],
+    ['Can you open the gate tomorrow?'],
+    // Dispatch verbs and trades.
+    ['How much to send a plumber?'],
+    ['How much to fix a leak?'],
+    ['How much is the repair?'],
+    ['¿Cuánto cuesta arreglar el calentador?'],
+    ['¿Cuánto cobran por venir?'],
     // No info word, or too long for a quick question.
     ['Do you take walk-ins?'],
     ['Is there someone there?'],
@@ -800,6 +813,7 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['Where are you located?'],
     ['How much is a haircut?'],
     ['Does Marco work Saturdays?'],
+    ['Does Marco work Saturday?'],
     ['What services do you offer?'],
     ['How much do you charge for a cut?'],
     ['¿Qué servicios ofrecen?'],
