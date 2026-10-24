@@ -30,6 +30,11 @@ export const confirmationTokenInput = z.object({
   confirmationToken: z.string().uuid(),
 });
 
+/** Commit descriptions: what counts as the caller's yes to the readback. */
+export const CLEAR_YES =
+  'A clear go-ahead such as "book it", "go ahead", "do it", "sounds good", "dale" or "adelante" is a yes; '
+  + 'a question, a hedge ("wait", "maybe") or a change ("but at 2") is not. ';
+
 /**
  * A contract slot: optional so a partial payload reaches prepare, which
  * answers with the next missing slot's askId (booking.book@1). null, a blank

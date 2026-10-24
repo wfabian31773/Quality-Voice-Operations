@@ -36,6 +36,7 @@ import {
   cancelPrepareInput,
   cancelPrepareOutput,
   cancelProposalPayload,
+  CLEAR_YES,
   confirmationTokenInput,
 } from './writeSchemas';
 
@@ -114,8 +115,9 @@ export const cancelCommitAction = defineAction({
   output: cancelCommitOutput,
   permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
-    'Cancel the appointment after the caller explicitly said yes to the readback. Only say it was cancelled once this '
-    + 'returns ok. Retrying with the same token is safe.',
+    'Cancel the appointment after the caller explicitly said yes to the readback. '
+    + CLEAR_YES
+    + 'Only say it was cancelled once this returns ok. Retrying with the same token is safe.',
   async run(ctx, input, tx) {
     const lang = readbackLang(ctx.locale);
     const noCall = agentCommitBlock(ctx);

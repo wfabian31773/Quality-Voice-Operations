@@ -41,6 +41,7 @@ import {
 } from './readback';
 import { resolveSlot, slotConflict, slotScope } from './slots';
 import {
+  CLEAR_YES,
   confirmationTokenInput,
   rescheduleCommitOutput,
   reschedulePrepareInput,
@@ -187,6 +188,7 @@ export const rescheduleCommitAction = defineAction({
   permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
     'Move the appointment to the held time after the caller explicitly said yes to the readback. '
+    + CLEAR_YES
     + 'Only say it was moved once this returns ok. Retrying with the same token is safe.',
   async run(ctx, input, tx) {
     const lang = readbackLang(ctx.locale);

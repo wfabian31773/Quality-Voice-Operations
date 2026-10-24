@@ -58,6 +58,7 @@ import { FILE_FLOOR, floorIdempotencyKey, type FileFloorInput, type FileFloorOut
 import { envSmsSendConfig } from '../../../platform/actions/sms/deps';
 import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
+import { isExplicitYes } from '../../../platform/reasoning/confirmationLanguage';
 import { CallerLineBuffer } from './callerLines';
 
 /** The runtime's actor for system-only actions (the floor). */
@@ -171,15 +172,7 @@ function floorLanguage(value: unknown): 'en' | 'es' | undefined {
   return undefined;
 }
 
-// Word edges by Unicode letter, so "sí" and "está" end where they should.
-const YES = /^(yes|yeah|yep|yup|sure|correct|right|that'?s (right|correct)|sounds good|perfect|ok|okay|s[ií]|claro|correcto|exacto|perfecto|de acuerdo|est[aá] bien)(?![\p{L}\p{N}])/iu;
-const NOT_YES = /(?<![\p{L}\p{N}])(no|not|wait|actually|but|change|wrong|pero|espera|cambia|mal)(?![\p{L}\p{N}])/iu;
-
-/** A short affirmative with no correction in it ("Yes, that's right"; not "Yes, but make it ten"). */
-export function isExplicitYes(line: string): boolean {
-  const text = line.trim();
-  return YES.test(text) && !NOT_YES.test(text);
-}
+export { isExplicitYes };
 
 export type FloorOutcome =
   | FileFloorOutput['reason']

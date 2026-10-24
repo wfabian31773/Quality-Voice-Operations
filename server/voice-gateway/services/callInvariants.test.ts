@@ -89,6 +89,9 @@ describe('tool classification', () => {
     expect(isExplicitYes('sí, perfecto')).toBe(true);
     expect(isExplicitYes('Yes but make it ten')).toBe(false);
     expect(isExplicitYes('Friday at nine')).toBe(false);
+    expect(isExplicitYes('Book it.')).toBe(true);
+    expect(isExplicitYes('dale')).toBe(true);
+    expect(isExplicitYes('Book it but at 2')).toBe(false);
   });
 });
 
@@ -148,6 +151,19 @@ describe('RUN (tool bridge)', () => {
     inv.callerTranscribed('Yes, please');
     expect(blockedRule(await tool('scheduling_book_commit', { confirmationToken: 'tok-1' }))).toBeUndefined();
     expect(handler).toHaveBeenLastCalledWith('scheduling_book_commit', { confirmationToken: 'tok-1' });
+  });
+
+  it('"Book it." after the readback lets the commit through; "book it but at 2" does not', async () => {
+    const { inv, tool, handler } = make({
+      agent: { tools: [{ name: 'scheduling_book_prepare' }, { name: 'scheduling_book_commit' }] },
+    });
+    handler.mockResolvedValueOnce(JSON.stringify({ ok: true, data: { confirmationToken: 'tok-1', readback: 'Friday at nine' } }));
+    await tool('scheduling_book_prepare', { service: 'fade' });
+    inv.agentTurnCompleted('That is a fade on Friday at nine, shall I book it?');
+    inv.callerTranscribed('Book it but at 2');
+    expect(blockedRule(await tool('scheduling_book_commit', { confirmationToken: 'tok-1' }))).toBe('run.commit_without_yes');
+    inv.callerTranscribed('Book it.');
+    expect(blockedRule(await tool('scheduling_book_commit', { confirmationToken: 'tok-1' }))).toBeUndefined();
   });
 
   it('legacy write tools never hit the commit rules', async () => {
