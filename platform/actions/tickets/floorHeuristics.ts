@@ -221,6 +221,8 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'coming', 'stopping', 'drop', 'swing',
   'broken', 'broke', 'leak', 'leaking', 'stopped', 'overcharged', 'twice', 'waiting', 'waited', 'never', 'terrible',
   'funciona', 'roto', 'rota', 'descompuesto', 'esperando',
+  'bad', 'awful', 'rude', 'horrible', 'worst', 'unhappy', 'malo', 'mala', 'pesimo', 'pesima',
+  'arrive', 'arriving', 'eta', 'llegue', 'llega',
 ]);
 
 /**
@@ -229,7 +231,7 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
  */
 export const ACTION_PHRASES: readonly string[] = [
   'work me in', 'fit me in', 'squeeze me in', 'anything open', 'anything available', 'algo disponible',
-  'where is my', 'wheres my', 'donde esta mi',
+  'where is my', 'wheres my', 'donde esta mi', 'how long', 'how much longer', 'cuanto falta',
 ];
 
 /** Subjects and modals before "do" when it is a verb ("can she do my nails"), not an auxiliary ("what do you charge"). */
@@ -341,20 +343,55 @@ const isContentClause = (tokens: string[]): boolean =>
 /** Caller words (EN/ES) that make a line an information question: hours, staff days, prices, services, location. */
 export const INFO_WORDS: ReadonlySet<string> = new Set([
   'hours', 'hour', 'open', 'opens', 'close', 'closes', 'closed', 'closing', 'days', 'work', 'works', 'working',
-  'price', 'prices', 'pricing', 'cost', 'costs', 'much', 'charge', 'services', 'service', 'offer', 'where',
+  'price', 'prices', 'pricing', 'cost', 'costs', 'much', 'charge', 'charged', 'services', 'service', 'offer', 'where',
   'address', 'located', 'location', 'directions', 'parking',
   'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan', 'precio',
-  'precios', 'cuesta', 'cuanto', 'cobran', 'servicios', 'ofrecen', 'donde', 'direccion', 'ubicados',
+  'precios', 'cuesta', 'cuanto', 'cobran', 'servicio', 'servicios', 'ofrecen', 'donde', 'direccion', 'ubicados',
 ]);
 
-/** "Work" info words that report a fault, not a schedule, after a negation ("my heater isn't working", "no trabaja"). */
-const WORK_WORDS: ReadonlySet<string> = new Set(['work', 'works', 'working', 'trabaja', 'trabajan']);
-const NEGATIONS: ReadonlySet<string> = new Set(['not', 'isnt', 'doesnt', 'dont', 'wont', 'stopped', 'no', 'nunca']);
+/**
+ * Work / open / close info words that report a fault, not a schedule, after a
+ * negation ("my heater isn't working", "the gate won't close", "no abre").
+ */
+const FAULT_WORDS: ReadonlySet<string> = new Set([
+  'work', 'works', 'working', 'trabaja', 'trabajan', 'open', 'opens', 'close', 'closes', 'abre', 'abren', 'cierra', 'cierran',
+]);
+const NEGATIONS: ReadonlySet<string> = new Set([
+  'not', 'isnt', 'doesnt', 'dont', 'wont', 'stopped', 'no', 'nunca',
+  'wasnt', 'arent', 'werent', 'didnt', 'hasnt', 'havent', 'cant', 'cannot', 'couldnt', 'aint', 'quit',
+]);
 
-/** An INFO_WORDS word, unless it is a work word within 2 tokens after a negation. */
-const isInfoTokenAt = (tokens: readonly string[], i: number): boolean =>
+/** Info words that are a complaint unless the clause asks a question ("the service was bad", "why did you charge my card"). */
+const QUESTION_ONLY_INFO_WORDS: ReadonlySet<string> = new Set(['service', 'services', 'servicio', 'servicios', 'charge', 'charged']);
+/** Question cues anywhere in a clause. "why" is left out: it opens a complaint, not a question about the shop. */
+const QUESTION_CUES: ReadonlySet<string> = new Set(['what', 'which', 'how', 'does', 'que', 'cual', 'cuanto']);
+/** Words that open a question when the clause carries a '?' / '¿'. */
+const QUESTION_STARTS: ReadonlySet<string> = new Set(['what', 'which', 'how', 'where', 'when', 'who', 'do', 'does']);
+
+const hasQuestionCue = (tokens: readonly string[], asked: boolean): boolean =>
+  tokens.some((token, i) => QUESTION_CUES.has(token) || (token === 'do' && tokens[i + 1] === 'you')) ||
+  (asked && QUESTION_STARTS.has(tokens[0]));
+
+/**
+ * An INFO_WORDS word, unless it is a fault word within 2 tokens after a
+ * negation, or a service / charge word in a clause with no question cue.
+ */
+const isInfoTokenAt = (tokens: readonly string[], i: number, asked: boolean): boolean =>
   INFO_WORDS.has(tokens[i]) &&
-  !(WORK_WORDS.has(tokens[i]) && tokens.slice(Math.max(0, i - 2), i).some((token) => NEGATIONS.has(token)));
+  !(FAULT_WORDS.has(tokens[i]) && tokens.slice(Math.max(0, i - 2), i).some((token) => NEGATIONS.has(token))) &&
+  !(QUESTION_ONLY_INFO_WORDS.has(tokens[i]) && !hasQuestionCue(tokens, asked));
+
+const CLAUSE_BREAK_KEPT = new RegExp(`(${CLAUSE_BREAK.source})`);
+
+/** A line's clauses, each with whether a '¿' opens it or a '?' closes it. */
+function lineClauses(line: string): Array<{ tokens: string[]; asked: boolean }> {
+  const parts = line.replace(MERIDIEM, '$1m').split(CLAUSE_BREAK_KEPT);
+  const out: Array<{ tokens: string[]; asked: boolean }> = [];
+  for (let k = 0; k < parts.length; k += 2) {
+    out.push({ tokens: normalizeTokens(parts[k]), asked: (parts[k - 1] ?? '').includes('¿') || (parts[k + 1] ?? '').includes('?') });
+  }
+  return out;
+}
 
 /** What the runtime saw on the call, beside the caller's lines. */
 export interface FloorCallSignals {
@@ -381,11 +418,10 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   if (signals.endReason !== 'caller_hangup' || signals.answered !== true || !signals.tools) return false;
   if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
   if (hasCallbackNumber(lines)) return false;
-  const clauses = lines
-    .flatMap((line) => line.replace(MERIDIEM, '$1m').split(CLAUSE_BREAK))
-    .map(normalizeTokens);
-  const isInfoClause = (tokens: string[]) => tokens.some((_, i) => isInfoTokenAt(tokens, i));
-  const contentClauses = clauses.filter(isContentClause);
+  const clauses = lines.flatMap(lineClauses);
+  const isInfoClause = ({ tokens, asked }: { tokens: string[]; asked: boolean }) =>
+    tokens.some((_, i) => isInfoTokenAt(tokens, i, asked));
+  const contentClauses = clauses.filter(({ tokens }) => isContentClause(tokens));
   if (contentClauses.length === 0 || !contentClauses.every(isInfoClause)) return false;
-  return !clauses.some(asksForAction);
+  return !clauses.some(({ tokens }) => asksForAction(tokens));
 }

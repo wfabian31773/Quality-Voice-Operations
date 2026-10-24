@@ -871,9 +871,24 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ["I've been waiting two hours for the tech."],
     ['¿Cuál es su horario?', 'No funciona'],
     ['Está roto'],
+    ["My heater wasn't working. What are your hours?"],
+    ["It hasn't been working"],
+    ['It quit working'],
+    ["The repair didn't work."],
+    ["My garage door won't open."],
+    ["The gate won't close"],
+    ['La puerta no abre'],
+    ['La puerta no cierra'],
+    ['The service was awful.'],
+    ['The service was bad'],
+    ['The receptionist was rude'],
+    ['Why did you charge my card?'],
+    ['El servicio fue pésimo'],
+    ['How much longer until the tech gets here?'],
+    ['¿Cuánto falta para que llegue el técnico?'],
   ])('an answered call with a problem report ("%s") → filed', async (...callerLines) => {
     const { tickets, floor } = setup();
-    expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(data(await floor({ ...INFO_CALL, tools: [], callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
@@ -883,6 +898,8 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['What services do you offer?'],
     ['Where are you located?'],
     ['How much do you charge for a cut?'],
+    ['What time do you close?'],
+    ['¿Qué servicios ofrecen?'],
   ])('a pure info question ("%s") → still answered_info', async (line) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toEqual({ filed: false, reason: 'answered_info' });
