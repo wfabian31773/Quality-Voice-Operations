@@ -216,6 +216,8 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'llamenme', 'llamada', 'devuelvan', 'regresen', 'disponibilidad', 'reserva', 'reservacion', 'quisiera', 'gustaria',
   'turno', 'espacio',
   'take', 'cut', 'sign', 'see', 'atender', 'atienden', 'atiende', 'pasar', 'ir', 'venir', 'cortar',
+  'wants', 'needs', 'wanted', 'needed', 'wanna', 'room', 'space',
+  'quiere', 'quieren', 'queremos', 'necesita', 'necesitan', 'necesitamos', 'lugar', 'hueco',
 ]);
 
 /** Subjects and modals before "do" when it is a verb ("can she do my nails"), not an auxiliary ("what do you charge"). */
@@ -296,12 +298,12 @@ const isTimeAt = (tokens: readonly string[], i: number): boolean => {
  * True when a clause asks for something the shop has to act on: an action
  * word or stem, a request shape, a clock time, or a day. Info-only callers
  * rarely name a day or a time, so either keeps the ticket. A day in an
- * hours / staff-days question is ignored only when dayInQuestionIsInfo,
- * i.e. every other content clause of the call is an info question too.
+ * hours / staff-days question is ignored; answeredInfoOnly only gets here
+ * when every content clause of the call is an info question.
  */
-function asksForAction(tokens: readonly string[], dayInQuestionIsInfo: boolean): boolean {
+function asksForAction(tokens: readonly string[]): boolean {
   if (isRequestShaped(tokens)) return true;
-  const ignoreDay = dayInQuestionIsInfo && tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
+  const ignoreDay = tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
   return tokens.some(
     (token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!ignoreDay && DAY_WORDS.has(token)),
   );
@@ -336,8 +338,10 @@ export interface FloorCallSignals {
  * - the caller ended the call (endReason 'caller_hangup');
  * - the agent spoke after the caller's last line;
  * - every tool that ran is in INFO_TOOLS and returned ok (none is fine);
- * - the caller gave no callback number, no clause asks for an action
- *   (asksForAction), and they asked with at least one INFO_WORDS.
+ * - the caller gave no callback number;
+ * - every content clause holds an INFO_WORDS word, so "I left my wallet
+ *   there. What time do you close?" files;
+ * - no clause asks for an action (asksForAction).
  */
 export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSignals): boolean {
   if (signals.endReason !== 'caller_hangup' || signals.answered !== true || !signals.tools) return false;
@@ -347,6 +351,7 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
     .flatMap((line) => line.replace(MERIDIEM, '$1m').split(CLAUSE_BREAK))
     .map(normalizeTokens);
   const isInfoClause = (tokens: string[]) => tokens.some((token) => INFO_WORDS.has(token));
-  const allInfo = clauses.filter(isContentClause).every(isInfoClause);
-  return !clauses.some((tokens) => asksForAction(tokens, allInfo)) && clauses.some(isInfoClause);
+  const contentClauses = clauses.filter(isContentClause);
+  if (contentClauses.length === 0 || !contentClauses.every(isInfoClause)) return false;
+  return !clauses.some(asksForAction);
 }

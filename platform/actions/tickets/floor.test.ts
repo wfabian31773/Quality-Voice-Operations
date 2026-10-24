@@ -773,6 +773,42 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
+  // Round 3: an info question beside a sentence that is not one files, even with no action word.
+  it.each([
+    ['I left my wallet there. What time do you close?'],
+    ['I left my wallet there', 'What time do you close?'],
+    ['My beard trim came out uneven. What are your prices?'],
+    ['Dejé mi cartera ahí. ¿A qué hora cierran?'],
+    ['El corte me quedó disparejo. ¿Cuánto cuesta?'],
+  ])('an answered info call with a non-info sentence ("%s") → filed', async (...callerLines) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
+  });
+
+  // Third-person, plural and past forms, and "room" / "space" / "lugar" / "hueco", inside the info clause too.
+  it.each([
+    ['How much is a color? My daughter wants one.'],
+    ['How much is a color my daughter wants one'],
+    ['How much is a fade, my son needs one'],
+    ['What are your prices? We wanted two cuts.'],
+    ['How much is a cut, I wanna come by'],
+    ['¿Cuánto cuesta un tinte? Mi hija quiere uno.'],
+    ['¿Cuánto cuesta un tinte que mi hija quiere?'],
+    ['¿Cuánto cuesta el corte que necesitan mis hijos?'],
+    ['¿Cuánto cobran? Queremos dos cortes.'],
+    ['¿Hay lugar mañana?'],
+    ['¿Dónde están y hay lugar?'],
+    ['¿Dónde están y tienen un hueco?'],
+    ['Do you have any room tomorrow?'],
+    ['Where are you located and is there any room'],
+    ['Where are you located and do you have space'],
+  ])('an answered info call where someone wants it or asks for room ("%s") → filed', async (line) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
+  });
+
   it.each([
     ['a weekday', ['Can Marco take me Saturday? How much is a fade?']],
     ['tomorrow', ['Can Marco take me tomorrow? How much is a fade?']],

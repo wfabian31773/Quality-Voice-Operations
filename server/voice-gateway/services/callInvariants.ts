@@ -129,6 +129,44 @@ export function toolKind(toolName: string, args: Record<string, unknown>): Actio
   return 'write';
 }
 
+/**
+ * An agent turn that asks rather than answers ("Which location?", "¿Qué
+ * sede?", "We have two shops. Which one?"): the turn starts with "¿", or its
+ * last sentence ends with "?" or starts with "¿". Such a turn never counts as
+ * answering the caller, so the floor still files. A trailing courtesy closer
+ * ("Anything else?", "¿Algo más?") is dropped first; a turn that is only a
+ * closer answers nothing, so it counts as a question.
+ */
+export function isAgentQuestion(text: string): boolean {
+  const sentences = text.trim().split(/(?<=[.!?…])\s+/).filter(Boolean);
+  if (sentences.length > 0 && isCourtesyCloser(sentences[sentences.length - 1])) {
+    sentences.pop();
+    if (sentences.length === 0) return true;
+  }
+  if ((sentences[0] ?? '').startsWith('¿')) return true;
+  const last = sentences[sentences.length - 1] ?? '';
+  return /\?["'”’)]*$/.test(last) || last.startsWith('¿');
+}
+
+const COURTESY_CLOSERS: readonly RegExp[] = [
+  /^(?:is there )?anything else(?: (?:that )?(?:i|we) can (?:help(?: you)?|assist(?: you)?|do for you)(?: with)?)?(?: today)?$/,
+  /^(?:can|may|could) (?:i|we) (?:help|assist)(?: you)? with anything else(?: today)?$/,
+  /^what else can (?:i|we) (?:help(?: you)?|assist(?: you)?) with(?: today)?$/,
+  /^(?:hay )?algo m[aá]s(?: en (?:que|qu[eé]) (?:le|te|lo|la) (?:pueda|puedo|podamos|podemos) ayudar)?$/,
+  /^(?:le|te|lo|la) (?:puedo|podemos) ayudar (?:en|con) algo m[aá]s$/,
+  /^(?:en )?qu[eé] m[aá]s (?:le|te|lo|la) (?:puedo|podemos) ayudar$/,
+];
+
+/** A sentence that only offers more help: "Anything else I can help with?", "¿Le puedo ayudar en algo más?". */
+function isCourtesyCloser(sentence: string): boolean {
+  const core = sentence
+    .toLowerCase()
+    .replace(/^[¿\s"'“‘(]+/, '')
+    .replace(/[?!.…"'”’)\s]+$/, '')
+    .replace(/\s+/g, ' ');
+  return COURTESY_CLOSERS.some((pattern) => pattern.test(core));
+}
+
 function parseObject(output: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(output);
@@ -356,7 +394,8 @@ export class CallInvariants {
         sayObservedTotals.set(said.rule, (sayObservedTotals.get(said.rule) ?? 0) + 1);
         this.init.log.info('invariant_say_observed', { rule: said.rule, count });
       }
-      this.answered = true;
+      // A clarifying question leaves answered as it was: it never sets it.
+      if (!isAgentQuestion(text)) this.answered = true;
     }
     this.state = onAgentSpoke(this.state);
     this.spokeSincePrepare = true;

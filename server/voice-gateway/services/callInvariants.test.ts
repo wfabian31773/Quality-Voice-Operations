@@ -6,6 +6,7 @@ import type { CallOutcome } from './callOutcome';
 import {
   CallInvariants,
   END_CALL_TOOLS,
+  isAgentQuestion,
   isExplicitYes,
   isTransferRequest,
   sayObservedTotal,
@@ -74,6 +75,38 @@ describe('tool classification', () => {
     expect(toolKind('triageEscalate', {})).toBe('transfer');
     expect(toolKind('escalate_to_human', {})).toBe('write');
     expect(END_CALL_TOOLS.has('end_call')).toBe(true);
+  });
+
+  it('an agent turn is a question when it starts with "¿" or its last sentence asks', () => {
+    for (const text of ['Which location?', ' ¿Qué sede? ', '¿Qué sede', 'We have two shops. Which one?', 'Tenemos dos. ¿Cuál', 'Which one?"']) {
+      expect(isAgentQuestion(text)).toBe(true);
+    }
+    for (const text of ['We open at nine.', 'Is it Saturday? We open at nine.', 'Marco works Tuesday to Saturday', '']) {
+      expect(isAgentQuestion(text)).toBe(false);
+    }
+  });
+
+  it('a trailing courtesy closer does not turn an answer into a question; a bare closer answers nothing', () => {
+    for (const text of [
+      'We open at nine. Anything else I can help with?',
+      'We open at nine. Is there anything else?',
+      'We open at nine. Can I help with anything else?',
+      'Abrimos a las nueve. ¿Algo más?',
+      'Abrimos a las nueve. ¿Le puedo ayudar en algo más?',
+      'Abrimos a las nueve. ¿Hay algo más en que le pueda ayudar?',
+    ]) {
+      expect(isAgentQuestion(text)).toBe(false);
+    }
+    for (const text of [
+      'Anything else?',
+      '¿Algo más?',
+      'Is there anything else?',
+      'Which location?',
+      'We have two shops. Which one do you mean?',
+      'We have two shops. Which one do you mean? Anything else?',
+    ]) {
+      expect(isAgentQuestion(text)).toBe(true);
+    }
   });
 
   it('reads tool success from the real output', () => {
@@ -440,6 +473,36 @@ describe('floor at teardown', () => {
     void tool('lookup_customer', {});
     await expect(inv.evaluateFloor()).resolves.toBe('filed');
     expect(runFloorAction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['Which location?', '¿Qué sede?', '¿Cuál sede prefiere', 'We have two shops. Which one do you mean?'])(
+    'an agent clarifying question ("%s") after an info question does not count as answered',
+    async (question) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted(question);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it('a clarifying question, then the caller answers and hangs up → not answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('Sure. Which location?');
+    inv.callerTranscribed('Downtown');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('the answer after a clarifying question counts as answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('Which location?');
+    inv.callerTranscribed('Downtown');
+    inv.agentTurnCompleted('Downtown opens at nine and closes at seven.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
   });
 
   it('a read still running after the settle wait leaves the tool list out, so the floor cannot skip', async () => {
