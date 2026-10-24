@@ -18,8 +18,22 @@ describe('answeredInfoOnly', () => {
     ['¿Cuánto cuesta un cambio de aceite?'],
     ['Soy Juan. ¿Cuál es su horario?'],
     ['Do you have a website?'],
+    ['Do you have parking?'],
     ['Is brake service available?'],
+    ['Is an oil change available?'],
     ['Hi this is Maria', 'what are your hours, please?', 'Okay, thanks, bye'],
+    ['What days does Marco work?'],
+    ['Does Lisa work on the weekend?'],
+    ['Is Marco in right now?'],
+    ['No, thanks. What time do you close?'],
+    ['¿Hacen alineaciones?'],
+    ['¿Hacen cambio de aceite?'],
+    ['¿Dónde queda?'],
+    ['¿Dónde queda el taller?'],
+    ['¿Qué días trabaja Marco?'],
+    ['¿Tienen estacionamiento?'],
+    ['¿Tienen página web?'],
+    ['Sí. ¿Abren el sábado?'],
   ])('skips an allowlisted info question ("%s")', (...lines) => {
     expect(skips(...lines)).toBe(true);
   });
@@ -55,6 +69,89 @@ describe('answeredInfoOnly', () => {
     expect(skips('This is Luis Garcia Lopez', 'Are you open today?')).toBe(false);
     expect(skips('This is urgent', 'Are you open today?')).toBe(false);
     expect(skips('This is about my order', 'Are you open today?')).toBe(false);
+  });
+
+  it('takes "this is" / "habla" + name only when the name is capitalized or is the callerName', () => {
+    expect(skips('this is maria', 'Are you open today?')).toBe(false);
+    expect(answeredInfoOnly(['this is maria', 'Are you open today?'], { ...ANSWERED, callerName: 'Maria Lopez' })).toBe(true);
+    expect(skips('Hola, habla Ana. ¿Abren hoy?')).toBe(true);
+    expect(skips('hola, habla ana. ¿Abren hoy?')).toBe(false);
+    // "my name is" / "me llamo" / "soy" name the caller outright.
+    expect(skips('my name is maria', 'Are you open today?')).toBe(true);
+    expect(skips('me llamo ana. ¿A qué hora cierran?')).toBe(true);
+  });
+
+  // Inputs the PR #153 review traced as skipping: each one is a request, a dispatch ask, a booking
+  // time, a status question or a complaint, so each files.
+  it.each([
+    // P1: "is X available" with a person, role, vehicle or time.
+    ['Is the manager available?'],
+    ['Is Lisa available?'],
+    ['Is a mechanic available?'],
+    ['Is an electrician available?'],
+    ['Is a locksmith available?'],
+    ['Is a tow truck available?'],
+    ['Is noon available?'],
+    ['Is three thirty available?'],
+    ['Is tow service available?'],
+    // P1: "have" / "carry" / "tienen" with an open slot.
+    ['Do you have a tow truck?'],
+    ['Do you have a mechanic?'],
+    ['Do you have a mechanic nearby?'],
+    ['Do you have a guy?'],
+    ['Do you carry a guy?'],
+    ['¿Tienen grúa?'],
+    ['¿Tienen electricista?'],
+    ['Do you offer a mechanic?'],
+    ['Do you do towing?'],
+    ['¿Hacen grúa?'],
+    // P2: a time word in the staff slot, or a lowercase "name".
+    ['Does noon work?'],
+    ['Does three work?'],
+    ['Does later work?'],
+    ['Does evening work?'],
+    ['Does Noon work?'],
+    ['does marco work saturdays?'],
+    ['¿Qué días trabaja mediodía?'],
+    // P2: plurals, turno, possessives, listo.
+    ['Do you have any times?'],
+    ['Do you have spaces?'],
+    ['Do you offer times?'],
+    ['¿Tienen huecos?'],
+    ['¿Tienen cupos?'],
+    ['¿Tienen espacios?'],
+    ['¿Tienen lugares?'],
+    ['¿Tienen turno?'],
+    ['¿Ofrecen turnos?'],
+    ['How much is mine?'],
+    ['What does mine cost?'],
+    ['How much are ours?'],
+    ['¿Cuánto cuesta el mío?'],
+    ['¿Cuánto cuesta el nuestro?'],
+    ['¿Tienen el carro listo?'],
+    // P2: a leading Spanish "no" negates the clause; "yes"/"no" is dropped only as the whole clause.
+    ['No está abierto el taller.'],
+    ['No abren hoy'],
+    ['Yes what are your hours'],
+    ['What are your hours?', 'Yes please.'],
+    // P2: "this is <adjective>" is a complaint, not an introduction.
+    ['This is horrible. Are you open?'],
+    ['This is outrageous. Are you open?'],
+    ['This is bad. Are you open?'],
+    ['This is overdue. What are your hours?'],
+    ['This is frustrating. What time do you close?'],
+    ['This is Horrible. Are you open?'],
+    // P3: the caller's own job or account.
+    ['Do you have the part yet?'],
+    ['¿Tienen el pedido?'],
+    ['How much is the bill?'],
+    ['How much is left?'],
+    // A clock time is never an info question; the period or colon splits it into fragments.
+    ['Does 3 p.m. work?'],
+    ['Is 10:30 available?'],
+    ['Do you have 10:30?'],
+  ])('files what the review traced as skipping ("%s")', (...lines) => {
+    expect(skips(...lines)).toBe(false);
   });
 
   it('files greetings and introductions with no question at all', () => {

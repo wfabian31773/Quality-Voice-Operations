@@ -212,7 +212,11 @@ const DAY =
   'lunes|martes|miercoles|jueves|viernes|sabados?|domingos?|hoy|manana|ahora|fin(?:es)? de semana';
 const DAY_TOKEN = new RegExp(`^(?:${DAY})$`);
 
-/** Template parts. {S} (a service) and {N} (a staff name) are the only open slots; slotsAreValid checks them. */
+/**
+ * Template parts. {S} (a service) and {N} (a staff name) are the only open
+ * slots; slotsAreValid checks them. {SVC} is a closed list of service names
+ * for "is X available", where an open slot would take a person or a time.
+ */
 const SHAPE_PARTS: Readonly<Record<string, string>> = {
   YOU: '(?:you(?: guys| all)?|yall)',
   SHOP: '(?:the |your )?(?:shop|store|office|business|place|garage|salon)',
@@ -220,6 +224,8 @@ const SHAPE_PARTS: Readonly<Record<string, string>> = {
   ART: '(?:(?:a|an|the|some|any|un|una|el|la|los|las) )?',
   WHEN: `(?: (?:on |on the |this |next |right |el |los |este )?(?:${DAY}))?`,
   S: '(?<service>\\S+(?: \\S+){0,2})',
+  SVC:
+    '(?<service>\\S+ service|oil changes?|brakes?|alignments?|tire rotations?|inspections?|haircuts?|detailing|manicures?|pedicures?)',
   N: '(?<staff>\\S+)',
 };
 
@@ -240,6 +246,7 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   '(?:how late|what time|until what time) (?:are {YOU}|is {SHOP}) open(?: until| till)?{WHEN}',
   'what days (?:are {YOU} open|do {YOU} work)',
   // Staff days: "what days does Marco work", "does Marco work Saturdays", "is Marco in today".
+  // {N} must be capitalized in the caller's own words (staffNameIsValid).
   '(?:what|which) days does {N} work',
   'does {N} work{WHEN}',
   'is {N} (?:in|working){WHEN}',
@@ -262,13 +269,16 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   'what does {ART}{S} cost',
   'cuanto (?:cuesta|cuestan|vale|valen|sale|salen|cobran(?: por)?) {ART}{S}',
   '(?:cual es |cuales son )?(?:el |los |su |sus )?(?:precio|precios|costo|costos)(?: (?:de|del|por) {ART}{S})?',
-  // Services: "do you offer brake service", "is X available", "what services do you offer", "¿ofrecen ...?".
-  'do {YOU} (?:offer|have|do|sell|carry|provide) {ART}{S}',
-  'is {ART}{S} available',
+  // Services: "do you offer brake service", "is brake service available", "what services do you offer", "¿ofrecen ...?".
+  // "have" / "carry" / "tienen" take no open slot: "do you have a tow truck", "¿tienen grúa?" is a dispatch ask.
+  'do {YOU} (?:offer|do|sell|provide) {ART}{S}',
+  'is {ART}{SVC} available',
   'what (?:services|kind of services|kinds of services|types of services) do {YOU} (?:offer|have|do|provide)',
   'what do {YOU} offer',
-  '(?:ustedes )?(?:ofrecen|tienen|hacen|venden|manejan) {ART}{S}',
+  '(?:ustedes )?(?:ofrecen|hacen|venden|manejan) {ART}{S}',
   'que (?:servicios )?(?:ofrecen|tienen|hacen)',
+  'do {YOU} have (?:a |an )?(?:website|web site|email(?: address)?|parking|phone number)',
+  '(?:ustedes )?tienen (?:una |un )?(?:pagina(?: web)?|sitio web|estacionamiento|parqueo|correo(?: electronico)?)',
 ].map(shape);
 
 /**
@@ -282,11 +292,35 @@ const NOT_SLOT_WORDS: ReadonlySet<string> = new Set([
   'for', 'to', 'on', 'at', 'in', 'of', 'with', 'from', 'about', 'by', 'and', 'or', 'but', 'so', 'if', 'there', 'here',
   'what', 'when', 'where', 'which', 'who', 'why', 'how', 'please',
   'anyone', 'anybody', 'someone', 'somebody', 'everyone', 'everybody', 'nobody',
-  'anything', 'something', 'everything', 'nothing', 'time', 'room', 'space', 'spot', 'spots', 'slot', 'slots', 'free',
+  'mine', 'ours', 'yours', 'theirs', 'hers', 'myself', 'ready',
+  'anything', 'something', 'everything', 'nothing', 'time', 'times', 'room', 'rooms', 'space', 'spaces', 'spot', 'spots',
+  'slot', 'slots', 'free',
   'el', 'la', 'los', 'las', 'lo', 'un', 'una', 'unos', 'unas', 'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'eso', 'esto',
   'mi', 'mis', 'su', 'sus', 'tu', 'tus', 'yo', 'te', 'se', 'nos', 'le', 'les', 'usted', 'ustedes',
+  'mio', 'mia', 'mios', 'mias', 'nuestro', 'nuestra', 'nuestros', 'nuestras', 'listo', 'lista', 'listos', 'listas',
   'de', 'del', 'al', 'en', 'con', 'por', 'para', 'sin', 'sobre', 'y', 'o', 'que', 'quien',
-  'alguien', 'algo', 'nada', 'nadie', 'todo', 'tiempo', 'espacio', 'lugar', 'cupo', 'hueco', 'tarde', 'noche',
+  'alguien', 'algo', 'nada', 'nadie', 'todo', 'tiempo', 'espacio', 'espacios', 'lugar', 'lugares', 'cupo', 'cupos',
+  'hueco', 'huecos', 'turno', 'turnos',
+  // The caller's own job or account: "how much is the bill", "how much is left".
+  'bill', 'balance', 'left', 'invoice', 'order', 'pedido',
+]);
+
+/** Times of day and clock numbers (EN/ES): "does noon work" offers a booking time, it names no one. */
+const TIME_WORDS: ReadonlySet<string> = new Set([
+  'noon', 'midnight', 'morning', 'mornings', 'afternoon', 'afternoons', 'evening', 'evenings', 'night', 'nights',
+  'early', 'earlier', 'late', 'later', 'soon', 'sooner', 'anytime', 'oclock',
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'mediodia', 'medianoche', 'temprano', 'tarde', 'noche',
+  'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce',
+]);
+
+/** People and vehicles (EN/ES): "do you offer a mechanic", "¿hacen grúa?" asks for someone or something to come out. */
+const ROLE_VEHICLE_WORDS: ReadonlySet<string> = new Set([
+  'guy', 'man', 'men', 'person', 'people', 'mechanic', 'mechanics', 'electrician', 'electricians', 'locksmith',
+  'locksmiths', 'manager', 'owner', 'boss', 'supervisor', 'staff', 'employee', 'employees', 'worker', 'workers',
+  'driver', 'drivers', 'truck', 'trucks', 'tow', 'towing', 'wrecker', 'van', 'roadside',
+  'grua', 'gruas', 'electricista', 'electricistas', 'mecanico', 'mecanicos', 'cerrajero', 'cerrajeros', 'gerente',
+  'dueno', 'duena', 'encargado', 'encargada', 'camion', 'chofer', 'persona', 'personal',
 ]);
 
 /**
@@ -320,57 +354,134 @@ function hasProblemWord(lines: readonly string[]): boolean {
   });
 }
 
-/** A word that can fill an open slot: letters only, not a closed-class word, a day, a request or a problem. */
+/**
+ * A word that can fill an open slot: letters only, not a closed-class word, a
+ * day or time, a person or vehicle, a request or a problem.
+ */
 const isSlotWord = (token: string): boolean =>
   /^\p{L}+$/u.test(token) &&
   !NOT_SLOT_WORDS.has(token) &&
   !DAY_TOKEN.test(token) &&
+  !TIME_WORDS.has(token) &&
+  !ROLE_VEHICLE_WORDS.has(token) &&
   !ACTION_SLOT_WORD.test(token) &&
   !PROBLEM_WORDS.has(token);
 
-/** A service is 1–3 slot words; a middle "de" / "del" is fine ("cambio de aceite"). A staff name is one slot word. */
-function slotsAreValid(groups: Record<string, string | undefined> | undefined): boolean {
-  const service = groups?.service?.split(' ') ?? [];
-  const serviceOk = service.every((token, i) => isSlotWord(token) || (i > 0 && i < service.length - 1 && /^del?$/.test(token)));
-  return serviceOk && (groups?.staff === undefined || isSlotWord(groups.staff));
+const isCapitalized = (rawToken: string) => /^\p{Lu}/u.test(rawToken);
+
+/**
+ * A staff name is one slot word that the caller's own text capitalizes every
+ * time it appears ("does Marco work" but not "does noon work"). With no
+ * original-case tokens there is no evidence of a name, so it is not one.
+ */
+function staffNameIsValid(staff: string, rawTokens: readonly string[]): boolean {
+  const said = rawTokens.filter((raw) => raw.toLowerCase() === staff);
+  return isSlotWord(staff) && said.length > 0 && said.every(isCapitalized);
 }
 
-/** True when one INFO_QUESTION_SHAPES shape consumes the whole clause and its slots hold valid words. */
-export function isInfoQuestion(tokens: readonly string[]): boolean {
+/** A service is 1–3 slot words; a middle "de" / "del" is fine ("cambio de aceite"). */
+function slotsAreValid(groups: Record<string, string | undefined> | undefined, rawTokens: readonly string[]): boolean {
+  const service = groups?.service?.split(' ') ?? [];
+  const serviceOk = service.every((token, i) => isSlotWord(token) || (i > 0 && i < service.length - 1 && /^del?$/.test(token)));
+  return serviceOk && (groups?.staff === undefined || staffNameIsValid(groups.staff, rawTokens));
+}
+
+/**
+ * True when one INFO_QUESTION_SHAPES shape consumes the whole clause and its
+ * slots hold valid words. rawTokens are the clause's tokens in the caller's
+ * original case; without them no staff-name shape can match.
+ */
+export function isInfoQuestion(tokens: readonly string[], rawTokens: readonly string[] = []): boolean {
   const clause = tokens.join(' ');
   return INFO_QUESTION_SHAPES.some((re) => {
     const match = re.exec(clause);
-    return match !== null && slotsAreValid(match.groups);
+    return match !== null && slotsAreValid(match.groups, rawTokens);
   });
 }
 
-/** Greetings, thanks and lead-in words trimmed from either end of a clause ("And what are your hours", "hours, please"). */
+/**
+ * Greetings, thanks and lead-in words trimmed from either end of a clause ("And what are your hours", "hours, please").
+ * Yes / no is not here: a leading Spanish "no" negates what follows ("No está abierto el taller").
+ */
 const EDGE_FILLER: readonly string[][] = [
   'thank you', 'good morning', 'good afternoon', 'good evening', 'buenos dias', 'buenas tardes', 'buenas noches', 'por favor',
-  'hi', 'hello', 'hey', 'yes', 'yeah', 'yep', 'no', 'ok', 'okay', 'uh', 'um', 'hmm', 'oh', 'well', 'so', 'and', 'also',
-  'thanks', 'bye', 'please', 'hola', 'si', 'bueno', 'gracias', 'adios', 'oye', 'pues', 'y', 'tambien',
+  'hi', 'hello', 'hey', 'ok', 'okay', 'uh', 'um', 'hmm', 'oh', 'well', 'so', 'and', 'also',
+  'thanks', 'bye', 'please', 'hola', 'bueno', 'gracias', 'adios', 'oye', 'pues', 'y', 'tambien',
 ].map(normalizeTokens);
 
-function withoutEdgeFiller(tokens: readonly string[]): string[] {
+/** A yes or no that is the whole clause, before any trimming ("No, thanks." is dropped; "Yes please" is not). */
+const WHOLE_CLAUSE_YES_NO: ReadonlySet<string> = new Set(['yes', 'yeah', 'yep', 'no', 'si']);
+
+/** The [start, end) token range left once EDGE_FILLER is trimmed from both ends. */
+function edgeFillerBounds(tokens: readonly string[]): [number, number] {
   let start = 0;
   let end = tokens.length;
   const at = (i: number) => EDGE_FILLER.find((p) => i + p.length <= end && p.every((word, j) => tokens[i + j] === word));
   const endingAt = (k: number) => EDGE_FILLER.find((p) => k - p.length >= start && p.every((word, j) => tokens[k - p.length + j] === word));
   for (let p = at(start); start < end && p; p = at(start)) start += p.length;
   for (let p = endingAt(end); end > start && p; p = endingAt(end)) end -= p.length;
-  return tokens.slice(start, end);
+  return [start, end];
 }
 
+/** Like normalizeTokens, but keeping the caller's case ("Maria" stays "Maria"). */
+function caseTokens(text: string): string[] {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/['’‘ʼ]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+}
+
+/** A caller clause: normalized tokens, and the same tokens in the caller's case (empty when they don't line up). */
+interface Clause {
+  tokens: string[];
+  raw: string[];
+}
+
+function toClause(text: string): Clause {
+  const tokens = normalizeTokens(text);
+  const raw = caseTokens(text);
+  const aligned = raw.length === tokens.length && raw.every((r, i) => r.toLowerCase() === tokens[i]);
+  if (tokens.length === 1 && WHOLE_CLAUSE_YES_NO.has(tokens[0])) return { tokens: [], raw: [] };
+  const [start, end] = edgeFillerBounds(tokens);
+  return { tokens: tokens.slice(start, end), raw: aligned ? raw.slice(start, end) : [] };
+}
+
+/** Intros whose name is taken as said: "my name is Ana", "me llamo Ana", "soy Ana". */
+const NAMING_INTROS = ['my name is', 'mi nombre es', 'me llamo', 'soy'].map(normalizeTokens);
+/** Intros that also open a statement ("this is horrible"), so the name must be capitalized or be the callerName. */
+const PRESENTING_INTROS = ['this is', 'le habla', 'habla'].map(normalizeTokens);
+
+/** Judgments a caller says about the call or the shop, never a name ("this is horrible", "esto es ridículo"). */
+const NOT_NAME_ADJECTIVES: ReadonlySet<string> = new Set([
+  'horrible', 'bad', 'awful', 'outrageous', 'ridiculous', 'frustrating', 'frustrated', 'annoying', 'annoyed', 'overdue',
+  'upset', 'angry', 'mad', 'disappointing', 'disappointed', 'unbelievable', 'insane', 'crazy', 'absurd', 'confusing',
+  'confused', 'late', 'new', 'great', 'good', 'fine', 'weird', 'strange', 'serious', 'insulting', 'disgusting',
+  'frustrante', 'ridiculo', 'ridicula', 'absurdo', 'absurda', 'increible', 'molesto', 'molesta', 'enojado', 'enojada',
+  'nuevo', 'nueva', 'malo', 'mala',
+]);
+
 /**
- * A clause that is only a self-introduction: an INTRO_PHRASES phrase and a
- * 1–2 word name, nothing else ("this is Maria", "soy Juan"). "This is broken"
- * is not one (a problem word is never a name), so it stays a content clause.
+ * A clause that is only a self-introduction with a 1–2 word name, nothing else.
+ * "my name is" / "me llamo" / "mi nombre es" / "soy" take any name word.
+ * "this is" / "habla" / "le habla" need the name capitalized in the caller's
+ * text or made of callerName's tokens, so "This is horrible" stays a content
+ * clause. A problem word or an adjective is never a name.
  */
-function isIntroduction(tokens: readonly string[]): boolean {
-  const intro = INTRO_TOKENS.find((p) => p.every((word, j) => tokens[j] === word));
+function isIntroduction({ tokens, raw }: Clause, callerNameTokens: ReadonlySet<string>): boolean {
+  const starts = (p: string[]) => p.every((word, j) => tokens[j] === word);
+  const naming = NAMING_INTROS.find(starts);
+  const presenting = naming ? undefined : PRESENTING_INTROS.find(starts);
+  const intro = naming ?? presenting;
   if (!intro) return false;
   const name = tokens.slice(intro.length);
-  return name.length >= 1 && name.length <= 2 && name.every(isSlotWord);
+  if (name.length < 1 || name.length > 2 || !name.every((t) => isSlotWord(t) && !NOT_NAME_ADJECTIVES.has(t))) return false;
+  if (naming) return true;
+  const rawName = raw.slice(intro.length);
+  return (rawName.length === name.length && rawName.every(isCapitalized)) || name.every((t) => callerNameTokens.has(t));
 }
 
 /** What the runtime saw on the call, beside the caller's lines. */
@@ -381,6 +492,8 @@ export interface FloorCallSignals {
   tools?: ReadonlyArray<{ name: string; ok: boolean }>;
   /** The agent gave a real answer (not a question or a holding line) after the caller's last line and any tool. */
   answered?: boolean;
+  /** The caller's name as the runtime captured it; "this is <name>" matching it counts as an introduction. */
+  callerName?: string;
 }
 
 /**
@@ -390,16 +503,18 @@ export interface FloorCallSignals {
  * - the agent gave a real answer after the caller's last line (answered);
  * - every tool that ran is in INFO_TOOLS and returned ok (none is fine);
  * - the caller gave no callback number and used no problem word;
- * - every caller clause, once greetings and thanks are trimmed and pure
- *   self-introductions dropped, is an allowlisted info question (isInfoQuestion),
- *   so any statement or request ("My car was damaged in your parking lot") files.
+ * - every caller clause, once a lone yes/no is dropped, greetings and thanks
+ *   are trimmed and pure self-introductions dropped, is an allowlisted info
+ *   question (isInfoQuestion), so any statement or request ("My car was
+ *   damaged in your parking lot") files.
  */
 export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSignals): boolean {
   if (signals.endReason !== 'caller_hangup' || signals.answered !== true || !signals.tools) return false;
   if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
   if (hasCallbackNumber(lines) || hasProblemWord(lines)) return false;
+  const callerNameTokens = new Set(signals.callerName ? normalizeTokens(signals.callerName) : []);
   const contentClauses = lines
-    .flatMap((line) => line.split(CLAUSE_BREAK).map((clause) => withoutEdgeFiller(normalizeTokens(clause))))
-    .filter((tokens) => tokens.length > 0 && !isIntroduction(tokens));
-  return contentClauses.length > 0 && contentClauses.every(isInfoQuestion);
+    .flatMap((line) => line.split(CLAUSE_BREAK).map(toClause))
+    .filter((clause) => clause.tokens.length > 0 && !isIntroduction(clause, callerNameTokens));
+  return contentClauses.length > 0 && contentClauses.every((clause) => isInfoQuestion(clause.tokens, clause.raw));
 }
