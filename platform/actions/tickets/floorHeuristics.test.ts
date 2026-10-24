@@ -1,5 +1,67 @@
 import { describe, expect, it } from 'vitest';
-import { contentWords, hasCallbackNumber, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+import { answeredInfoOnly, contentWords, hasCallbackNumber, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+
+describe('answeredInfoOnly', () => {
+  const ANSWERED = { endReason: 'caller_hangup', tools: [], answered: true };
+  const skips = (...lines: string[]) => answeredInfoOnly(lines, ANSWERED);
+
+  it.each([
+    ['What time do you close?'],
+    ['Are you open on Saturday?'],
+    ['Where are you located?'],
+    ['How much is an oil change?'],
+    ['Do you offer brake service?'],
+    ["What's your phone number?"],
+    ['Hi, this is Maria. What are your hours?'],
+    ['¿A qué hora cierran?'],
+    ['¿Dónde están ubicados?'],
+    ['¿Cuánto cuesta un cambio de aceite?'],
+    ['Soy Juan. ¿Cuál es su horario?'],
+    ['Do you have a website?'],
+    ['Is brake service available?'],
+    ['Hi this is Maria', 'what are your hours, please?', 'Okay, thanks, bye'],
+  ])('skips an allowlisted info question ("%s")', (...lines) => {
+    expect(skips(...lines)).toBe(true);
+  });
+
+  it.each([
+    // The two Codex P1s: "open" as a request verb, and a problem clause that looked like "this is <name>".
+    ['Can you open the garage door?'],
+    ['This is broken. What time do you close?'],
+    ['Can someone come out today?'],
+    ['Can you send me a quote?'],
+    ['My heater is not working, are you open?'],
+    ['Can you check my order?'],
+    ['What time do you close? I need to cancel'],
+    ['¿Pueden abrir la puerta del garaje?'],
+    ['Esto está roto. ¿A qué hora cierran?'],
+    ['Quiero cancelar mi cita'],
+    ['Soy Juan y mi calentador no funciona'],
+  ])('files a request, problem or statement ("%s")', (...lines) => {
+    expect(skips(...lines)).toBe(false);
+  });
+
+  it('files when a word is left over after a shape, or a slot holds a request, day or closed-class word', () => {
+    expect(skips('What time do you close the gate?')).toBe(false);
+    expect(skips('How much is the repair?')).toBe(false);
+    expect(skips('How much is a fade today?')).toBe(false);
+    expect(skips('Do you have anything open?')).toBe(false);
+    expect(skips('Does anyone work Saturday?')).toBe(false);
+  });
+
+  it('drops only a clause that is purely an introduction with a 1-2 word name', () => {
+    expect(skips('This is Ana María', 'Are you open today?')).toBe(true);
+    // A 3-word "name", or an intro carrying a problem word, stays a content clause and files.
+    expect(skips('This is Luis Garcia Lopez', 'Are you open today?')).toBe(false);
+    expect(skips('This is urgent', 'Are you open today?')).toBe(false);
+    expect(skips('This is about my order', 'Are you open today?')).toBe(false);
+  });
+
+  it('files greetings and introductions with no question at all', () => {
+    expect(skips('Hi, this is Maria')).toBe(false);
+    expect(skips('Hello?', 'Thanks, bye')).toBe(false);
+  });
+});
 
 describe('hasCallbackNumber', () => {
   it.each(['5552013344', '+15552013344', '555 201 3344', '(555) 201-3344', '555.201.3344', 'call 555 2013 please'])(

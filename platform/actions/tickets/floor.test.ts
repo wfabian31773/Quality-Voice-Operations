@@ -736,7 +736,7 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
-  // The rule: skip only when every substantive caller clause is a short info question about the shop.
+  // The rule: skip only when every substantive caller clause fits an allowlisted info-question shape.
   // Any statement files, whatever words it holds; so does a request, a personal question or a "why".
   it.each([
     // Statements, even ones that hold an info word.
@@ -796,7 +796,7 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['How much is the repair?'],
     ['¿Cuánto cuesta arreglar el calentador?'],
     ['¿Cuánto cobran por venir?'],
-    // No info word, or too long for a quick question.
+    // No allowlisted shape, or words left over after one.
     ['Do you take walk-ins?'],
     ['Is there someone there?'],
     ['What are your hours on Saturday and Sunday and also do the barbers there do beards?'],
