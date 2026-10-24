@@ -35,12 +35,45 @@ describe('answeredInfoOnly', () => {
     ['Is tire service available?'],
     ['¿Hacen alineaciones?'],
     ['¿Hacen cambio de aceite?'],
-    ['¿Dónde queda?'],
     ['¿Dónde queda el taller?'],
     ['¿Qué días trabaja Marco?'],
     ['¿Tienen estacionamiento?'],
     ['¿Tienen página web?'],
     ['Sí. ¿Abren el sábado?'],
+    // The closed service list (EN/ES), with or without an article.
+    ['Do you do oil changes?'],
+    ['How much is a tune up?'],
+    ['Do you do AC maintenance?'],
+    ['Is AC service available?'],
+    ['How much is a manicure?'],
+    ['Do you guys do pedicures?'],
+    ['What do you charge for highlights?'],
+    ['How much does a beard trim cost?'],
+    ['Do you do detailing?'],
+    ['What is the price of an alignment?'],
+    ['¿Cuánto cuesta un corte de pelo?'],
+    ['¿Hacen frenos?'],
+    ['¿Ofrecen pedicura?'],
+    ['¿Cuánto cobran por una afinación?'],
+    ['¿Cuál es el precio de las llantas?'],
+    // Location with "located" or a shop noun.
+    ['Where is your shop located?'],
+    ['Where is the shop?'],
+    ['Where are you guys located at?'],
+    ['¿Dónde está el taller?'],
+    ['¿Dónde se encuentran ubicados?'],
+    // Staff days, abbreviated too.
+    ['Does Marco work Tues?'],
+    ['Does Lisa work on Sat?'],
+    // Intros with a capitalized name.
+    ['Hola, me llamo Ana. ¿A qué hora cierran?'],
+    ['Hola, soy Juan. ¿Cuál es su horario?'],
+    // A closing "okay" right before thanks / bye is a sign-off, with or without commas.
+    ['Hi this is Maria', 'what are your hours, please?', 'Okay, thanks, bye'],
+    ['Hi this is Maria', 'what are your hours, please?', 'Okay thanks bye'],
+    ['What are your hours?', 'Okay, thanks.'],
+    ['¿A qué hora cierran?', 'Ok gracias adiós'],
+    ['¿A qué hora cierran?', 'Ok, gracias, adiós.'],
   ])('skips an allowlisted info question ("%s")', (...lines) => {
     expect(skips(...lines)).toBe(true);
   });
@@ -83,9 +116,13 @@ describe('answeredInfoOnly', () => {
     expect(answeredInfoOnly(['this is maria', 'Are you open today?'], { ...ANSWERED, callerName: 'Maria Lopez' })).toBe(true);
     expect(skips('Hola, habla Ana. ¿Abren hoy?')).toBe(true);
     expect(skips('hola, habla ana. ¿Abren hoy?')).toBe(false);
-    // "my name is" / "me llamo" / "soy" name the caller outright.
+    // "my name is" / "mi nombre es" name the caller outright.
     expect(skips('my name is maria', 'Are you open today?')).toBe(true);
-    expect(skips('me llamo ana. ¿A qué hora cierran?')).toBe(true);
+    expect(skips('mi nombre es ana. ¿A qué hora cierran?')).toBe(true);
+    // "me llamo" / "soy" need a capitalized name or the callerName, like "this is".
+    expect(skips('me llamo ana. ¿A qué hora cierran?')).toBe(false);
+    expect(answeredInfoOnly(['me llamo ana. ¿A qué hora cierran?'], { ...ANSWERED, callerName: 'Ana' })).toBe(true);
+    expect(skips('soy juan. ¿Cuál es su horario?')).toBe(false);
   });
 
   // Inputs the PR #153 review traced as skipping: each one is a request, a dispatch ask, a booking
@@ -220,9 +257,96 @@ describe('answeredInfoOnly', () => {
     // P3: a bare yes after the first clause may accept an offer.
     ['Do you offer brake service?', 'Yes.'],
     ['What are your hours?', 'Sí.'],
-    ['Hi this is Maria', 'what are your hours, please?', 'Okay, thanks, bye'],
   ])('files what the second review traced as skipping ("%s")', (...lines) => {
     expect(skips(...lines)).toBe(false);
+  });
+
+  // Inputs the third PR #153 review (at 0fdc9c51) traced as skipping.
+  it.each([
+    // P2: come-out and dispatch jobs, close variants and Spanish synonyms; none is in the closed service list.
+    ['Do you do lock outs?'],
+    ['Do you do lock-outs?'],
+    ['Do you do clogged drains?'],
+    ['Do you do pipe bursts?'],
+    ['Do you do dead batteries?'],
+    ['Do you do home service?'],
+    ['¿Ofrecen servicio móvil?'],
+    ['¿Hacen remolques?'],
+    ['¿Ofrecen servicio de remolque?'],
+    ['¿Hacen cerrajería?'],
+    ['¿Ofrecen asistencia vial?'],
+    ['Do you do pickups?'],
+    ['Do you do roadside assistance?'],
+    ['Do you do house calls?'],
+    // P2: "where are you" with no "located" or shop noun is what a caller waiting on a tech asks.
+    ['Where are you?'],
+    ['Where are you guys?'],
+    ['Where are you at?'],
+    ['¿Dónde están?'],
+    ['¿Dónde está?'],
+    ['¿Dónde queda?'],
+    ['¿Dónde se encuentran?'],
+    // P2: a later bare acceptance may accept a callback.
+    ['What are your hours?', 'Please.'],
+    ['What are your hours?', 'Por favor.'],
+    ['What are your hours?', 'Okay.'],
+    ['What are your hours?', 'Okay, please.'],
+    ['What are your hours?', 'Thanks, yes.'],
+    ['¿A qué hora cierran?', 'Sí, por favor.'],
+    ['What are your hours?', 'Please, thanks.'],
+    // P2: "me llamó X" is "X called me"; "soy" + a lowercase word is not a name.
+    ['Hola, me llamó Marco. ¿A qué hora cierran?'],
+    ['Hola, me llamó Marco', '¿A qué hora cierran?'],
+    ['Soy repartidor. ¿A qué hora cierran?'],
+    ['Hola, soy cliente. ¿Cuál es su horario?'],
+    // P3: the caller's own account.
+    ['How much is the total?'],
+    ['How much is the deposit?'],
+    ['How much is the deductible?'],
+    ['How much is the copay?'],
+    ['¿Cuánto sale la cuenta?'],
+    ['¿Cuánto es el depósito?'],
+    // P3: "does Marco work today" asks for him, like "Is Lisa working today?".
+    ['Does Marco work today?'],
+    ['Does Marco work tonight?'],
+    ['Does Marco work tomorrow?'],
+    ['Does Marco work right now?'],
+    // P3: "no" is not a service.
+    ['Do you do no heat?'],
+    // P3: an abbreviated day in the staff slot offers a booking time.
+    ['Does Tues work?'],
+    ['Does Sat work?'],
+    ['Does Mon work?'],
+    ['Does Thurs work?'],
+    ['Does Fri work?'],
+  ])('files what the third review traced as skipping ("%s")', (...lines) => {
+    expect(skips(...lines)).toBe(false);
+  });
+
+  // ASR often drops commas and periods: a no-comma line is one clause, so an intro or a lead-in can't be split
+  // from the question and the call files; separate lines still split.
+  it.each<[string[], boolean]>([
+    [['Hi this is Maria what are your hours'], false],
+    [['No thanks what time do you close'], false],
+    [['Yes what are your hours'], false],
+    [['Hi yes what are your hours'], false],
+    [['Si abren el sabado'], false],
+    [['Soy Juan cual es su horario'], false],
+    [['This is broken what time do you close'], false],
+    [['This is horrible are you open'], false],
+    [['Hola me llamó Marco a qué hora cierran'], false],
+    [['What are your hours', 'Please'], false],
+    [['What are your hours', 'Yes please'], false],
+    [['What are your hours', 'Okay'], false],
+    [['Do you offer brake service', 'Yes'], false],
+    [['What time do you close I need to cancel'], false],
+    [['Where are you located'], true],
+    [['What are your hours please'], true],
+    [['Hi this is Maria', 'what are your hours please', 'Thanks bye'], true],
+    [['Hi this is Maria', 'what are your hours please', 'Okay thanks bye'], true],
+    [['What are your hours', 'No'], true],
+  ])('no-comma ASR variant %j → skips %s', (lines, expected) => {
+    expect(skips(...lines)).toBe(expected);
   });
 
   it('files greetings and introductions with no question at all', () => {
