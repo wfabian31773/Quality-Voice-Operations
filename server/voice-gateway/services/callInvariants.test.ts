@@ -757,3 +757,17 @@ describe('call facts', () => {
     }
   });
 });
+
+describe('isHoldingLine: broad follow-up and don\'t-know replies (review P2)', () => {
+  it.each([
+    'No sé el precio exacto.', 'No lo sé.', 'Lo llamaremos mañana con el precio.', 'Te llamamos más tarde.',
+    'Le vamos a llamar.', 'A technician will call you with a quote.', "We'll call you with pricing.",
+    'Someone from our team will call you.', 'We will follow up.', "I can't give pricing over the phone.",
+    'No podemos dar precios por teléfono.', 'I\'ll pass that along.',
+  ])('is not an answer: %s', (line) => {
+    expect(isHoldingLine(line)).toBe(true);
+  });
+  it.each(['We close at five on Saturdays.', 'Cerramos a las cinco.', 'A haircut is thirty dollars.'])('a real answer still counts: %s', (line) => {
+    expect(isHoldingLine(line)).toBe(false);
+  });
+});

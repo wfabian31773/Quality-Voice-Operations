@@ -177,14 +177,13 @@ const HOLDING_LINES: readonly RegExp[] = [
   /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
   /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
   /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
-  // A follow-up promise: someone else will answer later.
-  /\b(?:call you back|reach out|get back to you)\b/,
-  /\bsomeone will (?:call|contact)\b/,
-  /\bhave (?:someone|a tech|a technician|the team) (?:call|contact|reach)\b/,
-  /\ble (?:llam|devolv|contact)|\bse comunicar/,
-  // The agent doesn't know.
-  /\bi (?:don'?t|do not) (?:have|know)\b|\bnot sure\b/,
-  /\bno tengo esa informaci[oó]n|\bno estoy segur[oa]\b/,
+  // A follow-up promise: any mention of calling, contacting or following up means
+  // someone else answers later. Deliberately broad; an extra ticket is fine.
+  /\b(?:call|calls|calling|contact|contacting|text you|reach out|reach you|get back to you|follow(?:ing)? up|pass (?:that|this|it) along|let (?:the team|them|someone) know)\b/,
+  /(?:llam|contact|comunic|devolv|avis)/,
+  // The agent doesn't know or can't.
+  /\b(?:don'?t|do not|doesn'?t) (?:have|know)\b|\bnot sure\b|\b(?:can'?t|cannot|unable to|not able to)\b/,
+  /(?<!\p{L})no (?:lo |le )?(?:s[eé]|sabr[ií]a|sabemos|tengo|tenemos|cuento con|puedo|podemos|estoy segur)(?!\p{L})|no estoy segur[oa]/u,
 ];
 
 /** An agent turn that only holds the line ("Let me check that", "Un momento", "Déjeme revisar"). */
