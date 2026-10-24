@@ -16,6 +16,11 @@ describe('go-aheads are action-aware: booking verbs confirm only a booking', () 
     '¡Resérvalo!',
   ];
 
+  it.each(['Yes, cancel my booking', 'Sí, cancela mi reserva', 'Sí, cancela la reservación', 'Yes, move my booking to Friday', 'Yes, my booking'])('a yes naming the booking noun still confirms a cancel or reschedule: %s', (line) => {
+    expect(isExplicitYes(line, 'cancel')).toBe(true);
+    expect(isExplicitYes(line, 'reschedule')).toBe(true);
+  });
+
   // A plain yes that names booking confirms only a booking, never a pending cancel or reschedule.
   it.each(['Yes, book it', 'Perfect, book it', 'Sí, resérvalo', 'Yes, go ahead and book it'])('a yes naming booking is booking-only: %s', (line) => {
     expect(isExplicitYes(line, 'book')).toBe(true);
@@ -257,7 +262,7 @@ describe('confirmation language', () => {
   it.each(PLAIN_YES_CORPUS)('a line opening with a plain yes gets the original result: %s', (line) => {
     expect(isExplicitYes(line, 'book')).toBe(mainIsExplicitYes(line));
     // Non-booking actions match main except that a yes naming booking is refused.
-    const namesBooking = /(?<!\p{L})(?:book(?:ing|ed)?|res[eé]rv\p{L}*|lock\s+it\s+in)(?!\p{L})/iu.test(line);
+    const namesBooking = /(?<!\p{L})(?:book\s+(?:it|that|this|me|us|him|her|them)|go\s+ahead\s+and\s+book|lock\s+(?:it|that)\s+in|res[eé]rv(?:a|e|ar)?(?:l[oa]s?|mel[oa]s?|nos?l[oa]s?))(?!\p{L})/iu.test(line);
     for (const action of ['cancel', 'reschedule'] as const)
       expect(isExplicitYes(line, action)).toBe(namesBooking ? false : mainIsExplicitYes(line));
   });

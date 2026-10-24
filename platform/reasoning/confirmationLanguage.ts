@@ -61,13 +61,13 @@ const BOOK_GO_AHEAD = goAhead([...NEUTRAL_WORDS, ...BOOK_WORDS]);
 /** What the readback waiting for the yes will do. Unknown gets the strictest go-aheads: no booking verbs. */
 export type ConfirmAction = 'book' | 'cancel' | 'reschedule';
 
+/** A booking command, EN/ES ("book it", "resérvalo"). Not the nouns "booking" / "reserva", so "Yes, cancel my booking" still confirms a cancel. */
+const BOOKING_COMMAND = /(?<!\p{L})(?:book\s+(?:it|that|this|me|us|him|her|them)|go\s+ahead\s+and\s+book|lock\s+(?:it|that)\s+in|res[eé]rv(?:a|e|ar)?(?:l[oa]s?|mel[oa]s?|nos?l[oa]s?))(?!\p{L})/iu;
+
 /**
  * A short affirmative with no correction in it ("Yes, that's right", "Yes, Friday at 3", "¡Dale!", and for a
  * booking "Book it."; not "Yes, but make it ten", "Book it for Friday", "Book it?", "¿Sí?", or "Book it" to a cancel).
  */
-/** Any booking verb, EN/ES. */
-const BOOKING_VERB = /(?<!\p{L})(?:book(?:ing|ed)?|res[eé]rv\p{L}*|lock\s+it\s+in)(?!\p{L})/iu;
-
 export function isExplicitYes(line: string, action?: ConfirmAction): boolean {
   const text = line.trim().replace(/[‘’]/g, "'");
   // A Spanish question ("¿Sí?") is never a yes.
@@ -75,7 +75,7 @@ export function isExplicitYes(line: string, action?: ConfirmAction): boolean {
   const bare = text.replace(/^¡\s*/, '');
   // A yes that names booking ("Yes, book it", "Sí, resérvalo") is a yes to a
   // booking only; it must not confirm a pending cancel or reschedule.
-  if (action !== 'book' && BOOKING_VERB.test(bare)) return false;
+  if (action !== 'book' && BOOKING_COMMAND.test(bare)) return false;
   if (PLAIN_YES.test(bare)) return !NOT_YES.test(bare);
   return (action === 'book' ? BOOK_GO_AHEAD : GO_AHEAD).test(bare);
 }
