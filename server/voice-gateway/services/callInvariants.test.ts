@@ -158,6 +158,10 @@ describe('tool classification', () => {
     expect(isExplicitYes('sí, perfecto')).toBe(true);
     expect(isExplicitYes('Yes but make it ten')).toBe(false);
     expect(isExplicitYes('Friday at nine')).toBe(false);
+    expect(isExplicitYes('Book it.', 'book')).toBe(true);
+    expect(isExplicitYes('Book it.', 'cancel')).toBe(false);
+    expect(isExplicitYes('dale')).toBe(true);
+    expect(isExplicitYes('Book it but at 2')).toBe(false);
   });
 });
 
@@ -217,6 +221,49 @@ describe('RUN (tool bridge)', () => {
     inv.callerTranscribed('Yes, please');
     expect(blockedRule(await tool('scheduling_book_commit', { confirmationToken: 'tok-1' }))).toBeUndefined();
     expect(handler).toHaveBeenLastCalledWith('scheduling_book_commit', { confirmationToken: 'tok-1' });
+  });
+
+  it('"Book it." after the readback lets the commit through; "book it but at 2" does not', async () => {
+    const { inv, tool, handler } = make({
+      agent: { tools: [{ name: 'scheduling_book_prepare' }, { name: 'scheduling_book_commit' }] },
+    });
+    handler.mockResolvedValueOnce(JSON.stringify({ ok: true, data: { confirmationToken: 'tok-1', readback: 'Friday at nine' } }));
+    await tool('scheduling_book_prepare', { service: 'fade' });
+    inv.agentTurnCompleted('That is a fade on Friday at nine, shall I book it?');
+    inv.callerTranscribed('Book it but at 2');
+    expect(blockedRule(await tool('scheduling_book_commit', { confirmationToken: 'tok-1' }))).toBe('run.commit_without_yes');
+    inv.callerTranscribed('Book it.');
+    expect(blockedRule(await tool('scheduling_book_commit', { confirmationToken: 'tok-1' }))).toBeUndefined();
+  });
+
+  it.each(['Book it.', 'Resérvalo.', 'go ahead and book it'])(
+    'a booking go-ahead is not a yes to a prepared cancel or reschedule: %s',
+    async (line) => {
+      for (const [prepare, commit] of [
+        ['scheduling_cancel_prepare', 'scheduling_cancel_commit'],
+        ['scheduling_reschedule_prepare', 'scheduling_reschedule_commit'],
+      ]) {
+        const { inv, tool, handler } = make({ agent: { tools: [{ name: prepare }, { name: commit }] } });
+        handler.mockResolvedValueOnce(JSON.stringify({ ok: true, data: { confirmationToken: 'tok-1', readback: 'Friday at nine' } }));
+        await tool(prepare, { bookingId: 'b-1' });
+        inv.agentTurnCompleted('That is your fade on Friday at nine. Shall I go ahead?');
+        inv.callerTranscribed(line);
+        expect(blockedRule(await tool(commit, { confirmationToken: 'tok-1' }))).toBe('run.commit_without_yes');
+        expect(handler).not.toHaveBeenCalledWith(commit, expect.anything());
+      }
+    },
+  );
+
+  it.each(['Go ahead.', 'Yes', 'Dale'])('a neutral yes confirms a prepared cancel: %s', async (line) => {
+    const { inv, tool, handler } = make({
+      agent: { tools: [{ name: 'scheduling_cancel_prepare' }, { name: 'scheduling_cancel_commit' }] },
+    });
+    handler.mockResolvedValueOnce(JSON.stringify({ ok: true, data: { confirmationToken: 'tok-1', readback: 'Friday at nine' } }));
+    await tool('scheduling_cancel_prepare', { bookingId: 'b-1' });
+    inv.agentTurnCompleted('That is your fade on Friday at nine. Shall I cancel it?');
+    inv.callerTranscribed(line);
+    expect(blockedRule(await tool('scheduling_cancel_commit', { confirmationToken: 'tok-1' }))).toBeUndefined();
+    expect(handler).toHaveBeenLastCalledWith('scheduling_cancel_commit', { confirmationToken: 'tok-1' });
   });
 
   it('legacy write tools never hit the commit rules', async () => {
