@@ -166,9 +166,41 @@ describe('confirmation language', () => {
     for (const action of ACTIONS) expect(isExplicitYes(line, action)).toBe(false);
   });
 
-  // Lines that open with a plain yes and carry a hedge. The original matcher took them; they must still confirm.
+  // A question or a hedge ("maybe", "I think", "probably", "tal vez", "quizás") anywhere refuses even a plain yes,
+  // as the commit tool descriptions tell the model.
   it.each([
+    'Yes, maybe',
     'Yes, I think so.',
+    'Yeah, probably fine',
+    'Sure, MAYBE',
+    'Go ahead, I think',
+    'Book it, probably',
+    'Sí, tal vez',
+    'Sí, quizás',
+    'Sí, quizas',
+    'Dale, QUIZÁS',
+    'Perfecto, tal vez mañana',
+    'Sounds good?',
+    'Yes, will I get a text?',
+    'Yes? Okay',
+    'Sí, ¿a qué hora?',
+    '¿Dale?',
+    'Sí, perfecto?',
+  ])('a hedged or questioning yes does not confirm: %s', (line) => {
+    for (const action of ACTIONS) expect(isExplicitYes(line, action)).toBe(false);
+  });
+
+  // Hedge words match whole words only.
+  it.each(['Yes, I thinker', 'Sí, quizasss', 'Sure, maybelline'])('a hedge-like word is not a hedge: %s', (line) => {
+    expect(isExplicitYes(line, 'book')).toBe(true);
+  });
+
+  it.each(['Yes', 'Sí, perfecto', 'Sounds good', 'Sounds good.', 'Sí', 'Okay, thanks'])('a plain yes with no hedge or question confirms: %s', (line) => {
+    for (const action of ACTIONS) expect(isExplicitYes(line, action)).toBe(true);
+  });
+
+  // Lines that open with a plain yes and carry a softer hedge. The original matcher took them; they must still confirm.
+  it.each([
     'Sí, creo que sí.',
     'Sure, let me know by text',
     'Yes, I guess that works',
@@ -178,13 +210,23 @@ describe('confirmation language', () => {
     expect(isExplicitYes(line, 'book')).toBe(true);
   });
 
-  // The matcher before go-aheads were added. For every line that opens with a plain yes the result must be the same:
-  // a line it took that we reject brings back the readback loop, and a line it rejected that we take is a false yes.
+  // The matcher before go-aheads were added. For every line that opens with a plain yes the result must be the same,
+  // except that a question or a hedge is now refused: any other line it took that we reject brings back the readback
+  // loop, and a line it rejected that we take is a false yes.
   const MAIN_YES = /^(yes|yeah|yep|yup|sure|correct|right|that'?s (right|correct)|sounds good|perfect|ok|okay|s[ií]|claro|correcto|exacto|perfecto|de acuerdo|est[aá] bien)(?![\p{L}\p{N}])/iu;
   const MAIN_NOT_YES = /(?<![\p{L}\p{N}])(no|not|wait|actually|but|change|wrong|pero|espera|cambia|mal)(?![\p{L}\p{N}])/iu;
+  // Lines main took that are now refused for a question or a hedge.
+  const NOW_REFUSED = new Set([
+    'Yes, will I get a text?',
+    'Sounds good?',
+    'Yes, I think so.',
+    'Yeah, probably fine',
+    'Yes, maybe',
+    'Sí, tal vez',
+  ]);
   const mainIsExplicitYes = (line: string) => {
     const text = line.trim();
-    return MAIN_YES.test(text) && !MAIN_NOT_YES.test(text);
+    return MAIN_YES.test(text) && !MAIN_NOT_YES.test(text) && !NOW_REFUSED.has(line);
   };
 
   const PLAIN_YES_CORPUS = [

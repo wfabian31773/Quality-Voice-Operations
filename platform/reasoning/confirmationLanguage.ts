@@ -2,10 +2,14 @@
 // ticket commits. A safety gate: anything that isn't a clear yes fails closed
 // and the agent asks again.
 //
+// Before either tier: a line with a question in it ("?" or "¿" anywhere) or a
+// hedge ("maybe", "I think", "probably", "tal vez", "quizás") is never a yes,
+// so "Yes, maybe" and "Sounds good?" don't confirm.
+//
 // Two tiers. A line that opens with a plain yes ("yes", "sure", "sounds good",
-// "sí") gets the original rule unchanged: it confirms unless it carries a
-// negation or "but", so "Yes, Friday at 3" and "Sí, creo que sí" still confirm.
-// Tightening it brings back the repeat-readback loop.
+// "sí") gets the original rule: it confirms unless it carries a negation or
+// "but", so "Yes, Friday at 3" and "Sí, creo que sí" still confirm. Don't
+// tighten it past the hedges above; that brings back the repeat-readback loop.
 //
 // A line that opens with a go-ahead ("book it", "go ahead", "dale",
 // "resérvalo") is an allowlist: after the go-ahead only other affirmatives,
@@ -16,6 +20,10 @@
 // a pending booking; a cancel or reschedule takes only the neutral ones.
 //
 // Word edges by Unicode letter, so "sí" and "está" end where they should.
+
+// A question or a hedge anywhere in the line. Word edges as below; "quizas" may drop its accent.
+const QUESTION = /[?¿]/u;
+const HEDGE = /(?<![\p{L}\p{N}])(maybe|probably|i\s+think|tal\s+vez|quiz[aá]s)(?![\p{L}\p{N}])/iu;
 
 // The original matcher. Do not narrow these lists or tighten this rule.
 const PLAIN_YES = /^(yes|yeah|yep|yup|sure|correct|right|that'?s (right|correct)|sounds good|perfect|ok|okay|s[ií]|claro|correcto|exacto|perfecto|de acuerdo|est[aá] bien)(?![\p{L}\p{N}])/iu;
@@ -66,12 +74,13 @@ const BOOKING_COMMAND = /(?<!\p{L})(?:book\s+(?:it|that|this|me|us|him|her|them)
 
 /**
  * A short affirmative with no correction in it ("Yes, that's right", "Yes, Friday at 3", "¡Dale!", and for a
- * booking "Book it."; not "Yes, but make it ten", "Book it for Friday", "Book it?", "¿Sí?", or "Book it" to a cancel).
+ * booking "Book it."; not "Yes, but make it ten", "Book it for Friday", "Book it?", "¿Sí?", "Yes, maybe", or
+ * "Book it" to a cancel).
  */
 export function isExplicitYes(line: string, action?: ConfirmAction): boolean {
   const text = line.trim().replace(/[‘’]/g, "'");
-  // A Spanish question ("¿Sí?") is never a yes.
-  if (text.startsWith('¿')) return false;
+  // A question ("Sounds good?", "¿Sí?") or a hedge ("Yes, maybe", "Sí, tal vez") is never a yes.
+  if (QUESTION.test(text) || HEDGE.test(text)) return false;
   const bare = text.replace(/^¡\s*/, '');
   // A yes that names booking ("Yes, book it", "Sí, resérvalo") is a yes to a
   // booking only; it must not confirm a pending cancel or reschedule.
