@@ -154,10 +154,25 @@ export function contentWords(lines: readonly string[], callerName?: string): str
 /** Digits a whitespace-separated token must hold to count as a callback number on its own. */
 export const MIN_NUMBER_DIGITS = 7;
 
+const digitCount = (text: string) => text.match(/\d/g)?.length ?? 0;
+
 /** True when a token holding 7+ digits appears ("5552013344", "+15552013344"). */
 export function hasLongNumber(lines: readonly string[]): boolean {
-  return lines.some((line) =>
-    line.split(/\s+/).some((token) => (token.match(/\d/g)?.length ?? 0) >= MIN_NUMBER_DIGITS),
+  return lines.some((line) => line.split(/\s+/).some((token) => digitCount(token) >= MIN_NUMBER_DIGITS));
+}
+
+/** Digit groups joined only by spaces, dashes, dots or parentheses ("555 201 3344", "(555) 201-3344"). */
+const DIGIT_RUN = /\+?\d[\d\s().-]*/g;
+
+/**
+ * hasLongNumber, or 7+ digits read out in groups ("555 201 3344"). Only the
+ * answered-info rule uses it: there a grouped number keeps the ticket, while
+ * the name rule (and the substantive metric that mirrors it) stays unchanged.
+ */
+export function hasCallbackNumber(lines: readonly string[]): boolean {
+  return (
+    hasLongNumber(lines) ||
+    lines.some((line) => [...line.matchAll(DIGIT_RUN)].some(([run]) => digitCount(run) >= MIN_NUMBER_DIGITS))
   );
 }
 
@@ -170,16 +185,16 @@ export function saidMoreThanTheirOwnName(lines: readonly string[], callerName?: 
  * Tools that only answer an information question (hours, staff days,
  * services, prices, location) or keep runtime bookkeeping. An availability
  * check, a booking lookup or any write is not here: it means a booking or
- * change was started, so the floor still files.
+ * change was started, so the floor still files. record_call_outcome is not
+ * here either: its disposition can be callback_requested, follow_up_needed or
+ * escalated, and the floor only sees the tool name.
  */
 export const INFO_TOOLS: ReadonlySet<string> = new Set([
-  'business.get_info',
   'scheduling.list_staff',
   'scheduling.list_services',
   'retrieve_knowledge',
   'get_current_tenant_time',
   'record_language_change',
-  'record_call_outcome',
 ]);
 
 /**
@@ -197,7 +212,72 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'cita', 'citas', 'reservar', 'agendar', 'apartar', 'cancelar', 'cambiar', 'mover', 'disponible', 'quiero',
   'necesito', 'llamar', 'llamen', 'llame', 'persona', 'alguien', 'gerente', 'dueno', 'hablar', 'mensaje', 'recado',
   'problema', 'queja', 'reembolso', 'urgente',
+  'free', 'like', 'get', 'put', 'hold', 'waitlist',
+  'llamenme', 'llamada', 'devuelvan', 'regresen', 'disponibilidad', 'reserva', 'reservacion', 'quisiera', 'gustaria',
+  'turno', 'espacio',
 ]);
+
+/**
+ * Word stems (EN/ES) for the same families, so inflections count too
+ * ("llámenme", "reservación", "disponibilidad", "cancelled", "agendarme",
+ * "scheduling"). "cit" also takes "city", which only files a ticket.
+ */
+export const ACTION_PREFIXES: readonly string[] = [
+  'llam', 'reserv', 'disponib', 'cancel', 'agend', 'cit', 'book', 'appoint', 'schedul', 'resched',
+];
+
+/** "me llamo" / "se llama" (my name is, is called) introduce a name; they don't ask for a call. */
+const NAMING_LLAM = new Set(['llamo', 'llama']);
+const NAMING_BEFORE_LLAM = new Set(['me', 'se']);
+
+/** Weekdays and relative days (EN/ES). "mañana" is "manana" after normalization. */
+export const DAY_WORDS: ReadonlySet<string> = new Set([
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'mondays', 'tuesdays', 'wednesdays', 'thursdays', 'fridays', 'saturdays', 'sundays', 'tomorrow', 'tonight',
+  'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'sabados', 'domingo', 'domingos', 'manana',
+]);
+
+/**
+ * Words that make a clause a question about when the shop or a stylist works
+ * ("what are your hours on Saturday", "does Marco work Fridays"). A day word
+ * in such a clause is part of the question, not a requested time.
+ */
+const SCHEDULE_QUESTION_WORDS: ReadonlySet<string> = new Set([
+  'hours', 'hour', 'open', 'opens', 'close', 'closes', 'closed', 'closing', 'days', 'work', 'works', 'working',
+  'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan',
+]);
+
+const isActionToken = (tokens: readonly string[], i: number): boolean => {
+  const token = tokens[i];
+  if (ACTION_WORDS.has(token)) return true;
+  if (NAMING_LLAM.has(token) && NAMING_BEFORE_LLAM.has(tokens[i - 1])) return false;
+  return ACTION_PREFIXES.some((prefix) => token.startsWith(prefix));
+};
+
+/** "a.m." / "p.m.", folded to "am" / "pm" before clauses split on periods. */
+const MERIDIEM = /(?<![\p{L}\p{N}])([ap])\.\s?m\b\.?/giu;
+
+/** A clock time: "3pm", "3 p.m." (after MERIDIEM), "at 3", "a las 4", "para las 4", "a la una". */
+const isTimeAt = (tokens: readonly string[], i: number): boolean => {
+  const token = tokens[i];
+  const next = tokens[i + 1] ?? '';
+  if (/^\d+(am|pm)$/.test(token)) return true;
+  if (/^\d/.test(token) && /^(am|pm)$/.test(next)) return true;
+  if (token === 'at' && /^\d/.test(next)) return true;
+  return (token === 'a' || token === 'para') && (next === 'las' || (next === 'la' && tokens[i + 2] === 'una'));
+};
+
+/**
+ * True when a clause asks for something the shop has to act on: an action
+ * word or stem, a clock time, or a day outside an hours / staff-days question.
+ * Info-only callers rarely name a day or a time, so either keeps the ticket.
+ */
+function asksForAction(tokens: readonly string[]): boolean {
+  const scheduleQuestion = tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
+  return tokens.some(
+    (token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!scheduleQuestion && DAY_WORDS.has(token)),
+  );
+}
 
 /** Caller words (EN/ES) that make a line an information question: hours, staff days, prices, services, location. */
 export const INFO_WORDS: ReadonlySet<string> = new Set([
@@ -224,13 +304,15 @@ export interface FloorCallSignals {
  * - the caller ended the call (endReason 'caller_hangup');
  * - the agent spoke after the caller's last line;
  * - every tool that ran is in INFO_TOOLS and returned ok (none is fine);
- * - the caller gave no callback number, said no ACTION_WORDS, and asked
- *   with at least one INFO_WORDS.
+ * - the caller gave no callback number, no clause asks for an action
+ *   (asksForAction), and they asked with at least one INFO_WORDS.
  */
 export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSignals): boolean {
   if (signals.endReason !== 'caller_hangup' || signals.answered !== true || !signals.tools) return false;
   if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
-  if (hasLongNumber(lines)) return false;
-  const tokens = lines.flatMap(normalizeTokens);
-  return !tokens.some((token) => ACTION_WORDS.has(token)) && tokens.some((token) => INFO_WORDS.has(token));
+  if (hasCallbackNumber(lines)) return false;
+  const clauses = lines
+    .flatMap((line) => line.replace(MERIDIEM, '$1m').split(CLAUSE_BREAK))
+    .map(normalizeTokens);
+  return !clauses.some(asksForAction) && clauses.some((tokens) => tokens.some((token) => INFO_WORDS.has(token)));
 }

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { contentWords, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+import { contentWords, hasCallbackNumber, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+
+describe('hasCallbackNumber', () => {
+  it.each(['5552013344', '+15552013344', '555 201 3344', '(555) 201-3344', '555.201.3344', 'call 555 2013 please'])(
+    'finds a callback number in "%s"',
+    (line) => expect(hasCallbackNumber([line])).toBe(true),
+  );
+
+  it.each(['at 3 or 4', 'Saturday 10 to 12', 'a fade is $25, 30 with beard'])('finds no number in "%s"', (line) =>
+    expect(hasCallbackNumber([line])).toBe(false),
+  );
+});
 
 describe('normalizeTokens', () => {
   it('lowercases, folds diacritics and strips punctuation', () => {

@@ -514,8 +514,9 @@ export class CallInvariants {
       ...(this.callerName ? { callerName: this.callerName } : {}),
       ...(this.language ? { language: this.language } : {}),
       ...(endReason ? { endReason } : {}),
-      // Past the cap the list is left out, which never lets the floor skip.
-      ...(this.toolRuns.length <= FLOOR_MAX_TOOLS ? { tools: [...this.toolRuns] } : {}),
+      // Past the cap, or with a read (an availability check) still running, the
+      // list is left out, which never lets the floor skip.
+      ...(this.toolRuns.length <= FLOOR_MAX_TOOLS && this.inFlight.size === 0 ? { tools: [...this.toolRuns] } : {}),
       answered: this.answered,
     };
     const result = await this.runFloor(ctx, input);

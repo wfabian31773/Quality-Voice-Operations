@@ -442,6 +442,18 @@ describe('floor at teardown', () => {
     expect(runFloorAction).toHaveBeenCalledTimes(1);
   });
 
+  it('a read still running after the settle wait leaves the tool list out, so the floor cannot skip', async () => {
+    const { inv, handler, tool, runFloorAction } = make({ toolSettleMs: 10 });
+    inv.callerTranscribed('What are your hours on Saturday?');
+    handler.mockImplementationOnce(() => new Promise<string>(() => {}));
+    void tool('lookup_customer', {});
+    inv.agentTurnCompleted('We open at nine on Saturday.');
+    await inv.evaluateFloor();
+    expect(runFloorAction).toHaveBeenCalledTimes(1);
+    expect(runFloorAction.mock.calls[0][1]).not.toHaveProperty('tools');
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
   it('record_language_change switches the floor language', async () => {
     const { inv, tool, runFloorAction } = make({ agent: { tools: [{ name: 'record_language_change' }], language: 'en' } });
     await tool('record_language_change', { language: 'es' });

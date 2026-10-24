@@ -736,6 +736,71 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
+  // The review's wording for a callback, availability or booking request; each must file.
+  it.each([
+    ['Llámenme por favor, ¿dónde están ubicados?'],
+    ['¿Me pueden regresar la llamada? ¿Cuál es su horario?'],
+    ['¿Tienen disponibilidad el sábado? ¿A qué hora abren?'],
+    ['Quisiera un corte el sábado, ¿cuánto cuesta?'],
+    ['¿Hacen reservación? ¿Cuánto cuesta el corte?'],
+    ['¿Hacen reserva? ¿Cuánto cuesta el corte?'],
+    ['Me gustaría un turno, ¿cuánto cuesta?'],
+    ['¿Tienen espacio? ¿Cuánto cuesta?'],
+    ['Que me devuelvan la llamada, ¿cuál es su horario?'],
+    ['Que me regresen, ¿cuál es su horario?'],
+    ['Can I get a fade at 3 tomorrow? How much is it?'],
+    ["I'd like a haircut Saturday, what time do you open?"],
+    ['Is Marco free Saturday at 2?'],
+    ['Is Marco free Saturday at 2? What are your prices?'],
+    ['Can you put me down for 4? How much is a fade?'],
+    ['Can you hold a chair for me? What are your prices?'],
+    ['Put me on the waitlist. What are your prices?'],
+    ['Can I make an appointment? What are your prices?'],
+    ['Is the 5 o clock cancelled? What are your hours?'],
+    ['How much to reschedule? What are your prices?'],
+  ])('an answered info call where the caller said "%s" → filed', async (line) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
+  });
+
+  it.each([
+    ['a weekday', ['Can Marco take me Saturday? How much is a fade?']],
+    ['tomorrow', ['Can Marco take me tomorrow? How much is a fade?']],
+    ['mañana', ['¿Me atienden mañana? ¿Cuánto cuesta?']],
+    ['a clock time', ['Can Marco take me at 3? What are your prices?']],
+    ['a time with p.m.', ['Can Marco take me 4 p.m.? What are your prices?']],
+    ['a las', ['¿Me atienden a las cinco? ¿Cuánto cuesta?']],
+  ])('a caller who names %s with no action word → filed', async (_label, callerLines) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets).toHaveLength(1);
+  });
+
+  it.each([
+    ['staff days', ['Does Marco work Saturdays?']],
+    ['hours on a weekday', ['¿A qué hora abren el sábado?']],
+    ['a location after a Spanish introduction', ['Hola, me llamo Ana, ¿dónde están ubicados?']],
+  ])('a pure info call about %s → still answered_info', async (_label, callerLines) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines }))).toEqual({ filed: false, reason: 'answered_info' });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
+
+  it('a callback number read in digit groups → filed', async () => {
+    const { tickets, floor } = setup();
+    const callerLines = ['My number is 555 201 3344, what are your hours?'];
+    expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets).toHaveLength(1);
+  });
+
+  it('an info call where record_call_outcome ran → filed (its disposition may be a callback)', async () => {
+    const { tickets, floor } = setup();
+    const tools = [...INFO_TOOLS_RUN, { name: 'record_call_outcome', ok: true }];
+    expect(data(await floor({ ...INFO_CALL, tools }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets).toHaveLength(1);
+  });
+
   it('a call ended by the time limit → filed with the time-limit subject, and the details say so', async () => {
     const { tickets, floor } = setup();
     const out = data(await floor({ callerLines: ['I need a fade Friday'], endReason: 'max_duration', tools: [], answered: false }));
@@ -765,7 +830,7 @@ describe('tickets.file_floor end reason and answered info calls', () => {
   it('an unknown end reason or a tool with extra keys → VALIDATION_FAILED, never a skip', async () => {
     const { tickets, floor } = setup();
     expectFail(await floor({ ...INFO_CALL, endReason: 'caller_left' }), 'VALIDATION_FAILED');
-    expectFail(await floor({ ...INFO_CALL, tools: [{ name: 'business.get_info', ok: true, kind: 'read' }] }), 'VALIDATION_FAILED');
+    expectFail(await floor({ ...INFO_CALL, tools: [{ name: 'scheduling.list_staff', ok: true, kind: 'read' }] }), 'VALIDATION_FAILED');
     expect(tickets.state.tickets).toHaveLength(0);
   });
 });
