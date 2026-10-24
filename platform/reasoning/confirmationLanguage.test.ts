@@ -204,4 +204,29 @@ describe('confirmation language', () => {
   it.each(PLAIN_YES_CORPUS)('a line opening with a plain yes gets the original result: %s', (line) => {
     expect(isExplicitYes(line)).toBe(mainIsExplicitYes(line));
   });
+
+  // "great", "perfect" and "perfecto" used to be in both the affirmative and the filler lists, so each repeat could
+  // match two ways and a line of 40 of them ending in a non-word took 2^40 steps to reject, freezing the gateway.
+  const repeat = (head: string, words: string[], n: number) => head + Array.from({ length: n }, (_, i) => ` ${words[i % words.length]}`).join('');
+  it.each<[string, string[]]>([
+    ['Book it', ['great']],
+    ['Book it', ['perfect']],
+    ['Dale', ['perfecto']],
+    ['Book it', ['great', 'perfect', 'thanks', 'yes']],
+    ['Go ahead', ['great,', 'perfect!', 'please']],
+    ['Resérvalo', ['perfecto', 'gracias', 'sí']],
+    ['¡Dale', ['perfecto,', 'listo', 'por favor']],
+  ])('a long run of affirmatives is fast: %s + %j', (head, words) => {
+    for (const n of [40, 200]) {
+      const tail = repeat(head, words, n);
+      let start = performance.now();
+      expect(isExplicitYes(tail)).toBe(true);
+      expect(performance.now() - start).toBeLessThan(50);
+      for (const end of [' x', ' para mi hijo', '?']) {
+        start = performance.now();
+        expect(isExplicitYes(tail + end)).toBe(false);
+        expect(performance.now() - start).toBeLessThan(50);
+      }
+    }
+  });
 });

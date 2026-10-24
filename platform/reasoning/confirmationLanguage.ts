@@ -20,28 +20,35 @@ const PLAIN_YES = /^(yes|yeah|yep|yup|sure|correct|right|that'?s (right|correct)
 const NOT_YES = /(?<![\p{L}\p{N}])(no|not|wait|actually|but|change|wrong|pero|espera|cambia|mal)(?![\p{L}\p{N}])/iu;
 
 // Every affirmative: the plain ones and the go-aheads.
-const AFFIRM = '(?:'
+const AFFIRM_WORDS = [
   // English: plain yes, and go-aheads like "book it", "go ahead", "lock it in"
-  + "yes|yeah|yep|yup|sure|correct|right|that'?s (?:right|correct|fine|good|great|perfect|it)|sounds (?:good|great|perfect)"
-  + '|perfect|great|ok|okay|alright|all right|absolutely|definitely|of course|please do|confirm(?:ed)?'
-  + '|book (?:it|that|me|me in)|go ahead(?: and (?:book|do|confirm) (?:it|that))?|go for it|(?:let\'?s )?do (?:it|that)'
-  + '|lock (?:it|that) in|that works|works for me'
+  'yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'right', "that'?s (?:right|correct|fine|good|great|perfect|it)",
+  'sounds (?:good|great|perfect)', 'perfect', 'great', 'ok', 'okay', 'alright', 'all right', 'absolutely',
+  'definitely', 'of course', 'please do', 'confirm(?:ed)?', 'book (?:it|that|me|me in)',
+  'go ahead(?: and (?:book|do|confirm) (?:it|that))?', 'go for it', "(?:let'?s )?do (?:it|that)",
+  'lock (?:it|that) in', 'that works', 'works for me',
   // Spanish: "sí", "dale", "está bien", "resérvalo", "adelante"
-  + '|s[ií]|claro(?: que s[ií])?|correcto|exacto|perfecto|de acuerdo|est[aá] bien|me parece bien|dale|adelante|listo|vale|[oó]rale'
-  + '|res[eé]rv[ae]l[ao]|res[eé]rv[ae]mel[ao]|h[aá]gal[ao]|hazlo|confirm(?:o|ado|ada)'
-  + ')(?![\\p{L}\\p{N}])';
+  's[ií]', 'claro(?: que s[ií])?', 'correcto', 'exacto', 'perfecto', 'de acuerdo', 'est[aá] bien', 'me parece bien',
+  'dale', 'adelante', 'listo', 'vale', '[oó]rale', 'res[eé]rv[ae]l[ao]', 'res[eé]rv[ae]mel[ao]', 'h[aá]gal[ao]',
+  'hazlo', 'confirm(?:o|ado|ada)',
+];
 
-// What may follow a go-ahead besides another affirmative.
-const FILLER = '(?:'
-  + 'please|thanks|thank you|now|then|great|perfect|cool'
-  + '|gracias|muchas gracias|por favor|ya|entonces|perfecto'
-  + ')(?![\\p{L}\\p{N}])';
+// What may follow a go-ahead besides another affirmative. Affirmatives like "great" and "perfecto" are already
+// in AFFIRM_WORDS; don't repeat them here.
+const FILLER_WORDS = ['please', 'thanks', 'thank you', 'now', 'then', 'cool', 'gracias', 'muchas gracias', 'por favor', 'ya', 'entonces'];
+
+// Each word must be matchable by exactly one entry. If two entries could match the same text, the repeated group
+// in GO_AHEAD can match a run of N such words 2^N ways, and a line like "Book it great great ... x" backtracks
+// exponentially and blocks the voice gateway's event loop.
+const word = (alternatives: string[]) => `(?:${[...new Set(alternatives)].join('|')})(?![\\p{L}\\p{N}])`;
+const AFFIRM = word(AFFIRM_WORDS);
+const FOLLOWER = word([...AFFIRM_WORDS, ...FILLER_WORDS]);
 
 const SEP = '[\\s,.!;:…—-]';
 
 // A go-ahead line, optionally after "um" / "well" / "bueno", made only of affirmatives, filler and punctuation.
 const GO_AHEAD = new RegExp(
-  `^(?:(?:um+|uh+|oh|ah|eh|mm+|well|bueno)${SEP}+)?${AFFIRM}(?:${SEP}+(?:${AFFIRM}|${FILLER}))*${SEP}*$`,
+  `^(?:(?:um+|uh+|oh|ah|eh|mm+|well|bueno)${SEP}+)?${AFFIRM}(?:${SEP}+${FOLLOWER})*${SEP}*$`,
   'iu',
 );
 
