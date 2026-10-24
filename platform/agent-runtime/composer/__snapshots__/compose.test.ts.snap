@@ -54,7 +54,7 @@ exports[`compose: tools > the tool list is pinned 1`] = `
     },
   },
   {
-    "description": "Confirm a prepared appointment after the caller explicitly said yes to the readback. Only say it is booked once this returns ok. Retrying with the same token is safe. On CONFLICT the hold was lost: say so and offer the alternatives.",
+    "description": "Confirm a prepared appointment after the caller explicitly said yes to the readback. A clear go-ahead such as "book it", "go ahead", "do it", "sounds good", "dale" or "adelante" is a yes; a question, a hedge ("wait", "maybe") or a change ("but at 2") is not. Only say it is booked once this returns ok. Retrying with the same token is safe. On CONFLICT the hold was lost: say so and offer the alternatives.",
     "name": "scheduling_book_commit",
     "parameters": {
       "additionalProperties": false,
