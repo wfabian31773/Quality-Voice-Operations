@@ -43,7 +43,7 @@ import {
   bookPrepareInput,
   bookPrepareOutput,
   bookProposalPayload,
-  CLEAR_YES,
+  CLEAR_YES_BOOK,
   confirmationTokenInput,
 } from './writeSchemas';
 
@@ -208,7 +208,7 @@ export const bookCommitAction = defineAction({
   permissions: { roles: SCHEDULING_WRITE_ROLES, agent: true, mcpScope: 'qvo:admin' },
   agentDescription:
     'Confirm a prepared appointment after the caller explicitly said yes to the readback. '
-    + CLEAR_YES
+    + CLEAR_YES_BOOK
     + 'Only say it is booked once this returns ok. Retrying with the same token is safe. '
     + 'On CONFLICT the hold was lost: say so and offer the alternatives.',
   async run(ctx, input, tx) {

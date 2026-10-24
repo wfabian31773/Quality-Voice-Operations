@@ -58,7 +58,7 @@ import { FILE_FLOOR, floorIdempotencyKey, type FileFloorInput, type FileFloorOut
 import { envSmsSendConfig } from '../../../platform/actions/sms/deps';
 import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
-import { isExplicitYes } from '../../../platform/reasoning/confirmationLanguage';
+import { isExplicitYes, type ConfirmAction } from '../../../platform/reasoning/confirmationLanguage';
 import { CallerLineBuffer } from './callerLines';
 
 /** The runtime's actor for system-only actions (the floor). */
@@ -100,13 +100,24 @@ export function isTransferRequest(toolName: string, args: Record<string, unknown
 let externalNames: ExternalToolNames | undefined;
 
 /** The two-phase platform action behind a tool name (its action name, or the sanitized external name). */
-function platformActionKind(toolName: string): ActionKind | undefined {
+function platformAction(toolName: string) {
   const direct = getAction(toolName);
-  if (direct) return direct.kind;
+  if (direct) return direct;
   externalNames ??= assignExternalToolNames(listActions().map((def) => def.name));
   const name = actionNameFromExternal(toolName, externalNames);
-  return name ? getAction(name)?.kind : undefined;
+  return name ? getAction(name) : undefined;
 }
+
+function platformActionKind(toolName: string): ActionKind | undefined {
+  return platformAction(toolName)?.kind;
+}
+
+// Which go-aheads a prepared readback takes: "book it" confirms only a booking.
+const CONFIRM_ACTIONS: Readonly<Record<string, ConfirmAction>> = {
+  'scheduling.book.prepare': 'book',
+  'scheduling.cancel.prepare': 'cancel',
+  'scheduling.reschedule.prepare': 'reschedule',
+};
 
 /** How RUN and the call facts see a tool. */
 export function toolKind(toolName: string, args: Record<string, unknown>): ActionKind {
@@ -262,6 +273,7 @@ export class CallInvariants {
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
+  private lastPreparedAction: ConfirmAction | undefined;
   private spokeSincePrepare = false;
   private floor: Promise<FloorOutcome> | undefined;
   private readonly runFloor: FloorActionRunner;
@@ -310,7 +322,7 @@ export class CallInvariants {
     if (!text.trim()) return;
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
-    if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text)) {
+    if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text, this.lastPreparedAction)) {
       this.state = onExplicitYes(this.state, this.lastPreparedToken);
     }
   }
@@ -418,6 +430,8 @@ export class CallInvariants {
       if (token) {
         this.state = onPrepared(this.state, token);
         this.lastPreparedToken = token;
+        const action = platformAction(name)?.name;
+        this.lastPreparedAction = action ? CONFIRM_ACTIONS[action] : undefined;
         this.spokeSincePrepare = false;
       }
     }

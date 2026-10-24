@@ -1,5 +1,58 @@
 import { describe, expect, it } from 'vitest';
-import { isExplicitYes } from './confirmationLanguage';
+import { isExplicitYes, type ConfirmAction } from './confirmationLanguage';
+
+// undefined: a prepared readback whose action isn't known.
+const ACTIONS: Array<ConfirmAction | undefined> = ['book', 'cancel', 'reschedule', undefined];
+
+describe('go-aheads are action-aware: booking verbs confirm only a booking', () => {
+  const BOOKING_VERBS = [
+    'Book it.',
+    'Book that',
+    'Resérvalo.',
+    'Resérvamelo, por favor',
+    'go ahead and book it',
+    'Lock it in.',
+    'Dale, resérvalo',
+    '¡Resérvalo!',
+  ];
+
+  // A plain yes that names booking confirms only a booking, never a pending cancel or reschedule.
+  it.each(['Yes, book it', 'Perfect, book it', 'Sí, resérvalo', 'Yes, go ahead and book it'])('a yes naming booking is booking-only: %s', (line) => {
+    expect(isExplicitYes(line, 'book')).toBe(true);
+    expect(isExplicitYes(line, 'cancel')).toBe(false);
+    expect(isExplicitYes(line, 'reschedule')).toBe(false);
+    expect(isExplicitYes(line)).toBe(false);
+  });
+
+  it.each(BOOKING_VERBS)('a pending booking takes it: %s', (line) => {
+    expect(isExplicitYes(line, 'book')).toBe(true);
+  });
+
+  it.each(BOOKING_VERBS)('a pending cancel, reschedule or unknown action does not: %s', (line) => {
+    expect(isExplicitYes(line, 'cancel')).toBe(false);
+    expect(isExplicitYes(line, 'reschedule')).toBe(false);
+    expect(isExplicitYes(line)).toBe(false);
+  });
+
+  it.each([
+    'Yes',
+    'Yes, please',
+    'Go ahead.',
+    'Go ahead and do it',
+    'Do it.',
+    'Go for it',
+    'Dale.',
+    'Adelante',
+    'Hazlo',
+    'Hágalo, por favor',
+    'Sounds good.',
+    'That works.',
+    'Confirm.',
+    'Sí, confirmo',
+  ])('action-neutral go-aheads confirm every action: %s', (line) => {
+    for (const action of ACTIONS) expect(isExplicitYes(line, action)).toBe(true);
+  });
+});
 
 describe('confirmation language', () => {
   it.each([
@@ -27,7 +80,7 @@ describe('confirmation language', () => {
     'Book it now, please',
     'Confirm.',
   ])('English yes: %s', (line) => {
-    expect(isExplicitYes(line)).toBe(true);
+    expect(isExplicitYes(line, 'book')).toBe(true);
   });
 
   it.each([
@@ -48,7 +101,7 @@ describe('confirmation language', () => {
     'Dale, gracias',
     'Perfecto, resérvalo entonces, muchas gracias',
   ])('Spanish yes: %s', (line) => {
-    expect(isExplicitYes(line)).toBe(true);
+    expect(isExplicitYes(line, 'book')).toBe(true);
   });
 
   it.each([
@@ -75,7 +128,7 @@ describe('confirmation language', () => {
     'Todavía no',
     '¿Sí?',
   ])('negation, hedge or question: %s', (line) => {
-    expect(isExplicitYes(line)).toBe(false);
+    for (const action of ACTIONS) expect(isExplicitYes(line, action)).toBe(false);
   });
 
   it.each([
@@ -105,7 +158,7 @@ describe('confirmation language', () => {
     'That works? What about the price',
     'Confirm with my wife first',
   ])('a correction after a go-ahead does not confirm the old details: %s', (line) => {
-    expect(isExplicitYes(line)).toBe(false);
+    for (const action of ACTIONS) expect(isExplicitYes(line, action)).toBe(false);
   });
 
   // Lines that open with a plain yes and carry a hedge. The original matcher took them; they must still confirm.
@@ -117,7 +170,7 @@ describe('confirmation language', () => {
     'Sí, un momento lo anoto',
     'Sure, let me check my calendar',
   ])('a hedged plain yes still confirms: %s', (line) => {
-    expect(isExplicitYes(line)).toBe(true);
+    expect(isExplicitYes(line, 'book')).toBe(true);
   });
 
   // The matcher before go-aheads were added. For every line that opens with a plain yes the result must be the same:
@@ -202,7 +255,11 @@ describe('confirmation language', () => {
   });
 
   it.each(PLAIN_YES_CORPUS)('a line opening with a plain yes gets the original result: %s', (line) => {
-    expect(isExplicitYes(line)).toBe(mainIsExplicitYes(line));
+    expect(isExplicitYes(line, 'book')).toBe(mainIsExplicitYes(line));
+    // Non-booking actions match main except that a yes naming booking is refused.
+    const namesBooking = /(?<!\p{L})(?:book(?:ing|ed)?|res[eé]rv\p{L}*|lock\s+it\s+in)(?!\p{L})/iu.test(line);
+    for (const action of ['cancel', 'reschedule'] as const)
+      expect(isExplicitYes(line, action)).toBe(namesBooking ? false : mainIsExplicitYes(line));
   });
 
   // "great", "perfect" and "perfecto" used to be in both the affirmative and the filler lists, so each repeat could
@@ -220,12 +277,29 @@ describe('confirmation language', () => {
     for (const n of [40, 200]) {
       const tail = repeat(head, words, n);
       let start = performance.now();
-      expect(isExplicitYes(tail)).toBe(true);
+      expect(isExplicitYes(tail, 'book')).toBe(true);
       expect(performance.now() - start).toBeLessThan(50);
       for (const end of [' x', ' para mi hijo', '?']) {
         start = performance.now();
-        expect(isExplicitYes(tail + end)).toBe(false);
+        expect(isExplicitYes(tail + end, 'book')).toBe(false);
         expect(performance.now() - start).toBeLessThan(50);
+      }
+    }
+  });
+
+  it.each<[string, string[]]>([
+    ['Go ahead', ['great', 'perfect', 'thanks', 'yes']],
+    ['Dale', ['perfecto,', 'listo', 'por favor']],
+    ['Book it', ['great', 'go ahead']],
+  ])('a long run is fast without booking verbs too: %s + %j', (head, words) => {
+    for (const action of ['cancel', 'reschedule', undefined] as const) {
+      for (const n of [40, 200]) {
+        const tail = repeat(head, words, n);
+        for (const end of ['', ' x', ' para mi hijo', '?']) {
+          const start = performance.now();
+          expect(isExplicitYes(tail + end, action)).toBe(end === '' && head !== 'Book it');
+          expect(performance.now() - start).toBeLessThan(50);
+        }
       }
     }
   });
