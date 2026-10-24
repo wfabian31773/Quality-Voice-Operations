@@ -226,14 +226,14 @@ const SERVICES = [
   // Auto.
   'oil changes?', 'brakes?', 'brake (?:service|jobs?|pads?)', 'tires?', 'tire (?:service|rotations?)', '(?:wheel )?alignments?',
   '(?:state |safety |vehicle )?inspections?', 'transmission service', 'tune ?ups?', '(?:car |auto )?detailing',
-  // HVAC.
-  '(?:ac|a c|hvac|furnace|heating) (?:service|maintenance|tune ?ups?)',
+  // HVAC: planned maintenance only; "heating service" / "AC service" is often a no-heat or no-cool call, so it files.
+  '(?:ac|a c|hvac|furnace|heating) (?:maintenance|tune ?ups?)',
   // Barber and salon.
   'haircuts?', 'hair ?cuts?', 'cuts?', 'fades?', 'beards?', 'beard trims?', 'shaves?', '(?:hair )?colou?r(?:ing)?', 'highlights',
   'blowouts?', 'manicures?', 'pedicures?', '(?:gel|acrylic) nails', '(?:nail|hair) service',
   // Spanish.
   'cambios? de aceite', 'frenos', 'servicio de frenos', 'llantas', 'rotacion de llantas', 'alineacion(?:es)?', 'alineamientos?',
-  'afinacion(?:es)?', 'inspeccion(?:es)?', 'detallado', '(?:servicio|mantenimiento) del? aire(?: acondicionado)?',
+  'afinacion(?:es)?', 'inspeccion(?:es)?', 'detallado', 'mantenimiento del? aire(?: acondicionado)?',
   'cortes?(?: de (?:pelo|cabello))?', 'degradados?', 'recortes? de barba', 'afeitados?', 'tintes?', 'manicuras?', 'pedicuras?',
   'unas(?: acrilicas| de gel)?',
 ];
@@ -255,6 +255,8 @@ const SHAPE_PARTS: Readonly<Record<string, string>> = {
   N: '(?<staff>\\S+)',
   CONTACT: '(?:address|location|phone number|phone|number|website|web site|email(?: address)?)',
   CONTACTO: '(?:direccion|ubicacion|numero(?: de telefono)?|telefono|pagina(?: web)?|sitio web|correo(?: electronico)?)',
+  HOURS: '(?:business |store |shop |opening )?hours(?: of operation)?',
+  HORARIO: 'horarios?(?: de atencion| de trabajo)?',
   PRICE: '(?:price|prices|pricing|cost|rate|rates)',
   PRECIO: '(?:precio|precios|costo|costos)',
 };
@@ -275,7 +277,7 @@ const shape = (template: string) =>
  */
 const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   // Hours: "what are your hours (on Saturday)", "what time do you close (today)", "are you open on Saturday".
-  '(?:what (?:are|is) |whats )?(?:your |the )?(?:business |store |shop |opening )?hours(?: of operation)?{WHEN}',
+  '(?:what (?:are|is) |whats )(?:your |the )?{HOURS}{WHEN}',
   '(?:what time|when) (?:do {YOU}|does {SHOP}) (?:open|close){WHEN}',
   '(?:are {YOU}|is {SHOP}) (?:open|closed|still open){WHEN}',
   '(?:how late|what time|until what time) (?:are {YOU}|is {SHOP}) open(?: until| till)?{WHEN}',
@@ -286,7 +288,7 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   'does {N} work{WEEKDAYS}',
   // Horario: "¿a qué hora cierran?", "¿cuál es su horario?", "¿cuándo abren?", "¿qué días trabaja Marco?".
   '(?:a |hasta )?que hora (?:abren|cierran|abre|cierra)(?: ustedes| {TIENDA})?{WHEN}',
-  '(?:cual es |cuales son |que )?(?:su |sus |el |los )?horarios?(?: de atencion| de trabajo)?(?: tienen)?{WHEN}',
+  '(?:cual es |cuales son |que )(?:su |sus |el |los )?{HORARIO}(?: tienen)?{WHEN}',
   `cuando ${SPANISH_OPEN_CLOSED}`,
   'que dias (?:abren|trabajan|estan abiertos)',
   'que dias trabaja {N}',
@@ -323,10 +325,12 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
  * cerrados hoy." differ only in the "¿?", so these match only a clause the
  * caller's text marks with "?" or "¿".
  */
-// A bare contact or price noun ("Email.", "Teléfono.") is often the caller answering the agent's
+// A bare hours, contact or price noun ("Email.", "Teléfono.") is often the caller answering the agent's
 // question (how to send a quote), so without a question frame it needs "?" / "¿".
 const MARKED_QUESTION_SHAPES: readonly RegExp[] = [
   SPANISH_OPEN_CLOSED,
+  '(?:your |the )?{HOURS}{WHEN}',
+  '(?:su |sus |el |los )?{HORARIO}{WHEN}',
   '(?:your |the )?{CONTACT}',
   '(?:su |la |el )?{CONTACTO}',
   '(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?',
@@ -360,6 +364,7 @@ const TIME_WORDS: ReadonlySet<string> = new Set([
   'noon', 'noonish', 'midday', 'lunch', 'lunchtime', 'tmrw', 'midnight', 'morning', 'mornings', 'afternoon', 'afternoons', 'evening', 'evenings', 'night', 'nights',
   'early', 'earlier', 'late', 'later', 'soon', 'sooner', 'anytime', 'oclock',
   'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
   'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november',
   'december', 'christmas', 'xmas', 'thanksgiving', 'easter', 'halloween', 'valentines',
   'mediodia', 'medianoche', 'temprano', 'tarde', 'noche',
@@ -409,6 +414,9 @@ const isSlotWord = (token: string): boolean =>
   !PROBLEM_WORD.test(token);
 
 const isCapitalized = (rawToken: string) => /^\p{Lu}/u.test(rawToken);
+/** Mixed-case text is casing evidence; an all-caps (or all-lowercase) clause is not. */
+const hasCasingEvidence = (rawTokens: readonly string[]) =>
+  rawTokens.some((raw) => /\p{Ll}/u.test(raw)) && rawTokens.some((raw) => /\p{Lu}/u.test(raw));
 
 /**
  * A staff name is one slot word that the caller's own text capitalizes every
@@ -417,7 +425,7 @@ const isCapitalized = (rawToken: string) => /^\p{Lu}/u.test(rawToken);
  */
 function staffNameIsValid(staff: string, rawTokens: readonly string[]): boolean {
   const said = rawTokens.filter((raw) => raw.toLowerCase() === staff);
-  return isSlotWord(staff) && said.length > 0 && said.every(isCapitalized);
+  return isSlotWord(staff) && said.length > 0 && rawTokens.some((raw) => /\p{Ll}/u.test(raw)) && said.every(isCapitalized);
 }
 
 /**
@@ -591,7 +599,8 @@ const NOT_NAME_ADJECTIVES: ReadonlySet<string> = new Set([
   'upset', 'angry', 'mad', 'disappointing', 'disappointed', 'unbelievable', 'insane', 'crazy', 'absurd', 'confusing',
   'confused', 'late', 'new', 'great', 'good', 'fine', 'weird', 'strange', 'serious', 'insulting', 'disgusting',
   'frustrante', 'ridiculo', 'ridicula', 'absurdo', 'absurda', 'increible', 'molesto', 'molesta', 'enojado', 'enojada',
-  'nuevo', 'nueva', 'malo', 'mala',
+  'nuevo', 'nueva', 'malo', 'mala', 'incorrect', 'misspelled', 'different', 'wrong', 'incorrecto', 'incorrecta',
+  'diferente', 'equivocado', 'equivocada',
 ]);
 
 /**
@@ -609,9 +618,13 @@ function isIntroduction({ text, tokens, raw }: Clause, callerNameTokens: Readonl
   if (!intro || CALLED_ME.test(text.normalize('NFC'))) return false;
   const name = tokens.slice(intro.length);
   if (name.length < 1 || name.length > 2 || !name.every((t) => isSlotWord(t) && !NOT_NAME_ADJECTIVES.has(t))) return false;
-  if (naming) return true;
+  if (name.every((t) => callerNameTokens.has(t))) return true;
   const rawName = raw.slice(intro.length);
-  return (rawName.length === name.length && rawName.every(isCapitalized)) || name.every((t) => callerNameTokens.has(t));
+  const capitalized = rawName.length === name.length && rawName.every(isCapitalized);
+  // "my name is" takes a lowercase name only when the clause is all lowercase (no casing evidence):
+  // "My name is misspelled." has casing, so its lowercase "name" is not one.
+  if (naming) return capitalized || (raw.length > 0 && !raw.some((r) => /\p{Lu}/u.test(r)));
+  return hasCasingEvidence(raw) && capitalized;
 }
 
 /** What the runtime saw on the call, beside the caller's lines. */

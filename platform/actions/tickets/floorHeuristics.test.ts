@@ -44,7 +44,7 @@ describe('answeredInfoOnly', () => {
     ['Do you do oil changes?'],
     ['How much is a tune up?'],
     ['Do you do AC maintenance?'],
-    ['Is AC service available?'],
+    ['Is AC maintenance available?'],
     ['How much is a manicure?'],
     ['Do you guys do pedicures?'],
     ['What do you charge for highlights?'],
@@ -369,6 +369,27 @@ describe('answeredInfoOnly', () => {
     [['Does Lunch work?'], false],
     [['Does Weds work?'], false],
     [['¿Qué? Están cerrados hoy.'], false],
+    // Fifth review: a naming intro with a non-name word is not an introduction.
+    [['Where are you located?', 'My name is misspelled.'], false],
+    [['What are your hours?', 'My name is incorrect.'], false],
+    [['What are your hours?', 'My name is different.'], false],
+    [['¿A qué hora cierran?', 'Mi nombre es incorrecto.'], false],
+    [['What are your hours?', 'My name is spelled differently.'], false],
+    [['My name is Ana.', 'Are you open today?'], true],
+    // A bare hours noun needs "?" / "¿".
+    [['Do you do brake service?', 'Hours.'], false],
+    [['¿Hacen frenos?', 'Horario.'], false],
+    [['Hours?'], true],
+    [['¿Horario?'], true],
+    // All-caps text is no casing evidence; month abbreviations are times.
+    [['THIS IS PAST DUE.', 'WHAT ARE YOUR HOURS?'], false],
+    [['DOES SEPT WORK?'], false],
+    [['Does Jan work?'], false],
+    // HVAC: only planned maintenance skips.
+    [['Do you do furnace service?'], false],
+    [['Do you do heating service?'], false],
+    [['¿Hacen servicio del aire?'], false],
+    [['Do you do furnace maintenance?'], true],
   ])('fourth review: %j -> %s', (lines, expected) => {
     expect(answeredInfoOnly(lines, ANSWERED)).toBe(expected);
   });
