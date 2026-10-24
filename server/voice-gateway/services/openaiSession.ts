@@ -1054,6 +1054,8 @@ export async function createRealtimeSession(
     beforeFloor: () => bookkeeping.flush('floor'),
     // Read at floor time; teardown has recorded the outcome by then.
     endReason: () => callOutcome.outcome,
+    // On the phone an answer counts once its playback mark echoes (agentPlaybackDone).
+    awaitPlayback: ctx.playbackConfirm === 'twilio_mark',
   });
 
   const isAzulVision = agentConfig.metadata?.practiceName === 'Azul Vision' || agentConfig.metadata?.practiceName === 'Azul Vision Eye Center';
@@ -1114,6 +1116,8 @@ export async function createRealtimeSession(
       slog.info('Caller barged in: stopping agent playback');
       // Cleared audio is not playing any more (the hold line's included).
       holdLine.agentPlaybackDone();
+      // Nor was the interrupted answer heard; Twilio may still echo its mark.
+      invariants.agentPlaybackInterrupted();
       for (const handler of bargeInHandlers) {
         try {
           handler();
@@ -1912,6 +1916,7 @@ export async function createRealtimeSession(
     if (playbackConfirm !== 'twilio_mark' || markName !== pendingPlaybackMark) return false;
     pendingPlaybackMark = null;
     holdLine.agentPlaybackDone();
+    invariants.agentPlaybackConfirmed();
     return silenceWatchdog.agentPlaybackDone();
   };
 

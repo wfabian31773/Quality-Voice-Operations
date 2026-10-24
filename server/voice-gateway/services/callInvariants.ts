@@ -157,6 +157,27 @@ const COURTESY_CLOSERS: readonly RegExp[] = [
   /^(?:en )?qu[eé] m[aá]s (?:le|te|lo|la) (?:puedo|podemos) ayudar$/,
 ];
 
+/**
+ * Holding lines (EN/ES): the agent is about to look something up, so nothing
+ * was answered yet. Matched anywhere in the turn: a turn that holds one never
+ * counts as an answer, even with more after it.
+ */
+const HOLDING_LINES: readonly RegExp[] = [
+  /\blet me (?:check|look|see|find|pull|verify|confirm)\b/,
+  /\b(?:one|just a) (?:moment|sec|second|minute)\b|\ba moment\b/,
+  /\b(?:hold on|bear with me|give me a (?:moment|sec|second|minute))\b/,
+  /\b(?:i'?ll|i will|i'?m going to|i'?m) (?:check|checking|look|looking)\b/,
+  /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
+  /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
+  /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
+];
+
+/** An agent turn that only holds the line ("Let me check that", "Un momento", "Déjeme revisar"). */
+export function isHoldingLine(text: string): boolean {
+  const lower = text.toLowerCase().replace(/[’‘]/g, "'");
+  return HOLDING_LINES.some((pattern) => pattern.test(lower));
+}
+
 /** A sentence that only offers more help: "Anything else I can help with?", "¿Le puedo ayudar en algo más?". */
 function isCourtesyCloser(sentence: string): boolean {
   const core = sentence
@@ -291,6 +312,13 @@ export interface CallInvariantsInit {
    * caller hangup from a time-limit or system end.
    */
   endReason?: () => CallOutcome | null;
+  /**
+   * True when the transport confirms playback ('twilio_mark' on the phone):
+   * an answer then only counts once agentPlaybackConfirmed() reports its
+   * audio played. Otherwise (the widget's 'response_done' mode has no
+   * playback signal) the completed transcript is the signal.
+   */
+  awaitPlayback?: boolean;
 }
 
 /** Process-wide SAY observations by rule, for metrics. */
@@ -325,8 +353,15 @@ export class CallInvariants {
   private filedByTool = false;
   /** Every tool run on the call, by platform action name when it has one; a blocked run is not ok. */
   private readonly toolRuns: Array<{ name: string; ok: boolean }> = [];
-  /** The agent finished a turn after the caller's last line. */
+  /**
+   * The agent gave a real answer (not a question or a holding line) after the
+   * caller's last line and after the last tool started, and its audio played.
+   */
   private answered = false;
+  /** The latest agent turn is an answer whose playback is not confirmed yet. */
+  private answerAwaitingPlayback = false;
+  /** The caller barged in since their last completed line. */
+  private playbackInterrupted = false;
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
@@ -379,6 +414,8 @@ export class CallInvariants {
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
     this.answered = false;
+    this.answerAwaitingPlayback = false;
+    this.playbackInterrupted = false;
     if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text)) {
       this.state = onExplicitYes(this.state, this.lastPreparedToken);
     }
@@ -394,11 +431,28 @@ export class CallInvariants {
         sayObservedTotals.set(said.rule, (sayObservedTotals.get(said.rule) ?? 0) + 1);
         this.init.log.info('invariant_say_observed', { rule: said.rule, count });
       }
-      // A clarifying question leaves answered as it was: it never sets it.
-      if (!isAgentQuestion(text)) this.answered = true;
+      // A clarifying question or a holding line never sets answered.
+      this.answerAwaitingPlayback = !isAgentQuestion(text) && !isHoldingLine(text);
+      if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);
     this.spokeSincePrepare = true;
+  }
+
+  /** The latest agent turn's audio played (the Twilio mark echo): an answer in it now counts. */
+  agentPlaybackConfirmed(): void {
+    if (this.answerAwaitingPlayback && !this.playbackInterrupted) this.answered = true;
+    this.answerAwaitingPlayback = false;
+  }
+
+  /**
+   * The caller barged in and the turn's audio was cleared: its answer was not
+   * heard. Its truncated transcript and a mark echoed after the clear may
+   * still arrive, so no answer counts until the caller's next line.
+   */
+  agentPlaybackInterrupted(): void {
+    this.answerAwaitingPlayback = false;
+    this.playbackInterrupted = true;
   }
 
   /**
@@ -408,6 +462,9 @@ export class CallInvariants {
    */
   wrapToolHandler(handler: ToolHandler): ToolHandler {
     return (name, args) => {
+      // Whatever was said before a tool, the caller has not had its result yet.
+      this.answered = false;
+      this.answerAwaitingPlayback = false;
       const kind = toolKind(name, args);
       const work = this.runTool(handler, name, args, kind);
       // The end-call tool evaluates the floor itself; it must not wait on itself.

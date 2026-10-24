@@ -8,6 +8,7 @@ import {
   END_CALL_TOOLS,
   isAgentQuestion,
   isExplicitYes,
+  isHoldingLine,
   isTransferRequest,
   sayObservedTotal,
   toolKind,
@@ -83,6 +84,15 @@ describe('tool classification', () => {
     }
     for (const text of ['We open at nine.', 'Is it Saturday? We open at nine.', 'Marco works Tuesday to Saturday', '']) {
       expect(isAgentQuestion(text)).toBe(false);
+    }
+  });
+
+  it('a holding line is "let me check" / "one moment" / "un momento" / "déjeme revisar", not an answer', () => {
+    for (const text of ['Let me check that.', 'Let me look into it', 'Just a second.', 'Hold on.', "I'll check with Marco.", 'Un momento.', 'Déjeme revisar.', 'Permítame verificar.', 'Voy a revisar.']) {
+      expect(isHoldingLine(text)).toBe(true);
+    }
+    for (const text of ['We open at nine.', 'We have a second location downtown.', 'Abrimos a las nueve.', '']) {
+      expect(isHoldingLine(text)).toBe(false);
     }
   });
 
@@ -503,6 +513,73 @@ describe('floor at teardown', () => {
     inv.agentTurnCompleted('Downtown opens at nine and closes at seven.');
     await inv.evaluateFloor();
     expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each(['Let me check that.', 'One moment please.', 'Un momento, por favor.', 'Déjeme revisar.', 'Let me check. We open at nine.'])(
+    'a holding line ("%s") never counts as answered',
+    async (hold) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted(hold);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it('a holding line, then an info tool returns ok, then the caller hangs up → not answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What days does Marco work?');
+    inv.agentTurnCompleted('Let me check that for you.');
+    await inv.wrapToolHandler(vi.fn(async () => JSON.stringify({ success: true })))('lookup_customer', {});
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ tools: [{ name: 'lookup_customer', ok: true }], answered: false });
+  });
+
+  it('a tool starting after an answer resets answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    await inv.wrapToolHandler(vi.fn(async () => JSON.stringify({ success: true })))('lookup_customer', {});
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: an answer whose transcript completed but whose playback is not confirmed → not answered', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: the answer counts once its playback is confirmed', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it('awaiting playback: a confirmed holding line or question still does not count', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('One moment.');
+    inv.agentPlaybackConfirmed();
+    inv.agentTurnCompleted('Which location?');
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: a barge-in clears the answer, even if its mark is echoed after the clear', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentPlaybackInterrupted();
+    inv.agentTurnCompleted('We open at');
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
   });
 
   it('a read still running after the settle wait leaves the tool list out, so the floor cannot skip', async () => {

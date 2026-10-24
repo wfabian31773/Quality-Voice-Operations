@@ -736,173 +736,83 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
-  // The review's wording for a callback, availability or booking request; each must file.
+  // The rule: skip only when every substantive caller clause is a short info question about the shop.
+  // Any statement files, whatever words it holds; so does a request, a personal question or a "why".
   it.each([
-    ['Llámenme por favor, ¿dónde están ubicados?'],
-    ['¿Me pueden regresar la llamada? ¿Cuál es su horario?'],
-    ['¿Tienen disponibilidad el sábado? ¿A qué hora abren?'],
-    ['Quisiera un corte el sábado, ¿cuánto cuesta?'],
-    ['¿Hacen reservación? ¿Cuánto cuesta el corte?'],
-    ['¿Hacen reserva? ¿Cuánto cuesta el corte?'],
-    ['Me gustaría un turno, ¿cuánto cuesta?'],
-    ['¿Tienen espacio? ¿Cuánto cuesta?'],
-    ['Que me devuelvan la llamada, ¿cuál es su horario?'],
-    ['Que me regresen, ¿cuál es su horario?'],
-    ['Can I get a fade at 3 tomorrow? How much is it?'],
-    ["I'd like a haircut Saturday, what time do you open?"],
-    ['Is Marco free Saturday at 2?'],
-    ['Is Marco free Saturday at 2? What are your prices?'],
-    ['Can you put me down for 4? How much is a fade?'],
-    ['Can you hold a chair for me? What are your prices?'],
-    ['Put me on the waitlist. What are your prices?'],
-    ['Can I make an appointment? What are your prices?'],
-    ['Is the 5 o clock cancelled? What are your hours?'],
-    ['How much to reschedule? What are your prices?'],
-    // Round 2: the day sits in an hours / staff-days question and the ask is its own sentence.
-    ['Does Marco work Saturday? Can he take me?'],
-    ['Does Ana work Friday? Can she do my nails?'],
-    ['Does Marco work Saturday? Could he cut my hair?'],
-    ['Does Marco work Saturday? Sign me up.'],
-    ['¿Marco trabaja el sábado? ¿Me puede atender?'],
-    ['¿Abren el sábado? ¿Puedo pasar?'],
-    ['¿Abren el sábado? ¿Puedo ir?'],
-    ['¿Me llama por favor? ¿Cuál es su horario?'],
-  ])('an answered info call where the caller said "%s" → filed', async (line) => {
-    const { tickets, floor } = setup();
-    expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toMatchObject({ filed: true, reason: 'filed' });
-    expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
-  });
-
-  // Round 3: an info question beside a sentence that is not one files, even with no action word.
-  it.each([
+    // Statements, even ones that hold an info word.
+    ['My car was damaged in your parking lot'],
+    ['You charged me too much for my haircut.'],
+    ["My heater isn't working."],
+    ['The service was terrible.'],
+    ['El servicio fue pésimo'],
+    ['La puerta no abre'],
+    ['Está roto'],
+    ['¿Cuál es su horario?', 'No funciona'],
+    // An info question beside a statement.
     ['I left my wallet there. What time do you close?'],
     ['I left my wallet there', 'What time do you close?'],
-    ['My beard trim came out uneven. What are your prices?'],
+    ['How much is a color? My daughter wants one.'],
+    ['How much is a fade, my son needs one'],
     ['Dejé mi cartera ahí. ¿A qué hora cierran?'],
-    ['El corte me quedó disparejo. ¿Cuánto cuesta?'],
-  ])('an answered info call with a non-info sentence ("%s") → filed', async (...callerLines) => {
+    ['Quisiera un corte el sábado, ¿cuánto cuesta?'],
+    ['Llámenme por favor, ¿dónde están ubicados?'],
+    ['Quick question, what are your hours?'],
+  ])('an answered call with a statement ("%s") → filed', async (...callerLines) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
-  // Third-person, plural and past forms, and "room" / "space" / "lugar" / "hueco", inside the info clause too.
   it.each([
-    ['How much is a color? My daughter wants one.'],
-    ['How much is a color my daughter wants one'],
-    ['How much is a fade, my son needs one'],
-    ['What are your prices? We wanted two cuts.'],
-    ['How much is a cut, I wanna come by'],
-    ['¿Cuánto cuesta un tinte? Mi hija quiere uno.'],
-    ['¿Cuánto cuesta un tinte que mi hija quiere?'],
-    ['¿Cuánto cuesta el corte que necesitan mis hijos?'],
-    ['¿Cuánto cobran? Queremos dos cortes.'],
-    ['¿Hay lugar mañana?'],
-    ['¿Dónde están y hay lugar?'],
-    ['¿Dónde están y tienen un hueco?'],
-    ['Do you have any room tomorrow?'],
-    ['Where are you located and is there any room'],
-    ['Where are you located and do you have space'],
-    // "work" / "open" are info words, but these ask for a booking.
-    ['Can you work me in today?'],
-    ['Can you fit me in this afternoon? What are your hours?'],
-    ['Could you squeeze me in? What time do you close?'],
+    // A core action word or stem.
+    ['Can I make an appointment? What are your prices?'],
+    ['¿Hacen reservación? ¿Cuánto cuesta el corte?'],
+    ['How much to reschedule? What are your prices?'],
+    ['¿Me pueden regresar la llamada? ¿Cuál es su horario?'],
+    ['¿Tienen disponibilidad el sábado? ¿A qué hora abren?'],
     ['Do you have anything open tomorrow?'],
-    ['Do you have anything available? What are your hours?'],
-    ["Are you open today because I'm coming in"],
-    ['Are you open Saturday? I might be stopping by.'],
-    ["What time do you close? I'll drop in."],
-    ['Are you open tonight? I could swing by.'],
-    ['¿Tienen algo disponible hoy?'],
+    ['How much longer until the tech gets here?'],
+    // About the caller, not the shop (first person) or a "why".
+    ['Why did you charge me twice?'],
+    ['Where is my technician?'],
+    ['Can you work me in today?'],
+    ['Can you tell me your hours on Saturday?'],
     ['¿Me pueden atender hoy?'],
-  ])('an answered info call where someone wants it or asks for room ("%s") → filed', async (line) => {
+    ['¿Por qué cobran tanto?'],
+    // A day or a time outside an hours question.
+    ['How much is a fade today?'],
+    ['¿Cuánto cuesta un corte esta tarde?'],
+    ['Is Marco free Saturday at 2?'],
+    // No info word, or too long for a quick question.
+    ['Do you take walk-ins?'],
+    ['Is there someone there?'],
+    ['What are your hours on Saturday and Sunday and also do the barbers there do beards?'],
+  ])('an answered call with a question that is not a short info question ("%s") → filed', async (line) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toMatchObject({ filed: true, reason: 'filed' });
-    expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
-  });
-
-  it.each([
-    ['a weekday', ['Can Marco take me Saturday? How much is a fade?']],
-    ['tomorrow', ['Can Marco take me tomorrow? How much is a fade?']],
-    ['mañana', ['¿Me atienden mañana? ¿Cuánto cuesta?']],
-    ['a clock time', ['Can Marco take me at 3? What are your prices?']],
-    ['a time with p.m.', ['Can Marco take me 4 p.m.? What are your prices?']],
-    ['a las', ['¿Me atienden a las cinco? ¿Cuánto cuesta?']],
-    ['today', ['How much is a fade today?']],
-    ['hoy', ['¿Cuánto cuesta un corte hoy?']],
-    ['this afternoon', ['How much is a fade this afternoon?']],
-    ['esta tarde', ['¿Cuánto cuesta un corte esta tarde?']],
-    ['next week', ['What are your prices next week?']],
-  ])('a caller who names %s with no action word → filed', async (_label, callerLines) => {
-    const { tickets, floor } = setup();
-    expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
-    expect(tickets.state.tickets).toHaveLength(1);
-  });
-
-  it.each([
-    ['staff days', ['Does Marco work Saturdays?']],
-    ['hours on a weekday', ['¿A qué hora abren el sábado?']],
-    ['English hours on a weekday', ['What are your hours on Saturday?']],
-    ['closing time today', ['What time do you close today?']],
-    ['staff days, then thanks', ['Does Marco work Saturdays? Thanks!']],
-    ['hours asked as "can you tell me"', ['Can you tell me your hours on Saturday?']],
-    ['a location after a Spanish introduction', ['Hola, me llamo Ana, ¿dónde están ubicados?']],
-    ['hours', ['What are your hours?']],
-    ['opening time', ['What time do you open?']],
-    ['open on a weekday', ['Are you open on Sunday?']],
-    // Like "close today": a day inside an hours question is part of the question.
-    ['open today', ['Are you open today?']],
-    ['open this weekend', ['Are you open this weekend?']],
-    ['abren hoy', ['¿Abren hoy?']],
-  ])('a pure info call about %s → still answered_info', async (_label, callerLines) => {
-    const { tickets, floor } = setup();
-    expect(data(await floor({ ...INFO_CALL, callerLines }))).toEqual({ filed: false, reason: 'answered_info' });
-    expect(tickets.state.tickets).toHaveLength(0);
-  });
-
-  // A problem report that holds an info word ("working", "charge", "service", "where", "hours") is not an info question.
-  it.each([
-    ["My heater isn't working."],
-    ["The gate code doesn't work."],
-    ['Mi calentador no trabaja.'],
-    ['Why did you charge me twice?'],
-    ['The service was terrible.'],
-    ['Where is my technician?'],
-    ["I've been waiting two hours for the tech."],
-    ['¿Cuál es su horario?', 'No funciona'],
-    ['Está roto'],
-    ["My heater wasn't working. What are your hours?"],
-    ["It hasn't been working"],
-    ['It quit working'],
-    ["The repair didn't work."],
-    ["My garage door won't open."],
-    ["The gate won't close"],
-    ['La puerta no abre'],
-    ['La puerta no cierra'],
-    ['The service was awful.'],
-    ['The service was bad'],
-    ['The receptionist was rude'],
-    ['Why did you charge my card?'],
-    ['El servicio fue pésimo'],
-    ['How much longer until the tech gets here?'],
-    ['¿Cuánto falta para que llegue el técnico?'],
-  ])('an answered call with a problem report ("%s") → filed', async (...callerLines) => {
-    const { tickets, floor } = setup();
-    expect(data(await floor({ ...INFO_CALL, tools: [], callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
     expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
   });
 
   it.each([
     ['What are your hours?'],
-    ['Do you work Saturdays?'],
-    ['What services do you offer?'],
+    ['What time do you close today?'],
+    ['¿A qué hora abren?'],
     ['Where are you located?'],
+    ['How much is a haircut?'],
+    ['Does Marco work Saturdays?'],
+    ['What services do you offer?'],
     ['How much do you charge for a cut?'],
-    ['What time do you close?'],
     ['¿Qué servicios ofrecen?'],
-  ])('a pure info question ("%s") → still answered_info', async (line) => {
+    ['Are you open today?'],
+    ['¿Abren hoy?'],
+    // No punctuation: the question word carries the form.
+    ['what time do you open'],
+    // Greetings, an introduction and thanks are not clauses of their own.
+    ['Hola, me llamo Ana, ¿dónde están ubicados?'],
+    ['Hi, this is Dana.', 'What are your hours?', 'Thanks, bye!'],
+  ])('a short info question ("%s"), answered, the caller hangs up → answered_info', async (...callerLines) => {
     const { tickets, floor } = setup();
-    expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toEqual({ filed: false, reason: 'answered_info' });
+    expect(data(await floor({ ...INFO_CALL, callerLines }))).toEqual({ filed: false, reason: 'answered_info' });
     expect(tickets.state.tickets).toHaveLength(0);
   });
 

@@ -197,78 +197,62 @@ export const INFO_TOOLS: ReadonlySet<string> = new Set([
   'record_language_change',
 ]);
 
-/**
- * Caller words (EN/ES) that start, or ask for, something the shop has to act
- * on: a booking or change, a callback, a person, a message, a complaint.
- * Any one of them keeps the floor ticket. "Calling" is left out ("I'm calling
- * to ask your hours"); "call" is in ("call me back").
- */
-export const ACTION_WORDS: ReadonlySet<string> = new Set([
-  'book', 'booking', 'booked', 'appointment', 'appointments', 'appt', 'schedule', 'reschedule', 'cancel',
-  'cancellation', 'reserve', 'reservation', 'available', 'availability', 'opening', 'openings', 'spot', 'slot',
-  'move', 'change', 'want', 'need', 'come', 'walk', 'fit', 'squeeze',
-  'call', 'callback', 'person', 'human', 'someone', 'somebody', 'manager', 'owner', 'speak', 'talk', 'message',
-  'problem', 'complaint', 'refund', 'wrong', 'late', 'urgent', 'emergency',
-  'cita', 'citas', 'reservar', 'agendar', 'apartar', 'cancelar', 'cambiar', 'mover', 'disponible', 'quiero',
-  'necesito', 'llamar', 'llamen', 'llame', 'persona', 'alguien', 'gerente', 'dueno', 'hablar', 'mensaje', 'recado',
-  'problema', 'queja', 'reembolso', 'urgente',
-  'free', 'like', 'get', 'put', 'hold', 'waitlist',
-  'llamenme', 'llamada', 'devuelvan', 'regresen', 'disponibilidad', 'reserva', 'reservacion', 'quisiera', 'gustaria',
-  'turno', 'espacio',
-  'take', 'cut', 'sign', 'see', 'atender', 'atienden', 'atiende', 'pasar', 'ir', 'venir', 'cortar',
-  'wants', 'needs', 'wanted', 'needed', 'wanna', 'room', 'space',
-  'quiere', 'quieren', 'queremos', 'necesita', 'necesitan', 'necesitamos', 'lugar', 'hueco',
-  'coming', 'stopping', 'drop', 'swing',
-  'broken', 'broke', 'leak', 'leaking', 'stopped', 'overcharged', 'twice', 'waiting', 'waited', 'never', 'terrible',
-  'funciona', 'roto', 'rota', 'descompuesto', 'esperando',
-  'bad', 'awful', 'rude', 'horrible', 'worst', 'unhappy', 'malo', 'mala', 'pesimo', 'pesima',
-  'arrive', 'arriving', 'eta', 'llegue', 'llega',
+// ---------------------------------------------------------------------------
+// answeredInfoOnly: conservative by default. A call is skipped only when every
+// substantive caller clause is a short information question about the shop.
+// Anything else (a statement, a request, a complaint, a long or personal
+// question) files. Word lists here only ever widen what files, never what skips.
+// ---------------------------------------------------------------------------
+
+/** Caller words (EN/ES) a clause needs to be an information question: hours, staff days, prices, services, location. */
+export const INFO_WORDS: ReadonlySet<string> = new Set([
+  'hours', 'hour', 'open', 'opens', 'close', 'closes', 'closed', 'closing', 'days', 'work', 'works', 'working',
+  'price', 'prices', 'pricing', 'cost', 'costs', 'much', 'charge', 'services', 'service', 'offer', 'where',
+  'address', 'located', 'location', 'directions', 'parking',
+  'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan', 'precio',
+  'precios', 'cuesta', 'cuanto', 'cobran', 'servicio', 'servicios', 'ofrecen', 'donde', 'direccion', 'ubicados',
 ]);
 
-/**
- * Booking phrases built on info words ("work", "open"), so they count even in
- * an hours question: "can you work me in today", "anything open tomorrow".
- */
-export const ACTION_PHRASES: readonly string[] = [
-  'work me in', 'fit me in', 'squeeze me in', 'anything open', 'anything available', 'algo disponible',
-  'where is my', 'wheres my', 'donde esta mi', 'how long', 'how much longer', 'cuanto falta',
-];
+/** Words that open a question (EN/ES, normalized: "qué" → "que", "están" → "estan", "what's" → "whats"). */
+const QUESTION_STARTS: ReadonlySet<string> = new Set([
+  'what', 'whats', 'when', 'whens', 'where', 'wheres', 'which', 'how', 'hows', 'who', 'whos',
+  'do', 'does', 'are', 'is', 'can', 'could',
+  'que', 'cuando', 'donde', 'cual', 'cuanto', 'cuanta', 'tienen', 'hay', 'abren', 'estan',
+]);
+const QUESTION_START_PHRASES: readonly string[] = ['a que hora'];
 
-/** Subjects and modals before "do" when it is a verb ("can she do my nails"), not an auxiliary ("what do you charge"). */
-const DO_SUBJECTS: ReadonlySet<string> = new Set(['i', 'you', 'he', 'she', 'they', 'we', 'can', 'could', 'would', 'will']);
-
-/** "can he", "could you", "will they": with "puede" / "puedo" / "podría", the shape of a request. */
-const REQUEST_MODALS: ReadonlySet<string> = new Set(['can', 'could', 'would', 'will']);
-const REQUEST_SUBJECTS: ReadonlySet<string> = new Set(['i', 'you', 'he', 'she', 'they', 'we']);
-const SPANISH_REQUEST_WORDS: ReadonlySet<string> = new Set(['puede', 'pueden', 'puedo', 'podria', 'podrian']);
+/** Most tokens an information question may hold; a longer clause is more than a quick question. */
+export const MAX_INFO_QUESTION_TOKENS = 12;
 
 /**
- * A clause shaped like a request ("Can he take me?", "¿Me puede atender?",
- * "¿Puedo pasar?") with no info word, so "can you tell me your hours" stays
- * an info question.
+ * A small core of request words (EN/ES): a booking or change, a callback, a
+ * message, a want or need. Inflections come from ACTION_PREFIXES.
  */
-function isRequestShaped(tokens: readonly string[]): boolean {
-  if (tokens.some((token) => INFO_WORDS.has(token))) return false;
-  return tokens.some(
-    (token, i) => SPANISH_REQUEST_WORDS.has(token) || (REQUEST_MODALS.has(token) && REQUEST_SUBJECTS.has(tokens[i + 1])),
-  );
-}
-
-/**
- * Word stems (EN/ES) for the same families, so inflections count too
- * ("llámenme", "reservación", "disponibilidad", "cancelled", "agendarme",
- * "scheduling"). "cit" also takes "city", which only files a ticket.
- */
+export const ACTION_WORDS: ReadonlySet<string> = new Set([
+  'move', 'callback', 'call', 'message', 'want', 'wants', 'wanted', 'wanna', 'need', 'needs', 'needed',
+  'available', 'availability',
+  'quiero', 'quiere', 'queremos', 'quisiera', 'necesito', 'necesita', 'necesitamos', 'mensaje', 'recado',
+]);
+/** Stems: book/booking, appointment, schedule/scheduling, reschedule, cancel/cancelled, reserv*, cita, agendar, llam*, disponib*. */
 export const ACTION_PREFIXES: readonly string[] = [
-  'llam', 'reserv', 'disponib', 'cancel', 'agend', 'cit', 'book', 'appoint', 'schedul', 'resched',
+  'book', 'appoint', 'appt', 'schedul', 'resched', 'cancel', 'reserv', 'cit', 'agend', 'llam', 'disponib',
+];
+export const ACTION_PHRASES: readonly string[] = [
+  'call me back', 'would like', 'id like', 'me gustaria', 'anything open', 'how long', 'how much longer', 'cuanto falta',
 ];
 
 /**
- * "me llamo" / "se llamo" / "se llama" (my name is, is called) introduce a
- * name; they don't ask for a call. "me llama" is "call me", so it stays a request.
+ * First-person words (EN/ES). An information question is about the shop, not
+ * the caller ("Why did you charge me?", "Where is my tech?", "Can you fit me
+ * in?"), so a clause holding one files. "were" is left out ("we're" folds to it).
  */
-const isNamingLlam = (token: string, before: string | undefined): boolean =>
-  (token === 'llamo' && (before === 'me' || before === 'se')) || (token === 'llama' && before === 'se');
+const FIRST_PERSON: ReadonlySet<string> = new Set([
+  'i', 'me', 'my', 'mine', 'myself', 'im', 'ive', 'id', 'ill', 'we', 'us', 'our', 'ours',
+  'yo', 'mi', 'mis', 'nos', 'nosotros', 'nuestro', 'nuestra',
+]);
+
+/** "why" / "por qué" asks for an explanation (a complaint), never for shop info. */
+const WHY_WORDS: ReadonlySet<string> = new Set(['why', 'porque']);
 
 /** Weekdays and relative days (EN/ES). "mañana" is "manana" after normalization. */
 export const DAY_WORDS: ReadonlySet<string> = new Set([
@@ -283,9 +267,6 @@ export const DAY_PHRASES: readonly string[] = [
   'esta tarde', 'esta noche', 'este fin de semana', 'la proxima semana',
 ];
 
-/** True when the phrase appears as a whole token run in the clause. */
-const hasPhrase = (tokens: readonly string[], phrase: string): boolean => ` ${tokens.join(' ')} `.includes(` ${phrase} `);
-
 /**
  * Words that make a clause a question about when the shop or a stylist works
  * ("what are your hours on Saturday", "does Marco work Fridays"). A day word
@@ -296,12 +277,19 @@ const SCHEDULE_QUESTION_WORDS: ReadonlySet<string> = new Set([
   'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan',
 ]);
 
+/** True when the phrase appears as a whole token run in the clause. */
+const hasPhrase = (tokens: readonly string[], phrase: string): boolean => ` ${tokens.join(' ')} `.includes(` ${phrase} `);
+
+/**
+ * "me llamo" / "se llamo" / "se llama" (my name is, is called) introduce a
+ * name; they don't ask for a call. "me llama" is "call me", so it stays a request.
+ */
+const isNamingLlam = (token: string, before: string | undefined): boolean =>
+  (token === 'llamo' && (before === 'me' || before === 'se')) || (token === 'llama' && before === 'se');
+
 const isActionToken = (tokens: readonly string[], i: number): boolean => {
   const token = tokens[i];
-  // "a cut" / "the cut" is the service asked about ("how much for a cut"), not "cut my hair".
-  if (token === 'cut' && (tokens[i - 1] === 'a' || tokens[i - 1] === 'the')) return false;
   if (ACTION_WORDS.has(token)) return true;
-  if (token === 'do') return DO_SUBJECTS.has(tokens[i - 1]);
   if (isNamingLlam(token, tokens[i - 1])) return false;
   return ACTION_PREFIXES.some((prefix) => token.startsWith(prefix));
 };
@@ -320,66 +308,44 @@ const isTimeAt = (tokens: readonly string[], i: number): boolean => {
 };
 
 /**
- * True when a clause asks for something the shop has to act on: an action
- * word, stem or phrase, a request shape, a clock time, or a day. Info-only
- * callers rarely name a day or a time, so either keeps the ticket. A day in an
- * hours / staff-days question is ignored ("are you open today" skips like
- * "what time do you close today"); answeredInfoOnly only gets here when every
- * content clause of the call is an info question.
+ * An action or request signal: a core action word, stem or phrase, a clock
+ * time, or a day. A day in an hours / staff-days question is part of the
+ * question ("what time do you close today"), not a requested time.
  */
 function asksForAction(tokens: readonly string[]): boolean {
-  if (isRequestShaped(tokens) || ACTION_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
+  if (ACTION_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
   const ignoreDay = tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
   if (!ignoreDay && DAY_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
-  return tokens.some(
-    (token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!ignoreDay && DAY_WORDS.has(token)),
-  );
+  return tokens.some((token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!ignoreDay && DAY_WORDS.has(token)));
 }
 
 /** A clause left with words once filler and an introduced name are removed. */
 const isContentClause = (tokens: string[]): boolean =>
   withoutPhrases(withoutIntroducedName(tokens)).some((token) => !FILLER_WORDS.has(token));
 
-/** Caller words (EN/ES) that make a line an information question: hours, staff days, prices, services, location. */
-export const INFO_WORDS: ReadonlySet<string> = new Set([
-  'hours', 'hour', 'open', 'opens', 'close', 'closes', 'closed', 'closing', 'days', 'work', 'works', 'working',
-  'price', 'prices', 'pricing', 'cost', 'costs', 'much', 'charge', 'charged', 'services', 'service', 'offer', 'where',
-  'address', 'located', 'location', 'directions', 'parking',
-  'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan', 'precio',
-  'precios', 'cuesta', 'cuanto', 'cobran', 'servicio', 'servicios', 'ofrecen', 'donde', 'direccion', 'ubicados',
-]);
+/** A '?' closes the clause, a '¿' opens it, or (leading filler aside) it starts with a question word. */
+function hasQuestionForm(tokens: readonly string[], asked: boolean): boolean {
+  if (asked) return true;
+  const start = tokens.findIndex((token) => !FILLER_WORDS.has(token));
+  const rest = start < 0 ? [] : tokens.slice(start);
+  return QUESTION_STARTS.has(rest[0]) || QUESTION_START_PHRASES.some((phrase) => `${rest.join(' ')} `.startsWith(`${phrase} `));
+}
 
 /**
- * Work / open / close info words that report a fault, not a schedule, after a
- * negation ("my heater isn't working", "the gate won't close", "no abre").
+ * A short information question about the shop: question form, an INFO_WORDS
+ * word, at most MAX_INFO_QUESTION_TOKENS tokens, and no action signal, no
+ * first-person word and no "why".
  */
-const FAULT_WORDS: ReadonlySet<string> = new Set([
-  'work', 'works', 'working', 'trabaja', 'trabajan', 'open', 'opens', 'close', 'closes', 'abre', 'abren', 'cierra', 'cierran',
-]);
-const NEGATIONS: ReadonlySet<string> = new Set([
-  'not', 'isnt', 'doesnt', 'dont', 'wont', 'stopped', 'no', 'nunca',
-  'wasnt', 'arent', 'werent', 'didnt', 'hasnt', 'havent', 'cant', 'cannot', 'couldnt', 'aint', 'quit',
-]);
-
-/** Info words that are a complaint unless the clause asks a question ("the service was bad", "why did you charge my card"). */
-const QUESTION_ONLY_INFO_WORDS: ReadonlySet<string> = new Set(['service', 'services', 'servicio', 'servicios', 'charge', 'charged']);
-/** Question cues anywhere in a clause. "why" is left out: it opens a complaint, not a question about the shop. */
-const QUESTION_CUES: ReadonlySet<string> = new Set(['what', 'which', 'how', 'does', 'que', 'cual', 'cuanto']);
-/** Words that open a question when the clause carries a '?' / '¿'. */
-const QUESTION_STARTS: ReadonlySet<string> = new Set(['what', 'which', 'how', 'where', 'when', 'who', 'do', 'does']);
-
-const hasQuestionCue = (tokens: readonly string[], asked: boolean): boolean =>
-  tokens.some((token, i) => QUESTION_CUES.has(token) || (token === 'do' && tokens[i + 1] === 'you')) ||
-  (asked && QUESTION_STARTS.has(tokens[0]));
-
-/**
- * An INFO_WORDS word, unless it is a fault word within 2 tokens after a
- * negation, or a service / charge word in a clause with no question cue.
- */
-const isInfoTokenAt = (tokens: readonly string[], i: number, asked: boolean): boolean =>
-  INFO_WORDS.has(tokens[i]) &&
-  !(FAULT_WORDS.has(tokens[i]) && tokens.slice(Math.max(0, i - 2), i).some((token) => NEGATIONS.has(token))) &&
-  !(QUESTION_ONLY_INFO_WORDS.has(tokens[i]) && !hasQuestionCue(tokens, asked));
+export function isInfoQuestion(tokens: readonly string[], asked: boolean): boolean {
+  return (
+    hasQuestionForm(tokens, asked) &&
+    tokens.length <= MAX_INFO_QUESTION_TOKENS &&
+    tokens.some((token) => INFO_WORDS.has(token)) &&
+    !tokens.some((token) => FIRST_PERSON.has(token) || WHY_WORDS.has(token)) &&
+    !hasPhrase(tokens, 'por que') &&
+    !asksForAction(tokens)
+  );
+}
 
 const CLAUSE_BREAK_KEPT = new RegExp(`(${CLAUSE_BREAK.source})`);
 
@@ -399,7 +365,7 @@ export interface FloorCallSignals {
   endReason?: string;
   /** Every tool run on the call, by action name, with whether it returned ok (a blocked run is not ok). */
   tools?: ReadonlyArray<{ name: string; ok: boolean }>;
-  /** The agent finished a turn after the caller's last line. */
+  /** The agent gave a real answer (not a question or a holding line) after the caller's last line and any tool. */
   answered?: boolean;
 }
 
@@ -407,21 +373,16 @@ export interface FloorCallSignals {
  * A pure information call that was answered, so the floor files nothing.
  * Conservative: every condition must hold, and a missing signal fails it.
  * - the caller ended the call (endReason 'caller_hangup');
- * - the agent spoke after the caller's last line;
+ * - the agent gave a real answer after the caller's last line (answered);
  * - every tool that ran is in INFO_TOOLS and returned ok (none is fine);
  * - the caller gave no callback number;
- * - every content clause holds an INFO_WORDS word, so "I left my wallet
- *   there. What time do you close?" files;
- * - no clause asks for an action (asksForAction).
+ * - every substantive caller clause is a short info question (isInfoQuestion),
+ *   so any statement ("My car was damaged in your parking lot") files.
  */
 export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSignals): boolean {
   if (signals.endReason !== 'caller_hangup' || signals.answered !== true || !signals.tools) return false;
   if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
   if (hasCallbackNumber(lines)) return false;
-  const clauses = lines.flatMap(lineClauses);
-  const isInfoClause = ({ tokens, asked }: { tokens: string[]; asked: boolean }) =>
-    tokens.some((_, i) => isInfoTokenAt(tokens, i, asked));
-  const contentClauses = clauses.filter(({ tokens }) => isContentClause(tokens));
-  if (contentClauses.length === 0 || !contentClauses.every(isInfoClause)) return false;
-  return !clauses.some(({ tokens }) => asksForAction(tokens));
+  const contentClauses = lines.flatMap(lineClauses).filter(({ tokens }) => isContentClause(tokens));
+  return contentClauses.length > 0 && contentClauses.every(({ tokens, asked }) => isInfoQuestion(tokens, asked));
 }
