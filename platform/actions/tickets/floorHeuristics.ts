@@ -219,6 +219,8 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'wants', 'needs', 'wanted', 'needed', 'wanna', 'room', 'space',
   'quiere', 'quieren', 'queremos', 'necesita', 'necesitan', 'necesitamos', 'lugar', 'hueco',
   'coming', 'stopping', 'drop', 'swing',
+  'broken', 'broke', 'leak', 'leaking', 'stopped', 'overcharged', 'twice', 'waiting', 'waited', 'never', 'terrible',
+  'funciona', 'roto', 'rota', 'descompuesto', 'esperando',
 ]);
 
 /**
@@ -227,6 +229,7 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
  */
 export const ACTION_PHRASES: readonly string[] = [
   'work me in', 'fit me in', 'squeeze me in', 'anything open', 'anything available', 'algo disponible',
+  'where is my', 'wheres my', 'donde esta mi',
 ];
 
 /** Subjects and modals before "do" when it is a verb ("can she do my nails"), not an auxiliary ("what do you charge"). */
@@ -293,6 +296,8 @@ const SCHEDULE_QUESTION_WORDS: ReadonlySet<string> = new Set([
 
 const isActionToken = (tokens: readonly string[], i: number): boolean => {
   const token = tokens[i];
+  // "a cut" / "the cut" is the service asked about ("how much for a cut"), not "cut my hair".
+  if (token === 'cut' && (tokens[i - 1] === 'a' || tokens[i - 1] === 'the')) return false;
   if (ACTION_WORDS.has(token)) return true;
   if (token === 'do') return DO_SUBJECTS.has(tokens[i - 1]);
   if (isNamingLlam(token, tokens[i - 1])) return false;
@@ -342,6 +347,15 @@ export const INFO_WORDS: ReadonlySet<string> = new Set([
   'precios', 'cuesta', 'cuanto', 'cobran', 'servicios', 'ofrecen', 'donde', 'direccion', 'ubicados',
 ]);
 
+/** "Work" info words that report a fault, not a schedule, after a negation ("my heater isn't working", "no trabaja"). */
+const WORK_WORDS: ReadonlySet<string> = new Set(['work', 'works', 'working', 'trabaja', 'trabajan']);
+const NEGATIONS: ReadonlySet<string> = new Set(['not', 'isnt', 'doesnt', 'dont', 'wont', 'stopped', 'no', 'nunca']);
+
+/** An INFO_WORDS word, unless it is a work word within 2 tokens after a negation. */
+const isInfoTokenAt = (tokens: readonly string[], i: number): boolean =>
+  INFO_WORDS.has(tokens[i]) &&
+  !(WORK_WORDS.has(tokens[i]) && tokens.slice(Math.max(0, i - 2), i).some((token) => NEGATIONS.has(token)));
+
 /** What the runtime saw on the call, beside the caller's lines. */
 export interface FloorCallSignals {
   /** How the call ended (callOutcome.ts); only 'caller_hangup' can skip the floor. */
@@ -370,7 +384,7 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   const clauses = lines
     .flatMap((line) => line.replace(MERIDIEM, '$1m').split(CLAUSE_BREAK))
     .map(normalizeTokens);
-  const isInfoClause = (tokens: string[]) => tokens.some((token) => INFO_WORDS.has(token));
+  const isInfoClause = (tokens: string[]) => tokens.some((_, i) => isInfoTokenAt(tokens, i));
   const contentClauses = clauses.filter(isContentClause);
   if (contentClauses.length === 0 || !contentClauses.every(isInfoClause)) return false;
   return !clauses.some(asksForAction);

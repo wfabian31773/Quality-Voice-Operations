@@ -860,6 +860,35 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     expect(tickets.state.tickets).toHaveLength(0);
   });
 
+  // A problem report that holds an info word ("working", "charge", "service", "where", "hours") is not an info question.
+  it.each([
+    ["My heater isn't working."],
+    ["The gate code doesn't work."],
+    ['Mi calentador no trabaja.'],
+    ['Why did you charge me twice?'],
+    ['The service was terrible.'],
+    ['Where is my technician?'],
+    ["I've been waiting two hours for the tech."],
+    ['¿Cuál es su horario?', 'No funciona'],
+    ['Está roto'],
+  ])('an answered call with a problem report ("%s") → filed', async (...callerLines) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
+    expect(tickets.state.tickets[0].subject).toBe(FLOOR_SUBJECT);
+  });
+
+  it.each([
+    ['What are your hours?'],
+    ['Do you work Saturdays?'],
+    ['What services do you offer?'],
+    ['Where are you located?'],
+    ['How much do you charge for a cut?'],
+  ])('a pure info question ("%s") → still answered_info', async (line) => {
+    const { tickets, floor } = setup();
+    expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toEqual({ filed: false, reason: 'answered_info' });
+    expect(tickets.state.tickets).toHaveLength(0);
+  });
+
   it('a callback number read in digit groups → filed', async () => {
     const { tickets, floor } = setup();
     const callerLines = ['My number is 555 201 3344, what are your hours?'];
