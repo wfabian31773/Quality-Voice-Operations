@@ -803,6 +803,18 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['Do you have any room tomorrow?'],
     ['Where are you located and is there any room'],
     ['Where are you located and do you have space'],
+    // "work" / "open" are info words, but these ask for a booking.
+    ['Can you work me in today?'],
+    ['Can you fit me in this afternoon? What are your hours?'],
+    ['Could you squeeze me in? What time do you close?'],
+    ['Do you have anything open tomorrow?'],
+    ['Do you have anything available? What are your hours?'],
+    ["Are you open today because I'm coming in"],
+    ['Are you open Saturday? I might be stopping by.'],
+    ["What time do you close? I'll drop in."],
+    ['Are you open tonight? I could swing by.'],
+    ['¿Tienen algo disponible hoy?'],
+    ['¿Me pueden atender hoy?'],
   ])('an answered info call where someone wants it or asks for room ("%s") → filed', async (line) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines: [line] }))).toMatchObject({ filed: true, reason: 'filed' });
@@ -816,6 +828,11 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['a clock time', ['Can Marco take me at 3? What are your prices?']],
     ['a time with p.m.', ['Can Marco take me 4 p.m.? What are your prices?']],
     ['a las', ['¿Me atienden a las cinco? ¿Cuánto cuesta?']],
+    ['today', ['How much is a fade today?']],
+    ['hoy', ['¿Cuánto cuesta un corte hoy?']],
+    ['this afternoon', ['How much is a fade this afternoon?']],
+    ['esta tarde', ['¿Cuánto cuesta un corte esta tarde?']],
+    ['next week', ['What are your prices next week?']],
   ])('a caller who names %s with no action word → filed', async (_label, callerLines) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines }))).toMatchObject({ filed: true, reason: 'filed' });
@@ -830,6 +847,13 @@ describe('tickets.file_floor end reason and answered info calls', () => {
     ['staff days, then thanks', ['Does Marco work Saturdays? Thanks!']],
     ['hours asked as "can you tell me"', ['Can you tell me your hours on Saturday?']],
     ['a location after a Spanish introduction', ['Hola, me llamo Ana, ¿dónde están ubicados?']],
+    ['hours', ['What are your hours?']],
+    ['opening time', ['What time do you open?']],
+    ['open on a weekday', ['Are you open on Sunday?']],
+    // Like "close today": a day inside an hours question is part of the question.
+    ['open today', ['Are you open today?']],
+    ['open this weekend', ['Are you open this weekend?']],
+    ['abren hoy', ['¿Abren hoy?']],
   ])('a pure info call about %s → still answered_info', async (_label, callerLines) => {
     const { tickets, floor } = setup();
     expect(data(await floor({ ...INFO_CALL, callerLines }))).toEqual({ filed: false, reason: 'answered_info' });

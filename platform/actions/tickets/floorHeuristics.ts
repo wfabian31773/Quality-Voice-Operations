@@ -218,7 +218,16 @@ export const ACTION_WORDS: ReadonlySet<string> = new Set([
   'take', 'cut', 'sign', 'see', 'atender', 'atienden', 'atiende', 'pasar', 'ir', 'venir', 'cortar',
   'wants', 'needs', 'wanted', 'needed', 'wanna', 'room', 'space',
   'quiere', 'quieren', 'queremos', 'necesita', 'necesitan', 'necesitamos', 'lugar', 'hueco',
+  'coming', 'stopping', 'drop', 'swing',
 ]);
+
+/**
+ * Booking phrases built on info words ("work", "open"), so they count even in
+ * an hours question: "can you work me in today", "anything open tomorrow".
+ */
+export const ACTION_PHRASES: readonly string[] = [
+  'work me in', 'fit me in', 'squeeze me in', 'anything open', 'anything available', 'algo disponible',
+];
 
 /** Subjects and modals before "do" when it is a verb ("can she do my nails"), not an auxiliary ("what do you charge"). */
 const DO_SUBJECTS: ReadonlySet<string> = new Set(['i', 'you', 'he', 'she', 'they', 'we', 'can', 'could', 'would', 'will']);
@@ -259,9 +268,18 @@ const isNamingLlam = (token: string, before: string | undefined): boolean =>
 /** Weekdays and relative days (EN/ES). "mañana" is "manana" after normalization. */
 export const DAY_WORDS: ReadonlySet<string> = new Set([
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-  'mondays', 'tuesdays', 'wednesdays', 'thursdays', 'fridays', 'saturdays', 'sundays', 'tomorrow', 'tonight',
-  'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'sabados', 'domingo', 'domingos', 'manana',
+  'mondays', 'tuesdays', 'wednesdays', 'thursdays', 'fridays', 'saturdays', 'sundays', 'tomorrow', 'tonight', 'today',
+  'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'sabados', 'domingo', 'domingos', 'manana', 'hoy',
 ]);
+
+/** Multi-word relative days (EN/ES), treated like DAY_WORDS. */
+export const DAY_PHRASES: readonly string[] = [
+  'this morning', 'this afternoon', 'this evening', 'this weekend', 'next week',
+  'esta tarde', 'esta noche', 'este fin de semana', 'la proxima semana',
+];
+
+/** True when the phrase appears as a whole token run in the clause. */
+const hasPhrase = (tokens: readonly string[], phrase: string): boolean => ` ${tokens.join(' ')} `.includes(` ${phrase} `);
 
 /**
  * Words that make a clause a question about when the shop or a stylist works
@@ -296,14 +314,16 @@ const isTimeAt = (tokens: readonly string[], i: number): boolean => {
 
 /**
  * True when a clause asks for something the shop has to act on: an action
- * word or stem, a request shape, a clock time, or a day. Info-only callers
- * rarely name a day or a time, so either keeps the ticket. A day in an
- * hours / staff-days question is ignored; answeredInfoOnly only gets here
- * when every content clause of the call is an info question.
+ * word, stem or phrase, a request shape, a clock time, or a day. Info-only
+ * callers rarely name a day or a time, so either keeps the ticket. A day in an
+ * hours / staff-days question is ignored ("are you open today" skips like
+ * "what time do you close today"); answeredInfoOnly only gets here when every
+ * content clause of the call is an info question.
  */
 function asksForAction(tokens: readonly string[]): boolean {
-  if (isRequestShaped(tokens)) return true;
+  if (isRequestShaped(tokens) || ACTION_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
   const ignoreDay = tokens.some((token) => SCHEDULE_QUESTION_WORDS.has(token));
+  if (!ignoreDay && DAY_PHRASES.some((phrase) => hasPhrase(tokens, phrase))) return true;
   return tokens.some(
     (token, i) => isActionToken(tokens, i) || isTimeAt(tokens, i) || (!ignoreDay && DAY_WORDS.has(token)),
   );
