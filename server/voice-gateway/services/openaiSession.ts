@@ -1957,6 +1957,8 @@ export async function createRealtimeSession(
     t.on('input_audio_buffer.speech_started', () => {
       silenceWatchdog.callerSpeechStarted();
       holdLine.callerSpeechStarted();
+      // Their words may never be transcribed: an earlier answer no longer counts.
+      invariants.callerSpeechStarted();
     });
     t.on('input_audio_buffer.speech_stopped', () => {
       silenceWatchdog.callerSpeechStopped();

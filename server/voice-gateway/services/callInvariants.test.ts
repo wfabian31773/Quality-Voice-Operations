@@ -582,6 +582,69 @@ describe('floor at teardown', () => {
     expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
   });
 
+  it('the caller starts speaking after an answer and hangs up before it is transcribed → not answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine and close at seven.');
+    inv.callerSpeechStarted();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: caller speech before the mark echoes keeps the answer from counting', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    inv.callerSpeechStarted();
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('an answer after the caller speech is transcribed counts again', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    inv.callerSpeechStarted();
+    inv.callerTranscribed('And on Sunday?');
+    inv.agentTurnCompleted('We are closed on Sunday.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each(['Sorry, could you repeat that?', '¿Perdón, puede repetir?', 'One moment.'])(
+    'an answer, then "%s" after untranscribed speech → not answered',
+    async (followUp) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted('We open at nine and close at seven.');
+      inv.agentTurnCompleted(followUp);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it.each(['Anything else?', '¿Algo más?', 'Is there anything else I can help you with today?'])(
+    'a pure courtesy closer ("%s") after an answer keeps it answered',
+    async (closer) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted('We open at nine and close at seven.');
+      inv.agentTurnCompleted(closer);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+    },
+  );
+
+  it('a tool name past the floor limit is truncated before it reaches the floor', async () => {
+    const { inv, tool, runFloorAction } = make();
+    const long = `x${'y'.repeat(300)}`;
+    await tool(long, {});
+    await inv.evaluateFloor();
+    const tools = (runFloorAction.mock.calls[0][1] as { tools: Array<{ name: string; ok: boolean }> }).tools;
+    expect(tools).toEqual([{ name: long.slice(0, 128), ok: false }]);
+  });
+
   it('a read still running after the settle wait leaves the tool list out, so the floor cannot skip', async () => {
     const { inv, handler, tool, runFloorAction } = make({ toolSettleMs: 10 });
     inv.callerTranscribed('What are your hours on Saturday?');

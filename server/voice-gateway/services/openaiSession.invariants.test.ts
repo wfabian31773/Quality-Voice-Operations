@@ -271,6 +271,16 @@ describe('floor through the session', () => {
     expect(h.runAction.mock.calls[0][2]).toMatchObject({ answered: true });
   });
 
+  it('caller speech that starts after an answer but is never transcribed → not answered', async () => {
+    const { result, transport, callerSays, agentSays } = await startCall();
+    callerSays('What are your hours?');
+    agentSays('We open at nine and close at seven.');
+    transport.emit('input_audio_buffer.speech_started', { type: 'input_audio_buffer.speech_started' });
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ answered: false });
+  });
+
   it('twilio_mark mode: an answer whose transcript completed but whose mark never echoed → not answered', async () => {
     const { result, transport, callerSays, agentSays } = await startCall({ playbackConfirm: 'twilio_mark' });
     callerSays('What are your hours?');

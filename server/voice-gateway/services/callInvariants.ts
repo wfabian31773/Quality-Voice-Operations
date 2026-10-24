@@ -63,6 +63,7 @@ import {
   type FileFloorInput,
   type FileFloorOutput,
 } from '../../../platform/actions/tickets';
+import { FLOOR_MAX_TOOL_NAME_LENGTH } from '../../../platform/actions/tickets/floor';
 import type { CallOutcome } from './callOutcome';
 import { envSmsSendConfig } from '../../../platform/actions/sms/deps';
 import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
@@ -112,6 +113,11 @@ function platformActionName(toolName: string): string | undefined {
   if (getAction(toolName)) return toolName;
   externalNames ??= assignExternalToolNames(listActions().map((def) => def.name));
   return actionNameFromExternal(toolName, externalNames);
+}
+
+/** A tool run's name as the floor gets it: the platform action name, capped at the floor's limit. */
+function floorToolName(toolName: string): string {
+  return (platformActionName(toolName) ?? toolName).slice(0, FLOOR_MAX_TOOL_NAME_LENGTH);
 }
 
 /** The two-phase platform action behind a tool name. */
@@ -176,6 +182,12 @@ const HOLDING_LINES: readonly RegExp[] = [
 export function isHoldingLine(text: string): boolean {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   return HOLDING_LINES.some((pattern) => pattern.test(lower));
+}
+
+/** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
+function isOnlyCourtesyCloser(text: string): boolean {
+  const sentences = text.trim().split(/(?<=[.!?…])\s+/).filter(Boolean);
+  return sentences.length > 0 && sentences.every(isCourtesyCloser);
 }
 
 /** A sentence that only offers more help: "Anything else I can help with?", "¿Le puedo ayudar en algo más?". */
@@ -421,6 +433,16 @@ export class CallInvariants {
     }
   }
 
+  /**
+   * Server VAD heard the caller start speaking. Their words may never be
+   * transcribed (they hang up first), so an earlier answer no longer covers
+   * their last line.
+   */
+  callerSpeechStarted(): void {
+    this.answered = false;
+    this.answerAwaitingPlayback = false;
+  }
+
   /** An agent turn's transcript completed: SAY (observe-only), then the pending result counts as voiced. */
   agentTurnCompleted(text: string): void {
     if (text.trim()) {
@@ -431,8 +453,13 @@ export class CallInvariants {
         sayObservedTotals.set(said.rule, (sayObservedTotals.get(said.rule) ?? 0) + 1);
         this.init.log.info('invariant_say_observed', { rule: said.rule, count });
       }
-      // A clarifying question or a holding line never sets answered.
-      this.answerAwaitingPlayback = !isAgentQuestion(text) && !isHoldingLine(text);
+      // A clarifying question or a holding line never sets answered, and clears
+      // an earlier one ("Sorry, could you repeat that?" after speech that was
+      // never transcribed). A pure courtesy closer keeps it.
+      const question = isAgentQuestion(text);
+      const holding = isHoldingLine(text);
+      if (holding || (question && !isOnlyCourtesyCloser(text))) this.answered = false;
+      this.answerAwaitingPlayback = !question && !holding;
       if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);
@@ -485,7 +512,7 @@ export class CallInvariants {
     const run: RunRequest = { action: name, kind, confirmationToken: confirmationTokenOf(args), args };
     const gate = await this.gate(run);
     if (!gate.ok) {
-      this.toolRuns.push({ name: platformActionName(name) ?? name, ok: false });
+      this.toolRuns.push({ name: floorToolName(name), ok: false });
       return this.blocked(name, gate);
     }
 
@@ -515,7 +542,9 @@ export class CallInvariants {
   /**
    * END for a model-initiated hangup. The floor runs first if it hasn't, so
    * the call is never refused for it; an unvoiced tool result returns the
-   * instruction so she speaks it before hanging up.
+   * instruction so she speaks it before hanging up. By design this floor
+   * always files when nothing else was: its end reason is not caller_hangup,
+   * so answered_info never skips an agent-initiated end.
    */
   async beforeAgentEnd(): Promise<CheckResult> {
     let result = checkEnd(this.state, 'agent_goodbye');
@@ -543,7 +572,7 @@ export class CallInvariants {
       confirmationToken: run.kind === 'commit' ? run.confirmationToken : undefined,
     });
     this.history = appendRun(this.history, run, ok);
-    this.toolRuns.push({ name: platformActionName(name) ?? name, ok });
+    this.toolRuns.push({ name: floorToolName(name), ok });
     if (ok && (run.kind === 'write' || run.kind === 'commit' || run.kind === 'transfer')) this.filedByTool = true;
     if (ok && run.kind === 'prepare') {
       const token = confirmationTokenOf(parsed);
