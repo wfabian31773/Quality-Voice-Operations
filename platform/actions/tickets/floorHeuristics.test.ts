@@ -21,11 +21,18 @@ describe('answeredInfoOnly', () => {
     ['Do you have parking?'],
     ['Is brake service available?'],
     ['Is an oil change available?'],
-    ['Hi this is Maria', 'what are your hours, please?', 'Okay, thanks, bye'],
+    ['Hi this is Maria', 'what are your hours, please?', 'Thanks, bye'],
     ['What days does Marco work?'],
     ['Does Lisa work on the weekend?'],
-    ['Is Marco in right now?'],
     ['No, thanks. What time do you close?'],
+    ['Yes. What are your hours?'],
+    ['Hi, yes, what are your hours?'],
+    ['What are your hours?', 'No.'],
+    ['¿Están cerrados hoy?'],
+    ['¿Cuándo abren?'],
+    ['Cuándo abren.'],
+    ['Do you do tire rotations?'],
+    ['Is tire service available?'],
     ['¿Hacen alineaciones?'],
     ['¿Hacen cambio de aceite?'],
     ['¿Dónde queda?'],
@@ -151,6 +158,70 @@ describe('answeredInfoOnly', () => {
     ['Is 10:30 available?'],
     ['Do you have 10:30?'],
   ])('files what the review traced as skipping ("%s")', (...lines) => {
+    expect(skips(...lines)).toBe(false);
+  });
+
+  // Inputs the second PR #153 review (at bc19a343) traced as skipping.
+  it.each([
+    // P1: problem words match by stem, so plurals and other forms file.
+    ['Do you do emergencies?'],
+    ['Do you guys do emergencies?'],
+    ['¿Hacen emergencias?'],
+    ['Do you do complaints?'],
+    ['Do you do flood cleanup?'],
+    ['¿Ofrecen inundaciones?'],
+    ['Do you do leaks?'],
+    ['Do you do damages?'],
+    ['¿Hacen quejas?'],
+    ['Do you do urgencies?'],
+    ['How much are problems?'],
+    // P2: come-out jobs in {S}, and "<word> service" in {SVC} is a closed list.
+    ['Do you do lockouts?'],
+    ['Do you do jump starts?'],
+    ['Do you do flat tires?'],
+    ['Do you do breakdowns?'],
+    ['Do you do accidents?'],
+    ['Do you do collisions?'],
+    ['Do you do burst pipes?'],
+    ['Do you do clogs?'],
+    ['Do you do outages?'],
+    ['¿Hacen choques?'],
+    ['¿Hacen domicilios?'],
+    ['Is mobile service available?'],
+    ['Is lockout service available?'],
+    ['Is emergency service available?'],
+    // P2: a month or holiday in the staff slot offers a booking time.
+    ['Does June work?'],
+    ['Does August work?'],
+    ['Does May work?'],
+    ['Does Thanksgiving work?'],
+    ['Does Christmas work?'],
+    ['¿Qué días trabaja Diciembre?'],
+    // P2: a Spanish yes/no without "¿?" reads the same as a statement.
+    ['Están cerrados hoy.'],
+    ['Están cerrados.'],
+    ['Están abiertos'],
+    ['Abren hoy.'],
+    ['Está abierto el taller.'],
+    // P3: the caller's own account, and replacement verbs like repair verbs.
+    ['How much is due?'],
+    ['How much is owed?'],
+    ['How much is outstanding?'],
+    ['How much is remaining?'],
+    ['How much does Juan owe?'],
+    ['¿Cuánto debo?'],
+    ['How much does replacing brakes cost?'],
+    ['¿Cuánto cuesta cambiar llantas?'],
+    ['¿Cuánto cuesta reemplazar los frenos?'],
+    // P3: asking for a person files, like "Is Lisa available?".
+    ['Is Lisa in?'],
+    ['Is Lisa working today?'],
+    ['Is Marco in right now?'],
+    // P3: a bare yes after the first clause may accept an offer.
+    ['Do you offer brake service?', 'Yes.'],
+    ['What are your hours?', 'Sí.'],
+    ['Hi this is Maria', 'what are your hours, please?', 'Okay, thanks, bye'],
+  ])('files what the second review traced as skipping ("%s")', (...lines) => {
     expect(skips(...lines)).toBe(false);
   });
 

@@ -215,7 +215,8 @@ const DAY_TOKEN = new RegExp(`^(?:${DAY})$`);
 /**
  * Template parts. {S} (a service) and {N} (a staff name) are the only open
  * slots; slotsAreValid checks them. {SVC} is a closed list of service names
- * for "is X available", where an open slot would take a person or a time.
+ * for "is X available", where an open slot would take a person, a time or a
+ * dispatch ("is lockout service available", "is mobile service available").
  */
 const SHAPE_PARTS: Readonly<Record<string, string>> = {
   YOU: '(?:you(?: guys| all)?|yall)',
@@ -225,9 +226,12 @@ const SHAPE_PARTS: Readonly<Record<string, string>> = {
   WHEN: `(?: (?:on |on the |this |next |right |el |los |este )?(?:${DAY}))?`,
   S: '(?<service>\\S+(?: \\S+){0,2})',
   SVC:
-    '(?<service>\\S+ service|oil changes?|brakes?|alignments?|tire rotations?|inspections?|haircuts?|detailing|manicures?|pedicures?)',
+    '(?<service>(?:brake|tire|oil|alignment|inspection|transmission|nail|hair) service|oil changes?|brakes?|alignments?|tire rotations?|inspections?|haircuts?|detailing|manicures?|pedicures?)',
   N: '(?<staff>\\S+)',
 };
+
+/** "abren hoy", "están cerrados", "está abierto el taller": a yes/no in Spanish, or a statement. */
+const SPANISH_OPEN_CLOSED = '(?:abren|cierran|estan abiertos|estan cerrados|esta abiert[oa] {TIENDA})(?: ustedes)?{WHEN}';
 
 const shape = (template: string) =>
   new RegExp(`^${template.replace(/\{(\w+)\}/g, (_, part: string) => SHAPE_PARTS[part])}$`);
@@ -237,6 +241,8 @@ const shape = (template: string) =>
  * normalized clause. Each starts with what the caller asks about the shop, so
  * "can you open the garage door" fits no hours shape ("are you open", "when do
  * you open"); a word left over after a shape means no match.
+ * "Is Marco in / working" is not here, like "is Marco available": it is
+ * usually the caller asking to speak to that person.
  */
 const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   // Hours: "what are your hours (on Saturday)", "what time do you close (today)", "are you open on Saturday".
@@ -245,15 +251,14 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
   '(?:are {YOU}|is {SHOP}) (?:open|closed|still open){WHEN}',
   '(?:how late|what time|until what time) (?:are {YOU}|is {SHOP}) open(?: until| till)?{WHEN}',
   'what days (?:are {YOU} open|do {YOU} work)',
-  // Staff days: "what days does Marco work", "does Marco work Saturdays", "is Marco in today".
+  // Staff days: "what days does Marco work", "does Marco work Saturdays".
   // {N} must be capitalized in the caller's own words (staffNameIsValid).
   '(?:what|which) days does {N} work',
   'does {N} work{WHEN}',
-  'is {N} (?:in|working){WHEN}',
-  // Horario: "¿a qué hora cierran?", "¿cuál es su horario?", "¿abren hoy?", "¿qué días trabaja Marco?".
+  // Horario: "¿a qué hora cierran?", "¿cuál es su horario?", "¿cuándo abren?", "¿qué días trabaja Marco?".
   '(?:a |hasta )?que hora (?:abren|cierran|abre|cierra)(?: ustedes| {TIENDA})?{WHEN}',
   '(?:cual es |cuales son |que )?(?:su |sus |el |los )?horarios?(?: de atencion| de trabajo)?(?: tienen)?{WHEN}',
-  '(?:cuando )?(?:abren|cierran|estan abiertos|estan cerrados|esta abiert[oa] {TIENDA})(?: ustedes)?{WHEN}',
+  `cuando ${SPANISH_OPEN_CLOSED}`,
   'que dias (?:abren|trabajan|estan abiertos)',
   'que dias trabaja {N}',
   // Location and contact: "where are you located", "where is the shop", "what's your phone number", "website".
@@ -282,6 +287,13 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
 ].map(shape);
 
 /**
+ * Shapes that read the same as a statement: "¿Están cerrados hoy?" and "Están
+ * cerrados hoy." differ only in the "¿?", so these match only a clause the
+ * caller's text marks with "?" or "¿".
+ */
+const MARKED_QUESTION_SHAPES: readonly RegExp[] = [SPANISH_OPEN_CLOSED].map(shape);
+
+/**
  * Closed-class words (articles, pronouns, prepositions, indefinites) and
  * availability nouns: never a service or a name, so "do you have anything
  * open", "how much is it" or "this is my booking" fits no slot.
@@ -301,46 +313,60 @@ const NOT_SLOT_WORDS: ReadonlySet<string> = new Set([
   'de', 'del', 'al', 'en', 'con', 'por', 'para', 'sin', 'sobre', 'y', 'o', 'que', 'quien',
   'alguien', 'algo', 'nada', 'nadie', 'todo', 'tiempo', 'espacio', 'espacios', 'lugar', 'lugares', 'cupo', 'cupos',
   'hueco', 'huecos', 'turno', 'turnos',
-  // The caller's own job or account: "how much is the bill", "how much is left".
-  'bill', 'balance', 'left', 'invoice', 'order', 'pedido',
+  // The caller's own job or account: "how much is the bill", "how much is left", "how much does Juan owe".
+  'bill', 'balance', 'left', 'invoice', 'order', 'pedido', 'due', 'owed', 'owe', 'owes', 'outstanding', 'remaining',
+  'debo', 'debe', 'debemos', 'deben', 'adeudo', 'adeuda',
 ]);
 
-/** Times of day and clock numbers (EN/ES): "does noon work" offers a booking time, it names no one. */
+/**
+ * Times of day, clock numbers, months and holidays (EN/ES): "does noon work" or
+ * "does June work" offers a booking time. A month that is also a name (June,
+ * May, April) files: the doubt goes to a ticket.
+ */
 const TIME_WORDS: ReadonlySet<string> = new Set([
   'noon', 'midnight', 'morning', 'mornings', 'afternoon', 'afternoons', 'evening', 'evenings', 'night', 'nights',
   'early', 'earlier', 'late', 'later', 'soon', 'sooner', 'anytime', 'oclock',
   'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november',
+  'december', 'christmas', 'xmas', 'thanksgiving', 'easter', 'halloween', 'valentines',
   'mediodia', 'medianoche', 'temprano', 'tarde', 'noche',
   'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce',
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre',
+  'noviembre', 'diciembre', 'navidad', 'nochebuena', 'nochevieja', 'pascua', 'pascuas',
 ]);
 
-/** People and vehicles (EN/ES): "do you offer a mechanic", "¿hacen grúa?" asks for someone or something to come out. */
+/**
+ * People, vehicles and come-out jobs (EN/ES): "do you offer a mechanic", "¿hacen
+ * grúa?", "do you do lockouts" asks for someone or something to come out.
+ */
 const ROLE_VEHICLE_WORDS: ReadonlySet<string> = new Set([
   'guy', 'man', 'men', 'person', 'people', 'mechanic', 'mechanics', 'electrician', 'electricians', 'locksmith',
   'locksmiths', 'manager', 'owner', 'boss', 'supervisor', 'staff', 'employee', 'employees', 'worker', 'workers',
-  'driver', 'drivers', 'truck', 'trucks', 'tow', 'towing', 'wrecker', 'van', 'roadside',
+  'driver', 'drivers', 'truck', 'trucks', 'tow', 'tows', 'towing', 'wrecker', 'van', 'roadside', 'mobile',
+  'lockout', 'lockouts', 'unlock', 'unlocks', 'jump', 'jumps', 'jumpstart', 'jumpstarts', 'flat', 'flats',
+  'breakdown', 'breakdowns', 'accident', 'accidents', 'collision', 'collisions', 'crash', 'crashes', 'burst',
+  'clog', 'clogs', 'outage', 'outages',
   'grua', 'gruas', 'electricista', 'electricistas', 'mecanico', 'mecanicos', 'cerrajero', 'cerrajeros', 'gerente',
   'dueno', 'duena', 'encargado', 'encargada', 'camion', 'chofer', 'persona', 'personal',
+  'choque', 'choques', 'domicilio', 'domicilios',
 ]);
 
 /**
  * Request and dispatch words (EN/ES stems): book, cancel, schedule, cita, call,
- * fix, repair, send, come, check, open, quote, need, want, a tech... In a slot
+ * fix, repair, replace, send, come, check, open, quote, need, want, a tech... In a slot
  * they make the clause a request ("how much is the repair", "¿cuánto cobran por venir?").
+ * "cambiar" is the verb only: "cambio de aceite" is a service.
  */
 const ACTION_SLOT_WORD =
-  /^(?:book\w*|appoint\w*|appts?|schedul\w*|resched\w*|cancel\w*|reserv\w*|citas?|agend\w*|call|calls|calling|callback|llam\w*|availab\w*|disponib\w*|fix\w*|repair\w*|arregl\w*|repar\w*|send\w*|sent|mand\w*|come|comes|coming|came|venir|veng\w*|check\w*|revis\w*|open\w*|abr\w*|clos\w*|cerr\w*|cierr\w*|instal\w*|visit\w*|quotes?|cotiz\w*|estimat\w*|presupuest\w*|dispatch\w*|need\w*|want\w*|quier\w*|quis\w*|necesit\w*|help\w*|ayud\w*|tech|techs|technicians?|tecnicos?|plumbers?|plomeros?)$/;
+  /^(?:book\w*|appoint\w*|appts?|schedul\w*|resched\w*|cancel\w*|reserv\w*|citas?|agend\w*|call|calls|calling|callback|llam\w*|availab\w*|disponib\w*|fix\w*|repair\w*|arregl\w*|repar\w*|replac\w*|reemplaz\w*|cambiar|send\w*|sent|mand\w*|come|comes|coming|came|venir|veng\w*|check\w*|revis\w*|open\w*|abr\w*|clos\w*|cerr\w*|cierr\w*|instal\w*|visit\w*|quotes?|cotiz\w*|estimat\w*|presupuest\w*|dispatch\w*|need\w*|want\w*|quier\w*|quis\w*|necesit\w*|help\w*|ayud\w*|tech|techs|technicians?|tecnicos?|plumbers?|plomeros?)$/;
 
-/** Problem and complaint words (EN/ES). One anywhere in the caller's lines files the call. */
-const PROBLEM_WORDS: ReadonlySet<string> = new Set([
-  'broken', 'broke', 'leak', 'leaks', 'leaking', 'leaky', 'damaged', 'damage', 'flooded', 'flooding', 'stuck',
-  'not', 'isnt', 'doesnt', 'dont', 'wont', 'cant', 'didnt', 'arent', 'wasnt',
-  'problem', 'problems', 'issue', 'issues', 'urgent', 'emergency', 'important', 'complaint', 'terrible', 'wrong',
-  'unacceptable', 'ridiculous',
-  'roto', 'rota', 'rotos', 'rotas', 'danado', 'danada', 'fuga', 'gotea', 'goteando', 'inundado', 'atascado', 'atorado',
-  'descompuesto', 'descompuesta', 'falla', 'problema', 'problemas', 'urgente', 'emergencia', 'importante', 'queja',
-  'pesimo', 'mal', 'inaceptable',
-]);
+/**
+ * Problem and complaint words (EN/ES), by stem so plurals and verb forms match
+ * too ("emergencies", "emergencias", "complaints", "flood"). One anywhere in
+ * the caller's lines files the call.
+ */
+const PROBLEM_WORD =
+  /^(?:broke\w*|leak\w*|damag\w*|flood\w*|stuck|not|isnt|doesnt|dont|wont|cant|didnt|arent|wasnt|problem\w*|issues?|urgen\w*|emergenc\w*|important\w*|complain\w*|terribl\w*|wrong|unacceptabl\w*|ridicul\w*|rot[oa]s?|danad[oa]s?|fugas?|gote\w*|inund\w*|atascad[oa]s?|atorad[oa]s?|descompuest[oa]s?|fallas?|quej\w*|pesim[oa]s?|mal|inaceptables?)$/;
 /** Spanish "no ..." problems; "no" alone is filler ("no, gracias"). */
 const PROBLEM_PHRASES: readonly string[] = ['no funciona', 'no sirve', 'no prende', 'no enciende', 'no abre', 'no cierra'];
 
@@ -350,7 +376,7 @@ const hasPhrase = (tokens: readonly string[], phrase: string): boolean => ` ${to
 function hasProblemWord(lines: readonly string[]): boolean {
   return lines.some((line) => {
     const tokens = normalizeTokens(line);
-    return tokens.some((token) => PROBLEM_WORDS.has(token)) || PROBLEM_PHRASES.some((phrase) => hasPhrase(tokens, phrase));
+    return tokens.some((token) => PROBLEM_WORD.test(token)) || PROBLEM_PHRASES.some((phrase) => hasPhrase(tokens, phrase));
   });
 }
 
@@ -365,7 +391,7 @@ const isSlotWord = (token: string): boolean =>
   !TIME_WORDS.has(token) &&
   !ROLE_VEHICLE_WORDS.has(token) &&
   !ACTION_SLOT_WORD.test(token) &&
-  !PROBLEM_WORDS.has(token);
+  !PROBLEM_WORD.test(token);
 
 const isCapitalized = (rawToken: string) => /^\p{Lu}/u.test(rawToken);
 
@@ -389,11 +415,13 @@ function slotsAreValid(groups: Record<string, string | undefined> | undefined, r
 /**
  * True when one INFO_QUESTION_SHAPES shape consumes the whole clause and its
  * slots hold valid words. rawTokens are the clause's tokens in the caller's
- * original case; without them no staff-name shape can match.
+ * original case; without them no staff-name shape can match. marked says the
+ * caller's text puts "?" or "¿" on the clause; without it no
+ * MARKED_QUESTION_SHAPES shape can match.
  */
-export function isInfoQuestion(tokens: readonly string[], rawTokens: readonly string[] = []): boolean {
+export function isInfoQuestion(tokens: readonly string[], rawTokens: readonly string[] = [], marked = false): boolean {
   const clause = tokens.join(' ');
-  return INFO_QUESTION_SHAPES.some((re) => {
+  return [...INFO_QUESTION_SHAPES, ...(marked ? MARKED_QUESTION_SHAPES : [])].some((re) => {
     const match = re.exec(clause);
     return match !== null && slotsAreValid(match.groups, rawTokens);
   });
@@ -409,8 +437,14 @@ const EDGE_FILLER: readonly string[][] = [
   'thanks', 'bye', 'please', 'hola', 'bueno', 'gracias', 'adios', 'oye', 'pues', 'y', 'tambien',
 ].map(normalizeTokens);
 
-/** A yes or no that is the whole clause, before any trimming ("No, thanks." is dropped; "Yes please" is not). */
-const WHOLE_CLAUSE_YES_NO: ReadonlySet<string> = new Set(['yes', 'yeah', 'yep', 'no', 'si']);
+/** A no that is the whole clause, before any trimming, is dropped anywhere ("No, thanks."; "No please" is not). */
+const WHOLE_CLAUSE_NO: ReadonlySet<string> = new Set(['no']);
+/**
+ * A yes that is the whole clause is dropped only as the caller's first clause
+ * ("Sí. ¿Abren el sábado?"). Later it may accept an offer the agent made (a
+ * callback), so it stays a content clause and the call files.
+ */
+const WHOLE_CLAUSE_YES: ReadonlySet<string> = new Set(['yes', 'yeah', 'yep', 'si', 'ok', 'okay']);
 
 /** The [start, end) token range left once EDGE_FILLER is trimmed from both ends. */
 function edgeFillerBounds(tokens: readonly string[]): [number, number] {
@@ -435,19 +469,38 @@ function caseTokens(text: string): string[] {
     .filter(Boolean);
 }
 
-/** A caller clause: normalized tokens, and the same tokens in the caller's case (empty when they don't line up). */
+/**
+ * A caller clause: normalized tokens, the same tokens in the caller's case
+ * (empty when they don't line up), and whether the caller's text marks it a
+ * question ("¿" before it or "?" after it).
+ */
 interface Clause {
   tokens: string[];
   raw: string[];
+  marked: boolean;
 }
 
-function toClause(text: string): Clause {
+/** A line's clauses, split at CLAUSE_BREAK, with the "¿" / "?" around each one. */
+function splitClauses(line: string): Array<{ text: string; marked: boolean }> {
+  const parts = line.split(new RegExp(`(${CLAUSE_BREAK.source})`));
+  const clauses: Array<{ text: string; marked: boolean }> = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    clauses.push({ text: parts[i], marked: (parts[i - 1] ?? '').includes('¿') || (parts[i + 1] ?? '').includes('?') });
+  }
+  return clauses;
+}
+
+function toClause(text: string, marked: boolean, first: boolean): Clause {
   const tokens = normalizeTokens(text);
   const raw = caseTokens(text);
   const aligned = raw.length === tokens.length && raw.every((r, i) => r.toLowerCase() === tokens[i]);
-  if (tokens.length === 1 && WHOLE_CLAUSE_YES_NO.has(tokens[0])) return { tokens: [], raw: [] };
+  const whole = tokens.length === 1 ? tokens[0] : undefined;
+  if (whole !== undefined && (WHOLE_CLAUSE_NO.has(whole) || (first && WHOLE_CLAUSE_YES.has(whole)))) {
+    return { tokens: [], raw: [], marked };
+  }
+  if (whole !== undefined && WHOLE_CLAUSE_YES.has(whole)) return { tokens, raw: [], marked };
   const [start, end] = edgeFillerBounds(tokens);
-  return { tokens: tokens.slice(start, end), raw: aligned ? raw.slice(start, end) : [] };
+  return { tokens: tokens.slice(start, end), raw: aligned ? raw.slice(start, end) : [], marked };
 }
 
 /** Intros whose name is taken as said: "my name is Ana", "me llamo Ana", "soy Ana". */
@@ -503,7 +556,7 @@ export interface FloorCallSignals {
  * - the agent gave a real answer after the caller's last line (answered);
  * - every tool that ran is in INFO_TOOLS and returned ok (none is fine);
  * - the caller gave no callback number and used no problem word;
- * - every caller clause, once a lone yes/no is dropped, greetings and thanks
+ * - every caller clause, once a lone no (or a lone yes as the first clause) is dropped, greetings and thanks
  *   are trimmed and pure self-introductions dropped, is an allowlisted info
  *   question (isInfoQuestion), so any statement or request ("My car was
  *   damaged in your parking lot") files.
@@ -513,8 +566,18 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
   if (hasCallbackNumber(lines) || hasProblemWord(lines)) return false;
   const callerNameTokens = new Set(signals.callerName ? normalizeTokens(signals.callerName) : []);
+  // A yes is "first" while every earlier clause was only greetings or filler.
+  let first = true;
   const contentClauses = lines
-    .flatMap((line) => line.split(CLAUSE_BREAK).map(toClause))
+    .flatMap(splitClauses)
+    .map(({ text, marked }) => {
+      const clause = toClause(text, marked, first);
+      if (clause.tokens.length > 0 || WHOLE_CLAUSE_YES.has(normalizeTokens(text).join(' '))) first = false;
+      return clause;
+    })
     .filter((clause) => clause.tokens.length > 0 && !isIntroduction(clause, callerNameTokens));
-  return contentClauses.length > 0 && contentClauses.every((clause) => isInfoQuestion(clause.tokens, clause.raw));
+  return (
+    contentClauses.length > 0 &&
+    contentClauses.every((clause) => isInfoQuestion(clause.tokens, clause.raw, clause.marked))
+  );
 }
