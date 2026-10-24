@@ -5,7 +5,10 @@
 // message ticket carrying the caller's own lines. It is system-only: the agent,
 // users and MCP callers get FORBIDDEN.
 //
-// Rule order: never_heard → nothing_substantive → already_filed → filed.
+// Rule order: never_heard → nothing_substantive → answered_info → already_filed → filed.
+// answered_info: a pure information call the agent answered and the caller
+// ended (answeredInfoOnly in floorHeuristics.ts). A call the platform ended
+// (time limit, budget cap, dropped session) is still filed, with its own subject.
 // Idempotency: the runtime passes ctx.idempotencyKey = floorIdempotencyKey(callId);
 // runAction's idempotency store replays the first result for a retry, and the
 // already_filed check stops a second ticket even if the store entry is gone.
@@ -13,7 +16,7 @@
 import { z, type ZodType } from 'zod';
 import { actionFail, actionOk, defineAction, redactInput, type AnyActionDefinition } from '../core';
 import { decryptSensitiveField } from '../../security/FieldEncryption';
-import { saidMoreThanTheirOwnName } from './floorHeuristics';
+import { answeredInfoOnly, saidMoreThanTheirOwnName } from './floorHeuristics';
 import type { TicketsRepoFactory } from './repo';
 import { priorityFor, resolveSla } from './sla';
 
@@ -21,6 +24,38 @@ export const FILE_FLOOR = 'tickets.file_floor';
 
 /** One subject for every language; the details hold the caller's own words. */
 export const FLOOR_SUBJECT = 'Caller hung up before finishing';
+
+/** How the call ended: the runtime's call end outcome (server/voice-gateway/services/callOutcome.ts CALL_OUTCOMES). */
+export const FLOOR_END_REASONS = [
+  'caller_hangup',
+  'agent_ended',
+  'completed',
+  'dead_air',
+  'never_heard',
+  'max_duration',
+  'provider_failure',
+] as const;
+export type FloorEndReason = (typeof FLOOR_END_REASONS)[number];
+
+/** Subjects for a call the platform, not the caller, ended. */
+export const TIME_LIMIT_SUBJECT = 'Call ended by time limit before finishing';
+export const SYSTEM_END_SUBJECT = 'Call ended by the system before finishing';
+const SYSTEM_END_NOTE = 'The call was ended by the system, not by the caller. Please call them back.';
+
+/** End reasons the platform caused: their subject and the note put above the caller's lines. */
+const SYSTEM_ENDS: Partial<Record<FloorEndReason, { subject: string; note: string }>> = {
+  max_duration: {
+    subject: TIME_LIMIT_SUBJECT,
+    note: 'The call reached the time limit and was ended by the system, not by the caller. Please call them back.',
+  },
+  agent_ended: { subject: SYSTEM_END_SUBJECT, note: SYSTEM_END_NOTE },
+  provider_failure: { subject: SYSTEM_END_SUBJECT, note: SYSTEM_END_NOTE },
+  never_heard: { subject: SYSTEM_END_SUBJECT, note: SYSTEM_END_NOTE },
+  dead_air: { subject: SYSTEM_END_SUBJECT, note: SYSTEM_END_NOTE },
+};
+
+export const FLOOR_MAX_TOOLS = 100;
+export const FLOOR_MAX_TOOL_NAME_LENGTH = 128;
 
 export const FLOOR_MAX_LINES = 50;
 export const FLOOR_MAX_LINE_LENGTH = 500;
@@ -104,6 +139,14 @@ export function floorAuditRawInput(raw: unknown): Record<string, unknown> {
   }
   if (typeof input.callerName === 'string') copy.callerName = redactCallerName(input.callerName);
   if (input.language === 'en' || input.language === 'es') copy.language = input.language;
+  if ((FLOOR_END_REASONS as readonly unknown[]).includes(input.endReason)) copy.endReason = input.endReason;
+  if (typeof input.answered === 'boolean') copy.answered = input.answered;
+  if (Array.isArray(input.tools)) {
+    copy.tools = input.tools
+      .filter((tool): tool is { name: string; ok: unknown } => typeof tool?.name === 'string')
+      .slice(0, FLOOR_MAX_TOOLS)
+      .map((tool) => ({ name: tool.name.slice(0, FLOOR_MAX_TOOL_NAME_LENGTH), ok: tool.ok === true }));
+  }
   return copy;
 }
 
@@ -129,20 +172,28 @@ export const fileFloorInput = z
     callerLines: z.array(z.string().max(FLOOR_MAX_LINE_LENGTH)).max(FLOOR_MAX_LINES),
     callerName: z.string().trim().max(FLOOR_MAX_NAME_LENGTH).optional(),
     language: z.enum(['en', 'es']).optional(),
+    // Call signals for answered_info and the subject. All optional: a missing one never skips the floor.
+    endReason: z.enum(FLOOR_END_REASONS).optional(),
+    tools: z
+      .array(z.object({ name: z.string().max(FLOOR_MAX_TOOL_NAME_LENGTH), ok: z.boolean() }).strict())
+      .max(FLOOR_MAX_TOOLS)
+      .optional(),
+    answered: z.boolean().optional(),
   })
   .strict()
   .transform((input) => ({
     ...input,
     substantive: saidMoreThanTheirOwnName(nonBlank(input.callerLines), input.callerName),
+    answeredInfo: answeredInfoOnly(nonBlank(input.callerLines), input),
     callerLines: redactCallerLines(input.callerLines),
     ...(input.callerName === undefined ? {} : { callerName: redactCallerName(input.callerName) }),
   }));
 /** What the runtime sends. */
 export type FileFloorInput = z.input<typeof fileFloorInput>;
-/** The parsed input `run()` sees: redacted lines plus the raw-line `substantive` verdict. */
+/** The parsed input `run()` sees: redacted lines plus the raw-line `substantive` and `answeredInfo` verdicts. */
 type FileFloorParsed = z.output<typeof fileFloorInput>;
 
-export const FLOOR_REASONS = ['filed', 'nothing_substantive', 'already_filed', 'never_heard'] as const;
+export const FLOOR_REASONS = ['filed', 'nothing_substantive', 'answered_info', 'already_filed', 'never_heard'] as const;
 
 export const fileFloorOutput = z.object({
   filed: z.boolean(),
@@ -187,7 +238,7 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
     tool: 'tickets',
     kind: 'write',
     // Core types `input` as ZodType<I>, which assumes the parsed shape equals the
-    // sent shape. This transform adds `substantive`, so widen it here (core is out of scope).
+    // sent shape. This transform adds `substantive` and `answeredInfo`, so widen it here (core is out of scope).
     input: fileFloorInput as unknown as ZodType<FileFloorParsed>,
     output: fileFloorOutput,
     // No roles, no agent, no MCP scope: only a system actor passes checkPermission.
@@ -207,6 +258,7 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
       const lines = nonBlank(input.callerLines);
       if (lines.length === 0) return actionOk({ filed: false, reason: 'never_heard' as const });
       if (!input.substantive) return actionOk({ filed: false, reason: 'nothing_substantive' as const });
+      if (input.answeredInfo) return actionOk({ filed: false, reason: 'answered_info' as const });
 
       const repo = deps.repo(tx, ctx.tenantId);
       if (await repo.hasCallArtifact(input.callId)) return actionOk({ filed: false, reason: 'already_filed' as const });
@@ -216,10 +268,12 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
       const urgency = 'normal' as const;
       const priority = priorityFor(urgency);
       const { dueAt, instance } = await resolveSla(repo, settings.callbackSlaMinutes, priority, ctx.now);
+      const systemEnd = input.endReason ? SYSTEM_ENDS[input.endReason] : undefined;
+      const details = redactCallerText(lines.join('\n'));
       const ticket = await repo.insert({
         kind: 'message',
-        subject: FLOOR_SUBJECT,
-        description: redactCallerText(lines.join('\n')),
+        subject: systemEnd?.subject ?? FLOOR_SUBJECT,
+        description: systemEnd ? `${systemEnd.note}\n\n${details}` : details,
         contactName: input.callerName ?? '',
         contactPhone: phone ?? '',
         urgency,
@@ -243,6 +297,7 @@ export function createFloorAction(deps: FloorActionDeps): AnyActionDefinition {
           actor: ctx.actor.type,
           floor: true,
           lines: lines.length,
+          ...(input.endReason ? { endReason: input.endReason } : {}),
           ...(input.language ? { language: input.language } : {}),
         },
         now: ctx.now,

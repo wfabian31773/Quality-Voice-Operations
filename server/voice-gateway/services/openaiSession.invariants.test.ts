@@ -251,8 +251,24 @@ describe('floor through the session', () => {
       callId: 'cs-invariants',
       idempotencyKey: 'call-cs-invariants-floor',
     });
-    expect(input).toEqual({ callId: 'cs-invariants', callerLines: ['Hi, this is Dana, I need a fade Friday at nine'], language: 'en' });
+    expect(input).toEqual({
+      callId: 'cs-invariants',
+      callerLines: ['Hi, this is Dana, I need a fade Friday at nine'],
+      language: 'en',
+      tools: [],
+      answered: true,
+    });
     expect(consoleLines.some((line) => line.includes('floor_evaluated') && line.includes('filed'))).toBe(true);
+  });
+
+  it('the floor gets the recorded call end outcome as its end reason (max_duration)', async () => {
+    const { result, callerSays, agentSays } = await startCall();
+    agentSays('Thanks for calling Sharp Line Barbers.');
+    callerSays('Hi, this is Dana, I need a fade Friday at nine');
+    result.recordCallOutcome('max_duration');
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ endReason: 'max_duration', answered: false });
   });
 
   it('a tool that finishes right before the hangup: its rows are written before the floor reads the call', async () => {

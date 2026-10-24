@@ -22,7 +22,9 @@
  *   the system actor, bounded in time, and never throws. The action decides
  *   never_heard / nothing_substantive / already_filed / filed; the runtime only
  *   skips it when a write or transfer tool on this call returned ok, because
- *   hasCallArtifact can't see every legacy write.
+ *   hasCallArtifact can't see every legacy write. It also sends the call end
+ *   outcome, the tools run and whether the agent answered the caller's last
+ *   line, for the action's answered_info rule and its subject.
  */
 import {
   appendRun,
@@ -54,7 +56,14 @@ import {
   type ActionResult,
   type ExternalToolNames,
 } from '../../../platform/actions';
-import { FILE_FLOOR, floorIdempotencyKey, type FileFloorInput, type FileFloorOutput } from '../../../platform/actions/tickets';
+import {
+  FILE_FLOOR,
+  FLOOR_MAX_TOOLS,
+  floorIdempotencyKey,
+  type FileFloorInput,
+  type FileFloorOutput,
+} from '../../../platform/actions/tickets';
+import type { CallOutcome } from './callOutcome';
 import { envSmsSendConfig } from '../../../platform/actions/sms/deps';
 import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
@@ -98,12 +107,16 @@ export function isTransferRequest(toolName: string, args: Record<string, unknown
 
 let externalNames: ExternalToolNames | undefined;
 
-/** The two-phase platform action behind a tool name (its action name, or the sanitized external name). */
-function platformActionKind(toolName: string): ActionKind | undefined {
-  const direct = getAction(toolName);
-  if (direct) return direct.kind;
+/** The platform action name behind a tool name (its action name, or the sanitized external name). */
+function platformActionName(toolName: string): string | undefined {
+  if (getAction(toolName)) return toolName;
   externalNames ??= assignExternalToolNames(listActions().map((def) => def.name));
-  const name = actionNameFromExternal(toolName, externalNames);
+  return actionNameFromExternal(toolName, externalNames);
+}
+
+/** The two-phase platform action behind a tool name. */
+function platformActionKind(toolName: string): ActionKind | undefined {
+  const name = platformActionName(toolName);
   return name ? getAction(name)?.kind : undefined;
 }
 
@@ -234,6 +247,12 @@ export interface CallInvariantsInit {
    * so every row a tool queued is written before the floor reads the call.
    */
   beforeFloor?: () => Promise<unknown>;
+  /**
+   * The call end outcome recorded so far (callOutcome.ts), read when the
+   * floor runs. Phone teardown records it first, so the floor can tell a
+   * caller hangup from a time-limit or system end.
+   */
+  endReason?: () => CallOutcome | null;
 }
 
 /** Process-wide SAY observations by rule, for metrics. */
@@ -266,6 +285,10 @@ export class CallInvariants {
   private readonly sayCounts = new Map<RuleId, number>();
   /** A write, commit or transfer tool returned ok on this call (legacy writes hasCallArtifact may not see). */
   private filedByTool = false;
+  /** Every tool run on the call, by platform action name when it has one; a blocked run is not ok. */
+  private readonly toolRuns: Array<{ name: string; ok: boolean }> = [];
+  /** The agent finished a turn after the caller's last line. */
+  private answered = false;
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
@@ -317,6 +340,7 @@ export class CallInvariants {
     if (!text.trim()) return;
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
+    this.answered = false;
     if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text)) {
       this.state = onExplicitYes(this.state, this.lastPreparedToken);
     }
@@ -332,6 +356,7 @@ export class CallInvariants {
         sayObservedTotals.set(said.rule, (sayObservedTotals.get(said.rule) ?? 0) + 1);
         this.init.log.info('invariant_say_observed', { rule: said.rule, count });
       }
+      this.answered = true;
     }
     this.state = onAgentSpoke(this.state);
     this.spokeSincePrepare = true;
@@ -363,7 +388,10 @@ export class CallInvariants {
   private async runTool(handler: ToolHandler, name: string, args: Record<string, unknown>, kind: ActionKind): Promise<string> {
     const run: RunRequest = { action: name, kind, confirmationToken: confirmationTokenOf(args), args };
     const gate = await this.gate(run);
-    if (!gate.ok) return this.blocked(name, gate);
+    if (!gate.ok) {
+      this.toolRuns.push({ name: platformActionName(name) ?? name, ok: false });
+      return this.blocked(name, gate);
+    }
 
     const callerName = callerNameFromArgs(args);
     if (callerName) this.callerName = callerName;
@@ -419,6 +447,7 @@ export class CallInvariants {
       confirmationToken: run.kind === 'commit' ? run.confirmationToken : undefined,
     });
     this.history = appendRun(this.history, run, ok);
+    this.toolRuns.push({ name: platformActionName(name) ?? name, ok });
     if (ok && (run.kind === 'write' || run.kind === 'commit' || run.kind === 'transfer')) this.filedByTool = true;
     if (ok && run.kind === 'prepare') {
       const token = confirmationTokenOf(parsed);
@@ -478,11 +507,16 @@ export class CallInvariants {
       idempotencyKey: floorIdempotencyKey(this.init.callId),
       ...(this.language ? { locale: this.language } : {}),
     };
+    const endReason = this.init.endReason?.();
     const input: FileFloorInput = {
       callId: this.init.callId,
       callerLines: this.callerLines.lines(),
       ...(this.callerName ? { callerName: this.callerName } : {}),
       ...(this.language ? { language: this.language } : {}),
+      ...(endReason ? { endReason } : {}),
+      // Past the cap the list is left out, which never lets the floor skip.
+      ...(this.toolRuns.length <= FLOOR_MAX_TOOLS ? { tools: [...this.toolRuns] } : {}),
+      answered: this.answered,
     };
     const result = await this.runFloor(ctx, input);
     if (!result.ok) {

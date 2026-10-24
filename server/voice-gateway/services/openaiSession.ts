@@ -1052,6 +1052,8 @@ export async function createRealtimeSession(
     log: slog,
     // Every write a tool queued lands before the floor decides.
     beforeFloor: () => bookkeeping.flush('floor'),
+    // Read at floor time; teardown has recorded the outcome by then.
+    endReason: () => callOutcome.outcome,
   });
 
   const isAzulVision = agentConfig.metadata?.practiceName === 'Azul Vision' || agentConfig.metadata?.practiceName === 'Azul Vision Eye Center';

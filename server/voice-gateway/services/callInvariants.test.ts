@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { INSTRUCTIONS, SUCCESS_RUN_CEILING } from '../../../platform/callcore/invariants';
 import { floorIdempotencyKey } from '../../../platform/actions/tickets';
 import type { ActionContext, ActionResult } from '../../../platform/actions';
+import type { CallOutcome } from './callOutcome';
 import {
   CallInvariants,
   END_CALL_TOOLS,
@@ -304,8 +305,25 @@ describe('floor at teardown', () => {
       callerLines: ['Hola, soy Dana', 'Necesito un corte el viernes a las nueve'],
       callerName: 'Dana Ruiz',
       language: 'es',
+      tools: [{ name: 'create_ticket', ok: false }],
+      answered: false,
     });
     expect(inv.facts.floorEvaluated).toBe(true);
+  });
+
+  it('sends the recorded end reason, the tools run and whether the agent answered the last line', async () => {
+    let endReason: CallOutcome | null = null;
+    const { inv, runFloorAction } = make({ endReason: () => endReason });
+    inv.callerTranscribed('What days does Marco work?');
+    await inv.wrapToolHandler(vi.fn(async () => JSON.stringify({ success: true })))('lookup_customer', {});
+    inv.agentTurnCompleted('Marco works Tuesday to Saturday.');
+    endReason = 'max_duration';
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({
+      endReason: 'max_duration',
+      tools: [{ name: 'lookup_customer', ok: true }],
+      answered: true,
+    });
   });
 
   it('runs at most once even if teardown runs twice, concurrently or later', async () => {

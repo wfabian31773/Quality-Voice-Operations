@@ -165,3 +165,72 @@ export function hasLongNumber(lines: readonly string[]): boolean {
 export function saidMoreThanTheirOwnName(lines: readonly string[], callerName?: string): boolean {
   return hasLongNumber(lines) || contentWords(lines, callerName).length >= MIN_CONTENT_WORDS;
 }
+
+/**
+ * Tools that only answer an information question (hours, staff days,
+ * services, prices, location) or keep runtime bookkeeping. An availability
+ * check, a booking lookup or any write is not here: it means a booking or
+ * change was started, so the floor still files.
+ */
+export const INFO_TOOLS: ReadonlySet<string> = new Set([
+  'business.get_info',
+  'scheduling.list_staff',
+  'scheduling.list_services',
+  'retrieve_knowledge',
+  'get_current_tenant_time',
+  'record_language_change',
+  'record_call_outcome',
+]);
+
+/**
+ * Caller words (EN/ES) that start, or ask for, something the shop has to act
+ * on: a booking or change, a callback, a person, a message, a complaint.
+ * Any one of them keeps the floor ticket. "Calling" is left out ("I'm calling
+ * to ask your hours"); "call" is in ("call me back").
+ */
+export const ACTION_WORDS: ReadonlySet<string> = new Set([
+  'book', 'booking', 'booked', 'appointment', 'appointments', 'appt', 'schedule', 'reschedule', 'cancel',
+  'cancellation', 'reserve', 'reservation', 'available', 'availability', 'opening', 'openings', 'spot', 'slot',
+  'move', 'change', 'want', 'need', 'come', 'walk', 'fit', 'squeeze',
+  'call', 'callback', 'person', 'human', 'someone', 'somebody', 'manager', 'owner', 'speak', 'talk', 'message',
+  'problem', 'complaint', 'refund', 'wrong', 'late', 'urgent', 'emergency',
+  'cita', 'citas', 'reservar', 'agendar', 'apartar', 'cancelar', 'cambiar', 'mover', 'disponible', 'quiero',
+  'necesito', 'llamar', 'llamen', 'llame', 'persona', 'alguien', 'gerente', 'dueno', 'hablar', 'mensaje', 'recado',
+  'problema', 'queja', 'reembolso', 'urgente',
+]);
+
+/** Caller words (EN/ES) that make a line an information question: hours, staff days, prices, services, location. */
+export const INFO_WORDS: ReadonlySet<string> = new Set([
+  'hours', 'hour', 'open', 'opens', 'close', 'closes', 'closed', 'closing', 'days', 'work', 'works', 'working',
+  'price', 'prices', 'pricing', 'cost', 'costs', 'much', 'charge', 'services', 'service', 'offer', 'where',
+  'address', 'located', 'location', 'directions', 'parking',
+  'horario', 'horarios', 'abren', 'abre', 'abierto', 'cierran', 'cierra', 'dias', 'trabaja', 'trabajan', 'precio',
+  'precios', 'cuesta', 'cuanto', 'cobran', 'servicios', 'ofrecen', 'donde', 'direccion', 'ubicados',
+]);
+
+/** What the runtime saw on the call, beside the caller's lines. */
+export interface FloorCallSignals {
+  /** How the call ended (callOutcome.ts); only 'caller_hangup' can skip the floor. */
+  endReason?: string;
+  /** Every tool run on the call, by action name, with whether it returned ok (a blocked run is not ok). */
+  tools?: ReadonlyArray<{ name: string; ok: boolean }>;
+  /** The agent finished a turn after the caller's last line. */
+  answered?: boolean;
+}
+
+/**
+ * A pure information call that was answered, so the floor files nothing.
+ * Conservative: every condition must hold, and a missing signal fails it.
+ * - the caller ended the call (endReason 'caller_hangup');
+ * - the agent spoke after the caller's last line;
+ * - every tool that ran is in INFO_TOOLS and returned ok (none is fine);
+ * - the caller gave no callback number, said no ACTION_WORDS, and asked
+ *   with at least one INFO_WORDS.
+ */
+export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSignals): boolean {
+  if (signals.endReason !== 'caller_hangup' || signals.answered !== true || !signals.tools) return false;
+  if (!signals.tools.every((tool) => tool.ok && INFO_TOOLS.has(tool.name))) return false;
+  if (hasLongNumber(lines)) return false;
+  const tokens = lines.flatMap(normalizeTokens);
+  return !tokens.some((token) => ACTION_WORDS.has(token)) && tokens.some((token) => INFO_WORDS.has(token));
+}
