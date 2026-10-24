@@ -251,8 +251,67 @@ describe('floor through the session', () => {
       callId: 'cs-invariants',
       idempotencyKey: 'call-cs-invariants-floor',
     });
-    expect(input).toEqual({ callId: 'cs-invariants', callerLines: ['Hi, this is Dana, I need a fade Friday at nine'], language: 'en' });
+    expect(input).toEqual({
+      callId: 'cs-invariants',
+      callerLines: ['Hi, this is Dana, I need a fade Friday at nine'],
+      language: 'en',
+      tools: [],
+      // "Let me check Friday." is a holding line, not an answer.
+      answered: false,
+    });
     expect(consoleLines.some((line) => line.includes('floor_evaluated') && line.includes('filed'))).toBe(true);
+  });
+
+  it('response_done mode: a completed answer transcript counts as answered', async () => {
+    const { result, callerSays, agentSays } = await startCall();
+    callerSays('What are your hours?');
+    agentSays('We open at nine and close at seven.');
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ answered: true });
+  });
+
+  it('caller speech that starts after an answer but is never transcribed → not answered', async () => {
+    const { result, transport, callerSays, agentSays } = await startCall();
+    callerSays('What are your hours?');
+    agentSays('We open at nine and close at seven.');
+    transport.emit('input_audio_buffer.speech_started', { type: 'input_audio_buffer.speech_started' });
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ answered: false });
+  });
+
+  it('twilio_mark mode: an answer whose transcript completed but whose mark never echoed → not answered', async () => {
+    const { result, transport, callerSays, agentSays } = await startCall({ playbackConfirm: 'twilio_mark' });
+    callerSays('What are your hours?');
+    agentSays('We open at nine and close at seven.');
+    transport.emit('response.done', { type: 'response.done' });
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ answered: false });
+  });
+
+  it('twilio_mark mode: the answer counts once its playback mark echoes', async () => {
+    const { result, transport, callerSays, agentSays } = await startCall({ playbackConfirm: 'twilio_mark' });
+    const marks: string[] = [];
+    result.onAgentAudioDone((mark) => marks.push(mark));
+    callerSays('What are your hours?');
+    agentSays('We open at nine and close at seven.');
+    transport.emit('response.done', { type: 'response.done' });
+    expect(result.agentPlaybackDone(marks[marks.length - 1])).toBe(true);
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ answered: true });
+  });
+
+  it('the floor gets the recorded call end outcome as its end reason (max_duration)', async () => {
+    const { result, callerSays, agentSays } = await startCall();
+    agentSays('Thanks for calling Sharp Line Barbers.');
+    callerSays('Hi, this is Dana, I need a fade Friday at nine');
+    result.recordCallOutcome('max_duration');
+    result.session.close();
+    await result.evaluateFloor();
+    expect(h.runAction.mock.calls[0][2]).toMatchObject({ endReason: 'max_duration', answered: false });
   });
 
   it('a tool that finishes right before the hangup: its rows are written before the floor reads the call', async () => {

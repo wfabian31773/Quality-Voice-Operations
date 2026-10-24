@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { INSTRUCTIONS, SUCCESS_RUN_CEILING } from '../../../platform/callcore/invariants';
 import { floorIdempotencyKey } from '../../../platform/actions/tickets';
 import type { ActionContext, ActionResult } from '../../../platform/actions';
+import type { CallOutcome } from './callOutcome';
 import {
   CallInvariants,
   END_CALL_TOOLS,
+  isAgentQuestion,
   isExplicitYes,
+  isHoldingLine,
   isTransferRequest,
   sayObservedTotal,
   toolKind,
@@ -73,6 +76,72 @@ describe('tool classification', () => {
     expect(toolKind('triageEscalate', {})).toBe('transfer');
     expect(toolKind('escalate_to_human', {})).toBe('write');
     expect(END_CALL_TOOLS.has('end_call')).toBe(true);
+  });
+
+  it('an agent turn is a question when it starts with "¿" or its last sentence asks', () => {
+    for (const text of ['Which location?', ' ¿Qué sede? ', '¿Qué sede', 'We have two shops. Which one?', 'Tenemos dos. ¿Cuál', 'Which one?"']) {
+      expect(isAgentQuestion(text)).toBe(true);
+    }
+    for (const text of ['We open at nine.', 'Is it Saturday? We open at nine.', 'Marco works Tuesday to Saturday', '']) {
+      expect(isAgentQuestion(text)).toBe(false);
+    }
+  });
+
+  it('a holding line is "let me check" / "one moment" / "un momento" / "déjeme revisar", not an answer', () => {
+    for (const text of ['Let me check that.', 'Let me look into it', 'Just a second.', 'Hold on.', "I'll check with Marco.", 'Un momento.', 'Déjeme revisar.', 'Permítame verificar.', 'Voy a revisar.']) {
+      expect(isHoldingLine(text)).toBe(true);
+    }
+    for (const text of ['We open at nine.', 'We have a second location downtown.', 'Abrimos a las nueve.', '']) {
+      expect(isHoldingLine(text)).toBe(false);
+    }
+  });
+
+  it('a follow-up promise or a "don\'t know" is a holding line, not an answer (EN/ES)', () => {
+    for (const text of [
+      "We'll call you back with that.",
+      'Someone from our team will reach out.',
+      'I’ll get back to you on that.',
+      'Someone will call you tomorrow.',
+      'Someone will contact you shortly.',
+      'I can have someone call you.',
+      "I'll have a tech contact you.",
+      "Pricing depends on the job, I'll have a technician reach out with a quote.",
+      'I will have the team reach you today.',
+      "I don't have that information.",
+      'I do not know his schedule.',
+      "I'm not sure about that.",
+      'Un técnico le llamará mañana.',
+      'Le devolveremos la llamada.',
+      'Le contactaremos pronto.',
+      'Alguien se comunicará con usted.',
+      'No tengo esa información.',
+      'No estoy segura.',
+    ]) {
+      expect(isHoldingLine(text), text).toBe(true);
+    }
+  });
+
+  it('a trailing courtesy closer does not turn an answer into a question; a bare closer answers nothing', () => {
+    for (const text of [
+      'We open at nine. Anything else I can help with?',
+      'We open at nine. Is there anything else?',
+      'We open at nine. Can I help with anything else?',
+      'Abrimos a las nueve. ¿Algo más?',
+      'Abrimos a las nueve. ¿Le puedo ayudar en algo más?',
+      'Abrimos a las nueve. ¿Hay algo más en que le pueda ayudar?',
+    ]) {
+      expect(isAgentQuestion(text)).toBe(false);
+    }
+    for (const text of [
+      'Anything else?',
+      '¿Algo más?',
+      'Is there anything else?',
+      'Which location?',
+      'We have two shops. Which one do you mean?',
+      'We have two shops. Which one do you mean? Anything else?',
+    ]) {
+      expect(isAgentQuestion(text)).toBe(true);
+    }
   });
 
   it('reads tool success from the real output', () => {
@@ -351,8 +420,25 @@ describe('floor at teardown', () => {
       callerLines: ['Hola, soy Dana', 'Necesito un corte el viernes a las nueve'],
       callerName: 'Dana Ruiz',
       language: 'es',
+      tools: [{ name: 'create_ticket', ok: false }],
+      answered: false,
     });
     expect(inv.facts.floorEvaluated).toBe(true);
+  });
+
+  it('sends the recorded end reason, the tools run and whether the agent answered the last line', async () => {
+    let endReason: CallOutcome | null = null;
+    const { inv, runFloorAction } = make({ endReason: () => endReason });
+    inv.callerTranscribed('What days does Marco work?');
+    await inv.wrapToolHandler(vi.fn(async () => JSON.stringify({ success: true })))('lookup_customer', {});
+    inv.agentTurnCompleted('Marco works Tuesday to Saturday.');
+    endReason = 'max_duration';
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({
+      endReason: 'max_duration',
+      tools: [{ name: 'lookup_customer', ok: true }],
+      answered: true,
+    });
   });
 
   it('runs at most once even if teardown runs twice, concurrently or later', async () => {
@@ -471,6 +557,198 @@ describe('floor at teardown', () => {
     expect(runFloorAction).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['Which location?', '¿Qué sede?', '¿Cuál sede prefiere', 'We have two shops. Which one do you mean?'])(
+    'an agent clarifying question ("%s") after an info question does not count as answered',
+    async (question) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted(question);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it('a clarifying question, then the caller answers and hangs up → not answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('Sure. Which location?');
+    inv.callerTranscribed('Downtown');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('the answer after a clarifying question counts as answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('Which location?');
+    inv.callerTranscribed('Downtown');
+    inv.agentTurnCompleted('Downtown opens at nine and closes at seven.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each([
+    'Let me check that.',
+    'One moment please.',
+    'Un momento, por favor.',
+    'Déjeme revisar.',
+    'Let me check. We open at nine.',
+    "Pricing depends on the job, I'll have a technician reach out with a quote.",
+    "We'll call you back with the price.",
+    "I don't know if Marco works Saturdays.",
+    'Le devolveremos la llamada con el precio.',
+    'No tengo esa información.',
+  ])(
+    'a holding line ("%s") never counts as answered',
+    async (hold) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted(hold);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it('a follow-up promise after an answer clears it', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('How much is a furnace tune-up?');
+    inv.agentTurnCompleted('A tune-up is eighty-nine dollars.');
+    inv.agentTurnCompleted("For anything more, I'll have a technician reach out with a quote.");
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('a holding line, then an info tool returns ok, then the caller hangs up → not answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What days does Marco work?');
+    inv.agentTurnCompleted('Let me check that for you.');
+    await inv.wrapToolHandler(vi.fn(async () => JSON.stringify({ success: true })))('lookup_customer', {});
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ tools: [{ name: 'lookup_customer', ok: true }], answered: false });
+  });
+
+  it('a tool starting after an answer resets answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    await inv.wrapToolHandler(vi.fn(async () => JSON.stringify({ success: true })))('lookup_customer', {});
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: an answer whose transcript completed but whose playback is not confirmed → not answered', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: the answer counts once its playback is confirmed', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it('awaiting playback: a confirmed holding line or question still does not count', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('One moment.');
+    inv.agentPlaybackConfirmed();
+    inv.agentTurnCompleted('Which location?');
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: a barge-in clears the answer, even if its mark is echoed after the clear', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentPlaybackInterrupted();
+    inv.agentTurnCompleted('We open at');
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('the caller starts speaking after an answer and hangs up before it is transcribed → not answered', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine and close at seven.');
+    inv.callerSpeechStarted();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: caller speech before the mark echoes keeps the answer from counting', async () => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    inv.callerSpeechStarted();
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('an answer after the caller speech is transcribed counts again', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('We open at nine.');
+    inv.callerSpeechStarted();
+    inv.callerTranscribed('And on Sunday?');
+    inv.agentTurnCompleted('We are closed on Sunday.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each(['Sorry, could you repeat that?', '¿Perdón, puede repetir?', 'One moment.'])(
+    'an answer, then "%s" after untranscribed speech → not answered',
+    async (followUp) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted('We open at nine and close at seven.');
+      inv.agentTurnCompleted(followUp);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it.each(['Anything else?', '¿Algo más?', 'Is there anything else I can help you with today?'])(
+    'a pure courtesy closer ("%s") after an answer keeps it answered',
+    async (closer) => {
+      const { inv, runFloorAction } = make();
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted('We open at nine and close at seven.');
+      inv.agentTurnCompleted(closer);
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+    },
+  );
+
+  it('a tool name past the floor limit is truncated before it reaches the floor', async () => {
+    const { inv, tool, runFloorAction } = make();
+    const long = `x${'y'.repeat(300)}`;
+    await tool(long, {});
+    await inv.evaluateFloor();
+    const tools = (runFloorAction.mock.calls[0][1] as { tools: Array<{ name: string; ok: boolean }> }).tools;
+    expect(tools).toEqual([{ name: long.slice(0, 128), ok: false }]);
+  });
+
+  it('a read still running after the settle wait leaves the tool list out, so the floor cannot skip', async () => {
+    const { inv, handler, tool, runFloorAction } = make({ toolSettleMs: 10 });
+    inv.callerTranscribed('What are your hours on Saturday?');
+    handler.mockImplementationOnce(() => new Promise<string>(() => {}));
+    void tool('lookup_customer', {});
+    inv.agentTurnCompleted('We open at nine on Saturday.');
+    await inv.evaluateFloor();
+    expect(runFloorAction).toHaveBeenCalledTimes(1);
+    expect(runFloorAction.mock.calls[0][1]).not.toHaveProperty('tools');
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
   it('record_language_change switches the floor language', async () => {
     const { inv, tool, runFloorAction } = make({ agent: { tools: [{ name: 'record_language_change' }], language: 'en' } });
     await tool('record_language_change', { language: 'es' });
@@ -524,5 +802,19 @@ describe('call facts', () => {
       if (prev === undefined) delete process.env.SMS_ENABLED;
       else process.env.SMS_ENABLED = prev;
     }
+  });
+});
+
+describe('isHoldingLine: broad follow-up and don\'t-know replies (review P2)', () => {
+  it.each([
+    'No sé el precio exacto.', 'No lo sé.', 'Lo llamaremos mañana con el precio.', 'Te llamamos más tarde.',
+    'Le vamos a llamar.', 'A technician will call you with a quote.', "We'll call you with pricing.",
+    'Someone from our team will call you.', 'We will follow up.', "I can't give pricing over the phone.",
+    'No podemos dar precios por teléfono.', 'I\'ll pass that along.',
+  ])('is not an answer: %s', (line) => {
+    expect(isHoldingLine(line)).toBe(true);
+  });
+  it.each(['We close at five on Saturdays.', 'Cerramos a las cinco.', 'A haircut is thirty dollars.'])('a real answer still counts: %s', (line) => {
+    expect(isHoldingLine(line)).toBe(false);
   });
 });

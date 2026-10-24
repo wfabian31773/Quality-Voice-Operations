@@ -22,7 +22,9 @@
  *   the system actor, bounded in time, and never throws. The action decides
  *   never_heard / nothing_substantive / already_filed / filed; the runtime only
  *   skips it when a write or transfer tool on this call returned ok, because
- *   hasCallArtifact can't see every legacy write.
+ *   hasCallArtifact can't see every legacy write. It also sends the call end
+ *   outcome, the tools run and whether the agent answered the caller's last
+ *   line, for the action's answered_info rule and its subject.
  */
 import {
   appendRun,
@@ -54,7 +56,15 @@ import {
   type ActionResult,
   type ExternalToolNames,
 } from '../../../platform/actions';
-import { FILE_FLOOR, floorIdempotencyKey, type FileFloorInput, type FileFloorOutput } from '../../../platform/actions/tickets';
+import {
+  FILE_FLOOR,
+  FLOOR_MAX_TOOLS,
+  floorIdempotencyKey,
+  type FileFloorInput,
+  type FileFloorOutput,
+} from '../../../platform/actions/tickets';
+import { FLOOR_MAX_TOOL_NAME_LENGTH } from '../../../platform/actions/tickets/floor';
+import type { CallOutcome } from './callOutcome';
 import { envSmsSendConfig } from '../../../platform/actions/sms/deps';
 import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
@@ -99,12 +109,21 @@ export function isTransferRequest(toolName: string, args: Record<string, unknown
 
 let externalNames: ExternalToolNames | undefined;
 
-/** The two-phase platform action behind a tool name (its action name, or the sanitized external name). */
-function platformAction(toolName: string) {
-  const direct = getAction(toolName);
-  if (direct) return direct;
+/** The platform action name behind a tool name (its action name, or the sanitized external name). */
+function platformActionName(toolName: string): string | undefined {
+  if (getAction(toolName)) return toolName;
   externalNames ??= assignExternalToolNames(listActions().map((def) => def.name));
-  const name = actionNameFromExternal(toolName, externalNames);
+  return actionNameFromExternal(toolName, externalNames);
+}
+
+/** A tool run's name as the floor gets it: the platform action name, capped at the floor's limit. */
+function floorToolName(toolName: string): string {
+  return (platformActionName(toolName) ?? toolName).slice(0, FLOOR_MAX_TOOL_NAME_LENGTH);
+}
+
+/** The two-phase platform action behind a tool name. */
+function platformAction(toolName: string) {
+  const name = platformActionName(toolName);
   return name ? getAction(name) : undefined;
 }
 
@@ -126,6 +145,79 @@ export function toolKind(toolName: string, args: Record<string, unknown>): Actio
   if (isTransferRequest(toolName, args)) return 'transfer';
   if (LEGACY_READ_TOOLS.has(toolName) || END_CALL_TOOLS.has(toolName)) return 'read';
   return 'write';
+}
+
+/**
+ * An agent turn that asks rather than answers ("Which location?", "¿Qué
+ * sede?", "We have two shops. Which one?"): the turn starts with "¿", or its
+ * last sentence ends with "?" or starts with "¿". Such a turn never counts as
+ * answering the caller, so the floor still files. A trailing courtesy closer
+ * ("Anything else?", "¿Algo más?") is dropped first; a turn that is only a
+ * closer answers nothing, so it counts as a question.
+ */
+export function isAgentQuestion(text: string): boolean {
+  const sentences = text.trim().split(/(?<=[.!?…])\s+/).filter(Boolean);
+  if (sentences.length > 0 && isCourtesyCloser(sentences[sentences.length - 1])) {
+    sentences.pop();
+    if (sentences.length === 0) return true;
+  }
+  if ((sentences[0] ?? '').startsWith('¿')) return true;
+  const last = sentences[sentences.length - 1] ?? '';
+  return /\?["'”’)]*$/.test(last) || last.startsWith('¿');
+}
+
+const COURTESY_CLOSERS: readonly RegExp[] = [
+  /^(?:is there )?anything else(?: (?:that )?(?:i|we) can (?:help(?: you)?|assist(?: you)?|do for you)(?: with)?)?(?: today)?$/,
+  /^(?:can|may|could) (?:i|we) (?:help|assist)(?: you)? with anything else(?: today)?$/,
+  /^what else can (?:i|we) (?:help(?: you)?|assist(?: you)?) with(?: today)?$/,
+  /^(?:hay )?algo m[aá]s(?: en (?:que|qu[eé]) (?:le|te|lo|la) (?:pueda|puedo|podamos|podemos) ayudar)?$/,
+  /^(?:le|te|lo|la) (?:puedo|podemos) ayudar (?:en|con) algo m[aá]s$/,
+  /^(?:en )?qu[eé] m[aá]s (?:le|te|lo|la) (?:puedo|podemos) ayudar$/,
+];
+
+/**
+ * Holding lines (EN/ES): the agent is about to look something up, promises a
+ * follow-up ("I'll have a technician reach out", "Le devolveremos la llamada")
+ * or doesn't know, so nothing was answered yet. Matched anywhere in the turn:
+ * a turn that holds one never counts as an answer, even with more after it.
+ */
+const HOLDING_LINES: readonly RegExp[] = [
+  /\blet me (?:check|look|see|find|pull|verify|confirm)\b/,
+  /\b(?:one|just a) (?:moment|sec|second|minute)\b|\ba moment\b/,
+  /\b(?:hold on|bear with me|give me a (?:moment|sec|second|minute))\b/,
+  /\b(?:i'?ll|i will|i'?m going to|i'?m) (?:check|checking|look|looking)\b/,
+  /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
+  /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
+  /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
+  // A follow-up promise: any mention of calling, contacting or following up means
+  // someone else answers later. Deliberately broad; an extra ticket is fine.
+  /\b(?:call|calls|calling|contact|contacting|text you|reach out|reach you|get back to you|follow(?:ing)? up|pass (?:that|this|it) along|let (?:the team|them|someone) know)\b/,
+  /(?:llam|contact|comunic|devolv|avis)/,
+  // The agent doesn't know or can't.
+  /\b(?:don'?t|do not|doesn'?t) (?:have|know)\b|\bnot sure\b|\b(?:can'?t|cannot|unable to|not able to)\b/,
+  /(?<!\p{L})no (?:lo |le )?(?:s[eé]|sabr[ií]a|sabemos|tengo|tenemos|cuento con|puedo|podemos|estoy segur)(?!\p{L})|no estoy segur[oa]/u,
+];
+
+/** An agent turn that only holds the line ("Let me check that", "Un momento", "Déjeme revisar"). */
+export function isHoldingLine(text: string): boolean {
+  const lower = text.toLowerCase().replace(/[’‘]/g, "'");
+  return HOLDING_LINES.some((pattern) => pattern.test(lower));
+}
+
+/** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
+function isOnlyCourtesyCloser(text: string): boolean {
+  const sentences = text.trim().split(/(?<=[.!?…])\s+/).filter(Boolean);
+  return sentences.length > 0 && sentences.every(isCourtesyCloser);
+}
+
+/** A sentence that only offers more help: "Anything else I can help with?", "¿Le puedo ayudar en algo más?". */
+function isCourtesyCloser(sentence: string): boolean {
+  const core = sentence
+    .toLowerCase()
+    .replace(/^[¿\s"'“‘(]+/, '')
+    .replace(/[?!.…"'”’)\s]+$/, '')
+    .replace(/\s+/g, ' ');
+  return COURTESY_CLOSERS.some((pattern) => pattern.test(core));
 }
 
 function parseObject(output: string): Record<string, unknown> | null {
@@ -238,6 +330,19 @@ export interface CallInvariantsInit {
    * so every row a tool queued is written before the floor reads the call.
    */
   beforeFloor?: () => Promise<unknown>;
+  /**
+   * The call end outcome recorded so far (callOutcome.ts), read when the
+   * floor runs. Phone teardown records it first, so the floor can tell a
+   * caller hangup from a time-limit or system end.
+   */
+  endReason?: () => CallOutcome | null;
+  /**
+   * True when the transport confirms playback ('twilio_mark' on the phone):
+   * an answer then only counts once agentPlaybackConfirmed() reports its
+   * audio played. Otherwise (the widget's 'response_done' mode has no
+   * playback signal) the completed transcript is the signal.
+   */
+  awaitPlayback?: boolean;
 }
 
 /** Process-wide SAY observations by rule, for metrics. */
@@ -270,6 +375,17 @@ export class CallInvariants {
   private readonly sayCounts = new Map<RuleId, number>();
   /** A write, commit or transfer tool returned ok on this call (legacy writes hasCallArtifact may not see). */
   private filedByTool = false;
+  /** Every tool run on the call, by platform action name when it has one; a blocked run is not ok. */
+  private readonly toolRuns: Array<{ name: string; ok: boolean }> = [];
+  /**
+   * The agent gave a real answer (not a question or a holding line) after the
+   * caller's last line and after the last tool started, and its audio played.
+   */
+  private answered = false;
+  /** The latest agent turn is an answer whose playback is not confirmed yet. */
+  private answerAwaitingPlayback = false;
+  /** The caller barged in since their last completed line. */
+  private playbackInterrupted = false;
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
@@ -322,9 +438,22 @@ export class CallInvariants {
     if (!text.trim()) return;
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
+    this.answered = false;
+    this.answerAwaitingPlayback = false;
+    this.playbackInterrupted = false;
     if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text, this.lastPreparedAction)) {
       this.state = onExplicitYes(this.state, this.lastPreparedToken);
     }
+  }
+
+  /**
+   * Server VAD heard the caller start speaking. Their words may never be
+   * transcribed (they hang up first), so an earlier answer no longer covers
+   * their last line.
+   */
+  callerSpeechStarted(): void {
+    this.answered = false;
+    this.answerAwaitingPlayback = false;
   }
 
   /** An agent turn's transcript completed: SAY (observe-only), then the pending result counts as voiced. */
@@ -337,9 +466,33 @@ export class CallInvariants {
         sayObservedTotals.set(said.rule, (sayObservedTotals.get(said.rule) ?? 0) + 1);
         this.init.log.info('invariant_say_observed', { rule: said.rule, count });
       }
+      // A clarifying question or a holding line never sets answered, and clears
+      // an earlier one ("Sorry, could you repeat that?" after speech that was
+      // never transcribed). A pure courtesy closer keeps it.
+      const question = isAgentQuestion(text);
+      const holding = isHoldingLine(text);
+      if (holding || (question && !isOnlyCourtesyCloser(text))) this.answered = false;
+      this.answerAwaitingPlayback = !question && !holding;
+      if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);
     this.spokeSincePrepare = true;
+  }
+
+  /** The latest agent turn's audio played (the Twilio mark echo): an answer in it now counts. */
+  agentPlaybackConfirmed(): void {
+    if (this.answerAwaitingPlayback && !this.playbackInterrupted) this.answered = true;
+    this.answerAwaitingPlayback = false;
+  }
+
+  /**
+   * The caller barged in and the turn's audio was cleared: its answer was not
+   * heard. Its truncated transcript and a mark echoed after the clear may
+   * still arrive, so no answer counts until the caller's next line.
+   */
+  agentPlaybackInterrupted(): void {
+    this.answerAwaitingPlayback = false;
+    this.playbackInterrupted = true;
   }
 
   /**
@@ -349,6 +502,9 @@ export class CallInvariants {
    */
   wrapToolHandler(handler: ToolHandler): ToolHandler {
     return (name, args) => {
+      // Whatever was said before a tool, the caller has not had its result yet.
+      this.answered = false;
+      this.answerAwaitingPlayback = false;
       const kind = toolKind(name, args);
       const work = this.runTool(handler, name, args, kind);
       // The end-call tool evaluates the floor itself; it must not wait on itself.
@@ -368,7 +524,10 @@ export class CallInvariants {
   private async runTool(handler: ToolHandler, name: string, args: Record<string, unknown>, kind: ActionKind): Promise<string> {
     const run: RunRequest = { action: name, kind, confirmationToken: confirmationTokenOf(args), args };
     const gate = await this.gate(run);
-    if (!gate.ok) return this.blocked(name, gate);
+    if (!gate.ok) {
+      this.toolRuns.push({ name: floorToolName(name), ok: false });
+      return this.blocked(name, gate);
+    }
 
     const callerName = callerNameFromArgs(args);
     if (callerName) this.callerName = callerName;
@@ -396,7 +555,9 @@ export class CallInvariants {
   /**
    * END for a model-initiated hangup. The floor runs first if it hasn't, so
    * the call is never refused for it; an unvoiced tool result returns the
-   * instruction so she speaks it before hanging up.
+   * instruction so she speaks it before hanging up. By design this floor
+   * always files when nothing else was: its end reason is not caller_hangup,
+   * so answered_info never skips an agent-initiated end.
    */
   async beforeAgentEnd(): Promise<CheckResult> {
     let result = checkEnd(this.state, 'agent_goodbye');
@@ -424,6 +585,7 @@ export class CallInvariants {
       confirmationToken: run.kind === 'commit' ? run.confirmationToken : undefined,
     });
     this.history = appendRun(this.history, run, ok);
+    this.toolRuns.push({ name: floorToolName(name), ok });
     if (ok && (run.kind === 'write' || run.kind === 'commit' || run.kind === 'transfer')) this.filedByTool = true;
     if (ok && run.kind === 'prepare') {
       const token = confirmationTokenOf(parsed);
@@ -485,11 +647,17 @@ export class CallInvariants {
       idempotencyKey: floorIdempotencyKey(this.init.callId),
       ...(this.language ? { locale: this.language } : {}),
     };
+    const endReason = this.init.endReason?.();
     const input: FileFloorInput = {
       callId: this.init.callId,
       callerLines: this.callerLines.lines(),
       ...(this.callerName ? { callerName: this.callerName } : {}),
       ...(this.language ? { language: this.language } : {}),
+      ...(endReason ? { endReason } : {}),
+      // Past the cap, or with a read (an availability check) still running, the
+      // list is left out, which never lets the floor skip.
+      ...(this.toolRuns.length <= FLOOR_MAX_TOOLS && this.inFlight.size === 0 ? { tools: [...this.toolRuns] } : {}),
+      answered: this.answered,
     };
     const result = await this.runFloor(ctx, input);
     if (!result.ok) {
