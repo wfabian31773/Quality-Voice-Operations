@@ -14,16 +14,17 @@
 // A line that opens with a go-ahead ("book it", "go ahead", "dale",
 // "resérvalo") is an allowlist: after the go-ahead only other affirmatives,
 // filler ("please", "thanks", "gracias", "por favor") and punctuation may
-// follow. Anything else, including a "?", is a possible change to the details
-// read back ("Book it for my son", "Dale, con Marco"), so it does not confirm.
+// follow. Anything else is a possible change to the details read back ("Book
+// it for my son", "Dale, con Marco"), so it does not confirm. (A "?" never
+// gets this far; the question check above refuses it first.)
 // Booking verbs ("book it", "resérvalo", "lock it in") are go-aheads only for
 // a pending booking; a cancel or reschedule takes only the neutral ones.
 //
 // Word edges by Unicode letter, so "sí" and "está" end where they should.
 
-// A question or a hedge anywhere in the line. Word edges as below; "quizas" may drop its accent.
+// A question or a hedge anywhere in the line. Word edges as below; "quizás" may drop its accent or its final s ("quizá").
 const QUESTION = /[?¿]/u;
-const HEDGE = /(?<![\p{L}\p{N}])(maybe|probably|i\s+think|tal\s+vez|quiz[aá]s)(?![\p{L}\p{N}])/iu;
+const HEDGE = /(?<![\p{L}\p{N}])(maybe|probably|i\s+think|tal\s+vez|quiz[aá]s?)(?![\p{L}\p{N}])/iu;
 
 // The original matcher. Do not narrow these lists or tighten this rule.
 const PLAIN_YES = /^(yes|yeah|yep|yup|sure|correct|right|that'?s (right|correct)|sounds good|perfect|ok|okay|s[ií]|claro|correcto|exacto|perfecto|de acuerdo|est[aá] bien)(?![\p{L}\p{N}])/iu;

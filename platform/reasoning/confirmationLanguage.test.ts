@@ -179,6 +179,8 @@ describe('confirmation language', () => {
     'Sí, quizás',
     'Sí, quizas',
     'Dale, QUIZÁS',
+    'Sí, quizá',
+    'Dale, quiza',
     'Perfecto, tal vez mañana',
     'Sounds good?',
     'Yes, will I get a text?',
