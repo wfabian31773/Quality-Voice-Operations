@@ -194,7 +194,7 @@ const HOLDING_LINES: readonly RegExp[] = [
   /\blet me (?:check|look|see|find|pull|verify|confirm)\b/,
   /\b(?:one|just a) (?:moment|sec|second|minute)\b|\ba moment\b/,
   /\b(?:hold on|hang on|hold,? please|please hold|bear with me|give me a (?:moment|sec|second|minute)|while (?:i|we) (?:check|look))\b/,
-  /\b(?:i'?ll|i will|i'?m going to|i'?m) (?:check|checking|look|looking)\b/,
+  /\b(?:i'?ll|i will|i'?m going to|i'?m|we'?re|we are|we'?ll|we will|we'?re going to) (?:check|checking|look|looking)\b(?! forward)|\blooking into\b/,
   // A deferral: someone has to check or be asked first ("I'd need to check with the shop", "Tendría que preguntarle al encargado").
   /\b(?:need|needs|have|has) to (?:check|ask|confirm|verify)\b|\bcheck with\b|\bask (?:the|my)\b/,
   /(?<!\p{L})(?:(?:tendr[ií]a|tengo|tendr[ií]amos|tenemos) que (?:preguntar|revisar|confirmar|verificar)\p{L}*|preguntarles?)(?!\p{L})/u,
@@ -202,10 +202,10 @@ const HOLDING_LINES: readonly RegExp[] = [
   /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
   // "Permítame." on its own, "Espere", "Espéreme".
   /(?<!\p{L})(?:perm[ií]t(?:a|e)me(?=\s*(?:[,.!…]|$))|espere|esp[eé]reme)(?!\p{L})/u,
-  /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
+  /\b(?:lo )?(?:estoy|estamos) (?:revisando|checando|buscando|verificando|en eso)\b/,
   // A follow-up promise: any mention of calling, contacting or following up means
   // someone else answers later. Deliberately broad; an extra ticket is fine.
-  /\b(?:call|calls|calling|contact|contacting|text you|reach out|reach you|get back to you|follow(?:ing)? up|pass (?:that|this|it) along|let (?:the team|them|someone) know)\b/,
+  /\b(?:call|calls|calling|contact|contacting|text you|reach out|reach you|get(?:ting)? back|follow(?:ing)? up|pass (?:that|this|it) along|let (?:the team|them|someone|you) know)\b/,
   /(?:llam|contact|comunic|devolv|avis)/,
   // The agent doesn't know or can't.
   /\b(?:don'?t|do not|doesn'?t) (?:have|know)\b|\bnot sure\b|\b(?:can'?t|cannot|unable to|not able to)\b/,
@@ -301,29 +301,47 @@ const YES_NO_ECHO = new RegExp(
   'u',
 );
 
+/** An echo that only remarks on the question ("Yes, it's a good question."). */
+const GOOD_QUESTION = /\b(?:good|great|excellent|fair) question\b|(?<!\p{L})(?:buena|excelente) pregunta(?!\p{L})/u;
+
+/**
+ * An intensifier, address or apology that is the whole rest of the sentence
+ * after the yes or no (EN/ES): "Yes, absolutely.", "Yes, we sure do.", "Yes,
+ * ma'am.", "No, sorry.", "No, unfortunately we don't.", "No, I'm afraid
+ * not.", "Sí, claro.", "Sí, sí tenemos.", "No, lo siento."
+ */
+const YES_NO_INTENSIFIER =
+  /^(?:absolutely|definitely|of course|certainly|sure (?:do|does)|(?:we|they|he|she|it) (?:sure|certainly|definitely) (?:do|does)|ma'am|sir|sorry|unfortunately(?:,? (?:we don't|we do not|not))?|i'm afraid not|claro(?: que s[ií])?|por supuesto|s[ií] tenemos|lo siento|desafortunadamente(?:,? no)?)$/u;
+
 /**
  * A leading yes or no (LEADING_YES_NO) that answers: the rest of its sentence
  * is (a) nothing ("Yes."), (b) a short echo (YES_NO_ECHO: "Yes, we are.",
  * "No, we don't.", "Sí, tenemos."), after an optional "and"/"y" ("Sí, y es
- * gratis."), or (c) content: a place ("Yes, out back."), a price statement
- * ("Yes, and oil changes are free."), or a word of the caller's question
- * clause ("¿Ofrecen cortes de pelo?" → "Sí, aquí se corta el pelo."). And
- * neither that sentence nor a statement right after it defers
+ * gratis."), that is no holding line ("Yes, we're checking on that.") or
+ * remark on the question (GOOD_QUESTION), (c) an intensifier or apology
+ * (YES_NO_INTENSIFIER: "Yes, absolutely.", "No, sorry.") when no statement
+ * in the turn defers or holds, or (d) content: a place ("Yes, out back."), a
+ * price statement ("Yes, and oil changes are free."), or a word of the
+ * caller's question clause ("¿Ofrecen cortes de pelo?" → "Sí, aquí se corta
+ * el pelo."). And neither that sentence nor a statement right after it defers
  * (YES_NO_DEFERRAL): "Yes, I'd need to look that up." or "Sí. Tiene que
  * preguntar al encargado." answers nothing.
  */
 function leadingYesNoAnswers(lower: string, clauseWords: readonly string[]): boolean {
   const opener = LEADING_YES_NO.exec(lower);
   if (!opener) return false;
-  const [first = '', second = ''] = lower.slice(opener[0].length).split(/(?<=[.!?…])\s+/);
+  const sentences = lower.slice(opener[0].length).split(/(?<=[.!?…])\s+/);
+  const [first = '', second = ''] = sentences;
   const deferring = (sentence: string) => YES_NO_DEFERRAL.test(sentence);
-  if (deferring(first) || (!/\?["'”’)]*$/.test(second.trim()) && deferring(second))) return false;
+  const asks = (sentence: string) => /\?["'”’)]*$/.test(sentence.trim());
+  if (deferring(first) || (!asks(second) && deferring(second))) return false;
   const rest = first
     .replace(/[.!?…"'”’)\s]+$/, '')
     .replace(/^[\s,;:—–]+/, '')
     .replace(/^(?:and|but|also|y|pero|tambi[eé]n)\s+/u, '');
   if (!rest) return true;
-  if (YES_NO_ECHO.test(rest)) return true;
+  if (YES_NO_ECHO.test(rest) && !isHoldingLine(rest) && !GOOD_QUESTION.test(rest)) return true;
+  if (YES_NO_INTENSIFIER.test(rest)) return !isHoldingLine(lower) && sentences.every((sentence) => asks(sentence) || !deferring(sentence));
   return PLACE_WORDS.test(rest) || FREE_PRICE.test(rest) || rest.search(NOUN_IS_FREE) >= 0 || sharesAskedWord(normalizeTokens(rest), clauseWords);
 }
 
@@ -337,13 +355,14 @@ function leadingYesNoAnswers(lower: string, clauseWords: readonly string[]): boo
  * "We can take a look at no cost", "Le hacemos el diagnóstico sin costo",
  * "Ofrecemos consultas gratuitas"), availability ("whenever you're free",
  * "Marco is free this afternoon", "Our barbers are free", "One is free right
- * now": a bare "one" is a chair or slot, "the first one" is the thing asked),
+ * now", "The next one is free": a bare or "next" one is a chair or slot, "the
+ * first one" is the thing asked),
  * "feel free" or "toll free". A noun subject (NOUN_IS_FREE) must be a word of the caller's
  * price clause. "No tiene costo" must end the clause ("No tiene costo fijo,
  * depende" is no price).
  */
 const FREE_PRICE = new RegExp(
-  String.raw`\b(?:it|that|this|those|these|(?:the|that|this|first|second|next|last|each|every) ones?)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
+  String.raw`\b(?:it|that|this|those|these|(?:the|that|this|first|second|last|every) ones?)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
     String.raw` (?:free|complimentary|for free|no (?:charge|cost)|on the house)\b` +
     String.raw`|\bthere(?:'s| is| will be| would be) no (?:charge|cost)\b` +
     String.raw`|\b(?:do|does|did|doing) (?:it|that|this|them|those) (?:for free|free of charge|at no (?:charge|cost))\b` +

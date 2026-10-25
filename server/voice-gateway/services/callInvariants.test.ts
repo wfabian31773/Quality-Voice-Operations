@@ -890,6 +890,26 @@ describe('floor at teardown', () => {
     ['¿Tienen estacionamiento?', 'Sí, hay estacionamiento.'],
     ['¿Tienen estacionamiento?', 'No, no hay.'],
     ['¿Ofrecen cambios de aceite?', 'Sí, cambios de aceite y frenos.'],
+    // An intensifier, address or apology after the yes or no.
+    ['Do you do oil changes?', 'Yes, absolutely.'],
+    ['Do you do oil changes?', 'Yes, definitely.'],
+    ['Do you do oil changes?', 'Yes, of course.'],
+    ['Do you do oil changes?', 'Yes, certainly.'],
+    ['Do you do oil changes?', 'Yes, sure do.'],
+    ['Do you do oil changes?', 'Yes, we sure do.'],
+    ['Do you do oil changes?', 'Yes, we certainly do.'],
+    ['Do you do oil changes?', "Yes, ma'am."],
+    ['Do you do oil changes?', 'Yes, sir.'],
+    ['Do you do oil changes?', 'No, sorry.'],
+    ['Do you do oil changes?', "No, unfortunately we don't."],
+    ['Do you do oil changes?', 'No, unfortunately not.'],
+    ['Do you do oil changes?', "No, I'm afraid not."],
+    ['Do you do oil changes?', 'Yes, absolutely. Anything else?'],
+    ['¿Tienen estacionamiento?', 'Sí, claro.'],
+    ['¿Tienen estacionamiento?', 'Sí, por supuesto.'],
+    ['¿Tienen estacionamiento?', 'Sí, sí tenemos.'],
+    ['¿Tienen estacionamiento?', 'No, lo siento.'],
+    ['¿Tienen estacionamiento?', 'No, desafortunadamente no.'],
   ])('a yes/no question ("%s") is answered by a leading yes or no ("%s")', async (question, reply) => {
     expect(await answeredFor(question, reply)).toBe(true);
   });
@@ -1011,6 +1031,23 @@ describe('floor at teardown', () => {
     ['¿Tienen estacionamiento?', 'Sí, permítame un momento.'],
     ['¿Tienen estacionamiento?', 'Sí, espere.'],
     ['¿Tienen estacionamiento?', 'Sí, espéreme.'],
+    ['Do you do oil changes?', "Yes, we're checking on that now."],
+    ['Is there parking?', "Yes, we're looking into it."],
+    ['Is there parking?', 'Yes, we are looking at that.'],
+    ['Do you do oil changes?', 'Yes, we will let you know.'],
+    ['Do you do oil changes?', "Yes, we'll check."],
+    ['Do you do oil changes?', "Yes, we'll get back on that."],
+    ['¿Tienen estacionamiento?', 'Sí, estamos revisando eso.'],
+    ['¿Tienen estacionamiento?', 'Sí, estamos en eso.'],
+    ['¿Tienen estacionamiento?', 'Sí, estamos verificando.'],
+    ['¿Tienen estacionamiento?', 'Sí, le aviso.'],
+    // An intensifier with a deferral or holding line later in the turn.
+    ['Do you do oil changes?', 'Yes, absolutely. Great. You should ask Marco.'],
+    ['Do you do oil changes?', "Yes, definitely. Sure. We're checking now."],
+    ['¿Tienen estacionamiento?', 'Sí, claro. Bueno. Estamos revisando.'],
+    // An echo that only remarks on the question.
+    ['Is there parking?', "Yes, it's a good question."],
+    ['Is there parking?', "Yeah, that's a great question."],
     // A yes that only defers to someone else.
     ['Do you offer brake service?', "Yes, I'd need to check with the shop on that."],
     ['Is there parking?', 'Yes, I would have to confirm that.'],
@@ -1036,6 +1073,8 @@ describe('floor at teardown', () => {
     ['How much is a fade? Are you open today?', 'Yes, and one is free right now.'],
     ['How much is a fade?', "Only one's free this afternoon."],
     ['How much is a fade?', 'One is free right now.'],
+    ['How much is a fade?', 'The next one is free right now.'],
+    ['How much is a fade?', 'Each one is free today.'],
     ['How much is a fade?', 'No one is free right now.'],
     ['How much is a fade?', 'Neither one is free today.'],
     ['¿Cuánto cuesta un cambio de aceite?', 'No tiene costo fijo, depende del trabajo.'],
@@ -1283,8 +1322,15 @@ describe('isHoldingLine: broad follow-up and don\'t-know replies (review P2)', (
     'No podemos dar precios por teléfono.', 'I\'ll pass that along.',
     "Yes, I'd need to check with the shop on that.", 'We would have to confirm that.', "You'd have to ask the manager.",
     'I have to verify that.', 'Sí, tendría que preguntarle al encargado.', 'Tendríamos que verificar.', 'Tengo que revisar.',
+    // First-person plural and "let you know" / "get back" follow-ups.
+    "We're checking on that now.", 'We are looking into it.', "We'll check.", 'We will look at that.', "We're going to check.",
+    'Looking into it now.', "I'll let you know.", "We'll get back on that.", 'Estamos revisando.', 'Lo estamos verificando.',
+    'Estamos en eso.', 'Estoy en eso.', 'Le aviso.', 'Le avisamos.',
   ])('is not an answer: %s', (line) => {
     expect(isHoldingLine(line)).toBe(true);
+  });
+  it("is not a holding line: we're looking forward to it", () => {
+    expect(isHoldingLine("We're looking forward to seeing you Saturday.")).toBe(false);
   });
   it.each(['We close at five on Saturdays.', 'Cerramos a las cinco.', 'A haircut is thirty dollars.'])('a real answer still counts: %s', (line) => {
     expect(isHoldingLine(line)).toBe(false);
