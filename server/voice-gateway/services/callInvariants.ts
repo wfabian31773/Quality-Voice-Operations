@@ -70,7 +70,13 @@ import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { isExplicitYes, type ConfirmAction } from '../../../platform/reasoning/confirmationLanguage';
 import { CallerLineBuffer } from './callerLines';
-import { infoQuestionTypes, isSignOffOnly, type InfoQuestionType } from '../../../platform/actions/tickets/floorHeuristics';
+import {
+  infoQuestionClauses,
+  infoQuestionTypes,
+  isSignOffOnly,
+  type InfoQuestionClause,
+  type InfoQuestionType,
+} from '../../../platform/actions/tickets/floorHeuristics';
 
 /** The runtime's actor for system-only actions (the floor). */
 export const VOICE_RUNTIME_ACTOR = { type: 'system', id: 'voice-runtime' } as const;
@@ -178,8 +184,9 @@ const COURTESY_CLOSERS: readonly RegExp[] = [
 
 /**
  * Holding lines (EN/ES): the agent is about to look something up, promises a
- * follow-up ("I'll have a technician reach out", "Le devolveremos la llamada")
- * or doesn't know, so nothing was answered yet. Matched anywhere in the turn:
+ * follow-up ("I'll have a technician reach out", "Le devolveremos la llamada"),
+ * defers ("I'd need to check with the shop") or doesn't know, so nothing was
+ * answered yet. Matched anywhere in the turn:
  * a turn that holds one never counts as an answer, even with more after it.
  */
 const HOLDING_LINES: readonly RegExp[] = [
@@ -187,6 +194,9 @@ const HOLDING_LINES: readonly RegExp[] = [
   /\b(?:one|just a) (?:moment|sec|second|minute)\b|\ba moment\b/,
   /\b(?:hold on|hang on|hold,? please|please hold|bear with me|give me a (?:moment|sec|second|minute)|while (?:i|we) (?:check|look))\b/,
   /\b(?:i'?ll|i will|i'?m going to|i'?m) (?:check|checking|look|looking)\b/,
+  // A deferral: someone has to check or be asked first ("I'd need to check with the shop", "Tendría que preguntarle al encargado").
+  /\b(?:need|needs|have|has) to (?:check|ask|confirm|verify)\b|\bcheck with\b|\bask (?:the|my)\b/,
+  /(?<!\p{L})(?:(?:tendr[ií]a|tengo|tendr[ií]amos|tenemos) que (?:preguntar|revisar|confirmar|verificar)\p{L}*|preguntarles?)(?!\p{L})/u,
   /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
   /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
   // "Permítame." on its own, "Espere", "Espéreme".
@@ -278,7 +288,8 @@ const LEADING_YES_NO = new RegExp(
  * "Ofrecemos consultas gratuitas"), availability ("whenever you're free",
  * "Marco is free this afternoon", "Our barbers are free"), "feel free" or
  * "toll free". A noun subject (NOUN_IS_FREE) must be a word of the caller's
- * question.
+ * price clause. "No tiene costo" must end the clause ("No tiene costo fijo,
+ * depende" is no price).
  */
 const FREE_PRICE = new RegExp(
   String.raw`\b(?:it|that|this|those|these|one|ones)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
@@ -287,19 +298,23 @@ const FREE_PRICE = new RegExp(
     String.raw`|\b(?:do|does|did|doing) (?:it|that|this|them|those) (?:for free|free of charge|at no (?:charge|cost))\b` +
     String.raw`|(?:^|[.!?…]\s+)[\s"'“¡]*(?:(?:totally|completely|totalmente|completamente) )?(?:free(?: of charge)?|gratis|no (?:charge|cost)|on the house|sin (?:costo|cargo))` +
     String.raw`(?=\s*(?:[,.!;:…—–]|$)|\s+(?:with|if|for|when|to you|con|si|para)\b)` +
-    String.raw`|(?<!\p{L})(?:(?:es|son|ser[aá]|est[aá]n?) (?:totalmente |completamente )?(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))|no tienen? (?:costo|cargo)` +
+    String.raw`|(?<!\p{L})(?:(?:es|son|ser[aá]|est[aá]n?) (?:totalmente |completamente )?(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))|no tienen? (?:costo|cargo)(?=\s*(?:[,.!;:…—–]|$))` +
     String.raw`|(?:lo|la|los|las) (?:hacemos|hace|hacen) (?:gratis|sin (?:costo|cargo)))(?!\p{L})`,
   'u',
 );
 
-/** "{noun} is/are free": the noun is checked against the caller's question. */
+/** "{noun} is/are free": the noun is checked against the caller's price clause. */
 const NOUN_IS_FREE = /(?<![\p{L}'])(\p{L}{4,}) (?:is|are)(?: (?:totally|completely|always|also|still|actually))? (?:free|complimentary)(?!\p{L})/gu;
 /** Question words too common to name what was asked. */
 const NOT_SUBJECT_WORDS: ReadonlySet<string> = new Set(['much', 'many', 'what', 'when', 'where', 'does', 'have', 'your', 'there', 'this', 'that', 'cost', 'costs', 'price']);
 
-/** A noun subject of "is/are free" that shares its stem with a word of the caller's question ("oil changes" / "oil change"). */
-function nounFreeAnswersQuestion(lower: string, question: string): boolean {
-  const asked = question.split(/[^\p{L}]+/u).filter((word) => word.length >= 4 && !NOT_SUBJECT_WORDS.has(word));
+/**
+ * A noun subject of "is/are free" that shares its stem with a word of the
+ * caller's price clause ("oil changes" / "oil change"). Only that clause:
+ * "Is there parking? How much is an oil change?" → "Parking is free." prices nothing asked.
+ */
+function nounFreeAnswersQuestion(lower: string, clauseWords: readonly string[]): boolean {
+  const asked = clauseWords.filter((word) => word.length >= 4 && !NOT_SUBJECT_WORDS.has(word));
   return [...lower.matchAll(NOUN_IS_FREE)].some(([, noun]) =>
     !NOT_SUBJECT_WORDS.has(noun) && asked.some((word) => noun.startsWith(word) || word.startsWith(noun)),
   );
@@ -307,12 +322,13 @@ function nounFreeAnswersQuestion(lower: string, question: string): boolean {
 
 /**
  * A denial of "free" ("It's not free.", "We don't do it for free.", "No es
- * gratis.", "Nunca es gratis.", "Tampoco es gratis."): a negation earlier in
+ * gratis.", "Nunca es gratis.", "Tampoco es gratis."), or no one being free
+ * ("No one is free right now.", "Neither one is free."): a negation earlier in
  * the same clause vetoes FREE_PRICE. A comma ends the clause, so "No, es
  * gratis." and "Don't worry, it's free." still count.
  */
 const NOT_FREE = new RegExp(
-  String.raw`\b(?:not|never|no longer|isn't|aren't|wasn't|weren't|won't|wouldn't|don't|doesn't|didn't|do not|does not|did not|can't|cannot)\b` +
+  String.raw`\b(?:not|never|no longer|no one|nobody|neither|none|isn't|aren't|wasn't|weren't|won't|wouldn't|don't|doesn't|didn't|do not|does not|did not|can't|cannot)\b` +
     String.raw`[^.!?…,;]*\b(?:free|complimentary)\b` +
     String.raw`|(?<!\p{L})(?:no|nunca|tampoco|jam[aá]s)(?!\p{L})[^.!?…,;]*(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})`,
   'u',
@@ -339,10 +355,10 @@ const DID_NOT_HEAR =
  * as before. So "Yes." alone answers no hours or price question, and "It's
  * free." no hours question.
  */
-const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string, question: string) => boolean>>> = {
+const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string, clauseWords: readonly string[]) => boolean>>> = {
   yes_no: (lower) => LEADING_YES_NO.test(lower),
   staff: (lower) => LEADING_YES_NO.test(lower),
-  price: (lower, question) => (FREE_PRICE.test(lower) || nounFreeAnswersQuestion(lower, question)) && !NOT_FREE.test(lower),
+  price: (lower, clauseWords) => (FREE_PRICE.test(lower) || nounFreeAnswersQuestion(lower, clauseWords)) && !NOT_FREE.test(lower),
   location: (lower) => PLACE_WORDS.test(lower),
 };
 
@@ -351,14 +367,15 @@ const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string, 
  * open at nine.", "Un corte cuesta $30.", "Yes, we are." to "Are you open
  * Saturday?"). Typed evidence must cover every type asked: "Is there parking?
  * How much is an oil change?" → "Yes, there is." leaves the price unanswered.
- * question is the caller's line that asked.
+ * Each type's evidence sees only the words of the clauses that asked it
+ * (infoQuestionClauses of the caller's line).
  */
-function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[], question: string): boolean {
+function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[], clauses: readonly InfoQuestionClause[]): boolean {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   if (ANSWER_EVIDENCE.some((pattern) => pattern.test(lower))) return true;
   if (DID_NOT_HEAR.test(lower)) return false;
-  const questionLower = question.toLowerCase();
-  return asked.length > 0 && asked.every((type) => TYPED_EVIDENCE[type]?.(lower, questionLower) ?? false);
+  const wordsOf = (type: InfoQuestionType) => clauses.filter((clause) => clause.type === type).flatMap(({ tokens }) => tokens);
+  return asked.length > 0 && asked.every((type) => TYPED_EVIDENCE[type]?.(lower, wordsOf(type)) ?? false);
 }
 
 /** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
@@ -546,8 +563,8 @@ export class CallInvariants {
   private playbackInterrupted = false;
   /** What the caller's last line asked (infoQuestionTypes): which replies count as answering it. */
   private asked: readonly InfoQuestionType[] = ['other'];
-  /** The caller line `asked` came from. */
-  private askedLine = '';
+  /** The clauses of the caller line `asked` came from, by type (infoQuestionClauses). */
+  private askedClauses: readonly InfoQuestionClause[] = [];
   /**
    * answered as it stood when the caller started speaking: a sign-off line
    * ("Thank you!") restores it once transcribed. A tool, or an agent
@@ -612,7 +629,7 @@ export class CallInvariants {
       this.answered = this.answered || this.answeredBeforeSpeech;
     } else {
       this.asked = infoQuestionTypes(text);
-      this.askedLine = text;
+      this.askedClauses = infoQuestionClauses(text);
       this.answered = false;
     }
     this.answeredBeforeSpeech = false;
@@ -656,7 +673,7 @@ export class CallInvariants {
         this.answeredBeforeSpeech = false;
       }
       if (question || holding) this.answerAwaitingPlayback = false;
-      else if (hasAnswerEvidence(text, this.asked, this.askedLine)) this.answerAwaitingPlayback = true;
+      else if (hasAnswerEvidence(text, this.asked, this.askedClauses)) this.answerAwaitingPlayback = true;
       if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);

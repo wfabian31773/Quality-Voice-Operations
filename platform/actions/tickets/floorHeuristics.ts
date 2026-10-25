@@ -474,7 +474,24 @@ function infoQuestionShape(tokens: readonly string[], rawTokens: readonly string
  * ['other'].
  */
 export function infoQuestionTypes(line: string): InfoQuestionType[] {
-  const types = new Set<InfoQuestionType>();
+  const types = new Set(infoQuestionClauses(line).map(({ type }) => type));
+  return types.size > 0 ? [...types] : ['other'];
+}
+
+/** A caller clause that fits an info-question shape: what it asks and its normalized words, filler trimmed. */
+export interface InfoQuestionClause {
+  type: InfoQuestionType;
+  tokens: readonly string[];
+}
+
+/**
+ * The clauses of a caller line that fit an info-question shape, in order
+ * (infoQuestionTypes): "Is there parking? How much is an oil change?" → a
+ * yes_no clause "is there parking" and a price clause "how much is an oil
+ * change". A line no shape fits has none.
+ */
+export function infoQuestionClauses(line: string): InfoQuestionClause[] {
+  const clauses: InfoQuestionClause[] = [];
   for (const { text, marked } of splitClauses(line.replace(NAME_ABBREVIATION, '$1'))) {
     const tokens = normalizeTokens(text);
     const raw = caseTokens(text);
@@ -482,9 +499,9 @@ export function infoQuestionTypes(line: string): InfoQuestionType[] {
     const [start, end] = edgeFillerBounds(tokens);
     if (end <= start) continue;
     const found = infoQuestionShape(tokens.slice(start, end), aligned ? raw.slice(start, end) : [], marked);
-    if (found) types.add(found.type);
+    if (found) clauses.push({ type: found.type, tokens: tokens.slice(start, end) });
   }
-  return types.size > 0 ? [...types] : ['other'];
+  return clauses;
 }
 
 /** Closing words a caller adds after an answer, beside EDGE_FILLER ("Perfect, thanks", "Muy bien, gracias"). */

@@ -1002,7 +1002,16 @@ describe('floor at teardown', () => {
     ['¿Tienen estacionamiento?', 'Sí, permítame un momento.'],
     ['¿Tienen estacionamiento?', 'Sí, espere.'],
     ['¿Tienen estacionamiento?', 'Sí, espéreme.'],
+    // A yes that only defers to someone else.
+    ['Do you offer brake service?', "Yes, I'd need to check with the shop on that."],
+    ['Is there parking?', 'Yes, I would have to confirm that.'],
+    ['Do you do oil changes?', 'Yeah, you would have to ask the manager.'],
+    ['¿Tienen estacionamiento?', 'Sí, tendría que preguntarle al encargado.'],
+    ['¿Ofrecen cambios de aceite?', 'Sí, tengo que revisarlo.'],
     // "Free" that is no price.
+    ['How much is a fade?', 'No one is free right now.'],
+    ['How much is a fade?', 'Neither one is free today.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No tiene costo fijo, depende del trabajo.'],
     ['How much is an oil change?', 'Call our toll free line.'],
     ['How much is an oil change?', "It's not free."],
     ['¿Cuánto cuesta un cambio de aceite?', 'No es gratis.'],
@@ -1065,6 +1074,9 @@ describe('floor at teardown', () => {
     ['Is there parking? How much is an oil change?', 'Yes, there is.', false],
     ['Is there parking? How much is an oil change?', "Yes, and it's $40.", true],
     ['Is there parking? How much is an oil change?', "Yes, and it's free.", true],
+    // A noun from the other clause prices nothing asked.
+    ['Is there parking? How much is an oil change?', 'Yes, parking is free.', false],
+    ['Is there parking? How much is an oil change?', 'Yes, and oil changes are free.', true],
     ['Are you open Saturday? What time do you close?', 'Yes.', false],
     ['Are you open Saturday? What time do you close?', 'Yes, until five.', true],
     ['Is there parking? Where are you located?', 'Yes, next to the post office.', true],
@@ -1242,6 +1254,8 @@ describe('isHoldingLine: broad follow-up and don\'t-know replies (review P2)', (
     'Le vamos a llamar.', 'A technician will call you with a quote.', "We'll call you with pricing.",
     'Someone from our team will call you.', 'We will follow up.', "I can't give pricing over the phone.",
     'No podemos dar precios por teléfono.', 'I\'ll pass that along.',
+    "Yes, I'd need to check with the shop on that.", 'We would have to confirm that.', "You'd have to ask the manager.",
+    'I have to verify that.', 'Sí, tendría que preguntarle al encargado.', 'Tendríamos que verificar.', 'Tengo que revisar.',
   ])('is not an answer: %s', (line) => {
     expect(isHoldingLine(line)).toBe(true);
   });

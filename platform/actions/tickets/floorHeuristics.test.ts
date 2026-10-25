@@ -3,6 +3,7 @@ import {
   answeredInfoOnly,
   contentWords,
   hasCallbackNumber,
+  infoQuestionClauses,
   infoQuestionTypes,
   isSignOffOnly,
   normalizeTokens,
@@ -476,6 +477,19 @@ describe('infoQuestionTypes', () => {
 
   it('a staff slot holding no name ("noon") is no staff question, as in isInfoQuestion', () => {
     expect(infoQuestionTypes('Does noon work?')).toEqual(['other']);
+  });
+});
+
+describe('infoQuestionClauses', () => {
+  it('gives each fitting clause its type and its own words, filler trimmed', () => {
+    expect(infoQuestionClauses('Hi, is there parking? And how much is an oil change?')).toEqual([
+      { type: 'yes_no', tokens: ['is', 'there', 'parking'] },
+      { type: 'price', tokens: ['how', 'much', 'is', 'an', 'oil', 'change'] },
+    ]);
+  });
+
+  it('a line no shape fits has no clauses', () => {
+    expect(infoQuestionClauses('I need a fade Friday')).toEqual([]);
   });
 });
 
