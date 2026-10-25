@@ -103,6 +103,32 @@ describe('answeredInfoOnly', () => {
     expect(skips('Does anyone work Saturday?')).toBe(false);
   });
 
+  it.each([
+    'Do you have any times?',
+    'Do you have spaces?',
+    'Any room Saturday?',
+    'Do you have any spots?',
+    'Any openings tomorrow?',
+    '¿Tienen lugar?',
+    '¿Tienen lugares?',
+    '¿Tienen espacios?',
+    '¿Tienen cupo?',
+    '¿Tienen cupos?',
+    '¿Tienen huecos?',
+    '¿Tienen turno?',
+    '¿Tienen turnos?',
+  ])('files an availability ask, plural or Spanish ("%s")', (line) => {
+    expect(skips(line)).toBe(false);
+  });
+
+  it('a title\'s period does not split the introduction ("Dr. Patel")', () => {
+    expect(skips('Hi, this is Dr. Patel. What are your hours?')).toBe(true);
+  });
+
+  it('pins today\'s verdict for a bare "Hours, please?": the comma leaves "Hours" unmarked, so it files', () => {
+    expect(skips('Hours, please?')).toBe(false);
+  });
+
   it('drops only a clause that is purely an introduction with a 1-2 word name', () => {
     expect(skips('This is Ana María', 'Are you open today?')).toBe(true);
     // A 3-word "name", or an intro carrying a problem word, stays a content clause and files.
@@ -116,7 +142,6 @@ describe('answeredInfoOnly', () => {
     expect(answeredInfoOnly(['this is maria', 'Are you open today?'], { ...ANSWERED, callerName: 'Maria Lopez' })).toBe(true);
     expect(skips('Hola, habla Ana. ¿Abren hoy?')).toBe(true);
     expect(skips('hola, habla ana. ¿Abren hoy?')).toBe(false);
-    // "my name is" / "mi nombre es" name the caller outright.
     // "my name is" / "mi nombre es" take a lowercase name only when the whole transcript is lowercase.
     expect(skips('my name is maria', 'are you open today?')).toBe(true);
     // With casing elsewhere, a lowercase "name" is not trusted ("My name is misspelled"), unless it is the callerName.

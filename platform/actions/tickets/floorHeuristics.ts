@@ -663,7 +663,8 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   let first = true;
   const clauses: Clause[] = [];
   for (const line of lines) {
-    const parts = splitClauses(line);
+    // As in contentWords: "Dr. Patel" keeps its title inside the introduction.
+    const parts = splitClauses(line.replace(NAME_ABBREVIATION, '$1'));
     let afterContent = false;
     parts.forEach((part, k) => {
       const clause = toClause(part, first, parts[k + 1], afterContent);

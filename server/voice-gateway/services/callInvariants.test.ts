@@ -728,6 +728,53 @@ describe('floor at teardown', () => {
     },
   );
 
+  it.each([
+    'Sorry, I missed that.',
+    "That's a good question.",
+    'Let me see.',
+    'Hmm.',
+    "I'm not sure.",
+    'Okay.',
+    'Got it.',
+    'Sure.',
+    'Perdón, no le entendí.',
+    'Buena pregunta.',
+    'Déjeme ver.',
+    'No estoy seguro.',
+  ])('awaiting playback: a confirmed turn without answer evidence ("%s") is not an answer, and the floor files', async (line) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted(line);
+    inv.agentPlaybackConfirmed();
+    await expect(inv.evaluateFloor()).resolves.toBe('filed');
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ endReason: 'caller_hangup', answered: false });
+  });
+
+  it.each(["We're open until 7 tonight.", 'Un corte cuesta $30.', "We're closed Sundays.", 'Yes, we close at seven.', 'Cerramos los domingos.'])(
+    'awaiting playback: a confirmed real answer ("%s") counts as answered',
+    async (answer) => {
+      const { inv, runFloorAction } = make({ awaitPlayback: true });
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted(answer);
+      inv.agentPlaybackConfirmed();
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+    },
+  );
+
+  it('awaiting playback: an answer, then a courtesy closer or a turn without evidence, stays answered', async () => {
+    for (const after of ['Anything else?', 'Okay.', 'Perdón, no le entendí.']) {
+      const { inv, runFloorAction } = make({ awaitPlayback: true });
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted("We're open until 7 tonight.");
+      inv.agentPlaybackConfirmed();
+      inv.agentTurnCompleted(after);
+      inv.agentPlaybackConfirmed();
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1], after).toMatchObject({ answered: true });
+    }
+  });
+
   it('a tool name past the floor limit is truncated before it reaches the floor', async () => {
     const { inv, tool, runFloorAction } = make();
     const long = `x${'y'.repeat(300)}`;

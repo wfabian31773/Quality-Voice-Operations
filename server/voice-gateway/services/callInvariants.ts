@@ -204,6 +204,31 @@ export function isHoldingLine(text: string): boolean {
   return HOLDING_LINES.some((pattern) => pattern.test(lower));
 }
 
+/**
+ * Positive evidence that a turn answered something (EN/ES): a number (a time,
+ * price, address or count), a day of the week, a price word, or an
+ * opening-hours or location word. Deliberately short: a turn with none of
+ * these ("Sorry, I missed that.", "Good question.", "Okay.", "Buena
+ * pregunta.") is not an answer, so the floor still files. An answer that only
+ * names a staff member or service is missed too; an extra ticket is fine.
+ */
+const ANSWER_EVIDENCE: readonly RegExp[] = [
+  /\d/,
+  /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|noon|midnight)\b/,
+  /(?<!\p{L})(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mediod[ií]a|medianoche)(?!\p{L})/u,
+  /\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b/,
+  /(?<!\p{L})(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)(?!\p{L})/u,
+  /\$|\b(?:dollars?|bucks|cents)\b|(?<!\p{L})(?:d[oó]lares|pesos)(?!\p{L})/u,
+  /\b(?:open|opens|closed|closes|located|street|avenue|downtown)\b/,
+  /(?<!\p{L})(?:abrimos|abre|abierto|abiertos|cerramos|cierra|cerrado|cerrados|calle|avenida|ubicad[oa]s?|centro)(?!\p{L})/u,
+];
+
+/** A turn that carries answer-shaped content ("We open at nine.", "Un corte cuesta $30."). */
+function hasAnswerEvidence(text: string): boolean {
+  const lower = text.toLowerCase();
+  return ANSWER_EVIDENCE.some((pattern) => pattern.test(lower));
+}
+
 /** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
 function isOnlyCourtesyCloser(text: string): boolean {
   const sentences = text.trim().split(/(?<=[.!?…])\s+/).filter(Boolean);
@@ -378,8 +403,9 @@ export class CallInvariants {
   /** Every tool run on the call, by platform action name when it has one; a blocked run is not ok. */
   private readonly toolRuns: Array<{ name: string; ok: boolean }> = [];
   /**
-   * The agent gave a real answer (not a question or a holding line) after the
-   * caller's last line and after the last tool started, and its audio played.
+   * The agent gave a real answer (answer evidence, not a question or a holding
+   * line) after the caller's last line and after the last tool started, and
+   * its audio played.
    */
   private answered = false;
   /** The latest agent turn is an answer whose playback is not confirmed yet. */
@@ -468,11 +494,14 @@ export class CallInvariants {
       }
       // A clarifying question or a holding line never sets answered, and clears
       // an earlier one ("Sorry, could you repeat that?" after speech that was
-      // never transcribed). A pure courtesy closer keeps it.
+      // never transcribed). A pure courtesy closer keeps it. Any other turn
+      // only counts with answer evidence; one without it ("Sorry, I missed
+      // that.") neither sets nor clears an answer.
       const question = isAgentQuestion(text);
       const holding = isHoldingLine(text);
       if (holding || (question && !isOnlyCourtesyCloser(text))) this.answered = false;
-      this.answerAwaitingPlayback = !question && !holding;
+      if (question || holding) this.answerAwaitingPlayback = false;
+      else if (hasAnswerEvidence(text)) this.answerAwaitingPlayback = true;
       if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);
