@@ -244,31 +244,50 @@ const ANSWER_EVIDENCE: readonly RegExp[] = [
   /(?<!\p{L})(?:abrimos|abre|abierto|abiertos|cerramos|cierra|cerrado|cerrados|calle|avenida|ubicad[oa]s?|centro)(?!\p{L})/u,
 ];
 
-/**
- * A yes or no that opens the turn and stands on its own: punctuation or the
- * end right after it ("Yes.", "No, we don't.", "Sí, estamos abiertos.",
- * "Claro."), or a subject pronoun ("Yes we are"). "No problem", "No worries"
- * and "Si quiere..." ("if") don't stand alone, so they don't count.
- */
-const LEADING_YES_NO =
-  /^[\s"'“¡]*(?:yes|yeah|yep|yup|no|nope|sure|of course|correct|that's right|s[ií]|claro(?: que s[ií])?|por supuesto|as[ií] es|exacto)(?=\s*(?:[,.!;:…—–]|$)|\s+(?:we|i|she|he|they|it|there|you)\b)/;
+/** Help or acknowledgement filler ("I can help with that", "happy to", "con gusto le ayudo"): not an answer. */
+const ACK_FILLER = String.raw`(?:\b(?:help|assist|happy to|glad to)\b|con gusto|ayud)`;
+/** No ACK_FILLER in the rest of the first sentence, or in a second sentence that is a statement. */
+const NO_ACK_FILLER = String.raw`(?![^.!?…]*${ACK_FILLER})(?![^.!?…]*[.!…]\s*[^.!?…]*${ACK_FILLER}[^.!?…]*(?:[.!…]|$))`;
 
-/** Free of charge (EN/ES): "It's free.", "No charge.", "Es gratis.", "Sin costo." Not "feel free" or "toll-free". */
+/**
+ * A yes or no that opens the turn and stands on its own. A real yes or no
+ * takes punctuation or the end right after it ("Yes.", "No, we don't.", "Sí,
+ * estamos abiertos."), or a subject pronoun ("Yes we are"). An
+ * acknowledgement that can also just open a turn (sure, of course, claro,
+ * correct) counts only as a whole sentence ("Claro.", "Of course!"), so "Sure,
+ * I can help with that." doesn't. Either is vetoed by help filler after it
+ * ("Yes, I can help with that.", "Claro. Con gusto le ayudo."). "No
+ * problem", "No worries" and "Si quiere..." ("if") don't stand alone, so they
+ * don't count.
+ */
+const LEADING_YES_NO = new RegExp(
+  String.raw`^[\s"'“¡]*(?:(?:yes|yeah|yep|yup|no|nope|s[ií])(?=\s*(?:[,.!;:…—–]|$)|\s+(?:we|i|she|he|they|it|there|you)\b)` +
+    String.raw`|(?:sure|of course|correct|that's right|claro(?: que s[ií])?|por supuesto|as[ií] es|exacto)(?=\s*(?:[.!…]|$)))${NO_ACK_FILLER}`,
+);
+
+/**
+ * Free of charge (EN/ES): "It's free.", "No charge.", "Es gratis.", "Sin costo." Not "feel free",
+ * "toll-free" / "toll free", or a denial ("It's not free.", "No es gratis.").
+ */
 const FREE_PRICE =
-  /(?<!\bfeel |-)\bfree\b|\b(?:complimentary|no (?:charge|cost)|on the house)\b|(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})/u;
+  /(?<!\b(?:feel|toll|not|isn't|aren't) |-)\bfree\b|\b(?:complimentary|no (?:charge|cost)|on the house)\b|(?<!(?<!\p{L})no (?:es |son )?)(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})/u;
 
 /** Where something is (EN/ES), beside the street words and numbers ANSWER_EVIDENCE already takes. */
 const PLACE_WORDS =
   /\b(?:address|near|next to|across (?:the street )?from|corner of|behind|in front of|road|blvd|boulevard|highway|plaza|mall|suite|shopping center)\b|(?<!\p{L})(?:direcci[oó]n|cerca|junto|enfrente|frente a|al lado|esquina|detr[aá]s|carretera|plaza|bulevar|centro comercial)(?!\p{L})/u;
 
-/** The agent didn't catch the caller ("Sorry, I missed that.", "Lo siento, no le escuché."): never a typed answer. */
+/**
+ * The agent didn't catch the caller or the line is bad ("Sorry, I missed that.", "I didn't quite catch
+ * that.", "You're breaking up.", "Lo siento, no le escuché.", "Se corta."): never a typed answer.
+ */
 const DID_NOT_HEAR =
-  /\b(?:missed (?:that|it|you)|didn't (?:catch|hear|get)|(?:say|repeat) that)\b|(?<!\p{L})(?:no (?:le |te |lo )?(?:entend|escuch|o[ií])|perd[oó]n|disculp|repet)/u;
+  /\b(?:missed (?:that|it|you)|(?:didn't|did not) (?:\w+ )?(?:catch|hear|get|understand)|(?:couldn't|could not|can't|cannot) (?:\w+ )?(?:hear|understand|make out)|breaking up|cutting out|(?:you|it|line|call) cut out|bad (?:connection|line)|(?:say|repeat) that)\b|(?<!\p{L})(?:no (?:le |te |lo |se )?(?:entend|escuch|o[iíy])|se (?:le )?corta(?=\s*(?:[,.!…]|$)| la (?:llamada|l[ií]nea|se[ñn]al|voz))|se (?:le )?est[aá] cortando|perd[oó]n|disculp|repet)/u;
 
 /**
  * Evidence that only answers some questions, by what the caller asked
- * (infoQuestionTypes): a leading yes or no answers a yes/no or staff-days
- * question ("Is there parking?" → "Yes, out back."), "free" answers a price
+ * (infoQuestionTypes): a leading yes or no answers a yes/no question or "does
+ * {N} work Saturdays" ("Is there parking?" → "Yes, out back."), but not "what
+ * days does {N} work", which is a time question; "free" answers a price
  * question, a landmark answers a location question. Added to ANSWER_EVIDENCE,
  * never instead of it: a time, day, price or place word answers any question,
  * as before. So "Yes." alone answers no hours or price question, and "It's

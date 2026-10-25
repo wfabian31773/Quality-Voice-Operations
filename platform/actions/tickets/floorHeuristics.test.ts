@@ -452,9 +452,11 @@ describe('infoQuestionTypes', () => {
     ['¿Cuánto cuesta un cambio de aceite?', ['price']],
     ['Where are you located?', ['location']],
     ['¿Dónde están ubicados?', ['location']],
-    ['What days does Marco work?', ['staff']],
+    // Only "does {N} work Saturdays" takes a yes or no; "what days" asks for days.
+    ['What days does Marco work?', ['time']],
+    ['Which days does Marco work?', ['time']],
     ['Does Marco work Saturdays?', ['staff']],
-    ['¿Qué días trabaja Marco?', ['staff']],
+    ['¿Qué días trabaja Marco?', ['time']],
     ['What services do you offer?', ['other']],
     ['Are you open Saturday? How much is a fade?', ['yes_no', 'price']],
     ['Downtown', ['other']],

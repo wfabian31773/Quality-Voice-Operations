@@ -270,7 +270,8 @@ const shape = (template: string) =>
 /**
  * What an info question asks for, so the runtime knows which reply answers it
  * (callInvariants' answer evidence): a yes or no, a time or day, a price, a
- * place, a staff member's days, or something else (a service list).
+ * place, whether a staff member works a given day, or something else (a
+ * service list).
  */
 export type InfoQuestionType = 'yes_no' | 'time' | 'price' | 'location' | 'staff' | 'other';
 
@@ -299,14 +300,15 @@ const INFO_QUESTION_SHAPES: readonly TypedShape[] = typed([
   ['time', 'what days (?:are {YOU} open|do {YOU} work)'],
   // Staff days: "what days does Marco work", "does Marco work Saturdays".
   // {N} must be capitalized in the caller's own words (staffNameIsValid).
-  ['staff', '(?:what|which) days does {N} work'],
+  // Only the second takes a yes or no, so the open form is a time question.
+  ['time', '(?:what|which) days does {N} work'],
   ['staff', 'does {N} work{WEEKDAYS}'],
   // Horario: "¿a qué hora cierran?", "¿cuál es su horario?", "¿cuándo abren?", "¿qué días trabaja Marco?".
   ['time', '(?:a |hasta )?que hora (?:abren|cierran|abre|cierra)(?: ustedes| {TIENDA})?{WHEN}'],
   ['time', '(?:cual es |cuales son |que )(?:su |sus |el |los )?{HORARIO}(?: tienen)?{WHEN}'],
   ['time', `cuando ${SPANISH_OPEN_CLOSED}`],
   ['time', 'que dias (?:abren|trabajan|estan abiertos)'],
-  ['staff', 'que dias trabaja {N}'],
+  ['time', 'que dias trabaja {N}'],
   // Location and contact: "where are you located", "where is the shop", "what's your phone number", "website".
   // "Where are you?" / "¿Dónde están?" is what a caller waiting on a late tech asks, so it needs
   // "located" / "ubicados" or a shop noun.

@@ -929,7 +929,61 @@ describe('floor at teardown', () => {
     }
   });
 
-  // By design a bare yes or no answers only a yes/no or staff-days question, and "free" only a price question.
+  it.each([
+    ['Are you open on Saturday?', 'Sure.'],
+    ['Does Marco work Saturdays?', 'Yes, he does.'],
+    ['¿Están abiertos hoy?', 'Sí, estamos abiertos.'],
+    ['Is there parking?', 'Yes, out back. Anything else I can help with?'],
+    ['Do you have a website?', 'Of course! Anything else I can help you with?'],
+    ['How much is an oil change?', 'Free with any tire purchase.'],
+  ])('a typed answer stands beside help or a courtesy question ("%s" → "%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    // "What days does {N} work" asks for days, not a yes or no.
+    ['What days does Marco work?', 'Sure.'],
+    ['What days does Marco work?', 'Of course.'],
+    ['What days does Marco work?', 'Yes.'],
+    ['¿Qué días trabaja Marco?', 'Claro.'],
+    ['¿Qué días trabaja Marco?', 'Sí.'],
+    // An acknowledgement that opens the turn is not a yes or no.
+    ['Are you open on Saturday?', 'Sure, I can help with that.'],
+    ['Is there parking?', "Of course, I'd be happy to help."],
+    ['Do you do oil changes?', 'Sure, let me look into that.'],
+    ['Are you open on Saturday?', 'Yes, I can help you with that.'],
+    ['Is there parking?', "Yeah, I'm glad to assist."],
+    ['Are you open on Saturday?', 'Sure! Happy to help.'],
+    ['¿Están abiertos hoy?', 'Claro, con gusto le ayudo.'],
+    ['¿Están abiertos hoy?', 'Claro. Con gusto le ayudo.'],
+    ['¿Tienen estacionamiento?', 'Sí, le puedo ayudar con eso.'],
+    ['¿Ofrecen cambios de aceite?', 'Por supuesto, en qué le puedo ayudar.'],
+    // A yes or no before not hearing the caller or a bad line.
+    ['Are you open on Saturday?', "No, sorry, I didn't understand that."],
+    ['Are you open on Saturday?', "No, sorry, I couldn't hear you."],
+    ['Are you open on Saturday?', "No, sorry, I didn't quite catch that."],
+    ['Are you open on Saturday?', "Yes, sorry, you're breaking up."],
+    ['Are you open on Saturday?', "Yes, sorry, you're cutting out."],
+    ['Are you open on Saturday?', "No, sorry, I can't make out what you said."],
+    ['Is there parking?', "Yeah, sorry, it's a bad connection."],
+    ['¿Están abiertos hoy?', 'No, perdón, no le entendí.'],
+    ['¿Están abiertos hoy?', 'Sí, lo siento, no le oigo bien.'],
+    ['¿Están abiertos hoy?', 'Sí, lo siento, se corta.'],
+    ['¿Están abiertos hoy?', 'Sí, lo siento, se está cortando la llamada.'],
+    ['¿Tienen estacionamiento?', 'No, lo siento, no se escucha.'],
+    // "Free" that is no price.
+    ['How much is an oil change?', 'Call our toll free line.'],
+    ['How much is an oil change?', "It's not free."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No es gratis.'],
+  ])('filler or a non-answer does not answer "%s" ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(false);
+  });
+
+  it('a yes/no answer about a haircut is not mistaken for a bad line ("se corta el pelo")', async () => {
+    expect(await answeredFor('¿Ofrecen cortes de pelo?', 'Sí, aquí se corta el pelo a niños y adultos.')).toBe(true);
+  });
+
+  // By design a bare yes or no answers only a yes/no or "does {N} work Saturdays" question, and "free" only a price question.
   it.each([
     ['What are your hours?', 'Yes.'],
     ['What time do you close?', 'Sure.'],
