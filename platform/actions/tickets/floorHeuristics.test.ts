@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { answeredInfoOnly, contentWords, hasCallbackNumber, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+import {
+  answeredInfoOnly,
+  contentWords,
+  hasCallbackNumber,
+  infoQuestionClauses,
+  infoQuestionTypes,
+  isSignOffOnly,
+  normalizeTokens,
+  saidMoreThanTheirOwnName,
+} from './floorHeuristics';
 
 describe('answeredInfoOnly', () => {
   const ANSWERED = { endReason: 'caller_hangup', tools: [], answered: true };
@@ -103,6 +112,32 @@ describe('answeredInfoOnly', () => {
     expect(skips('Does anyone work Saturday?')).toBe(false);
   });
 
+  it.each([
+    'Do you have any times?',
+    'Do you have spaces?',
+    'Any room Saturday?',
+    'Do you have any spots?',
+    'Any openings tomorrow?',
+    '¿Tienen lugar?',
+    '¿Tienen lugares?',
+    '¿Tienen espacios?',
+    '¿Tienen cupo?',
+    '¿Tienen cupos?',
+    '¿Tienen huecos?',
+    '¿Tienen turno?',
+    '¿Tienen turnos?',
+  ])('files an availability ask, plural or Spanish ("%s")', (line) => {
+    expect(skips(line)).toBe(false);
+  });
+
+  it('a title\'s period does not split the introduction ("Dr. Patel")', () => {
+    expect(skips('Hi, this is Dr. Patel. What are your hours?')).toBe(true);
+  });
+
+  it('pins today\'s verdict for a bare "Hours, please?": the comma leaves "Hours" unmarked, so it files', () => {
+    expect(skips('Hours, please?')).toBe(false);
+  });
+
   it('drops only a clause that is purely an introduction with a 1-2 word name', () => {
     expect(skips('This is Ana María', 'Are you open today?')).toBe(true);
     // A 3-word "name", or an intro carrying a problem word, stays a content clause and files.
@@ -116,7 +151,6 @@ describe('answeredInfoOnly', () => {
     expect(answeredInfoOnly(['this is maria', 'Are you open today?'], { ...ANSWERED, callerName: 'Maria Lopez' })).toBe(true);
     expect(skips('Hola, habla Ana. ¿Abren hoy?')).toBe(true);
     expect(skips('hola, habla ana. ¿Abren hoy?')).toBe(false);
-    // "my name is" / "mi nombre es" name the caller outright.
     // "my name is" / "mi nombre es" take a lowercase name only when the whole transcript is lowercase.
     expect(skips('my name is maria', 'are you open today?')).toBe(true);
     // With casing elsewhere, a lowercase "name" is not trusted ("My name is misspelled"), unless it is the callerName.
@@ -410,6 +444,74 @@ describe('answeredInfoOnly', () => {
   it('files greetings and introductions with no question at all', () => {
     expect(skips('Hi, this is Maria')).toBe(false);
     expect(skips('Hello?', 'Thanks, bye')).toBe(false);
+  });
+});
+
+describe('infoQuestionTypes', () => {
+  it.each([
+    ['Are you open on Saturday?', ['yes_no']],
+    ['Do you offer brake service?', ['yes_no']],
+    ['Is there parking?', ['yes_no']],
+    ['¿Están abiertos hoy?', ['yes_no']],
+    ['¿Tienen estacionamiento?', ['yes_no']],
+    ['What time do you close?', ['time']],
+    ['Hi, what are your hours?', ['time']],
+    ['¿A qué hora cierran?', ['time']],
+    ['How much is an oil change?', ['price']],
+    ['¿Cuánto cuesta un cambio de aceite?', ['price']],
+    ['Where are you located?', ['location']],
+    ['¿Dónde están ubicados?', ['location']],
+    // Only "does {N} work Saturdays" takes a yes or no; "what days" asks for days.
+    ['What days does Marco work?', ['time']],
+    ['Which days does Marco work?', ['time']],
+    ['Does Marco work Saturdays?', ['staff']],
+    ['¿Qué días trabaja Marco?', ['time']],
+    ['What services do you offer?', ['other']],
+    ['Are you open Saturday? How much is a fade?', ['yes_no', 'price']],
+    ['Downtown', ['other']],
+    ['I need a fade Friday', ['other']],
+    ['', ['other']],
+  ])('"%s" asks %j', (line, types) => {
+    expect(infoQuestionTypes(line)).toEqual(types);
+  });
+
+  it('a staff slot holding no name ("noon") is no staff question, as in isInfoQuestion', () => {
+    expect(infoQuestionTypes('Does noon work?')).toEqual(['other']);
+  });
+});
+
+describe('infoQuestionClauses', () => {
+  it('gives each fitting clause its type and its own words, filler trimmed', () => {
+    expect(infoQuestionClauses('Hi, is there parking? And how much is an oil change?')).toEqual([
+      { type: 'yes_no', tokens: ['is', 'there', 'parking'] },
+      { type: 'price', tokens: ['how', 'much', 'is', 'an', 'oil', 'change'] },
+    ]);
+  });
+
+  it('a line no shape fits has no clauses', () => {
+    expect(infoQuestionClauses('I need a fade Friday')).toEqual([]);
+  });
+});
+
+describe('isSignOffOnly', () => {
+  it.each([
+    'Thank you!', 'Thanks.', 'Okay.', 'Perfect, thanks.', 'No, thank you.', 'Okay, thanks, bye!', 'Great, thank you so much.',
+    'Got it, have a good day.', 'Gracias.', 'Muchas gracias.', 'Perfecto, muchas gracias.', 'Muy bien, gracias, adiós.', 'Vale.',
+  ])('"%s" is only a sign-off', (line) => {
+    expect(isSignOffOnly(line)).toBe(true);
+  });
+
+  it.each([
+    'Thanks. How much is an oil change?', 'Okay, and on Sunday?', 'Yes.', 'Yes please.', 'Perfect, can you call me back?',
+    'Gracias, ¿y los sábados?', 'No, my car is still broken.', '...', '',
+  ])('"%s" is more than a sign-off', (line) => {
+    expect(isSignOffOnly(line)).toBe(false);
+  });
+
+  it('the repro calls (question, thanks) are still answered info calls', () => {
+    const signals = { endReason: 'caller_hangup', answered: true, tools: [] };
+    expect(answeredInfoOnly(['Is there parking?', 'Thank you!'], signals)).toBe(true);
+    expect(answeredInfoOnly(['¿Tienen estacionamiento?', 'Gracias.'], signals)).toBe(true);
   });
 });
 

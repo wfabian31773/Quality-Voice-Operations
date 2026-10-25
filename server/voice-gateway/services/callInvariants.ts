@@ -70,6 +70,14 @@ import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { isExplicitYes, type ConfirmAction } from '../../../platform/reasoning/confirmationLanguage';
 import { CallerLineBuffer } from './callerLines';
+import {
+  infoQuestionClauses,
+  infoQuestionTypes,
+  isSignOffOnly,
+  normalizeTokens,
+  type InfoQuestionClause,
+  type InfoQuestionType,
+} from '../../../platform/actions/tickets/floorHeuristics';
 
 /** The runtime's actor for system-only actions (the floor). */
 export const VOICE_RUNTIME_ACTOR = { type: 'system', id: 'voice-runtime' } as const;
@@ -177,21 +185,27 @@ const COURTESY_CLOSERS: readonly RegExp[] = [
 
 /**
  * Holding lines (EN/ES): the agent is about to look something up, promises a
- * follow-up ("I'll have a technician reach out", "Le devolveremos la llamada")
- * or doesn't know, so nothing was answered yet. Matched anywhere in the turn:
+ * follow-up ("I'll have a technician reach out", "Le devolveremos la llamada"),
+ * defers ("I'd need to check with the shop") or doesn't know, so nothing was
+ * answered yet. Matched anywhere in the turn:
  * a turn that holds one never counts as an answer, even with more after it.
  */
 const HOLDING_LINES: readonly RegExp[] = [
   /\blet me (?:check|look|see|find|pull|verify|confirm)\b/,
   /\b(?:one|just a) (?:moment|sec|second|minute)\b|\ba moment\b/,
-  /\b(?:hold on|bear with me|give me a (?:moment|sec|second|minute))\b/,
-  /\b(?:i'?ll|i will|i'?m going to|i'?m) (?:check|checking|look|looking)\b/,
+  /\b(?:hold on|hang on|hold,? please|please hold|bear with me|give me a (?:moment|sec|second|minute)|while (?:i|we) (?:check|look))\b/,
+  /\b(?:i'?ll|i will|i'?m going to|i'?m|we'?re|we are|we'?ll|we will|we'?re going to) (?:check|checking|look|looking)\b(?! forward)|\blooking into\b/,
+  // A deferral: someone has to check or be asked first ("I'd need to check with the shop", "Tendría que preguntarle al encargado").
+  /\b(?:need|needs|have|has) to (?:check|ask|confirm|verify)\b|\bcheck with\b|\bask (?:the|my)\b/,
+  /(?<!\p{L})(?:(?:tendr[ií]a|tengo|tendr[ií]amos|tenemos) que (?:preguntar|revisar|confirmar|verificar)\p{L}*|preguntarles?)(?!\p{L})/u,
   /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
   /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
-  /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
+  // "Permítame." on its own, "Espere", "Espéreme".
+  /(?<!\p{L})(?:perm[ií]t(?:a|e)me(?=\s*(?:[,.!…]|$))|espere|esp[eé]reme)(?!\p{L})/u,
+  /\b(?:lo )?(?:estoy|estamos) (?:revisando|checando|buscando|verificando|en eso)\b/,
   // A follow-up promise: any mention of calling, contacting or following up means
   // someone else answers later. Deliberately broad; an extra ticket is fine.
-  /\b(?:call|calls|calling|contact|contacting|text you|reach out|reach you|get back to you|follow(?:ing)? up|pass (?:that|this|it) along|let (?:the team|them|someone) know)\b/,
+  /\b(?:call|calls|calling|contact|contacting|text you|reach out|reach you|get(?:ting)? back|follow(?:ing)? up|pass (?:that|this|it) along|let (?:the team|them|someone|you) know)\b/,
   /(?:llam|contact|comunic|devolv|avis)/,
   // The agent doesn't know or can't.
   /\b(?:don'?t|do not|doesn'?t) (?:have|know)\b|\bnot sure\b|\b(?:can'?t|cannot|unable to|not able to)\b/,
@@ -202,6 +216,241 @@ const HOLDING_LINES: readonly RegExp[] = [
 export function isHoldingLine(text: string): boolean {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   return HOLDING_LINES.some((pattern) => pattern.test(lower));
+}
+
+/**
+ * Positive evidence that a turn answered something (EN/ES): a number (a time,
+ * price, address or count), a day of the week, a price word, or an
+ * opening-hours or location word. Weekday abbreviations count too ("Mon–Fri",
+ * "lun a vie"); those that are also ordinary words or names (sat, sun, wed,
+ * mar, dom, thu, and unaccented sab, mie) only count in a range or list with
+ * another day ("Sat & Sun", "Mon–Thu"). The hour one counts only with a time
+ * marker after it ("one p.m.", "one o'clock") or a time preposition before it
+ * ("half past one", "until one", "a la una", "una y media"); alone or after a
+ * bare "at" it does not ("One moment.", "at one point", "until one of us",
+ * "Es una pregunta."). Deliberately short: a turn with none of
+ * these ("Sorry, I missed that.", "Good question.", "Okay.", "Buena
+ * pregunta.") is not an answer, so the floor still files. A leading yes or no,
+ * "free" or a landmark only counts for the question it answers
+ * (TYPED_EVIDENCE). An answer that only names a staff member or service is
+ * missed too; an extra ticket is fine.
+ */
+const FULL_DAY = String.raw`(?:mon|tues|wednes|thurs|fri|satur|sun)days?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?`;
+const UNAMBIGUOUS_DAY_ABBR = String.raw`mon|tues?|thurs?|fri|lun|mié|jue|vie|sáb`;
+const ANY_DAY_ABBR = String.raw`${UNAMBIGUOUS_DAY_ABBR}|wed|thu|sat|sun|mar|mie|sab|dom`;
+const DAY_TOKEN = String.raw`(?<![\p{L}'])(?:${FULL_DAY}|(?:${ANY_DAY_ABBR})\.?)(?!\p{L})`;
+const DAY_JOINER = String.raw`\s*[-–—,&]\s*|\s+(?:to|through|thru|and|a|al|y)\s+`;
+
+const ANSWER_EVIDENCE: readonly RegExp[] = [
+  /\d/,
+  /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|noon|midnight)\b/,
+  /\bone(?:\s*[ap]\.?\s?m\b|[\s-]+(?:o[' ]?clock|in the (?:morning|afternoon|evening))\b)/,
+  /(?<!\bone\s+)\b(?:half past|quarter (?:past|to)|until|till|til|by|before|after)\s+one\b(?![\s-]+(?:of|more|another|day|week|month)\b)/,
+  /(?<!\p{L})(?:la una|una (?:de la (?:tarde|ma[ñn]ana|noche)|y (?:media|cuarto)))(?!\p{L})/u,
+  /(?<!\p{L})(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mediod[ií]a|medianoche)(?!\p{L})/u,
+  /\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b/,
+  /(?<!\p{L})(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)(?!\p{L})/u,
+  new RegExp(String.raw`(?<![\p{L}'])(?:${UNAMBIGUOUS_DAY_ABBR})(?!\p{L})`, "u"),
+  new RegExp(`${DAY_TOKEN}(?:${DAY_JOINER})${DAY_TOKEN}`, "u"),
+  /\$|\b(?:dollars?|bucks|cents)\b|(?<!\p{L})(?:d[oó]lares|pesos)(?!\p{L})/u,
+  /\b(?:open|opens|close at|closed|closes|located|street|avenue|downtown)\b/,
+  /(?<!\p{L})(?:abrimos|abre|abierto|abiertos|cerramos|cierra|cerrado|cerrados|calle|avenida|ubicad[oa]s?|centro)(?!\p{L})/u,
+];
+
+/** Help or acknowledgement filler ("I can help with that", "happy to", "con gusto le ayudo"): not an answer. */
+const ACK_FILLER = String.raw`(?:\b(?:help|assist|happy to|glad to)\b|con (?:mucho )?gusto|ayud)`;
+/** No ACK_FILLER in the rest of the first sentence, or in a second sentence that is a statement. */
+const NO_ACK_FILLER = String.raw`(?![^.!?…]*${ACK_FILLER})(?![^.!?…]*[.!…]\s*[^.!?…]*${ACK_FILLER}[^.!?…]*(?:[.!…]|$))`;
+
+/**
+ * A yes or no that opens the turn. A real yes or no takes punctuation or the
+ * end right after it ("Yes.", "No, we don't.", "Sí, estamos abiertos."), or a
+ * subject pronoun ("Yes we are"). An acknowledgement that can also just open
+ * a turn (sure, of course, claro, correct) counts only as a whole sentence
+ * ("Claro.", "Of course!"), so "Sure, I can help with that." doesn't. Either
+ * is vetoed by help filler after it ("Yes, I can help with that.", "Claro.
+ * Con gusto le ayudo."). "No problem", "No worries" and "Si quiere..." ("if")
+ * don't stand alone, so they don't count. What follows the opener is checked
+ * by leadingYesNoAnswers.
+ */
+const LEADING_YES_NO = new RegExp(
+  String.raw`^[\s"'“¡]*(?:(?:yes|yeah|yep|yup|no|nope|s[ií])(?=\s*(?:[,.!;:…—–]|$)|\s+(?:we|i|she|he|they|it|there|you)\b)` +
+    String.raw`|(?:sure|of course|correct|that's right|claro(?: que s[ií])?|por supuesto|as[ií] es|exacto)(?=\s*(?:[.!…]|$)))${NO_ACK_FILLER}`,
+);
+
+/**
+ * A modal or deferral (EN/ES): the yes or no hangs on someone or something
+ * else ("Yes, I'd need to look that up.", "Yeah, you'd need to talk to the
+ * manager.", "Sí, hay que confirmarlo con el taller.").
+ */
+const YES_NO_DEFERRAL =
+  /\b(?:need|needs|have to|has to|would|should|might|may|could|look (?:that|it) up|find out|talk to|ask)\b|'d\b|(?<!\p{L})(?:tendr|tengo que|tienen? que|hay que|habr|necesit|consult|pregunt|deber)/u;
+
+/** At most four words after the echo's verb ("Yes, we do oil changes."). */
+const SHORT_COMPLEMENT = String.raw`(?:[\s,]+[\p{L}\d'$-]+){0,4}$`;
+
+/**
+ * A short echo of the question (EN/ES): subject pronoun and auxiliary ("we
+ * are", "it's", "there is", "we don't", "he does") or a Spanish verb ("tenemos",
+ * "hay", "estamos abiertos", "solo hacemos frenos", "no es"), with a short
+ * complement and nothing else.
+ */
+const YES_NO_ECHO = new RegExp(
+  String.raw`^(?:we|it|there|they|you|he|she)(?:(?:'re|'s|\s+(?:is|are|do|does|can|have|has|will))(?:n't|\s+not)?|\s+(?:can't|cannot|won't))${SHORT_COMPLEMENT}` +
+    String.raw`|^(?:(?:solo|s[oó]lo|tambi[eé]n|aqu[ií]|ya)\s+)?(?:no\s+)?(?:tenemos|hay|estamos|ofrecemos|aceptamos|hacemos|trabajamos|es|est[aá]n?|abrimos|trabaja)(?!\p{L})${SHORT_COMPLEMENT}`,
+  'u',
+);
+
+/** An echo that only remarks on the question ("Yes, it's a good question."). */
+const GOOD_QUESTION = /\b(?:good|great|excellent|fair) question\b|(?<!\p{L})(?:buena|excelente) pregunta(?!\p{L})/u;
+
+/**
+ * An intensifier, address or apology that is the whole rest of the sentence
+ * after the yes or no (EN/ES): "Yes, absolutely.", "Yes, we sure do.", "Yes,
+ * ma'am.", "No, sorry.", "No, unfortunately we don't.", "No, I'm afraid
+ * not.", "Sí, claro.", "Sí, sí tenemos.", "No, lo siento."
+ */
+const YES_NO_INTENSIFIER =
+  /^(?:absolutely|definitely|of course|certainly|sure (?:do|does)|(?:we|they|he|she|it) (?:sure|certainly|definitely) (?:do|does)|ma'am|sir|sorry|unfortunately(?:,? (?:we don't|we do not|not))?|i'm afraid not|claro(?: que s[ií])?|por supuesto|s[ií] tenemos|lo siento|desafortunadamente(?:,? no)?)$/u;
+
+/**
+ * A leading yes or no (LEADING_YES_NO) that answers: the rest of its sentence
+ * is (a) nothing ("Yes."), (b) a short echo (YES_NO_ECHO: "Yes, we are.",
+ * "No, we don't.", "Sí, tenemos."), after an optional "and"/"y" ("Sí, y es
+ * gratis."), that is no holding line ("Yes, we're checking on that.") or
+ * remark on the question (GOOD_QUESTION), (c) an intensifier or apology
+ * (YES_NO_INTENSIFIER: "Yes, absolutely.", "No, sorry.") when no statement
+ * in the turn defers or holds, or (d) content: a place ("Yes, out back."), a
+ * price statement ("Yes, and oil changes are free."), or a word of the
+ * caller's question clause ("¿Ofrecen cortes de pelo?" → "Sí, aquí se corta
+ * el pelo."). And neither that sentence nor a statement right after it defers
+ * (YES_NO_DEFERRAL): "Yes, I'd need to look that up." or "Sí. Tiene que
+ * preguntar al encargado." answers nothing.
+ */
+function leadingYesNoAnswers(lower: string, clauseWords: readonly string[]): boolean {
+  const opener = LEADING_YES_NO.exec(lower);
+  if (!opener) return false;
+  const sentences = lower.slice(opener[0].length).split(/(?<=[.!?…])\s+/);
+  const [first = '', second = ''] = sentences;
+  const deferring = (sentence: string) => YES_NO_DEFERRAL.test(sentence);
+  const asks = (sentence: string) => /\?["'”’)]*$/.test(sentence.trim());
+  if (deferring(first) || (!asks(second) && deferring(second))) return false;
+  const rest = first
+    .replace(/[.!?…"'”’)\s]+$/, '')
+    .replace(/^[\s,;:—–]+/, '')
+    .replace(/^(?:and|but|also|y|pero|tambi[eé]n)\s+/u, '');
+  if (!rest) return true;
+  if (YES_NO_ECHO.test(rest) && !isHoldingLine(rest) && !GOOD_QUESTION.test(rest)) return true;
+  if (YES_NO_INTENSIFIER.test(rest)) return !isHoldingLine(lower) && sentences.every((sentence) => asks(sentence) || !deferring(sentence));
+  return PLACE_WORDS.test(rest) || FREE_PRICE.test(rest) || rest.search(NOUN_IS_FREE) >= 0 || sharesAskedWord(normalizeTokens(rest), clauseWords);
+}
+
+/**
+ * Free of charge (EN/ES), only as a price statement about it, that, the thing
+ * asked about, or as a sentence of its own: "It's free.", "The first one is
+ * free.", "Oil changes are free." (to "How much is an oil change?"), "There's
+ * no cost.", "We do it for free.", "Free with any tire purchase.", "No
+ * charge.", "Es gratis.", "Son gratis.", "No tiene costo.", "Es sin costo.",
+ * "Sin costo." Not an offer that names no price ("We offer free estimates",
+ * "We can take a look at no cost", "Le hacemos el diagnóstico sin costo",
+ * "Ofrecemos consultas gratuitas"), availability ("whenever you're free",
+ * "Marco is free this afternoon", "Our barbers are free", "One is free right
+ * now", "The next one is free": a bare or "next" one is a chair or slot, "the
+ * first one" is the thing asked),
+ * "feel free" or "toll free". A noun subject (NOUN_IS_FREE) must be a word of the caller's
+ * price clause. "No tiene costo" must end the clause ("No tiene costo fijo,
+ * depende" is no price).
+ */
+const FREE_PRICE = new RegExp(
+  String.raw`\b(?:it|that|this|those|these|(?:the|that|this|first|second|last|every) ones?)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
+    String.raw` (?:free|complimentary|for free|no (?:charge|cost)|on the house)\b` +
+    String.raw`|\bthere(?:'s| is| will be| would be) no (?:charge|cost)\b` +
+    String.raw`|\b(?:do|does|did|doing) (?:it|that|this|them|those) (?:for free|free of charge|at no (?:charge|cost))\b` +
+    String.raw`|(?:^|[.!?…]\s+)[\s"'“¡]*(?:(?:totally|completely|totalmente|completamente) )?(?:free(?: of charge)?|gratis|no (?:charge|cost)|on the house|sin (?:costo|cargo))` +
+    String.raw`(?=\s*(?:[,.!;:…—–]|$)|\s+(?:with|if|for|when|to you|con|si|para)\b)` +
+    String.raw`|(?<!\p{L})(?:(?:es|son|ser[aá]|est[aá]n?) (?:totalmente |completamente )?(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))|no tienen? (?:costo|cargo)(?=\s*(?:[,.!;:…—–]|$))` +
+    String.raw`|(?:lo|la|los|las) (?:hacemos|hace|hacen) (?:gratis|sin (?:costo|cargo)))(?!\p{L})`,
+  'u',
+);
+
+/** "{noun} is/are free": the noun is checked against the caller's price clause. */
+const NOUN_IS_FREE = /(?<![\p{L}'])(\p{L}{4,}) (?:is|are)(?: (?:totally|completely|always|also|still|actually))? (?:free|complimentary)(?!\p{L})/gu;
+/** Question words too common to name what was asked. */
+const NOT_SUBJECT_WORDS: ReadonlySet<string> = new Set(['much', 'many', 'what', 'when', 'where', 'does', 'have', 'your', 'there', 'this', 'that', 'cost', 'costs', 'price']);
+
+/**
+ * A noun subject of "is/are free" that shares its stem with a word of the
+ * caller's price clause ("oil changes" / "oil change"). Only that clause:
+ * "Is there parking? How much is an oil change?" → "Parking is free." prices nothing asked.
+ */
+function nounFreeAnswersQuestion(lower: string, clauseWords: readonly string[]): boolean {
+  return sharesAskedWord([...lower.matchAll(NOUN_IS_FREE)].map(([, noun]) => noun), clauseWords);
+}
+
+/** A word that shares its stem with a word of the caller's clause, past the common question words. */
+function sharesAskedWord(words: readonly string[], clauseWords: readonly string[]): boolean {
+  const asked = clauseWords.filter((word) => word.length >= 4 && !NOT_SUBJECT_WORDS.has(word));
+  return words.some((said) =>
+    said.length >= 4 && !NOT_SUBJECT_WORDS.has(said) && asked.some((word) => said.startsWith(word) || word.startsWith(said)),
+  );
+}
+
+/**
+ * A denial of "free" ("It's not free.", "We don't do it for free.", "No es
+ * gratis.", "Nunca es gratis.", "Tampoco es gratis."), or no one being free
+ * ("No one is free right now.", "Neither one is free."): a negation earlier in
+ * the same clause vetoes FREE_PRICE. A comma ends the clause, so "No, es
+ * gratis." and "Don't worry, it's free." still count.
+ */
+const NOT_FREE = new RegExp(
+  String.raw`\b(?:not|never|no longer|no one|nobody|neither|none|isn't|aren't|wasn't|weren't|won't|wouldn't|don't|doesn't|didn't|do not|does not|did not|can't|cannot)\b` +
+    String.raw`[^.!?…,;]*\b(?:free|complimentary)\b` +
+    String.raw`|(?<!\p{L})(?:no|nunca|tampoco|jam[aá]s)(?!\p{L})[^.!?…,;]*(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})`,
+  'u',
+);
+
+/** Where something is (EN/ES), beside the street words and numbers ANSWER_EVIDENCE already takes. */
+const PLACE_WORDS =
+  /\b(?:address|near|next to|out (?:back|front)|across (?:the street )?from|corner of|behind|in front of|road|blvd|boulevard|highway|plaza|mall|suite|shopping center)\b|(?<!\p{L})(?:direcci[oó]n|cerca|junto|enfrente|frente a|al lado|esquina|detr[aá]s|atr[aá]s|carretera|plaza|bulevar|centro comercial)(?!\p{L})/u;
+
+/**
+ * The agent didn't catch the caller or the line is bad ("Sorry, I missed that.", "I didn't quite catch
+ * that.", "You're breaking up.", "Lo siento, no le escuché.", "Se corta."): never a typed answer.
+ */
+const DID_NOT_HEAR =
+  /\b(?:missed (?:that|it|you)|(?:didn't|did not) (?:\w+ )?(?:catch|hear|get|understand)|(?:couldn't|could not|can't|cannot) (?:\w+ )?(?:hear|understand|make out)|breaking up|cutting out|(?:you|it|line|call) cut out|bad (?:connection|line)|(?:say|repeat) that)\b|(?<!\p{L})(?:no (?:le |te |lo |se )?(?:entend|escuch|o[iíy])|se (?:le )?corta(?=\s*(?:[,.!…]|$)| la (?:llamada|l[ií]nea|se[ñn]al|voz))|se (?:le )?est[aá] cortando|perd[oó]n|disculp|repet)/u;
+
+/**
+ * Evidence that only answers some questions, by what the caller asked
+ * (infoQuestionTypes): a leading yes or no answers a yes/no question or "does
+ * {N} work Saturdays" ("Is there parking?" → "Yes, out back."), but not "what
+ * days does {N} work", which is a time question; "free" answers a price
+ * question, a landmark answers a location question. Added to ANSWER_EVIDENCE,
+ * never instead of it: a time, day, price or place word answers any question,
+ * as before. So "Yes." alone answers no hours or price question, and "It's
+ * free." no hours question.
+ */
+const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string, clauseWords: readonly string[]) => boolean>>> = {
+  yes_no: leadingYesNoAnswers,
+  staff: leadingYesNoAnswers,
+  price: (lower, clauseWords) => (FREE_PRICE.test(lower) || nounFreeAnswersQuestion(lower, clauseWords)) && !NOT_FREE.test(lower),
+  location: (lower) => PLACE_WORDS.test(lower),
+};
+
+/**
+ * A turn that carries answer-shaped content for what the caller asked ("We
+ * open at nine.", "Un corte cuesta $30.", "Yes, we are." to "Are you open
+ * Saturday?"). Typed evidence must cover every type asked: "Is there parking?
+ * How much is an oil change?" → "Yes, there is." leaves the price unanswered.
+ * Each type's evidence sees only the words of the clauses that asked it
+ * (infoQuestionClauses of the caller's line).
+ */
+function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[], clauses: readonly InfoQuestionClause[]): boolean {
+  const lower = text.toLowerCase().replace(/[’‘]/g, "'");
+  if (ANSWER_EVIDENCE.some((pattern) => pattern.test(lower))) return true;
+  if (DID_NOT_HEAR.test(lower)) return false;
+  const wordsOf = (type: InfoQuestionType) => clauses.filter((clause) => clause.type === type).flatMap(({ tokens }) => tokens);
+  return asked.length > 0 && asked.every((type) => TYPED_EVIDENCE[type]?.(lower, wordsOf(type)) ?? false);
 }
 
 /** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
@@ -378,14 +627,25 @@ export class CallInvariants {
   /** Every tool run on the call, by platform action name when it has one; a blocked run is not ok. */
   private readonly toolRuns: Array<{ name: string; ok: boolean }> = [];
   /**
-   * The agent gave a real answer (not a question or a holding line) after the
-   * caller's last line and after the last tool started, and its audio played.
+   * The agent gave a real answer (answer evidence, not a question or a holding
+   * line) after the caller's last line and after the last tool started, and
+   * its audio played.
    */
   private answered = false;
   /** The latest agent turn is an answer whose playback is not confirmed yet. */
   private answerAwaitingPlayback = false;
   /** The caller barged in since their last completed line. */
   private playbackInterrupted = false;
+  /** What the caller's last line asked (infoQuestionTypes): which replies count as answering it. */
+  private asked: readonly InfoQuestionType[] = ['other'];
+  /** The clauses of the caller line `asked` came from, by type (infoQuestionClauses). */
+  private askedClauses: readonly InfoQuestionClause[] = [];
+  /**
+   * answered as it stood when the caller started speaking: a sign-off line
+   * ("Thank you!") restores it once transcribed. A tool, or an agent
+   * question or holding line, clears it.
+   */
+  private answeredBeforeSpeech = false;
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
@@ -438,7 +698,16 @@ export class CallInvariants {
     if (!text.trim()) return;
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
-    this.answered = false;
+    // A line of only thanks, sign-offs or filler asks nothing new: the
+    // earlier answer and what it answered stand.
+    if (isSignOffOnly(text)) {
+      this.answered = this.answered || this.answeredBeforeSpeech;
+    } else {
+      this.asked = infoQuestionTypes(text);
+      this.askedClauses = infoQuestionClauses(text);
+      this.answered = false;
+    }
+    this.answeredBeforeSpeech = false;
     this.answerAwaitingPlayback = false;
     this.playbackInterrupted = false;
     if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text, this.lastPreparedAction)) {
@@ -452,6 +721,7 @@ export class CallInvariants {
    * their last line.
    */
   callerSpeechStarted(): void {
+    this.answeredBeforeSpeech = this.answeredBeforeSpeech || this.answered;
     this.answered = false;
     this.answerAwaitingPlayback = false;
   }
@@ -468,11 +738,17 @@ export class CallInvariants {
       }
       // A clarifying question or a holding line never sets answered, and clears
       // an earlier one ("Sorry, could you repeat that?" after speech that was
-      // never transcribed). A pure courtesy closer keeps it.
+      // never transcribed). A pure courtesy closer keeps it. Any other turn
+      // only counts with answer evidence; one without it ("Sorry, I missed
+      // that.") neither sets nor clears an answer.
       const question = isAgentQuestion(text);
       const holding = isHoldingLine(text);
-      if (holding || (question && !isOnlyCourtesyCloser(text))) this.answered = false;
-      this.answerAwaitingPlayback = !question && !holding;
+      if (holding || (question && !isOnlyCourtesyCloser(text))) {
+        this.answered = false;
+        this.answeredBeforeSpeech = false;
+      }
+      if (question || holding) this.answerAwaitingPlayback = false;
+      else if (hasAnswerEvidence(text, this.asked, this.askedClauses)) this.answerAwaitingPlayback = true;
       if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);
@@ -505,6 +781,7 @@ export class CallInvariants {
       // Whatever was said before a tool, the caller has not had its result yet.
       this.answered = false;
       this.answerAwaitingPlayback = false;
+      this.answeredBeforeSpeech = false;
       const kind = toolKind(name, args);
       const work = this.runTool(handler, name, args, kind);
       // The end-call tool evaluates the floor itself; it must not wait on itself.

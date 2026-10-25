@@ -268,6 +268,22 @@ const shape = (template: string) =>
   new RegExp(`^${template.replace(/\{(\w+)\}/g, (_, part: string) => SHAPE_PARTS[part])}$`);
 
 /**
+ * What an info question asks for, so the runtime knows which reply answers it
+ * (callInvariants' answer evidence): a yes or no, a time or day, a price, a
+ * place, whether a staff member works a given day, or something else (a
+ * service list).
+ */
+export type InfoQuestionType = 'yes_no' | 'time' | 'price' | 'location' | 'staff' | 'other';
+
+interface TypedShape {
+  type: InfoQuestionType;
+  re: RegExp;
+}
+
+const typed = (entries: ReadonlyArray<readonly [InfoQuestionType, string]>): TypedShape[] =>
+  entries.map(([type, template]) => ({ type, re: shape(template) }));
+
+/**
  * The only clauses that can skip a ticket, matched against the whole
  * normalized clause. Each starts with what the caller asks about the shop, so
  * "can you open the garage door" fits no hours shape ("are you open", "when do
@@ -275,50 +291,51 @@ const shape = (template: string) =>
  * "Is Marco in / working" is not here, like "is Marco available": it is
  * usually the caller asking to speak to that person.
  */
-const INFO_QUESTION_SHAPES: readonly RegExp[] = [
+const INFO_QUESTION_SHAPES: readonly TypedShape[] = typed([
   // Hours: "what are your hours (on Saturday)", "what time do you close (today)", "are you open on Saturday".
-  '(?:what (?:are|is) |whats )(?:your |the )?{HOURS}{WHEN}',
-  '(?:what time|when) (?:do {YOU}|does {SHOP}) (?:open|close){WHEN}',
-  '(?:are {YOU}|is {SHOP}) (?:open|closed|still open){WHEN}',
-  '(?:how late|what time|until what time) (?:are {YOU}|is {SHOP}) open(?: until| till)?{WHEN}',
-  'what days (?:are {YOU} open|do {YOU} work)',
+  ['time', '(?:what (?:are|is) |whats )(?:your |the )?{HOURS}{WHEN}'],
+  ['time', '(?:what time|when) (?:do {YOU}|does {SHOP}) (?:open|close){WHEN}'],
+  ['yes_no', '(?:are {YOU}|is {SHOP}) (?:open|closed|still open){WHEN}'],
+  ['time', '(?:how late|what time|until what time) (?:are {YOU}|is {SHOP}) open(?: until| till)?{WHEN}'],
+  ['time', 'what days (?:are {YOU} open|do {YOU} work)'],
   // Staff days: "what days does Marco work", "does Marco work Saturdays".
   // {N} must be capitalized in the caller's own words (staffNameIsValid).
-  '(?:what|which) days does {N} work',
-  'does {N} work{WEEKDAYS}',
+  // Only the second takes a yes or no, so the open form is a time question.
+  ['time', '(?:what|which) days does {N} work'],
+  ['staff', 'does {N} work{WEEKDAYS}'],
   // Horario: "¿a qué hora cierran?", "¿cuál es su horario?", "¿cuándo abren?", "¿qué días trabaja Marco?".
-  '(?:a |hasta )?que hora (?:abren|cierran|abre|cierra)(?: ustedes| {TIENDA})?{WHEN}',
-  '(?:cual es |cuales son |que )(?:su |sus |el |los )?{HORARIO}(?: tienen)?{WHEN}',
-  `cuando ${SPANISH_OPEN_CLOSED}`,
-  'que dias (?:abren|trabajan|estan abiertos)',
-  'que dias trabaja {N}',
+  ['time', '(?:a |hasta )?que hora (?:abren|cierran|abre|cierra)(?: ustedes| {TIENDA})?{WHEN}'],
+  ['time', '(?:cual es |cuales son |que )(?:su |sus |el |los )?{HORARIO}(?: tienen)?{WHEN}'],
+  ['time', `cuando ${SPANISH_OPEN_CLOSED}`],
+  ['time', 'que dias (?:abren|trabajan|estan abiertos)'],
+  ['time', 'que dias trabaja {N}'],
   // Location and contact: "where are you located", "where is the shop", "what's your phone number", "website".
   // "Where are you?" / "¿Dónde están?" is what a caller waiting on a late tech asks, so it needs
   // "located" / "ubicados" or a shop noun.
-  '(?:where (?:are {YOU}|is {SHOP})|wheres {SHOP}) located(?: at)?',
-  '(?:where is|wheres) {SHOP}(?: at)?',
-  '(?:what (?:is|are) |whats )(?:your |the )?{CONTACT}',
-  'is there parking',
-  'donde (?:estan|esta|quedan|queda|se encuentran) (?:ubicad[oa]s?(?: {TIENDA})?|{TIENDA})',
-  '(?:cual es |cuales son )(?:su |la |el )?{CONTACTO}',
+  ['location', '(?:where (?:are {YOU}|is {SHOP})|wheres {SHOP}) located(?: at)?'],
+  ['location', '(?:where is|wheres) {SHOP}(?: at)?'],
+  ['location', '(?:what (?:is|are) |whats )(?:your |the )?{CONTACT}'],
+  ['yes_no', 'is there parking'],
+  ['location', 'donde (?:estan|esta|quedan|queda|se encuentran) (?:ubicad[oa]s?(?: {TIENDA})?|{TIENDA})'],
+  ['location', '(?:cual es |cuales son )(?:su |la |el )?{CONTACTO}'],
   // Price: "how much is an oil change", "how much does a fade cost", "¿cuánto cuesta un cambio de aceite?".
-  'how much (?:is|are|does|do|for|would) {SVC}(?: cost| costs| be| run)?',
-  '(?:how much|what) do {YOU} charge(?: for {SVC})?',
-  '(?:what (?:is|are) |whats )(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?',
-  'what does {SVC} cost',
-  'cuanto (?:cuesta|cuestan|vale|valen|sale|salen|cobran(?: por)?) {SVCES}',
-  '(?:cual es |cuales son )(?:el |los |su |sus )?{PRECIO}(?: (?:de|del|por) {SVCES})?',
+  ['price', 'how much (?:is|are|does|do|for|would) {SVC}(?: cost| costs| be| run)?'],
+  ['price', '(?:how much|what) do {YOU} charge(?: for {SVC})?'],
+  ['price', '(?:what (?:is|are) |whats )(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?'],
+  ['price', 'what does {SVC} cost'],
+  ['price', 'cuanto (?:cuesta|cuestan|vale|valen|sale|salen|cobran(?: por)?) {SVCES}'],
+  ['price', '(?:cual es |cuales son )(?:el |los |su |sus )?{PRECIO}(?: (?:de|del|por) {SVCES})?'],
   // Services: "do you offer brake service", "is brake service available", "what services do you offer", "¿ofrecen ...?".
   // "have" / "carry" / "tienen" take no service: "do you have a tow truck", "¿tienen grúa?" is a dispatch ask.
-  'do {YOU} (?:offer|do|sell|provide) {SVC}',
-  'is {SVC} available',
-  'what (?:services|kind of services|kinds of services|types of services) do {YOU} (?:offer|have|do|provide)',
-  'what do {YOU} offer',
-  '(?:ustedes )?(?:ofrecen|hacen|venden|manejan) {SVCES}',
-  'que (?:servicios )?(?:ofrecen|tienen|hacen)',
-  'do {YOU} have (?:a |an )?(?:website|web site|email(?: address)?|parking|phone number)',
-  '(?:ustedes )?tienen (?:una |un )?(?:pagina(?: web)?|sitio web|estacionamiento|parqueo|correo(?: electronico)?)',
-].map(shape);
+  ['yes_no', 'do {YOU} (?:offer|do|sell|provide) {SVC}'],
+  ['yes_no', 'is {SVC} available'],
+  ['other', 'what (?:services|kind of services|kinds of services|types of services) do {YOU} (?:offer|have|do|provide)'],
+  ['other', 'what do {YOU} offer'],
+  ['yes_no', '(?:ustedes )?(?:ofrecen|hacen|venden|manejan) {SVCES}'],
+  ['other', 'que (?:servicios )?(?:ofrecen|tienen|hacen)'],
+  ['yes_no', 'do {YOU} have (?:a |an )?(?:website|web site|email(?: address)?|parking|phone number)'],
+  ['yes_no', '(?:ustedes )?tienen (?:una |un )?(?:pagina(?: web)?|sitio web|estacionamiento|parqueo|correo(?: electronico)?)'],
+]);
 
 /**
  * Shapes that read the same as a statement: "¿Están cerrados hoy?" and "Están
@@ -327,15 +344,15 @@ const INFO_QUESTION_SHAPES: readonly RegExp[] = [
  */
 // A bare hours, contact or price noun ("Email.", "Teléfono.") is often the caller answering the agent's
 // question (how to send a quote), so without a question frame it needs "?" / "¿".
-const MARKED_QUESTION_SHAPES: readonly RegExp[] = [
-  SPANISH_OPEN_CLOSED,
-  '(?:your |the )?{HOURS}{WHEN}',
-  '(?:su |sus |el |los )?{HORARIO}{WHEN}',
-  '(?:your |the )?{CONTACT}',
-  '(?:su |la |el )?{CONTACTO}',
-  '(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?',
-  '(?:el |los |su |sus )?{PRECIO}(?: (?:de|del|por) {SVCES})?',
-].map(shape);
+const MARKED_QUESTION_SHAPES: readonly TypedShape[] = typed([
+  ['yes_no', SPANISH_OPEN_CLOSED],
+  ['time', '(?:your |the )?{HOURS}{WHEN}'],
+  ['time', '(?:su |sus |el |los )?{HORARIO}{WHEN}'],
+  ['location', '(?:your |the )?{CONTACT}'],
+  ['location', '(?:su |la |el )?{CONTACTO}'],
+  ['price', '(?:the |your )?{PRICE}(?: (?:of|for|on) {SVC})?'],
+  ['price', '(?:el |los |su |sus )?{PRECIO}(?: (?:de|del|por) {SVCES})?'],
+]);
 
 /**
  * Closed-class words (articles, pronouns, prepositions, indefinites): never a
@@ -436,12 +453,80 @@ function staffNameIsValid(staff: string, rawTokens: readonly string[]): boolean 
  * MARKED_QUESTION_SHAPES shape can match.
  */
 export function isInfoQuestion(tokens: readonly string[], rawTokens: readonly string[] = [], marked = false): boolean {
+  return infoQuestionShape(tokens, rawTokens, marked) !== undefined;
+}
+
+/** The first shape isInfoQuestion accepts the clause with. */
+function infoQuestionShape(tokens: readonly string[], rawTokens: readonly string[], marked: boolean): TypedShape | undefined {
   const clause = tokens.join(' ');
-  return [...INFO_QUESTION_SHAPES, ...(marked ? MARKED_QUESTION_SHAPES : [])].some((re) => {
+  return [...INFO_QUESTION_SHAPES, ...(marked ? MARKED_QUESTION_SHAPES : [])].find(({ re }) => {
     const match = re.exec(clause);
     const staff = match?.groups?.staff;
     return match !== null && (staff === undefined || staffNameIsValid(staff, rawTokens));
   });
+}
+
+/**
+ * What a caller line asks, by the info-question shapes its clauses fit
+ * (greetings and filler trimmed, as answeredInfoOnly does): one type per
+ * fitting clause ("Are you open Saturday? How much is a fade?" → yes_no and
+ * price). A line no shape fits ("Downtown", "I need a fade Friday") is
+ * ['other'].
+ */
+export function infoQuestionTypes(line: string): InfoQuestionType[] {
+  const types = new Set(infoQuestionClauses(line).map(({ type }) => type));
+  return types.size > 0 ? [...types] : ['other'];
+}
+
+/** A caller clause that fits an info-question shape: what it asks and its normalized words, filler trimmed. */
+export interface InfoQuestionClause {
+  type: InfoQuestionType;
+  tokens: readonly string[];
+}
+
+/**
+ * The clauses of a caller line that fit an info-question shape, in order
+ * (infoQuestionTypes): "Is there parking? How much is an oil change?" → a
+ * yes_no clause "is there parking" and a price clause "how much is an oil
+ * change". A line no shape fits has none.
+ */
+export function infoQuestionClauses(line: string): InfoQuestionClause[] {
+  const clauses: InfoQuestionClause[] = [];
+  for (const { text, marked } of splitClauses(line.replace(NAME_ABBREVIATION, '$1'))) {
+    const tokens = normalizeTokens(text);
+    const raw = caseTokens(text);
+    const aligned = raw.length === tokens.length && raw.every((r, i) => r.toLowerCase() === tokens[i]);
+    const [start, end] = edgeFillerBounds(tokens);
+    if (end <= start) continue;
+    const found = infoQuestionShape(tokens.slice(start, end), aligned ? raw.slice(start, end) : [], marked);
+    if (found) clauses.push({ type: found.type, tokens: tokens.slice(start, end) });
+  }
+  return clauses;
+}
+
+/** Closing words a caller adds after an answer, beside EDGE_FILLER ("Perfect, thanks", "Muy bien, gracias"). */
+const CLOSERS: readonly string[][] = [
+  'thank you so much', 'thank you very much', 'thanks so much', 'thanks a lot', 'muchas gracias', 'mil gracias',
+  'perfect', 'great', 'awesome', 'wonderful', 'cool', 'alright', 'all right', 'got it', 'sounds good', 'thats all', 'thats it',
+  'have a good day', 'have a great day', 'you too', 'perfecto', 'excelente', 'genial', 'muy bien', 'de acuerdo', 'entendido',
+  'vale', 'listo', 'eso es todo', 'igualmente', 'que tenga buen dia',
+].map(normalizeTokens);
+
+/**
+ * A caller line of only thanks, sign-offs and filler ("Thank you!", "Gracias",
+ * "Okay", "Perfect, thanks", "No, thank you"): it asks nothing new, so an
+ * earlier answer still covers the call.
+ */
+export function isSignOffOnly(line: string): boolean {
+  const clauses = splitClauses(line).map(({ text }) => normalizeTokens(text)).filter((tokens) => tokens.length > 0);
+  return (
+    clauses.length > 0 &&
+    clauses.every((tokens) => {
+      if (tokens.length === 1 && WHOLE_CLAUSE_NO.has(tokens[0])) return true;
+      const [start, end] = edgeFillerBounds(tokens, [...CLOSERS, ...EDGE_FILLER]);
+      return end <= start;
+    })
+  );
 }
 
 /**
@@ -663,7 +748,8 @@ export function answeredInfoOnly(lines: readonly string[], signals: FloorCallSig
   let first = true;
   const clauses: Clause[] = [];
   for (const line of lines) {
-    const parts = splitClauses(line);
+    // As in contentWords: "Dr. Patel" keeps its title inside the introduction.
+    const parts = splitClauses(line.replace(NAME_ABBREVIATION, '$1'));
     let afterContent = false;
     parts.forEach((part, k) => {
       const clause = toClause(part, first, parts[k + 1], afterContent);

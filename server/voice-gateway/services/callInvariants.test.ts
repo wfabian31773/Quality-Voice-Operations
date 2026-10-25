@@ -88,10 +88,14 @@ describe('tool classification', () => {
   });
 
   it('a holding line is "let me check" / "one moment" / "un momento" / "déjeme revisar", not an answer', () => {
-    for (const text of ['Let me check that.', 'Let me look into it', 'Just a second.', 'Hold on.', "I'll check with Marco.", 'Un momento.', 'Déjeme revisar.', 'Permítame verificar.', 'Voy a revisar.']) {
-      expect(isHoldingLine(text)).toBe(true);
+    for (const text of [
+      'Let me check that.', 'Let me look into it', 'Just a second.', 'Hold on.', 'Hang on.', 'Hold, please.', 'Please hold.',
+      'Bear with me while I check.', "I'll check with Marco.", 'Un momento.', 'Déjeme revisar.', 'Permítame verificar.',
+      'Permítame.', 'Permitame, por favor.', 'Espere.', 'Espéreme tantito.', 'Voy a revisar.',
+    ]) {
+      expect(isHoldingLine(text), text).toBe(true);
     }
-    for (const text of ['We open at nine.', 'We have a second location downtown.', 'Abrimos a las nueve.', '']) {
+    for (const text of ['We open at nine.', 'We have a second location downtown.', 'Abrimos a las nueve.', 'Permítame decirle que sí tenemos.', 'Disculpe la espera.', '']) {
       expect(isHoldingLine(text)).toBe(false);
     }
   });
@@ -728,6 +732,511 @@ describe('floor at teardown', () => {
     },
   );
 
+  it.each([
+    'Sorry, I missed that.',
+    "That's a good question.",
+    'Let me see.',
+    'Hmm.',
+    "I'm not sure.",
+    'Okay.',
+    'Got it.',
+    'Sure.',
+    'Perdón, no le entendí.',
+    'Buena pregunta.',
+    'Déjeme ver.',
+    'No estoy seguro.',
+  ])('awaiting playback: a confirmed turn without answer evidence ("%s") is not an answer, and the floor files', async (line) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted(line);
+    inv.agentPlaybackConfirmed();
+    await expect(inv.evaluateFloor()).resolves.toBe('filed');
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ endReason: 'caller_hangup', answered: false });
+  });
+
+  it.each(["We're open until 7 tonight.", 'Un corte cuesta $30.', "We're closed Sundays.", 'Yes, we close at seven.', 'Cerramos los domingos.'])(
+    'awaiting playback: a confirmed real answer ("%s") counts as answered',
+    async (answer) => {
+      const { inv, runFloorAction } = make({ awaitPlayback: true });
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted(answer);
+      inv.agentPlaybackConfirmed();
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+    },
+  );
+
+  it.each([
+    'Lisa works Mon–Fri.',
+    "We're open Tue through Sat.",
+    'Tue through Sat.',
+    'Lisa works Mon. to Thurs.',
+    'Mon, Wed, Fri.',
+    'Sat & Sun.',
+    'Trabaja de lun a vie.',
+    'De mar a dom.',
+    'Sábados y dom.',
+    'Lun a sáb.',
+    'Mon–Thu.',
+    'Mon thru Thurs.',
+    'De lun al vie.',
+    'Tue—Sat.',
+  ])('awaiting playback: weekday abbreviations ("%s") count as answered', async (answer) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('When does Lisa work?');
+    inv.agentTurnCompleted(answer);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each([
+    'I sat down.',
+    'Enjoy the sun!',
+    'Sorry, I missed that.',
+    'Wed like to help.',
+    'Mar.',
+    'El mar está bonito.',
+    "C'mon, sorry.",
+    'C’mon, sorry.',
+    'Got it, a full set with Thu.',
+    'Okay, Thu.',
+  ])(
+    'awaiting playback: a word that only looks like a weekday abbreviation ("%s") is not an answer',
+    async (line) => {
+      const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+      inv.callerTranscribed('When does Lisa work?');
+      inv.agentTurnCompleted(line);
+      inv.agentPlaybackConfirmed();
+      await expect(inv.evaluateFloor()).resolves.toBe('filed');
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
+  it.each([
+    'One p.m.',
+    'We close at one pm.',
+    'At one o’clock.',
+    "At one o'clock.",
+    'One a.m.',
+    'One o clock.',
+    'One in the afternoon.',
+    'We close at one.',
+    'Half past one.',
+    'Quarter to one.',
+    'She’s in until one.',
+    'A la una.',
+    'La una y media.',
+    'A la una de la tarde.',
+    'Cerramos a la una.',
+    'Una de la tarde.',
+    'Una y cuarto.',
+  ])('awaiting playback: the hour one as a time ("%s") counts as answered', async (answer) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What time do you close?');
+    inv.agentTurnCompleted(answer);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each([
+    'One moment.',
+    'Give me one second.',
+    'Which one?',
+    'We have one amazing stylist.',
+    'Until one of us is free.',
+    'At one point we moved.',
+    'We see them one by one.',
+    'Es una pregunta.',
+    'Una pregunta más.',
+  ])('awaiting playback: "one" or "una" outside a time ("%s") is not an answer', async (line) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed('What time do you close?');
+    inv.agentTurnCompleted(line);
+    inv.agentPlaybackConfirmed();
+    await expect(inv.evaluateFloor()).resolves.toBe('filed');
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  const answeredFor = async (question: string, reply: string) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed(question);
+    inv.agentTurnCompleted(reply);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    return (runFloorAction.mock.calls[0][1] as { answered: boolean }).answered;
+  };
+
+  it.each([
+    ['Are you open on Saturday?', 'Yes, we are.'],
+    ['Are you open on Saturday?', 'Yes.'],
+    ['Are you open on Saturday?', 'Yes we are.'],
+    ['Do you do oil changes?', "No, we don't."],
+    ['Do you do oil changes?', 'Nope.'],
+    ['Is there parking?', 'Yep, out back.'],
+    ['Do you have a website?', 'Of course!'],
+    ['Does Marco work Saturdays?', 'Correct.'],
+    ['¿Están abiertos hoy?', 'Sí, estamos abiertos.'],
+    ['¿Están abiertos hoy?', 'Sí.'],
+    ['¿Ofrecen cambios de aceite?', 'Claro.'],
+    ['¿Tienen estacionamiento?', 'Por supuesto.'],
+    ['¿Ofrecen cambios de aceite?', 'No, solo hacemos frenos.'],
+    ['Is there parking?', "Yes, there's plenty."],
+    ['Do you do oil changes?', 'Yes, we do. Anything else?'],
+    ['Do you do oil changes?', 'Yes, we do oil changes.'],
+    ['Do you do oil changes?', "No, we don't do oil changes."],
+    ['¿Ofrecen cambios de aceite?', 'Sí, ofrecemos cambios de aceite.'],
+    ['¿Tienen estacionamiento?', 'Sí, hay estacionamiento.'],
+    ['¿Tienen estacionamiento?', 'No, no hay.'],
+    ['¿Ofrecen cambios de aceite?', 'Sí, cambios de aceite y frenos.'],
+    // An intensifier, address or apology after the yes or no.
+    ['Do you do oil changes?', 'Yes, absolutely.'],
+    ['Do you do oil changes?', 'Yes, definitely.'],
+    ['Do you do oil changes?', 'Yes, of course.'],
+    ['Do you do oil changes?', 'Yes, certainly.'],
+    ['Do you do oil changes?', 'Yes, sure do.'],
+    ['Do you do oil changes?', 'Yes, we sure do.'],
+    ['Do you do oil changes?', 'Yes, we certainly do.'],
+    ['Do you do oil changes?', "Yes, ma'am."],
+    ['Do you do oil changes?', 'Yes, sir.'],
+    ['Do you do oil changes?', 'No, sorry.'],
+    ['Do you do oil changes?', "No, unfortunately we don't."],
+    ['Do you do oil changes?', 'No, unfortunately not.'],
+    ['Do you do oil changes?', "No, I'm afraid not."],
+    ['Do you do oil changes?', 'Yes, absolutely. Anything else?'],
+    ['¿Tienen estacionamiento?', 'Sí, claro.'],
+    ['¿Tienen estacionamiento?', 'Sí, por supuesto.'],
+    ['¿Tienen estacionamiento?', 'Sí, sí tenemos.'],
+    ['¿Tienen estacionamiento?', 'No, lo siento.'],
+    ['¿Tienen estacionamiento?', 'No, desafortunadamente no.'],
+  ])('a yes/no question ("%s") is answered by a leading yes or no ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    ['How much is an oil change?', "It's free."],
+    ['How much is an oil change?', 'No charge.'],
+    ['How much is an oil change?', "There's no cost for that."],
+    ['How much is an oil change?', "It's complimentary with a tire rotation."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Sin costo.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es gratuito.'],
+    ['¿Cuál es el precio de las llantas?', 'Sin cargo.'],
+    ['How much is an oil change?', 'Oil changes are free this month.'],
+    ['How much is an oil change?', 'The first one is free.'],
+    ['How much is an oil change?', 'That one is free.'],
+    ['How much is an oil change?', "That's totally free."],
+    ['How much is an oil change?', 'Completely free with a tire rotation.'],
+    ['How much is an oil change?', 'We do it free of charge.'],
+    ['How much is an oil change?', 'We do that for free.'],
+    ['How much is an oil change?', 'Free.'],
+    ['How much is an oil change?', "It's no cost to you."],
+    ['How much is an oil change?', 'No cost to you.'],
+    ['How much is an oil change?', "Don't worry, it's free."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No tiene costo.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es sin costo.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No, es gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Lo hacemos gratis.'],
+    ['¿Cuánto cuestan los cambios de aceite?', 'Son gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es totalmente gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Gratis con la rotación de llantas.'],
+  ])('a price question ("%s") is answered by "free" ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    ['Where are you located?', "We're right next to the post office."],
+    ['Where are you located?', 'Across the street from the high school.'],
+    ['¿Dónde están ubicados?', 'Estamos enfrente del parque.'],
+    ['¿Dónde están ubicados?', 'Cerca de la plaza.'],
+  ])('a location question ("%s") is answered by a landmark ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    'Are you open on Saturday?',
+    '¿Están abiertos hoy?',
+    'What are your hours?',
+    'How much is an oil change?',
+    'Where are you located?',
+    'Does Marco work Saturdays?',
+    'What services do you offer?',
+    'I need a fade Friday.',
+  ])('filler never answers, whatever was asked ("%s")', async (question) => {
+    for (const reply of [
+      'Sorry, I missed that.',
+      'One moment.',
+      'Lo siento, no le escuché.',
+      'Okay.',
+      "No, I don't know.",
+      'No, sorry, I missed that.',
+      'No, perdón, ¿me repite?',
+      'Sí, un momento.',
+      'Anything else?',
+    ]) {
+      expect(await answeredFor(question, reply), reply).toBe(false);
+    }
+  });
+
+  it.each([
+    ['Are you open on Saturday?', 'Sure.'],
+    ['Does Marco work Saturdays?', 'Yes, he does.'],
+    ['¿Están abiertos hoy?', 'Sí, estamos abiertos.'],
+    ['Is there parking?', 'Yes, out back. Anything else I can help with?'],
+    ['Do you have a website?', 'Of course! Anything else I can help you with?'],
+    ['How much is an oil change?', 'Free with any tire purchase.'],
+  ])('a typed answer stands beside help or a courtesy question ("%s" → "%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    // "What days does {N} work" asks for days, not a yes or no.
+    ['What days does Marco work?', 'Sure.'],
+    ['What days does Marco work?', 'Of course.'],
+    ['What days does Marco work?', 'Yes.'],
+    ['¿Qué días trabaja Marco?', 'Claro.'],
+    ['¿Qué días trabaja Marco?', 'Sí.'],
+    // An acknowledgement that opens the turn is not a yes or no.
+    ['Are you open on Saturday?', 'Sure, I can help with that.'],
+    ['Is there parking?', "Of course, I'd be happy to help."],
+    ['Do you do oil changes?', 'Sure, let me look into that.'],
+    ['Are you open on Saturday?', 'Yes, I can help you with that.'],
+    ['Is there parking?', "Yeah, I'm glad to assist."],
+    ['Are you open on Saturday?', 'Sure! Happy to help.'],
+    ['¿Están abiertos hoy?', 'Claro, con gusto le ayudo.'],
+    ['¿Están abiertos hoy?', 'Claro. Con gusto le ayudo.'],
+    ['¿Tienen estacionamiento?', 'Sí, le puedo ayudar con eso.'],
+    ['¿Ofrecen cambios de aceite?', 'Por supuesto, en qué le puedo ayudar.'],
+    // A yes or no before not hearing the caller or a bad line.
+    ['Are you open on Saturday?', "No, sorry, I didn't understand that."],
+    ['Are you open on Saturday?', "No, sorry, I couldn't hear you."],
+    ['Are you open on Saturday?', "No, sorry, I didn't quite catch that."],
+    ['Are you open on Saturday?', "Yes, sorry, you're breaking up."],
+    ['Are you open on Saturday?', "Yes, sorry, you're cutting out."],
+    ['Are you open on Saturday?', "No, sorry, I can't make out what you said."],
+    ['Is there parking?', "Yeah, sorry, it's a bad connection."],
+    ['¿Están abiertos hoy?', 'No, perdón, no le entendí.'],
+    ['¿Están abiertos hoy?', 'Sí, lo siento, no le oigo bien.'],
+    ['¿Están abiertos hoy?', 'Sí, lo siento, se corta.'],
+    ['¿Están abiertos hoy?', 'Sí, lo siento, se está cortando la llamada.'],
+    ['¿Tienen estacionamiento?', 'No, lo siento, no se escucha.'],
+    ['¿Ofrecen cambio de aceite?', 'Sí, con mucho gusto.'],
+    // A yes that only holds the line.
+    ['Do you do brake jobs?', 'Yes, hang on.'],
+    ['Do you do brake jobs?', 'Yes, please hold while I check.'],
+    ['Do you do brake jobs?', 'Yes, hold please.'],
+    ['Do you do brake jobs?', 'Yeah, while I look.'],
+    ['¿Tienen estacionamiento?', 'Sí, permítame.'],
+    ['¿Tienen estacionamiento?', 'Sí, permítame un momento.'],
+    ['¿Tienen estacionamiento?', 'Sí, espere.'],
+    ['¿Tienen estacionamiento?', 'Sí, espéreme.'],
+    ['Do you do oil changes?', "Yes, we're checking on that now."],
+    ['Is there parking?', "Yes, we're looking into it."],
+    ['Is there parking?', 'Yes, we are looking at that.'],
+    ['Do you do oil changes?', 'Yes, we will let you know.'],
+    ['Do you do oil changes?', "Yes, we'll check."],
+    ['Do you do oil changes?', "Yes, we'll get back on that."],
+    ['¿Tienen estacionamiento?', 'Sí, estamos revisando eso.'],
+    ['¿Tienen estacionamiento?', 'Sí, estamos en eso.'],
+    ['¿Tienen estacionamiento?', 'Sí, estamos verificando.'],
+    ['¿Tienen estacionamiento?', 'Sí, le aviso.'],
+    // An intensifier with a deferral or holding line later in the turn.
+    ['Do you do oil changes?', 'Yes, absolutely. Great. You should ask Marco.'],
+    ['Do you do oil changes?', "Yes, definitely. Sure. We're checking now."],
+    ['¿Tienen estacionamiento?', 'Sí, claro. Bueno. Estamos revisando.'],
+    // An echo that only remarks on the question.
+    ['Is there parking?', "Yes, it's a good question."],
+    ['Is there parking?', "Yeah, that's a great question."],
+    // A yes that only defers to someone else.
+    ['Do you offer brake service?', "Yes, I'd need to check with the shop on that."],
+    ['Is there parking?', 'Yes, I would have to confirm that.'],
+    ['Do you do oil changes?', 'Yeah, you would have to ask the manager.'],
+    ['¿Tienen estacionamiento?', 'Sí, tendría que preguntarle al encargado.'],
+    ['¿Ofrecen cambios de aceite?', 'Sí, tengo que revisarlo.'],
+    ['Is there parking?', "Yes, I'd need to look that up."],
+    ['Do you do oil changes?', "Yeah, you'd need to talk to the manager."],
+    ['Is there parking?', 'Yes, we have to find out from the landlord.'],
+    ['Do you do oil changes?', 'Yes, you should ask the front desk.'],
+    ['Is there parking?', 'Yes. You may want to book a spot.'],
+    ['Is there parking?', "Yes. I'd need to look that up."],
+    ['¿Ofrecen cambios de aceite?', 'Sí, tendría que consultarlo con el encargado.'],
+    ['¿Tienen estacionamiento?', 'Sí, hay que confirmarlo con el taller.'],
+    ['¿Tienen estacionamiento?', 'Sí, tiene que preguntar al encargado.'],
+    ['¿Tienen estacionamiento?', 'Sí, habría que verlo con el dueño.'],
+    ['¿Ofrecen cambios de aceite?', 'Sí. Necesito consultarlo primero.'],
+    // A yes or no followed by something that is neither an echo nor content.
+    ['Is there parking?', 'Yes, I think the owner handles that kind of thing.'],
+    ['Do you do oil changes?', 'Yeah, the guys in the back deal with all of that stuff.'],
+    ['¿Ofrecen cambios de aceite?', 'Sí, el encargado se ocupa de eso.'],
+    // "Free" that is no price.
+    ['How much is a fade? Are you open today?', 'Yes, and one is free right now.'],
+    ['How much is a fade?', "Only one's free this afternoon."],
+    ['How much is a fade?', 'One is free right now.'],
+    ['How much is a fade?', 'The next one is free right now.'],
+    ['How much is a fade?', 'Each one is free today.'],
+    ['How much is a fade?', 'No one is free right now.'],
+    ['How much is a fade?', 'Neither one is free today.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No tiene costo fijo, depende del trabajo.'],
+    ['How much is an oil change?', 'Call our toll free line.'],
+    ['How much is an oil change?', "It's not free."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No es gratis.'],
+    ['How much is a brake job?', 'We offer free estimates, so bring it in anytime.'],
+    ['How much is a brake job?', 'Free consultations are available.'],
+    ['How much is a haircut?', "Whenever you're free, swing by and we'll take a look."],
+    ['How much is a haircut?', "You're free to stop by anytime."],
+    ['How much is a haircut?', 'If you are free, come on in.'],
+    ['How much is an oil change?', "It wouldn't be free."],
+    ['How much is an oil change?', "It won't be free of charge."],
+    ['How much is an oil change?', "It isn't totally free."],
+    ['How much is an oil change?', "That's not for free."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Ofrecemos consultas gratuitas.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No es gratuito.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No, no son gratis.'],
+    ['¿Cuánto cuesta un corte?', 'Cuando esté libre, venga.'],
+    // A denial with don't / doesn't / didn't, nunca or tampoco.
+    ['How much is an oil change?', "We don't do it for free."],
+    ['How much is an oil change?', "We don't do that free of charge."],
+    ['How much is an oil change?', "It doesn't come free."],
+    ['How much is an oil change?', 'We did not do it for free.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Nunca es gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'El cambio de aceite tampoco es gratis.'],
+    // An offer that names no price, or someone's availability.
+    ['¿Cuánto cuesta el servicio de frenos?', 'Le hacemos el diagnóstico sin costo.'],
+    ['How much is a brake job?', 'We can take a look at no cost to you.'],
+    ['How much is a brake job?', 'We inspect it for free.'],
+    ['How much is a fade?', 'Marco is free this afternoon if you want to come in.'],
+    ['How much is a fade?', 'Our barbers are free right now, so you can walk in.'],
+    ['How much is a fade?', "They're free right now."],
+    ['How much is an oil change?', "There's free coffee while you wait."],
+  ])('filler or a non-answer does not answer "%s" ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(false);
+  });
+
+  it('a yes/no answer about a haircut is not mistaken for a bad line ("se corta el pelo")', async () => {
+    expect(await answeredFor('¿Ofrecen cortes de pelo?', 'Sí, aquí se corta el pelo a niños y adultos.')).toBe(true);
+  });
+
+  // By design a bare yes or no answers only a yes/no or "does {N} work Saturdays" question, and "free" only a price question.
+  it.each([
+    ['What are your hours?', 'Yes.'],
+    ['What time do you close?', 'Sure.'],
+    ['How much is an oil change?', 'Yes.'],
+    ['Where are you located?', 'Yes.'],
+    ['What services do you offer?', 'Yes.'],
+    ['¿A qué hora cierran?', 'Sí.'],
+    ['What are your hours?', "It's free."],
+    ['Are you open on Saturday?', "It's free."],
+    ['¿A qué hora cierran?', 'Es gratis.'],
+    ['How much is an oil change?', "We're right next to the post office."],
+    ['Are you open on Saturday?', 'No problem.'],
+    ['Are you open on Saturday?', 'Feel free to stop by.'],
+  ])('evidence for another question type does not answer "%s" ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(false);
+  });
+
+  // A line that asks two things needs typed evidence for each; a time, day, price or place word covers any.
+  it.each([
+    ['Is there parking? How much is an oil change?', 'Yes, there is.', false],
+    ['Is there parking? How much is an oil change?', "Yes, and it's $40.", true],
+    ['Is there parking? How much is an oil change?', "Yes, and it's free.", true],
+    // A noun from the other clause prices nothing asked.
+    ['Is there parking? How much is an oil change?', 'Yes, parking is free.', false],
+    ['Is there parking? How much is an oil change?', 'Yes, and oil changes are free.', true],
+    ['Are you open Saturday? What time do you close?', 'Yes.', false],
+    ['Are you open Saturday? What time do you close?', 'Yes, until five.', true],
+    ['Is there parking? Where are you located?', 'Yes, next to the post office.', true],
+    ['¿Tienen estacionamiento? ¿Cuánto cuesta un cambio de aceite?', 'Sí, tenemos.', false],
+    ['¿Tienen estacionamiento? ¿Cuánto cuesta un cambio de aceite?', 'Sí, y cuesta 40 dólares.', true],
+    ['¿Tienen estacionamiento? ¿Cuánto cuesta un cambio de aceite?', 'Sí, y es gratis.', true],
+  ])('two questions ("%s") answered by "%s": %s', async (question, reply, expected) => {
+    expect(await answeredFor(question, reply)).toBe(expected);
+  });
+
+  it('the type follows the caller\'s last line: a clarification answer resets it', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('Are you open on Saturday?');
+    inv.agentTurnCompleted('Which location?');
+    inv.callerTranscribed('Downtown');
+    inv.agentTurnCompleted('Yes.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('awaiting playback: an answer, then a courtesy closer or a turn without evidence, stays answered', async () => {
+    for (const after of ['Anything else?', 'Okay.', 'Perdón, no le entendí.']) {
+      const { inv, runFloorAction } = make({ awaitPlayback: true });
+      inv.callerTranscribed('What are your hours?');
+      inv.agentTurnCompleted("We're open until 7 tonight.");
+      inv.agentPlaybackConfirmed();
+      inv.agentTurnCompleted(after);
+      inv.agentPlaybackConfirmed();
+      await inv.evaluateFloor();
+      expect(runFloorAction.mock.calls[0][1], after).toMatchObject({ answered: true });
+    }
+  });
+
+  it.each([
+    ['Is there parking?', 'Yes, out back.', 'Thank you!', "You're welcome, have a great day!"],
+    ['Is there parking?', 'Yes, out back.', 'Okay.', 'Bye now!'],
+    ['Is there parking?', 'Yes, out back.', 'Perfect, thanks.', "You're welcome!"],
+    ['Is there parking?', 'Yes, out back. Anything else?', 'No, thank you.', 'Have a great day!'],
+    ['How much is an oil change?', "It's free.", 'Okay, thanks, bye!', 'Bye!'],
+    ['¿Tienen estacionamiento?', 'Sí, atrás del edificio.', 'Gracias.', '¡De nada, que le vaya bien!'],
+    ['¿Tienen estacionamiento?', 'Sí, atrás del edificio.', 'Perfecto, muchas gracias.', '¡Con gusto!'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es gratis.', 'Muy bien, gracias, adiós.', 'Adiós.'],
+  ])('awaiting playback: a caller sign-off after an answer keeps it answered ("%s" → "%s" → "%s")', async (question, answer, signOff, reply) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed(question);
+    inv.agentTurnCompleted(answer);
+    inv.agentPlaybackConfirmed();
+    // Server VAD hears the caller before their words are transcribed.
+    inv.callerSpeechStarted();
+    inv.callerTranscribed(signOff);
+    inv.agentTurnCompleted(reply);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it('a caller sign-off keeps what was asked: the agent\'s sign-off after it does not answer anew', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('Which location?');
+    inv.callerTranscribed('Thanks.');
+    inv.agentTurnCompleted('Yes.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('a sign-off does not restore an answer a later question cleared, or one never given', async () => {
+    const cleared = make();
+    cleared.inv.callerTranscribed('What are your hours?');
+    cleared.inv.agentTurnCompleted('We open at nine.');
+    cleared.inv.callerSpeechStarted();
+    cleared.inv.agentTurnCompleted('Sorry, could you repeat that?');
+    cleared.inv.callerTranscribed('Thank you.');
+    await cleared.inv.evaluateFloor();
+    expect(cleared.runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+
+    const never = make();
+    never.inv.callerTranscribed('Is there parking?');
+    never.inv.agentTurnCompleted('Let me check.');
+    never.inv.callerTranscribed('Okay, thanks.');
+    await never.inv.evaluateFloor();
+    expect(never.runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('a caller line with content after an answer still resets it', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('Is there parking?');
+    inv.agentTurnCompleted('Yes, out back.');
+    inv.callerTranscribed('Thanks. How much is an oil change?');
+    inv.agentTurnCompleted('Yes.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
   it('a tool name past the floor limit is truncated before it reaches the floor', async () => {
     const { inv, tool, runFloorAction } = make();
     const long = `x${'y'.repeat(300)}`;
@@ -811,8 +1320,17 @@ describe('isHoldingLine: broad follow-up and don\'t-know replies (review P2)', (
     'Le vamos a llamar.', 'A technician will call you with a quote.', "We'll call you with pricing.",
     'Someone from our team will call you.', 'We will follow up.', "I can't give pricing over the phone.",
     'No podemos dar precios por teléfono.', 'I\'ll pass that along.',
+    "Yes, I'd need to check with the shop on that.", 'We would have to confirm that.', "You'd have to ask the manager.",
+    'I have to verify that.', 'Sí, tendría que preguntarle al encargado.', 'Tendríamos que verificar.', 'Tengo que revisar.',
+    // First-person plural and "let you know" / "get back" follow-ups.
+    "We're checking on that now.", 'We are looking into it.', "We'll check.", 'We will look at that.', "We're going to check.",
+    'Looking into it now.', "I'll let you know.", "We'll get back on that.", 'Estamos revisando.', 'Lo estamos verificando.',
+    'Estamos en eso.', 'Estoy en eso.', 'Le aviso.', 'Le avisamos.',
   ])('is not an answer: %s', (line) => {
     expect(isHoldingLine(line)).toBe(true);
+  });
+  it("is not a holding line: we're looking forward to it", () => {
+    expect(isHoldingLine("We're looking forward to seeing you Saturday.")).toBe(false);
   });
   it.each(['We close at five on Saturdays.', 'Cerramos a las cinco.', 'A haircut is thirty dollars.'])('a real answer still counts: %s', (line) => {
     expect(isHoldingLine(line)).toBe(false);
