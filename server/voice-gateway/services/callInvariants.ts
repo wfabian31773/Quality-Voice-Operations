@@ -74,6 +74,7 @@ import {
   infoQuestionClauses,
   infoQuestionTypes,
   isSignOffOnly,
+  normalizeTokens,
   type InfoQuestionClause,
   type InfoQuestionType,
 } from '../../../platform/actions/tickets/floorHeuristics';
@@ -262,20 +263,69 @@ const ACK_FILLER = String.raw`(?:\b(?:help|assist|happy to|glad to)\b|con (?:muc
 const NO_ACK_FILLER = String.raw`(?![^.!?…]*${ACK_FILLER})(?![^.!?…]*[.!…]\s*[^.!?…]*${ACK_FILLER}[^.!?…]*(?:[.!…]|$))`;
 
 /**
- * A yes or no that opens the turn and stands on its own. A real yes or no
- * takes punctuation or the end right after it ("Yes.", "No, we don't.", "Sí,
- * estamos abiertos."), or a subject pronoun ("Yes we are"). An
- * acknowledgement that can also just open a turn (sure, of course, claro,
- * correct) counts only as a whole sentence ("Claro.", "Of course!"), so "Sure,
- * I can help with that." doesn't. Either is vetoed by help filler after it
- * ("Yes, I can help with that.", "Claro. Con gusto le ayudo."). "No
- * problem", "No worries" and "Si quiere..." ("if") don't stand alone, so they
- * don't count.
+ * A yes or no that opens the turn. A real yes or no takes punctuation or the
+ * end right after it ("Yes.", "No, we don't.", "Sí, estamos abiertos."), or a
+ * subject pronoun ("Yes we are"). An acknowledgement that can also just open
+ * a turn (sure, of course, claro, correct) counts only as a whole sentence
+ * ("Claro.", "Of course!"), so "Sure, I can help with that." doesn't. Either
+ * is vetoed by help filler after it ("Yes, I can help with that.", "Claro.
+ * Con gusto le ayudo."). "No problem", "No worries" and "Si quiere..." ("if")
+ * don't stand alone, so they don't count. What follows the opener is checked
+ * by leadingYesNoAnswers.
  */
 const LEADING_YES_NO = new RegExp(
   String.raw`^[\s"'“¡]*(?:(?:yes|yeah|yep|yup|no|nope|s[ií])(?=\s*(?:[,.!;:…—–]|$)|\s+(?:we|i|she|he|they|it|there|you)\b)` +
     String.raw`|(?:sure|of course|correct|that's right|claro(?: que s[ií])?|por supuesto|as[ií] es|exacto)(?=\s*(?:[.!…]|$)))${NO_ACK_FILLER}`,
 );
+
+/**
+ * A modal or deferral (EN/ES): the yes or no hangs on someone or something
+ * else ("Yes, I'd need to look that up.", "Yeah, you'd need to talk to the
+ * manager.", "Sí, hay que confirmarlo con el taller.").
+ */
+const YES_NO_DEFERRAL =
+  /\b(?:need|needs|have to|has to|would|should|might|may|could|look (?:that|it) up|find out|talk to|ask)\b|'d\b|(?<!\p{L})(?:tendr|tengo que|tienen? que|hay que|habr|necesit|consult|pregunt|deber)/u;
+
+/** At most four words after the echo's verb ("Yes, we do oil changes."). */
+const SHORT_COMPLEMENT = String.raw`(?:[\s,]+[\p{L}\d'$-]+){0,4}$`;
+
+/**
+ * A short echo of the question (EN/ES): subject pronoun and auxiliary ("we
+ * are", "it's", "there is", "we don't", "he does") or a Spanish verb ("tenemos",
+ * "hay", "estamos abiertos", "solo hacemos frenos", "no es"), with a short
+ * complement and nothing else.
+ */
+const YES_NO_ECHO = new RegExp(
+  String.raw`^(?:we|it|there|they|you|he|she)(?:(?:'re|'s|\s+(?:is|are|do|does|can|have|has|will))(?:n't|\s+not)?|\s+(?:can't|cannot|won't))${SHORT_COMPLEMENT}` +
+    String.raw`|^(?:(?:solo|s[oó]lo|tambi[eé]n|aqu[ií]|ya)\s+)?(?:no\s+)?(?:tenemos|hay|estamos|ofrecemos|aceptamos|hacemos|trabajamos|es|est[aá]n?|abrimos|trabaja)(?!\p{L})${SHORT_COMPLEMENT}`,
+  'u',
+);
+
+/**
+ * A leading yes or no (LEADING_YES_NO) that answers: the rest of its sentence
+ * is (a) nothing ("Yes."), (b) a short echo (YES_NO_ECHO: "Yes, we are.",
+ * "No, we don't.", "Sí, tenemos."), after an optional "and"/"y" ("Sí, y es
+ * gratis."), or (c) content: a place ("Yes, out back."), a price statement
+ * ("Yes, and oil changes are free."), or a word of the caller's question
+ * clause ("¿Ofrecen cortes de pelo?" → "Sí, aquí se corta el pelo."). And
+ * neither that sentence nor a statement right after it defers
+ * (YES_NO_DEFERRAL): "Yes, I'd need to look that up." or "Sí. Tiene que
+ * preguntar al encargado." answers nothing.
+ */
+function leadingYesNoAnswers(lower: string, clauseWords: readonly string[]): boolean {
+  const opener = LEADING_YES_NO.exec(lower);
+  if (!opener) return false;
+  const [first = '', second = ''] = lower.slice(opener[0].length).split(/(?<=[.!?…])\s+/);
+  const deferring = (sentence: string) => YES_NO_DEFERRAL.test(sentence);
+  if (deferring(first) || (!/\?["'”’)]*$/.test(second.trim()) && deferring(second))) return false;
+  const rest = first
+    .replace(/[.!?…"'”’)\s]+$/, '')
+    .replace(/^[\s,;:—–]+/, '')
+    .replace(/^(?:and|but|also|y|pero|tambi[eé]n)\s+/u, '');
+  if (!rest) return true;
+  if (YES_NO_ECHO.test(rest)) return true;
+  return PLACE_WORDS.test(rest) || FREE_PRICE.test(rest) || rest.search(NOUN_IS_FREE) >= 0 || sharesAskedWord(normalizeTokens(rest), clauseWords);
+}
 
 /**
  * Free of charge (EN/ES), only as a price statement about it, that, the thing
@@ -286,13 +336,14 @@ const LEADING_YES_NO = new RegExp(
  * "Sin costo." Not an offer that names no price ("We offer free estimates",
  * "We can take a look at no cost", "Le hacemos el diagnóstico sin costo",
  * "Ofrecemos consultas gratuitas"), availability ("whenever you're free",
- * "Marco is free this afternoon", "Our barbers are free"), "feel free" or
- * "toll free". A noun subject (NOUN_IS_FREE) must be a word of the caller's
+ * "Marco is free this afternoon", "Our barbers are free", "One is free right
+ * now": a bare "one" is a chair or slot, "the first one" is the thing asked),
+ * "feel free" or "toll free". A noun subject (NOUN_IS_FREE) must be a word of the caller's
  * price clause. "No tiene costo" must end the clause ("No tiene costo fijo,
  * depende" is no price).
  */
 const FREE_PRICE = new RegExp(
-  String.raw`\b(?:it|that|this|those|these|one|ones)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
+  String.raw`\b(?:it|that|this|those|these|(?:the|that|this|first|second|next|last|each|every) ones?)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
     String.raw` (?:free|complimentary|for free|no (?:charge|cost)|on the house)\b` +
     String.raw`|\bthere(?:'s| is| will be| would be) no (?:charge|cost)\b` +
     String.raw`|\b(?:do|does|did|doing) (?:it|that|this|them|those) (?:for free|free of charge|at no (?:charge|cost))\b` +
@@ -314,9 +365,14 @@ const NOT_SUBJECT_WORDS: ReadonlySet<string> = new Set(['much', 'many', 'what', 
  * "Is there parking? How much is an oil change?" → "Parking is free." prices nothing asked.
  */
 function nounFreeAnswersQuestion(lower: string, clauseWords: readonly string[]): boolean {
+  return sharesAskedWord([...lower.matchAll(NOUN_IS_FREE)].map(([, noun]) => noun), clauseWords);
+}
+
+/** A word that shares its stem with a word of the caller's clause, past the common question words. */
+function sharesAskedWord(words: readonly string[], clauseWords: readonly string[]): boolean {
   const asked = clauseWords.filter((word) => word.length >= 4 && !NOT_SUBJECT_WORDS.has(word));
-  return [...lower.matchAll(NOUN_IS_FREE)].some(([, noun]) =>
-    !NOT_SUBJECT_WORDS.has(noun) && asked.some((word) => noun.startsWith(word) || word.startsWith(noun)),
+  return words.some((said) =>
+    said.length >= 4 && !NOT_SUBJECT_WORDS.has(said) && asked.some((word) => said.startsWith(word) || word.startsWith(said)),
   );
 }
 
@@ -336,7 +392,7 @@ const NOT_FREE = new RegExp(
 
 /** Where something is (EN/ES), beside the street words and numbers ANSWER_EVIDENCE already takes. */
 const PLACE_WORDS =
-  /\b(?:address|near|next to|across (?:the street )?from|corner of|behind|in front of|road|blvd|boulevard|highway|plaza|mall|suite|shopping center)\b|(?<!\p{L})(?:direcci[oó]n|cerca|junto|enfrente|frente a|al lado|esquina|detr[aá]s|carretera|plaza|bulevar|centro comercial)(?!\p{L})/u;
+  /\b(?:address|near|next to|out (?:back|front)|across (?:the street )?from|corner of|behind|in front of|road|blvd|boulevard|highway|plaza|mall|suite|shopping center)\b|(?<!\p{L})(?:direcci[oó]n|cerca|junto|enfrente|frente a|al lado|esquina|detr[aá]s|atr[aá]s|carretera|plaza|bulevar|centro comercial)(?!\p{L})/u;
 
 /**
  * The agent didn't catch the caller or the line is bad ("Sorry, I missed that.", "I didn't quite catch
@@ -356,8 +412,8 @@ const DID_NOT_HEAR =
  * free." no hours question.
  */
 const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string, clauseWords: readonly string[]) => boolean>>> = {
-  yes_no: (lower) => LEADING_YES_NO.test(lower),
-  staff: (lower) => LEADING_YES_NO.test(lower),
+  yes_no: leadingYesNoAnswers,
+  staff: leadingYesNoAnswers,
   price: (lower, clauseWords) => (FREE_PRICE.test(lower) || nounFreeAnswersQuestion(lower, clauseWords)) && !NOT_FREE.test(lower),
   location: (lower) => PLACE_WORDS.test(lower),
 };
