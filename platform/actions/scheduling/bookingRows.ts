@@ -8,6 +8,8 @@
 // prepared in, and for a reschedule the booking it replaces).
 
 import type { ActionContext, TenantTx } from '../core';
+import { aliasList } from './availability/loaders';
+import { spokenServiceName, type ReadbackLang } from './readback';
 import { HOLD_EXPIRED_REASON } from './types';
 
 /** How long a prepared slot stays held (spec §1.4: +5 min). */
@@ -178,14 +180,24 @@ export async function lockHoldByToken(tx: TenantTx, tenantId: string, token: str
   return rows[0] ? mapBooking(rows[0]) : null;
 }
 
-/** Names of a booking's services in booking order (inactive ones too), for readbacks. */
-export async function serviceNames(tx: TenantTx, tenantId: string, serviceIds: string[]): Promise<string[]> {
+/**
+ * Names of a booking's services in booking order (inactive ones too), for
+ * readbacks, as spokenServiceName says them in `lang`.
+ */
+export async function serviceNames(
+  tx: TenantTx,
+  tenantId: string,
+  serviceIds: string[],
+  lang: ReadbackLang = 'en',
+): Promise<string[]> {
   if (serviceIds.length === 0) return [];
+  // aliases through to_jsonb(row), like loadCatalog, so this works before migration 125.
   const { rows } = await tx.query(
-    `SELECT id, name FROM scheduling_appointment_types WHERE tenant_id = $1 AND id = ANY($2::text[])`,
+    `SELECT id, name, to_jsonb(scheduling_appointment_types) -> 'aliases' AS aliases
+       FROM scheduling_appointment_types WHERE tenant_id = $1 AND id = ANY($2::text[])`,
     [tenantId, serviceIds],
   );
-  const byId = new Map(rows.map((r) => [str(r.id), str(r.name)]));
+  const byId = new Map(rows.map((r) => [str(r.id), spokenServiceName({ name: str(r.name), aliases: aliasList(r.aliases) }, lang)]));
   return serviceIds.map((id) => byId.get(id)).filter((name): name is string => Boolean(name));
 }
 

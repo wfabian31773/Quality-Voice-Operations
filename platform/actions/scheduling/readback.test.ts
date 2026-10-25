@@ -6,8 +6,10 @@ import {
   intlLocale,
   phoneLast4,
   readbackLang,
+  spokenServiceName,
   toE164,
 } from './readback';
+import { serviceAliases } from '../../../shared/scheduling/serviceLexicon';
 
 describe('toE164', () => {
   it.each([
@@ -69,5 +71,29 @@ describe('readbacks', () => {
   it('states the cancellation policy in both languages', () => {
     expect(cancellationPolicyText(1, 'en')).toMatch(/at least 1 hour's notice/);
     expect(cancellationPolicyText(48, 'es')).toMatch(/al menos 48 horas de aviso/);
+  });
+});
+
+describe('spokenServiceName', () => {
+  // Same aliases as scripts/seed-demo-barbershop.ts gives Haircut.
+  const haircut = { name: 'Haircut', aliases: serviceAliases('haircut').filter((a) => a !== 'haircut') };
+
+  it("says the shop's alias for the lexicon's Spanish label on a Spanish call", () => {
+    expect(spokenServiceName(haircut, 'es')).toBe('corte de pelo');
+    expect(spokenServiceName({ name: 'Kids cut', aliases: serviceAliases('kids_cut') }, 'es')).toBe('corte para niños');
+  });
+
+  it('keeps the catalog name on an English call', () => {
+    expect(spokenServiceName(haircut, 'en')).toBe('Haircut');
+  });
+
+  it('keeps the catalog name when the service has no Spanish name', () => {
+    // No aliases, or none that is the Spanish label: aliases carry no language.
+    expect(spokenServiceName({ name: 'Haircut' }, 'es')).toBe('Haircut');
+    expect(spokenServiceName({ name: 'Haircut', aliases: ['corte', 'trim'] }, 'es')).toBe('Haircut');
+    // Not the key's English label: the shop's own name stays.
+    expect(spokenServiceName({ name: "Men's cut", aliases: ['corte de pelo'] }, 'es')).toBe("Men's cut");
+    expect(spokenServiceName({ name: 'Skin Fade', aliases: ['degradado'] }, 'es')).toBe('Skin Fade');
+    expect(spokenServiceName({ name: 'Package A', aliases: ['paquete'] }, 'es')).toBe('Package A');
   });
 });
