@@ -855,6 +855,108 @@ describe('floor at teardown', () => {
     expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
   });
 
+  const answeredFor = async (question: string, reply: string) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed(question);
+    inv.agentTurnCompleted(reply);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    return (runFloorAction.mock.calls[0][1] as { answered: boolean }).answered;
+  };
+
+  it.each([
+    ['Are you open on Saturday?', 'Yes, we are.'],
+    ['Are you open on Saturday?', 'Yes.'],
+    ['Are you open on Saturday?', 'Yes we are.'],
+    ['Do you do oil changes?', "No, we don't."],
+    ['Do you do oil changes?', 'Nope.'],
+    ['Is there parking?', 'Yep, out back.'],
+    ['Do you have a website?', 'Of course!'],
+    ['Does Marco work Saturdays?', 'Correct.'],
+    ['¿Están abiertos hoy?', 'Sí, estamos abiertos.'],
+    ['¿Están abiertos hoy?', 'Sí.'],
+    ['¿Ofrecen cambios de aceite?', 'Claro.'],
+    ['¿Tienen estacionamiento?', 'Por supuesto.'],
+    ['¿Ofrecen cambios de aceite?', 'No, solo hacemos frenos.'],
+  ])('a yes/no question ("%s") is answered by a leading yes or no ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    ['How much is an oil change?', "It's free."],
+    ['How much is an oil change?', 'No charge.'],
+    ['How much is an oil change?', "There's no cost for that."],
+    ['How much is an oil change?', "It's complimentary with a tire rotation."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Sin costo.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es gratuito.'],
+    ['¿Cuál es el precio de las llantas?', 'Sin cargo.'],
+  ])('a price question ("%s") is answered by "free" ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    ['Where are you located?', "We're right next to the post office."],
+    ['Where are you located?', 'Across the street from the high school.'],
+    ['¿Dónde están ubicados?', 'Estamos enfrente del parque.'],
+    ['¿Dónde están ubicados?', 'Cerca de la plaza.'],
+  ])('a location question ("%s") is answered by a landmark ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(true);
+  });
+
+  it.each([
+    'Are you open on Saturday?',
+    '¿Están abiertos hoy?',
+    'What are your hours?',
+    'How much is an oil change?',
+    'Where are you located?',
+    'Does Marco work Saturdays?',
+    'What services do you offer?',
+    'I need a fade Friday.',
+  ])('filler never answers, whatever was asked ("%s")', async (question) => {
+    for (const reply of [
+      'Sorry, I missed that.',
+      'One moment.',
+      'Lo siento, no le escuché.',
+      'Okay.',
+      "No, I don't know.",
+      'No, sorry, I missed that.',
+      'No, perdón, ¿me repite?',
+      'Sí, un momento.',
+      'Anything else?',
+    ]) {
+      expect(await answeredFor(question, reply), reply).toBe(false);
+    }
+  });
+
+  // By design a bare yes or no answers only a yes/no or staff-days question, and "free" only a price question.
+  it.each([
+    ['What are your hours?', 'Yes.'],
+    ['What time do you close?', 'Sure.'],
+    ['How much is an oil change?', 'Yes.'],
+    ['Where are you located?', 'Yes.'],
+    ['What services do you offer?', 'Yes.'],
+    ['¿A qué hora cierran?', 'Sí.'],
+    ['What are your hours?', "It's free."],
+    ['Are you open on Saturday?', "It's free."],
+    ['¿A qué hora cierran?', 'Es gratis.'],
+    ['How much is an oil change?', "We're right next to the post office."],
+    ['Are you open on Saturday?', 'No problem.'],
+    ['Are you open on Saturday?', 'Feel free to stop by.'],
+  ])('evidence for another question type does not answer "%s" ("%s")', async (question, reply) => {
+    expect(await answeredFor(question, reply)).toBe(false);
+  });
+
+  it('the type follows the caller\'s last line: a clarification answer resets it', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('Are you open on Saturday?');
+    inv.agentTurnCompleted('Which location?');
+    inv.callerTranscribed('Downtown');
+    inv.agentTurnCompleted('Yes.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
   it('awaiting playback: an answer, then a courtesy closer or a turn without evidence, stays answered', async () => {
     for (const after of ['Anything else?', 'Okay.', 'Perdón, no le entendí.']) {
       const { inv, runFloorAction } = make({ awaitPlayback: true });

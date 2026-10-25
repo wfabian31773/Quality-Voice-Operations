@@ -70,6 +70,7 @@ import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { isExplicitYes, type ConfirmAction } from '../../../platform/reasoning/confirmationLanguage';
 import { CallerLineBuffer } from './callerLines';
+import { infoQuestionTypes, type InfoQuestionType } from '../../../platform/actions/tickets/floorHeuristics';
 
 /** The runtime's actor for system-only actions (the floor). */
 export const VOICE_RUNTIME_ACTOR = { type: 'system', id: 'voice-runtime' } as const;
@@ -216,8 +217,10 @@ export function isHoldingLine(text: string): boolean {
  * bare "at" it does not ("One moment.", "at one point", "until one of us",
  * "Es una pregunta."). Deliberately short: a turn with none of
  * these ("Sorry, I missed that.", "Good question.", "Okay.", "Buena
- * pregunta.") is not an answer, so the floor still files. An answer that only
- * names a staff member or service is missed too; an extra ticket is fine.
+ * pregunta.") is not an answer, so the floor still files. A leading yes or no,
+ * "free" or a landmark only counts for the question it answers
+ * (TYPED_EVIDENCE). An answer that only names a staff member or service is
+ * missed too; an extra ticket is fine.
  */
 const FULL_DAY = String.raw`(?:mon|tues|wednes|thurs|fri|satur|sun)days?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?`;
 const UNAMBIGUOUS_DAY_ABBR = String.raw`mon|tues?|thurs?|fri|lun|mié|jue|vie|sáb`;
@@ -241,10 +244,53 @@ const ANSWER_EVIDENCE: readonly RegExp[] = [
   /(?<!\p{L})(?:abrimos|abre|abierto|abiertos|cerramos|cierra|cerrado|cerrados|calle|avenida|ubicad[oa]s?|centro)(?!\p{L})/u,
 ];
 
-/** A turn that carries answer-shaped content ("We open at nine.", "Un corte cuesta $30."). */
-function hasAnswerEvidence(text: string): boolean {
+/**
+ * A yes or no that opens the turn and stands on its own: punctuation or the
+ * end right after it ("Yes.", "No, we don't.", "Sí, estamos abiertos.",
+ * "Claro."), or a subject pronoun ("Yes we are"). "No problem", "No worries"
+ * and "Si quiere..." ("if") don't stand alone, so they don't count.
+ */
+const LEADING_YES_NO =
+  /^[\s"'“¡]*(?:yes|yeah|yep|yup|no|nope|sure|of course|correct|that's right|s[ií]|claro(?: que s[ií])?|por supuesto|as[ií] es|exacto)(?=\s*(?:[,.!;:…—–]|$)|\s+(?:we|i|she|he|they|it|there|you)\b)/;
+
+/** Free of charge (EN/ES): "It's free.", "No charge.", "Es gratis.", "Sin costo." Not "feel free" or "toll-free". */
+const FREE_PRICE =
+  /(?<!\bfeel |-)\bfree\b|\b(?:complimentary|no (?:charge|cost)|on the house)\b|(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})/u;
+
+/** Where something is (EN/ES), beside the street words and numbers ANSWER_EVIDENCE already takes. */
+const PLACE_WORDS =
+  /\b(?:address|near|next to|across (?:the street )?from|corner of|behind|in front of|road|blvd|boulevard|highway|plaza|mall|suite|shopping center)\b|(?<!\p{L})(?:direcci[oó]n|cerca|junto|enfrente|frente a|al lado|esquina|detr[aá]s|carretera|plaza|bulevar|centro comercial)(?!\p{L})/u;
+
+/** The agent didn't catch the caller ("Sorry, I missed that.", "Lo siento, no le escuché."): never a typed answer. */
+const DID_NOT_HEAR =
+  /\b(?:missed (?:that|it|you)|didn't (?:catch|hear|get)|(?:say|repeat) that)\b|(?<!\p{L})(?:no (?:le |te |lo )?(?:entend|escuch|o[ií])|perd[oó]n|disculp|repet)/u;
+
+/**
+ * Evidence that only answers some questions, by what the caller asked
+ * (infoQuestionTypes): a leading yes or no answers a yes/no or staff-days
+ * question ("Is there parking?" → "Yes, out back."), "free" answers a price
+ * question, a landmark answers a location question. Added to ANSWER_EVIDENCE,
+ * never instead of it: a time, day, price or place word answers any question,
+ * as before. So "Yes." alone answers no hours or price question, and "It's
+ * free." no hours question.
+ */
+const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, RegExp>>> = {
+  yes_no: LEADING_YES_NO,
+  staff: LEADING_YES_NO,
+  price: FREE_PRICE,
+  location: PLACE_WORDS,
+};
+
+/**
+ * A turn that carries answer-shaped content for what the caller asked ("We
+ * open at nine.", "Un corte cuesta $30.", "Yes, we are." to "Are you open
+ * Saturday?").
+ */
+function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[]): boolean {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
-  return ANSWER_EVIDENCE.some((pattern) => pattern.test(lower));
+  if (ANSWER_EVIDENCE.some((pattern) => pattern.test(lower))) return true;
+  if (DID_NOT_HEAR.test(lower)) return false;
+  return asked.some((type) => TYPED_EVIDENCE[type]?.test(lower) ?? false);
 }
 
 /** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
@@ -430,6 +476,8 @@ export class CallInvariants {
   private answerAwaitingPlayback = false;
   /** The caller barged in since their last completed line. */
   private playbackInterrupted = false;
+  /** What the caller's last line asked (infoQuestionTypes): which replies count as answering it. */
+  private asked: readonly InfoQuestionType[] = ['other'];
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
@@ -482,6 +530,7 @@ export class CallInvariants {
     if (!text.trim()) return;
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
+    this.asked = infoQuestionTypes(text);
     this.answered = false;
     this.answerAwaitingPlayback = false;
     this.playbackInterrupted = false;
@@ -519,7 +568,7 @@ export class CallInvariants {
       const holding = isHoldingLine(text);
       if (holding || (question && !isOnlyCourtesyCloser(text))) this.answered = false;
       if (question || holding) this.answerAwaitingPlayback = false;
-      else if (hasAnswerEvidence(text)) this.answerAwaitingPlayback = true;
+      else if (hasAnswerEvidence(text, this.asked)) this.answerAwaitingPlayback = true;
       if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);

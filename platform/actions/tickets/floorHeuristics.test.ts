@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answeredInfoOnly, contentWords, hasCallbackNumber, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+import { answeredInfoOnly, contentWords, hasCallbackNumber, infoQuestionTypes, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
 
 describe('answeredInfoOnly', () => {
   const ANSWERED = { endReason: 'caller_hangup', tools: [], answered: true };
@@ -435,6 +435,37 @@ describe('answeredInfoOnly', () => {
   it('files greetings and introductions with no question at all', () => {
     expect(skips('Hi, this is Maria')).toBe(false);
     expect(skips('Hello?', 'Thanks, bye')).toBe(false);
+  });
+});
+
+describe('infoQuestionTypes', () => {
+  it.each([
+    ['Are you open on Saturday?', ['yes_no']],
+    ['Do you offer brake service?', ['yes_no']],
+    ['Is there parking?', ['yes_no']],
+    ['¿Están abiertos hoy?', ['yes_no']],
+    ['¿Tienen estacionamiento?', ['yes_no']],
+    ['What time do you close?', ['time']],
+    ['Hi, what are your hours?', ['time']],
+    ['¿A qué hora cierran?', ['time']],
+    ['How much is an oil change?', ['price']],
+    ['¿Cuánto cuesta un cambio de aceite?', ['price']],
+    ['Where are you located?', ['location']],
+    ['¿Dónde están ubicados?', ['location']],
+    ['What days does Marco work?', ['staff']],
+    ['Does Marco work Saturdays?', ['staff']],
+    ['¿Qué días trabaja Marco?', ['staff']],
+    ['What services do you offer?', ['other']],
+    ['Are you open Saturday? How much is a fade?', ['yes_no', 'price']],
+    ['Downtown', ['other']],
+    ['I need a fade Friday', ['other']],
+    ['', ['other']],
+  ])('"%s" asks %j', (line, types) => {
+    expect(infoQuestionTypes(line)).toEqual(types);
+  });
+
+  it('a staff slot holding no name ("noon") is no staff question, as in isInfoQuestion', () => {
+    expect(infoQuestionTypes('Does noon work?')).toEqual(['other']);
   });
 });
 
