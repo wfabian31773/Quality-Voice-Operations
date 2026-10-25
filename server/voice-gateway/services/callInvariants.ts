@@ -210,7 +210,9 @@ export function isHoldingLine(text: string): boolean {
  * opening-hours or location word. Weekday abbreviations count too ("Mon–Fri",
  * "lun a vie"); those that are also ordinary words or names (sat, sun, wed,
  * mar, dom, thu, and unaccented sab, mie) only count in a range or list with
- * another day ("Sat & Sun", "Mon–Thu"). Deliberately short: a turn with none of
+ * another day ("Sat & Sun", "Mon–Thu"). The hour one counts only as a time
+ * ("one p.m.", "at one o'clock", "a la una", "una y media"), never alone
+ * ("One moment.", "Es una pregunta."). Deliberately short: a turn with none of
  * these ("Sorry, I missed that.", "Good question.", "Okay.", "Buena
  * pregunta.") is not an answer, so the floor still files. An answer that only
  * names a staff member or service is missed too; an extra ticket is fine.
@@ -224,6 +226,8 @@ const DAY_JOINER = String.raw`\s*[-–—,&]\s*|\s+(?:to|through|thru|and|a|al|y
 const ANSWER_EVIDENCE: readonly RegExp[] = [
   /\d/,
   /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|noon|midnight)\b/,
+  /\bone(?:\s*[ap]\.?\s?m\b|[\s-]+(?:o'?clock|thirty|fifteen|forty[\s-]?five|in the (?:morning|afternoon|evening))\b)/,
+  /(?<!\p{L})(?:la una|una (?:de la (?:tarde|ma[ñn]ana|noche)|y (?:media|cuarto)))(?!\p{L})/u,
   /(?<!\p{L})(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mediod[ií]a|medianoche)(?!\p{L})/u,
   /\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b/,
   /(?<!\p{L})(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)(?!\p{L})/u,

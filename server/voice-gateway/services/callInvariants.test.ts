@@ -809,6 +809,45 @@ describe('floor at teardown', () => {
     },
   );
 
+  it.each([
+    'One p.m.',
+    'We close at one pm.',
+    'At one o’clock.',
+    "At one o'clock.",
+    'One-thirty works.',
+    'One forty-five.',
+    'One in the afternoon.',
+    'A la una.',
+    'La una y media.',
+    'A la una de la tarde.',
+    'Cerramos a la una.',
+    'Una de la tarde.',
+    'Una y cuarto.',
+  ])('awaiting playback: the hour one as a time ("%s") counts as answered', async (answer) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('What time do you close?');
+    inv.agentTurnCompleted(answer);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each([
+    'One moment.',
+    'Give me one second.',
+    'Which one?',
+    'We have one amazing stylist.',
+    'Es una pregunta.',
+    'Una pregunta más.',
+  ])('awaiting playback: "one" or "una" outside a time ("%s") is not an answer', async (line) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed('What time do you close?');
+    inv.agentTurnCompleted(line);
+    inv.agentPlaybackConfirmed();
+    await expect(inv.evaluateFloor()).resolves.toBe('filed');
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
   it('awaiting playback: an answer, then a courtesy closer or a turn without evidence, stays answered', async () => {
     for (const after of ['Anything else?', 'Okay.', 'Perdón, no le entendí.']) {
       const { inv, runFloorAction } = make({ awaitPlayback: true });
