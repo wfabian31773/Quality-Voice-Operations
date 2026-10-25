@@ -902,6 +902,13 @@ describe('floor at teardown', () => {
     ['How much is an oil change?', 'We do it free of charge.'],
     ['How much is an oil change?', 'We do that for free.'],
     ['How much is an oil change?', 'Free.'],
+    ['How much is an oil change?', "It's no cost to you."],
+    ['How much is an oil change?', 'No cost to you.'],
+    ['How much is an oil change?', "Don't worry, it's free."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No tiene costo.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es sin costo.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No, es gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Lo hacemos gratis.'],
     ['¿Cuánto cuestan los cambios de aceite?', 'Son gratis.'],
     ['¿Cuánto cuesta un cambio de aceite?', 'Es totalmente gratis.'],
     ['¿Cuánto cuesta un cambio de aceite?', 'Gratis con la rotación de llantas.'],
@@ -1012,6 +1019,21 @@ describe('floor at teardown', () => {
     ['¿Cuánto cuesta un cambio de aceite?', 'No es gratuito.'],
     ['¿Cuánto cuesta un cambio de aceite?', 'No, no son gratis.'],
     ['¿Cuánto cuesta un corte?', 'Cuando esté libre, venga.'],
+    // A denial with don't / doesn't / didn't, nunca or tampoco.
+    ['How much is an oil change?', "We don't do it for free."],
+    ['How much is an oil change?', "We don't do that free of charge."],
+    ['How much is an oil change?', "It doesn't come free."],
+    ['How much is an oil change?', 'We did not do it for free.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Nunca es gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'El cambio de aceite tampoco es gratis.'],
+    // An offer that names no price, or someone's availability.
+    ['¿Cuánto cuesta el servicio de frenos?', 'Le hacemos el diagnóstico sin costo.'],
+    ['How much is a brake job?', 'We can take a look at no cost to you.'],
+    ['How much is a brake job?', 'We inspect it for free.'],
+    ['How much is a fade?', 'Marco is free this afternoon if you want to come in.'],
+    ['How much is a fade?', 'Our barbers are free right now, so you can walk in.'],
+    ['How much is a fade?', "They're free right now."],
+    ['How much is an oil change?', "There's free coffee while you wait."],
   ])('filler or a non-answer does not answer "%s" ("%s")', async (question, reply) => {
     expect(await answeredFor(question, reply)).toBe(false);
   });
@@ -1074,6 +1096,67 @@ describe('floor at teardown', () => {
       await inv.evaluateFloor();
       expect(runFloorAction.mock.calls[0][1], after).toMatchObject({ answered: true });
     }
+  });
+
+  it.each([
+    ['Is there parking?', 'Yes, out back.', 'Thank you!', "You're welcome, have a great day!"],
+    ['Is there parking?', 'Yes, out back.', 'Okay.', 'Bye now!'],
+    ['Is there parking?', 'Yes, out back.', 'Perfect, thanks.', "You're welcome!"],
+    ['Is there parking?', 'Yes, out back. Anything else?', 'No, thank you.', 'Have a great day!'],
+    ['How much is an oil change?', "It's free.", 'Okay, thanks, bye!', 'Bye!'],
+    ['¿Tienen estacionamiento?', 'Sí, atrás del edificio.', 'Gracias.', '¡De nada, que le vaya bien!'],
+    ['¿Tienen estacionamiento?', 'Sí, atrás del edificio.', 'Perfecto, muchas gracias.', '¡Con gusto!'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es gratis.', 'Muy bien, gracias, adiós.', 'Adiós.'],
+  ])('awaiting playback: a caller sign-off after an answer keeps it answered ("%s" → "%s" → "%s")', async (question, answer, signOff, reply) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+    inv.callerTranscribed(question);
+    inv.agentTurnCompleted(answer);
+    inv.agentPlaybackConfirmed();
+    // Server VAD hears the caller before their words are transcribed.
+    inv.callerSpeechStarted();
+    inv.callerTranscribed(signOff);
+    inv.agentTurnCompleted(reply);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it('a caller sign-off keeps what was asked: the agent\'s sign-off after it does not answer anew', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('What are your hours?');
+    inv.agentTurnCompleted('Which location?');
+    inv.callerTranscribed('Thanks.');
+    inv.agentTurnCompleted('Yes.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('a sign-off does not restore an answer a later question cleared, or one never given', async () => {
+    const cleared = make();
+    cleared.inv.callerTranscribed('What are your hours?');
+    cleared.inv.agentTurnCompleted('We open at nine.');
+    cleared.inv.callerSpeechStarted();
+    cleared.inv.agentTurnCompleted('Sorry, could you repeat that?');
+    cleared.inv.callerTranscribed('Thank you.');
+    await cleared.inv.evaluateFloor();
+    expect(cleared.runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+
+    const never = make();
+    never.inv.callerTranscribed('Is there parking?');
+    never.inv.agentTurnCompleted('Let me check.');
+    never.inv.callerTranscribed('Okay, thanks.');
+    await never.inv.evaluateFloor();
+    expect(never.runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+  });
+
+  it('a caller line with content after an answer still resets it', async () => {
+    const { inv, runFloorAction } = make();
+    inv.callerTranscribed('Is there parking?');
+    inv.agentTurnCompleted('Yes, out back.');
+    inv.callerTranscribed('Thanks. How much is an oil change?');
+    inv.agentTurnCompleted('Yes.');
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
   });
 
   it('a tool name past the floor limit is truncated before it reaches the floor', async () => {

@@ -70,7 +70,7 @@ import { isToolStoppedResult } from '../../../platform/tools/ToolStopGuard';
 import { isPendingBookingChallenge } from '../../../platform/tools/library/handlers/createBooking';
 import { isExplicitYes, type ConfirmAction } from '../../../platform/reasoning/confirmationLanguage';
 import { CallerLineBuffer } from './callerLines';
-import { infoQuestionTypes, type InfoQuestionType } from '../../../platform/actions/tickets/floorHeuristics';
+import { infoQuestionTypes, isSignOffOnly, type InfoQuestionType } from '../../../platform/actions/tickets/floorHeuristics';
 
 /** The runtime's actor for system-only actions (the floor). */
 export const VOICE_RUNTIME_ACTOR = { type: 'system', id: 'voice-runtime' } as const;
@@ -268,24 +268,55 @@ const LEADING_YES_NO = new RegExp(
 );
 
 /**
- * Free of charge (EN/ES), only in a price-answer shape: "It's free.", "Parking
- * is free.", "Totally free.", "Free with any tire purchase.", "Free of
- * charge.", "For free.", "No charge.", "Es gratis.", "Son gratis.", "Es
- * gratuito.", "Sin costo." Not an offer that names no price ("We offer free
- * estimates", "Ofrecemos consultas gratuitas"), availability ("whenever you're
- * free", "you're free to come by"), "feel free" or "toll free".
+ * Free of charge (EN/ES), only as a price statement about it, that, the thing
+ * asked about, or as a sentence of its own: "It's free.", "The first one is
+ * free.", "Oil changes are free." (to "How much is an oil change?"), "There's
+ * no cost.", "We do it for free.", "Free with any tire purchase.", "No
+ * charge.", "Es gratis.", "Son gratis.", "No tiene costo.", "Es sin costo.",
+ * "Sin costo." Not an offer that names no price ("We offer free estimates",
+ * "We can take a look at no cost", "Le hacemos el diagnóstico sin costo",
+ * "Ofrecemos consultas gratuitas"), availability ("whenever you're free",
+ * "Marco is free this afternoon", "Our barbers are free"), "feel free" or
+ * "toll free". A noun subject (NOUN_IS_FREE) must be a word of the caller's
+ * question.
  */
 const FREE_PRICE = new RegExp(
-  String.raw`(?<!\b(?:you|we|he|she|who) )\b(?:it's|it is|that's|that is|is|are|totally|completely) (?:free|complimentary)\b` +
-    String.raw`|(?:^|[.!?…]\s+)[\s"'“¡]*(?:free|gratis)(?=\s*(?:[,.!;:…—–]|$)|\s+(?:with|if|for|when|con|si|para)\b)` +
-    String.raw`|\b(?:free of charge|for free|no (?:charge|cost)|on the house)\b` +
-    String.raw`|(?<!\p{L})(?:(?:es|son|ser[aá]) (?:totalmente |completamente )?(?:gratis|gratuit[oa]s?)|sin (?:costo|cargo))(?!\p{L})`,
+  String.raw`\b(?:it|that|this|those|these|one|ones)(?:'s|'ll be| is| are| will be| would be)(?: (?:totally|completely|always|also|still|actually))?` +
+    String.raw` (?:free|complimentary|for free|no (?:charge|cost)|on the house)\b` +
+    String.raw`|\bthere(?:'s| is| will be| would be) no (?:charge|cost)\b` +
+    String.raw`|\b(?:do|does|did|doing) (?:it|that|this|them|those) (?:for free|free of charge|at no (?:charge|cost))\b` +
+    String.raw`|(?:^|[.!?…]\s+)[\s"'“¡]*(?:(?:totally|completely|totalmente|completamente) )?(?:free(?: of charge)?|gratis|no (?:charge|cost)|on the house|sin (?:costo|cargo))` +
+    String.raw`(?=\s*(?:[,.!;:…—–]|$)|\s+(?:with|if|for|when|to you|con|si|para)\b)` +
+    String.raw`|(?<!\p{L})(?:(?:es|son|ser[aá]|est[aá]n?) (?:totalmente |completamente )?(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))|no tienen? (?:costo|cargo)` +
+    String.raw`|(?:lo|la|los|las) (?:hacemos|hace|hacen) (?:gratis|sin (?:costo|cargo)))(?!\p{L})`,
   'u',
 );
 
-/** A denial of "free" ("It's not free.", "It wouldn't be free of charge.", "No es gratis."): vetoes FREE_PRICE. */
-const NOT_FREE =
-  /\b(?:not|never|isn't|aren't|wasn't|won't|wouldn't|no longer)(?: (?:be|for|always|totally|completely|entirely|really|actually|quite))* (?:free|complimentary)\b|(?<!\p{L})no (?:es|son|ser[aá]|ser[ií]an?|est[aá]n?) (?:totalmente |completamente |del todo )?(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})/u;
+/** "{noun} is/are free": the noun is checked against the caller's question. */
+const NOUN_IS_FREE = /(?<![\p{L}'])(\p{L}{4,}) (?:is|are)(?: (?:totally|completely|always|also|still|actually))? (?:free|complimentary)(?!\p{L})/gu;
+/** Question words too common to name what was asked. */
+const NOT_SUBJECT_WORDS: ReadonlySet<string> = new Set(['much', 'many', 'what', 'when', 'where', 'does', 'have', 'your', 'there', 'this', 'that', 'cost', 'costs', 'price']);
+
+/** A noun subject of "is/are free" that shares its stem with a word of the caller's question ("oil changes" / "oil change"). */
+function nounFreeAnswersQuestion(lower: string, question: string): boolean {
+  const asked = question.split(/[^\p{L}]+/u).filter((word) => word.length >= 4 && !NOT_SUBJECT_WORDS.has(word));
+  return [...lower.matchAll(NOUN_IS_FREE)].some(([, noun]) =>
+    !NOT_SUBJECT_WORDS.has(noun) && asked.some((word) => noun.startsWith(word) || word.startsWith(noun)),
+  );
+}
+
+/**
+ * A denial of "free" ("It's not free.", "We don't do it for free.", "No es
+ * gratis.", "Nunca es gratis.", "Tampoco es gratis."): a negation earlier in
+ * the same clause vetoes FREE_PRICE. A comma ends the clause, so "No, es
+ * gratis." and "Don't worry, it's free." still count.
+ */
+const NOT_FREE = new RegExp(
+  String.raw`\b(?:not|never|no longer|isn't|aren't|wasn't|weren't|won't|wouldn't|don't|doesn't|didn't|do not|does not|did not|can't|cannot)\b` +
+    String.raw`[^.!?…,;]*\b(?:free|complimentary)\b` +
+    String.raw`|(?<!\p{L})(?:no|nunca|tampoco|jam[aá]s)(?!\p{L})[^.!?…,;]*(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})`,
+  'u',
+);
 
 /** Where something is (EN/ES), beside the street words and numbers ANSWER_EVIDENCE already takes. */
 const PLACE_WORDS =
@@ -308,10 +339,10 @@ const DID_NOT_HEAR =
  * as before. So "Yes." alone answers no hours or price question, and "It's
  * free." no hours question.
  */
-const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string) => boolean>>> = {
+const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string, question: string) => boolean>>> = {
   yes_no: (lower) => LEADING_YES_NO.test(lower),
   staff: (lower) => LEADING_YES_NO.test(lower),
-  price: (lower) => FREE_PRICE.test(lower) && !NOT_FREE.test(lower),
+  price: (lower, question) => (FREE_PRICE.test(lower) || nounFreeAnswersQuestion(lower, question)) && !NOT_FREE.test(lower),
   location: (lower) => PLACE_WORDS.test(lower),
 };
 
@@ -320,12 +351,14 @@ const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string) 
  * open at nine.", "Un corte cuesta $30.", "Yes, we are." to "Are you open
  * Saturday?"). Typed evidence must cover every type asked: "Is there parking?
  * How much is an oil change?" → "Yes, there is." leaves the price unanswered.
+ * question is the caller's line that asked.
  */
-function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[]): boolean {
+function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[], question: string): boolean {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   if (ANSWER_EVIDENCE.some((pattern) => pattern.test(lower))) return true;
   if (DID_NOT_HEAR.test(lower)) return false;
-  return asked.length > 0 && asked.every((type) => TYPED_EVIDENCE[type]?.(lower) ?? false);
+  const questionLower = question.toLowerCase();
+  return asked.length > 0 && asked.every((type) => TYPED_EVIDENCE[type]?.(lower, questionLower) ?? false);
 }
 
 /** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
@@ -513,6 +546,14 @@ export class CallInvariants {
   private playbackInterrupted = false;
   /** What the caller's last line asked (infoQuestionTypes): which replies count as answering it. */
   private asked: readonly InfoQuestionType[] = ['other'];
+  /** The caller line `asked` came from. */
+  private askedLine = '';
+  /**
+   * answered as it stood when the caller started speaking: a sign-off line
+   * ("Thank you!") restores it once transcribed. A tool, or an agent
+   * question or holding line, clears it.
+   */
+  private answeredBeforeSpeech = false;
   private callerName: string | undefined;
   private language: 'en' | 'es' | undefined;
   private lastPreparedToken: string | undefined;
@@ -565,8 +606,16 @@ export class CallInvariants {
     if (!text.trim()) return;
     this.state = onCallerHeard(this.state);
     this.callerLines.push(text);
-    this.asked = infoQuestionTypes(text);
-    this.answered = false;
+    // A line of only thanks, sign-offs or filler asks nothing new: the
+    // earlier answer and what it answered stand.
+    if (isSignOffOnly(text)) {
+      this.answered = this.answered || this.answeredBeforeSpeech;
+    } else {
+      this.asked = infoQuestionTypes(text);
+      this.askedLine = text;
+      this.answered = false;
+    }
+    this.answeredBeforeSpeech = false;
     this.answerAwaitingPlayback = false;
     this.playbackInterrupted = false;
     if (this.lastPreparedToken && this.spokeSincePrepare && isExplicitYes(text, this.lastPreparedAction)) {
@@ -580,6 +629,7 @@ export class CallInvariants {
    * their last line.
    */
   callerSpeechStarted(): void {
+    this.answeredBeforeSpeech = this.answeredBeforeSpeech || this.answered;
     this.answered = false;
     this.answerAwaitingPlayback = false;
   }
@@ -601,9 +651,12 @@ export class CallInvariants {
       // that.") neither sets nor clears an answer.
       const question = isAgentQuestion(text);
       const holding = isHoldingLine(text);
-      if (holding || (question && !isOnlyCourtesyCloser(text))) this.answered = false;
+      if (holding || (question && !isOnlyCourtesyCloser(text))) {
+        this.answered = false;
+        this.answeredBeforeSpeech = false;
+      }
       if (question || holding) this.answerAwaitingPlayback = false;
-      else if (hasAnswerEvidence(text, this.asked)) this.answerAwaitingPlayback = true;
+      else if (hasAnswerEvidence(text, this.asked, this.askedLine)) this.answerAwaitingPlayback = true;
       if (!this.init.awaitPlayback) this.agentPlaybackConfirmed();
     }
     this.state = onAgentSpoke(this.state);
@@ -636,6 +689,7 @@ export class CallInvariants {
       // Whatever was said before a tool, the caller has not had its result yet.
       this.answered = false;
       this.answerAwaitingPlayback = false;
+      this.answeredBeforeSpeech = false;
       const kind = toolKind(name, args);
       const work = this.runTool(handler, name, args, kind);
       // The end-call tool evaluates the floor itself; it must not wait on itself.

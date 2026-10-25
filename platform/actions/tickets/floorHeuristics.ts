@@ -487,6 +487,31 @@ export function infoQuestionTypes(line: string): InfoQuestionType[] {
   return types.size > 0 ? [...types] : ['other'];
 }
 
+/** Closing words a caller adds after an answer, beside EDGE_FILLER ("Perfect, thanks", "Muy bien, gracias"). */
+const CLOSERS: readonly string[][] = [
+  'thank you so much', 'thank you very much', 'thanks so much', 'thanks a lot', 'muchas gracias', 'mil gracias',
+  'perfect', 'great', 'awesome', 'wonderful', 'cool', 'alright', 'all right', 'got it', 'sounds good', 'thats all', 'thats it',
+  'have a good day', 'have a great day', 'you too', 'perfecto', 'excelente', 'genial', 'muy bien', 'de acuerdo', 'entendido',
+  'vale', 'listo', 'eso es todo', 'igualmente', 'que tenga buen dia',
+].map(normalizeTokens);
+
+/**
+ * A caller line of only thanks, sign-offs and filler ("Thank you!", "Gracias",
+ * "Okay", "Perfect, thanks", "No, thank you"): it asks nothing new, so an
+ * earlier answer still covers the call.
+ */
+export function isSignOffOnly(line: string): boolean {
+  const clauses = splitClauses(line).map(({ text }) => normalizeTokens(text)).filter((tokens) => tokens.length > 0);
+  return (
+    clauses.length > 0 &&
+    clauses.every((tokens) => {
+      if (tokens.length === 1 && WHOLE_CLAUSE_NO.has(tokens[0])) return true;
+      const [start, end] = edgeFillerBounds(tokens, [...CLOSERS, ...EDGE_FILLER]);
+      return end <= start;
+    })
+  );
+}
+
 /**
  * Greetings, thanks and lead-in words trimmed from either end of a clause ("And what are your hours", "hours, please").
  * Yes / no is not here: a leading Spanish "no" negates what follows ("No está abierto el taller").

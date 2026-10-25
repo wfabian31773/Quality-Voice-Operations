@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { answeredInfoOnly, contentWords, hasCallbackNumber, infoQuestionTypes, normalizeTokens, saidMoreThanTheirOwnName } from './floorHeuristics';
+import {
+  answeredInfoOnly,
+  contentWords,
+  hasCallbackNumber,
+  infoQuestionTypes,
+  isSignOffOnly,
+  normalizeTokens,
+  saidMoreThanTheirOwnName,
+} from './floorHeuristics';
 
 describe('answeredInfoOnly', () => {
   const ANSWERED = { endReason: 'caller_hangup', tools: [], answered: true };
@@ -468,6 +476,28 @@ describe('infoQuestionTypes', () => {
 
   it('a staff slot holding no name ("noon") is no staff question, as in isInfoQuestion', () => {
     expect(infoQuestionTypes('Does noon work?')).toEqual(['other']);
+  });
+});
+
+describe('isSignOffOnly', () => {
+  it.each([
+    'Thank you!', 'Thanks.', 'Okay.', 'Perfect, thanks.', 'No, thank you.', 'Okay, thanks, bye!', 'Great, thank you so much.',
+    'Got it, have a good day.', 'Gracias.', 'Muchas gracias.', 'Perfecto, muchas gracias.', 'Muy bien, gracias, adiós.', 'Vale.',
+  ])('"%s" is only a sign-off', (line) => {
+    expect(isSignOffOnly(line)).toBe(true);
+  });
+
+  it.each([
+    'Thanks. How much is an oil change?', 'Okay, and on Sunday?', 'Yes.', 'Yes please.', 'Perfect, can you call me back?',
+    'Gracias, ¿y los sábados?', 'No, my car is still broken.', '...', '',
+  ])('"%s" is more than a sign-off', (line) => {
+    expect(isSignOffOnly(line)).toBe(false);
+  });
+
+  it('the repro calls (question, thanks) are still answered info calls', () => {
+    const signals = { endReason: 'caller_hangup', answered: true, tools: [] };
+    expect(answeredInfoOnly(['Is there parking?', 'Thank you!'], signals)).toBe(true);
+    expect(answeredInfoOnly(['¿Tienen estacionamiento?', 'Gracias.'], signals)).toBe(true);
   });
 });
 
