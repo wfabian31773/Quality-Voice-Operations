@@ -762,6 +762,38 @@ describe('floor at teardown', () => {
     },
   );
 
+  it.each([
+    'Lisa works Mon–Fri.',
+    "We're open Tue through Sat.",
+    'Tue through Sat.',
+    'Lisa works Mon. to Thurs.',
+    'Mon, Wed, Fri.',
+    'Sat & Sun.',
+    'Trabaja de lun a vie.',
+    'De mar a dom.',
+    'Sábados y dom.',
+    'Lun a sáb.',
+  ])('awaiting playback: weekday abbreviations ("%s") count as answered', async (answer) => {
+    const { inv, runFloorAction } = make({ awaitPlayback: true });
+    inv.callerTranscribed('When does Lisa work?');
+    inv.agentTurnCompleted(answer);
+    inv.agentPlaybackConfirmed();
+    await inv.evaluateFloor();
+    expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
+  });
+
+  it.each(['I sat down.', 'Enjoy the sun!', 'Sorry, I missed that.', 'Wed like to help.', 'Mar.', 'El mar está bonito.', "C'mon, sorry."])(
+    'awaiting playback: a word that only looks like a weekday abbreviation ("%s") is not an answer',
+    async (line) => {
+      const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
+      inv.callerTranscribed('When does Lisa work?');
+      inv.agentTurnCompleted(line);
+      inv.agentPlaybackConfirmed();
+      await expect(inv.evaluateFloor()).resolves.toBe('filed');
+      expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: false });
+    },
+  );
+
   it('awaiting playback: an answer, then a courtesy closer or a turn without evidence, stays answered', async () => {
     for (const after of ['Anything else?', 'Okay.', 'Perdón, no le entendí.']) {
       const { inv, runFloorAction } = make({ awaitPlayback: true });

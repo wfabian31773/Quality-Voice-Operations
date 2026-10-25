@@ -207,17 +207,28 @@ export function isHoldingLine(text: string): boolean {
 /**
  * Positive evidence that a turn answered something (EN/ES): a number (a time,
  * price, address or count), a day of the week, a price word, or an
- * opening-hours or location word. Deliberately short: a turn with none of
+ * opening-hours or location word. Weekday abbreviations count too ("Mon–Fri",
+ * "lun a vie"); those that are also ordinary words (sat, sun, wed, mar, dom,
+ * and unaccented sab, mie) only count in a range or list with another day
+ * ("Sat & Sun", "Tue through Sat"). Deliberately short: a turn with none of
  * these ("Sorry, I missed that.", "Good question.", "Okay.", "Buena
  * pregunta.") is not an answer, so the floor still files. An answer that only
  * names a staff member or service is missed too; an extra ticket is fine.
  */
+const FULL_DAY = String.raw`(?:mon|tues|wednes|thurs|fri|satur|sun)days?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?`;
+const UNAMBIGUOUS_DAY_ABBR = String.raw`mon|tues?|thu(?:rs?)?|fri|lun|mié|jue|vie|sáb`;
+const ANY_DAY_ABBR = String.raw`${UNAMBIGUOUS_DAY_ABBR}|wed|sat|sun|mar|mie|sab|dom`;
+const DAY_TOKEN = String.raw`(?<![\p{L}'])(?:${FULL_DAY}|(?:${ANY_DAY_ABBR})\.?)(?!\p{L})`;
+const DAY_JOINER = String.raw`\s*[-–—,&]\s*|\s+(?:to|through|thru|and|a|al|y)\s+`;
+
 const ANSWER_EVIDENCE: readonly RegExp[] = [
   /\d/,
   /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|noon|midnight)\b/,
   /(?<!\p{L})(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mediod[ií]a|medianoche)(?!\p{L})/u,
   /\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b/,
   /(?<!\p{L})(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)(?!\p{L})/u,
+  new RegExp(String.raw`(?<![\p{L}'])(?:${UNAMBIGUOUS_DAY_ABBR})(?!\p{L})`, "u"),
+  new RegExp(`${DAY_TOKEN}(?:${DAY_JOINER})${DAY_TOKEN}`, "u"),
   /\$|\b(?:dollars?|bucks|cents)\b|(?<!\p{L})(?:d[oó]lares|pesos)(?!\p{L})/u,
   /\b(?:open|opens|closed|closes|located|street|avenue|downtown)\b/,
   /(?<!\p{L})(?:abrimos|abre|abierto|abiertos|cerramos|cierra|cerrado|cerrados|calle|avenida|ubicad[oa]s?|centro)(?!\p{L})/u,
