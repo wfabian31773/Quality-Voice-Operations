@@ -37,6 +37,7 @@ import {
   readbackLang,
   rescheduledReadback,
   rescheduleReadback,
+  spokenServiceName,
   spokenWhen,
 } from './readback';
 import { resolveSlot, slotConflict, slotScope } from './slots';
@@ -131,7 +132,7 @@ export const reschedulePrepareAction = defineAction({
     const tz = ctx.tenantTimezone;
     const readback = rescheduleReadback(
       {
-        serviceNames: services.map((s) => s.name),
+        serviceNames: services.map((s) => spokenServiceName(s, lang)),
         customerName: booking.contactName,
         fromWhen: spokenWhen({ startMs: booking.startTime.getTime(), nowMs, timeZone: tz, locale: ctx.locale }),
         fromStaff: booking.providerName ?? staff.name,
@@ -251,7 +252,7 @@ export const rescheduleCommitAction = defineAction({
     const locale = payload.data.locale ?? ctx.locale;
     const readback = rescheduledReadback(
       {
-        serviceNames: await serviceNames(tx, ctx.tenantId, hold.serviceIds),
+        serviceNames: await serviceNames(tx, ctx.tenantId, hold.serviceIds, readbackLang(locale)),
         customerName: hold.contactName,
         toWhen: spokenWhen({ startMs: hold.startTime.getTime(), nowMs: ctx.now.getTime(), timeZone: ctx.tenantTimezone, locale }),
         toStaff: staffName,

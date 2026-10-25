@@ -75,7 +75,7 @@ async function present(tx: TenantTx, ctx: ActionContext, bookings: BookingRecord
   const lang = readbackLang(ctx.locale);
   const out: FindOutput['bookings'] = [];
   for (const booking of bookings) {
-    const names = await serviceNames(tx, ctx.tenantId, booking.serviceIds);
+    const names = await serviceNames(tx, ctx.tenantId, booking.serviceIds, lang);
     const services = names.length > 0 ? names : [booking.title];
     const staffName = booking.providerName ?? (lang === 'es' ? 'el equipo' : 'the team');
     const when = spokenWhen({ startMs: booking.startTime.getTime(), nowMs: ctx.now.getTime(), timeZone: ctx.tenantTimezone, locale: ctx.locale });

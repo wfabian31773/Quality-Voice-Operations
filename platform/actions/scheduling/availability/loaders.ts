@@ -49,7 +49,7 @@ function toDate(value: unknown): Date {
   return value instanceof Date ? value : new Date(String(value));
 }
 
-function aliasList(value: unknown): string[] {
+export function aliasList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((a): a is string => typeof a === 'string' && a.trim() !== '').map((a) => a.trim());
 }

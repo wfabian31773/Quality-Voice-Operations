@@ -33,6 +33,7 @@ import {
   confirmedReadback,
   priceFallback,
   readbackLang,
+  spokenServiceName,
   spokenWhen,
   toE164,
 } from './readback';
@@ -153,7 +154,7 @@ export const bookPrepareAction = defineAction({
     const price = bookingPriceText(services, lang);
     const readback = bookReadback(
       {
-        serviceNames: services.map((s) => s.name),
+        serviceNames: services.map((s) => spokenServiceName(s, lang)),
         staffName: staff.name,
         when: spokenWhen({ startMs: resolved.startMs, nowMs: ctx.now.getTime(), timeZone: ctx.tenantTimezone, locale: ctx.locale }),
         customerName,
@@ -237,7 +238,7 @@ export const bookCommitAction = defineAction({
     const staffName = hold.providerName ?? '';
     const readback = confirmedReadback(
       {
-        serviceNames: await serviceNames(tx, ctx.tenantId, hold.serviceIds),
+        serviceNames: await serviceNames(tx, ctx.tenantId, hold.serviceIds, lang),
         staffName,
         when: spokenWhen({ startMs: hold.startTime.getTime(), nowMs: ctx.now.getTime(), timeZone: ctx.tenantTimezone, locale: payload.data.locale ?? ctx.locale }),
         customerName: hold.contactName,

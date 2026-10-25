@@ -488,6 +488,49 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       expect(conflict.callerSafeMessage).toBe('Ese horario no está disponible. Le puedo ofrecer los horarios libres más cercanos.');
     });
 
+    it("names the service by the shop's Spanish alias on an es call, and by the catalog name in English", async () => {
+      // Oct 22 2026 call: the commit said "Confirmado: Haircut con Dee" after a Spanish read-back.
+      const shop = await seedShop('es-name');
+      const haircut = await insert('scheduling_appointment_types', {
+        tenant_id: shop.tenantId, name: 'Haircut', duration_minutes: 30, price_kind: 'from', price_cents: 3000,
+        aliases: ['hair cut', 'corte', 'corte de pelo', 'corte de cabello'],
+      });
+      await pool.query(`INSERT INTO scheduling_provider_services (tenant_id, provider_id, appointment_type_id) VALUES ($1, $2, $3)`, [shop.tenantId, shop.marco, haircut]);
+      const es = ctx(shop.tenantId, { locale: 'es' });
+      const p = data<{ readback: string; confirmationToken: string }>(
+        await act('scheduling.book.prepare', es, bookInput(shop, edt(20, '15:30'), { serviceIds: [haircut] })),
+      );
+      expect(p.readback).toMatch(/^corte de pelo con Marco, mañana, 3:30 p\. ?m\., para Luis, teléfono que termina en 0142\. El precio es desde \$30\.$/);
+      const c = data<{ bookingId: string; readback: string }>(await act('scheduling.book.commit', es, { confirmationToken: p.confirmationToken }));
+      expect(c.readback).toMatch(/^Confirmado: corte de pelo con Marco, mañana, 3:30 p\. ?m\., para Luis\.$/);
+
+      const en = ctx(shop.tenantId, { callId: 'CA-2' });
+      const pe = data<{ readback: string; confirmationToken: string }>(
+        await act('scheduling.book.prepare', en, bookInput(shop, edt(20, '10:00'), { serviceIds: [haircut] })),
+      );
+      expect(pe.readback).toBe('Haircut with Marco, tomorrow at 10 AM, for Luis, phone ending in 0142. The price is from $30.');
+      const ce = data<{ readback: string }>(await act('scheduling.book.commit', en, { confirmationToken: pe.confirmationToken }));
+      expect(ce.readback).toBe('Confirmed: Haircut with Marco, tomorrow at 10 AM, for Luis.');
+
+      // find, reschedule and cancel name it the same way.
+      const admin = ctx(shop.tenantId, { actor: ADMIN_BOT, callId: undefined, locale: 'es' });
+      const reader = { ...admin, actor: { type: 'mcp' as const, id: 'bot', scopes: ['qvo:read'] } };
+      const found = data<{ bookings: { bookingId: string; spoken: string }[] }>(
+        await act('scheduling.find_bookings', reader, { phone: LUIS.phone, date: '2026-10-20', time: '15:30' }),
+      );
+      expect(found.bookings.map((b) => b.spoken)).toEqual([expect.stringMatching(/^corte de pelo con Marco, /)]);
+      const rp = data<{ confirmationToken: string; readback: string }>(
+        await act('scheduling.reschedule.prepare', admin, { bookingId: c.bookingId, newStart: edt(23, '14:00') }),
+      );
+      expect(rp.readback).toMatch(/^Vamos a mover la cita de Luis, corte de pelo, de /);
+      const moved = data<{ bookingId: string; readback: string }>(await act('scheduling.reschedule.commit', admin, { confirmationToken: rp.confirmationToken }));
+      expect(moved.readback).toMatch(/^Listo: la cita de Luis, corte de pelo, ahora es /);
+      const cp = data<{ confirmationToken: string; readback: string }>(await act('scheduling.cancel.prepare', admin, { bookingId: moved.bookingId }));
+      expect(cp.readback).toMatch(/^Vamos a cancelar la cita de Luis, corte de pelo con Marco, /);
+      const cancelled = data<{ readback: string }>(await act('scheduling.cancel.commit', admin, { confirmationToken: cp.confirmationToken }));
+      expect(cancelled.readback).toMatch(/^Cancelada: la cita de Luis, corte de pelo con Marco, /);
+    });
+
     it('enforces permissions: agent and qvo:admin allowed, other roles and scopes are not', async () => {
       const shop = await seedShop('perms');
       const input = bookInput(shop, edt(20, '10:00'));

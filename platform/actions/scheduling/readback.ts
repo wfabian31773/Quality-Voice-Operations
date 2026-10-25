@@ -3,6 +3,7 @@
 // is no tenant-level locale column yet, so anything else falls back to
 // English. Times use PR-08's spokenSlot so reads and writes say them alike.
 
+import { matchServiceTerm, normalizeServiceText, serviceLabel } from '../../../shared/scheduling/serviceLexicon';
 import { spokenSlot } from './availability';
 import type { CatalogService } from './availability';
 import { priceText } from './listServices';
@@ -43,6 +44,21 @@ export function phoneLast4(phone: string): string {
 }
 
 // ─── pieces ───
+
+/**
+ * The service name a readback says. English: the catalog name, always. Spanish:
+ * the shop's own alias for the lexicon's Spanish label ("Haircut" with alias
+ * "corte de pelo" → "corte de pelo"), only when the catalog name is that key's
+ * English label. Catalog aliases carry no language, so nothing else is read as
+ * Spanish; otherwise the catalog name.
+ */
+export function spokenServiceName(service: Pick<CatalogService, 'name' | 'aliases'>, lang: ReadbackLang): string {
+  if (lang !== 'es') return service.name;
+  const term = matchServiceTerm(service.name);
+  if (!term || normalizeServiceText(service.name) !== normalizeServiceText(serviceLabel(term.key))) return service.name;
+  const spanish = normalizeServiceText(serviceLabel(term.key, 'es'));
+  return service.aliases?.find((a) => normalizeServiceText(a) === spanish) ?? service.name;
+}
 
 function serviceList(names: string[], lang: ReadbackLang): string {
   const and = lang === 'es' ? ' y ' : ' and ';

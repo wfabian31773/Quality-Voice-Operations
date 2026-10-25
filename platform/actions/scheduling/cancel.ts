@@ -48,7 +48,7 @@ function isCancellable(status: string): boolean {
 }
 
 async function readbackFacts(tx: TenantTx, ctx: ActionContext, booking: BookingRecord, locale: string | undefined) {
-  const names = await serviceNames(tx, ctx.tenantId, booking.serviceIds);
+  const names = await serviceNames(tx, ctx.tenantId, booking.serviceIds, readbackLang(locale));
   return {
     serviceNames: names.length > 0 ? names : [booking.title],
     customerName: booking.contactName,
