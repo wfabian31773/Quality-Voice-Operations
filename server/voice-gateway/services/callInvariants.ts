@@ -208,16 +208,16 @@ export function isHoldingLine(text: string): boolean {
  * Positive evidence that a turn answered something (EN/ES): a number (a time,
  * price, address or count), a day of the week, a price word, or an
  * opening-hours or location word. Weekday abbreviations count too ("Mon–Fri",
- * "lun a vie"); those that are also ordinary words (sat, sun, wed, mar, dom,
- * and unaccented sab, mie) only count in a range or list with another day
- * ("Sat & Sun", "Tue through Sat"). Deliberately short: a turn with none of
+ * "lun a vie"); those that are also ordinary words or names (sat, sun, wed,
+ * mar, dom, thu, and unaccented sab, mie) only count in a range or list with
+ * another day ("Sat & Sun", "Mon–Thu"). Deliberately short: a turn with none of
  * these ("Sorry, I missed that.", "Good question.", "Okay.", "Buena
  * pregunta.") is not an answer, so the floor still files. An answer that only
  * names a staff member or service is missed too; an extra ticket is fine.
  */
 const FULL_DAY = String.raw`(?:mon|tues|wednes|thurs|fri|satur|sun)days?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?`;
-const UNAMBIGUOUS_DAY_ABBR = String.raw`mon|tues?|thu(?:rs?)?|fri|lun|mié|jue|vie|sáb`;
-const ANY_DAY_ABBR = String.raw`${UNAMBIGUOUS_DAY_ABBR}|wed|sat|sun|mar|mie|sab|dom`;
+const UNAMBIGUOUS_DAY_ABBR = String.raw`mon|tues?|thurs?|fri|lun|mié|jue|vie|sáb`;
+const ANY_DAY_ABBR = String.raw`${UNAMBIGUOUS_DAY_ABBR}|wed|thu|sat|sun|mar|mie|sab|dom`;
 const DAY_TOKEN = String.raw`(?<![\p{L}'])(?:${FULL_DAY}|(?:${ANY_DAY_ABBR})\.?)(?!\p{L})`;
 const DAY_JOINER = String.raw`\s*[-–—,&]\s*|\s+(?:to|through|thru|and|a|al|y)\s+`;
 
@@ -236,7 +236,7 @@ const ANSWER_EVIDENCE: readonly RegExp[] = [
 
 /** A turn that carries answer-shaped content ("We open at nine.", "Un corte cuesta $30."). */
 function hasAnswerEvidence(text: string): boolean {
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   return ANSWER_EVIDENCE.some((pattern) => pattern.test(lower));
 }
 

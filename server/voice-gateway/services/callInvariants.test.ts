@@ -773,6 +773,10 @@ describe('floor at teardown', () => {
     'De mar a dom.',
     'Sábados y dom.',
     'Lun a sáb.',
+    'Mon–Thu.',
+    'Mon thru Thurs.',
+    'De lun al vie.',
+    'Tue—Sat.',
   ])('awaiting playback: weekday abbreviations ("%s") count as answered', async (answer) => {
     const { inv, runFloorAction } = make({ awaitPlayback: true });
     inv.callerTranscribed('When does Lisa work?');
@@ -782,7 +786,18 @@ describe('floor at teardown', () => {
     expect(runFloorAction.mock.calls[0][1]).toMatchObject({ answered: true });
   });
 
-  it.each(['I sat down.', 'Enjoy the sun!', 'Sorry, I missed that.', 'Wed like to help.', 'Mar.', 'El mar está bonito.', "C'mon, sorry."])(
+  it.each([
+    'I sat down.',
+    'Enjoy the sun!',
+    'Sorry, I missed that.',
+    'Wed like to help.',
+    'Mar.',
+    'El mar está bonito.',
+    "C'mon, sorry.",
+    'C’mon, sorry.',
+    'Got it, a full set with Thu.',
+    'Okay, Thu.',
+  ])(
     'awaiting playback: a word that only looks like a weekday abbreviation ("%s") is not an answer',
     async (line) => {
       const { inv, runFloorAction } = make({ awaitPlayback: true, endReason: () => 'caller_hangup' });
