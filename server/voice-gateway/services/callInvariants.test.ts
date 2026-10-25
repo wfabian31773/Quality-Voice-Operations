@@ -88,10 +88,14 @@ describe('tool classification', () => {
   });
 
   it('a holding line is "let me check" / "one moment" / "un momento" / "déjeme revisar", not an answer', () => {
-    for (const text of ['Let me check that.', 'Let me look into it', 'Just a second.', 'Hold on.', "I'll check with Marco.", 'Un momento.', 'Déjeme revisar.', 'Permítame verificar.', 'Voy a revisar.']) {
-      expect(isHoldingLine(text)).toBe(true);
+    for (const text of [
+      'Let me check that.', 'Let me look into it', 'Just a second.', 'Hold on.', 'Hang on.', 'Hold, please.', 'Please hold.',
+      'Bear with me while I check.', "I'll check with Marco.", 'Un momento.', 'Déjeme revisar.', 'Permítame verificar.',
+      'Permítame.', 'Permitame, por favor.', 'Espere.', 'Espéreme tantito.', 'Voy a revisar.',
+    ]) {
+      expect(isHoldingLine(text), text).toBe(true);
     }
-    for (const text of ['We open at nine.', 'We have a second location downtown.', 'Abrimos a las nueve.', '']) {
+    for (const text of ['We open at nine.', 'We have a second location downtown.', 'Abrimos a las nueve.', 'Permítame decirle que sí tenemos.', 'Disculpe la espera.', '']) {
       expect(isHoldingLine(text)).toBe(false);
     }
   });
@@ -891,6 +895,16 @@ describe('floor at teardown', () => {
     ['¿Cuánto cuesta un cambio de aceite?', 'Sin costo.'],
     ['¿Cuánto cuesta un cambio de aceite?', 'Es gratuito.'],
     ['¿Cuál es el precio de las llantas?', 'Sin cargo.'],
+    ['How much is an oil change?', 'Oil changes are free this month.'],
+    ['How much is an oil change?', 'The first one is free.'],
+    ['How much is an oil change?', "That's totally free."],
+    ['How much is an oil change?', 'Completely free with a tire rotation.'],
+    ['How much is an oil change?', 'We do it free of charge.'],
+    ['How much is an oil change?', 'We do that for free.'],
+    ['How much is an oil change?', 'Free.'],
+    ['¿Cuánto cuestan los cambios de aceite?', 'Son gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Es totalmente gratis.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Gratis con la rotación de llantas.'],
   ])('a price question ("%s") is answered by "free" ("%s")', async (question, reply) => {
     expect(await answeredFor(question, reply)).toBe(true);
   });
@@ -971,10 +985,33 @@ describe('floor at teardown', () => {
     ['¿Están abiertos hoy?', 'Sí, lo siento, se corta.'],
     ['¿Están abiertos hoy?', 'Sí, lo siento, se está cortando la llamada.'],
     ['¿Tienen estacionamiento?', 'No, lo siento, no se escucha.'],
+    ['¿Ofrecen cambio de aceite?', 'Sí, con mucho gusto.'],
+    // A yes that only holds the line.
+    ['Do you do brake jobs?', 'Yes, hang on.'],
+    ['Do you do brake jobs?', 'Yes, please hold while I check.'],
+    ['Do you do brake jobs?', 'Yes, hold please.'],
+    ['Do you do brake jobs?', 'Yeah, while I look.'],
+    ['¿Tienen estacionamiento?', 'Sí, permítame.'],
+    ['¿Tienen estacionamiento?', 'Sí, permítame un momento.'],
+    ['¿Tienen estacionamiento?', 'Sí, espere.'],
+    ['¿Tienen estacionamiento?', 'Sí, espéreme.'],
     // "Free" that is no price.
     ['How much is an oil change?', 'Call our toll free line.'],
     ['How much is an oil change?', "It's not free."],
     ['¿Cuánto cuesta un cambio de aceite?', 'No es gratis.'],
+    ['How much is a brake job?', 'We offer free estimates, so bring it in anytime.'],
+    ['How much is a brake job?', 'Free consultations are available.'],
+    ['How much is a haircut?', "Whenever you're free, swing by and we'll take a look."],
+    ['How much is a haircut?', "You're free to stop by anytime."],
+    ['How much is a haircut?', 'If you are free, come on in.'],
+    ['How much is an oil change?', "It wouldn't be free."],
+    ['How much is an oil change?', "It won't be free of charge."],
+    ['How much is an oil change?', "It isn't totally free."],
+    ['How much is an oil change?', "That's not for free."],
+    ['¿Cuánto cuesta un cambio de aceite?', 'Ofrecemos consultas gratuitas.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No es gratuito.'],
+    ['¿Cuánto cuesta un cambio de aceite?', 'No, no son gratis.'],
+    ['¿Cuánto cuesta un corte?', 'Cuando esté libre, venga.'],
   ])('filler or a non-answer does not answer "%s" ("%s")', async (question, reply) => {
     expect(await answeredFor(question, reply)).toBe(false);
   });
@@ -999,6 +1036,21 @@ describe('floor at teardown', () => {
     ['Are you open on Saturday?', 'Feel free to stop by.'],
   ])('evidence for another question type does not answer "%s" ("%s")', async (question, reply) => {
     expect(await answeredFor(question, reply)).toBe(false);
+  });
+
+  // A line that asks two things needs typed evidence for each; a time, day, price or place word covers any.
+  it.each([
+    ['Is there parking? How much is an oil change?', 'Yes, there is.', false],
+    ['Is there parking? How much is an oil change?', "Yes, and it's $40.", true],
+    ['Is there parking? How much is an oil change?', "Yes, and it's free.", true],
+    ['Are you open Saturday? What time do you close?', 'Yes.', false],
+    ['Are you open Saturday? What time do you close?', 'Yes, until five.', true],
+    ['Is there parking? Where are you located?', 'Yes, next to the post office.', true],
+    ['¿Tienen estacionamiento? ¿Cuánto cuesta un cambio de aceite?', 'Sí, tenemos.', false],
+    ['¿Tienen estacionamiento? ¿Cuánto cuesta un cambio de aceite?', 'Sí, y cuesta 40 dólares.', true],
+    ['¿Tienen estacionamiento? ¿Cuánto cuesta un cambio de aceite?', 'Sí, y es gratis.', true],
+  ])('two questions ("%s") answered by "%s": %s', async (question, reply, expected) => {
+    expect(await answeredFor(question, reply)).toBe(expected);
   });
 
   it('the type follows the caller\'s last line: a clarification answer resets it', async () => {

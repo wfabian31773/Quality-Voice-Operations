@@ -185,10 +185,12 @@ const COURTESY_CLOSERS: readonly RegExp[] = [
 const HOLDING_LINES: readonly RegExp[] = [
   /\blet me (?:check|look|see|find|pull|verify|confirm)\b/,
   /\b(?:one|just a) (?:moment|sec|second|minute)\b|\ba moment\b/,
-  /\b(?:hold on|bear with me|give me a (?:moment|sec|second|minute))\b/,
+  /\b(?:hold on|hang on|hold,? please|please hold|bear with me|give me a (?:moment|sec|second|minute)|while (?:i|we) (?:check|look))\b/,
   /\b(?:i'?ll|i will|i'?m going to|i'?m) (?:check|checking|look|looking)\b/,
   /\bun (?:momento|momentito|segundo|segundito|minuto)\b/,
   /\b(?:d[eé]j(?:e|a)me|perm[ií]t(?:a|e)me|deje que|voy a) (?:revis|ver|chec|busc|verific|confirm)/,
+  // "Permítame." on its own, "Espere", "Espéreme".
+  /(?<!\p{L})(?:perm[ií]t(?:a|e)me(?=\s*(?:[,.!…]|$))|espere|esp[eé]reme)(?!\p{L})/u,
   /\b(?:estoy|lo estoy) (?:revisando|checando|buscando|verificando)\b/,
   // A follow-up promise: any mention of calling, contacting or following up means
   // someone else answers later. Deliberately broad; an extra ticket is fine.
@@ -245,7 +247,7 @@ const ANSWER_EVIDENCE: readonly RegExp[] = [
 ];
 
 /** Help or acknowledgement filler ("I can help with that", "happy to", "con gusto le ayudo"): not an answer. */
-const ACK_FILLER = String.raw`(?:\b(?:help|assist|happy to|glad to)\b|con gusto|ayud)`;
+const ACK_FILLER = String.raw`(?:\b(?:help|assist|happy to|glad to)\b|con (?:mucho )?gusto|ayud)`;
 /** No ACK_FILLER in the rest of the first sentence, or in a second sentence that is a statement. */
 const NO_ACK_FILLER = String.raw`(?![^.!?…]*${ACK_FILLER})(?![^.!?…]*[.!…]\s*[^.!?…]*${ACK_FILLER}[^.!?…]*(?:[.!…]|$))`;
 
@@ -266,11 +268,24 @@ const LEADING_YES_NO = new RegExp(
 );
 
 /**
- * Free of charge (EN/ES): "It's free.", "No charge.", "Es gratis.", "Sin costo." Not "feel free",
- * "toll-free" / "toll free", or a denial ("It's not free.", "No es gratis.").
+ * Free of charge (EN/ES), only in a price-answer shape: "It's free.", "Parking
+ * is free.", "Totally free.", "Free with any tire purchase.", "Free of
+ * charge.", "For free.", "No charge.", "Es gratis.", "Son gratis.", "Es
+ * gratuito.", "Sin costo." Not an offer that names no price ("We offer free
+ * estimates", "Ofrecemos consultas gratuitas"), availability ("whenever you're
+ * free", "you're free to come by"), "feel free" or "toll free".
  */
-const FREE_PRICE =
-  /(?<!\b(?:feel|toll|not|isn't|aren't) |-)\bfree\b|\b(?:complimentary|no (?:charge|cost)|on the house)\b|(?<!(?<!\p{L})no (?:es |son )?)(?<!\p{L})(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})/u;
+const FREE_PRICE = new RegExp(
+  String.raw`(?<!\b(?:you|we|he|she|who) )\b(?:it's|it is|that's|that is|is|are|totally|completely) (?:free|complimentary)\b` +
+    String.raw`|(?:^|[.!?…]\s+)[\s"'“¡]*(?:free|gratis)(?=\s*(?:[,.!;:…—–]|$)|\s+(?:with|if|for|when|con|si|para)\b)` +
+    String.raw`|\b(?:free of charge|for free|no (?:charge|cost)|on the house)\b` +
+    String.raw`|(?<!\p{L})(?:(?:es|son|ser[aá]) (?:totalmente |completamente )?(?:gratis|gratuit[oa]s?)|sin (?:costo|cargo))(?!\p{L})`,
+  'u',
+);
+
+/** A denial of "free" ("It's not free.", "It wouldn't be free of charge.", "No es gratis."): vetoes FREE_PRICE. */
+const NOT_FREE =
+  /\b(?:not|never|isn't|aren't|wasn't|won't|wouldn't|no longer)(?: (?:be|for|always|totally|completely|entirely|really|actually|quite))* (?:free|complimentary)\b|(?<!\p{L})no (?:es|son|ser[aá]|ser[ií]an?|est[aá]n?) (?:totalmente |completamente |del todo )?(?:gratis|gratuit[oa]s?|sin (?:costo|cargo))(?!\p{L})/u;
 
 /** Where something is (EN/ES), beside the street words and numbers ANSWER_EVIDENCE already takes. */
 const PLACE_WORDS =
@@ -293,23 +308,24 @@ const DID_NOT_HEAR =
  * as before. So "Yes." alone answers no hours or price question, and "It's
  * free." no hours question.
  */
-const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, RegExp>>> = {
-  yes_no: LEADING_YES_NO,
-  staff: LEADING_YES_NO,
-  price: FREE_PRICE,
-  location: PLACE_WORDS,
+const TYPED_EVIDENCE: Readonly<Partial<Record<InfoQuestionType, (lower: string) => boolean>>> = {
+  yes_no: (lower) => LEADING_YES_NO.test(lower),
+  staff: (lower) => LEADING_YES_NO.test(lower),
+  price: (lower) => FREE_PRICE.test(lower) && !NOT_FREE.test(lower),
+  location: (lower) => PLACE_WORDS.test(lower),
 };
 
 /**
  * A turn that carries answer-shaped content for what the caller asked ("We
  * open at nine.", "Un corte cuesta $30.", "Yes, we are." to "Are you open
- * Saturday?").
+ * Saturday?"). Typed evidence must cover every type asked: "Is there parking?
+ * How much is an oil change?" → "Yes, there is." leaves the price unanswered.
  */
 function hasAnswerEvidence(text: string, asked: readonly InfoQuestionType[]): boolean {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   if (ANSWER_EVIDENCE.some((pattern) => pattern.test(lower))) return true;
   if (DID_NOT_HEAR.test(lower)) return false;
-  return asked.some((type) => TYPED_EVIDENCE[type]?.test(lower) ?? false);
+  return asked.length > 0 && asked.every((type) => TYPED_EVIDENCE[type]?.(lower) ?? false);
 }
 
 /** A turn made only of courtesy closers ("Anything else?"): it neither answers nor asks, so an earlier answer stands. */
