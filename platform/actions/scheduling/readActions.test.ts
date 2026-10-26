@@ -383,11 +383,36 @@ describe('scheduling.check_availability', () => {
     ['a repeated service', { serviceIds: ['cut', 'cut'] }, 'serviceIds'],
     ['limit over 5', { serviceIds: ['cut'], limit: 6 }, 'limit'],
     ['an unknown part of day', { serviceIds: ['cut'], partOfDay: 'night' }, 'partOfDay'],
+    ['startTime with a window', { serviceIds: ['cut'], window: { from: '2026-10-20', to: '2026-10-21' }, startTime: '10:30' }, 'startTime'],
+    ['startTime without a date', { serviceIds: ['cut'], startTime: '10:30' }, 'startTime'],
+    ['a 12-hour startTime', { serviceIds: ['cut'], date: '2026-10-20', startTime: '10:30 AM' }, 'startTime'],
+    ['an impossible startTime', { serviceIds: ['cut'], date: '2026-10-20', startTime: '24:00' }, 'startTime'],
   ])('rejects %s with VALIDATION_FAILED', async (_label, input, field) => {
     const { result, query } = await run('scheduling.check_availability', input);
     expect(errorOf(result)).toMatchObject({ code: 'VALIDATION_FAILED', field });
     // Zod rejects before any table is read.
     expect(dataQueries(query)).toEqual([]);
+  });
+
+  it('startTime checks that exact time: first when open, else the next open times, earliest first', async () => {
+    const open = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'marco', date: '2026-10-20', startTime: '10:30' });
+    expect(open.result.ok && (open.result.data as { slots: { start: string }[] }).slots.map((s) => s.start)).toEqual([
+      '2026-10-20T14:30:00.000Z',
+      '2026-10-20T14:45:00.000Z',
+      '2026-10-20T15:00:00.000Z',
+    ]);
+
+    const env = setup(shopData({
+      bookings: [
+        { provider_id: 'marco', start_time: new Date('2026-10-20T14:30:00Z'), blocked_until: new Date('2026-10-20T15:00:00Z'), status: 'confirmed', hold_expires_at: null },
+      ],
+    }));
+    const taken = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'marco', date: '2026-10-20', startTime: '10:30' }, env);
+    expect(taken.result.ok && (taken.result.data as { slots: { spoken: string }[] }).slots.map((s) => s.spoken)).toEqual([
+      'tomorrow at 11 AM',
+      'tomorrow at 11:15 AM',
+      'tomorrow at 11:30 AM',
+    ]);
   });
 
   it('accepts a 14-day window', async () => {

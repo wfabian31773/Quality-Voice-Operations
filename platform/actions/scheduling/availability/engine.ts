@@ -380,6 +380,7 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
           if (t < dayStart) continue;
           if (t >= dayEnd) break;
           if (input.at !== undefined && t !== input.at) continue;
+          if (input.from !== undefined && t < input.from) continue;
           if (input.partOfDay && partOfDayOf(localMinuteOf(t, tz)) !== input.partOfDay) continue;
           raw += 1;
           if (t < nowMs || t < earliestMs || date > lastBookable || (date === today && sameDayClosed)) continue;
@@ -410,7 +411,9 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
     }
     const unique = [...best.values()].sort((x, y) => x.ms - y.ms);
     const near = input.near;
-    const picked = near === undefined
+    const picked = input.from !== undefined
+      ? unique.slice(0, limit)
+      : near === undefined
       ? spreadPick(unique, limit)
       : unique
         .slice()

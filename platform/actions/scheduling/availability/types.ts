@@ -104,6 +104,8 @@ export interface AvailabilityInput {
   at?: number;
   /** Return the slots closest to this instant (epoch ms) instead of spreading them across the day. */
   near?: number;
+  /** Only starts at or after this instant (epoch ms), earliest first instead of spread across the day. */
+  from?: number;
 }
 
 export interface Slot {
