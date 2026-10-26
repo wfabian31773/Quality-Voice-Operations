@@ -420,6 +420,7 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
     return picked.map((c) => ({
       start: new Date(c.ms).toISOString(),
       end: new Date(c.ms + durationMs).toISOString(),
+      blockedUntil: new Date(c.ms + durationMs + bufferMs).toISOString(),
       staffId: c.staff.id,
       staffName: c.staff.name,
       spoken: spokenSlot(c.ms, nowMs, tz, input.locale),

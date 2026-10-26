@@ -336,6 +336,28 @@ describe('computeAvailability: bookings, buffers and holds', () => {
     }));
     expect(r).toEqual({ slots: [], reasonIfNone: 'fully_booked', nextOpenDate: '2026-10-21' });
   });
+
+  it('each slot says when its staff member is free again: blockedUntil = end + the largest buffer', () => {
+    const base = { staffId: 'marco', date: day, overrides: hours, limit: 1 };
+    const beard = computeAvailability(input({ ...base, services: [BEARD] })).slots[0];
+    expect(beard).toMatchObject({ end: '2026-10-20T14:15:00.000Z', blockedUntil: '2026-10-20T14:20:00.000Z' });
+    const cut = computeAvailability(input({ ...base, services: [CUT] })).slots[0];
+    expect(cut).toMatchObject({ end: '2026-10-20T14:30:00.000Z', blockedUntil: '2026-10-20T14:30:00.000Z' });
+    const both = computeAvailability(input({ ...base, services: [{ ...CUT, bufferMin: 10 }, BEARD] })).slots[0];
+    expect(both).toMatchObject({ end: '2026-10-20T14:45:00.000Z', blockedUntil: '2026-10-20T14:55:00.000Z' });
+  });
+
+  it("back-to-back with the same barber: once the first is booked, the second can start at its blockedUntil, not at its end", () => {
+    const base = { staffId: 'marco', date: day, overrides: [shopOpen(day, '10:00', '12:00')] };
+    const first = computeAvailability(input({ ...base, services: [{ ...CUT, bufferMin: 15 }], limit: 1 })).slots[0];
+    expect(first).toMatchObject({ start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:30:00.000Z', blockedUntil: '2026-10-20T14:45:00.000Z' });
+
+    // The first booking blocks Marco until its blockedUntil (bookings.blocked_until).
+    const second = { ...base, services: [CUT], bookings: [booking('marco', first.start, first.blockedUntil)] };
+    expect(computeAvailability(input({ ...second, at: Date.parse(first.end) })).slots).toEqual([]);
+    expect(starts(computeAvailability(input({ ...second, at: Date.parse(first.blockedUntil) })))).toEqual([first.blockedUntil]);
+    expect(starts(computeAvailability(input({ ...second, limit: 5 })))[0]).toBe(first.blockedUntil);
+  });
 });
 
 describe('computeAvailability: services and staff', () => {
@@ -491,7 +513,7 @@ describe('computeAvailability: exact start (at) and nearest slots (near), used b
   it('offers exactly the requested start, with the engine-assigned staff member for any', () => {
     const r = computeAvailability(input({ date: '2026-10-20', at: TUE_1000, limit: 1 }));
     expect(r.slots).toEqual([
-      { start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:30:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 10 AM' },
+      { start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:30:00.000Z', blockedUntil: '2026-10-20T14:30:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 10 AM' },
     ]);
     // Marco busier that day → Dana gets it.
     const busy = computeAvailability(input({

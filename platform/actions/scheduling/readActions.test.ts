@@ -299,9 +299,9 @@ describe('scheduling.check_availability', () => {
       ok: true,
       data: {
         slots: [
-          { start: '2026-10-20T13:00:00.000Z', end: '2026-10-20T13:30:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 9 AM' },
-          { start: '2026-10-20T16:45:00.000Z', end: '2026-10-20T17:15:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 12:45 PM' },
-          { start: '2026-10-20T20:30:00.000Z', end: '2026-10-20T21:00:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 4:30 PM' },
+          { start: '2026-10-20T13:00:00.000Z', end: '2026-10-20T13:30:00.000Z', blockedUntil: '2026-10-20T13:30:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 9 AM' },
+          { start: '2026-10-20T16:45:00.000Z', end: '2026-10-20T17:15:00.000Z', blockedUntil: '2026-10-20T17:15:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 12:45 PM' },
+          { start: '2026-10-20T20:30:00.000Z', end: '2026-10-20T21:00:00.000Z', blockedUntil: '2026-10-20T21:00:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 4:30 PM' },
         ],
       },
     });
@@ -318,7 +318,8 @@ describe('scheduling.check_availability', () => {
     }));
     const { result } = await run('scheduling.check_availability', { serviceIds: ['cut', 'beard'], date: '2026-10-20', limit: 1 }, env);
     expect(result.ok && result.data).toEqual({
-      slots: [{ start: '2026-10-20T13:30:00.000Z', end: '2026-10-20T14:15:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 9:30 AM' }],
+      // Beard trim's 5-minute buffer: Marco is free again at 10:20, not 10:15.
+      slots: [{ start: '2026-10-20T13:30:00.000Z', end: '2026-10-20T14:15:00.000Z', blockedUntil: '2026-10-20T14:20:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 9:30 AM' }],
     });
   });
 
@@ -363,7 +364,7 @@ describe('scheduling.check_availability', () => {
       now: new Date('2026-10-19T22:00:00Z'),
     });
     expect(result.ok && result.data).toEqual({
-      slots: [{ start: '2026-10-20T16:00:00.000Z', end: '2026-10-20T16:15:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 12 PM' }],
+      slots: [{ start: '2026-10-20T16:00:00.000Z', end: '2026-10-20T16:15:00.000Z', blockedUntil: '2026-10-20T16:20:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 12 PM' }],
     });
   });
 

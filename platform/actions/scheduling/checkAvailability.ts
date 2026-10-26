@@ -59,6 +59,7 @@ const output = z.object({
     z.object({
       start: z.string(),
       end: z.string(),
+      blockedUntil: z.string(),
       staffId: z.string(),
       staffName: z.string(),
       spoken: z.string(),
@@ -81,6 +82,7 @@ export const checkAvailabilityAction = defineAction({
     + `staffId is a staff id from list_staff or 'any'; their exact name also works. Give date (${DATE_SLOT_FORMAT}) `
     + 'or window {from,to} in the same format; with neither it finds the first available day. Optional partOfDay '
     + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. '
+    + 'blockedUntil is when that staff member is free again (end plus clean-up time). '
     + 'With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.',
   async run(ctx, rawArgs, tx) {
     const tz = ctx.tenantTimezone;

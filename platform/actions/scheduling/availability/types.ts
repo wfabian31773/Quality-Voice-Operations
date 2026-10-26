@@ -109,6 +109,8 @@ export interface AvailabilityInput {
 export interface Slot {
   start: string;
   end: string;
+  /** end + the largest service buffer: when this staff member is free again once booked. */
+  blockedUntil: string;
   staffId: string;
   staffName: string;
   spoken: string;
