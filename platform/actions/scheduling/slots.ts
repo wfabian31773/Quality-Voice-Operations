@@ -233,11 +233,9 @@ export async function resolveSlot(
   });
   const slot = exact.slots[0];
   if (slot) {
-    const durationMs = scope.services.reduce((sum, s) => sum + s.durationMin, 0) * MINUTE_MS;
-    // Same buffer rule as the engine's overlap check (largest buffer of the services).
-    const bufferMs = scope.services.reduce((max, s) => Math.max(max, s.bufferMin), 0) * MINUTE_MS;
+    // End and blocked-until come from the engine slot, so the hold matches its overlap check.
     const staff = scope.catalog.staff.find((s) => s.id === slot.staffId)!;
-    return { slot, services: scope.services, staff, startMs, endMs: startMs + durationMs, blockedUntilMs: startMs + durationMs + bufferMs };
+    return { slot, services: scope.services, staff, startMs, endMs: Date.parse(slot.end), blockedUntilMs: Date.parse(slot.blockedUntil) };
   }
   if (exact.reasonIfNone === 'outside_lead_time') {
     return fail('VALIDATION_FAILED', 'start is outside the booking lead-time window', 'start', callerMessage('outsideLead', lang));

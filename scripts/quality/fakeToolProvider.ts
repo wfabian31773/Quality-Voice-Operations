@@ -453,9 +453,12 @@ export class FakeToolProvider implements ToolProvider {
     if (typeof staffId !== 'string') return staffId;
     const date = asString(input.date) ?? localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const today = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
+    const startTime = asString(input.startTime);
     const slots = this.state.slots
       .filter((slot) => {
         if (localDate(slot.start, ctx.tenantTimezone) !== date) return false;
+        // Like the engine's startTime: that exact time and later only.
+        if (startTime && formatLocalHm(slot.start, ctx.tenantTimezone) < startTime) return false;
         if (staffId !== 'any' && slot.staffId !== staffId) return false;
         if (!staffPerforms(this.state, slot.staffId, serviceIds)) return false;
         // Without services the fake can't size the request's buffer; the seeded slot end stands in.
@@ -463,9 +466,13 @@ export class FakeToolProvider implements ToolProvider {
       })
       .map((slot) => {
         const staff = this.state.staff.find((member) => member.id === slot.staffId);
+        // Like the engine and book.prepare: the requested services size end and blockedUntil;
+        // without services the seeded end stands in.
+        const span = serviceIds.length > 0 ? bookingSpan(this.state.services, serviceIds, slot.start) : undefined;
         return {
           start: slot.start,
-          end: slot.end,
+          end: span ? new Date(span.endMs).toISOString() : slot.end,
+          blockedUntil: span ? new Date(span.blockedUntilMs).toISOString() : slot.end,
           staffId: slot.staffId,
           staffName: staff?.displayName ?? slot.staffId,
           spoken: spokenSlot(slot.start, ctx.tenantTimezone),

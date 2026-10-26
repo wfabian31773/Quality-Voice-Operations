@@ -299,9 +299,9 @@ describe('scheduling.check_availability', () => {
       ok: true,
       data: {
         slots: [
-          { start: '2026-10-20T13:00:00.000Z', end: '2026-10-20T13:30:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 9 AM' },
-          { start: '2026-10-20T16:45:00.000Z', end: '2026-10-20T17:15:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 12:45 PM' },
-          { start: '2026-10-20T20:30:00.000Z', end: '2026-10-20T21:00:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 4:30 PM' },
+          { start: '2026-10-20T13:00:00.000Z', end: '2026-10-20T13:30:00.000Z', blockedUntil: '2026-10-20T13:30:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 9 AM' },
+          { start: '2026-10-20T16:45:00.000Z', end: '2026-10-20T17:15:00.000Z', blockedUntil: '2026-10-20T17:15:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 12:45 PM' },
+          { start: '2026-10-20T20:30:00.000Z', end: '2026-10-20T21:00:00.000Z', blockedUntil: '2026-10-20T21:00:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 4:30 PM' },
         ],
       },
     });
@@ -318,7 +318,8 @@ describe('scheduling.check_availability', () => {
     }));
     const { result } = await run('scheduling.check_availability', { serviceIds: ['cut', 'beard'], date: '2026-10-20', limit: 1 }, env);
     expect(result.ok && result.data).toEqual({
-      slots: [{ start: '2026-10-20T13:30:00.000Z', end: '2026-10-20T14:15:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 9:30 AM' }],
+      // Beard trim's 5-minute buffer: Marco is free again at 10:20, not 10:15.
+      slots: [{ start: '2026-10-20T13:30:00.000Z', end: '2026-10-20T14:15:00.000Z', blockedUntil: '2026-10-20T14:20:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 9:30 AM' }],
     });
   });
 
@@ -363,7 +364,7 @@ describe('scheduling.check_availability', () => {
       now: new Date('2026-10-19T22:00:00Z'),
     });
     expect(result.ok && result.data).toEqual({
-      slots: [{ start: '2026-10-20T16:00:00.000Z', end: '2026-10-20T16:15:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 12 PM' }],
+      slots: [{ start: '2026-10-20T16:00:00.000Z', end: '2026-10-20T16:15:00.000Z', blockedUntil: '2026-10-20T16:20:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 12 PM' }],
     });
   });
 
@@ -382,11 +383,36 @@ describe('scheduling.check_availability', () => {
     ['a repeated service', { serviceIds: ['cut', 'cut'] }, 'serviceIds'],
     ['limit over 5', { serviceIds: ['cut'], limit: 6 }, 'limit'],
     ['an unknown part of day', { serviceIds: ['cut'], partOfDay: 'night' }, 'partOfDay'],
+    ['startTime with a window', { serviceIds: ['cut'], window: { from: '2026-10-20', to: '2026-10-21' }, startTime: '10:30' }, 'startTime'],
+    ['startTime without a date', { serviceIds: ['cut'], startTime: '10:30' }, 'startTime'],
+    ['a 12-hour startTime', { serviceIds: ['cut'], date: '2026-10-20', startTime: '10:30 AM' }, 'startTime'],
+    ['an impossible startTime', { serviceIds: ['cut'], date: '2026-10-20', startTime: '24:00' }, 'startTime'],
   ])('rejects %s with VALIDATION_FAILED', async (_label, input, field) => {
     const { result, query } = await run('scheduling.check_availability', input);
     expect(errorOf(result)).toMatchObject({ code: 'VALIDATION_FAILED', field });
     // Zod rejects before any table is read.
     expect(dataQueries(query)).toEqual([]);
+  });
+
+  it('startTime checks that exact time: first when open, else the next open times, earliest first', async () => {
+    const open = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'marco', date: '2026-10-20', startTime: '10:30' });
+    expect(open.result.ok && (open.result.data as { slots: { start: string }[] }).slots.map((s) => s.start)).toEqual([
+      '2026-10-20T14:30:00.000Z',
+      '2026-10-20T14:45:00.000Z',
+      '2026-10-20T15:00:00.000Z',
+    ]);
+
+    const env = setup(shopData({
+      bookings: [
+        { provider_id: 'marco', start_time: new Date('2026-10-20T14:30:00Z'), blocked_until: new Date('2026-10-20T15:00:00Z'), status: 'confirmed', hold_expires_at: null },
+      ],
+    }));
+    const taken = await run('scheduling.check_availability', { serviceIds: ['cut'], staffId: 'marco', date: '2026-10-20', startTime: '10:30' }, env);
+    expect(taken.result.ok && (taken.result.data as { slots: { spoken: string }[] }).slots.map((s) => s.spoken)).toEqual([
+      'tomorrow at 11 AM',
+      'tomorrow at 11:15 AM',
+      'tomorrow at 11:30 AM',
+    ]);
   });
 
   it('accepts a 14-day window', async () => {

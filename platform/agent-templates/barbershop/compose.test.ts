@@ -23,6 +23,34 @@ const SHOP = {
 };
 const CALLER_ID_LINE = buildCallerIdPromptLine('+15555550142');
 
+/** NO-UNCHECKED-PROMISES: a test call said "back-to-back works great" after checking one slot. */
+const NO_UNCHECKED_PROMISES: Record<TemplateLanguage, readonly string[]> = {
+  en: [
+    "Never confirm a time or an arrangement that a tool result didn't show.",
+    'Two services for one person are one appointment: check and book them together.',
+    'check availability for each and say it works only if the results show they fit the way the caller asked',
+    // Codex P2: back-to-back means no gap; a gap is said aloud and okayed first.
+    "at the same time with different barbers, or back-to-back with the second starting exactly at the first one's blockedUntil time.",
+    "If the closest opening for the second leaves a gap, say both times and how long the gap is, and get the caller's okay before booking; never call it back-to-back.",
+    // Codex P2: staffId 'any' gives one barber per start time, so the second check names another barber.
+    'For two people at the same time, check the second with a different barber who does that service, by their staffId from the staff list, not any barber.',
+    'book them one at a time: read back each one and get its own clear yes',
+    "If they don't fit, say so and offer the closest times from the results.",
+    "If the second can't be booked after the first is done, say plainly the first one is booked and offer the closest times for the second.",
+  ],
+  es: [
+    'Nunca confirme una hora ni un acuerdo que el resultado de una herramienta no haya mostrado.',
+    'Dos servicios para una misma persona son una sola cita: revíselos y agéndelos juntos.',
+    'revise la disponibilidad de cada una y diga que se puede solo si los resultados muestran que caben como lo pidió la persona',
+    'a la misma hora con barberos distintos, o seguidas, con la segunda empezando justo a la hora blockedUntil de la primera.',
+    'Si la hora más cercana para la segunda deja un tiempo libre entre las dos, diga ambas horas y cuánto tiempo queda entre ellas, y espere que la persona acepte antes de agendar; nunca diga que son seguidas.',
+    'Para dos personas a la misma hora, revise la segunda con otro barbero que haga ese servicio, por su staffId de la lista del personal, no con cualquier barbero.',
+    'agéndelas una por una: lea los detalles de cada una y espere su propio sí claro',
+    'Si no caben, dígalo y ofrezca las horas más cercanas que dieron los resultados.',
+    'Si la segunda no se puede agendar después de hecha la primera, diga claramente que la primera ya quedó agendada y ofrezca las horas más cercanas para la segunda.',
+  ],
+};
+
 function composeFor(language: TemplateLanguage) {
   return compose(BARBERSHOP_TEMPLATE_V1, undefined, SHOP, { language, callerIdLine: CALLER_ID_LINE });
 }
@@ -85,6 +113,11 @@ describe('barbershop@1 composed for a fixture shop', () => {
         expect(c.prompt).toContain(SHOP.businessDetails);
         expect(c.prompt).toContain(CALLER_ID_LINE);
         expect(CALLER_ID_LINE).toContain('ending in 0142');
+      });
+
+      it('confirms nothing unchecked: several appointments are each checked, must fit as asked (same time or back-to-back), and book one at a time', () => {
+        for (const line of NO_UNCHECKED_PROMISES[lang]) expect(c.prompt).toContain(line);
+        expect(c.prompt).not.toMatch(lang === 'en' ? /at or after the first one's blockedUntil/ : /blockedUntil de la primera o más tarde/);
       });
 
       it('passes the prompt lint and the invariant phrase checks', () => {
