@@ -30,6 +30,8 @@ const NO_UNCHECKED_PROMISES: Record<TemplateLanguage, readonly string[]> = {
     'Two services for one person are one appointment: check and book them together.',
     'check availability for each and say it works only if the results show they fit the way the caller asked',
     "at the same time with different barbers, or the second starting at or after the first one's blockedUntil time.",
+    // Codex P2: staffId 'any' gives one barber per start time, so the second check names another barber.
+    'For two people at the same time, check the second with a different barber who does that service, by their staffId from the staff list, not any barber.',
     'book them one at a time: read back each one and get its own clear yes',
     "If they don't fit, say so and offer the closest times from the results.",
     "If the second can't be booked after the first is done, say plainly the first one is booked and offer the closest times for the second.",
@@ -39,6 +41,7 @@ const NO_UNCHECKED_PROMISES: Record<TemplateLanguage, readonly string[]> = {
     'Dos servicios para una misma persona son una sola cita: revíselos y agéndelos juntos.',
     'revise la disponibilidad de cada una y diga que se puede solo si los resultados muestran que caben como lo pidió la persona',
     'a la misma hora con barberos distintos, o la segunda empezando a la hora blockedUntil de la primera o más tarde.',
+    'Para dos personas a la misma hora, revise la segunda con otro barbero que haga ese servicio, por su staffId de la lista del personal, no con cualquier barbero.',
     'agéndelas una por una: lea los detalles de cada una y espere su propio sí claro',
     'Si no caben, dígalo y ofrezca las horas más cercanas que dieron los resultados.',
     'Si la segunda no se puede agendar después de hecha la primera, diga claramente que la primera ya quedó agendada y ofrezca las horas más cercanas para la segunda.',

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildShopFixture, ShopFixtureStore } from '../../tests/quality/fixtures/shopFixtures';
 import {
+  bookingSpan,
   FakeToolProvider,
   FIND_LIMIT,
   formatLocalHm,
@@ -474,6 +475,28 @@ describe('FakeToolProvider', () => {
     state.bookings[0].start = '2026-10-20T14:45:00-04:00';
     const adjacent = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut'], staffId: 'marco', start: '2026-10-20T15:30:00-04:00', customer: LUIS }, ctx());
     expect(adjacent.ok).toBe(true);
+  });
+
+  it('check_availability sizes end and blockedUntil from the requested services, like book.prepare (Codex P2)', async () => {
+    resetFakeTokens();
+    const state = buildFixture('barbershop-marco');
+    const at = (hm: string) => `2026-10-20T${hm}:00-04:00`;
+    // Cut + beard is 45 minutes plus beard's 10-minute buffer: 15:30 blocks Marco to 16:25, past the seeded 16:00 end.
+    state.services = state.services.map((service) => (service.id === 'beard' ? { ...service, bufferMin: 10 } : service));
+    state.slots.push({ start: at('16:15'), end: at('16:45'), staffId: 'marco' }, { start: at('16:30'), end: at('17:00'), staffId: 'marco' });
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const first = await tools.invoke('scheduling.check_availability', { serviceIds: ['mens-cut', 'beard'], staffId: 'marco', date: '2026-10-20' }, ctx());
+    const slot = first.ok ? (first.data as { slots: Array<{ start: string; end: string; blockedUntil: string }> }).slots[0] : null;
+    const span = bookingSpan(state.services, ['mens-cut', 'beard'], at('15:30'));
+    expect(slot).toMatchObject({ start: at('15:30'), end: new Date(span.endMs).toISOString(), blockedUntil: new Date(span.blockedUntilMs).toISOString() });
+    expect(slot?.blockedUntil).toBe(new Date(at('16:25')).toISOString());
+    // Once book.prepare holds 15:30, a back-to-back cut at 16:15 is inside that window; 16:30 fits.
+    const held = await tools.invoke('scheduling.book.prepare', { serviceIds: ['mens-cut', 'beard'], staffId: 'marco', start: at('15:30'), customer: LUIS }, ctx());
+    expect(held.ok).toBe(true);
+    const second = await tools.invoke('scheduling.check_availability', { serviceIds: ['mens-cut'], staffId: 'marco', date: '2026-10-20' }, ctx());
+    const starts = second.ok ? (second.data as { slots: Array<{ start: string }> }).slots.map((s) => formatLocalHm(s.start, 'America/New_York')) : null;
+    expect(starts).toEqual(['16:30']);
+    expect(Date.parse(at('16:15'))).toBeLessThan(Date.parse(slot?.blockedUntil ?? ''));
   });
 
   describe('service buffers block like the availability engine (end + largest buffer, both sides)', () => {

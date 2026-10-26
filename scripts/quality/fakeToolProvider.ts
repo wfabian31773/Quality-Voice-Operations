@@ -463,12 +463,13 @@ export class FakeToolProvider implements ToolProvider {
       })
       .map((slot) => {
         const staff = this.state.staff.find((member) => member.id === slot.staffId);
-        // Like the engine: the seeded end plus the largest buffer of the requested services.
-        const span = bookingSpan(this.state.services, serviceIds, slot.start);
+        // Like the engine and book.prepare: the requested services size end and blockedUntil;
+        // without services the seeded end stands in.
+        const span = serviceIds.length > 0 ? bookingSpan(this.state.services, serviceIds, slot.start) : undefined;
         return {
           start: slot.start,
-          end: slot.end,
-          blockedUntil: new Date(Date.parse(slot.end) + span.blockedUntilMs - span.endMs).toISOString(),
+          end: span ? new Date(span.endMs).toISOString() : slot.end,
+          blockedUntil: span ? new Date(span.blockedUntilMs).toISOString() : slot.end,
           staffId: slot.staffId,
           staffName: staff?.displayName ?? slot.staffId,
           spoken: spokenSlot(slot.start, ctx.tenantTimezone),
