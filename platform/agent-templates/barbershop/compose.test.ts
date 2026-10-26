@@ -23,6 +23,22 @@ const SHOP = {
 };
 const CALLER_ID_LINE = buildCallerIdPromptLine('+15555550142');
 
+/** NO-UNCHECKED-PROMISES: a test call said "back-to-back works great" after checking one slot. */
+const NO_UNCHECKED_PROMISES: Record<TemplateLanguage, readonly string[]> = {
+  en: [
+    "Never confirm a time or an arrangement that a tool result didn't show.",
+    'check availability for each and say it works only if the results show they fit',
+    'book them one at a time, each with its own read-back and clear yes',
+    "If they don't fit, say so and offer the closest times from the results.",
+  ],
+  es: [
+    'Nunca confirme una hora ni un acuerdo que el resultado de una herramienta no haya mostrado.',
+    'revise la disponibilidad de cada una y diga que se puede solo si los resultados muestran que caben',
+    'agéndelas una por una, cada una con su propia lectura de los detalles y su propio sí claro',
+    'Si no caben, dígalo y ofrezca las horas más cercanas que dieron los resultados.',
+  ],
+};
+
 function composeFor(language: TemplateLanguage) {
   return compose(BARBERSHOP_TEMPLATE_V1, undefined, SHOP, { language, callerIdLine: CALLER_ID_LINE });
 }
@@ -85,6 +101,10 @@ describe('barbershop@1 composed for a fixture shop', () => {
         expect(c.prompt).toContain(SHOP.businessDetails);
         expect(c.prompt).toContain(CALLER_ID_LINE);
         expect(CALLER_ID_LINE).toContain('ending in 0142');
+      });
+
+      it('confirms nothing unchecked: several appointments are each checked, must fit, and book one at a time', () => {
+        for (const line of NO_UNCHECKED_PROMISES[lang]) expect(c.prompt).toContain(line);
       });
 
       it('passes the prompt lint and the invariant phrase checks', () => {
