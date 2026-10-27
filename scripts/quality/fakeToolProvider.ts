@@ -1,3 +1,5 @@
+import { resolveAvailabilityStart } from '../../platform/actions/scheduling/availabilityStart';
+import { dateSlotIssue, toTenantDate } from '../../platform/actions/scheduling/dateSlot';
 // The real floor's "said more than their own name" rule (pure, no imports), so
 // the sim's floor decision can't drift from production's.
 import { saidMoreThanTheirOwnName } from '../../platform/actions/tickets/floorHeuristics';
@@ -451,14 +453,19 @@ export class FakeToolProvider implements ToolProvider {
     if (!Array.isArray(serviceIds)) return serviceIds;
     const staffId = resolveStaffId(this.state, asString(input.staffId) ?? 'any');
     if (typeof staffId !== 'string') return staffId;
-    const date = asString(input.date) ?? localDate(ctx.now.toISOString(), ctx.tenantTimezone);
-    const today = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
+    const rawDate = asString(input.date);
+    if (rawDate && dateSlotIssue(rawDate)) return fail('VALIDATION_FAILED', dateSlotIssue(rawDate)!, { field: 'date' });
     const startTime = asString(input.startTime);
+    if (startTime && input.window) return fail('VALIDATION_FAILED', 'startTime cannot use a window', { field: 'startTime' });
+    const start = resolveAvailabilityStart(startTime, rawDate ? toTenantDate(rawDate, ctx.tenantTimezone) : undefined, ctx.tenantTimezone);
+    if (!start.ok) return fail('VALIDATION_FAILED', start.message, { field: 'startTime', callerSafeMessage: start.message });
+    const date = start.date ?? localDate(ctx.now.toISOString(), ctx.tenantTimezone);
+    const today = localDate(ctx.now.toISOString(), ctx.tenantTimezone);
     const slots = this.state.slots
       .filter((slot) => {
         if (localDate(slot.start, ctx.tenantTimezone) !== date) return false;
         // Like the engine's startTime: that exact time and later only.
-        if (startTime && formatLocalHm(slot.start, ctx.tenantTimezone) < startTime) return false;
+        if (start.from !== undefined && Date.parse(slot.start) < start.from) return false;
         if (staffId !== 'any' && slot.staffId !== staffId) return false;
         if (!staffPerforms(this.state, slot.staffId, serviceIds)) return false;
         // Without services the fake can't size the request's buffer; the seeded slot end stands in.
@@ -487,6 +494,7 @@ export class FakeToolProvider implements ToolProvider {
         reasonIfNone: reason,
       });
     }
+    slots.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
     return ok({ slots });
   }
 

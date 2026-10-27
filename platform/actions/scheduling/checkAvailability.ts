@@ -10,12 +10,11 @@ import {
   localDateOf,
   MAX_LIMIT,
   NO_SLOT_REASONS,
-  parseClock,
   PARTS_OF_DAY,
   resolveBookingRules,
   searchPlan,
-  wallClockToUtc,
 } from './availability';
+import { availabilityStartTime, resolveAvailabilityStart } from './availabilityStart';
 import { dateSlot, toTenantDate, writtenDate } from './dateSlot';
 import { readbackLang } from './readback';
 import { resolveServiceRefs } from './serviceRefs';
@@ -39,8 +38,8 @@ const input = z
     staffId: z.string().min(1).max(255).optional(),
     date: dateSlot.optional(),
     window: z.object({ from: dateSlot, to: dateSlot }).optional(),
-    /** Local 24-hour HH:MM on `date` (tenant timezone): open starts from this exact time on, earliest first. */
-    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour HH:MM time').optional(),
+    /** Shop-local HH:MM on `date`, or an ISO timestamp copied directly from a slot. */
+    startTime: availabilityStartTime.optional(),
     partOfDay: z.enum(PARTS_OF_DAY).optional(),
     limit: z.number().int().min(1).max(MAX_LIMIT).optional(),
   })
@@ -51,8 +50,8 @@ const input = z
     if (value.date && value.window) {
       issue.addIssue({ code: z.ZodIssueCode.custom, path: ['window'], message: 'Send either date or window, not both' });
     }
-    if (value.startTime && !value.date) {
-      issue.addIssue({ code: z.ZodIssueCode.custom, path: ['startTime'], message: 'startTime needs a date (not a window)' });
+    if (value.startTime && (value.window || (!value.date && !value.startTime.includes('T')))) {
+      issue.addIssue({ code: z.ZodIssueCode.custom, path: ['startTime'], message: 'startTime cannot use a window; HH:MM also needs a date' });
     }
     if (value.window) {
       const [from, to] = [writtenDate(value.window.from), writtenDate(value.window.to)];
@@ -88,7 +87,7 @@ export const checkAvailabilityAction = defineAction({
     + 'serviceIds: service ids from list_services are preferred; an exact service name (or alias) also works. '
     + `staffId is a staff id from list_staff or 'any'; their exact name also works. Give date (${DATE_SLOT_FORMAT}) `
     + 'or window {from,to} in the same format; with neither it finds the first available day. '
-    + 'With date, optional startTime (HH:MM) checks that exact time: slots start there if it is open, else the next open times. Optional partOfDay '
+    + 'Optional startTime checks that exact time: slots start there if it is open, else the next open times, earliest first. Use shop-local HH:MM with date, or copy a full ISO timestamp (with Z or an offset) directly from a slot start or blockedUntil without converting it. A timestamp supplies its own shop-local date; any provided date must match. startTime cannot be used with window. Optional partOfDay '
     + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. '
     + 'blockedUntil is when that staff member is free again (end plus clean-up time). '
     + 'With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.',
@@ -100,6 +99,11 @@ export const checkAvailabilityAction = defineAction({
       date: rawArgs.date === undefined ? undefined : toTenantDate(rawArgs.date, tz),
       window: rawArgs.window && { from: toTenantDate(rawArgs.window.from, tz), to: toTenantDate(rawArgs.window.to, tz) },
     };
+    const start = resolveAvailabilityStart(args.startTime, args.date, tz);
+    if (!start.ok) return actionFail('VALIDATION_FAILED', start.message, {
+      field: 'startTime', callerSafeMessage: start.message,
+    });
+    args.date = start.date;
     if (args.window) {
       // A zoned datetime can land a day off its written date: check the window again.
       const problem = windowIssue(args.window.from, args.window.to);
@@ -179,7 +183,7 @@ export const checkAvailabilityAction = defineAction({
       window: args.window,
       partOfDay: args.partOfDay,
       limit: args.limit,
-      from: args.date && args.startTime ? wallClockToUtc(args.date, parseClock(args.startTime)!, tz) : undefined,
+      from: start.from,
     });
     return actionOk(result);
   },
